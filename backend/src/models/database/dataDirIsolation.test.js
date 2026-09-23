@@ -13,12 +13,12 @@
  * against, even when isolation is broken.
  */
 
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import pathManager from '../../utils/PathManager.js';
+import { getStorageContext } from '../../utils/testStorageContext.js';
 
 const lower = (p) => path.resolve(p).toLowerCase();
 
@@ -45,11 +45,15 @@ describe('test data-dir isolation (tests/setup/isolate-data-dir.mjs)', () => {
     expect(lower(process.env.USER_DATA_PATH)).toBe(lower(process.env.__AGNT_TEST_DATA_DIR));
   });
 
-  it('suppresses the legacy-DB migration shim with a pre-seeded target', () => {
-    // Without this file, migrateLegacyDatabase() treats the sandbox as an
-    // empty canonical dir and %APPDATA%/AGNT/Data as a legacy SOURCE — i.e.
-    // it may try to copy a real database INTO the test sandbox.
-    const seeded = path.join(pathManager.getDataDir(), 'agnt.db');
-    expect(fs.existsSync(seeded)).toBe(true);
+  it('resolves exactly the admitted context root (D1)', () => {
+    // PR145 A1/P10: resolution is context-only. The pre-A1 tripwire asserted a
+    // PRE-SEEDED zero-byte agnt.db here; admission no longer pre-creates one
+    // (D4 — no creating effects) and the test-mode boot SKIPS legacy-migration
+    // discovery entirely, so migrateLegacyDatabase can never treat this
+    // sandbox as a copy target. Asserting the resolved root equals the ACTIVE
+    // admitted context root is the stronger, order-independent D1 guard.
+    const ctx = getStorageContext();
+    expect(lower(pathManager.getRootDir())).toBe(lower(ctx.root));
+    expect(lower(pathManager.getDataDir())).toBe(lower(path.join(ctx.root, 'Data')));
   });
 });

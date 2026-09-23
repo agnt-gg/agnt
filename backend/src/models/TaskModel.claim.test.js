@@ -52,7 +52,12 @@ const claimRow = (taskId) =>
   get(`SELECT status, claimed_by, claim_expires_at, attempt_count FROM tasks WHERE id = ?`, [taskId]);
 
 beforeAll(async () => {
-  await dbReady;
+  // PR145 A1/P10 (D10): test-mode dbReady REJECTS on boot failure (it used
+  // to stay pending forever). Catch-and-rethrow keeps the failure evidence —
+  // the boot error itself — instead of a bare rejection or a worker timeout.
+  await dbReady.catch((bootError) => {
+    throw new Error('database boot failed in test mode (dbReady rejected): ' + (bootError?.message || bootError));
+  });
   userId = generateUUID();
   await run(`INSERT INTO users (id, email, name) VALUES (?, ?, ?)`, [
     userId,

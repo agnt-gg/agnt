@@ -36,6 +36,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import jwt from 'jsonwebtoken';
+import { admitTestRoot, getStorageContext } from '../utils/testStorageContext.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
@@ -111,6 +112,7 @@ const ENV_KEYS = [
 ];
 const saved = {};
 let dataDir;
+let setupRoot;
 let server;
 let baseUrl;
 let syncedUsers;
@@ -122,6 +124,9 @@ beforeEach(() => {
     delete process.env[k];
   }
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-docker-defaults-'));
+  // Test storage ignores USER_DATA_PATH; the container's data dir is admitted explicitly.
+  setupRoot = getStorageContext().root;
+  admitTestRoot(dataDir);
   issuerCalls = [];
   syncedUsers = [];
   vi.resetModules();
@@ -137,6 +142,7 @@ afterEach(async () => {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
+  admitTestRoot(setupRoot);
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 

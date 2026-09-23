@@ -3,8 +3,10 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'node:crypto';
 import WebhookModel from '../WebhookModel.js';
-import pathManager from '../../utils/PathManager.js';
+import pathManager, { detectStorageMode } from '../../utils/PathManager.js';
+import { getStorageContext, recordStorageInit } from '../../utils/testStorageContext.js';
 import { setupFullTextSearch } from './fts.js';
 import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
@@ -13,14 +15,61 @@ import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 // already creates the directory and falls back to a temp dir on failure.
 let dbDir = pathManager.getDataDir();
 
+// Test-storage isolation: validate the data directory BEFORE any write probe.
+// In test mode this module must never re-home (probe failure is fatal, not
+// a fallback), never discover legacy sources, and never open through symlinks.
+const storageMode = detectStorageMode();
+
+let dbDirIdentity = null; // test-mode pre-probe identity, for D5 revalidation
+if (storageMode === 'test') {
+  // D4/S1: validate BEFORE any write probe, SQLite constructor, PRAGMA or
+  // legacy discovery. Root and ancestry come from the validated storage
+  // context — getStorageContext() performs the structural, pid,
+  // admitted-parent-anchor, ancestor-walk (lstat per component: plain
+  // directory, not a symlink, realpath === lexical) and root dev/ino
+  // checks, throwing typed errors — and this module additionally refuses
+  // any dbDir that is not EXACTLY the context's Data directory: a derived
+  // path is never trusted for an open.
+  const storageCtx = getStorageContext();
+  const expectedDbDir = path.resolve(path.join(storageCtx.root, 'Data'));
+  if (path.resolve(dbDir) !== expectedDbDir) {
+    throw new Error(
+      '[test-storage] database directory is not the admitted storage context data directory: ' +
+      dbDir + ' (context root: ' + storageCtx.root + '). ' +
+      'Test storage is selected only by storage admission — the override API is admitTestRoot().'
+    );
+  }
+  let dbDirSt = null;
+  try { dbDirSt = fs.lstatSync(dbDir); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (dbDirSt && !dbDirSt.isDirectory()) {
+    throw new Error(
+      '[test-storage] database directory is not a real directory: ' + dbDir +
+      ' (symlink/FIFO/device). A test database must live inside the declared root.'
+    );
+  }
+  if (dbDirSt) {
+    const realBeforeProbe = fs.realpathSync(dbDir);
+    if (realBeforeProbe !== path.resolve(dbDir)) {
+      throw new Error(
+        '[test-storage] database directory is reached through a symlink: ' +
+        dbDir + ' -> ' + realBeforeProbe
+      );
+    }
+    dbDirIdentity = { dev: dbDirSt.dev, ino: dbDirSt.ino };
+  }
+}
+
 // Verify write permissions at the resolved location. If it's read-only for
 // some reason, fall back to a Documents/HOME-relative directory so the app
 // can still boot.
 try {
-  const testFile = path.join(dbDir, '.test');
-  fs.writeFileSync(testFile, 'test');
+  const testFile = path.join(dbDir, '.probe-' + process.pid + '-' + crypto.randomUUID());
+  const probe = fs.openSync(testFile, 'wx', 0o600);
+  fs.closeSync(probe);
   fs.unlinkSync(testFile);
 } catch (error) {
+  if (storageMode === 'test') throw new Error('[test-storage] write probe failed; fallback refused');
   console.error('Error with primary directory:', error);
   if (process.platform === 'darwin' && process.env.HOME) {
     dbDir = path.join(process.env.HOME, 'Documents', 'AGNT_Data');
@@ -33,23 +82,72 @@ try {
   }
 }
 
+
+// D5: post-probe revalidation in test mode — a NARROWED TOCTOU check, not an
+// elimination. The write probe above is a write-permission probe inside the
+// admitted root; it is NOT evidence about the SQLite handle (a second file
+// descriptor never certifies the database sqlite3 opened — contract §1). If
+// dbDir changed identity between validation and now (dev/ino drift, swap to
+// a symlink, or removal), refuse BEFORE the constructor. A swap racing this
+// check and the constructor remains a documented trusted-mode residual;
+// enforced-mode containment is Stage D (R06 split claim — trusted mode is
+// never called race-safe).
+if (storageMode === 'test' && dbDirIdentity) {
+  let stNow = null;
+  try { stNow = fs.lstatSync(dbDir); } catch { /* refused below */ }
+  const realNow = stNow ? fs.realpathSync(dbDir) : null;
+  if (!stNow || !stNow.isDirectory() || stNow.isSymbolicLink() ||
+      realNow !== path.resolve(dbDir) ||
+      stNow.dev !== dbDirIdentity.dev || stNow.ino !== dbDirIdentity.ino) {
+    throw new Error(
+      '[test-storage] database directory identity changed between validation and open (concurrent swap?): ' + dbDir
+    );
+  }
+}
+
 // One-time migration shim (PRD-060 §6.3). If a legacy or buggy install left
 // agnt.db at a non-canonical location and the canonical path has no DB yet,
 // copy it into place. See legacyMigration.js — this used to be an unguarded
 // copyFileSync that would happily start a 30 GB copy with no free-space
 // check and leave a truncated database behind if it died partway.
-migrateLegacyDatabase({ dbDir });
+if (storageMode !== 'test') {
+  migrateLegacyDatabase({ dbDir });
+} else {
+  console.log('[test-storage] legacy migration discovery skipped (test mode)');
+}
 
 // Database path in user's data directory
 const dbPath = path.join(dbDir, 'agnt.db');
 console.log('Final database path:', dbPath);
 
+// Refuse pre-existing aliases BEFORE the SQLite constructor or its queued writes.
+// This does not eliminate a concurrent path swap: sqlite3 exposes no descriptor
+// binding API here. Use OS confinement for adversarial code and filesystem races.
+if (storageMode === 'test') {
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    try {
+      const st = fs.lstatSync(dbPath + suffix);
+      if (!st.isFile() || st.nlink !== 1) throw new Error('[test-storage] database or sidecar alias refused');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
+
 // Initialize database
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Database initialization error:', err);
+    // T8/ROOT-CAUSE 2026-09-13: a failed open used to only log. The queued
+    // statements on a never-opened connection then NEVER ran their callbacks
+    // (measured: dbReady stayed pending forever; the event loop drained and
+    // node exited 13 "unsettled top-level await" — a readiness result that
+    // never arrives). The open error is now routed into the single
+    // connection-readiness rejection declared below the PRAGMA sections, so
+    // awaiters receive one truthful rejected result instead of silence.
+    failConnectionReadiness('sqlite3 open', err);
   } else {
     console.log('Database successfully initialized at:', dbPath);
+
+
   }
 });
 
@@ -64,6 +162,20 @@ db.serialize(() => {
     db.run('PRAGMA journal_mode = WAL', (err) => {
       if (err) {
         console.error('Failed to enable WAL mode:', err);
+        // T8/ROOT-CAUSE 2026-09-13 (follow-up): on a read-only NON-EMPTY
+        // database the whole performance pack SUCCEEDS (auto_vacuum is a
+        // documented no-op there), so the pack alone cannot detect that the
+        // connection can never write — the first uncaught SQLITE_READONLY
+        // just moved into schema creation. journal_mode is the one
+        // connection-level statement that always touches the file: a
+        // PERMANENT-write failure code here IS connection death and gates
+        // readiness. Transient codes (SQLITE_BUSY boot race, lock held by
+        // the sibling process) keep the legacy log-and-continue tolerance —
+        // WAL is documented-optional (SQLITE_WAL_MODE=false) and its failure
+        // alone is not connection death.
+        if (err.code === 'SQLITE_READONLY' || err.code === 'SQLITE_NOTADB' || err.code === 'SQLITE_CANTOPEN') {
+          failConnectionReadiness('PRAGMA journal_mode = WAL', err);
+        }
       } else {
         console.log('WAL mode enabled (multi-process concurrency)');
       }
@@ -100,11 +212,65 @@ db.serialize(() => {
 // - temp_store=MEMORY: temp b-trees (ORDER BY / GROUP BY) stay in RAM.
 // - mmap_size=256 MB: page reads served via the OS memory map.
 // Queued at module evaluation, so these run before createTables() below.
+// T8/ROOT-CAUSE 2026-09-13: this pack previously used callback-less
+// db.run. Measured twice — the deferred-index comment above, and the native
+// attribution table in the pr145-root-cause packet evidence: a callback-less
+// db.run error CANNOT be caught by any listener, so pre-open corruption
+// killed the process as an UNCAUGHT SQLITE_* exception (garbage file →
+// SQLITE_NOTADB, first hit on `synchronous`; read-only file → SQLITE_READONLY
+// on `auto_vacuum`) BEFORE the D10 dbReady path could reject. Callers got a
+// dead process instead of one truthful readiness result. Every statement now
+// carries an explicit callback; the FIRST failure becomes the single
+// connection-readiness rejection (the ORIGINAL error object — code, errno,
+// message — is preserved), and no statement error can escape as an uncaught
+// exception. The WAL/foreign_keys/busy_timeout block above keeps its exact
+// legacy log-and-continue semantics: WAL is a documented-optional mode and
+// its failure alone is not connection death.
+let connectionFailed = false;
+let connectionPendingStatements = 0;
+let resolveConnectionReady;
+let rejectConnectionReady;
+// Settles when every pack statement completed without error; rejects with
+// the first driver error otherwise. First failure wins — later errors from
+// the same dead connection are echoes, not new evidence.
+const connectionReadiness = new Promise((resolve, reject) => {
+  resolveConnectionReady = resolve;
+  rejectConnectionReady = reject;
+});
+// Terminal observer: the skip-schema paths (AGNT_SKIP_DB_INIT=1, child
+// contract Stage C) deliberately do not chain on connectionReadiness, and an
+// unconsumed rejection would itself crash the process as an
+// unhandledRejection. failConnectionReadiness() always logs the failure
+// loudly; this observer only marks the rejection consumed at the source.
+connectionReadiness.catch(() => {});
+function failConnectionReadiness(stage, error) {
+  if (connectionFailed) return;
+  connectionFailed = true;
+  console.error('[DB] connection readiness failed (' + stage + '):', error);
+  rejectConnectionReady(error);
+}
+function connectionStatementSettled() {
+  if (connectionFailed) return;
+  if (--connectionPendingStatements === 0) resolveConnectionReady();
+}
 db.serialize(() => {
-  db.run('PRAGMA synchronous = NORMAL');
-  db.run('PRAGMA cache_size = -64000');
-  db.run('PRAGMA temp_store = MEMORY');
-  db.run('PRAGMA mmap_size = 268435456');
+  connectionPendingStatements = 5;
+  db.run('PRAGMA synchronous = NORMAL', (err) => {
+    if (err) return failConnectionReadiness('PRAGMA synchronous = NORMAL', err);
+    connectionStatementSettled();
+  });
+  db.run('PRAGMA cache_size = -64000', (err) => {
+    if (err) return failConnectionReadiness('PRAGMA cache_size = -64000', err);
+    connectionStatementSettled();
+  });
+  db.run('PRAGMA temp_store = MEMORY', (err) => {
+    if (err) return failConnectionReadiness('PRAGMA temp_store = MEMORY', err);
+    connectionStatementSettled();
+  });
+  db.run('PRAGMA mmap_size = 268435456', (err) => {
+    if (err) return failConnectionReadiness('PRAGMA mmap_size = 268435456', err);
+    connectionStatementSettled();
+  });
 
   // auto_vacuum can ONLY be set while the database is still empty (zero pages).
   // On an existing database this statement is silently ignored, and the only
@@ -118,7 +284,10 @@ db.serialize(() => {
   // `PRAGMA incremental_vacuum`, instead of growing monotonically forever.
   // Existing installs are unaffected: they keep reusing the freelist, which is
   // sufficient once payload externalization cuts the write rate.
-  db.run('PRAGMA auto_vacuum = INCREMENTAL');
+  db.run('PRAGMA auto_vacuum = INCREMENTAL', (err) => {
+    if (err) return failConnectionReadiness('PRAGMA auto_vacuum = INCREMENTAL', err);
+    connectionStatementSettled();
+  });
 });
 
 // ── Index creation is DEFERRED until after migrations ──────────────────────
@@ -202,7 +371,7 @@ function createTables() {
         fallback_enabled INTEGER DEFAULT 0,
         subscription_costs TEXT,
         preferences TEXT
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
         id TEXT PRIMARY KEY,
@@ -212,7 +381,7 @@ function createTables() {
         description TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
@@ -233,7 +402,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS agent_resources (
         agent_id TEXT PRIMARY KEY,
@@ -242,7 +411,7 @@ function createTables() {
         reset_period TEXT,
         last_reset DATETIME,
         FOREIGN KEY (agent_id) REFERENCES agents(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS agent_workflows (
         id TEXT PRIMARY KEY,
@@ -250,7 +419,7 @@ function createTables() {
         workflow_id TEXT NOT NULL,
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (workflow_id) REFERENCES workflows(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS tools (
         id TEXT PRIMARY KEY,
@@ -269,7 +438,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS workflows (
         id TEXT PRIMARY KEY,
@@ -281,7 +450,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Index for faster workflow queries by user_id
       createIndex(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
@@ -304,7 +473,7 @@ function createTables() {
         is_compressed INTEGER DEFAULT 0,
         FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
         FOREIGN KEY (parent_version_id) REFERENCES workflow_versions(id) ON DELETE SET NULL
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Indexes for workflow versions
       createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow_id ON workflow_versions(workflow_id)`);
@@ -324,7 +493,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (parent_id) REFERENCES groups(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_groups_user_id ON groups(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_groups_parent_id ON groups(parent_id)`);
@@ -349,7 +518,7 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (workflow_id) REFERENCES workflows(id),
         FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Index for faster content_outputs queries by user_id, sorted by updated_at
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
@@ -365,8 +534,7 @@ function createTables() {
       // that share the conversation.
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_conversation ON content_outputs(user_id, conversation_id)`);
 
-      db.run(
-        `CREATE TABLE IF NOT EXISTS user_data (
+      db.run(`CREATE TABLE IF NOT EXISTS user_data (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         table_name TEXT NOT NULL,
@@ -374,8 +542,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS workflow_executions (
         id TEXT PRIMARY KEY,
@@ -389,7 +556,7 @@ function createTables() {
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (workflow_id) REFERENCES workflows(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Index for faster workflow execution queries
       createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
@@ -409,7 +576,7 @@ function createTables() {
         error TEXT,
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (execution_id) REFERENCES workflow_executions(id)
-      )`);      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
+      )`, (err) => { if (err) reject(err); });      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
       createIndex(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_status ON node_executions(execution_id, status)`);
 
@@ -427,7 +594,7 @@ function createTables() {
         estimated_cost REAL DEFAULT 0,
         computed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id, date)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Goal system tables - extending existing architecture
       db.run(`CREATE TABLE IF NOT EXISTS goals (
@@ -444,7 +611,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         completed_at DATETIME,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
@@ -471,7 +638,7 @@ function createTables() {
         FOREIGN KEY (parent_task_id) REFERENCES tasks(id),
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (workflow_id) REFERENCES workflows(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS task_executions (
         id TEXT PRIMARY KEY,
@@ -488,7 +655,7 @@ function createTables() {
         FOREIGN KEY (task_id) REFERENCES tasks(id),
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (workflow_execution_id) REFERENCES workflow_executions(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS goal_outputs (
         id TEXT PRIMARY KEY,
@@ -501,7 +668,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (goal_id) REFERENCES goals(id),
         FOREIGN KEY (task_id) REFERENCES tasks(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Evaluation system tables
       db.run(`CREATE TABLE IF NOT EXISTS goal_evaluations (
@@ -515,7 +682,7 @@ function createTables() {
         evaluated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         evaluated_by TEXT DEFAULT 'system',
         FOREIGN KEY (goal_id) REFERENCES goals(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS task_evaluations (
         id TEXT PRIMARY KEY,
@@ -527,7 +694,7 @@ function createTables() {
         evaluated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (task_id) REFERENCES tasks(id),
         FOREIGN KEY (goal_evaluation_id) REFERENCES goal_evaluations(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS golden_standards (
         id TEXT PRIMARY KEY,
@@ -541,10 +708,9 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (goal_id) REFERENCES goals(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
-      db.run(
-        `CREATE TABLE IF NOT EXISTS conversation_logs (
+      db.run(`CREATE TABLE IF NOT EXISTS conversation_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id TEXT UNIQUE NOT NULL,
         user_id TEXT,
@@ -555,14 +721,12 @@ function createTables() {
         errors TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       // Per-conversation context bindings (active skill, active goal, etc.).
       // Kept separate from conversation_logs so the row can be created lazily
       // when the user attaches a skill/goal *before* sending any message.
-      db.run(
-        `CREATE TABLE IF NOT EXISTS conversation_settings (
+      db.run(`CREATE TABLE IF NOT EXISTS conversation_settings (
         conversation_id TEXT PRIMARY KEY,
         user_id TEXT,
         active_skill_id TEXT,
@@ -570,8 +734,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
 
@@ -586,8 +749,7 @@ function createTables() {
       // decision that was computed and recorded but NOT executed, so the
       // router can be evaluated against real traffic before it is allowed to
       // touch a single request.
-      db.run(
-        `CREATE TABLE IF NOT EXISTS routing_decisions (
+      db.run(`CREATE TABLE IF NOT EXISTS routing_decisions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         conversation_id TEXT,
@@ -608,8 +770,7 @@ function createTables() {
         chain TEXT,
         ts DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_routing_decisions_user_ts ON routing_decisions(user_id, ts)`);
 
@@ -637,8 +798,7 @@ function createTables() {
       });
 
       // Persist Codex CLI thread IDs so conversations can resume after restarts
-      db.run(
-        `CREATE TABLE IF NOT EXISTS codex_threads (
+      db.run(`CREATE TABLE IF NOT EXISTS codex_threads (
         user_id TEXT NOT NULL,
         provider TEXT NOT NULL DEFAULT 'openai-codex',
         scope TEXT NOT NULL DEFAULT 'conversation',
@@ -647,11 +807,9 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id, provider, scope, conversation_id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
-      db.run(
-        `CREATE TABLE IF NOT EXISTS webhooks (
+      db.run(`CREATE TABLE IF NOT EXISTS webhooks (
         id TEXT PRIMARY KEY,
         workflow_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
@@ -663,8 +821,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (workflow_id) REFERENCES workflows(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       // ==================== OAUTH_TOKENS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -678,7 +835,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         UNIQUE(user_id, provider_id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // ==================== API_KEYS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS api_keys (
@@ -690,10 +847,9 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         UNIQUE(user_id, provider_id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
-      db.run(
-        `CREATE TABLE IF NOT EXISTS custom_openai_providers (
+      db.run(`CREATE TABLE IF NOT EXISTS custom_openai_providers (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         provider_name TEXT NOT NULL,
@@ -704,8 +860,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`
-      );
+      )`, (err) => { if (err) reject(err); });
 
       // Migration: declared model list for gateways with no /v1/models endpoint
       // (2026-08-24). Some OpenAI-compatible providers — api.cline.bot among
@@ -738,7 +893,7 @@ function createTables() {
         model TEXT,
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Additive and nullable: old runs have unknown telemetry, never invented zeros.
       db.run('ALTER TABLE agent_executions ADD COLUMN execution_telemetry TEXT', (err) => {
@@ -769,7 +924,7 @@ function createTables() {
         samples INTEGER NOT NULL DEFAULT 0,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (provider, model)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // ==================== EXECUTION LEDGER (PRD-122) ====================
       // One row per LLM request/response round-trip, written by exactly one
@@ -814,7 +969,7 @@ function createTables() {
         status TEXT NOT NULL DEFAULT 'ok',
         error TEXT,
         ts DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_user_ts ON llm_calls(user_id, ts)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_execution ON llm_calls(execution_id)`);
@@ -848,14 +1003,14 @@ function createTables() {
         model TEXT NOT NULL,
         metadata TEXT NOT NULL,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS ledger_write_failures (
         source TEXT PRIMARY KEY,
         failures INTEGER NOT NULL DEFAULT 0,
         last_error TEXT,
         last_at DATETIME
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS agent_tool_executions (
         id TEXT PRIMARY KEY,
@@ -870,7 +1025,7 @@ function createTables() {
         error TEXT,
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (execution_id) REFERENCES agent_executions(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Index for faster agent tool execution lookups (CRITICAL for run details)
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
@@ -896,7 +1051,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_widget_definitions_user_id ON widget_definitions(user_id)`);
 
@@ -913,7 +1068,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_widget_layouts_user_id ON widget_layouts(user_id)`);
 
@@ -934,7 +1089,7 @@ function createTables() {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_user_id ON skills(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
@@ -967,7 +1122,7 @@ function createTables() {
         status TEXT DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_versions_skill_id ON skill_versions(skill_id)`);
 
@@ -993,7 +1148,7 @@ function createTables() {
         trace_analysis TEXT,
         judge_reasoning TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
@@ -1006,7 +1161,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // SkillForge settings — persisted per-user configuration
       db.run(`CREATE TABLE IF NOT EXISTS skillforge_settings (
@@ -1014,7 +1169,7 @@ function createTables() {
         settings TEXT NOT NULL DEFAULT '{}',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Evolution settings — controls automated insight extraction
       db.run(`CREATE TABLE IF NOT EXISTS evolution_settings (
@@ -1022,7 +1177,7 @@ function createTables() {
         settings TEXT NOT NULL DEFAULT '{}',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       // Evolution performance snapshots — time-series telemetry for meta-cognition
       db.run(`CREATE TABLE IF NOT EXISTS evolution_performance_snapshots (
@@ -1036,7 +1191,7 @@ function createTables() {
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_user ON evolution_performance_snapshots(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_target ON evolution_performance_snapshots(target_type, target_id)`);
 
@@ -1060,7 +1215,7 @@ function createTables() {
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_user ON evolution_core_runs(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_created ON evolution_core_runs(created_at)`);
 
@@ -1079,7 +1234,7 @@ function createTables() {
         duration_ms INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_goal_iterations_goal_id ON goal_iterations(goal_id)`);
 
@@ -1100,7 +1255,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         completed_at DATETIME,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS experiment_runs (
         id TEXT PRIMARY KEY,
@@ -1117,7 +1272,7 @@ function createTables() {
         completed_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS experiment_results (
         id TEXT PRIMARY KEY,
@@ -1133,7 +1288,7 @@ function createTables() {
         analysis TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       db.run(`CREATE TABLE IF NOT EXISTS eval_datasets (
         id TEXT PRIMARY KEY,
@@ -1147,7 +1302,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_experiments_user_id ON experiments(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status)`);
@@ -1195,7 +1350,7 @@ function createTables() {
         last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_user_id ON insights(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_target ON insights(target_type, target_id)`);
@@ -1216,7 +1371,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_memory_agent_id ON agent_memory(agent_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_memory_user_id ON agent_memory(user_id)`);
@@ -1234,7 +1389,7 @@ function createTables() {
         installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         deprecated_at DATETIME,
         UNIQUE (plugin_name, asset_type, asset_slug)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type, local_id)`);
 
@@ -1255,7 +1410,7 @@ function createTables() {
         run_count INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_type, target_id)`);
 
@@ -1269,7 +1424,7 @@ function createTables() {
         status TEXT DEFAULT 'fired',
         error TEXT,
         FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
 
       // PRD-091: Layer 3 (Wallets) — linear capability budgets
@@ -1290,7 +1445,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (parent_id) REFERENCES wallets(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_wallets_owner ON wallets(owner_type, owner_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_wallets_parent ON wallets(parent_id)`);
 
@@ -1304,7 +1459,7 @@ function createTables() {
         note TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_wallet_ledger_wallet ON wallet_ledger(wallet_id, created_at)`);
 
       // PRD-091: Layer 5 (Contracts) — refinement-type runtime contracts
@@ -1324,7 +1479,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_contracts_target ON contracts(target_type, target_id, status)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id, status)`);
 
@@ -1338,7 +1493,7 @@ function createTables() {
         source_execution_id TEXT,
         observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_contract_violations_contract ON contract_violations(contract_id, observed_at)`);
 
       // PRD-091: Layer 7 (FitnessScore) — mutation provenance and reward signal
@@ -1360,7 +1515,7 @@ function createTables() {
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
-      )`);
+      )`, (err) => { if (err) reject(err); });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_target ON mutation_history(target_type, target_id, created_at)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_insight ON mutation_history(insight_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_status ON mutation_history(status)`);
@@ -2249,130 +2404,346 @@ function backfillWorkflowSummaryColumns() {
 // startup write-lock race between the two processes. The child is forked
 // with AGNT_SKIP_DB_INIT=1 and resolves dbReady immediately; per-connection
 // PRAGMAs above still run (they are connection-scoped, not schema work).
+// ── D6/S6/R10 (PR145 A1): schema vs maintenance boot-policy split ──────────
+//
+// ensureSchema(): the schema-only chain — createTables → migrations →
+// indexes → FTS, with each step's legacy fatal/non-fatal semantics preserved
+// (FTS failures stay non-fatal exactly as before). This is ALL an ordinary
+// test-mode import runs.
+//
+// Maintenance (widget-layout dedupe, stale-run sweep, webhook sync,
+// conversation-image backfill, WAL checkpoint) is NOT part of ensureSchema
+// in either mode. Ordinary imports perform connection/schema readiness only.
+// Production maintenance requires an explicit initializeApplicationStorage
+// call; backend/server.js makes that call with the legacy production policy
+// before its db-dependent boot consumers proceed (R10 B2/B3).
+function ensureSchema() {
+  return createTables()
+    .then(() => {
+      console.log('All tables created successfully');
+      return runMigrations();
+    })
+    .then(() => {
+      console.log('All migrations completed successfully');
+      // Indexes LAST: the schema is only final once migrations have run. See
+      // the createIndex() comment — building them any earlier is what took
+      // boot down with `no such column: channel_key` on every upgrading
+      // install.
+      return createIndexes();
+    })
+    .then(async () => {
+      await initializeGoalLifecycleVersions(db);
+      console.log('All indexes ready');
+    })
+    .then(async () => {
+      // Set up FTS5 search indexes (memory layer) before announcing readiness.
+      try {
+        await setupFullTextSearch(db);
+      } catch (error) {
+        console.error('Error setting up full-text search:', error);
+      }
+    });
+}
+
+// Named maintenance steps for initializeApplicationStorage. Each preserves
+// the legacy chain's exact behavior (non-fatal where the legacy chain is
+// non-fatal).
+async function widgetDedupeStep() {
+  // Heal duplicate widget_layouts route pages and make (user_id, route)
+  // structurally unique. Non-fatal: a database that can't be deduped is
+  // still a usable database.
+  try {
+    await ensureWidgetLayoutRouteUniqueness(db);
+  } catch (error) {
+    console.error('widget_layouts dedupe failed (non-fatal):', error.message);
+  }
+}
+
+async function staleRunSweepStep() {
+  // NOTE (U7, deferred): 'all-running' mirrors the legacy production sweep
+  // exactly — every status='running' row. Dead-ownership scoping is a
+  // separate, explicitly-owned decision; nothing here narrows it silently.
+  try {
+    const sweptCount = await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE agent_executions
+           SET status = 'interrupted',
+               end_time = CURRENT_TIMESTAMP,
+               error = 'Run interrupted by app restart'
+         WHERE status = 'running'`,
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+    if (sweptCount > 0) {
+      console.log(`Startup sweep: marked ${sweptCount} stale 'running' execution(s) as 'interrupted'`);
+    }
+  } catch (error) {
+    console.error('Startup stale-run sweep failed (non-fatal):', error);
+  }
+}
+
+async function webhookSyncStep() {
+  // Sync webhooks from existing workflows. Non-fatal (legacy semantics).
+  try {
+    await WebhookModel.syncFromWorkflows();
+  } catch (error) {
+    console.error('Error syncing webhooks:', error);
+  }
+}
+
+function imageBackfillStep() {
+  // One-time remediation for pre-2026-07 conversation blobs with inline
+  // base64 images. Schedules (does NOT await), exactly like the legacy
+  // chain: boot cost is zero and a defect in the backfill module must never
+  // break boot. Installs with no legacy blobs scan once and no-op.
+  try {
+    return import('../../services/storage/ConversationImageBackfill.js')
+      .then(({ scheduleConversationImageBackfill }) =>
+        import('../../services/ImageStorage.js').then((imageStorage) => {
+          scheduleConversationImageBackfill({
+            dbAll: (sql, params = []) =>
+              new Promise((resolve, reject) => db.all(sql, params, (e, r) => (e ? reject(e) : resolve(r || [])))),
+            dbRun: (sql, params = []) =>
+              dbRunWithRetry(
+                () =>
+                  new Promise((resolve, reject) =>
+                    db.run(sql, params, function (e) {
+                      if (e) reject(e);
+                      else resolve(this.changes);
+                    })
+                  )
+              ),
+            saveBase64Image: imageStorage.saveBase64Image,
+            findImageFile: imageStorage.findImageFile,
+            walPath: dbPath + '-wal',
+            backupDir: path.join(dbDir, 'backfill-backups'),
+            log: (msg) => console.log(msg),
+          });
+        })
+      )
+      .catch((error) => {
+        console.error('[migrations] conversation image backfill failed to schedule (non-fatal):', error.message);
+      });
+  } catch (error) {
+    console.error('[migrations] conversation image backfill scheduling error (non-fatal):', error.message);
+  }
+}
+
+let walCheckpointTimer = null;
+function walCheckpointStep() {
+  // Explicit activation performs the legacy one-shot checkpoint and starts
+  // the former five-minute unref'd cadence exactly once.
+  const run = () => new Promise((resolve) => {
+    db.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
+      if (err) console.warn('[DB] WAL checkpoint failed (non-fatal):', err.message);
+      resolve();
+    });
+  });
+  if (!walCheckpointTimer) {
+    walCheckpointTimer = setInterval(() => { run(); }, 5 * 60 * 1000);
+    if (typeof walCheckpointTimer.unref === 'function') walCheckpointTimer.unref();
+  }
+  return run();
+}
+
 const skipSchemaInit = process.env.AGNT_SKIP_DB_INIT === '1';
 
-const dbReady = skipSchemaInit
-  ? Promise.resolve().then(() => {
+let dbReady;
+if (storageMode === 'test') {
+  // TEST MODE (D10): dbReady resolves after ensureSchema() ONLY — no
+  // maintenance — and REJECTS on failure with the error recorded on the
+  // storage context (ctx.init). A failed test boot is a failed test, never
+  // a silent console.error. AGNT_SKIP_DB_INIT keeps its exact legacy
+  // meaning (child contract details are Stage C).
+  if (skipSchemaInit) {
+    dbReady = Promise.resolve().then(() => {
       console.log('Database schema init skipped (AGNT_SKIP_DB_INIT=1) — schema owned by parent process');
-    })
-  : createTables()
-  .then(() => {
-    console.log('All tables created successfully');
-    return runMigrations();
-  })
-  .then(() => {
-    console.log('All migrations completed successfully');
-    // Indexes LAST: the schema is only final once migrations have run. See the
-    // createIndex() comment — building them any earlier is what took boot down
-    // with `no such column: channel_key` on every upgrading install.
-    return createIndexes();
-  })
-  .then(async () => {
-    await initializeGoalLifecycleVersions(db);
-    console.log('All indexes ready');
-  })
-  .then(async () => {
-    // Heal duplicate widget_layouts route pages and make (user_id, route)
-    // structurally unique. See widgetLayoutDedupe.js for the full history —
-    // a frontend race leaked one orphaned page row per cold start. Non-fatal:
-    // a database that can't be deduped is still a usable database.
-    try {
-      await ensureWidgetLayoutRouteUniqueness(db);
-    } catch (error) {
-      console.error('widget_layouts dedupe failed (non-fatal):', error.message);
-    }
-  })
-  .then(async () => {
-    // Set up FTS5 search indexes (memory layer) before announcing readiness.
-    try {
-      await setupFullTextSearch(db);
-    } catch (error) {
-      console.error('Error setting up full-text search:', error);
-    }
-  })
-  .then(async () => {
-    // Startup stale-run sweep. The orchestrator's finally block can
-    // never fire across a process restart, so any agent_executions row still
-    // marked 'running' at boot belongs to a process that no longer exists and
-    // would otherwise stay 'running' forever. Mark them interrupted so the UI
-    // and stats reflect reality. Main process only (the workflow child skips
-    // schema init via AGNT_SKIP_DB_INIT=1 and never reaches this chain).
-    // NOTE: if AGNT is ever deployed multi-worker against a shared DB, this
-    // sweep must be scoped to the booting worker's own runs.
-    try {
-      const sweptCount = await new Promise((resolve, reject) => {
-        db.run(
-          `UPDATE agent_executions
-             SET status = 'interrupted',
-                 end_time = CURRENT_TIMESTAMP,
-                 error = 'Run interrupted by app restart'
-           WHERE status = 'running'`,
-          function (err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-          }
-        );
+    });
+  } else {
+    recordStorageInit('initializing', null);
+    // T8/ROOT-CAUSE 2026-09-13: gate the schema chain on connection
+    // readiness. Pre-open corruption now yields ONE rejected dbReady
+    // carrying the ORIGINAL SQLITE_* error (recorded on ctx.init per D10);
+    // ensureSchema never starts against a dead connection. No retry, no
+    // fallback root, no silent recreate — the corrupt file is left in place
+    // for post-mortem.
+    // T8c: ensureSchema() is invoked IMMEDIATELY (legacy queue order —
+    // statements queued at evaluation so any importer's import-time query
+    // lands BEHIND them), and its statements are error-callback'd: on a dead
+    // connection they reject instead of dying uncaught. connectionReadiness
+    // remains the AUTHORITY: if the connection failed, its original error
+    // rejects dbReady (it settles first — journal_mode/the pack run before
+    // any CREATE in the same FIFO queue), even while the schema promise is
+    // still failing behind it. No retry, no fallback root, no silent
+    // recreate — the corrupt file is left in place for post-mortem.
+    const schemaReady = ensureSchema();
+    // Terminal observer: on a dead connection the frozen/failing schema
+    // promise may reject after dbReady already settled with the connection
+    // error; that echo must not become an unhandledRejection.
+    schemaReady.catch(() => {});
+    dbReady = connectionReadiness
+      .then(() => schemaReady)
+      .then(() => {
+        console.log('Database initialization complete');
+        recordStorageInit('ready', null);
+      })
+      .catch((error) => {
+        recordStorageInit('error', String((error && error.message) || error));
+        throw error;
       });
-      if (sweptCount > 0) {
-        console.log(`Startup sweep: marked ${sweptCount} stale 'running' execution(s) as 'interrupted'`);
-      }
-    } catch (error) {
-      console.error('Startup stale-run sweep failed (non-fatal):', error);
-    }
-  })
-  .then(async () => {
-    console.log('Database initialization complete');
+  }
+} else {
 
-    // Sync webhooks from existing workflows
-    try {
-      await WebhookModel.syncFromWorkflows();
-    } catch (error) {
-      console.error('Error syncing webhooks:', error);
-    }
-  })
-  .then(() => {
-    // One-time remediation for pre-2026-07 conversation blobs that carry
-    // inline base64 images (the frontend used to inline at save time; it no
-    // longer does). Extracts images into ImageStorage and rewrites blobs to
-    // {{IMAGE_REF}} tokens. Idle-gated and deferred — boot cost is zero —
-    // and every row is byte-verified on disk before its blob is touched.
-    // Dynamic import: a defect in the backfill module must never break boot.
-    // Installs with no legacy blobs scan once, find nothing, and no-op.
-    try {
-      import('../../services/storage/ConversationImageBackfill.js')
-        .then(({ scheduleConversationImageBackfill }) =>
-          import('../../services/ImageStorage.js').then((imageStorage) => {
-            scheduleConversationImageBackfill({
-              dbAll: (sql, params = []) =>
-                new Promise((resolve, reject) => db.all(sql, params, (e, r) => (e ? reject(e) : resolve(r || [])))),
-              dbRun: (sql, params = []) =>
-                dbRunWithRetry(
-                  () =>
-                    new Promise((resolve, reject) =>
-                      db.run(sql, params, function (e) {
-                        if (e) reject(e);
-                        else resolve(this.changes);
-                      })
-                    )
-                ),
-              saveBase64Image: imageStorage.saveBase64Image,
-              findImageFile: imageStorage.findImageFile,
-              walPath: dbPath + '-wal',
-              backupDir: path.join(dbDir, 'backfill-backups'),
-              log: (msg) => console.log(msg),
-            });
-          })
-        )
-        .catch((error) => {
-          console.error('[migrations] conversation image backfill failed to schedule (non-fatal):', error.message);
-        });
-    } catch (error) {
-      console.error('[migrations] conversation image backfill scheduling error (non-fatal):', error.message);
-    }
-  })
-  .catch((error) => {
-    console.error('Error creating tables or running migrations:', error);
+// Production import owns connection + schema readiness only. Connection and
+// schema-chain failures both reject readiness; backend/server.js owns the one
+// deterministic startup exit. Maintenance is exclusively explicit.
+if (skipSchemaInit) {
+  dbReady = Promise.resolve().then(() => {
+    console.log('Database schema init skipped (AGNT_SKIP_DB_INIT=1) — schema owned by parent process');
   });
+} else {
+  const productionSchemaReady = ensureSchema()
+    .then(() => { console.log('Database initialization complete'); })
+    .catch((error) => {
+      console.error('Error creating tables or running migrations:', error);
+      throw error;
+    });
+  dbReady = connectionReadiness.then(() => productionSchemaReady);
+}
+} // end production-mode else
+
+// RV-1 (REVIEW-20260913): the storage registration object is REPLACED by
+// copy-on-write bookkeeping in testStorageContext.js — recordStorageInit()
+// runs 'initializing' → 'ready'|'error' during THIS module's import, and
+// admitTestRoot() replaces it again on a root switch. Reference equality
+// with getStorageContext() therefore rejected callers that captured the
+// context BEFORE importing this module even though they identified the
+// same admitted storage. Authorization now compares STABLE IDENTITY —
+// root + rootIdentity{dev,ino} + pid + generation — and additionally
+// requires the candidate to be a frozen object. Metadata drift
+// (init.state, admittedRoots growth, createdAt) is NOT identity drift; a
+// different root or generation still refuses. This does NOT widen to
+// arbitrary frozen objects: every identity field must equal the live
+// registration's (a fully consistent hand-built context remains the
+// documented trusted-mode coordination residual, D3/C9 — Stage D closes it).
+function storageContextIdentifies(candidate, live) {
+  if (candidate === live) return true;
+  return Boolean(
+    candidate && typeof candidate === 'object' && Object.isFrozen(candidate)
+    && candidate.pid === live.pid
+    && Number.isInteger(candidate.generation) && candidate.generation === live.generation
+    && typeof candidate.root === 'string' && candidate.root === live.root
+    && candidate.rootIdentity && typeof candidate.rootIdentity === 'object' && Object.isFrozen(candidate.rootIdentity)
+    && candidate.rootIdentity.dev === live.rootIdentity.dev
+    && candidate.rootIdentity.ino === live.rootIdentity.ino
+  );
+}
+
+/**
+ * EXPLICIT boot/maintenance entry (S6/R10; contract §3.B
+ * initializeApplicationStorage). Ordinary imports run only the connection/
+ * schema chain. Every maintenance action runs only from this explicit entry.
+ *
+ * Test mode: `context` must be THIS process's validated storage context
+ * (getStorageContext()); a foreign or stale context is refused. The default
+ * bootPolicy is maintenance-OFF (the import chain already ensured the
+ * schema). `staleRunSweep: 'all-running'` mirrors the legacy production
+ * sweep — nothing here scopes it to dead ownership (U7).
+ *
+ * Production mode: explicit entry for boot paths. It waits for import-time
+ * schema readiness before applying the selected maintenance policy; the
+ * default mirrors the former legacy import facade (maintenance on).
+ *
+ * @param {object|null} context validated storage context (test mode), or a
+ *        context-like object with a string `root`, or null (production).
+ * @param {{schema?: boolean, widgetDedupe?: boolean, staleRunSweep?: 'none'|'all-running',
+ *          webhookSync?: boolean, imageBackfill?: boolean, walCheckpoint?: boolean}} bootPolicy
+ * @returns {Promise<object>} the effective policy that ran (evidence record).
+ */
+let applicationStorageInitialization = null;
+
+function stableStorageInitializationKey(isTest, context) {
+  if (!isTest) return 'production:' + path.resolve(context?.root || dbDir);
+  return ['test', context.root, context.rootIdentity.dev, context.rootIdentity.ino,
+    context.pid, context.generation].join(':');
+}
+
+function canonicalBootPolicy(policy) {
+  return JSON.stringify({
+    schema: policy.schema,
+    widgetDedupe: policy.widgetDedupe,
+    staleRunSweep: policy.staleRunSweep,
+    webhookSync: policy.webhookSync,
+    imageBackfill: policy.imageBackfill,
+    walCheckpoint: policy.walCheckpoint,
+  });
+}
+
+export function initializeApplicationStorage(context, bootPolicy = {}) {
+  try {
+  const isTest = detectStorageMode() === 'test';
+  if (isTest) {
+    let ctx;
+    try {
+      ctx = getStorageContext();
+    } catch (error) {
+      throw new Error('[initializeApplicationStorage] no validated storage context in this process: ' + error.message);
+    }
+    if (!storageContextIdentifies(context, ctx)) {
+      throw new Error(
+        '[initializeApplicationStorage] context mismatch: the passed context does not identify this process\'s '
+        + 'validated storage context (admitted root ' + ctx.root + ', pid ' + ctx.pid + ', generation '
+        + ctx.generation + '). A context captured before copy-on-write metadata updates (recordStorageInit) '
+        + 'is accepted when root, rootIdentity{dev,ino}, pid and generation still match; a context naming a '
+        + 'different root or generation (captured before admitTestRoot/resetTestStorage) is refused.'
+      );
+    }
+  } else if (context !== null && context !== undefined
+    && (typeof context !== 'object' || typeof context.root !== 'string')) {
+    throw new Error('[initializeApplicationStorage] production context must be an object with a string root (or null)');
+  }
+  const policy = {
+    schema: false,
+    widgetDedupe: !isTest,
+    staleRunSweep: isTest ? 'none' : 'all-running',
+    webhookSync: !isTest,
+    imageBackfill: !isTest,
+    walCheckpoint: !isTest,
+    ...bootPolicy,
+  };
+  if (policy.staleRunSweep !== 'none' && policy.staleRunSweep !== 'all-running') {
+    return Promise.reject(new Error("[initializeApplicationStorage] staleRunSweep must be 'none' or 'all-running'"));
+  }
+  const contextKey = stableStorageInitializationKey(isTest, isTest ? getStorageContext() : context);
+  const policyKey = canonicalBootPolicy(policy);
+  if (applicationStorageInitialization) {
+    if (applicationStorageInitialization.contextKey !== contextKey
+      || applicationStorageInitialization.policyKey !== policyKey) {
+      return Promise.reject(new Error(
+        '[initializeApplicationStorage] conflicting boot policy or storage context after initialization began'
+      ));
+    }
+    return applicationStorageInitialization.promise;
+  }
+  const promise = (async () => {
+    await dbReady;
+    if (policy.schema) await ensureSchema();
+    if (policy.widgetDedupe) await widgetDedupeStep();
+    if (policy.staleRunSweep === 'all-running') await staleRunSweepStep();
+    if (policy.webhookSync) await webhookSyncStep();
+    if (policy.imageBackfill) imageBackfillStep(); // scheduled, not awaited (legacy semantics)
+    if (policy.walCheckpoint) await walCheckpointStep();
+    return Object.freeze({ ...policy });
+  })();
+  applicationStorageInitialization = { contextKey, policyKey, promise };
+  return promise;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
 
 /**
  * Run a db operation with automatic retry on SQLITE_BUSY errors.
@@ -2401,20 +2772,7 @@ async function dbRunWithRetry(fn, maxRetries = 5, baseDelay = 500) {
   }
 }
 
-// PRD-084-R2 §0.4: WAL checkpoint hygiene (main process only — the child
-// skips schema init and must not compete for the checkpoint lock). A
-// TRUNCATE checkpoint resets the -wal file to zero bytes when no reader
-// blocks it; failures are non-fatal and simply retried on the next cycle.
-if (!skipSchemaInit) {
-  const runWalCheckpoint = () => {
-    db.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
-      if (err) console.warn('[DB] WAL checkpoint failed (non-fatal):', err.message);
-    });
-  };
-  dbReady.then(() => runWalCheckpoint());
-  const walCheckpointTimer = setInterval(runWalCheckpoint, 5 * 60 * 1000);
-  if (typeof walCheckpointTimer.unref === 'function') walCheckpointTimer.unref();
-}
-
+// Periodic WAL maintenance is activated only by explicit boot policy via
+// walCheckpointStep(); ordinary imports schedule no maintenance.
 export { dbReady, dbRunWithRetry };
 export default db;

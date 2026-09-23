@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { admitTestRoot, getStorageContext } from './testStorageContext.js';
 
 /**
  * Per-install secret resolution.
@@ -24,6 +25,8 @@ const ENV_KEYS = ['USER_DATA_PATH', 'AGNT_HOME', 'DOCKER_CONTAINER', 'ENCRYPTION
 
 let saved;
 let tmpRoot;
+// PR145 R-1: the setup admission for this vitest fork — restored in afterEach.
+const setupRoot = getStorageContext().root;
 
 async function loadFresh() {
   vi.resetModules();
@@ -36,9 +39,11 @@ beforeEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-secret-'));
-  // PathManager resolves once at import, so the data dir must be set BEFORE
-  // the module graph loads. Electron tier: dataDir = USER_DATA_PATH/Data.
-  process.env.USER_DATA_PATH = tmpRoot;
+  // PR145 A1/P10 (D1 + R-1): PathManager still resolves once at import, but
+  // in test mode it resolves from the ADMITTED STORAGE CONTEXT, never env.
+  // Switch the ACTIVE root per fresh import — the explicit override API —
+  // and restore the setup admission in afterEach for the next file.
+  admitTestRoot(tmpRoot);
 });
 
 afterEach(() => {
@@ -52,6 +57,8 @@ afterEach(() => {
     else process.env[key] = saved[key];
   }
   try {
+  // PR145 P10: restore the setup admission before deleting this file's root.
+  admitTestRoot(setupRoot);
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   } catch {
     /* best effort */
@@ -94,11 +101,12 @@ describe('resolveSecret', () => {
     const first = a.resolveSecret('ENCRYPTION_KEY');
 
     const otherRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-secret-b-'));
-    process.env.USER_DATA_PATH = otherRoot;
+    admitTestRoot(otherRoot); // second install = second admitted root (R-1)
     const b = await loadFresh();
     const second = b.resolveSecret('ENCRYPTION_KEY');
 
     expect(second).not.toBe(first);
+    admitTestRoot(setupRoot); // R-1 hygiene: stop USING otherRoot before deleting it
     fs.rmSync(otherRoot, { recursive: true, force: true });
   });
 

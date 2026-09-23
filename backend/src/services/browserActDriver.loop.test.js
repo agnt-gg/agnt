@@ -46,10 +46,29 @@ async function fakeBrowser() {
     /** CDP method whose next call returns a transport-shaped timeout error. */
     failOnce: null,
     sockets: new Set(),
+    eventDelayMs: Number(process.env.TEST_WS_EVENT_DELAY_MS || 0),
+    outbound: Promise.resolve(),
   };
   const tabOf = (sessionId) => state.tabs.find((t) => t.targetId === state.sessions.get(sessionId));
   const emit = (method, params, sessionId) => {
-    for (const s of state.sockets) s.send(JSON.stringify({ method, params, sessionId }));
+    const delivery = new Promise((resolve, reject) => {
+      const sockets = [...state.sockets];
+      if (!sockets.length) { resolve(); return; }
+      let pending = sockets.length;
+      const send = () => {
+        for (const socket of sockets) {
+          socket.send(JSON.stringify({ method, params, sessionId }), (error) => {
+            if (error) { reject(error); return; }
+            pending -= 1;
+            if (pending === 0) resolve();
+          });
+        }
+      };
+      if (state.eventDelayMs > 0) setTimeout(send, state.eventDelayMs);
+      else send();
+    });
+    state.outbound = Promise.all([state.outbound, delivery]);
+    return delivery;
   };
   state.emit = emit;
 
@@ -62,8 +81,10 @@ async function fakeBrowser() {
       const reply = (result) => {
         const payload = JSON.stringify({ id: m.id, result });
         const delay = state.slow?.method === m.method ? state.slow.ms : 0;
-        if (delay) setTimeout(() => { try { socket.send(payload); } catch { /* closed */ } }, delay);
-        else socket.send(payload);
+        state.outbound.then(() => {
+          if (delay) setTimeout(() => { try { socket.send(payload); } catch { /* closed */ } }, delay);
+          else socket.send(payload);
+        });
       };
       const fail = (message) => socket.send(JSON.stringify({ id: m.id, error: { message } }));
       const tab = tabOf(m.sessionId) || state.tabs[0];
@@ -186,6 +207,9 @@ let browser;
 beforeEach(async () => { _resetDrivers(); browser = await fakeBrowser(); });
 afterEach(async () => { _resetDrivers(); await browser.close(); });
 const act = (action, params = {}) => performBrowserAction('u1', browser.url(), action, params);
+// A command response sent after queued server events is a FIFO protocol barrier:
+// awaiting it proves the client processed every earlier WebSocket message.
+const processAllEmittedEvents = () => act('snapshot');
 
 describe('one turn where there used to be two', () => {
   it('navigate returns the loaded page as a snapshot, not just its address', async () => {
@@ -285,13 +309,14 @@ describe('tabs', () => {
     await expect(act('click', { ref: 'e1' })).resolves.toMatchObject({ url: 'https://two.example/' });
   });
 
-  it('tab switches replace observers instead of multiplying every event', async () => {
+  it('Given repeated tab switches, when one active-session event crosses a protocol barrier, then exactly one observer records it', async () => {
     browser.state.tabs.push({ targetId: 'T2', url: 'https://two.example/', title: 'Two' });
     await act('focus', { tabId: 'T2' });
     await act('focus', { tabId: 'T1' });
     await act('focus', { tabId: 'T2' });
+    browser.state.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: 'wrong-session' }] }, 'S-T1');
     browser.state.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: 'once' }] }, 'S-T2');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await processAllEmittedEvents();
     expect((await act('console')).count).toBe(1);
   });
 
@@ -370,7 +395,7 @@ describe('select and hover', () => {
 });
 
 describe('the page can be debugged from the tool', () => {
-  it('console / errors / requests replay what the page emitted, filtered', async () => {
+  it('Given console and network events, when a protocol barrier completes, then all processed events replay with filters', async () => {
     await act('snapshot'); // connects and subscribes
     const sid = 'S-T1';
     browser.state.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: 'booting' }] }, sid);
@@ -382,7 +407,7 @@ describe('the page can be debugged from the tool', () => {
     browser.state.emit('Network.responseReceived', { requestId: 'r2', response: { status: 500 } }, sid);
     browser.state.emit('Network.requestWillBeSent', { requestId: 'r3', request: { url: 'https://cdn.example/x.js', method: 'GET' }, type: 'Script' }, sid);
     browser.state.emit('Network.loadingFailed', { requestId: 'r3', errorText: 'net::ERR_NAME_NOT_RESOLVED' }, sid);
-    await new Promise((r) => { setTimeout(r, 50); });
+    await processAllEmittedEvents();
 
     const c = await act('console');
     expect(c.count).toBe(2);
@@ -406,12 +431,12 @@ describe('the page can be debugged from the tool', () => {
     expect(failed.requests).toContain('GET FAILED https://cdn.example/x.js — net::ERR_NAME_NOT_RESOLVED');
   });
 
-  it('buffers are bounded', async () => {
+  it('Given 350 console events, when the terminal protocol barrier completes, then the newest 200 are buffered exactly', async () => {
     await act('snapshot');
     for (let i = 0; i < 350; i += 1) {
       browser.state.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: `line ${i}` }] }, 'S-T1');
     }
-    await new Promise((r) => { setTimeout(r, 50); });
+    await processAllEmittedEvents();
     const c = await act('console', { maxChars: 100000 });
     expect(c.count).toBe(200);
     expect(c.console).toContain('line 349');

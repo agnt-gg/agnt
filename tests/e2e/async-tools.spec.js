@@ -1,182 +1,122 @@
-/**
- * E2E Test: Async Tool Stop Button
- * Tests that the Stop button appears for async tools and works correctly
- */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  test, expect, gotoApp, validateFixtureContract, fixtureState,
+} from './fixtures/appFixture.js';
 
-import { test, expect } from '@playwright/test';
-import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+const executionId = 'synthetic-execution-1';
+const assistantMessageId = 'synthetic-assistant-1';
+const toolCallId = 'synthetic-tool-1';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const rootDir = join(__dirname, '../..');
+function sse(eventName, data) {
+  return `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+}
 
-let electronProcess;
+async function arrangeSyntheticAsyncTurn(page) {
+  const observed = { chatRequests: 0, cancelRequests: 0, chatBody: null, cancelUrl: null };
+  await page.route('**/api/orchestrator/chat', async (route) => {
+    observed.chatRequests += 1;
+    observed.chatBody = route.request().postData();
+    const body = [
+      sse('conversation_started', { conversationId: 'synthetic-conversation-1' }),
+      sse('assistant_message', { id: assistantMessageId, role: 'assistant', content: '', agentName: 'Fixture Annie' }),
+      sse('tool_start', {
+        assistantMessageId,
+        toolCall: { id: toolCallId, name: 'execute_javascript_code', args: { code: 'synthetic-only' } },
+      }),
+      sse('tool_end', {
+        assistantMessageId,
+        toolCall: {
+          id: toolCallId,
+          name: 'execute_javascript_code',
+          result: JSON.stringify({ executionId, status: 'running' }),
+        },
+      }),
+    ].join('');
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
+  });
+  await page.route(`**/api/async-tools/cancel/${executionId}`, async (route) => {
+    observed.cancelRequests += 1;
+    observed.cancelUrl = route.request().url();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+  });
+  return observed;
+}
 
-test.beforeAll(async () => {
-  // Start Electron app
-  electronProcess = spawn('npm', ['start'], {
-    cwd: rootDir,
-    shell: true,
-    stdio: 'pipe',
+async function openChat(page) {
+  await gotoApp(page, '/');
+  await page.locator('[data-tour-id="sidebar.chat"]').click();
+  await page.waitForURL('**/chat');
+  const input = page.locator('.chat-input-textarea').first();
+  await expect(input).toBeVisible({ timeout: 30000 });
+  await expect(input).toBeEnabled({ timeout: 30000 });
+}
+
+async function submitSyntheticTurn(page) {
+  const input = page.locator('.chat-input-textarea').first();
+  await input.fill('roll me a synthetic dice every minute');
+  await input.press('Enter');
+}
+
+test.describe('Legacy browser fixture admission', () => {
+  test('Given a missing build, When admission runs, Then it refuses before mkdir or child spawn', () => {
+    const before = fixtureState();
+    const absent = path.join(os.tmpdir(), `missing-dist-${process.pid}`, 'index.html');
+    expect(fs.existsSync(absent)).toBe(false);
+    expect(() => validateFixtureContract({ repo: '/candidate', port: 36400, distIndex: absent }))
+      .toThrow(/FIXTURE_REFUSED_BEFORE_SIDE_EFFECTS: frontend\/dist\/index\.html is missing/);
+    expect(fixtureState()).toEqual(before);
   });
 
-  // Wait for app to start
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  test('Given an invalid or forbidden port, When admission runs, Then it refuses before side effects', () => {
+    const before = fixtureState();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fixture-contract-'));
+    const index = path.join(tmp, 'index.html');
+    fs.writeFileSync(index, '<!doctype html>');
+    try {
+      expect(() => validateFixtureContract({ repo: '/candidate', port: 3333, distIndex: index }))
+        .toThrow(/FIXTURE_REFUSED_BEFORE_SIDE_EFFECTS: fixture port 3333 is forbidden/);
+      expect(() => validateFixtureContract({ repo: '/candidate', port: 70000, distIndex: index }))
+        .toThrow(/FIXTURE_REFUSED_BEFORE_SIDE_EFFECTS: fixture port must be an unprivileged integer/);
+      expect(fixtureState()).toEqual(before);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
-test.afterAll(async () => {
-  // Kill Electron process
-  if (electronProcess) {
-    electronProcess.kill();
-  }
-});
+test.describe('Legacy async-tool browser purpose on isolated fixture', () => {
+  test('Given a valid fixture, When a synthetic async turn runs, Then Stop mounts and cancels through the API', async ({ appPage, agntBackend }) => {
+    const observed = await arrangeSyntheticAsyncTurn(appPage);
+    await openChat(appPage);
+    await submitSyntheticTurn(appPage);
 
-test.describe('Async Tool Stop Button', () => {
-  test('should show Stop button for async tools', async ({ page }) => {
-    // Navigate to app
-    await page.goto('http://localhost:3333');
+    const tool = appPage.locator('.tool-execution-details').filter({ hasText: 'execute_javascript_code' }).first();
+    await expect(tool).toBeVisible({ timeout: 30000 });
+    const stop = tool.locator('.stop-async-tool-btn');
+    await expect(stop).toBeVisible();
+    await stop.click();
 
-    // Wait for page load
-    await page.waitForLoadState('networkidle');
-
-    // Check if we're on login page or chat page
-    const isLoginPage = await page.locator('input[type="email"]').isVisible().catch(() => false);
-
-    if (isLoginPage) {
-      // Login if needed
-      await page.fill('input[type="email"]', 'test@example.com');
-      await page.fill('input[type="password"]', 'password');
-      await page.click('button[type="submit"]');
-      await page.waitForNavigation();
-    }
-
-    // Navigate to chat
-    await page.click('text=Chat').catch(() => {}); // May already be on chat page
-
-    // Wait for chat interface
-    await page.waitForSelector('textarea', { timeout: 10000 });
-
-    // Send message to trigger async tool
-    const textarea = await page.locator('textarea').first();
-    await textarea.fill('roll me a dice every minute for the next hour');
-    await textarea.press('Enter');
-
-    console.log('✅ Sent dice rolling message');
-
-    // Wait for assistant response
-    await page.waitForSelector('.message-item', { timeout: 15000 });
-
-    console.log('✅ Assistant message appeared');
-
-    // Wait for tool execution details to appear
-    const toolExecutionDetails = await page.locator('.tool-execution-details').first();
-    await expect(toolExecutionDetails).toBeVisible({ timeout: 10000 });
-
-    console.log('✅ Tool execution details visible');
-
-    // Click to expand tool
-    const toolHeader = await page.locator('.tool-header').first();
-    await toolHeader.click();
-
-    console.log('✅ Clicked to expand tool');
-
-    // Wait a moment for expansion
-    await page.waitForTimeout(500);
-
-    // Check if Stop button appears
-    const stopButton = await page.locator('.stop-async-tool-btn');
-
-    console.log('🔍 Checking for Stop button...');
-
-    // Log the tool call structure for debugging
-    const toolCallContent = await page.locator('.tool-call-content').first().innerHTML().catch(() => 'not found');
-    console.log('Tool call content:', toolCallContent.substring(0, 500));
-
-    // Check if button exists
-    const stopButtonExists = await stopButton.count();
-    console.log(`Stop button count: ${stopButtonExists}`);
-
-    if (stopButtonExists === 0) {
-      // Debug: Log console messages from the page
-      const logs = [];
-      page.on('console', (msg) => logs.push(msg.text()));
-
-      console.log('❌ Stop button NOT found');
-      console.log('Page console logs:', logs.join('\n'));
-
-      // Take screenshot for debugging
-      await page.screenshot({ path: 'test-failure-no-stop-button.png' });
-
-      throw new Error('Stop button not found! Expected button with class .stop-async-tool-btn');
-    }
-
-    console.log('✅ Stop button found');
-
-    // Verify button is visible
-    await expect(stopButton.first()).toBeVisible({ timeout: 5000 });
-
-    console.log('✅ Stop button is visible');
-
-    // Verify button text
-    const buttonText = await stopButton.first().textContent();
-    expect(buttonText).toContain('Stop');
-
-    console.log('✅ Stop button has correct text');
-
-    // Click stop button
-    await stopButton.first().click();
-
-    console.log('✅ Clicked Stop button');
-
-    // Wait for confirmation or tool status change
-    await page.waitForTimeout(1000);
-
-    // Verify tool was stopped (check for status change or message)
-    // This will depend on your implementation
-    const pageContent = await page.content();
-
-    console.log('✅ Test completed successfully');
+    await expect.poll(() => observed.cancelRequests).toBe(1);
+    await expect(stop).toHaveCount(0);
+    expect(observed.chatRequests).toBe(1);
+    expect(observed.chatBody).toContain('synthetic dice');
+    expect(observed.cancelUrl).toContain(`/api/async-tools/cancel/${executionId}`);
+    expect(agntBackend.port).not.toBe(3333);
+    expect(new URL(appPage.url()).port).toBe(String(agntBackend.port));
+    const health = await appPage.request.get(`${agntBackend.baseUrl}/api/health`);
+    expect(health.ok()).toBeTruthy();
   });
 
-  test('should log async tool events to console', async ({ page }) => {
-    // Collect console logs
-    const consoleLogs = [];
-    page.on('console', (msg) => {
-      const text = msg.text();
-      if (text.includes('[AsyncTool') || text.includes('[Realtime')) {
-        consoleLogs.push(text);
-      }
-    });
+  test('Given a valid fixture, When tool_start crosses the real SSE transport, Then the intended tool card renders', async ({ appPage }) => {
+    const observed = await arrangeSyntheticAsyncTurn(appPage);
+    await openChat(appPage);
+    await submitSyntheticTurn(appPage);
 
-    // Navigate to app
-    await page.goto('http://localhost:3333');
-    await page.waitForLoadState('networkidle');
-
-    // Navigate to chat
-    await page.click('text=Chat').catch(() => {});
-    await page.waitForSelector('textarea', { timeout: 10000 });
-
-    // Send message
-    const textarea = await page.locator('textarea').first();
-    await textarea.fill('roll me a dice every minute for the next hour');
-    await textarea.press('Enter');
-
-    // Wait for logs
-    await page.waitForTimeout(3000);
-
-    console.log('Console logs captured:');
-    consoleLogs.forEach((log) => console.log(log));
-
-    // Verify expected logs
-    const hasAsyncToolCheck = consoleLogs.some((log) => log.includes('[AsyncTool Check]'));
-    const hasToolStart = consoleLogs.some((log) => log.includes('tool_start') || log.includes('Tool started'));
-
-    console.log('Has AsyncTool Check logs:', hasAsyncToolCheck);
-    console.log('Has tool_start logs:', hasToolStart);
-
-    // At least one of these should be true
-    expect(hasAsyncToolCheck || hasToolStart).toBeTruthy();
+    await expect.poll(() => observed.chatRequests).toBe(1);
+    const renderedTool = appPage.locator('.tool-execution-details').filter({ hasText: 'execute_javascript_code' }).first();
+    await expect(renderedTool).toBeVisible({ timeout: 30000 });
+    await expect(renderedTool).toContainText('execute_javascript_code');
   });
 });

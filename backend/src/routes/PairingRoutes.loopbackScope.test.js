@@ -36,6 +36,8 @@ let server;
 let base;
 let prevSecret;
 let prevBindHost;
+let prevPublicOrigin;
+let prevAgntPublicUrl;
 
 /** Overridden per-test to simulate where the request came from. */
 let spoofedPeer = null;
@@ -54,6 +56,8 @@ const call = (method, p, { auth } = {}) =>
 beforeAll(async () => {
   prevSecret = process.env.JWT_SECRET;
   prevBindHost = process.env.BIND_HOST;
+  prevPublicOrigin = process.env.PUBLIC_ORIGIN;
+  prevAgntPublicUrl = process.env.AGNT_PUBLIC_URL;
   process.env.JWT_SECRET = SECRET;
 
   const app = express();
@@ -80,6 +84,11 @@ afterAll(async () => {
   process.env.JWT_SECRET = prevSecret;
   if (prevBindHost === undefined) delete process.env.BIND_HOST;
   else process.env.BIND_HOST = prevBindHost;
+  if (prevPublicOrigin === undefined) delete process.env.PUBLIC_ORIGIN;
+  else process.env.PUBLIC_ORIGIN = prevPublicOrigin;
+  if (prevAgntPublicUrl === undefined) delete process.env.AGNT_PUBLIC_URL;
+  else process.env.AGNT_PUBLIC_URL = prevAgntPublicUrl;
+  RemoteAccessConfig._resetActualBind();
   await new Promise((r) => server.close(r));
 });
 
@@ -87,6 +96,11 @@ beforeEach(() => {
   _resetPairing();
   _resetRateLimits();
   spoofedPeer = null;
+  // Each case declares reachability explicitly; never inherit a host/operator
+  // origin that could turn a loopback negative into a false positive.
+  delete process.env.PUBLIC_ORIGIN;
+  delete process.env.AGNT_PUBLIC_URL;
+  RemoteAccessConfig._resetActualBind();
   // Bound to loopback only: nothing external can reach this server.
   process.env.BIND_HOST = '0.0.0.0';
   RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 });
@@ -139,6 +153,10 @@ describe('pairing on a loopback-only server', () => {
 
 describe('pairing when the server IS externally reachable', () => {
   beforeEach(() => {
+    // Synthetic witness for this describe only. No network connection is made;
+    // evaluateReachability sees the same explicit operator contract production
+    // uses behind a public origin. The outer beforeEach removes it again.
+    process.env.PUBLIC_ORIGIN = 'http://pairing.invalid:3333';
     RemoteAccessConfig.recordActualBind({ address: '0.0.0.0', port: 3333 });
   });
 

@@ -102,8 +102,8 @@ describe('ConversationImageBackfill', () => {
     };
   });
 
-  afterEach(() => {
-    h.db.close();
+  afterEach(async () => {
+    await new Promise((resolve, reject) => h.db.close((error) => error ? reject(error) : resolve()));
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -193,14 +193,13 @@ describe('ConversationImageBackfill', () => {
     const content = makeConversation([`x ${dataUri(bigImageBytes(9))}`]);
     await seedRow('row-cas', content);
 
-    // Simulate the user autosaving mid-processing: the injected image-save
-    // hook fires after the row was read but before the UPDATE.
+    // Given a row already read by the backfill, complete the concurrent
+    // autosave before submitting its CAS. sqlite3.run is asynchronous;
+    // the synchronous image-save hook cannot await that write.
     const liveContent = makeConversation(['user kept chatting']);
-    const realSave = deps.saveBase64Image;
-    deps.saveBase64Image = (id, dataUrl) => {
-      // synchronous UPDATE via a second statement before CAS executes
-      h.db.run(`UPDATE content_outputs SET content=? WHERE id='row-cas'`, [liveContent]);
-      return realSave(id, dataUrl);
+    deps.dbRun = async (sql, params) => {
+      await h.run(`UPDATE content_outputs SET content=? WHERE id='row-cas'`, [liveContent]);
+      return h.run(sql, params);
     };
 
     const stats = await runConversationImageBackfill(deps);

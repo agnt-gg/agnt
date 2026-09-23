@@ -101,7 +101,7 @@ import ClusterRoutes from './src/routes/ClusterRoutes.js';
 import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
 import EvolutionCoreRoutes from './src/routes/EvolutionCoreRoutes.js';
-import { dbReady } from './src/models/database/index.js';
+import { dbReady, initializeApplicationStorage } from './src/models/database/index.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import { prewarmCodexModels } from './src/routes/ModelRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
@@ -115,6 +115,19 @@ import PairingRoutes from './src/routes/PairingRoutes.js';
 import RemoteAccessConfig from './src/services/RemoteAccessConfig.js';
 import RestartManager from './src/services/RestartManager.js';
 import { createGracefulShutdown } from './src/utils/gracefulShutdown.js';
+
+// Explicit production boot authority. Static imports may establish the shared
+// connection/schema, but no database import performs maintenance. This promise
+// applies the former production maintenance set after schema readiness and is
+// the gate used by every db-dependent server boot consumer below.
+const applicationStorageReady = initializeApplicationStorage(null, {
+  schema: false,
+  widgetDedupe: true,
+  staleRunSweep: 'all-running',
+  webhookSync: true,
+  imageBackfill: true,
+  walCheckpoint: true,
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -301,7 +314,7 @@ app.use('/api/pairing', PairingRoutes);
 // the first. Without it, a spend window of "last 30 days" and "last 1 day"
 // returned identical figures — the ledger only knew about calls made after it
 // shipped.
-dbReady.then(async () => {
+applicationStorageReady.then(async () => {
   const { backfillFromAgentExecutions, backfillFromNodeExecutions, repriceUnpricedCalls } =
     await import('./src/services/execution/LedgerRecorder.js');
   const { initModelMetadataPersistence, syncPublicModelCatalog } = await import('./src/services/ai/modelMetadataPersistence.js');
@@ -322,7 +335,7 @@ dbReady.then(async () => {
 });
 
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
-dbReady.then(() => {
+applicationStorageReady.then(() => {
   SchedulerService.start().catch((err) => {
     console.error('[Scheduler] Failed to start:', err);
   });
@@ -339,7 +352,7 @@ dbReady.then(() => {
 // startClusterWorker() returns immediately unless AGNT_NODE_ROLE=worker, so
 // calling it unconditionally is safe and keeps the boot path free of a
 // second place that has to know what a role is.
-dbReady.then(async () => {
+applicationStorageReady.then(async () => {
   const TaskModel = (await import('./src/models/TaskModel.js')).default;
   const { startClusterWorker } = await import('./src/services/cluster/ClusterWorker.js');
 
@@ -372,7 +385,7 @@ dbReady.then(async () => {
 // and no request depends on it having finished. A failure inside is logged and
 // swallowed by the function itself.
 if (process.env.AGNT_SKIP_DB_INIT !== '1') {
-  dbReady.then(async () => {
+  applicationStorageReady.then(async () => {
     try {
       const { recoverJournaledRuns } = await import('./src/services/orchestrator/recoverJournaledRuns.js');
       await recoverJournaledRuns();
@@ -606,9 +619,11 @@ async function deferredInit() {
   // Spawn workflow process AFTER plugins and database are ready.
   // PRD-084-R2 §0.2: the child is forked with AGNT_SKIP_DB_INIT=1 and trusts
   // this process to own schema init — this await IS the ordering guarantee,
-  // not an optimization. dbReady never rejects (it catches internally).
-  const { dbReady } = await import('./src/models/database/index.js');
-  await dbReady;
+  // not an optimization. Readiness contract (PR145/T8, 2026-09-13): dbReady
+  // settles only on success — a dead production connection is an explicit
+  // fail-fast boot abort ([DB] production boot aborted, exit 1) inside the
+  // database module, never a silently-resolved readiness promise.
+  await applicationStorageReady;
   console.log('Spawning workflow process...');
   try {
     await WorkflowProcessBridge.spawn();
@@ -692,6 +707,11 @@ function startServer() {
   let retries = 0;
 
   const tryStarting = async () => {
+    // Do not advertise HTTP readiness until explicit schema/maintenance boot
+    // has settled. A failed explicit boot therefore cannot leave a half-ready
+    // listener accepting requests.
+    await applicationStorageReady;
+
     // Create HTTP server from Express app
     const httpServer = createServer(app);
 
@@ -975,7 +995,10 @@ function startServer() {
     console.log(`Server process ID: ${process.pid}`);
   };
 
-  tryStarting();
+  tryStarting().catch((error) => {
+    console.error('[Server] startup readiness failed:', error);
+    process.exit(1);
+  });
 }
 
 startServer();

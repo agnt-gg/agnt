@@ -18,10 +18,12 @@ import fsp from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import { admitTestRoot, getStorageContext } from '../../utils/testStorageContext.js';
 
 let PayloadStore;
 let blobPathFor;
 let TMP;
+let setupRoot; // PR145 P10: restored in afterAll for the next file in this fork
 let prevAgntHome;
 let prevUserDataPath;
 let prevDocker;
@@ -36,7 +38,16 @@ beforeAll(async () => {
   prevDocker = process.env.DOCKER_CONTAINER;
   delete process.env.USER_DATA_PATH;
   delete process.env.DOCKER_CONTAINER;
-  process.env.AGNT_HOME = TMP;
+
+  // PR145 A1/P10 migration (D1 + R-1): test-mode storage resolution reads
+  // ONLY the admitted storage context — the env dance can no longer select
+  // storage, and a stray AGNT_HOME is a loud tripwire. The private root is
+  // admitted explicitly below and restored in afterAll so the next file in
+  // this vitest fork still finds a live active root. No pre-seeded agnt.db:
+  // admission performs no creating effects (D4) and the test-mode boot skips
+  // legacy-migration discovery entirely.
+  setupRoot = getStorageContext().root;
+  admitTestRoot(TMP);
 
   const mod = await import('./PayloadStore.js');
   PayloadStore = mod.default;
@@ -48,6 +59,8 @@ afterAll(async () => {
   else process.env.AGNT_HOME = prevAgntHome;
   if (prevUserDataPath !== undefined) process.env.USER_DATA_PATH = prevUserDataPath;
   if (prevDocker !== undefined) process.env.DOCKER_CONTAINER = prevDocker;
+  // PR145 P10: restore the setup admission before deleting this file's root.
+  admitTestRoot(setupRoot);
   await fsp.rm(TMP, { recursive: true, force: true });
 });
 
@@ -171,7 +184,7 @@ describe('PayloadStore — base64 data-URIs (the 170x dedup case)', () => {
   });
 
   it('stores ONE blob for 165 identical payloads', async () => {
-    const root = path.join(TMP, '.agnt', 'data', 'blobs', 'dedup-probe');
+    const root = path.join(TMP, 'Data', 'blobs', 'dedup-probe');
     await fsp.mkdir(root, { recursive: true });
 
     const v = makeAudioPayload(250_000, 11);
