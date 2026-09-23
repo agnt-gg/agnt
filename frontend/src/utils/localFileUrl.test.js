@@ -64,7 +64,7 @@ describe('rewriteLocalFileURLsInHTML — subresources', () => {
       // <link> is a SUBRESOURCE that happens to use href. Treating "href" as
       // navigational would leave a stylesheet the renderer cannot load.
       expect(out, `<link href> must be rewritten (intercepts=${intercepts})`).not.toMatch(/href="file:/);
-      expect(out).toMatch(/\/local-file\/C:\/x\/a\.css/);
+      expect(out).toMatch(/\/local-preview\/C:\/x\/a\.css/);
     }
   });
 });

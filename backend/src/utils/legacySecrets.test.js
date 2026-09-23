@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import CryptoJS from 'crypto-js';
 import jwt from 'jsonwebtoken';
 import { LEGACY_ENCRYPTION_KEY, hasLegacyKey, SHARED_JWT_SECRET, hasSharedJwtSecret } from './legacySecrets.js';
+import * as legacySecrets from './legacySecrets.js';
 
 /**
  * The decrypt-only legacy key, and its expiry date.
@@ -203,7 +204,10 @@ describe('the shared JWT secret is present, so sessions can be verified', () => 
     // import it before anything that reads it.
     const bootstrap = fs.readFileSync(path.join(HERE, '../config/secretsBootstrap.js'), 'utf8');
     expect(bootstrap).toMatch(/SHARED_JWT_SECRET/);
-    expect(bootstrap).toMatch(/env\.JWT_SECRET = SHARED_JWT_SECRET/);
+    // Local mode (every desktop install) fills the blank with the shared
+    // secret. verify-remote fills it with a generated private one — see
+    // config/dockerDefaults.test.js for that half.
+    expect(bootstrap).toMatch(/env\.JWT_SECRET = isRemoteVerifyMode\(env\)[\s\S]*?:\s*SHARED_JWT_SECRET;/);
 
     const server = fs.readFileSync(path.join(REPO_ROOT, 'backend/server.js'), 'utf8');
     const bootstrapAt = server.indexOf("import './src/config/secretsBootstrap.js'");
@@ -273,6 +277,137 @@ describe('the shared JWT secret is present, so sessions can be verified', () => 
     expect(detector.test('      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}')).toBe(true);
     expect(detector.test('      - TRUST_REMOTE_AUTH=true')).toBe(true);
     expect(detector.test('      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-false}')).toBe(false);
+  });
+});
+
+/**
+ * The shipped container artefacts: compose files and the Dockerfile.
+ * Same scanner discipline as above, for the next line down.
+ */
+const shippedContainerArtefacts = () => {
+  const files = fs
+    .readdirSync(REPO_ROOT)
+    .filter((f) => /^docker-compose[\w.-]*\.ya?ml$/.test(f) || /^Dockerfile[\w.-]*$/.test(f));
+  expect(files.length, 'no container artefacts found — scanner is vacuous').toBeGreaterThanOrEqual(2);
+  return files.map((file) => ({
+    file,
+    lines: fs.readFileSync(path.join(REPO_ROOT, file), 'utf8').split(/\r?\n/),
+  }));
+};
+
+/**
+ * The value a container gets when the operator sets nothing: a
+ * `NAME=${NAME:-<value>}` compose default, or a bare `NAME=<value>` in compose
+ * or a Dockerfile ENV. `NAME=${NAME}` (no default) and `NAME=${NAME:?msg}`
+ * (required) give the container nothing, so they are null here.
+ */
+const defaultOf = (line, name) => {
+  const m = line.match(new RegExp(`${name}=(?:\\$\\{${name}:-([^}]*)\\}|([^\\s#]+))`));
+  if (!m) return null;
+  if (m[1] !== undefined) return m[1];
+  return m[2].startsWith('${') ? null : m[2];
+};
+
+describe('the shipped container artefacts default no secret to a published value', () => {
+  // GitHub issue #144. The guard directly above read every line of the compose
+  // file on every run for three weeks and reported success, because it was
+  // looking for a different defect on the line below the one that mattered:
+  //
+  //   - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION}
+  //
+  // A published default is a published key. On a container bound to 0.0.0.0
+  // with a published port, anyone on the network can sign a bearer token for
+  // any account, and every stored credential is encrypted under a string in
+  // this repository.
+
+  it('no compose file or Dockerfile defaults a secret to a placeholder', () => {
+    const { PLACEHOLDER_SECRETS, isPlaceholderSecret } = legacySecrets;
+    expect(PLACEHOLDER_SECRETS.length).toBeGreaterThan(0);
+
+    const offenders = [];
+    for (const { file, lines } of shippedContainerArtefacts()) {
+      lines.forEach((line, i) => {
+        if (/^\s*#/.test(line)) return;
+        for (const name of ['JWT_SECRET', 'SESSION_SECRET', 'ENCRYPTION_KEY']) {
+          const value = defaultOf(line, name);
+          if (value !== null && (isPlaceholderSecret(value) || value.length < 16)) {
+            offenders.push(`${file}:${i + 1}  ${line.trim()}`);
+          }
+        }
+      });
+    }
+
+    expect(
+      offenders,
+      'A shipped container artefact defaults a secret to a published or trivial value.\n' +
+        'Do not default secrets at all: leave them unset and utils/secretResolver.js\n' +
+        'generates a private one under USER_DATA_PATH/secrets. An operator who wants\n' +
+        'their own sets it in the environment.'
+    ).toEqual([]);
+  });
+
+  it('no compose file sets JWT_SECRET, SESSION_SECRET or ENCRYPTION_KEY at all', () => {
+    // Stronger than the test above, for the compose file specifically: any
+    // `NAME=` line, even one with no default, invites an operator to fill it
+    // with a value that breaks login (a random JWT_SECRET cannot verify a
+    // cloud token in local mode). The resolver owns these.
+    const offenders = [];
+    for (const { file, lines } of shippedContainerArtefacts()) {
+      if (!/^docker-compose/.test(file)) continue;
+      lines.forEach((line, i) => {
+        if (/^\s*#/.test(line)) return;
+        if (/^\s*-\s*(JWT_SECRET|SESSION_SECRET|ENCRYPTION_KEY)=/.test(line)) {
+          offenders.push(`${file}:${i + 1}  ${line.trim()}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('every compose file and the Dockerfile default AGNT_AUTH_MODE to verify-remote', () => {
+    // A container cannot hold the issuer's key and be safe, and cannot verify
+    // a cloud token without it. The only correct mode for a network install is
+    // to ask the issuer. The Dockerfile makes `docker run` correct; the compose
+    // file makes the override visible.
+    for (const { file, lines } of shippedContainerArtefacts()) {
+      const hits = lines
+        .filter((line) => !/^\s*#/.test(line))
+        .map((line) => defaultOf(line, 'AGNT_AUTH_MODE'))
+        .filter((v) => v !== null);
+      expect(hits, `${file} does not default AGNT_AUTH_MODE`).toEqual(['verify-remote']);
+    }
+  });
+
+  it('every compose file requires AGNT_TENANT_OWNER rather than defaulting it', () => {
+    // A verify-remote install with nobody named refuses to boot
+    // (services/auth/tenantOwnership.js). The compose file should fail even
+    // earlier, at `up`, with compose's own `${VAR:?message}` — before an
+    // image is pulled.
+    for (const { file, lines } of shippedContainerArtefacts()) {
+      if (!/^docker-compose/.test(file)) continue;
+      const owner = lines.find((line) => !/^\s*#/.test(line) && /AGNT_TENANT_OWNER=/.test(line));
+      expect(owner, `${file} does not set AGNT_TENANT_OWNER`).toBeDefined();
+      expect(owner, `${file} must use \${AGNT_TENANT_OWNER:?...} so compose refuses to start without it`).toMatch(
+        /\$\{AGNT_TENANT_OWNER:\?/
+      );
+    }
+  });
+
+  it('ANTI-VACUITY: the default extractor and placeholder detector match the shapes they describe', () => {
+    expect(defaultOf('      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION}', 'JWT_SECRET')).toBe(
+      'CHANGE_ME_IN_PRODUCTION'
+    );
+    expect(defaultOf('ENV AGNT_AUTH_MODE=verify-remote', 'AGNT_AUTH_MODE')).toBe('verify-remote');
+    expect(defaultOf('      - AGNT_AUTH_MODE=${AGNT_AUTH_MODE:-verify-remote}', 'AGNT_AUTH_MODE')).toBe('verify-remote');
+    expect(defaultOf('      - SESSION_SECRET=${SESSION_SECRET}', 'SESSION_SECRET')).toBe(null);
+    expect(defaultOf('      # - JWT_SECRET=whatever', 'JWT_SECRET')).toBe('whatever'); // caller skips comments
+
+    expect(legacySecrets.isPlaceholderSecret('CHANGE_ME_IN_PRODUCTION')).toBe(true);
+    expect(legacySecrets.isPlaceholderSecret('change_me_in_production')).toBe(true);
+    expect(legacySecrets.isPlaceholderSecret('your-random-jwt-secret-here')).toBe(true);
+    expect(legacySecrets.isPlaceholderSecret('')).toBe(false);
+    expect(legacySecrets.isPlaceholderSecret(undefined)).toBe(false);
+    expect(legacySecrets.isPlaceholderSecret('6g8UlgibzfngealexqkNPv1/H2ZG00cb4gp2/5JSNgs=')).toBe(false);
   });
 });
 

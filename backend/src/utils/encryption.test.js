@@ -48,9 +48,13 @@ async function load({ current = CURRENT_KEY, legacy = LEGACY_KEY } = {}) {
 
   if (legacy === null) {
     delete process.env.AGNT_LEGACY_ENCRYPTION_KEY;
+    // Every export encryption.js reads, or a missing-export throw from the
+    // mock would pass for the clean failure the tests below assert.
     vi.doMock('./legacySecrets.js', () => ({
       LEGACY_ENCRYPTION_KEY: '',
       hasLegacyKey: () => false,
+      legacyEncryptionKeys: () => [],
+      PLACEHOLDER_SECRETS: Object.freeze([]),
     }));
   } else {
     process.env.AGNT_LEGACY_ENCRYPTION_KEY = legacy;
@@ -216,6 +220,54 @@ describe('dual-key decrypt', () => {
       const foreign = CryptoJS.AES.encrypt(`z${i}`, `some-third-key-${i}`).toString();
       expect(keyGenerationOf(foreign)).not.toBe('current');
     }
+  });
+});
+
+describe('a container that ran with the compose placeholder as ENCRYPTION_KEY', () => {
+  // GitHub issue #144. From 2026-01-20 the compose file defaulted
+  // ENCRYPTION_KEY to `CHANGE_ME_IN_PRODUCTION`, and every Docker install
+  // that did not override it encrypted its stored credentials under that
+  // string. 0.6.7 refuses to boot with it set, generates a real key, and has
+  // to be able to read those rows once so the migration can move them.
+  const PLACEHOLDER = 'CHANGE_ME_IN_PRODUCTION';
+
+  it('reads a 0.6.5 row: unprefixed, written under the placeholder', async () => {
+    const { decrypt, keyGenerationOf } = await load();
+    const row = CryptoJS.AES.encrypt('sk-stored-under-placeholder', PLACEHOLDER).toString();
+    expect(decrypt(row)).toBe('sk-stored-under-placeholder');
+    expect(keyGenerationOf(row)).toBe('legacy');
+  });
+
+  it('reads a 0.6.6 row: agnt.v2-prefixed, written under the placeholder', async () => {
+    // 0.6.6 introduced per-install keys, but resolveSecret lets the
+    // environment win, so a container with the placeholder set wrote
+    // prefixed ciphertext under a public string. The prefix says "current";
+    // the install key (now generated) cannot open it.
+    const { decrypt, keyGenerationOf, CIPHERTEXT_PREFIX } = await load();
+    const row = CIPHERTEXT_PREFIX + CryptoJS.AES.encrypt('oauth-refresh-under-placeholder', PLACEHOLDER).toString();
+    expect(decrypt(row)).toBe('oauth-refresh-under-placeholder');
+    expect(keyGenerationOf(row), 'the migration must classify it as needing a move').toBe('legacy');
+  });
+
+  it('never writes under the placeholder, and its own rows stay current', async () => {
+    const { encrypt, keyGenerationOf, CIPHERTEXT_PREFIX } = await load();
+    const fresh = encrypt('new-credential');
+    expect(keyGenerationOf(fresh)).toBe('current');
+    const body = fresh.slice(CIPHERTEXT_PREFIX.length);
+    const underPlaceholder = CryptoJS.AES.decrypt(body, PLACEHOLDER).toString(CryptoJS.enc.Utf8);
+    expect(underPlaceholder).not.toBe('new-credential');
+  });
+
+  it('is gone when the legacy keys are removed (0.6.9)', async () => {
+    const { decrypt } = await load({ legacy: null });
+    const row = CryptoJS.AES.encrypt('x', PLACEHOLDER).toString();
+    let result;
+    try {
+      result = decrypt(row);
+    } catch {
+      result = null;
+    }
+    expect(result).not.toBe('x');
   });
 });
 

@@ -52,7 +52,8 @@ describe('setMediaCookie', () => {
   it('covers every route the browser loads bytes from', () => {
     // A media route missing from this list 401s on every <img>/<video>/<iframe>
     // load, because the cookie is the only credential such a request can carry.
-    // These three are what the app actually points subresources at.
+    // Include prepared previews, not just the router's original raw-file mount.
+    expect(MEDIA_COOKIE_PATHS).toContain('/api/local-preview'); // saved HTML, nested HTML and styles
     expect(MEDIA_COOKIE_PATHS).toContain('/api/local-file'); // chat + widget file:/// rewrites
     expect(MEDIA_COOKIE_PATHS).toContain('/api/filesystem/raw'); // Artifacts preview
     expect(MEDIA_COOKIE_PATHS).toContain('/api/images'); // {{IMAGE_REF}} after a reload

@@ -77,7 +77,10 @@ beforeEach(() => {
   process.env.AGNT_AUTH_MODE = 'verify-remote';
   process.env.JWT_SECRET = OWN_SECRET;
   delete process.env.TRUST_REMOTE_AUTH;
-  delete process.env.AGNT_TENANT_OWNER;
+  // verify-remote marks a network install, which admits only the accounts it
+  // names (services/auth/tenantOwnership.js). These tests are about
+  // VERIFICATION, so the user under test is simply the owner.
+  process.env.AGNT_TENANT_OWNER = USER.id;
   delete process.env.AGNT_TENANT_SLUG;
 });
 
@@ -184,10 +187,9 @@ describe('a real refusal still ends the session', () => {
     // membership boundary the synchronous one does, or re-verification becomes
     // a way around tenant ownership.
     //
-    // THE SLUG IS WHAT ARMS THE CHECK. isPermittedUser returns true outright on
-    // an instance with no AGNT_TENANT_SLUG, because a desktop has no membership
-    // to enforce — so an owner alone proves nothing and this test would pass
-    // against a guard that never checked at all.
+    // A hosted tenant (slug) owned by someone else. verify-remote alone would
+    // also arm the check now — the beforeEach names USER as owner for exactly
+    // that reason — but the tenant shape is the one this test was written for.
     process.env.AGNT_TENANT_SLUG = 'someone-elses-tenant';
     process.env.AGNT_TENANT_OWNER = 'somebody-else-entirely';
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(issuerConfirms());

@@ -1,4 +1,6 @@
 import db from './database/index.js';
+import MemorySearchService from '../services/MemorySearchService.js';
+import { lessonIdentity } from '../utils/memoryLesson.js';
 import generateUUID from '../utils/generateUUID.js';
 import { memoryShape, isAutoExtractedMemoryType } from '../utils/memoryShape.js';
 import {
@@ -54,11 +56,22 @@ class AgentMemoryModel {
    *
    * @returns {Promise<string>} the id of the new OR the matched existing row.
    */
-  static async create({ agentId, userId, memoryType, content, sourceConversationId }) {
+  static async create({ agentId, userId, memoryType, content, sourceConversationId, lesson }) {
     if (agentId === 'orchestrator') {
       await this._ensureOrchestratorAgent(userId);
     }
 
+    if (lesson) {
+      if (!userId || memoryType !== 'pattern') throw new Error('Lessons require a user and pattern type');
+      const id = lessonIdentity(lesson, userId, agentId);
+      // Primary-key conflict makes exact concurrent saves idempotent without a migration.
+      await new Promise((resolve, reject) => db.run(
+        `INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, source_conversation_id, occurrence_count, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?) ON CONFLICT(id) DO NOTHING`,
+        [id, agentId, userId, memoryType, content, sourceConversationId || null, new Date().toISOString()],
+        err => err ? reject(err) : resolve()));
+      return id;
+    }
     const shape = isAutoExtractedMemoryType(memoryType) ? memoryShape(content) : null;
     if (shape) {
       const existing = await this.findByShape(agentId, memoryType, shape);
@@ -378,105 +391,59 @@ class AgentMemoryModel {
     });
   }
 
-  /**
-   * Find memories relevant to a query using keyword matching.
-   * Extracts keywords from the query and scores each memory by how many keywords match.
-   * Returns top N memories sorted by match score, falling back to high-relevance memories.
-   *
-   * @param {string} agentId - Agent ID, or null for all agents for this user
-   * @param {string} userId - User ID
-   * @param {string} query - The user's message to match against
-   * @param {number} limit - Max memories to return
-   */
-  static async findRelevant(agentId, userId, query, limit = 10) {
-    // Type tiers — defined once at the top of the function and reused for
-    // both candidate-pool quotas and downstream score weighting.
-    //
-    // User-set: saved at the user's direction (or `save_agent_memory` from
-    //   chat). These are authoritative and should always have a floor in
-    //   the candidate window.
-    // Auto-extracted: emitted by the insight system (pattern/tool_insight/
-    //   workflow_insight). Useful but noisier; with tens of thousands of
-    //   rows they will otherwise drown out user-set memories.
-    const USER_SET_TYPE_LIST = ['fact', 'preference', 'correction', 'context', 'prompt_guidance'];
-    const AUTO_TYPE_LIST = ['pattern', 'tool_insight', 'workflow_insight'];
-    const USER_SET_TYPES = new Set(USER_SET_TYPE_LIST);
+  /** Query the full authorized index before bounding candidates. No exposure writes here. */
+  static queryTerms(query) {
+    const stop = new Set('the and for are but you all can had her was one our out has have been some them than its over such that this with will each make like from just into what when how where which their would there about could other after these also should please want need help does don do go ahead implement it to of a an is in on as be me my us so okay yes now'.split(' '));
+    return [...new Set(String(query || '').slice(0, 4000).toLowerCase().split(/\s+/)
+      .map(word => word.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+      .filter(word => word.length >= 2 && !stop.has(word))
+      .map(word => MemorySearchService.sanitizeFtsQuery(word)).filter(Boolean))].slice(0, 16);
+  }
 
-    let candidates;
-    if (agentId && agentId !== 'orchestrator') {
-      const [agentUser, agentAuto, globalUser, globalAuto] = await Promise.all([
-        this.findByAgentId(agentId, { limit: 120, memoryTypes: USER_SET_TYPE_LIST }),
-        this.findByAgentId(agentId, { limit: 30, memoryTypes: AUTO_TYPE_LIST }),
-        this.findByAgentId('orchestrator', { limit: 40, memoryTypes: USER_SET_TYPE_LIST }),
-        this.findByAgentId('orchestrator', { limit: 10, memoryTypes: AUTO_TYPE_LIST }),
-      ]);
-      candidates = [...agentUser, ...agentAuto, ...globalUser, ...globalAuto];
-    } else {
-      const [userSet, autoExtracted] = await Promise.all([
-        this.findByUserId(userId, { limit: 150, sort: 'relevance', memoryTypes: USER_SET_TYPE_LIST }),
-        this.findByUserId(userId, { limit: 50, sort: 'relevance', memoryTypes: AUTO_TYPE_LIST }),
-      ]);
-      candidates = [...userSet, ...autoExtracted];
+  static scope({ userId, agentId, memoryType }) {
+    if (!userId) throw new Error('Memory access requires userId');
+    const where = ['m.user_id = ?'];
+    const params = [userId];
+    if (agentId && !['orchestrator', 'agent-chat'].includes(agentId)) {
+      where.push('m.agent_id IN (?, ?)'); params.push(agentId, 'orchestrator');
     }
+    if (memoryType) { where.push('m.memory_type = ?'); params.push(memoryType); }
+    return { where, params };
+  }
 
-    if (candidates.length === 0) return [];
+  static async searchRelevant({ userId, agentId, query, memoryType, limit = 5 }) {
+    const { where, params } = this.scope({ userId, agentId, memoryType });
+    const terms = this.queryTerms(query);
+    if (!terms.length) return [];
+    const rows = await new Promise((resolve, reject) => db.all(
+      `SELECT m.*, bm25(agent_memory_fts) AS _rank FROM agent_memory_fts
+       JOIN agent_memory m ON m.id = agent_memory_fts.doc_id
+       WHERE agent_memory_fts MATCH ? AND ${where.join(' AND ')}
+       ORDER BY _rank, m.id LIMIT 50`, [terms.join(' OR '), ...params],
+      (err, rows) => err ? reject(err) : resolve(rows || [])));
+    const coverage = row => {
+      const text = String(row.content).toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+      return terms.filter(term => {
+        const phrase = term.replace(/["*]/g, '');
+        return (' ' + text).includes(' ' + phrase);
+      }).length;
+    };
+    return rows.sort((a, b) => coverage(b) - coverage(a) || a._rank - b._rank || a.id.localeCompare(b.id))
+      .slice(0, Math.max(1, Math.min(50, Number.isFinite(limit) ? Math.floor(limit) : 5)));
+  }
 
-    // Extract keywords from query (3+ char words, lowercased, deduplicated)
-    const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'some', 'them', 'than', 'its', 'over', 'such', 'that', 'this', 'with', 'will', 'each', 'make', 'like', 'from', 'just', 'into', 'what', 'when', 'how', 'where', 'which', 'their', 'would', 'there', 'about', 'could', 'other', 'after', 'these', 'also', 'should', 'please', 'want', 'need', 'help', 'does', 'don']);
-    const keywords = [...new Set(
-      query.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length >= 3 && !stopWords.has(w))
-    )];
+  static findRelevant(agentId, userId, query, limit = 10) {
+    return this.searchRelevant({ agentId, userId, query, limit });
+  }
 
-    if (keywords.length === 0) {
-      // No meaningful keywords — return highest relevance memories
-      return candidates.slice(0, limit);
-    }
-
-    // Type priority: memories saved at the user's direction outrank memories
-    // auto-extracted by the insight pipeline. Same tier split as the
-    // candidate-pool quotas above; reused for score weighting here.
-    const typeWeight = (mem) => USER_SET_TYPES.has(mem.memory_type) ? 1.0 : 0.4;
-
-    // Score each memory by keyword overlap, relevance, and type tier.
-    const scored = candidates.map(mem => {
-      const contentLower = mem.content.toLowerCase();
-      let matchCount = 0;
-      for (const kw of keywords) {
-        if (contentLower.includes(kw)) matchCount++;
-      }
-      const matchRatio = matchCount / keywords.length;
-      const base = (matchRatio * 0.7) + ((mem.relevance_score || 1.0) / 2.0 * 0.3);
-      const score = base * typeWeight(mem);
-      return { ...mem, _matchCount: matchCount, _score: score };
-    });
-
-    // Sort by score, then user-set tier, then stored relevance.
-    scored.sort((a, b) =>
-      b._score - a._score ||
-      typeWeight(b) - typeWeight(a) ||
-      b.relevance_score - a.relevance_score
-    );
-
-    // Take top matches, but ensure we include at least some high-signal
-    // user-set memories even if they don't keyword-match (facts, corrections,
-    // and preferences are always relevant background context).
-    const matched = scored.filter(m => m._matchCount > 0).slice(0, limit);
-    const ALWAYS_RELEVANT_TYPES = new Set(['fact', 'correction', 'preference']);
-    const alwaysRelevant = candidates
-      .filter(m => ALWAYS_RELEVANT_TYPES.has(m.memory_type) && !matched.some(mm => mm.id === m.id))
-      .slice(0, Math.max(2, limit - matched.length));
-
-    const result = [...matched, ...alwaysRelevant].slice(0, limit);
-
-    // Increment access counts for returned memories
-    for (const mem of result) {
-      this.incrementAccess(mem.id).catch(() => {});
-    }
-
-    return result;
+  static async findAuthorized({ userId, agentId, memoryId, memoryType, limit = 30 }) {
+    const { where, params } = this.scope({ userId, agentId, memoryType });
+    if (memoryId) { where.push('m.id = ?'); params.push(memoryId); }
+    return new Promise((resolve, reject) => db.all(
+      `SELECT m.* FROM agent_memory m WHERE ${where.join(' AND ')}
+       ORDER BY m.updated_at DESC, m.id LIMIT ?`,
+      [...params, memoryId ? 1 : Math.max(1, Math.min(50, limit))],
+      (err, rows) => err ? reject(err) : resolve(rows || [])));
   }
 
   /**

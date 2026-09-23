@@ -32,17 +32,19 @@ function dockerfileInstructions(text) {
 const instructions = dockerfileInstructions(dockerfile);
 
 describe('the application tree is not writable by the app user', () => {
-  it('chowns /app to root', () => {
-    expect(instructions).toMatch(/chown\s+-R\s+root:root\s+\/app\b/);
+  it('copies every runtime application file with root ownership', () => {
+    const runtime = instructions.slice(instructions.lastIndexOf('FROM node:20-alpine'));
+    const copies = runtime.split('\n').filter(line => line.startsWith('COPY '));
+    expect(copies.length).toBeGreaterThan(0);
+    for (const copy of copies) expect(copy).toContain('--chown=root:root');
   });
 
-  it('does the chown AFTER the last COPY that populates the tree', () => {
-    // A hardening step that runs before the code is copied in hardens an empty
-    // directory: every later COPY --chown=node:node puts it straight back.
-    const lastCopy = instructions.lastIndexOf('COPY --chown=node:node');
-    const harden = instructions.search(/chown\s+-R\s+root:root\s+\/app\b/);
-    expect(lastCopy).toBeGreaterThan(-1);
-    expect(harden).toBeGreaterThan(lastCopy);
+  it('never gives the application directory to node or rewrites the entire tree', () => {
+    const runtime = instructions.slice(instructions.lastIndexOf('FROM node:20-alpine'));
+    // Application directories inherit root ownership; only explicit data paths
+    // are writable. Avoid a second dependency-tree copy-up in a RUN layer.
+    expect(runtime).not.toMatch(/chown\s+-R\s+\S+\s+\/app\s*(?:\\|\n|$)/);
+    expect(runtime).not.toContain('--chown=node:node');
   });
 
   it('restores node ownership on the three runtime write paths', () => {

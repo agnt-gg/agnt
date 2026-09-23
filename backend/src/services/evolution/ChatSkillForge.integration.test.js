@@ -7,7 +7,13 @@
 // any one of them.
 //
 // Only the LLM judge is stubbed. Everything below it is the shipping code.
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const exportRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'forge-exports-'));
+vi.mock('../../utils/workspaceRoot.js',()=>({getWorkspaceRoot:async()=>exportRoot}));
+afterAll(()=>fs.rm(exportRoot,{recursive:true,force:true}));
 
 const db = (await import('../../models/database/index.js')).default;
 const { default: ChatSkillForge } = await import('./ChatSkillForge.js');
@@ -27,7 +33,7 @@ const TOOLS = ['read_file', 'edit_file', 'execute_shell_command'];
 
 // The judge's verdict, held constant so the test measures the pipeline rather
 // than a model's mood. Instructions are deliberately rich enough to clear
-// SkillEvolver._evaluateSkillQuality, which is real and still runs.
+// The shipping draft writer, version records, and exporter remain real.
 const VERDICT = {
   traceQuality: 'high',
   overallAssessment: 'Repeatable homelab deployment procedure.',
@@ -143,12 +149,14 @@ describe('three identical chats forge one skill', () => {
     expect(JSON.parse(skill.metadata).skillforge.status).toBe('draft');
   });
 
-  it('is live in the catalog immediately, not quarantined', async () => {
+  it('remains inspectable in storage but is absent from the automatic catalog', async () => {
     // SkillModel.findAll has no status filter, so a draft is already visible to
     // the next turn's skill catalog. That is what makes the loop closed: forged,
     // then usable, with no approval step.
     const names = (await SkillModel.findAll(USER)).map((s) => s.name);
     expect(names).toContain('Homelab Operations');
+    const { buildSkillCatalog } = await import('../SkillService.js');
+    expect(buildSkillCatalog(await SkillModel.findAll(USER))).not.toContain('Homelab Operations');
   });
 
   it('has a version-1 record for lineage and revert', async () => {
@@ -157,7 +165,7 @@ describe('three identical chats forge one skill', () => {
     expect(versions).toHaveLength(1);
     expect(versions[0].version).toBe(1);
     expect(versions[0].source_goal_id).toBe('chat:exec-c');
-    expect(versions[0].status).toBe('active');
+    expect(versions[0].status).toBe('draft');
   });
 
   it('goes quiet on the fourth identical turn instead of forging a duplicate', async () => {

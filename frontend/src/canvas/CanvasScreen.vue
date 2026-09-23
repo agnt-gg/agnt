@@ -29,11 +29,18 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <Tooltip v-if="globalModelLabel" text="Click to change model" width="auto" position="bottom">
-          <span class="cv-global-model cv-global-model-clickable" @click="toggleGlobalProviderSelector">
-            {{ globalProviderLabel }}/{{ globalModelLabel }}
-            <i class="fas fa-caret-down"></i>
-          </span>
+        <Tooltip text="Click to change model" width="auto" position="bottom">
+          <button
+            type="button"
+            class="cv-global-model cv-global-model-clickable"
+            aria-label="Change default AI model"
+            :aria-expanded="isGlobalProviderSelectorOpen"
+            @click="toggleGlobalProviderSelector"
+          >
+            <template v-if="globalModelLabel">{{ globalProviderLabel }}/{{ globalModelLabel }}</template>
+            <template v-else>Select model</template>
+            <i class="fas fa-caret-down" aria-hidden="true"></i>
+          </button>
         </Tooltip>
         <Tooltip v-if="onCustomPage" text="Add widget">
           <button class="cv-btn" @click="showCatalog = true">+</button>
@@ -892,6 +899,8 @@ export default {
 }
 
 .cv-global-model {
+  background: transparent;
+  font-family: inherit;
   font-size: 11px;
   color: var(--color-primary);
   letter-spacing: 0.5px;
