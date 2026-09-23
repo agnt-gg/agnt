@@ -322,6 +322,31 @@ describe('Given a remote worker opts into fenced recovery',()=>{
  });
 });
 
+describe('Given the orchestrator waits only for work admitted by other nodes',()=>{
+ const claimColumns=async()=>{await run('ALTER TABLE tasks ADD COLUMN claimed_by TEXT');await run('ALTER TABLE tasks ADD COLUMN claim_expires_at INTEGER');await run('ALTER TABLE tasks ADD COLUMN attempt_count INTEGER');await run('ALTER TABLE tasks ADD COLUMN dependencies TEXT');};
+ it('When a local task is blocked, Then it is not remote work and the run ends interrupted and resolvable',async()=>{
+  await claimColumns();
+  const l=await store.acquire('g','u','a',1000);await run("UPDATE goals SET status='executing'");
+  await run("UPDATE tasks SET claimed_by='local-node',claim_expires_at=99999,status='running' WHERE id='pending'");
+  l.attemptId=await store.beginAttempt(l,'pending',1500);
+  await store.commitAttempt(l,'pending',{content:'deliverable incomplete',outcome:'blocked',recoveryTaskFailed:true},2000);
+  expect(await store.remoteWork(l,'local-node',2100)).toBe('none');
+  expect(await store.release(l)).toBe(true);
+  const o=await store.inspect('g');expect(o.state).toBe('interrupted');expect(o.reason).toBe('external_outcome_unknown');
+  await store.resolve('g','u',l.runId,{decisions:[{taskId:'pending',outcome:'not_executed',evidence:'reviewed: blocked before any external effect'}],evidence:'operator review'},3000);
+  expect((await store.inspect('g')).state).toBe('released');
+ });
+ it('When another node holds admitted work, Then it is running until it settles or its lease expires',async()=>{
+  await claimColumns();
+  const l=await store.acquire('g','u','primary',1000);await run("UPDATE goals SET status='executing'");
+  await store.claimRemote('u','node-a',1500);
+  expect(await store.remoteWork(l,'primary-node',2000)).toBe('running');
+  expect(await store.remoteWork(l,'primary-node',40000)).toBe('unknown');
+  await run("UPDATE tasks SET status='failed' WHERE id='pending'");
+  expect(await store.remoteWork(l,'primary-node',2000)).toBe('unknown');
+ });
+});
+
 describe('Given partial work is neither absent nor completed',()=>{
  const decision=l=>({taskId:'pending',attemptId:l.attemptId,outcome:'continue_partial',evidence:'Reviewed files and external operation receipts',workerStopped:true,effectsReconciled:true,remainingWork:'Integrate the build adapter and validate the baseline',doNotRepeat:['Do not recreate the existing measurement module'],artifacts:[{path:'scripts/bundle/measurement.mjs',sha256:'a'.repeat(64)}]});
  async function interrupted(){await run('ALTER TABLE tasks ADD COLUMN description TEXT');const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);await store.reconcile(32000);return l;}

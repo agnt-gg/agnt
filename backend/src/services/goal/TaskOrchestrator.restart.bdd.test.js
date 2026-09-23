@@ -88,6 +88,18 @@ describe('Given an owned task throws after partial execution',()=>{
    expect(recovery.recordFailure).toHaveBeenCalledWith({...lease,attemptId:'attempt'},'t',error);
   }finally{stop.mockRestore();execute.mockRestore();TaskOrchestrator.runningGoals.clear()}
  });
+ it('When an owned task fails, Then this node releases its claim while the original rejection and attempt barrier stand',async()=>{
+  const {default:Matcher}=await import('./AgentTaskMatcher.js');Matcher.selectAgentForTask=vi.fn(async()=>({id:'fixture',isBuiltIn:true,name:'fixture'}));
+  const {withGoalRun}=await import('./goalRunContext.js');const lease={goalId:'g',userId:'u',runId:'r',generation:1};
+  TaskOrchestrator.runningGoals.set('g',{runLease:lease});const stop=vi.spyOn(TaskOrchestrator,'_holdClaim').mockReturnValue(()=>{});
+  TaskModel.releaseClaim=vi.fn(async()=>true);
+  const error=Object.assign(Error('deliverable incomplete'),{code:'TASK_BLOCKED'});
+  const execute=vi.spyOn(TaskOrchestrator,'executeTaskViaAgentChat').mockRejectedValue(error);
+  try{await expect(withGoalRun(lease,()=>TaskOrchestrator.executeTask({id:'t',goal_id:'g',title:'fixture',description:'fixture',required_tools:[]},'u'))).rejects.toBe(error);
+   expect(TaskModel.releaseClaim).toHaveBeenCalledWith('t',expect.any(String));
+   expect(recovery.recordFailure).toHaveBeenCalledWith({...lease,attemptId:'attempt'},'t',error);
+  }finally{stop.mockRestore();execute.mockRestore();delete TaskModel.releaseClaim;TaskOrchestrator.runningGoals.clear()}
+ });
  it('When a task carries verified partial output, Then the worker receives remaining work and no-repeat instructions',()=>{
   const message=TaskOrchestrator.prepareTaskMessage({id:'t',title:'fixture',description:'Continue task',required_tools:[],output:JSON.stringify({outcome:'partial',continuation:{remainingWork:'Finish adapter',doNotRepeat:['Do not recreate file'],artifacts:[{path:'saved.mjs',sha256:'a'.repeat(64)}]}})});
   expect(message).toContain('Finish adapter');expect(message).toContain('Do not recreate file');expect(message).toContain('saved.mjs');

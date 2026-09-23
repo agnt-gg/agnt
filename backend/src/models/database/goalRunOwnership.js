@@ -192,6 +192,14 @@ export class GoalRunOwnership {
       await this.run('UPDATE tasks SET claimed_by=NULL,claim_expires_at=NULL WHERE id=?',[taskId]);return true;
     });
   }
+  // Admitted work held by OTHER nodes for this run: 'none', 'running' or 'unknown'.
+  // This node's own tasks have settled before the orchestrator waits; their
+  // admitted attempts remain the uncertainty barrier that release() reports.
+  async remoteWork(l,localNodeId,now=Date.now()) {
+    const rows=await this.all("SELECT t.status,t.claim_expires_at FROM goal_run_attempts a JOIN tasks t ON t.id=a.task_id WHERE a.goal_id=? AND a.run_id=? AND a.state='admitted' AND t.claimed_by IS NOT NULL AND t.claimed_by!=?",[l.goalId,l.runId,localNodeId]);
+    if(!rows.length)return 'none';
+    return rows.some(t=>t.status!=='running'||t.claim_expires_at<=now)?'unknown':'running';
+  }
   inspect(goalId) { return this.get('SELECT * FROM goal_run_ownership WHERE goal_id=?',[goalId]); }
   acquire(goalId,userId,bootId,now=Date.now()) {
     return this.transaction(async()=>{
