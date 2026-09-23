@@ -14,6 +14,13 @@ import { serviceFailure } from '../../services/agntServices.js';
  * Hosted mail is part of AGNT Pro. A free account's poll gets a plan refusal,
  * which is logged once per poll; nothing is queued locally for it.
  */
+/** The bare, lower-cased address in `Name <addr>` or `addr` form. */
+function addressOf(value) {
+  const text = String(value ?? '');
+  const bracketed = text.match(/<([^>]+)>/);
+  return (bracketed ? bracketed[1] : text).trim().toLowerCase();
+}
+
 class EmailReceiver extends EventEmitter {
   constructor(processManager) {
     super();
@@ -79,8 +86,19 @@ class EmailReceiver extends EventEmitter {
       if (!messages.length) return;
       console.log(`Local EmailReceiver: ${messages.length} new message(s) on ${inbox.address}`);
 
+      // Send Email sends FROM this inbox, and every trigger listens ON it. Mail
+      // the inbox sent itself is therefore our own output, not an inbound event:
+      // a workflow that replies to the sender would otherwise mail itself and
+      // re-trigger once per poll, forever. It is skipped and the cursor moves
+      // past it, so it is never re-read either.
+      const ownAddress = addressOf(inbox.address);
+
       let advanced = this.since;
       for (const message of messages) {
+        if (ownAddress && addressOf(message.from) === ownAddress) {
+          advanced = Math.max(advanced, message.createdAt || advanced);
+          continue;
+        }
         let accepted = false;
         for (const workflowId of workflowIds) {
           if (await this._triggerWorkflowByEmail(workflowId, message)) accepted = true;

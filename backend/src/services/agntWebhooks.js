@@ -40,10 +40,20 @@ export async function retireEndpoint(endpointId) {
   }
 }
 
-/** Stored events after `since` (epoch ms), oldest first, WITH bodies. */
+/**
+ * Stored events received strictly after `since` (epoch ms), oldest first, WITH bodies.
+ *
+ * The service filters on `after` and ignores any other parameter name — asking
+ * with `since` returned the whole retention window on every poll, and each
+ * stored event re-triggered its workflow every ten seconds. The cursor is also
+ * enforced here, so a service that stops filtering degrades to extra reads,
+ * never to re-delivery. Filtering before the detail fetch keeps it to one
+ * request per genuinely new event.
+ */
 export async function pullEvents(endpointId, since, limit = 50) {
-  const list = await callService('webhooks', `/endpoints/${endpointId}/events`, { query: { since, limit } });
-  const events = list.events || [];
+  const cursor = Number(since) || 0;
+  const list = await callService('webhooks', `/endpoints/${endpointId}/events`, { query: { after: cursor, limit } });
+  const events = (list.events || []).filter((e) => (e.received_at ?? e.receivedAt ?? 0) > cursor);
   const full = [];
   for (const e of events) {
     // The list omits bodies; each event is fetched for its payload.

@@ -198,6 +198,13 @@ class LocalWebhookReceiver extends EventEmitter {
           const trigger = eventToTrigger(event);
           const result = await this._processWebhookTrigger(workflowId, trigger);
           if (result === null) break; // engine not ready: stop here, see it again next poll
+          if (result?.status >= 400) {
+            // Refused, and the cursor moves past it: without this line the event
+            // is simply gone. Hosted ingress is POST-only and does not forward
+            // request headers, so a method filter other than POST or header auth
+            // refuses every event it receives.
+            console.warn(`LocalWebhookReceiver: ${workflowId}: refused hosted event ${event.id} (${result.status} ${result.message})`);
+          }
           advanced = later(advanced, event.receivedAt);
         }
         if (advanced !== webhook.since) {
