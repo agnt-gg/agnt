@@ -261,6 +261,8 @@ class SkillDiscoveryService {
     try {
       const content = await fs.readFile(skillMdPath, 'utf-8');
       const parsed = parseSkillMd(content);
+      // Materialized exports are not another editable/discoverable skill source.
+      if (parsed.frontmatter?.metadata?.generatedExport === true) return null;
 
       if (parsed.errors.length > 0) {
         console.warn(`[SkillDiscovery] Errors parsing ${skillMdPath}:`, parsed.errors);

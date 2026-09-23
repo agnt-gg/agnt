@@ -14,6 +14,12 @@ import { assertWorkflowShape } from './validateWorkflowShape.js';
 
 dotenv.config();
 
+// How many finalized execution ids one engine instance remembers. Purely a
+// redundant-write fast path in front of the SQL terminal guard, so the only
+// requirement is that it comfortably covers the in-flight writes of a single
+// run rather than the engine's whole lifetime.
+const FINALIZED_EXECUTION_CACHE_LIMIT = 100;
+
 class WorkflowEngine extends EventEmitter {
   constructor(workflow, workflowId, userId, isSubWorkflow = false, parentInputData = {}) {
     super();
@@ -37,6 +43,17 @@ class WorkflowEngine extends EventEmitter {
     this.receivers = {};
     this.isListening = false;
     this.stopRequested = false;
+    this.stopReason = null;
+    // F2/F3: executions this engine instance has already finalized. Terminal
+    // rows finalize once — a later stop/complete write for the same execution
+    // is suppressed here and refused again by the ExecutionModel guard.
+    //
+    // Bounded: a listening engine is long-lived and finalizes one entry per
+    // run, so an unbounded set grows for the life of the process. The SQL
+    // guard in ExecutionModel.update is the authoritative check — this set is
+    // only a fast path that skips a redundant UPDATE, so evicting the oldest
+    // entries costs nothing but a no-op round trip on an ancient execution.
+    this.finalizedExecutions = new Set();
     this.triggerQueue = [];
     this.outputs = {};
     this.errors = {};
@@ -76,6 +93,29 @@ class WorkflowEngine extends EventEmitter {
   async processWorkflowTrigger(triggerData, options = {}) {
     console.log(`Received trigger for workflow ${this.workflowId}`);
 
+    // F1: late events are prevented at the door. A trigger that arrives after
+    // stop is rejected instead of being queued or executed — this covers the
+    // queue path AND the synchronous waitForCompletion path, which previously
+    // bypassed these flags entirely.
+    //
+    // Deliberately keyed on stopRequested ALONE, not on `!isListening`. An
+    // engine that never armed listeners is not a stopped engine: sub-workflow
+    // engines and direct programmatic callers construct an engine and drive it
+    // straight through this method without ever calling
+    // setupWorkflowListeners(). Rejecting on `!isListening` would refuse those
+    // legitimate first runs, and it buys nothing — stopWorkflowListeners() is
+    // the only thing that has to be enforced here, and it always sets
+    // stopRequested.
+    if (this.stopRequested) {
+      console.log(`Rejecting trigger for workflow ${this.workflowId}: workflow stopped`);
+      return {
+        accepted: false,
+        rejected: true,
+        reason: 'workflow-stopped',
+        message: 'Workflow is stopped; trigger rejected',
+      };
+    }
+
     if (options.waitForCompletion) {
       console.log(`Processing synchronous trigger for workflow ${this.workflowId}`);
       return await this._executeWorkflow(triggerData);
@@ -90,6 +130,16 @@ class WorkflowEngine extends EventEmitter {
     this.stopRequested = true;
     this.isListening = false;
     this.isRunning = false;
+    // F1: queued starts do not survive stop. Anything already waiting in the
+    // trigger queue is dropped, not silently retained to fire on a later
+    // start of the same engine.
+    this.triggerQueue = [];
+    // F1: an external stop (POST /workflows/:id/stop → deactivateWorkflow) has
+    // no stop-workflow node to name a reason. Record one instead of letting
+    // downstream code write `undefined` into logs and result envelopes.
+    if (!this.stopReason) {
+      this.stopReason = 'Workflow stopped by user request (stop/deactivate)';
+    }
     for (const receiver of Object.values(this.receivers)) {
       if (receiver.unsubscribe) {
         await receiver.unsubscribe();
@@ -274,7 +324,7 @@ class WorkflowEngine extends EventEmitter {
 
         // IF CREDITS ARE INSUFFICIENT, UPDATE EXECUTION STATUS AND RETURN ERROR
         if (startNodeResult.error && startNodeResult.error.includes('Insufficient credits')) {
-          await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed));
+          await this._finalizeExecution(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed);
 
           // stop any trigger listeners
           await this.stopWorkflowListeners();
@@ -329,7 +379,9 @@ class WorkflowEngine extends EventEmitter {
             executionLog += `Workflow stopped: ${this.stopReason}\n`;
             await this.stopWorkflowListeners();
             await this._updateWorkflowStatus('stopped');
-            await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed));
+            // F2: canonical terminal status; the human-readable reason stays
+            // in executionLog (appended above), never in the status column.
+            await this._finalizeExecution(this.currentExecutionId, 'stopped', executionLog, totalCreditsUsed);
             return {
               success: true,
               outputs: this.outputs,
@@ -391,7 +443,7 @@ class WorkflowEngine extends EventEmitter {
             // Check for insufficient credits and stop the workflow if detected
             if (nodeResult.error.includes('Insufficient credits')) {
               await this._updateWorkflowStatus('insufficient-credits');
-              await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed));
+              await this._finalizeExecution(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed);
               return {
                 success: false,
                 outputs: this.outputs,
@@ -435,7 +487,8 @@ class WorkflowEngine extends EventEmitter {
           executionLog += `Workflow stopped: ${this.stopReason}\n`;
           await this.stopWorkflowListeners();
           await this._updateWorkflowStatus('stopped');
-          await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed));
+          // F2: canonical terminal status; reason remains in executionLog.
+          await this._finalizeExecution(this.currentExecutionId, 'stopped', executionLog, totalCreditsUsed);
           return {
             success: true,
             outputs: this.outputs,
@@ -459,7 +512,7 @@ class WorkflowEngine extends EventEmitter {
       }
 
       // Update the workflow execution with the total credits used
-      await dbRunWithRetry(() => ExecutionModel.update(executionId, Object.keys(this.errors).length > 0 ? 'error' : 'completed', executionLog, totalCreditsUsed));
+      await this._finalizeExecution(executionId, Object.keys(this.errors).length > 0 ? 'error' : 'completed', executionLog, totalCreditsUsed);
 
       return {
         success: Object.keys(this.errors).length === 0,
@@ -471,7 +524,7 @@ class WorkflowEngine extends EventEmitter {
       console.error(`Error executing workflow ${this.workflowId}:`, error);
       executionLog += `Fatal error: ${error.message}\n`;
       totalCreditsUsed = await ExecutionModel.getTotalCreditsUsed(executionId);
-      await dbRunWithRetry(() => ExecutionModel.update(executionId, 'error', executionLog, totalCreditsUsed));
+      await this._finalizeExecution(executionId, 'error', executionLog, totalCreditsUsed);
       await this._updateWorkflowStatus('error');
       return {
         success: false,
@@ -482,7 +535,7 @@ class WorkflowEngine extends EventEmitter {
     }
   }
   async _handleTriggerQueue() {
-    if (this.isRunning || this.triggerQueue.length === 0) return;
+    if (this.isRunning || this.triggerQueue.length === 0 || this.stopRequested) return;
 
     this.isRunning = true;
 
@@ -525,6 +578,21 @@ class WorkflowEngine extends EventEmitter {
       console.error(`Error updating workflow status: ${error.message}`);
       throw error;
     }
+  }
+  // F2/F3: one terminal write per execution. Returns the number of rows the
+  // database actually changed, so a caller can tell a real finalize from a
+  // write the terminal guard refused.
+  async _finalizeExecution(executionId, status, log, creditsUsed) {
+    if (this.finalizedExecutions.has(executionId)) return 0;
+    const changes = await dbRunWithRetry(() => ExecutionModel.update(executionId, status, log, creditsUsed));
+    if (changes > 0) {
+      // Sets iterate in insertion order, so the first key is the oldest.
+      if (this.finalizedExecutions.size >= FINALIZED_EXECUTION_CACHE_LIMIT) {
+        this.finalizedExecutions.delete(this.finalizedExecutions.values().next().value);
+      }
+      this.finalizedExecutions.add(executionId);
+    }
+    return changes;
   }
   _initializeNodeNameMapping() {
     this.nodeIdSet = new Set();

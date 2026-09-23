@@ -192,6 +192,7 @@ describe('issuer delegation is INERT for every existing install', () => {
 
   beforeEach(() => {
     delete process.env.AGNT_AUTH_MODE;
+    delete process.env.AGNT_TENANT_OWNER;
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({ isAuthenticated: true, user: { id: 'someone-else' } }),
@@ -200,6 +201,7 @@ describe('issuer delegation is INERT for every existing install', () => {
 
   afterEach(() => {
     delete process.env.AGNT_AUTH_MODE;
+    delete process.env.AGNT_TENANT_OWNER;
     vi.restoreAllMocks();
   });
 
@@ -232,6 +234,9 @@ describe('issuer delegation is INERT for every existing install', () => {
     // Without this, every assertion above would still pass if the feature were
     // deleted outright, and the suite would be guarding nothing.
     process.env.AGNT_AUTH_MODE = 'verify-remote';
+    // A verify-remote install admits only the accounts it names; the issuer
+    // above answers 'someone-else', so that is the owner here.
+    process.env.AGNT_TENANT_OWNER = 'someone-else';
     const foreign = jwt.sign({ id: 'u1' }, 'some-other-secret');
 
     const { req, next } = await run(authenticateToken, { authorization: `Bearer ${foreign}` });

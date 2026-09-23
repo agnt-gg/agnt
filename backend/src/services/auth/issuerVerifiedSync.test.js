@@ -54,9 +54,14 @@ beforeEach(() => {
   prev.mode = process.env.AGNT_AUTH_MODE;
   prev.secret = process.env.JWT_SECRET;
   prev.trust = process.env.TRUST_REMOTE_AUTH;
+  prev.owner = process.env.AGNT_TENANT_OWNER;
   process.env.AGNT_AUTH_MODE = 'verify-remote';
   process.env.JWT_SECRET = OWN_SECRET;
   delete process.env.TRUST_REMOTE_AUTH;
+  // verify-remote marks a network install, which admits only the accounts it
+  // names (services/auth/tenantOwnership.js). The premise under test is that
+  // one cloud token satisfies all three sites, so that token's owner is named.
+  process.env.AGNT_TENANT_OWNER = USER.id;
 });
 
 afterEach(() => {
@@ -64,6 +69,7 @@ afterEach(() => {
     ['AGNT_AUTH_MODE', prev.mode],
     ['JWT_SECRET', prev.secret],
     ['TRUST_REMOTE_AUTH', prev.trust],
+    ['AGNT_TENANT_OWNER', prev.owner],
   ]) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;

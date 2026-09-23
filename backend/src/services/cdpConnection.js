@@ -39,9 +39,12 @@ export class CdpConnection {
     this.closed = false;
   }
 
-  connect() {
+  connect({ timeoutMs = 4000 } = {}) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) {
+      return Promise.reject(new Error('Invalid CDP handshake timeout (1–30000 ms required)'));
+    }
     return new Promise((resolve, reject) => {
-      const socket = new WebSocket(this.cdpUrl, { handshakeTimeout: 4000 });
+      const socket = new WebSocket(this.cdpUrl, { handshakeTimeout: timeoutMs });
       this.socket = socket;
 
       const failed = (err) => {

@@ -246,7 +246,7 @@ describe('ChatSkillForge — when it forges', () => {
     // Without user messages the judge sees a bare tool list and writes a skill
     // about reading files.
     await ChatSkillForge.onChatCompleted('exec-1', 'u1');
-    expect(dbGet.mock.calls[0][1]).toEqual(['conv-1']);
+    expect(dbGet.mock.calls[0][1]).toEqual(['conv-1', 'u1']);
     expect(analyzeChatTrace.mock.calls[0][2].conversationLog).toBeTruthy();
   });
 
@@ -299,19 +299,16 @@ describe('wiring contract', () => {
     expect(call).toMatch(/\.catch\(/);
   });
 
-  it('SkillEvolver still declines the A/B test when the goal does not exist', () => {
-    // The whole reason SkillEvolver needed no changes. If this guard is ever
-    // removed, a chat-forged skill would be measured against a goal that is not
-    // there instead of landing as a draft.
-    const fn = EVOLVER.slice(EVOLVER.indexOf('static async _runABTest'));
-    const body = fn.slice(0, fn.indexOf('static async _measureGoalPerformance'));
-    expect(body).toMatch(/GoalModel\.findOne\(sourceGoalId\)/);
-    expect(body).toMatch(/if \(!goal\) return null/);
+  it('does not label structural quality as an executed A/B evaluation', () => {
+    expect(EVOLVER).not.toContain('static async _runABTest');
+    expect(EVOLVER).not.toContain('treatmentSes');
+    expect(EVOLVER).toContain("status: 'draft'");
   });
 
-  it('a null A/B result keeps the skill as a draft rather than discarding it', () => {
-    const idx = EVOLVER.indexOf('if (!abResult)');
-    expect(idx).toBeGreaterThan(-1);
-    expect(EVOLVER.slice(idx, idx + 400)).toMatch(/action: 'kept'/);
+  it('keeps refinement instructions out of the canonical row', () => {
+    const body = EVOLVER.slice(EVOLVER.indexOf('static async refineSkill'), EVOLVER.indexOf('static async _findSimilarSkill'));
+    expect(body).not.toContain('SkillModel.createOrUpdate');
+    expect(body).not.toContain('SkillVersionModel.supersede');
+    expect(body).toContain("status: 'draft'");
   });
 });
