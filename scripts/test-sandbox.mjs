@@ -380,7 +380,7 @@ function control(name, ok, expected, observed, detail) { CONTROLS.push({ name, o
   const link = (r.out.match(/FD3LINK=(.*)/) || [])[1] || '(no output)';
   const socketGone = !/^socket:/.test(link);
   const noLeak = leaked === '';
-  control('fd-negative-inherited-socket-closed', socketGone && noLeak && !r.timedOut,
+  control('fd-negative-inherited-socket-closed', socketGone && noLeak && link !== '(no output)' && r.exit.code === 0 && r.innerExit?.code === 0 && !r.innerExit?.signal && !r.timedOut,
     'fd slot 3 is not the inherited socket; zero bytes reach synthetic listener',
     'fd3=' + link + '; leakedBytes=' + Buffer.byteLength(leaked) + (leaked ? ' content=' + leaked : '') + '; exit=' + JSON.stringify(r.exit),
     'socket deliberately inherited as fd 3; allowlist empty; the closer must close it (slot reuse by node internals is expected and harmless — only socket:[...] or leaked bytes fail)');
@@ -420,15 +420,27 @@ function control(name, ok, expected, observed, detail) { CONTROLS.push({ name, o
 {
   const before = listenerConnections;
   const spec = spawnConfined({
-    cmd: NODE + " -e \"const n=require('net');const s=n.connect({host:'127.0.0.1',port:Number(process.env.C_PORT),timeout:1500});s.on('connect',()=>{console.log('NET=LEAKED');process.exit(0)});s.on('error',()=>{console.log('NET=BLOCKED');process.exit(0)});s.on('timeout',()=>{console.log('NET=BLOCKED-TIMEOUT');s.destroy();process.exit(0)});setTimeout(()=>{console.log('NET=BLOCKED-LATE');process.exit(0)},2500)\"",
+    cmd: NODE + " -e \"const n=require('net');const s=n.connect({host:'127.0.0.1',port:Number(process.env.C_PORT),timeout:1500});s.on('connect',()=>{console.log('NET=LEAKED');process.exit(0)});s.on('error',e=>{console.log('NET=BLOCKED:'+e.code);process.exit(0)});s.on('timeout',()=>{console.log('NET=BLOCKED-TIMEOUT');s.destroy();process.exit(0)});setTimeout(()=>{console.log('NET=BLOCKED-LATE');process.exit(0)},2500)\"",
     env: { C_PROBE: 'net-containment', C_PORT: String(LISTEN_PORT) }, timeoutMs: CONTROL_DEADLINE_MS,
   });
   const r = await runConfined(spec, { index: null, base: path.join(RUN_DIR, 'ctl-net-') });
-  const blocked = /NET=BLOCKED/.test(r.out);
+  const blocked = /NET=BLOCKED:ECONNREFUSED/.test(r.out) && r.exit.code === 0 && r.innerExit?.code === 0 && !r.innerExit?.signal;
   control('net-containment-loopback-unreachable', blocked && listenerConnections === before && !r.timedOut,
     'connect to runner synthetic loopback listener fails; listener sees zero connections',
     r.out.trim() + '; listenerDelta=' + (listenerConnections - before) + '; exit=' + JSON.stringify(r.exit),
     'private netns must make even 127.0.0.1 unreachable (synthetic listener only — no real service is ever probed)');
+}
+// C4b positive: private loopback must work within the sandbox itself.
+{
+  const spec = spawnConfined({
+    commandArgv: [NODE, '-e', "const n=require('net');const server=n.createServer(s=>s.end('SYNTHETIC-LOOPBACK'));server.listen(0,'127.0.0.1',()=>{const c=n.connect(server.address().port,'127.0.0.1');let data='';c.on('data',b=>data+=b);c.on('end',()=>{console.log('LOOPBACK='+data);server.close();process.exitCode=data==='SYNTHETIC-LOOPBACK'?0:1});c.on('error',e=>{console.error(e.code);process.exit(1)})});server.on('error',e=>{console.error(e.code);process.exit(1)});"],
+    env: { C_PROBE: 'net-positive' }, timeoutMs: CONTROL_DEADLINE_MS,
+  });
+  const r = await runConfined(spec, { index: null, base: path.join(RUN_DIR, 'ctl-netpos-') });
+  control('net-private-loopback-usable', r.exit.code === 0 && r.innerExit?.code === 0 && !r.innerExit?.signal && !r.timedOut && r.out.trim() === 'LOOPBACK=SYNTHETIC-LOOPBACK',
+    'synthetic listener and client exchange bytes inside the private network namespace',
+    r.out.trim() + '; inner=' + JSON.stringify(r.innerExit) + '; outer=' + JSON.stringify(r.exit),
+    'private loopback is usable; the separate negative control forbids reaching the outside synthetic listener');
 }
 // C5 env-hygiene: the inner environment is exactly the constructed set.
 {

@@ -16,6 +16,15 @@ def own():
             finally: os.close(fd)
         except OSError as e:result['namespaces'][n]['owner_errno']=e.errno
     for n in ('uid_map','gid_map'):result['maps'][n]=pathlib.Path('/proc/self/'+n).read_text()
+    # Self-label and fixed read-only policy switches only; never enumerate env,
+    # credentials, process peers, audit logs or arbitrary host files.
+    result['policy']={}
+    for name in ('/proc/self/attr/current', '/proc/self/attr/apparmor/current',
+                 '/sys/module/apparmor/parameters/enabled',
+                 '/proc/sys/kernel/apparmor_restrict_unprivileged_userns',
+                 '/proc/sys/kernel/apparmor_restrict_unprivileged_unconfined'):
+        try: result['policy'][name]={'value':pathlib.Path(name).read_text().strip()}
+        except OSError as e: result['policy'][name]={'errno':e.errno}
     return result
 
 
