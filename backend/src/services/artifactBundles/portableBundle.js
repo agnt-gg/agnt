@@ -16,7 +16,10 @@ const keyFor = value => process.platform === 'win32' ? path.resolve(value).toLow
 const isInside = (root, target) => { const rel = path.relative(root, target); return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel); };
 const encodePath = value => value.split('/').map(encodeURIComponent).join('/');
 const TEXT_FILE = /\.(?:html?|css|js|mjs|json|gltf|svg|xml|txt)$/i;
-const PATH_LITERAL = /^(?:file:\/\/[^\s]+|(?:https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)?\/api\/(?:local-file\/|filesystem\/raw\b)|\.{1,2}\/|[a-z]:[\\/])|^[^\s<>]*\.(?:html?|css|m?js|json|gltf|glb|wasm|png|jpe?g|webp|gif|svg|avif|mp4|webm|mp3|wav|woff2?|ttf|bin)(?:[?#].*)?$/i;
+// Speculative strings need a filename before the extension: '.svg' is often
+// a generated download suffix, not a dependency. Explicit URL attributes and
+// CSS URLs still resolve directly and retain all filesystem exclusions.
+const PATH_LITERAL = /^(?:file:\/\/[^\s]+|(?:https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)?\/api\/(?:local-file\/|filesystem\/raw\b)|\.{1,2}\/|[a-z]:[\\/])|^[^\s<>]+\.(?:html?|css|m?js|json|gltf|glb|wasm|png|jpe?g|webp|gif|svg|avif|mp4|webm|mp3|wav|woff2?|ttf|bin)(?:[?#].*)?$/i;
 
 function applyEdits(source, edits) {
   let result = source;

@@ -52,6 +52,34 @@
  * nothing running to do either.
  *
  * ---------------------------------------------------------------------------
+ * A SELF-HOSTED CONTAINER IS A NETWORK INSTALL TOO
+ * ---------------------------------------------------------------------------
+ * The rule above left one shape uncovered. A container image binds 0.0.0.0 and
+ * publishes its port — that is the point of the shape — and has no slug, so it
+ * admitted every genuine AGNT account exactly as the tenant did before
+ * 2026-08-21. Signup is open. A default `docker compose up` on a VPS was a
+ * machine any account on the internet could log into.
+ *
+ * The signal that an install is reachable is the same one that makes it
+ * verify remotely: AGNT_AUTH_MODE=verify-remote (services/auth/authMode.js).
+ * The image sets it, tenant.sh sets it, and nothing on a desktop install
+ * does — so it cannot become true by accident any more than the slug can.
+ *
+ *   verify-remote, no slug, members     self-hosted, bound   enforce env list
+ *   verify-remote, no slug, NO members  self-hosted, broken  REFUSE TO BOOT
+ *   verify-remote, no slug, members=*   self-hosted, open    admit every account,
+ *                                                            because the operator
+ *                                                            wrote that down
+ *
+ * Members may be named by account id or by login email, because an operator
+ * knows their email and does not know their id. A hosted tenant's list is
+ * written by tenant.sh and stays ids.
+ *
+ * The wildcard is honoured ONLY without a slug. A tenant's list comes from
+ * tenant.sh, which never writes one; if a `*` ever appears there it is a bug,
+ * and the safe reading of a bug is the closed one.
+ *
+ * ---------------------------------------------------------------------------
  * A LIST FROM THE FIRST LINE, NOT AN OWNER
  * ---------------------------------------------------------------------------
  * The immediate need is one owner per instance. The product is Business Cloud:
@@ -67,15 +95,27 @@
  * not change again.
  */
 
+import { AUTH_MODE_ENV, AUTH_MODE_VERIFY_REMOTE, isRemoteVerifyMode } from './authMode.js';
+
 /** Names in one place so tenant.sh, the docs and the code cannot drift. */
 export const TENANT_SLUG_ENV = 'AGNT_TENANT_SLUG';
 export const TENANT_OWNER_ENV = 'AGNT_TENANT_OWNER';
 export const TENANT_MEMBERS_ENV = 'AGNT_TENANT_MEMBERS';
 
+/** The one value in AGNT_TENANT_MEMBERS that means "everyone". */
+export const MEMBERS_WILDCARD = '*';
+
 /** The refusal a caller sees. Distinct from an auth failure — see isPermittedUser. */
 export const NOT_A_MEMBER = 'not_tenant_member';
 
 const clean = (value) => (typeof value === 'string' ? value.trim() : '');
+
+/**
+ * A member entry is an account id or a login email. Emails compare
+ * case-insensitively — the issuer stores them lowercased, an operator types
+ * them however they like — ids compare exactly, because they are opaque.
+ */
+const normaliseMember = (entry) => (entry.includes('@') ? entry.toLowerCase() : entry);
 
 /** This instance's tenant slug, or '' on a desktop install. */
 export function tenantSlug() {
@@ -92,25 +132,64 @@ export function isTenantInstance() {
   return tenantSlug() !== '';
 }
 
+/**
+ * Is this process a self-hosted network install — a container, in practice?
+ *
+ * verify-remote without a slug. The image sets the mode and nothing on a
+ * desktop install does, so like the slug it cannot become true by accident.
+ */
+export function isSelfHostedInstance() {
+  return !isTenantInstance() && isRemoteVerifyMode();
+}
+
+/**
+ * Is anybody's membership checked here at all?
+ *
+ * False on every desktop install, which is the property most worth keeping:
+ * a wrong answer here locks out several hundred people who were never exposed.
+ */
+export function isRestrictedInstance() {
+  return isTenantInstance() || isSelfHostedInstance();
+}
+
 /** The account that owns this instance, or '' if unset. Used for role checks. */
 export function tenantOwnerId() {
   return clean(process.env[TENANT_OWNER_ENV]);
 }
 
+/** Did the operator write `*` into the member list? Not the same as being honoured. */
+function membersListHasWildcard() {
+  return clean(process.env[TENANT_MEMBERS_ENV])
+    .split(',')
+    .some((part) => part.trim() === MEMBERS_WILDCARD);
+}
+
 /**
- * Everyone allowed on this instance.
+ * Has the operator deliberately opened a self-hosted install to every account?
+ *
+ * Only a self-hosted install can be opened this way. On a tenant the wildcard
+ * is ignored: tenant.sh never writes one, so its presence is a bug, and a bug
+ * must not be the thing that admits the internet to a paid instance.
+ */
+export function admitsEveryone() {
+  return isSelfHostedInstance() && membersListHasWildcard();
+}
+
+/**
+ * Everyone allowed on this instance: account ids and login emails.
  *
  * The owner is always a member, whether or not the list repeats them, so an
  * operator cannot lock the owner out by editing only the members variable.
  * Deduplicated, blanks dropped: a trailing comma is a typo, not a member.
+ * The wildcard is not a member — it is a mode, see admitsEveryone().
  */
 export function tenantMemberIds() {
   const ids = new Set();
   const owner = tenantOwnerId();
-  if (owner) ids.add(owner);
+  if (owner) ids.add(normaliseMember(owner));
   for (const part of clean(process.env[TENANT_MEMBERS_ENV]).split(',')) {
     const id = part.trim();
-    if (id) ids.add(id);
+    if (id && id !== MEMBERS_WILDCARD) ids.add(normaliseMember(id));
   }
   return [...ids];
 }
@@ -158,16 +237,23 @@ export function tenantMemberIds() {
  *
  * @param {string|null|undefined} userId  an ALREADY-AUTHENTICATED user id
  * @param {object|null} [verdict]  the issuer's answer for this tenant, if any
+ * @param {string|null|undefined} [email]  the same account's login email, if the
+ *   caller has it. Lets a self-hosted operator name members the way they know
+ *   them. Never a substitute for the id: with no id there is no caller.
  * @returns {boolean}
  */
-export function isPermittedUser(userId, verdict = null) {
-  if (!isTenantInstance()) return true;
+export function isPermittedUser(userId, verdict = null, email = '') {
+  if (!isRestrictedInstance()) return true;
+  if (admitsEveryone()) return true;
   const id = clean(userId);
   if (!id) return false;
 
   if (verdict && verdict.known === true) return verdict.isMember === true;
 
-  return tenantMemberIds().includes(id);
+  const members = tenantMemberIds();
+  if (members.includes(id)) return true;
+  const mail = clean(email);
+  return mail !== '' && members.includes(normaliseMember(mail));
 }
 
 /**
@@ -180,8 +266,11 @@ export function isPermittedUser(userId, verdict = null) {
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 export function assertTenantBinding() {
-  if (!isTenantInstance()) return { ok: true };
-  if (tenantMemberIds().length === 0) {
+  if (!isRestrictedInstance()) return { ok: true };
+  if (admitsEveryone()) return { ok: true };
+  if (tenantMemberIds().length > 0) return { ok: true };
+
+  if (isTenantInstance()) {
     return {
       ok: false,
       reason:
@@ -190,15 +279,30 @@ export function assertTenantBinding() {
         `admit every AGNT account. Recreate with: tenant create ${tenantSlug()} --owner <userId>`,
     };
   }
-  return { ok: true };
+
+  // Self-hosted. The operator is a person reading a container log, so the
+  // message says exactly what to type and what the alternative means.
+  return {
+    ok: false,
+    reason:
+      `${AUTH_MODE_ENV}=${AUTH_MODE_VERIFY_REMOTE} makes this a network-reachable install, but ` +
+      `neither ${TENANT_OWNER_ENV} nor ${TENANT_MEMBERS_ENV} names anyone. Starting would admit ` +
+      `every AGNT account. Set ${TENANT_OWNER_ENV}=<the email you sign in to AGNT with> ` +
+      `(add teammates with ${TENANT_MEMBERS_ENV}=a@x.com,b@x.com), or set ` +
+      `${TENANT_MEMBERS_ENV}=${MEMBERS_WILDCARD} to deliberately admit every AGNT account.`,
+  };
 }
 
 export default {
   isPermittedUser,
   isTenantInstance,
+  isSelfHostedInstance,
+  isRestrictedInstance,
+  admitsEveryone,
   tenantSlug,
   tenantOwnerId,
   tenantMemberIds,
   assertTenantBinding,
   NOT_A_MEMBER,
+  MEMBERS_WILDCARD,
 };

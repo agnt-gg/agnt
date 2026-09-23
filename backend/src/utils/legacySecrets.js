@@ -76,6 +76,63 @@ export function hasLegacyKey() {
 
 /**
  * ---------------------------------------------------------------------------
+ * THE PLACEHOLDER SECRETS THAT SHIPPED AS DEFAULTS
+ * ---------------------------------------------------------------------------
+ * From 2026-01-20 to 2026-09 the compose file set every secret to
+ * `${X:-CHANGE_ME_IN_PRODUCTION}` and the docs showed `your-random-...-here`.
+ * An operator who ran the defaults got a container whose ENCRYPTION_KEY was a
+ * string in a public repository — and whose stored provider keys and OAuth
+ * tokens are encrypted under it.
+ *
+ * From 0.6.7 a container generates its own key, and any of these values in
+ * the environment REFUSES TO BOOT (config/secretsBootstrap.js). Which leaves
+ * the rows already written under them. They are read here, once, so the
+ * existing re-encryption migration can move them onto the generated key —
+ * the same reason LEGACY_ENCRYPTION_KEY above exists, for the same data.
+ *
+ * Two shapes are in the field. A 0.6.5 container wrote unprefixed CryptoJS
+ * ciphertext under the placeholder; a 0.6.6 container wrote `agnt.v2:`-
+ * prefixed ciphertext under it, because resolveSecret let the environment
+ * win. utils/encryption.js tries these keys for both.
+ *
+ * Decrypt-only. Never used to encrypt, never used to verify a token.
+ * REMOVE BY 0.6.9 together with the key above; the sunset test covers both.
+ *
+ * @type {readonly string[]}
+ */
+export const PLACEHOLDER_SECRETS = Object.freeze([
+  'CHANGE_ME_IN_PRODUCTION',
+  'your-random-jwt-secret',
+  'your-random-jwt-secret-here',
+  'your-random-session-secret',
+  'your-random-session-secret-here',
+  'your-random-encryption-key',
+  'your-random-encryption-key-here',
+]);
+
+/**
+ * Is this value one of the published placeholders?
+ * Case-insensitive: an operator who typed it in lowercase still has a
+ * public key.
+ * @param {unknown} value
+ */
+export function isPlaceholderSecret(value) {
+  if (typeof value !== 'string') return false;
+  const needle = value.trim().toLowerCase();
+  return needle !== '' && PLACEHOLDER_SECRETS.some((p) => p.toLowerCase() === needle);
+}
+
+/**
+ * Every key that may open a row written by an earlier version, most likely
+ * first. Empty entries are dropped so a removed key simply stops being tried.
+ * @returns {string[]}
+ */
+export function legacyEncryptionKeys() {
+  return [LEGACY_ENCRYPTION_KEY, ...PLACEHOLDER_SECRETS].filter((k) => typeof k === 'string' && k.length > 0);
+}
+
+/**
+ * ---------------------------------------------------------------------------
  * THE SHARED JWT SECRET
  * ---------------------------------------------------------------------------
  * Same category as the key above, and it belongs in the same file for the same

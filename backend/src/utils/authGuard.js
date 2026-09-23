@@ -147,7 +147,9 @@ export function verifyAuthToken(token) {
   // exact token, so the two can never disagree about the same caller. Null
   // when nothing has verified it yet, which falls back to the env list.
   const admit = (user) =>
-    isPermittedUser(user.id, tenantVerdictSync(token)) ? { ok: true, user } : { ok: false, reason: NOT_A_MEMBER };
+    isPermittedUser(user.id, tenantVerdictSync(token), user.email)
+      ? { ok: true, user }
+      : { ok: false, reason: NOT_A_MEMBER };
 
   if (process.env.TRUST_REMOTE_AUTH === 'true') {
     try {
@@ -279,7 +281,7 @@ export function requireAuth(opts = {}) {
           if (!id) return refuse(res, 'no-subject');
           // Genuine is not the same as welcome. Same membership boundary the
           // synchronous path applies, on the verdict from this same response.
-          if (!isPermittedUser(id, remote.tenant)) return refuse(res, NOT_A_MEMBER);
+          if (!isPermittedUser(id, remote.tenant, remote.user.email)) return refuse(res, NOT_A_MEMBER);
           return admit(
             req,
             token,

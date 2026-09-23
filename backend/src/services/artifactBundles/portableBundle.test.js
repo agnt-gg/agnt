@@ -20,6 +20,21 @@ async function text(manifest, filePath) { return (await readPreparedFile(manifes
 afterEach(async () => { clearPreparedBundles(); await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
 
 describe('portable sharing', () => {
+  it('preserves generated download suffixes and extension metadata without treating them as files', async () => {
+    const source = `<script>function download(id) { a.download='agnt-resonance-'+id+'.svg'; } const extensions=['.png','.html','.json','.woff2','.mp4']; const asset='curve.svg';</script><div data-extension=".svg"></div>`;
+    const root = await fixture({ 'site/index.html': source, 'site/curve.svg': '<svg></svg>', 'site/config.json': '{"extension":".svg"}', 'site/app.js': "const suffix='.svg';" });
+    const manifest = await prepare(root);
+    expect(await text(manifest, 'index.html')).toBe(source.replace("'curve.svg'", "'./curve.svg'"));
+    expect(await text(manifest, 'config.json')).toBe('{"extension":".svg"}');
+    expect(await text(manifest, 'app.js')).toBe("const suffix='.svg';");
+    expect(manifest.files.some(file => file.path === '.svg')).toBe(false);
+  });
+  it('still rejects extension-only hidden files when explicitly referenced by HTML or CSS', async () => {
+    for (const source of ['<img src=".svg">', '<style>body{background:url(.png)}</style>']) {
+      const root = await fixture({ 'site/index.html': source });
+      await expect(prepare(root)).rejects.toThrow('hidden_path');
+    }
+  });
   it('rewrites BOTH observatory links in a non-entry preview and leaves the design untouched', async () => {
     const root = await fixture({ 'site/index.html': '<h1>Design</h1>', 'site/observatory.html': '<canvas></canvas>' });
     const source = `<iframe src="${url(root, 'site/observatory.html')}"></iframe><a href="${url(root, 'site/observatory.html')}">open</a>`;
