@@ -18,6 +18,14 @@ import {
 import crypto from 'crypto';
 
 /** Discovery bookkeeping belongs to one invocation, not a reused agent context. */
+// Additive result fields when an adapter answered with a formatted error
+// notice (recoveredFromError) instead of a model reply; {} otherwise.
+function recoveredFailure(response) {
+  return response?.recoveredFromError === true
+    ? { recoveredFromError: true, recoveredError: response.recoveredError || 'Provider error' }
+    : {};
+}
+
 function isolateToolContext(context, toolSchemas) {
   const isolated = { ...context, toolSchemas };
   for (const key of ['_requestedToolCategories', '_loadedToolNames', '_loadedToolGroups']) {
@@ -310,7 +318,11 @@ class LlmExecutionService {
     const accumulatedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
     // Initial LLM call (raced against abort so pause/stop unblocks immediately)
-    let { responseMessage, toolCalls, usage: initialUsage } = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
+    const initialResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
+    let { responseMessage, toolCalls, usage: initialUsage } = initialResponse;
+    // Adapters that exhaust retries return an error notice as assistant text,
+    // flagged recoveredFromError. Track the flag for the reply we end on.
+    let recovered = recoveredFailure(initialResponse);
     if (initialUsage) {
       accumulatedUsage.inputTokens += initialUsage.prompt_tokens || initialUsage.input_tokens || 0;
       accumulatedUsage.outputTokens += initialUsage.completion_tokens || initialUsage.output_tokens || 0;
@@ -409,6 +421,7 @@ class LlmExecutionService {
 
       // Get next response (factory form: never fires if already aborted)
       const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
+      recovered = recoveredFailure(nextResponse);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
       if (nextResponse.usage) {
@@ -470,6 +483,7 @@ class LlmExecutionService {
         toolCallCount: allToolExecutions.length,
       },
       usage: accumulatedUsage.totalTokens > 0 ? accumulatedUsage : undefined,
+      ...recovered,
     };
 
     // Cache the result if no tools were used
@@ -576,7 +590,9 @@ class LlmExecutionService {
     };
 
     // Initial LLM call with streaming
-    let { responseMessage, toolCalls } = await adapter.callStream(messages, finalToolSchemas, onChunk, executionContext);
+    const initialResponse = await adapter.callStream(messages, finalToolSchemas, onChunk, executionContext);
+    let { responseMessage, toolCalls } = initialResponse;
+    let recovered = recoveredFailure(initialResponse);
     messages.push(responseMessage);
 
     // Tool execution loop
@@ -670,6 +686,7 @@ class LlmExecutionService {
 
       // Get next response with streaming
       const nextResponse = await adapter.callStream(messages, finalToolSchemas, onChunk, executionContext);
+      recovered = recoveredFailure(nextResponse);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
 
@@ -694,6 +711,7 @@ class LlmExecutionService {
       content: finalContent,
       toolExecutions: allToolExecutions,
       messages,
+      ...recovered,
     };
   }
 

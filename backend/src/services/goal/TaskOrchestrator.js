@@ -629,7 +629,9 @@ Begin working on this task now.`;
       // Format response to match expected structure
       return {
         content: result.content,
-        ...(result.error || result.success === false ? {success:false,error:result.error || 'Execution failed'} : {}),
+        // A recovered provider error is a notice, not the agent's reply.
+        ...(result.error || result.success === false || result.recoveredFromError
+          ? {success:false,error:result.error || result.recoveredError || 'Execution failed'} : {}),
         tool_executions: result.toolExecutions.map((execution) => ({
           name: execution.name,
           callId: execution.callId ?? null,
