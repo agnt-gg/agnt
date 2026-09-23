@@ -53,6 +53,7 @@ import {
   resolveOpenAiVoiceCredentialChain,
   isBorrowedCredential,
 } from './auth/openAiVoiceCredential.js';
+import { appendVoiceConnectLine } from './voiceConnectLog.js';
 
 /**
  * Provider statuses that mean "this CREDENTIAL cannot open the session" as
@@ -104,11 +105,26 @@ const ROUTE_FAILURE_STATUSES = new Set([404, 405, 410]);
  */
 export const PROVIDER_TIMEOUT_MS = 8000;
 
+/**
+ * The deadline for a route that still has a fallback BEHIND it on the same
+ * credential.
+ *
+ * PROVIDER_TIMEOUT_MS was applied to every route alike, so a first route that
+ * accepted the connection and then stalled held "Connecting…" for the full 8s
+ * before the fallback was even asked. A route with somewhere to fall back to
+ * should give up as soon as it is clearly unhealthy: a healthy SDP exchange
+ * measured 123-705ms across both routes (2026-09-23), with upstream spikes
+ * near 2.9s. 2.5s clears the healthy range; the LAST route keeps the long
+ * deadline, because giving up on it early gains nothing.
+ */
+export const HEDGED_ROUTE_TIMEOUT_MS = 2500;
+
 /** The abort classes fetch raises when the signal above fires. */
 const isTimeoutError = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError';
 
 /**
- * The ways one credential can be spent on a Realtime session, best first.
+ * The ways one credential can be spent on a Realtime session, in the order
+ * they are tried.
  *
  * WHY A ChatGPT TOKEN HAS TWO
  * ---------------------------
@@ -124,8 +140,20 @@ const isTimeoutError = (err) => err?.name === 'TimeoutError' || err?.name === 'A
  * is the single exception, and a lone exception is the thing most likely to be
  * closed. If it is, a user whose voice rides it silently falls through to their
  * metered API key — which is exactly the outage this whole path was fixed for.
- * So the subscription asks its own product first and keeps the platform route
- * as the backstop, rather than depending on the anomaly.
+ *
+ * ORDER: PLATFORM FIRST, CODEX AS THE FALLBACK (changed 2026-09-23)
+ * The subscription used to ask its own product first. Measured head to head on
+ * the same token and offer, interleaved: the Codex route took a median 631ms
+ * (482-705, spikes near 2.9s) and the platform route 164ms (123-563) — and the
+ * SDP exchange is the largest single step of the whole "Connecting…" wait.
+ *
+ * Going platform-first gives up none of the insurance above. Both routes still
+ * run on the SUBSCRIPTION token (the claims carry no API scopes and no platform
+ * organization; the account header rides along on both), and if OpenAI closes
+ * the platform exception the refusal — 401/403/429 or a vanished 404 — advances
+ * to the Codex route on the same token before the metered key is ever touched.
+ * (Those are the statuses to expect: every other platform surface already
+ * refuses this token with 401/403.)
  *
  * The two speak different dialects: the Codex backend takes JSON with an `sdp`
  * string, the platform takes multipart. Each attempt therefore builds its own
@@ -151,6 +179,7 @@ function realtimeAttemptsFor(credential, { sdp, session }) {
   if (!isBorrowedCredential(credential.source)) return [platform];
 
   return [
+    platform,
     {
       name: 'chatgpt.com/backend-api/codex',
       url: 'https://chatgpt.com/backend-api/codex/realtime/calls',
@@ -159,7 +188,6 @@ function realtimeAttemptsFor(credential, { sdp, session }) {
         body: JSON.stringify({ sdp, session }),
       }),
     },
-    platform,
   ];
 }
 
@@ -419,6 +447,7 @@ export async function createRealtimeCall({
   assistantName,
   surface,
   timeoutMs = PROVIDER_TIMEOUT_MS,
+  hedgedTimeoutMs = HEDGED_ROUTE_TIMEOUT_MS,
 } = {}) {
   if (typeof sdp !== 'string' || !sdp.trim()) {
     return { ok: false, status: 400, reason: 'missing-sdp' };
@@ -443,9 +472,32 @@ export async function createRealtimeCall({
   let surfaceable = null;
   /** At least one attempt was abandoned at the deadline. */
   let timedOut = false;
+  /**
+   * Every attempt as "source@route=outcome/ms" — which route actually opened
+   * the session and what each detour cost, persisted once per call. Names and
+   * numbers only; never a header or a body.
+   */
+  const trail = [];
+  const startedAt = Date.now();
+  const finish = (result) => {
+    const outcome = result.ok ? `ok source=${result.source}` : `failed reason=${result.reason}`;
+    void appendVoiceConnectLine(
+      `[speech] realtime call ${outcome} total=${Date.now() - startedAt}ms ${trail.join(' ')}`,
+    );
+    return result;
+  };
 
   for (const credential of chain) {
-    for (const attempt of realtimeAttemptsFor(credential, { sdp, session })) {
+    const attempts = realtimeAttemptsFor(credential, { sdp, session });
+    for (const [index, attempt] of attempts.entries()) {
+      // A route with a fallback behind it gives up fast; the last one waits
+      // the full deadline. See HEDGED_ROUTE_TIMEOUT_MS.
+      const hasFallback = index < attempts.length - 1;
+      const deadlineMs = hasFallback ? Math.min(hedgedTimeoutMs, timeoutMs) : timeoutMs;
+      const attemptStartedAt = Date.now();
+      const record = (outcome) =>
+        trail.push(`${credential.source}@${attempt.name}=${outcome}/${Date.now() - attemptStartedAt}ms`);
+
       let res;
       try {
         const { headers, body } = attempt.build();
@@ -453,20 +505,23 @@ export async function createRealtimeCall({
           method: 'POST',
           headers,
           body,
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: AbortSignal.timeout(deadlineMs),
         });
       } catch (err) {
         if (isTimeoutError(err)) {
           // A stalled host, not a refused token: the same credential gets its
           // next route. See PROVIDER_TIMEOUT_MS.
-          console.warn(`[speech] ${attempt.name} did not answer within ${timeoutMs}ms; trying the next route.`);
+          record('timeout');
+          console.warn(`[speech] ${attempt.name} did not answer within ${deadlineMs}ms; trying the next route.`);
           timedOut = true;
           continue;
         }
         // The network is not a property of the credential; the next one would
         // fail the same way.
-        return { ok: false, status: 502, reason: 'network', detail: err?.message };
+        record('network');
+        return finish({ ok: false, status: 502, reason: 'network', detail: err?.message });
       }
+      record(res.status);
 
       if (res.ok) {
         // Which credential paid for this session is the one fact a user with
@@ -482,7 +537,7 @@ export async function createRealtimeCall({
               ' (no subscription credential was accepted).',
           );
         }
-        return { ok: true, sdp: await res.text(), source: credential.source };
+        return finish({ ok: true, sdp: await res.text(), source: credential.source });
       }
 
       let detail = '';
@@ -509,7 +564,7 @@ export async function createRealtimeCall({
         // same way everywhere, so neither another endpoint nor another token
         // would help. Never echo the key or the request headers back; only the
         // provider's own message, truncated.
-        return { ok: false, status: res.status, reason: `provider-${res.status}`, detail };
+        return finish({ ok: false, status: res.status, reason: `provider-${res.status}`, detail });
       }
 
       // A ChatGPT plan that is not entitled to Realtime is, from the user's
@@ -536,14 +591,15 @@ export async function createRealtimeCall({
   // A walk that ended only because the provider never answered is a different
   // fact from "no credential works": it is transient, and the client may retry
   // it — so it is reported as such rather than as a missing credential.
-  if (surfaceable) return surfaceable;
-  if (timedOut) return { ok: false, status: 504, reason: 'timeout' };
-  return { ok: false, status: 200, reason: 'no-credentials' };
+  if (surfaceable) return finish(surfaceable);
+  if (timedOut) return finish({ ok: false, status: 504, reason: 'timeout' });
+  return finish({ ok: false, status: 200, reason: 'no-credentials' });
 }
 
 export default {
   createRealtimeCall,
   PROVIDER_TIMEOUT_MS,
+  HEDGED_ROUTE_TIMEOUT_MS,
   buildSessionConfig,
   buildInstructions,
   buildTools,

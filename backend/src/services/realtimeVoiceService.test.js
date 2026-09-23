@@ -22,6 +22,13 @@ vi.mock('./auth/CodexAuthManager.js', () => ({
   },
 }));
 
+// The connect log is pinned on its own (voiceConnectLog.test.js). Here it is a
+// spy, so these tests can assert WHAT a connect records without touching disk.
+const appendVoiceConnectLine = vi.fn();
+vi.mock('./voiceConnectLog.js', () => ({
+  appendVoiceConnectLine: (...a) => appendVoiceConnectLine(...a),
+}));
+
 const {
   createRealtimeCall,
   buildSessionConfig,
@@ -30,6 +37,8 @@ const {
   REALTIME_MODEL,
   REALTIME_VOICES,
   DEFAULT_VOICE,
+  PROVIDER_TIMEOUT_MS,
+  HEDGED_ROUTE_TIMEOUT_MS,
 } = await import('./realtimeVoiceService.js');
 
 const origFetch = globalThis.fetch;
@@ -38,6 +47,7 @@ beforeEach(() => {
   getValidAccessToken.mockReset();
   ensureValidToken.mockReset();
   getChatGptAccountId.mockReset();
+  appendVoiceConnectLine.mockReset();
   ensureValidToken.mockResolvedValue(null);
   getChatGptAccountId.mockReturnValue(null);
   globalThis.fetch = vi.fn();
@@ -443,8 +453,8 @@ describe('one dead credential does not end the session', () => {
     // both credentials needs, and the one that used to be invisible.
     expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai' });
     expect(route()).toEqual([
-      'chatgpt.com eyJ.oauth.token',
       'api.openai.com eyJ.oauth.token',
+      'chatgpt.com eyJ.oauth.token',
       'api.openai.com sk-no-credit',
     ]);
   });
@@ -458,17 +468,18 @@ describe('one dead credential does not end the session', () => {
   });
 
   it.each([401, 403, 429])(
-    'a %i on the ChatGPT product falls back to the platform route, same token',
+    'a %i on the platform route falls back to the ChatGPT product, same token',
     async (status) => {
-      // The reason the second route exists: if OpenAI closes one of them, the
-      // subscription must not be handed to the metered key instead.
+      // The reason the second route exists: if OpenAI closes the platform
+      // exception for subscription tokens, the subscription must not be handed
+      // to the metered key instead.
       getValidAccessToken.mockResolvedValue('sk-test');
       ensureValidToken.mockResolvedValue('eyJ.oauth.token');
       answers({ status, body: 'nope' }, { status: 200, body: 'answer' });
 
       const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-      expect(r.ok).toBe(true);
-      expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+      expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
+      expect(route()).toEqual(['api.openai.com eyJ.oauth.token', 'chatgpt.com eyJ.oauth.token']);
       expect(authHeaders()).not.toContain('Bearer sk-test');
     },
   );
@@ -531,7 +542,69 @@ describe('one dead credential does not end the session', () => {
 
       const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
       expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
-      expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+      expect(route()).toEqual(['api.openai.com eyJ.oauth.token', 'chatgpt.com eyJ.oauth.token']);
+    });
+
+    it('a route with a fallback behind it gets the SHORT deadline; the last route the full one', async () => {
+      // The 8s deadline used to apply to every route, so a stalled FIRST route
+      // held "Connecting…" for 8s before the fallback was even asked.
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      const deadlines = [];
+      const spy = vi.spyOn(AbortSignal, 'timeout');
+      spy.mockImplementation((ms) => {
+        deadlines.push(ms);
+        return new AbortController().signal;
+      });
+      globalThis.fetch.mockReset();
+      globalThis.fetch
+        .mockRejectedValueOnce(timeoutError())
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'answer' });
+
+      try {
+        await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(deadlines).toEqual([HEDGED_ROUTE_TIMEOUT_MS, PROVIDER_TIMEOUT_MS]);
+      expect(HEDGED_ROUTE_TIMEOUT_MS).toBeLessThan(PROVIDER_TIMEOUT_MS);
+    });
+
+    it('a lone route (platform key only) keeps the full deadline — there is nothing to fall back to', async () => {
+      getValidAccessToken.mockResolvedValue('sk-test');
+      const deadlines = [];
+      const spy = vi.spyOn(AbortSignal, 'timeout');
+      spy.mockImplementation((ms) => {
+        deadlines.push(ms);
+        return new AbortController().signal;
+      });
+      globalThis.fetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'answer' });
+
+      try {
+        await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(deadlines).toEqual([PROVIDER_TIMEOUT_MS]);
+    });
+
+    it('the real short deadline fires and the fallback still opens the session', async () => {
+      // Real signals, not mocked errors: the first route never settles, the
+      // second answers. Proves the hedged deadline hands over, end to end.
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      globalThis.fetch.mockReset();
+      globalThis.fetch
+        .mockImplementationOnce(
+          (_url, { signal }) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason));
+            }),
+        )
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'answer' });
+
+      const started = Date.now();
+      const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1', hedgedTimeoutMs: 30, timeoutMs: 5000 });
+      expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
+      expect(Date.now() - started).toBeLessThan(2000);
     });
 
     it('when every route stalls the caller learns it was a TIMEOUT, not a missing credential', async () => {
@@ -588,32 +661,38 @@ describe('one dead credential does not end the session', () => {
     answers({ status: 401, body: 'nope' }, { status: 200, body: 'answer' });
 
     await createRealtimeCall({ sdp: 'the-real-offer', userId: 'u1' });
-    const second = globalThis.fetch.mock.calls[1][1].body;
-    expect(second.get('sdp')).toBe('the-real-offer');
-    expect(second.get('session')).toBeTruthy();
+    // The fallback is the Codex route, which speaks JSON.
+    const second = JSON.parse(globalThis.fetch.mock.calls[1][1].body);
+    expect(second.sdp).toBe('the-real-offer');
+    expect(second.session).toBeTruthy();
   });
 });
 
 describe('each credential is spent where it belongs', () => {
   /**
    * A ChatGPT token is accepted by the ChatGPT product's own realtime endpoint
-   * AND by the public platform API (both measured at 201). They are not equally
-   * safe to build on: every OTHER platform surface refuses this token on scope
-   * (/v1/models 403; chat, responses and both audio routes 401). Realtime is
-   * the lone exception there, so the subscription asks its own product first
-   * and treats the platform route as a backstop.
+   * AND by the public platform API (both measured at 201). The platform route
+   * answered a median 164ms against the Codex route's 631ms (same token, same
+   * offer, interleaved, 2026-09-23), so the subscription asks the platform
+   * first — and keeps the Codex route as its fallback, because Realtime is the
+   * lone platform surface that accepts this token and may be closed.
    */
   const ok = () =>
     globalThis.fetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'answer' });
   const first = () => globalThis.fetch.mock.calls[0];
 
-  it('a subscription opens on the ChatGPT product, not the platform API', async () => {
+  it('a subscription asks the faster platform route first, still on the subscription token', async () => {
     getValidAccessToken.mockResolvedValue(null);
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    getChatGptAccountId.mockReturnValue('acct_abc');
     ok();
 
-    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-    expect(first()[0]).toBe('https://chatgpt.com/backend-api/codex/realtime/calls');
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(first()[0]).toBe('https://api.openai.com/v1/realtime/calls');
+    expect(first()[1].headers.Authorization).toBe('Bearer eyJ.oauth.token');
+    expect(first()[1].headers['chatgpt-account-id']).toBe('acct_abc');
+    expect(r.source).toBe('openai-codex');
   });
 
   it('sends the ChatGPT product the JSON dialect it asks for', async () => {
@@ -621,10 +700,13 @@ describe('each credential is spent where it belongs', () => {
     // an object. It does not accept the multipart body the platform API takes.
     getValidAccessToken.mockResolvedValue(null);
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
-    ok();
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'closed' })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'answer' });
 
     await createRealtimeCall({ sdp: 'the-offer', userId: 'u1', voice: 'marin' });
-    const [, init] = first();
+    const [url, init] = globalThis.fetch.mock.calls[1];
+    expect(url).toBe('https://chatgpt.com/backend-api/codex/realtime/calls');
     expect(init.headers['Content-Type']).toBe('application/json');
     const body = JSON.parse(init.body);
     expect(body.sdp).toBe('the-offer');
@@ -716,6 +798,54 @@ describe('a ChatGPT plan that is not entitled to realtime degrades quietly', () 
   });
 });
 
+describe('every connect leaves one durable line saying which route paid and what it cost', () => {
+  /**
+   * The server's console never reaches disk under Electron, so "that connect
+   * was slow" could not be answered after the fact. Each call now records its
+   * whole walk — source, route, status, milliseconds — and nothing secret.
+   */
+  const logged = () => appendVoiceConnectLine.mock.calls.map((c) => c[0]);
+
+  it('a first-try success names the route and the subscription', async () => {
+    ensureValidToken.mockResolvedValue('eyJ.super-secret-oauth.token');
+    globalThis.fetch.mockResolvedValue({ ok: true, status: 201, text: async () => 'answer' });
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(logged()).toHaveLength(1);
+    expect(logged()[0]).toMatch(
+      /^\[speech\] realtime call ok source=openai-codex total=\d+ms openai-codex@api\.openai\.com=201\/\d+ms$/,
+    );
+    expect(logged()[0]).not.toContain('super-secret');
+  });
+
+  it('a fallback records the detour AND the route that finally opened it', async () => {
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'closed' })
+      .mockResolvedValueOnce({ ok: true, status: 201, text: async () => 'answer' });
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(logged()[0]).toMatch(
+      /openai-codex@api\.openai\.com=403\/\d+ms openai-codex@chatgpt\.com\/backend-api\/codex=201\/\d+ms$/,
+    );
+  });
+
+  it('a failure is recorded with its reason', async () => {
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 503, text: async () => 'down' });
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(logged()[0]).toMatch(/realtime call failed reason=provider-503 /);
+  });
+
+  it('a call that never reaches a provider records nothing', async () => {
+    await createRealtimeCall({ sdp: '', userId: 'u1' });
+    getValidAccessToken.mockResolvedValue(null);
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(logged()).toEqual([]);
+  });
+});
+
 describe('a vanished route does not end the walk', () => {
   /**
    * THE OUTAGE THIS SUITE EXISTS FOR (2026-08-20)
@@ -748,7 +878,9 @@ describe('a vanished route does not end the walk', () => {
       (c) => `${new URL(c[0]).host} ${c[1].headers.Authorization.replace('Bearer ', '')}`,
     );
 
-  it('the literal outage: codex route 404s, the platform route opens the session', async () => {
+  it('a vanished first route hands the SAME token to the next one', async () => {
+    // The 2026-08-20 outage in its current shape: whichever route goes first
+    // may vanish, and the other must still open the session.
     getValidAccessToken.mockResolvedValue(null);
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
     answers({ status: 404, body: '{"detail":"Not Found"}' }, { status: 200, body: 'answer' });
@@ -756,7 +888,7 @@ describe('a vanished route does not end the walk', () => {
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
 
     expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
-    expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+    expect(route()).toEqual(['api.openai.com eyJ.oauth.token', 'chatgpt.com eyJ.oauth.token']);
   });
 
   it.each([404, 405, 410])('a %i advances to the next route instead of ending the walk', async (status) => {

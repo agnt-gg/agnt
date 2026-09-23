@@ -8,6 +8,7 @@ import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
 import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
 import { hasOpenAiVoiceCredential } from '../services/auth/openAiVoiceCredential.js';
+import { appendVoiceConnectLine } from '../services/voiceConnectLog.js';
 
 const router = express.Router();
 
@@ -287,8 +288,10 @@ router.get('/realtime/status', requireAuthHeader, async (req, res) => {
  * session.created) and "voice takes seconds to start" is unactionable without
  * knowing which step ate them. Only the CLIENT can see the whole chain, so it
  * measures (voice/connectTimeline.js); this route exists because the client's
- * console dies with its window and error.log is where this install's history
- * lives.
+ * console dies with its window. The server's console is not durable either —
+ * under Electron it is buffered in memory and never reaches disk — so the line
+ * is also appended to <AGNT root>/logs/voice-connect.log (voiceConnectLog.js),
+ * next to the server's own per-route line for the same connect.
  *
  * A connect that FAILED or was given up on is reported too, with the last
  * step it reached. Those used to be the only connects nobody could see: the
@@ -317,6 +320,7 @@ router.post('/realtime/timing', requireAuthHeader, express.json({ limit: '8kb' }
   // routine.
   if (outcome === 'connected') console.info(text);
   else console.warn(text);
+  void appendVoiceConnectLine(text);
   res.json({ success: true });
 });
 
