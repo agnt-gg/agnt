@@ -249,7 +249,9 @@ describe('the security posture, asserted rather than assumed', () => {
     // `install` belongs behind an in-app confirmation card; `run` has no
     // business being reachable from a URL at all. Adding either here is a
     // security decision, and this is the assertion that forces the discussion.
-    expect(ACTION_NAMES).toEqual(['marketplace', 'open']);
+    // `shared` writes nothing: it navigates to the confirmation card, which is
+    // exactly where an install belongs.
+    expect(ACTION_NAMES).toEqual(['marketplace', 'shared', 'open']);
   });
 
   it('never surfaces a refusal to the user', () => {

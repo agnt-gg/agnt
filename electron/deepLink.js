@@ -106,6 +106,9 @@ const ASSET_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** Referral / campaign attribution. Opaque to us, stored, never interpreted. */
 const REF = /^[a-zA-Z0-9_-]{1,64}$/;
 
+/** A share link id on agnt.gg (`https://agnt.gg/s/<id>`). The same shape the backend accepts. */
+const SHARE_ID = /^[A-Za-z0-9_-]{6,64}$/;
+
 /**
  * Is this string plausibly one of our links?
  *
@@ -212,6 +215,20 @@ const ACTIONS = Object.freeze({
     if (ref !== null && REF.test(ref)) params.ref = ref;
 
     return ok('marketplace', params, buildPath('/marketplace', params));
+  },
+
+  /**
+   * agnt://shared?id=<share-id>
+   *
+   * A POINTER to a share link on agnt.gg, never its content. It lands on the
+   * in-app confirmation card (ReceiveShareDialog), which fetches the bundle
+   * from the one fixed origin, shows exactly what would be added, and installs
+   * only when the person confirms. Nothing is written by following the link.
+   */
+  shared(q) {
+    const id = q.get('id');
+    if (!id || !SHARE_ID.test(id)) return fail('bad-share-id');
+    return ok('shared', { id }, buildPath('/chat', { shared: id }));
   },
 
   /** agnt://open?screen=<name> */

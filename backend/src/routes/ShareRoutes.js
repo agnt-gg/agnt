@@ -16,9 +16,12 @@ import { authenticateToken } from './Middleware.js';
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
 import { buildBundle, installBundle, contentHash, sanitize } from '../services/sharing/TeamBundle.js';
 import { nativeStore, nodeProvider } from '../services/sharing/nativeStore.js';
+import { KINDS, kindCatalog } from '../services/sharing/kinds.js';
+import { publicShareClient, publishLink, previewLink, receiveLink, publishConversation } from '../services/sharing/publicLinks.js';
+import ContentOutputModel from '../models/ContentOutputModel.js';
 
 const refuse = (status, message, extra = {}) => { throw Object.assign(new Error(message), { status, ...extra }); };
-const ITEM = /^(agent|workflow|tool|skill):([A-Za-z0-9_.:-]{1,200})$/;
+const ITEM = new RegExp('^(' + KINDS.join('|') + '):([A-Za-z0-9_.:-]{1,200})$');
 /** Accepts [{kind,id}], ["kind:id"] or "kind:id,kind:id". Anything malformed rejects the whole request. */
 export function parseItems(value) {
   const entries = Array.isArray(value) ? value : String(value || '').split(',').filter(Boolean);
@@ -65,7 +68,22 @@ async function linkStore(getRepository) {
   };
 }
 
-export function createShareRouter({ getRepository, authenticate = authenticateToken, cloud = new CloudTeamClient(), store = nativeStore, instance = teamInstanceClient() }) {
+/** The share links this person created, so an item can show "Link active" and be revoked. Lives with the personal data. */
+async function publicLinkStore(getRepository) {
+  const repository = getRepository();
+  await repository.ready;
+  if (!repository.publicLinksReady) repository.publicLinksReady = repository.run('CREATE TABLE IF NOT EXISTS share_public_links(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,kind TEXT NOT NULL,source_id TEXT NOT NULL,url TEXT NOT NULL,title TEXT,source_hash TEXT,created_at TEXT NOT NULL,revoked_at TEXT)');
+  await repository.publicLinksReady;
+  return {
+    forItem: (ownerId, item) => repository.all('SELECT * FROM share_public_links WHERE owner_id=? AND kind=? AND source_id=? AND revoked_at IS NULL ORDER BY created_at DESC', [ownerId, item.kind, item.id]),
+    // A conversation snapshot never goes stale: it is what was said when it was shared.
+    get: (ownerId, id) => repository.get('SELECT * FROM share_public_links WHERE owner_id=? AND id=?', [ownerId, id]),
+    record: (ownerId, link) => repository.run('INSERT INTO share_public_links(id,owner_id,kind,source_id,url,title,source_hash,created_at) VALUES(?,?,?,?,?,?,?,?)', [link.id, ownerId, link.root.kind, link.root.id, link.url, link.title, link.hash || null, new Date().toISOString()]),
+    revoke: (ownerId, id) => repository.run('UPDATE share_public_links SET revoked_at=? WHERE owner_id=? AND id=?', [new Date().toISOString(), ownerId, id]),
+  };
+}
+
+export function createShareRouter({ getRepository, authenticate = authenticateToken, cloud = new CloudTeamClient(), store = nativeStore, instance = teamInstanceClient(), publicShare = publicShareClient(), readOutput = id => ContentOutputModel.findOne(id) }) {
   const router = express.Router();
   router.use(authenticate);
   const userOf = req => req.user?.id || req.user?.userId;
@@ -85,6 +103,9 @@ export function createShareRouter({ getRepository, authenticate = authenticateTo
     return team;
   };
   const projectFor = async (team, req, projectId) => projectId || (await instance(team, '/workspaces/default', req.headers.authorization)).id;
+
+  /** Which kinds this build can share. Clients render their pickers from this rather than a copy of the list. */
+  router.get('/kinds', handler(async () => kindCatalog()));
 
   /** What would be copied: items, dependencies, what was removed, and which connections it needs. */
   router.post('/preview', handler(async (req, user) => {
@@ -117,12 +138,16 @@ export function createShareRouter({ getRepository, authenticate = authenticateTo
     return rows.map(row => ({ kind: row.kind, id: row.source_id, teamId: row.team_id, projectId: row.project_id, teamItemId: row.team_item_id, copiedAt: row.copied_at, stale: current.has(row.kind + ':' + row.source_id) && current.get(row.kind + ':' + row.source_id) !== row.source_hash }));
   }));
 
-  /** What the team has, for "Copy to personal". */
+  /** What the team has, for "Copy to personal". Every shareable kind; an older team instance only knows /native. */
   router.get('/team/:teamId/items', handler(async req => {
     const team = await cloud.access(req.headers.authorization, req.params.teamId);
     const projectId = await projectFor(team, req, typeof req.query.projectId === 'string' ? req.query.projectId : null);
-    const items = await instance(team, '/workspaces/' + encodeURIComponent(projectId) + '/native', req.headers.authorization);
-    return { projectId, items: Array.isArray(items) ? items : [] };
+    const base = '/workspaces/' + encodeURIComponent(projectId);
+    const items = await instance(team, base + '/shareable', req.headers.authorization).catch(error => {
+      if (error.status === 404 && !error.code) return instance(team, base + '/native', req.headers.authorization);
+      throw error;
+    });
+    return { projectId, items: Array.isArray(items) ? items.filter(item => KINDS.includes(item?.kind)) : [] };
   }));
 
   router.post('/import/:teamId', handler(async (req, user) => {
@@ -133,6 +158,57 @@ export function createShareRouter({ getRepository, authenticate = authenticateTo
     const bundle = await instance(team, '/workspaces/' + encodeURIComponent(projectId) + '/export?items=' + query, req.headers.authorization);
     return installBundle(store, user, bundle);
   }));
+
+  /** Publish an unlisted share link for your own items. */
+  router.post('/link', handler(async (req, user) => {
+    const items = parseItems(req.body?.items);
+    const link = await publishLink({ store, ownerId: user, items, includeDependencies: req.body?.includeDependencies !== false, authorization: req.headers.authorization, client: publicShare, nodeProvider });
+    await (await publicLinkStore(getRepository)).record(user, link);
+    return link;
+  }));
+
+  /** The live links for one item, newest first, and whether the item changed since each was made. */
+  router.get('/link', handler(async (req, user) => {
+    const [item] = parseItems(req.query.items);
+    if (!item) refuse(400, 'Choose an item');
+    const rows = await (await publicLinkStore(getRepository)).forItem(user, item);
+    const row = await store.read(item.kind, item.id, user);
+    let current = null;
+    if (row) { try { current = contentHash(sanitize(item.kind, row).definition); } catch { /* unshareable now: never stale */ } }
+    return rows.map(link => ({ id: link.id, url: link.url, title: link.title, createdAt: link.created_at, stale: Boolean(current && link.source_hash && current !== link.source_hash) }));
+  }));
+
+  /** Turn a link off. The page and the bundle stop resolving for everyone. */
+  router.delete('/link/:id', handler(async (req, user) => {
+    const links = await publicLinkStore(getRepository);
+    const link = await links.get(user, req.params.id);
+    if (!link) refuse(404, 'Link not found');
+    await publicShare.revoke(req.headers.authorization, link.id).catch(error => { if (error.status !== 404) throw error; });
+    await links.revoke(user, link.id);
+    return { revoked: link.id };
+  }));
+
+  /** Share one of your conversations as a read-only snapshot. Chats stay private until you do this, one at a time. */
+  const OUTPUT_ID = /^[A-Za-z0-9_.:-]{1,200}$/;
+  router.post('/conversation-link', handler(async (req, user) => {
+    const outputId = String(req.body?.outputId || '');
+    if (!OUTPUT_ID.test(outputId)) refuse(400, 'Choose a conversation');
+    const link = await publishConversation({ output: await readOutput(outputId), ownerId: user, authorization: req.headers.authorization, client: publicShare });
+    await (await publicLinkStore(getRepository)).record(user, link);
+    return link;
+  }));
+  router.get('/conversation-link', handler(async (req, user) => {
+    const outputId = String(req.query.outputId || '');
+    if (!OUTPUT_ID.test(outputId)) refuse(400, 'Choose a conversation');
+    const rows = await (await publicLinkStore(getRepository)).forItem(user, { kind: 'conversation', id: outputId });
+    return rows.map(link => ({ id: link.id, url: link.url, title: link.title, createdAt: link.created_at, stale: false }));
+  }));
+
+  /** What a share link contains, sanitized exactly as install would. Installs nothing. */
+  router.post('/receive/preview', handler(async req => previewLink({ link: req.body?.link, client: publicShare, nodeProvider })));
+
+  /** Install a fresh copy of a share link into Personal. */
+  router.post('/receive', handler(async (req, user) => receiveLink({ link: req.body?.link, store, ownerId: user, client: publicShare })));
 
   return router;
 }

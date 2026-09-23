@@ -106,7 +106,9 @@ describe('a link carries a pointer, never a payload', () => {
     // The invariant this whole design rests on. If `install` or `run` ever
     // appears here it must arrive WITH a confirmation card and a first-party
     // allowlist, and this assertion is the thing that forces that conversation.
-    expect(ACTION_NAMES).toEqual(['marketplace', 'open']);
+    // `shared` had that conversation: it carries only a share id, and lands on
+    // the in-app confirmation card; installing is a separate, confirmed click.
+    expect(ACTION_NAMES).toEqual(['marketplace', 'shared', 'open']);
     expect(ACTION_NAMES).not.toContain('install');
     expect(ACTION_NAMES).not.toContain('run');
   });
@@ -122,6 +124,16 @@ describe('a link carries a pointer, never a payload', () => {
     expect(r.path).toBe('/marketplace?item=a');
     expect(r.path).not.toMatch(/payload|systemPrompt|tools|redirect/);
     expect(Object.keys(r.params)).toEqual(['item']);
+  });
+
+  it('a share link carries only its id and lands on the confirmation card', () => {
+    const r = parseDeepLink('agnt://shared?id=Ab3_-xY9kLmN&bundle=eyJ2ZXJzaW9uIjoxfQ&install=1&redirect=http://evil');
+    expect(r).toMatchObject({ ok: true, action: 'shared', params: { id: 'Ab3_-xY9kLmN' }, path: '/chat?shared=Ab3_-xY9kLmN' });
+    expect(r.path).not.toMatch(/bundle|install|redirect/);
+    for (const bad of ['', 'short', '../../x', 'a b', 'x'.repeat(65), 'a%00bcdefg']) {
+      expect(parseDeepLink(`agnt://shared?id=${encodeURIComponent(bad)}`), bad).toMatchObject({ ok: false });
+    }
+    expect(parseDeepLink('agnt://shared')).toMatchObject({ ok: false, reason: 'bad-share-id' });
   });
 
   it('refuses an item id that is not one', () => {

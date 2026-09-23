@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitize, buildBundle, installBundle, slotsFor, looksSecret } from './TeamBundle.js';
+import { sanitize, buildBundle, installBundle, previewBundle, slotsFor, looksSecret, KINDS } from './TeamBundle.js';
 
 // Fake credentials are ASSEMBLED at runtime. A credential-shaped literal in
 // source is exactly what secret scanners block, and should keep blocking.
@@ -97,6 +97,63 @@ describe('installBundle', () => {
   it('rejects malformed bundles', async () => {
     await expect(installBundle(memoryStore(), 'o', { version: 2, items: [] })).rejects.toMatchObject({ status: 400 });
     await expect(installBundle(memoryStore(), 'o', { version: 1, items: [{ kind: 'wallet', sourceId: 'w', definition: { name: 'x' } }] })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('every other kind: widgets, goals, workspaces', () => {
+  const board = () => memoryStore({
+    'widget:cw_abc123abc123': { owner: 'alice', value: { name: 'Sales board', source_code: '<div>ok</div>', config: { endpoint: '/Users/alice/data.json' }, user_id: 'alice', is_shared: 1, thumbnail: 'data:image/png;base64,xyz' } },
+    'workspace:ws_1': { owner: 'alice', value: { name: 'Launch room', widgets: [{ instanceId: 'w1', widgetId: 'cw_abc123abc123', col: 0, row: 0, cols: 4, rows: 3, history: ['cw_abc123abc123', 'traces'], historyIndex: 1, secretState: { token: GITHUB_TOKEN } }, { instanceId: 'w2', widgetId: 'workspace-chat', chatKey: '', col: 4, row: 0, cols: 3, rows: 8 }], channelConversations: { 'workspace:ws_1': 'conv-private' } } },
+    'agent:a9': { owner: 'alice', value: { name: 'Planner', provider: 'openai' } },
+    'goal:g1': { owner: 'alice', value: { title: 'Ship v2', description: 'Launch', priority: 'high', successCriteria: { metric: 'done' }, world_state: { huge: true }, status: 'executing', tasks: [{ key: 't1', title: 'Plan', agentId: 'a9', output: 'private result', error: 'boom', progress: 50 }, { key: 't2', title: 'Build', dependencies: ['t1'], parentKey: 't1' }] } },
+  });
+
+  it('are all shareable kinds', () => {
+    expect(KINDS).toEqual(expect.arrayContaining(['agent', 'workflow', 'tool', 'skill', 'widget', 'goal', 'workspace']));
+  });
+
+  it('refuses widget code that carries a credential, like tool code', () => {
+    expect(() => sanitize('widget', { name: 'w', source_code: 'fetch(u,{headers:{a:"' + OPENAI_KEY + '"}})' })).toThrow(/credential/);
+  });
+
+  it('a workspace travels with its widgets and without chats, window history or private window state', async () => {
+    const { bundle } = await buildBundle(board(), 'alice', [{ kind: 'workspace', id: 'ws_1' }]);
+    expect(bundle.items.map(i => i.kind).sort()).toEqual(['widget', 'workspace']);
+    const serialized = JSON.stringify(bundle);
+    for (const leak of ['conv-private', 'secretState', 'history', GITHUB_TOKEN, '/Users/alice', 'thumbnail', 'is_shared']) expect(serialized).not.toContain(leak);
+    const team = memoryStore();
+    const { installed } = await installBundle(team, 'scope:p1', bundle);
+    const widgetId = installed.find(i => i.kind === 'widget').id;
+    const workspaceId = installed.find(i => i.kind === 'workspace').id;
+    expect(widgetId).toMatch(/^cw_[0-9a-f]{12}$/);
+    expect(workspaceId).toMatch(/^ws_/);
+    expect((await team.read('workspace', workspaceId, 'scope:p1')).widgets.map(w => w.widgetId)).toEqual([widgetId, 'workspace-chat']);
+  });
+
+  it('a goal travels as a plan: tasks and their agent, never results, errors or run state', async () => {
+    const { bundle } = await buildBundle(board(), 'alice', [{ kind: 'goal', id: 'g1' }]);
+    expect(bundle.items.map(i => i.kind).sort()).toEqual(['agent', 'goal']);
+    const goal = bundle.items.find(i => i.kind === 'goal').definition;
+    expect(goal.tasks).toEqual([{ key: 't1', title: 'Plan', agentId: 'a9' }, { key: 't2', title: 'Build', dependencies: ['t1'], parentKey: 't1' }]);
+    expect(JSON.stringify(bundle)).not.toMatch(/private result|boom|world_state|executing|progress/);
+    const team = memoryStore();
+    const { installed } = await installBundle(team, 'scope:p1', bundle);
+    const agentId = installed.find(i => i.kind === 'agent').id;
+    const copy = await team.read('goal', installed.find(i => i.kind === 'goal').id, 'scope:p1');
+    expect(copy.tasks[0].agentId).toBe(agentId);
+  });
+
+  it('never overwrites a goal on re-share: every copy is a new plan', async () => {
+    const team = memoryStore({ 'goal:running': { owner: 'scope:p1', value: { title: 'In flight' } } });
+    const { installed } = await installBundle(team, 'scope:p1', { version: 1, items: [{ kind: 'goal', sourceId: 'g1', definition: { title: 'Ship v2' } }] }, { replaces: { 'goal:g1': 'running' } });
+    expect(installed[0].id).not.toBe('running');
+    expect((await team.read('goal', 'running', 'scope:p1')).title).toBe('In flight');
+  });
+
+  it('previews a received bundle with the same sanitizing install applies, installing nothing', () => {
+    const preview = previewBundle({ version: 1, items: [{ kind: 'agent', sourceId: 'x', definition: { name: 'Gift', provider: 'anthropic', systemPrompt: 'use ' + OPENAI_KEY } }] });
+    expect(preview).toEqual({ items: [{ kind: 'agent', name: 'Gift', stripped: 1 }], needs: [{ provider: 'anthropic', reason: 'model' }], removed: 1 });
+    expect(() => previewBundle({ version: 1, items: [{ kind: 'wallet', sourceId: 'w', definition: { name: 'x' } }] })).toThrow(/Unsupported/);
   });
 });
 

@@ -9,6 +9,7 @@ import { CAPABILITIES, syncProjectAccess } from '../services/TeamAccess.js';
 import { buildBundle, installBundle } from '../services/sharing/TeamBundle.js';
 import { nativeStore, nodeProvider } from '../services/sharing/nativeStore.js';
 import { parseItems } from './ShareRoutes.js';
+import { publicShareClient, publishLink, previewLink, receiveLink } from '../services/sharing/publicLinks.js';
 import sqlite3 from 'sqlite3';
 import pathManager from '../utils/PathManager.js';
 import {
@@ -25,7 +26,7 @@ export function getTeamRepository() {
   if (!repository) repository = new TeamRepository(new sqlite3.Database(pathManager.getDataPath('teams.db')));
   return repository
 }
-export function createTeamRouter(getRepository = getTeamRepository, authenticate = authenticateToken, cloud = new CloudTeamClient()) {
+export function createTeamRouter(getRepository = getTeamRepository, authenticate = authenticateToken, cloud = new CloudTeamClient(), publicShare = publicShareClient()) {
   const router = express.Router();
   router.use(authenticate);
   // Membership and entitlement always come from the cloud. Never use local membership as authority.
@@ -125,6 +126,24 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     return bundle;
   }));
   router.get('/:teamId/workspaces/:workspaceId/native',handler(async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);}));
+  // Everything in this project that can be shared (every kind), for "Copy to personal" and the share sheet. resources.read.
+  router.get('/:teamId/workspaces/:workspaceId/shareable',handler(async(repo,req)=>{const scope=await nativeScope(repo,req);return nativeStore.list(scope.resourceOwnerId);}));
+  // A share link for the project's own items, sanitized on the way out exactly like /export. resources.write:
+  // publishing outside the team is a change to who can see the team's work.
+  router.post('/:teamId/workspaces/:workspaceId/link',handler(async(repo,req,user)=>{
+    const scope=await nativeScope(repo,req);
+    const link=await publishLink({store:nativeStore,ownerId:scope.resourceOwnerId,items:parseItems(req.body?.items),includeDependencies:req.body?.includeDependencies!==false,authorization:req.headers.authorization,client:publicShare,nodeProvider});
+    await repo.transaction(()=>repo.event(req.params.teamId,user,'items.link_shared',req.params.workspaceId));
+    return link;
+  }));
+  router.post('/:teamId/workspaces/:workspaceId/receive/preview',handler(async(repo,req)=>{await nativeScope(repo,req);return previewLink({link:req.body?.link,client:publicShare,nodeProvider});}));
+  // Install a share link into the project. Re-sanitized by installBundle; installs as the project's owner. resources.write.
+  router.post('/:teamId/workspaces/:workspaceId/receive',handler(async(repo,req,user)=>{
+    const scope=await nativeScope(repo,req);
+    const result=await receiveLink({link:req.body?.link,store:nativeStore,ownerId:scope.resourceOwnerId,client:publicShare});
+    await repo.transaction(()=>repo.event(req.params.teamId,user,'items.copied_in',req.params.workspaceId));
+    return result;
+  }));
   router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/:action',handler(async(repo,req,user)=>{
     const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();const assetId=await resources.snapshot(req.params.teamId,user,scope,req.params.kind,req.params.id);const executor=new NativeTeamExecution(repo,cloud);
     if(req.params.action==='authorize'||req.params.action==='publish'){const hints=await resources.hints(scope,req.params.kind,req.params.id);return executor.bind(req.cloudTeam,user,req.headers.authorization,assetId,{connectionId:req.body?.connectionId,provider:req.body?.provider,model:req.body?.model,workspaceId:req.params.workspaceId,hints});}

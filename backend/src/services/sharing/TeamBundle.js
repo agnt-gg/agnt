@@ -1,6 +1,6 @@
 /**
- * Copy to team / copy to personal: the portable form of agents, workflows,
- * tools and skills.
+ * The portable form of everything shareable (see kinds.js): copy to team, copy
+ * to personal, public share links and files all carry this one bundle.
  *
  * A bundle carries DEFINITIONS, never access. Four rules, all enforced here and
  * re-enforced on the receiving side (sanitize runs again on install, so a
@@ -20,15 +20,10 @@
  * Memory, conversations and run history are not a kind here, so they cannot
  * be copied by construction.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { KINDS, isKind, kindOf, newIdFor } from './kinds.js';
 
-export const KINDS = Object.freeze(['agent', 'workflow', 'tool', 'skill']);
-const FIELDS = Object.freeze({
-  agent: ['name', 'description', 'icon', 'category', 'systemPrompt', 'provider', 'model', 'toolAccessMode', 'assignedTools', 'assignedWorkflows', 'assignedSkills'],
-  workflow: ['name', 'description', 'category', 'nodes', 'edges', 'trigger', 'variables'],
-  tool: ['title', 'category', 'type', 'icon', 'description', 'parameters', 'outputs', 'base', 'code', 'config'],
-  skill: ['name', 'description', 'instructions', 'category', 'icon', 'license', 'compatibility', 'allowedTools', 'metadata'],
-});
+export { KINDS };
 const SECRET_KEY = /(password|passwd|secret|token|api[_-]?key|apikey|authorization|credential|private[_-]?key|access[_-]?key|client[_-]?secret|cookie|session)/i;
 const SECRET_VALUE = [
   /\bsk-[A-Za-z0-9_-]{16,}/, /\bsk-ant-[A-Za-z0-9_-]{16,}/, /\bgh[pousr]_[A-Za-z0-9]{20,}/, /\bgithub_pat_[A-Za-z0-9_]{20,}/,
@@ -42,11 +37,20 @@ const MAX_BYTES = 2_000_000;
 
 const refuse = (status, message, extra = {}) => { throw Object.assign(new Error(message), { status, ...extra }); };
 export const looksSecret = value => typeof value === 'string' && SECRET_VALUE.some(pattern => pattern.test(value));
+const SECRET_VALUE_GLOBAL = SECRET_VALUE.map(pattern => new RegExp(pattern.source, 'g'));
+/** Prose cannot be dropped like a field, so credential-shaped runs inside it are replaced in place. Returns the text and how many were removed. */
+export function redactSecrets(text) {
+  let removed = 0;
+  let result = String(text ?? '');
+  for (const pattern of SECRET_VALUE_GLOBAL) result = result.replace(pattern, () => { removed++; return '[removed]'; });
+  return { text: result, removed };
+}
 export const contentHash = definition => createHash('sha256').update(JSON.stringify(definition)).digest('hex');
 
 /** Strip one definition to its allowlist; blank secret keys/values and local paths. Pure. */
 export function sanitize(kind, input) {
-  if (!KINDS.includes(kind)) refuse(400, 'Unsupported item type');
+  if (!isKind(kind)) refuse(400, 'Unsupported item type');
+  const spec = kindOf(kind);
   const stripped = [];
   const clean = (value, path, depth) => {
     if (depth > MAX_DEPTH) refuse(400, 'Definition is nested too deeply to share safely');
@@ -64,17 +68,19 @@ export function sanitize(kind, input) {
     }
     return out;
   };
-  const definition = {};
-  for (const field of FIELDS[kind]) {
+  let definition = {};
+  for (const field of spec.fields) {
     if (input?.[field] === undefined || input[field] === null) continue;
-    if (kind === 'tool' && field === 'code') {
-      if (typeof input.code !== 'string') continue;
-      if (looksSecret(input.code)) refuse(422, 'This tool\'s code contains what looks like a credential. Move it into a connection, then share again.', { code: 'secret_in_code' });
-      definition.code = input.code;
+    if (spec.codeFields?.includes(field)) {
+      if (typeof input[field] !== 'string') continue;
+      if (looksSecret(input[field])) refuse(422, 'This ' + spec.label.toLowerCase() + '\'s code contains what looks like a credential. Move it into a connection, then share again.', { code: 'secret_in_code' });
+      definition[field] = input[field];
       continue;
     }
     definition[field] = clean(input[field], field, 0);
   }
+  // Kind-specific shape rules run AFTER cleaning, and on install too, so a hand-built bundle cannot smuggle extra fields into nested rows.
+  if (spec.normalize) definition = spec.normalize(definition);
   if (!(definition.name || definition.title)) refuse(400, 'Every shared item needs a name');
   return { definition, stripped };
 }
@@ -83,31 +89,13 @@ export function sanitize(kind, input) {
 export function slotsFor(kind, definition, { nodeProvider = () => null } = {}) {
   const slots = new Map();
   const add = (provider, reason) => { if (typeof provider === 'string' && provider && provider.length < 60) slots.set(provider, slots.get(provider) || reason); };
-  if (kind === 'agent') add(definition.provider, 'model');
-  if (kind === 'tool') add(definition.config?.provider, 'model');
-  if (kind === 'workflow') {
-    for (const node of Array.isArray(definition.nodes) ? definition.nodes : []) {
-      add(node?.parameters?.provider, 'model');
-      add(nodeProvider(node?.type), 'connection');
-    }
-  }
+  for (const [provider, reason] of kindOf(kind)?.slots?.(definition, { nodeProvider }) || []) add(provider, reason);
   return [...slots].map(([provider, reason]) => ({ provider, reason }));
 }
 
 /** References one definition makes to other shareable items, as {kind, id}. */
 export function referencesOf(kind, definition, { isCustomTool = () => false } = {}) {
-  const refs = [];
-  if (kind === 'agent') {
-    for (const id of definition.assignedTools || []) if (isCustomTool(id)) refs.push({ kind: 'tool', id });
-    for (const id of definition.assignedWorkflows || []) refs.push({ kind: 'workflow', id });
-    for (const id of definition.assignedSkills || []) refs.push({ kind: 'skill', id });
-  }
-  if (kind === 'workflow') {
-    for (const node of definition.nodes || []) {
-      const id = node?.parameters?.toolId || node?.toolId || node?.type;
-      if (typeof id === 'string' && isCustomTool(id)) refs.push({ kind: 'tool', id });
-    }
-  }
+  const refs = kindOf(kind)?.references?.(definition, { isCustomTool }) || [];
   return refs.filter(ref => typeof ref.id === 'string' && ref.id);
 }
 
@@ -124,7 +112,7 @@ export async function buildBundle(store, ownerId, requested, { includeDependenci
   const customTools = new Set(await store.customToolIds(ownerId));
   while (queue.length) {
     const ref = queue.shift();
-    if (!KINDS.includes(ref.kind)) refuse(400, 'Unsupported item type');
+    if (!isKind(ref.kind)) refuse(400, 'Unsupported item type');
     if (seen.has(key(ref))) continue;
     seen.add(key(ref));
     const row = await store.read(ref.kind, ref.id, ownerId);
@@ -154,46 +142,54 @@ export async function buildBundle(store, ownerId, requested, { includeDependenci
 }
 
 /**
+ * What installing a bundle would do, WITHOUT installing it: every item is run
+ * through the same sanitize as install, so the receiver sees exactly what they
+ * would get (and a bundle install would refuse is refused here first).
+ */
+export function previewBundle(bundle, { nodeProvider } = {}) {
+  validateBundle(bundle);
+  const items = bundle.items.map(item => {
+    const { definition, stripped } = sanitize(item.kind, item.definition);
+    return { kind: item.kind, name: definition.name || definition.title, stripped: stripped.length, slots: slotsFor(item.kind, definition, { nodeProvider }) };
+  });
+  return {
+    items: items.map(({ kind, name, stripped }) => ({ kind, name, stripped })),
+    needs: [...new Map(items.flatMap(item => item.slots).map(slot => [slot.provider, slot])).values()],
+    removed: items.reduce((total, item) => total + item.stripped, 0),
+  };
+}
+
+function validateBundle(bundle) {
+  if (bundle?.version !== 1 || !Array.isArray(bundle.items) || !bundle.items.length || bundle.items.length > MAX_ITEMS) refuse(400, 'Invalid bundle');
+  if (JSON.stringify(bundle).length > MAX_BYTES) refuse(413, 'Bundle too large');
+}
+
+/**
  * Installs a bundle for `ownerId`. Every definition is sanitized again (never
  * trust the sender), ids are freshly minted, and references between items in
  * the bundle are rewritten to the new ids. `replaces` maps "kind:sourceId" to
  * an existing item the owner already has, which is updated in place.
  */
 export async function installBundle(store, ownerId, bundle, { replaces = {} } = {}) {
-  if (bundle?.version !== 1 || !Array.isArray(bundle.items) || !bundle.items.length || bundle.items.length > MAX_ITEMS) refuse(400, 'Invalid bundle');
-  if (JSON.stringify(bundle).length > MAX_BYTES) refuse(413, 'Bundle too large');
+  validateBundle(bundle);
   const idMap = new Map();
   const prepared = [];
   for (const item of bundle.items) {
     const { definition } = sanitize(item.kind, item.definition);
     const source = item.kind + ':' + String(item.sourceId);
-    let targetId = replaces[source];
+    let targetId = kindOf(item.kind).replaceable === false ? null : replaces[source];
     if (targetId && !(await store.read(item.kind, targetId, ownerId))) targetId = null; // not theirs: never overwrite
-    targetId = targetId || randomUUID();
+    targetId = targetId || newIdFor(item.kind);
     idMap.set(source, targetId);
     prepared.push({ kind: item.kind, source, targetId, definition });
   }
   const remap = (kind, id) => idMap.get(kind + ':' + id) || id;
+  const installedHere = (kind, id) => idMap.has(kind + ':' + id);
   const installed = [];
   // Dependencies first, so nothing references an item that does not exist yet.
-  const order = { tool: 0, skill: 1, workflow: 2, agent: 3 };
-  for (const item of prepared.sort((a, b) => order[a.kind] - order[b.kind])) {
-    const definition = { ...item.definition };
-    if (item.kind === 'agent') {
-      definition.assignedTools = (definition.assignedTools || []).map(id => remap('tool', id));
-      definition.assignedWorkflows = (definition.assignedWorkflows || []).map(id => remap('workflow', id));
-      definition.assignedSkills = (definition.assignedSkills || []).map(id => remap('skill', id));
-    }
-    if (item.kind === 'workflow' && Array.isArray(definition.nodes)) {
-      definition.nodes = definition.nodes.map(node => {
-        if (!node || typeof node !== 'object') return node;
-        const next = { ...node };
-        if (typeof next.type === 'string' && idMap.has('tool:' + next.type)) next.type = remap('tool', next.type);
-        if (typeof next.toolId === 'string') next.toolId = remap('tool', next.toolId);
-        if (next.parameters && typeof next.parameters.toolId === 'string') next.parameters = { ...next.parameters, toolId: remap('tool', next.parameters.toolId) };
-        return next;
-      });
-    }
+  for (const item of prepared.sort((a, b) => kindOf(a.kind).order - kindOf(b.kind).order)) {
+    const spec = kindOf(item.kind);
+    const definition = spec.remap ? spec.remap({ ...item.definition }, remap, installedHere) : { ...item.definition };
     await store.write(item.kind, item.targetId, definition, ownerId);
     installed.push({ kind: item.kind, source: item.source, id: item.targetId, name: definition.name || definition.title, hash: contentHash(item.definition) });
   }
