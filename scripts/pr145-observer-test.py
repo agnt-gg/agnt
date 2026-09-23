@@ -14,6 +14,13 @@ spec = importlib.util.spec_from_file_location('observer', Path(__file__).with_na
 o = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(o)
 
+def descendant_stopped(status):
+    try:
+        # One read: the owned process may disappear during open/read, not just before it.
+        return status.read_text().rsplit(')', 1)[1].split()[0] == 'Z'
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+
 class Controls(unittest.TestCase):
     def setUp(self):
         self.root = Path(os.environ['PR145_CONTROL_ROOT']) / self._testMethodName
@@ -88,6 +95,19 @@ class Controls(unittest.TestCase):
         self.assertEqual(r['wrapperExit'],143)
         self.assertEqual(r['returncode'],-15)
 
+    def test_descendant_disappears_during_read(self):
+        from unittest.mock import Mock
+        for error in (FileNotFoundError(2, 'gone'), ProcessLookupError(3, 'gone')):
+            self.assertTrue(descendant_stopped(Mock(read_text=Mock(side_effect=error))))
+
+    def test_descendant_liveness_is_not_weakened(self):
+        from unittest.mock import Mock
+        for state in ('R', 'S', 'D', 'T'):
+            self.assertFalse(descendant_stopped(Mock(read_text=Mock(return_value=f'123 (name with spaces) {state} 1'))))
+        self.assertTrue(descendant_stopped(Mock(read_text=Mock(return_value='123 (name) Z 1'))))
+        with self.assertRaises(PermissionError):
+            descendant_stopped(Mock(read_text=Mock(side_effect=PermissionError(13, 'denied'))))
+
     def test_descendant_cleanup(self):
         pidfile=self.root/'descendant.pid'
         source=self.prefix+f"child=os.fork()\nif child==0:\n signal.signal(signal.SIGTERM,signal.SIG_IGN)\n open({str(pidfile)!r},'w').write(str(os.getpid()))\n time.sleep(30)\nelse:\n while not os.path.exists({str(pidfile)!r}): time.sleep(.005)\n"
@@ -96,7 +116,7 @@ class Controls(unittest.TestCase):
         pid=int(pidfile.read_text())
         for _ in range(100):
             status=Path(f'/proc/{pid}/stat')
-            if not status.exists() or status.read_text().split()[2]=='Z':break
+            if descendant_stopped(status):break
             time.sleep(.01)
         else:self.fail('owned descendant still running after observer exit')
 

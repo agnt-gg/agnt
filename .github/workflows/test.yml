@@ -293,16 +293,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bubblewrap
+          if [ "${{ matrix.node }}" = "22" ]; then sudo apt-get install -y strace; fi
           # Use the matrix runtime inside the runner's /usr-only namespace.
           sudo install -m 0755 "$(command -v node)" /usr/bin/node
           /usr/bin/node --version
           /usr/bin/bwrap --version
-      - name: Compare synthetic namespace ownership profiles
+      # One hosted capture, not four repeated namespace variants per runtime.
+      # No policy changes; diagnostic success never substitutes for the suite.
+      - name: Test netlink decoder and no-secret argv policy
+        run: python3 -B scripts/pr145-namespace.py --self-test
+      - name: Capture own empty sandbox netlink reply
+        if: ${{ !cancelled() && matrix.node == '22' }}
         id: namespace-probe
         timeout-minutes: 3
-        run: python3 scripts/pr145-namespace.py "${{ runner.temp }}/pr145-native-evidence/namespace-comparison"
+        run: python3 -B scripts/pr145-namespace.py "${{ runner.temp }}/pr145-native-evidence/netlink-capture"
       - name: Run node:test suite
-        if: ${{ !cancelled() && steps.namespace-probe.outcome != 'skipped' }}
+        if: ${{ !cancelled() }}
         env:
           PR145_TEST_EVIDENCE_ROOT: ${{ runner.temp }}/pr145-native-evidence
         run: npm run test:node
