@@ -533,6 +533,7 @@ export function useProviderConnection(modalRef) {
     allProviders,
     connectedApps,
     isProviderConnected,
+    fetchProviderDetails,
     handleProviderToggle,
     refreshHealth,
   };

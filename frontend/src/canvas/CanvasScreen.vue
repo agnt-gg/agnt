@@ -147,7 +147,7 @@
                 <!-- Badge lookup stays keyed by the registry section id; the preference layer only changes presentation. -->
                 <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'apps' }">{{ railBadges[item.id] }}</span>
                 <!-- Just unlocked and not yet visited. A live count outranks it. -->
-                <span v-else-if="item.fresh" class="cv-sb-badge is-new" role="img" aria-label="New" title="New"></span>
+                <span v-else-if="item.fresh" class="cv-sb-badge is-new" role="img" aria-label="New"></span>
               </button>
             </Tooltip>
           </template>

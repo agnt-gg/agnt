@@ -1,5 +1,7 @@
 <template>
-  <div class="connect-card" :class="{ 'is-connected': connected }">
+  <!-- Nothing is drawn for an app that cannot be connected: a button that can
+       only fail is worse than none, and Annie's reply already says why. -->
+  <div v-if="connected || availability === 'available'" class="connect-card" :class="{ 'is-connected': connected }">
     <i class="fas fa-plug connect-card-icon" aria-hidden="true"></i>
     <span class="connect-card-name">{{ name }}</span>
     <span v-if="connected" class="connect-card-status"><i class="fas fa-check"></i> Connected</span>
@@ -14,8 +16,7 @@
 </template>
 
 <script>
-import { computed, ref } from 'vue';
-import { useStore } from 'vuex';
+import { computed, onMounted, ref } from 'vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 import { fallbackProviderName } from './connectCards.js';
@@ -27,20 +28,30 @@ export default {
     provider: { type: String, required: true },
   },
   setup(props) {
-    const store = useStore();
     const modalRef = ref(null);
     const busy = ref(false);
     const error = ref('');
+    // 'checking' until the catalog answers; 'unavailable' when AGNT has no
+    // connection for this app (a plugin can ship tools for an app no provider
+    // exists for — seen live with Pipedrive).
+    const availability = ref('checking');
+    const details = ref(null);
     // The exact flow the Apps screen runs — OAuth window, device code or API
     // key, chosen from the provider's own capabilities — so a connection made
     // here is indistinguishable from one made there.
-    const { isProviderConnected, handleProviderToggle } = useProviderConnection(modalRef);
+    const { isProviderConnected, fetchProviderDetails, handleProviderToggle } = useProviderConnection(modalRef);
 
     const connected = computed(() => isProviderConnected(props.provider));
-    const name = computed(() => {
-      const id = props.provider.toLowerCase();
-      const match = (store.state.appAuth?.allProviders || []).find((p) => String(p.id || '').toLowerCase() === id);
-      return match?.name || fallbackProviderName(props.provider);
+    const name = computed(() => details.value?.name || fallbackProviderName(props.provider));
+
+    onMounted(async () => {
+      if (connected.value) return;
+      try {
+        details.value = await fetchProviderDetails(props.provider);
+        availability.value = details.value ? 'available' : 'unavailable';
+      } catch {
+        availability.value = 'unavailable';
+      }
     });
 
     async function connect() {
@@ -57,7 +68,7 @@ export default {
       }
     }
 
-    return { modalRef, busy, error, connected, name, connect };
+    return { modalRef, busy, error, connected, availability, name, connect };
   },
 };
 </script>
@@ -69,7 +80,7 @@ export default {
   align-items: center;
   gap: 8px;
   margin: 4px 0 2px;
-  padding: 5px 6px 5px 10px;
+  padding: 5px 8px 5px 10px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   background: var(--color-darker-0);
