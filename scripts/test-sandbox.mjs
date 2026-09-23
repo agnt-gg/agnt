@@ -452,11 +452,15 @@ function control(name, ok, expected, observed, detail) { CONTROLS.push({ name, o
   const gotKeys = (r.out.match(/ENVKEYS=(.*)/) || [])[1] || '';
   // bwrap --clearenv + explicit setenv constructs only the declared base,
   // plumbing and control keys. The bootstrap removes private result-token/FD
-  // keys before spawning the command. bash adds PWD/SHLVL/_ for children.
-  const wantKeys = ['C_PROBE', 'HOME', 'INNER_ALLOW_FD', 'INNER_CMD', 'INNER_CWD', 'LANG', 'PATH', 'PWD', 'SHLVL', 'TMPDIR', '_'].sort().join(',');
-  control('env-hygiene-exact-set', gotKeys === wantKeys && !r.timedOut,
-    wantKeys, gotKeys + '; exit=' + JSON.stringify(r.exit),
-    'clearenv + explicit setenv only — no ambient variables reach the sandbox (PWD/SHLVL/_ are bash-injected for its children)');
+  // keys before spawning the command. /bin/sh may add PWD/SHLVL/_ for its
+  // children: bash adds all three, dash (Ubuntu's /bin/sh) only PWD.
+  const declared = ['C_PROBE', 'HOME', 'INNER_ALLOW_FD', 'INNER_CMD', 'INNER_CWD', 'LANG', 'PATH', 'TMPDIR'];
+  const shellInjected = new Set(['PWD', 'SHLVL', '_']);
+  const got = gotKeys ? gotKeys.split(',') : [];
+  const exact = declared.every((k) => got.includes(k)) && got.every((k) => declared.includes(k) || shellInjected.has(k));
+  control('env-hygiene-exact-set', exact && !r.timedOut,
+    declared.join(',') + ' plus only /bin/sh-injected ' + [...shellInjected].join(','), gotKeys + '; exit=' + JSON.stringify(r.exit),
+    'clearenv + explicit setenv only — no ambient variables reach the sandbox (PWD/SHLVL/_ may be injected by /bin/sh for its children)');
 }
 try { listener.close(); } catch {}
 
