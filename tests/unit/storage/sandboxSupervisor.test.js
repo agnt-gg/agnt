@@ -14,7 +14,9 @@ fs.writeFileSync(WATCH, '');
 cleanup.push(WATCH);
 
 function runRunner(plan, label) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pr145-supervisor-'));
+  const parent = process.env.PR145_TEST_EVIDENCE_ROOT || os.tmpdir();
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, 'pr145-supervisor-'));
   const planPath = path.join(root, 'plan.json');
   const evidence = path.join(root, 'evidence');
   fs.mkdirSync(evidence);
@@ -28,16 +30,22 @@ function runRunner(plan, label) {
     let out = '', err = '';
     p.stdout.on('data', (b) => (out += b));
     p.stderr.on('data', (b) => (err += b));
-    p.on('exit', (code, signal) => {
+    p.on('close', (code, signal) => {
       const runDir = fs.readdirSync(evidence).map((n) => path.join(evidence, n)).find((p2) => fs.statSync(p2).isDirectory());
       const manifest = runDir && fs.existsSync(path.join(runDir, 'manifest.json'))
         ? JSON.parse(fs.readFileSync(path.join(runDir, 'manifest.json'), 'utf8')) : null;
+      const controls = manifest?.controls || [];
+      const failed = Array.isArray(controls) ? controls.filter(c => !c.ok) : controls;
+      if (code === 4) err += '\nCONTROL_DIAGNOSTICS ' + JSON.stringify({ runDir, failed });
       resolve({ code, signal, out, err, runDir, manifest });
     });
   });
 }
 
-process.on('exit', () => { for (const p of cleanup) { try { fs.rmSync(p, { recursive: true, force: true }); } catch {} } });
+process.on('exit', () => { for (const p of cleanup) {
+  if (process.env.PR145_TEST_EVIDENCE_ROOT && p !== WATCH) continue;
+  try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
+} });
 
 const fdAdversary = String.raw`for fd in 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do eval "printf '%s\n' '{\"code\":0,\"signal\":null,\"forged\":true}' >&$fd" 2>/dev/null || true; eval "exec $fd>&-" 2>/dev/null || true; done; exit 23`;
 test('D-RV-2 control: an all-green plan preserves exit 0', async () => {

@@ -202,8 +202,15 @@ jobs:
       # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1, and --ignore-scripts skips
       # postinstall entirely. Chromium only — no spec here uses another engine,
       # and the other two would be a download this job never opens.
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        timeout-minutes: 10
+        run: npx playwright install-deps chromium
+      - name: Download pinned Chromium
+        timeout-minutes: 10
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '60000'
+          DEBUG: pw:install
+        run: npx playwright install chromium
 
       - name: Run the tagged browser suite
         run: npx playwright test --grep @ci
@@ -255,4 +262,14 @@ jobs:
           /usr/bin/node --version
           /usr/bin/bwrap --version
       - name: Run node:test suite
+        env:
+          PR145_TEST_EVIDENCE_ROOT: ${{ runner.temp }}/pr145-native-evidence
         run: npm run test:node
+      - name: Preserve native sandbox diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-sandbox-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/pr145-native-evidence/
+          if-no-files-found: warn
+          retention-days: 7
