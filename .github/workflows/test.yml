@@ -298,8 +298,21 @@ jobs:
           sudo install -m 0755 "$(command -v node)" /usr/bin/node
           /usr/bin/node --version
           /usr/bin/bwrap --version
+      # Ubuntu 24.04 runners confine unprivileged user namespaces with AppArmor,
+      # so bwrap cannot configure its private loopback (RTM_NEWADDR: EPERM) and
+      # every sandbox control exits before its probe runs. Grant userns to
+      # /usr/bin/bwrap only, on this ephemeral runner; the sysctl stays on.
+      - name: Allow user namespaces for bwrap only
+        run: |
+          if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          /usr/bin/bwrap --unshare-user --unshare-net --ro-bind / / /usr/bin/true
       # One hosted capture, not four repeated namespace variants per runtime.
-      # No policy changes; diagnostic success never substitutes for the suite.
+      # Only the bwrap profile above; diagnostic success never substitutes for the suite.
       - name: Test netlink decoder and no-secret argv policy
         run: python3 -B scripts/pr145-namespace.py --self-test
       - name: Capture own empty sandbox netlink reply
