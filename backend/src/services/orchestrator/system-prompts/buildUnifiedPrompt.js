@@ -4,12 +4,9 @@ import {
   OFFLOADED_DATA_GUIDANCE,
   CRITICAL_TOOL_CALL_REQUIREMENTS,
   AGNT_NATIVE_EXECUTION,
-  IMAGE_ANALYSIS_CAPABILITIES,
-  IMAGE_GENERATION_CAPABILITIES,
   HTML_INLINE_RENDERING,
   LOCAL_FILE_RENDERING,
   RESPONSE_FORMATTING,
-  CRITICAL_IMAGE_REFERENCE_FORMATTING,
   IMPORTANT_GUIDELINES,
   CHART_CHEATSHEET,
   MCP_TOOL_USE_RULES,
@@ -133,7 +130,6 @@ Every Annie chat surface is functionally the same assistant. The current page co
   // produce images on this surface.
   if (on('critical_image_handling')) parts.push(CRITICAL_IMAGE_HANDLING);
   if (on('critical_image_generation')) parts.push(CRITICAL_IMAGE_GENERATION);
-  parts.push('IMPORTANT: Provider names are automatically normalized to lowercase by the backend. You do not need to worry about provider-name casing.');
   if (on('async_execution')) parts.push(ASYNC_EXECUTION_GUIDANCE);
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
@@ -146,22 +142,13 @@ Every Annie chat surface is functionally the same assistant. The current page co
   parts.push(AGNT_NATIVE_EXECUTION);
 
   if (on('task_delegation')) {
-    parts.push(`TASK DELEGATION:
-For non-trivial tasks, consider creating a Goal and delegating to agents.
-
-1. Do it yourself for simple questions, quick searches, single tool calls, or casual conversation.
-2. Create a goal for larger multi-step work using create_and_run_goal.
-3. Check goal progress with list_goals, get_goal_details, get_goal_status, or evaluate_goal.
-
-Goals run autonomously in the background. When a goal completes, results are automatically sent back to this conversation.`);
+    parts.push(`GOALS:
+A goal runs large multi-step work autonomously in the background (create_and_run_goal) and reports back to this conversation when it finishes; list_goals, get_goal_details, get_goal_status and evaluate_goal track it. Do the work yourself by default. For work large enough to benefit, offer a goal, and create one only when the user agrees.`);
   }
 
   if (has('discover_tools')) {
     parts.push(`TOOL USAGE:
-Tools are provided through the API tools parameter. Use exact tool names.
-If you need additional tools not currently visible, call discover_tools with operation="browse", then operation="load" with the needed categories.
-Do not tell the user you lack a capability before checking discover_tools first.
-When the user asks to list/show available tools, call discover_tools with operation="browse" first.`);
+The tools parameter lists what is loaded now; more are available. discover_tools with operation="browse" lists every category, and operation="load" makes a category's tools callable in your next response. Check there before telling the user a capability is missing, and browse first when they ask what tools exist.`);
   } else {
     parts.push(`TOOL USAGE:
 Tools are provided through the API tools parameter. Use exact tool names. Only use tools that appear in the tools parameter — do not claim or imply access to tools that are not listed.`);
@@ -183,10 +170,6 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // turns them off.
   if (on('memory_recall')) parts.push(MEMORY_RECALL_GUIDANCE);
 
-  // Gate the long capability descriptions on whether the underlying tool
-  // is actually available for this channel.
-  if (on('image_analysis_capabilities')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
-  if (on('image_generation_capabilities')) parts.push(IMAGE_GENERATION_CAPABILITIES);
   parts.push(ARTIFACTS_VS_WIDGETS);
   // Directly after ARTIFACTS_VS_WIDGETS on purpose. That block is what creates
   // the "this request becomes a file" instinct; this one says the file is not
@@ -201,7 +184,6 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // embed. The frontend rewrites file:/// → /api/local-file/... so <img>,
   // <video>, <iframe>, <audio> all just work. Cheap to include unconditionally.
   parts.push(LOCAL_FILE_RENDERING);
-  if (on('critical_image_reference_formatting')) parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
   // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
   // execute_javascript_code / file_operations / agnt_tools — skip the block
   // when none of those are enabled, otherwise the LLM advertises tools the

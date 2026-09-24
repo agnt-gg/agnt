@@ -45,7 +45,9 @@ describe('the resident prompt no longer teaches either extreme', () => {
     expect(CRITICAL_TOOL_CALL_REQUIREMENTS).not.toMatch(/RUN IT FIRST ALWAYS/);
     // What replaced it keeps the half that was right — no narrating unseen
     // results — and states the order explicitly.
-    expect(CRITICAL_TOOL_CALL_REQUIREMENTS).toMatch(/NEVER describe a result you have not seen/);
+    // Case-insensitive: the rule is pinned, not its capitalisation. Resident
+    // prose states rules plainly (see orchestrator-chat.js STYLE).
+    expect(CRITICAL_TOOL_CALL_REQUIREMENTS).toMatch(/never describe a result you have not seen/i);
     expect(CRITICAL_TOOL_CALL_REQUIREMENTS).toMatch(/Say what you will do, run the tool, then report/);
   });
 
@@ -124,17 +126,19 @@ describe('placement in the unified prompt', () => {
 
   it('sits directly after the tool-call rules, not last', async () => {
     const prompt = await buildUnifiedSystemPrompt(bareContext(), FROZEN);
-    const rulesAt = prompt.indexOf('CRITICAL TOOL CALL REQUIREMENTS:');
+    const rulesAt = prompt.indexOf('TOOL CALLS:');
     const cadenceAt = prompt.indexOf(HEADER);
-    const artifactsAt = prompt.indexOf('ARTIFACTS vs WIDGETS');
-    const chartsAt = prompt.indexOf('CHART.JS VISUALIZATION GUIDE');
+    const artifactsAt = prompt.indexOf('ARTIFACTS AND WIDGETS');
+    const chartsAt = prompt.indexOf('CHARTS:');
+    expect(artifactsAt).toBeGreaterThan(-1);
+    expect(chartsAt).toBeGreaterThan(-1);
     expect(rulesAt).toBeGreaterThan(-1);
     expect(cadenceAt).toBeGreaterThan(rulesAt);
     expect(cadenceAt).toBeLessThan(artifactsAt);
     expect(cadenceAt).toBeLessThan(chartsAt);
     // Nothing but the native-execution block between the two.
     const between = prompt.slice(rulesAt, cadenceAt);
-    expect(between).not.toContain('TASK DELEGATION');
+    expect(between).not.toContain('GOALS:');
     expect(between).not.toContain('TOOL USAGE:');
   });
 

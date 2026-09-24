@@ -172,7 +172,7 @@ async function loadCustomInstructionsSection(context) {
       const settings = await UserModel.getUserSettings(context.userId);
       const raw = (settings.customInstructions || '').trim();
       if (raw) {
-        customInstructionsSection = `## User's Custom System Instructions\nThe user has provided these persistent instructions that apply to every Annie chat. Follow them unless they conflict with safety, tool-usage, or image-handling requirements above.\n\n${raw}`;
+        customInstructionsSection = `## User's Custom System Instructions\nThese are the user's standing instructions for every Annie chat. Where they differ from the general guidance above, they take precedence, except on safety.\n\n${raw}`;
       }
     }
   } catch (e) {

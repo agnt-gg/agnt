@@ -107,10 +107,10 @@ describe('individual gates', () => {
   const on = (names, extra) => resolveResidentElements(g(names, extra)).included;
 
   it('image blocks require the matching image tool', () => {
-    expect(on([]).has('image_generation_capabilities')).toBe(false);
-    expect(on(['generate_image']).has('image_generation_capabilities')).toBe(true);
-    expect(on(['generate_image']).has('image_analysis_capabilities')).toBe(false);
-    expect(on(['analyze_image']).has('image_analysis_capabilities')).toBe(true);
+    expect(on([]).has('critical_image_generation')).toBe(false);
+    expect(on(['generate_image']).has('critical_image_generation')).toBe(true);
+    expect(on(['generate_image']).has('critical_image_handling')).toBe(false);
+    expect(on(['analyze_image']).has('critical_image_handling')).toBe(true);
   });
 
   it('async guidance needs BOTH the toggle and an async-capable tool', () => {

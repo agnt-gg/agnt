@@ -126,9 +126,15 @@ const FIXTURE_TOLERANCE = 25;
 // rather than kept, which is where the real token saving landed (page context,
 // not this budget).
 //
+// 2026-09-24: the plain-definitions rewrite cut the resident prose to ~3,006
+// (lightest host) by deleting the stale image provider matrices, folding the
+// IMAGE_REF formatting block into the generation rule, and stating every rule
+// once without emphasis (53 CRITICAL/MUST/NEVER-class markers -> 0). The
+// ratchet fired as designed; the budget follows it down.
+//
 // RATCHET: if the resident prose shrinks again, the tightness test below goes
 // red on purpose — lower this number, do not raise the multiplier.
-const ALWAYS_RESIDENT_BUDGET = 5_000;
+const ALWAYS_RESIDENT_BUDGET = 3_600;
 
 describe('always-resident prose budget', () => {
   it.each(Object.keys(HOSTS))('stays under budget on %s', (host) => {

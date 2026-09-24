@@ -3,9 +3,6 @@ import {
   VIZ_ADVANCED_CHEATSHEET,
   CRITICAL_IMAGE_HANDLING,
   CRITICAL_IMAGE_GENERATION,
-  IMAGE_ANALYSIS_CAPABILITIES,
-  IMAGE_GENERATION_CAPABILITIES,
-  CRITICAL_IMAGE_REFERENCE_FORMATTING,
   MEMORY_RECALL_GUIDANCE,
   IMPORTANT_GUIDELINES,
   MCP_TOOL_USE_RULES,
@@ -155,27 +152,9 @@ export const RESIDENT_GATED_ELEMENTS = [
     text: CRITICAL_IMAGE_GENERATION,
     gate: (g) => g.has('generate_image'),
   },
-  {
-    id: 'image_analysis_capabilities',
-    label: 'Vision provider matrix',
-    tools: ['analyze_image'],
-    text: IMAGE_ANALYSIS_CAPABILITIES,
-    gate: (g) => g.has('analyze_image'),
-  },
-  {
-    id: 'image_generation_capabilities',
-    label: 'Image provider matrix',
-    tools: ['generate_image'],
-    text: IMAGE_GENERATION_CAPABILITIES,
-    gate: (g) => g.has('generate_image'),
-  },
-  {
-    id: 'critical_image_reference_formatting',
-    label: 'IMAGE_REF formatting',
-    tools: ['generate_image'],
-    text: CRITICAL_IMAGE_REFERENCE_FORMATTING,
-    gate: (g) => g.has('generate_image'),
-  },
+  // The provider/model matrices for analyze_image and generate_image were
+  // removed: they duplicated the tool schemas and had gone stale. The
+  // IMAGE_REF display rule lives in critical_image_generation above.
   {
     id: 'async_execution',
     label: 'Async & periodic execution',
