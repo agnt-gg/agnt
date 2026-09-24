@@ -60,6 +60,7 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 import { BaseAdapter } from './BaseAdapter.js';
+import { anthropicSupportsDeferredTools, renderAnthropicToolLoads, DEFERRED_MARK, TOOL_LOAD_FIELD } from '../deferredTools.js';
 import {
   findLastInjectableUserIndex,
   sanitizeAnthropicToolSchemas,
@@ -248,16 +249,45 @@ class AnthropicAdapter extends BaseAdapter {
     }
 
     return false;
-  }  _transformToolsToAnthropic(tools) {
+  }
+
+  /** 'anthropic' when this provider+model accepts defer_loading and tool_reference. See deferredTools.js. */
+  deferredToolStyle() {
+    return (this.provider === 'anthropic' || this.provider === 'claude-code') && anthropicSupportsDeferredTools(this.model)
+      ? 'anthropic'
+      : null;
+  }
+
+  _transformToolsToAnthropic(tools) {
     if (!tools || tools.length === 0) return [];
     // Repair any schema violations Anthropic's draft-2020-12 validator rejects
     // BEFORE mapping. One bad tool schema 400s the whole request otherwise.
     const safeTools = sanitizeAnthropicToolSchemas(tools);
+    // Marked by name, not by object: the sanitizer may return copies.
+    const deferred = this.deferredToolStyle()
+      ? new Set(tools.filter((t) => t?.[DEFERRED_MARK]).map((t) => t.function?.name))
+      : new Set();
     return safeTools.map((tool) => ({
       name: tool.function.name,
       description: tool.function.description,
       input_schema: tool.function.parameters,
+      ...(deferred.has(tool.function.name) ? { defer_loading: true } : {}),
     }));
+  }
+
+  /**
+   * The tool cache breakpoint goes on the LAST RESIDENT tool. A deferred tool
+   * may not carry one (400), and deferred definitions are outside the cached
+   * prefix anyway. With no deferred tools this is the last tool, as before.
+   */
+  _markToolCacheBreakpoint(anthropicTools) {
+    for (let i = anthropicTools.length - 1; i >= 0; i--) {
+      if (!anthropicTools[i].defer_loading) {
+        anthropicTools[i].cache_control = { type: 'ephemeral', ttl: '1h' };
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -266,7 +296,7 @@ class AnthropicAdapter extends BaseAdapter {
    * - role:"tool" messages → role:"user" with tool_result content blocks
    * - Merge consecutive same-role messages (Anthropic requires alternating)
    */
-  _normalizeHistoryMessages(messages) {
+  _normalizeHistoryMessages(messages, availableToolNames = null) {
     // Both AnthropicAdapter entry points (call + callStream) funnel through
     // here immediately before the request body is built, so this single hook
     // guards every outbound Anthropic payload. Running BEFORE the conversion
@@ -303,7 +333,12 @@ class AnthropicAdapter extends BaseAdapter {
         // Convert OpenAI-format tool result to Anthropic tool_result content block
         converted.push({
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content || '' }],
+          content: [{
+            type: 'tool_result',
+            tool_use_id: msg.tool_call_id,
+            content: msg.content || '',
+            ...(msg[TOOL_LOAD_FIELD] ? { [TOOL_LOAD_FIELD]: msg[TOOL_LOAD_FIELD] } : {}),
+          }],
         });
       } else {
         converted.push(msg);
@@ -345,7 +380,10 @@ class AnthropicAdapter extends BaseAdapter {
       }
     }
 
-    return BaseAdapter._foldTextAfterToolResults(merged);
+    // Recorded tool loads become tool_reference blocks when this request can
+    // expand them, and are stripped otherwise. Never reaches the wire as-is.
+    const rendered = renderAnthropicToolLoads(merged, this.deferredToolStyle() ? availableToolNames : null);
+    return BaseAdapter._foldTextAfterToolResults(rendered);
   }
 
   async call(messages, tools, context = {}) {
@@ -360,7 +398,10 @@ class AnthropicAdapter extends BaseAdapter {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
-        const conversationMessages = this._normalizeHistoryMessages(currentMessages.filter((m) => m.role !== 'system'));
+        const conversationMessages = this._normalizeHistoryMessages(
+          currentMessages.filter((m) => m.role !== 'system'),
+          new Set((tools || []).map((t) => t.function?.name).filter(Boolean)),
+        );
 
         // Build system parameter with cache_control for prompt caching.
         // Anthropic allows max 4 cache_control breakpoints total across
@@ -408,10 +449,7 @@ class AnthropicAdapter extends BaseAdapter {
         // Breakpoint on last tool — 1h because the tools array grows
         // monotonically within a conversation (additive-only in chatConfigs).
         const anthropicTools = this._transformToolsToAnthropic(tools);
-        if (anthropicTools.length > 0) {
-          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral', ttl: '1h' };
-          usedBreakpoints++;
-        }
+        if (this._markToolCacheBreakpoint(anthropicTools)) usedBreakpoints++;
 
         // Remaining breakpoints for rolling messages (max 4 total).
         // _applyRollingCacheBreakpoints handles the hybrid 1h-prefix + 5m-latest split.
@@ -838,7 +876,10 @@ Please carefully check the tool schema and ensure all parameters match the expec
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
 
         // Normalize OpenAI-format history messages (role:"tool", tool_calls) to Anthropic format
-        const normalizedMessages = this._normalizeHistoryMessages(currentMessages.filter((m) => m.role !== 'system'));
+        const normalizedMessages = this._normalizeHistoryMessages(
+          currentMessages.filter((m) => m.role !== 'system'),
+          new Set((tools || []).map((t) => t.function?.name).filter(Boolean)),
+        );
 
         // CRITICAL: Clean up any _inputJsonString fields from message history before sending to Anthropic
         // This can happen if messages are reused across retries or if deletion failed
@@ -945,10 +986,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         // Breakpoint on last tool — 1h because the tools array grows
         // monotonically within a conversation (additive-only in chatConfigs).
         const anthropicTools = this._transformToolsToAnthropic(tools);
-        if (anthropicTools.length > 0) {
-          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral', ttl: '1h' };
-          usedBreakpoints++;
-        }
+        if (this._markToolCacheBreakpoint(anthropicTools)) usedBreakpoints++;
 
         // Remaining breakpoints for rolling messages (max 4 total).
         // _applyRollingCacheBreakpoints handles the hybrid 1h-prefix + 5m-latest split.
@@ -1787,6 +1825,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
       type: 'tool_result',
       tool_use_id: result.tool_call_id,
       content: result.content,
+      // A discover_tools load, rendered per request by _normalizeHistoryMessages.
+      ...(result[TOOL_LOAD_FIELD] ? { [TOOL_LOAD_FIELD]: result[TOOL_LOAD_FIELD] } : {}),
       // Anthropic can also handle an error state
       // is_error: result.is_error || false
     }));

@@ -13,6 +13,7 @@ import axios from 'axios';
 import { manageContext } from '../../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from '../toolValidator.js';
 import { foldBlocksIntoLastToolResult, isImitableStatusTurn } from '../turnContinuity.js';
+import { isReferenceOnlyResult } from '../deferredTools.js';
 import * as ProviderRegistry from '../../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../../ai/CustomOpenAIProviderService.js';
 import {
@@ -81,6 +82,15 @@ class BaseAdapter {
    * would let the two copies drift, and the drift would be invisible: a
    * mis-placed breakpoint does not error, it silently bills full price.
    */
+  /**
+   * Which deferred-tool mechanism this transport can carry: 'anthropic',
+   * 'responses', or null for none. See deferredTools.js. Transports without
+   * one receive discovered tools in the tool array, as before.
+   */
+  deferredToolStyle() {
+    return null;
+  }
+
   _applyCacheMarker(msg, marker) {
     const content = msg.content;
 
@@ -427,6 +437,13 @@ class BaseAdapter {
       const lastResultIdx = msg.content.map((b) => b?.type).lastIndexOf('tool_result');
       // No tool results, or nothing trailing them: already correct.
       if (lastResultIdx === -1 || lastResultIdx === msg.content.length - 1) {
+        out.push(msg);
+        continue;
+      }
+      // A reference-only tool_result (a deferred-tool load) may not hold text:
+      // the API rejects references mixed with other content. Its trailing
+      // text is deliberate (load guidance, a steer) and valid where it is.
+      if (msg.content.some(isReferenceOnlyResult)) {
         out.push(msg);
         continue;
       }

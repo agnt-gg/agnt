@@ -27,6 +27,10 @@ import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } f
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { createCacheRoundTracker, buildCacheTelemetry } from './orchestrator/cacheRoundTracker.js';
+import {
+  chooseToolLoadingMode, buildDeferredCatalog, renderToolsForTransport, stripToolLoads,
+  attachToolLoad, DEFERRED_MARK, TOOL_LOAD_FIELD,
+} from './orchestrator/deferredTools.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
 import { promptCacheTtlMs, promptCacheBestEffort } from '../utils/promptCacheTtl.js';
 import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
@@ -1416,6 +1420,11 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     if (Array.isArray(priorContext._toolOrder)) {
       conversationContext._toolOrder = [...priorContext._toolOrder];
     }
+    // Deferred vs legacy tool loading is frozen per conversation: switching
+    // changes the tool array, which rewrites the whole cached prefix.
+    if (priorContext._toolLoadingMode) {
+      conversationContext._toolLoadingMode = priorContext._toolLoadingMode;
+    }
     // Prior turn's prompt/tool fingerprints so the manifest can report whether
     // the cached prefix actually survived into this turn.
     if (priorContext._manifestFingerprints) {
@@ -1580,6 +1589,14 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // Store image data in context for vision models
     if (imageData.length > 0) {
       conversationContext.imageData = imageData;
+    }
+
+    // Choose the tool-loading mode once, on a conversation's first turn, from
+    // what the primary transport supports. A conversation that already has
+    // turns keeps loading tools the way its cached prefix was built.
+    if (!conversationContext._toolLoadingMode) {
+      const hasPriorTurns = messages.some((m) => m?.role === 'assistant');
+      conversationContext._toolLoadingMode = hasPriorTurns ? 'legacy' : chooseToolLoadingMode(adapter);
     }
 
     // Get tool schemas for this chat type
@@ -1856,6 +1873,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // path never got it — which is why goal tasks failed on Claude Code while
     // this one worked.
     finalToolSchemas = stripProviderIncompatibleTools(finalToolSchemas, normalizedProvider);
+    if (Array.isArray(conversationContext._deferredToolCatalog)) {
+      conversationContext._deferredToolCatalog = stripProviderIncompatibleTools(conversationContext._deferredToolCatalog, normalizedProvider);
+    }
 
     // Cap the tool surface to what this model can actually afford, leaving a
     // guaranteed reserve for the conversation itself.
@@ -1877,6 +1897,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         `sending 0/${finalToolSchemas.length} tools.`
       );
       finalToolSchemas = [];
+      conversationContext._deferredToolCatalog = null;
     }
     {
       const { availableTokens } = getContextBudget(model, normalizedProvider);
@@ -1904,6 +1925,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
           `Sending ${capResult.schemas.length}/${finalToolSchemas.length} tools (${capResult.toolTokens} tokens); ` +
           `${capResult.hiddenCount} remain reachable via discover_tools.`
         );
+        // Deferred conversations keep what the cap dropped reachable as
+        // deferred definitions rather than losing it.
+        if (Array.isArray(conversationContext._deferredToolCatalog)) {
+          conversationContext._deferredToolCatalog = buildDeferredCatalog(
+            [...conversationContext._deferredToolCatalog, ...finalToolSchemas],
+            new Set(capResult.schemas.map((s) => s.function?.name)),
+          );
+        }
         finalToolSchemas = capResult.schemas;
         conversationContext._pinnedToolNames = capResult.pinnedNames;
       }
@@ -2987,12 +3016,25 @@ IMPORTANT: The image data is already available in the system context. You don't 
           conversationContext.openai = client;
         }
       }
+      // Deferred conversations: render the tool surface for THIS tier's
+      // transport. The resident array never changes; loads live in history.
+      // A tier without a deferred mechanism gets resident + loaded tools and a
+      // history with the private load records removed. See deferredTools.js.
+      let wireTools = tools;
+      let wireMessages = messages;
+      const deferredCatalog = conversationContext._deferredToolCatalog;
+      if (Array.isArray(deferredCatalog)) {
+        const style = adapter.deferredToolStyle?.() || null;
+        wireTools = renderToolsForTransport(style, { resident: tools, catalog: deferredCatalog, messages });
+        if (!style) wireMessages = stripToolLoads(messages);
+      }
       // Stamped here, after failover re-pointing, so the fingerprint names the
-      // provider/model that will actually receive this request.
-      cacheRounds.stamp({ provider: normalizedProvider, model, messages, tools });
+      // provider/model that will actually receive this request. Deferred
+      // definitions are left out: they are not part of the cached prefix.
+      cacheRounds.stamp({ provider: normalizedProvider, model, messages: wireMessages, tools: wireTools.filter((t) => !t?.[DEFERRED_MARK]) });
       return adapter.callStream(
-        messages,
-        tools,
+        wireMessages,
+        wireTools,
         onChunk,
         conversationContext // Pass context for vision image handling
       );
@@ -3329,7 +3371,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
       await settleUnclaimedEagerRuns();
       asyncQueuedFingerprints.clear();
       syncStartedFingerprints.clear();
-      const formattedToolResponses = adapter.formatToolResults(toolResponses);
+      // A discover_tools load in a deferred conversation is recorded on its
+      // result, once; every later request renders it from that record.
+      const deferredCatalog = conversationContext._deferredToolCatalog;
+      const ledgerToolResponses = Array.isArray(deferredCatalog)
+        ? toolResponses.map((result) => attachToolLoad(result, deferredCatalog))
+        : toolResponses;
+      for (const result of ledgerToolResponses) {
+        for (const name of result?.[TOOL_LOAD_FIELD]?.names || []) {
+          (conversationContext._loadedToolNames ||= new Set()).add(name);
+        }
+      }
+      const formattedToolResponses = adapter.formatToolResults(ledgerToolResponses);
       messages.push(...formattedToolResponses);
 
       // Drain any user steers that arrived during this round and append them
@@ -4089,9 +4142,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     // Store conversation context for autonomous messages
     // This allows async tools to trigger AI responses later
+    conversationContext._cacheRoundState = cacheRounds.carryState();
     conversationManager.store(conversationId, {
       ...conversationContext,
-      _cacheRoundState: cacheRounds.carryState(),
       messages,
       authToken,
       agentExecutionId, // Link autonomous messages to the execution

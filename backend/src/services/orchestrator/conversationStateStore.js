@@ -65,6 +65,11 @@ export const PERSISTED_STATE_KEYS = [
   { key: '_loadedToolNames', kind: 'set' },
   { key: '_pinnedToolNames', kind: 'value' },
   { key: '_toolOrder', kind: 'value' },
+  // Deferred vs legacy tool loading, frozen on turn 1 (see deferredTools.js).
+  { key: '_toolLoadingMode', kind: 'value' },
+  // Last request's content-free fingerprint, so the first request after a
+  // restart is still attributed against it (see cacheRoundTracker.js).
+  { key: '_cacheRoundState', kind: 'value' },
   // Compression watermark. Losing this re-cuts the history at a different
   // point, which moves the message prefix as well as the system block.
   { key: '_evictedUnits', kind: 'value' },

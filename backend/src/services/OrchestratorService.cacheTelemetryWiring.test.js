@@ -25,7 +25,7 @@ const body = (start, end) => {
 describe('OrchestratorService cache-telemetry wiring', () => {
   it('stamps every request inside runTierStream, after failover re-pointing and before the send', () => {
     const tier = body('const runTierStream = async', 'const onProviderFallback');
-    const stampAt = tier.indexOf('cacheRounds.stamp({ provider: normalizedProvider, model, messages, tools })');
+    const stampAt = tier.indexOf('cacheRounds.stamp({ provider: normalizedProvider, model, messages: wireMessages');
     expect(stampAt).toBeGreaterThan(tier.indexOf('if (!tier.primary)'));
     expect(stampAt).toBeLessThan(tier.indexOf('adapter.callStream('));
   });
@@ -46,7 +46,7 @@ describe('OrchestratorService cache-telemetry wiring', () => {
   });
 
   it('carries the last request into the next turn and seeds the tracker from it', () => {
-    expect(SRC).toContain('_cacheRoundState: cacheRounds.carryState(),');
+    expect(SRC).toContain('conversationContext._cacheRoundState = cacheRounds.carryState();');
     expect(SRC).toContain('createCacheRoundTracker({ carried: priorContext?._cacheRoundState ?? null })');
   });
 });

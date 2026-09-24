@@ -60,6 +60,7 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 import { BaseAdapter } from './BaseAdapter.js';
+import { responsesSupportsDeferredTools, TOOL_LOAD_FIELD } from '../deferredTools.js';
 import {
   describeCodexError,
   buildCodexErrorGuidance,
@@ -169,6 +170,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     };
   }
 
+  /** 'responses' when this model accepts `additional_tools` input items. See deferredTools.js. */
+  deferredToolStyle() {
+    return responsesSupportsDeferredTools(this.model) ? 'responses' : null;
+  }
+
+  /** Loaded tools, shaped exactly like this transport's top-level tools. */
+  _loadedToolDefinitions(schemas) {
+    return this._transformToolsToResponses(schemas) || [];
+  }
+
   _transformMessagesToInput(messages, imageData = null, computerImages = null) {
     // Extract system message as instructions
     const systemMessage = messages.find((m) => m.role === 'system');
@@ -180,11 +191,19 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     const inputItems = conversationMessages.map((msg) => {
       // Handle tool results
       if (msg.role === 'tool') {
-        return {
+        const output = {
           type: 'function_call_output',
           call_id: msg.tool_call_id,
           output: msg.content,
         };
+        // A discover_tools load: the loaded definitions follow the output as an
+        // additional_tools item, at the same point on every request. The tool
+        // array never changes, so the cached prefix survives the discovery.
+        const load = msg[TOOL_LOAD_FIELD];
+        if (load?.schemas?.length && this.deferredToolStyle()) {
+          return [output, { type: 'additional_tools', role: 'developer', tools: this._loadedToolDefinitions(load.schemas) }];
+        }
+        return output;
       }
 
       // Responses API stateless mode needs prior output items replayed
@@ -970,11 +989,23 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       tool_call_id: result.tool_call_id,
       content: result.content,
       name: result.name,
+      ...(result[TOOL_LOAD_FIELD] ? { [TOOL_LOAD_FIELD]: result[TOOL_LOAD_FIELD] } : {}),
     }));
   }
 }
 
 class CodexResponsesAdapter extends OpenAIResponsesAdapter {
+  _codexToolShape(tools) {
+    return (tools || []).map((tool) => ({
+      ...tool,
+      strict: null, // Codex uses null instead of false
+    }));
+  }
+
+  _loadedToolDefinitions(schemas) {
+    return this._codexToolShape(this._transformToolsToResponses(schemas));
+  }
+
   constructor(client, model, options = {}) {
     super(client, model, options);
     // The ChatGPT Codex backend rejects api.openai.com's public retention
@@ -1347,10 +1378,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     // Add tools if present
     if (responsesTools && responsesTools.length > 0) {
-      params.tools = responsesTools.map((tool) => ({
-        ...tool,
-        strict: null, // Codex uses null instead of false
-      }));
+      params.tools = this._codexToolShape(responsesTools);
       params.tool_choice = 'auto';
       params.parallel_tool_calls = true;
     }

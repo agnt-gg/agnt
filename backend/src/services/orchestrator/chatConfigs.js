@@ -13,6 +13,7 @@ import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
+import { buildDeferredCatalog } from './deferredTools.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
@@ -680,6 +681,8 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
 }
 
 async function getUnifiedToolSchemas(context) {
+  // Set only on the auto path below; every other surface loads tools as before.
+  context._deferredToolCatalog = null;
   const asyncEnabled = await loadAsyncToolsEnabled(context);
   const allSchemas = await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null });
 
@@ -766,7 +769,11 @@ async function getUnifiedToolSchemas(context) {
   }
 
   const latestUserMessage = context.latestUserMessage || '';
-  const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
+  // Deferred conversations: a keyword match no longer loads tools into the
+  // array (that rewrote the cached prefix); the model discovers them instead,
+  // and discovery is free. Page-forced groups stay, as before.
+  const deferredMode = context._toolLoadingMode === 'deferred';
+  const { matchedGroups } = deferredMode ? { matchedGroups: new Set() } : selectTools(allSchemas, latestUserMessage);
   const forcedGroups = getForcedToolGroups(context);
   const previousGroups = context._loadedToolGroups || new Set();
   // EVERY STATIC GROUP IS RESIDENT FROM TURN 1.
@@ -825,6 +832,16 @@ async function getUnifiedToolSchemas(context) {
 
   context._loadedToolGroups = allGroups;
   console.log(`[UnifiedChat] Tool groups: [${[...allGroups].join(', ')}] -> ${filteredSchemas.length} tools`);
+
+  // Everything the channel permits that is not resident, sent as deferred
+  // definitions (Anthropic) or loaded into history on discovery (Responses).
+  // Only this path defers: whitelist and specialty surfaces are already small.
+  context._deferredToolCatalog = deferredMode
+    ? buildDeferredCatalog(
+      namedSchemas.filter((s) => !ceiling || ceiling.has(s.function.name)),
+      new Set(filteredSchemas.map((s) => s.function?.name)),
+    )
+    : null;
 
   const loadedNames = context._loadedToolNames || new Set();
   const prov = {};

@@ -1732,6 +1732,12 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           });
         }
 
+        // Deferred conversations never change the tool array. The load is
+        // reported back (TOOL_REFS_KEY) and the orchestrator records it in the
+        // history, where each transport renders it. See deferredTools.js.
+        const deferredCatalog = Array.isArray(context?._deferredToolCatalog) ? context._deferredToolCatalog : null;
+        if (deferredCatalog) context._requestedToolCategories = new Set();
+
         // Signal to the tool loop that new categories should be loaded
         if (!context._requestedToolCategories) {
           context._requestedToolCategories = new Set();
@@ -1794,6 +1800,27 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
 
         const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);
+
+        if (deferredCatalog) {
+          const { TOOL_REFS_KEY } = await import('./deferredTools.js');
+          const deferrable = new Set(deferredCatalog.map((s) => s.function?.name));
+          const refs = [...new Set(admitted)].filter((n) => deferrable.has(n));
+          const requested = [...context._requestedToolCategories];
+          // Nothing is pending: the tools are usable in the very next response.
+          context._requestedToolCategories.clear();
+          return JSON.stringify({
+            success: true,
+            ...(Object.keys(guidanceTexts).length ? { guidance: guidanceTexts } : {}),
+            message: refs.length
+              ? `Loaded ${refs.length} tools from categories: ${requested.join(', ')}. They are available now.`
+              : `Every tool in categories: ${requested.join(', ')} is already available.`,
+            tool_count: refs.length,
+            loaded_tools: refs.slice(0, MAX_LISTED),
+            ...(refs.length > MAX_LISTED ? { truncated: true } : {}),
+            guidance_loaded: [...guidanceSections],
+            [TOOL_REFS_KEY]: refs,
+          });
+        }
 
         return JSON.stringify({
           success: true,

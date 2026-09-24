@@ -263,3 +263,46 @@ describe('append-only discovery ordering (prompt-cache prefix stability)', () =>
     expect(B).toContain('generate_image');
   });
 });
+
+describe('deferred tool loading (resident array never changes)', () => {
+  const MCP_MSG = 'use the mcp server to open a page';
+
+  it('a keyword match that grows a legacy surface leaves a deferred one byte-identical', async () => {
+    const legacy = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
+    const deferred = { latestUserMessage: NEUTRAL_MSG, enabledTools: null, _toolLoadingMode: 'deferred' };
+    const A = await getToolSchemas(deferred);
+    expect(namesOf(A)).toEqual(namesOf(await getToolSchemas(legacy)));
+
+    legacy.latestUserMessage = MCP_MSG;
+    deferred.latestUserMessage = MCP_MSG;
+    expect(namesOf(await getToolSchemas(legacy))).toContain('mcp__srv__tool_0');
+    const B = await getToolSchemas(deferred);
+    expect(JSON.stringify(B)).toBe(JSON.stringify(A));
+  });
+
+  it('the catalog is every permitted non-resident tool, name-sorted, and nothing resident', async () => {
+    const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: null, _toolLoadingMode: 'deferred' };
+    const resident = new Set(namesOf(await getToolSchemas(ctx)));
+    const catalog = namesOf(ctx._deferredToolCatalog);
+    expect(catalog).toEqual([...catalog].sort());
+    expect(catalog.some((n) => resident.has(n))).toBe(false);
+    expect(new Set([...resident, ...catalog])).toEqual(new Set(namesOf(registry)));
+  });
+
+  it('the catalog never exceeds the channel ceiling', async () => {
+    const permitted = namesOf(registry).filter((n) => !n.startsWith('plugin_tool_1'));
+    const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: new Set(permitted), _toolLoadingMode: 'deferred' };
+    await getToolSchemas(ctx);
+    expect(namesOf(ctx._deferredToolCatalog).some((n) => n.startsWith('plugin_tool_1'))).toBe(false);
+    expect(namesOf(ctx._deferredToolCatalog)).toContain('plugin_tool_2');
+  });
+
+  it('legacy conversations and non-auto surfaces carry no catalog', async () => {
+    const legacy = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
+    await getToolSchemas(legacy);
+    expect(legacy._deferredToolCatalog).toBeNull();
+    const sidebar = { latestUserMessage: NEUTRAL_MSG, widgetId: 'w1', enabledTools: null, _toolLoadingMode: 'deferred' };
+    await getToolSchemas(sidebar);
+    expect(sidebar._deferredToolCatalog).toBeNull();
+  });
+});
