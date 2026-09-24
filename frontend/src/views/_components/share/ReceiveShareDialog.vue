@@ -19,7 +19,8 @@
         <div v-else class="body">
           <p v-if="loading" role="status">Opening the link…</p>
           <template v-else-if="preview">
-            <p><span v-if="preview.author">{{ preview.author }} shared this. </span>Adding it gives you your own copy; nothing is linked back to whoever shared it.</p>
+            <p><span v-if="preview.author">{{ preview.author }} shared this. </span>Adding it gives you your own copy to change and run; the original stays with whoever shared it.</p>
+            <p v-if="preview.ref" class="muted"><i class="fas fa-gift" aria-hidden="true"></i> New to AGNT? Adding this credits {{ preview.author || 'the person who shared it' }} as your referrer, and your first month of AGNT Cloud is free.</p>
             <ul class="rows" aria-label="What will be added">
               <li v-for="(item, index) in preview.items" :key="index">
                 <div class="who"><strong>{{ item.name }}</strong><span><i :class="kindIcon(item.kind)" aria-hidden="true"></i> {{ kindLabel(item.kind) }}</span></div>
@@ -51,10 +52,13 @@ import { providerName } from '@/utils/teamClient.js';
 import { shareState, closeReceive } from '@/composables/useShare.js';
 import { kindIcon, kindLabel, kindRoute } from '@/services/share/shareKinds.js';
 import { previewReceived, receive, inTeamSpace } from '@/services/share/shareClient.js';
+import { useStore } from 'vuex';
+import { claimReferral } from '@/services/referral/referralProgram.js';
 import '@/views/_components/team/team.css';
 
 const route = useRoute();
 const router = useRouter();
+const store = useStore();
 const link = ref(null), preview = ref(null), done = ref(null), loading = ref(false), busy = ref(false), error = ref('');
 const destination = computed(() => (inTeamSpace() ? 'this team' : 'Personal'));
 const primaryKind = computed(() => {
@@ -75,6 +79,13 @@ async function add() {
   busy.value = true; error.value = '';
   try {
     done.value = await receive(link.value);
+    // The code comes from the share service's own record of who made the link,
+    // never from the URL. The API credits it only if this account has no
+    // referrer yet, so for most people this changes nothing.
+    if (preview.value?.ref) {
+      claimReferral({ code: preview.value.ref, email: store.state.userAuth?.userEmail, token: store.state.userAuth?.token })
+        .then(result => { if (result.claimed) store.dispatch('userStats/fetchReferralMilestones').catch(() => {}); });
+    }
     // A received workspace lives on the server until the Workspaces page next syncs; pull it now.
     if (done.value.installed?.some(item => item.kind === 'workspace')) {
       const { useWorkspaces } = await import('@/views/Terminal/CenterPanel/screens/Workspace/useWorkspaces.js');

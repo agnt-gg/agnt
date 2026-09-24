@@ -14,6 +14,8 @@ import { nodeProvider as defaultNodeProvider } from './nativeStore.js';
 
 export const SHARE_ORIGIN = 'https://agnt.gg';
 const SHARE_ID = /^[A-Za-z0-9_-]{6,64}$/;
+/** The sharer's referral code, as the share service recorded it. Anything else is dropped. */
+const REFERRAL_CODE = /^[A-Za-z0-9_-]{1,64}$/;
 const refuse = (status, message, extra = {}) => { throw Object.assign(new Error(message), { status, ...extra }); };
 
 /** The share service origin. Overridable for local development only, and never to anything but https or loopback. */
@@ -122,7 +124,8 @@ export async function publishConversation({ output, ownerId, authorization, clie
 export async function previewLink({ link, client, nodeProvider = defaultNodeProvider }) {
   const id = shareIdFrom(link, client.origin);
   const shared = await client.fetch(id);
-  return { id, title: shared.title || 'Shared items', author: shared.author || null, createdAt: shared.createdAt || null, ...previewBundle(shared.bundle, { nodeProvider }) };
+  const ref = REFERRAL_CODE.test(shared.ref || '') ? shared.ref : null;
+  return { id, title: shared.title || 'Shared items', author: shared.author || null, ref, createdAt: shared.createdAt || null, ...previewBundle(shared.bundle, { nodeProvider }) };
 }
 
 /** Fetch a shared bundle and install a fresh, re-sanitized copy for `ownerId`. */

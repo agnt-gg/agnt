@@ -574,6 +574,7 @@
 import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
+import { claimReferral } from '@/services/referral/referralProgram.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
@@ -1704,6 +1705,20 @@ export default {
       (assetId) => {
         if (assetId) openByAssetId(String(assetId));
       }
+    );
+
+    // agnt://marketplace?item=...&ref=<code>: a publisher's link. The API
+    // credits the code only if this account has no referrer yet, and
+    // electron/deepLink.js has already refused any ref that is not a code.
+    watch(
+      () => route.query.ref,
+      (code) => {
+        if (typeof code !== 'string' || !code) return;
+        claimReferral({ code, email: store.state.userAuth?.userEmail, token: store.state.userAuth?.token }).then((result) => {
+          if (result.claimed) addLine('[Marketplace] Invite applied: your first month of AGNT Cloud is free', 'success');
+        });
+      },
+      { immediate: true }
     );
 
     const initializeScreen = () => {

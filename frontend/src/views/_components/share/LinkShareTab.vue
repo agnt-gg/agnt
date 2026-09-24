@@ -11,6 +11,11 @@
       </div>
       <p v-if="link.stale" class="warn"><i class="fas fa-history" aria-hidden="true"></i> Changed since this link was made. People with it get the earlier version.</p>
       <p v-if="created?.removed" class="warn"><i class="fas fa-shield-alt" aria-hidden="true"></i> {{ created.removed }} value{{ created.removed === 1 ? ' that looked like a credential or a file on this computer was' : 's that looked like credentials or files on this computer were' }} left out.</p>
+      <p class="muted offer"><i class="fas fa-gift" aria-hidden="true"></i> Anyone new who joins through this link gets their first month of AGNT Cloud free, and it counts toward your referral rewards.</p>
+      <div class="row">
+        <a class="btn" :href="intents.x" target="_blank" rel="noopener noreferrer" @click.prevent="openExternal(intents.x)"><i class="fas fa-share-alt" aria-hidden="true"></i> Post on X</a>
+        <a class="btn" :href="intents.linkedin" target="_blank" rel="noopener noreferrer" @click.prevent="openExternal(intents.linkedin)"><i class="fas fa-share-alt" aria-hidden="true"></i> LinkedIn</a>
+      </div>
       <div class="row">
         <a class="btn" :href="link.url" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt" aria-hidden="true"></i> Open page</a>
         <button v-if="link.stale" :disabled="busy" @click="create">Make a new link</button>
@@ -48,6 +53,7 @@ import { computed, onMounted, ref } from 'vue';
 import { providerName } from '@/utils/teamClient.js';
 import { kindLabel, isBundleKind } from '@/services/share/shareKinds.js';
 import { createLink, listLinks, previewItem, revokeLink, inTeamSpace } from '@/services/share/shareClient.js';
+import { shareIntents } from '@/services/referral/referralProgram.js';
 import '@/views/_components/team/team.css';
 
 const props = defineProps({
@@ -65,6 +71,13 @@ const loading = ref(true), previewing = ref(false), busy = ref(false), error = r
 const link = ref(null), created = ref(null), preview = ref(null), includeDependencies = ref(true);
 const needsText = needs => needs.map(n => providerName(n.provider) + (n.reason === 'model' ? ' models' : '')).join(', ');
 const target = () => ({ kind: props.kind, id: String(props.id), includeDependencies: includeDependencies.value });
+const intents = computed(() => shareIntents(link.value?.url || '', conversation.value
+  ? `A conversation I had with AGNT: ${props.name}`
+  : `I built "${props.name}" with AGNT. Add a copy to yours:`));
+function openExternal(url) {
+  if (window.electron?.openExternalUrl) window.electron.openExternalUrl(url);
+  else window.open(url, '_blank', 'noopener');
+}
 
 async function loadPreview() {
   previewing.value = true; error.value = '';

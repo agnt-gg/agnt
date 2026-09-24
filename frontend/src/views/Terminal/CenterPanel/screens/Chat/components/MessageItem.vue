@@ -87,6 +87,7 @@
                 <!-- Annie asked to connect an app: the button, right here, whether
                      or not the row is expanded. See connectCards.js. -->
                 <ConnectCard v-if="connectTarget(tc.toolCall)" :provider="connectTarget(tc.toolCall)" />
+                <ShareCard v-if="shareTarget(tc.toolCall)" :target="shareTarget(tc.toolCall)" />
 
                 <div v-if="isExpanded(tc.index)" class="tool-call-content">
                   <!-- tool_pending draws the card before the arguments exist;
@@ -422,6 +423,7 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import { connectTarget } from './connectCards.js';
+import { shareTarget } from './shareCards.js';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { compactArtifactText } from '@/utils/chatArtifacts.js';
 import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
@@ -429,6 +431,7 @@ import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 // client, and this one pulls the canvas stream view in behind it.
 const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { name: 'BrowserLiveCard' });
 const ConnectCard = lazyComponent(() => import('./ConnectCard.vue'), { name: 'ConnectCard' });
+const ShareCard = lazyComponent(() => import('./ShareCard.vue'), { name: 'ShareCard' });
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
@@ -583,6 +586,7 @@ export default {
     ArtifactCards,
     BrowserLiveCard,
     ConnectCard,
+    ShareCard,
   },
   directives: {
     'morph-html': vMorphHtml,
@@ -3099,6 +3103,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isAsyncToolRunning,
       stopAsyncTool,
       connectTarget,
+      shareTarget,
       toggleToolCall,
       assistantAvatar,
       emojiAvatar,

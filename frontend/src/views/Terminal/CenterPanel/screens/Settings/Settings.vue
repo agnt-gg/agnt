@@ -141,7 +141,7 @@
         <div v-else-if="activeSection === 'referrals'" class="settings-content" data-section="referrals">
           <div class="content-header">
             <h2 class="content-title">Referral Program</h2>
-            <p class="content-subtitle">Earn 30% commission when your referrals subscribe to paid plans</p>
+            <p class="content-subtitle">Give a month, get a month. Partners earn 30% for each customer's first 12 months.</p>
           </div>
           <div class="settings-grid">
             <div class="settings-section full-width">

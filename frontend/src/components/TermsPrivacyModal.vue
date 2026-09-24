@@ -185,15 +185,18 @@
                   from your use of the software or actions of your agents.
                 </p>
 
-                <h4>5. PARTNER BOUNTY PROGRAM</h4>
-                <p><strong>Referral Commission:</strong> Earn 30% commission on approved sales via your unique Node Key.</p>
+                <h4>5. REFERRAL AND PARTNER PROGRAM</h4>
+                <p><strong>Invited customers:</strong> Someone who joins through your invite and has never had an AGNT Cloud subscription gets their first month of Personal Cloud free (card required; it renews unless cancelled).</p>
+                <p><strong>Referral credit:</strong> When a friend you referred pays their first invoice, you receive one month of Personal Cloud as account credit, up to 12 in any 12 months. Credit has no cash value.</p>
+                <p><strong>Partner commission:</strong> With Stripe Connect set up before a friend first pays, you earn 30% of each of their subscription payments for 12 months from that first payment, instead of the credit.</p>
                 <p><strong>Payout Terms:</strong></p>
                 <ul>
-                  <li>Commissions paid via Stripe Connect</li>
-                  <li>7-Day Security Hold on all payouts</li>
-                  <li>Clawbacks apply for chargebacks or fraud</li>
-                  <li>Self-referrals prohibited and will result in account termination</li>
+                  <li>Commissions paid via Stripe Connect, with a 7-day hold</li>
+                  <li>A refunded or disputed payment reverses the reward it earned</li>
+                  <li>Cancelling a subscription keeps rewards already earned</li>
+                  <li>Self-referrals are prohibited and may result in account termination</li>
                 </ul>
+                <p>Full terms: agnt.gg/terms#referrals</p>
 
                 <h4>6. REFUND POLICY</h4>
                 <p><strong>ALL SALES ARE FINAL.</strong></p>

@@ -164,15 +164,16 @@
             <!-- Referral Bonus (conditional) -->
             <div v-if="currentStepId === 'referral'" class="step referral-step">
               <div class="celebration-icon">🎉</div>
-              <h2>You've Earned a Bonus!</h2>
+              <h2>Your first cloud month is free</h2>
+              <p class="subtitle" v-if="referrerName">
+                <strong>{{ referrerName }}</strong> invited you, so your first month of AGNT Cloud is on us.
+              </p>
+              <p class="subtitle" v-else>You joined through an invite, so your first month of AGNT Cloud is on us.</p>
               <div class="bonus-display">
                 <div class="bonus-amount">+{{ referralBalance }} pts</div>
                 <p class="bonus-label">Referral Score</p>
               </div>
-              <p class="subtitle" v-if="referrerName">
-                Thanks to <strong>{{ referrerName }}</strong> for inviting you!
-              </p>
-              <p class="description">Invite others to AGNT and earn even more points. Your referral score boosts your $AGNT Network Score by 20x!</p>
+              <p class="description">Start Personal Cloud any time and the first month is free. Invite your own friends and each one who becomes a paying customer earns you a free month too.</p>
             </div>
 
             <!-- Final Step: Ready to Go -->

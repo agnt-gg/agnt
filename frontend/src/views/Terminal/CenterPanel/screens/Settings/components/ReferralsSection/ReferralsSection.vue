@@ -10,7 +10,7 @@
           </div>
           <div>
             <h3 class="card-title">Referral Program</h3>
-            <p class="card-subtitle">Earn 30% commission when your referrals subscribe to paid plans</p>
+            <p class="card-subtitle">Give a month, get a month. Partners earn 30% for a customer's first 12 months.</p>
           </div>
         </div>
         <div class="header-right">
@@ -31,9 +31,16 @@
             {{ linkCopied ? 'Copied!' : 'Copy' }}
           </button>
         </div>
-        <p class="help-text">Share this link with others to grow your referral network</p>
+        <p class="help-text">Anyone who joins through your link gets their first month of AGNT Cloud free. Things you share from the app carry your link too.</p>
+        <div class="share-row" v-if="intents">
+          <a :href="intents.x" target="_blank" rel="noopener" class="share-chip" @click.prevent="openExternal(intents.x)"><i class="fas fa-share-alt" aria-hidden="true"></i> Post on X</a>
+          <a :href="intents.linkedin" target="_blank" rel="noopener" class="share-chip" @click.prevent="openExternal(intents.linkedin)"><i class="fas fa-share-alt" aria-hidden="true"></i> LinkedIn</a>
+          <a :href="intents.email" class="share-chip" @click.prevent="openExternal(intents.email)"><i class="fas fa-envelope" aria-hidden="true"></i> Email</a>
+        </div>
       </div>
     </div>
+
+    <ReferralMilestones />
 
     <!-- Stats Grid -->
     <div class="stats-grid">
@@ -80,8 +87,8 @@
             <i class="fas fa-dollar-sign"></i>
           </div>
           <div>
-            <h3 class="card-title">Referral Commissions</h3>
-            <p class="card-subtitle">Earn 30% commission when your referrals subscribe to paid plans</p>
+            <h3 class="card-title">Partner Commissions</h3>
+            <p class="card-subtitle">With Stripe connected, earn 30% of every payment for each customer's first 12 months</p>
           </div>
         </div>
         <div class="header-right" v-if="commissionSummary">
@@ -198,9 +205,9 @@
         <div class="notice-content">
           <h4 class="notice-title">Fraud Protection Active</h4>
           <p class="notice-text">
-            <strong>Instant Payouts with Safety:</strong> Commissions are transferred to your Stripe account immediately, but Stripe holds them for
-            <strong>7 days</strong> before allowing withdrawal. If a subscription is cancelled within <strong>90 days</strong>, commission transfers
-            will be reversed.
+            <strong>Paid as they pay:</strong> each commission is transferred to your Stripe account when the customer's payment succeeds, and Stripe
+            holds it for <strong>7 days</strong> before payout. If that payment is refunded or disputed, its commission is reversed. Cancelling keeps
+            what was already paid.
           </p>
           <div class="notice-details">
             <div class="notice-detail-item">
@@ -213,7 +220,7 @@
             </div>
             <div class="notice-detail-item">
               <i class="fas fa-undo"></i>
-              <span><strong>90-Day Reversal:</strong> Will be reversed if subscription cancelled (even after withdrawal)</span>
+              <span><strong>Refunds and disputes:</strong> reverse only the commission on that payment</span>
             </div>
           </div>
         </div>
@@ -224,7 +231,8 @@
         <div class="empty-icon">💰</div>
         <h4 class="empty-title">No Commissions Yet</h4>
         <p class="empty-text">
-          You'll earn a <strong>30% commission</strong> when someone you refer subscribes to a paid plan. Share your referral link to start earning!
+          Connect Stripe to become a partner and earn <strong>30% of every payment</strong> for each customer's first 12 months. Without Stripe, each
+          paying friend earns you a free month instead.
         </p>
       </div>
 
@@ -517,11 +525,14 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import ReferralMilestones from './ReferralMilestones.vue';
+import { inviteLink, shareIntents, FRIEND_OFFER, REFERRAL_CODE } from '@/services/referral/referralProgram.js';
 
 export default {
   name: 'ReferralsSection',
   components: {
     SimpleModal,
+    ReferralMilestones,
   },
   setup() {
     const store = useStore();
@@ -558,10 +569,19 @@ export default {
     // Generate referral link
     const referralLink = computed(() => {
       if (!userReferralCode.value || userReferralCode.value === 'Loading...') {
-        return 'https://agnt.gg?ref=...';
+        return 'https://agnt.gg/invite/...';
       }
-      return `https://agnt.gg?ref=${encodeURIComponent(userReferralCode.value)}`;
+      return inviteLink(userReferralCode.value);
     });
+    const intents = computed(() =>
+      REFERRAL_CODE.test(userReferralCode.value || '') && userReferralCode.value !== 'Loading...'
+        ? shareIntents(referralLink.value, `I build with AGNT, the agent operating system. ${FRIEND_OFFER}`)
+        : null
+    );
+    const openExternal = (url) => {
+      if (window.electron?.openExternalUrl) window.electron.openExternalUrl(url);
+      else window.open(url, '_blank', 'noopener');
+    };
 
     // Get referral data from store
     const referralBalance = computed(() => store.state.userStats.referralBalance || 0);
@@ -1122,6 +1142,8 @@ export default {
       userReferralData,
       userReferralCode,
       referralLink,
+      intents,
+      openExternal,
       referralBalance,
       referralTree,
       referralStats,
@@ -1302,6 +1324,31 @@ export default {
 
 .copy-button.copied {
   background: var(--color-primary);
+}
+
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.share-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .help-text {

@@ -206,6 +206,7 @@ export default {
     roiPercentage: 0,
     missedTokensYesterday: 0,
     // Referral data
+    referralMilestones: null, // /referrals/milestones: paid friends, credits, milestones, partner
     referralBalance: 0, // Total score
     referralBreakdown: {
       personalBalance: 0, // Direct earnings
@@ -408,6 +409,9 @@ export default {
     },
     SET_REFERRAL_TREE_LOADING(state, isLoading) {
       state.referralTree.isLoading = isLoading;
+    },
+    SET_REFERRAL_MILESTONES(state, milestones) {
+      state.referralMilestones = milestones;
     },
     SET_REFERRAL_BALANCE(state, balance) {
       state.referralBalance = balance;
@@ -1073,6 +1077,24 @@ export default {
       } catch (error) {
         console.error('Error purchasing boost:', error);
         return false;
+      }
+    },
+
+    /** Paid friends, credits, milestones and partner status. Null on failure; the last good value is kept. */
+    async fetchReferralMilestones({ commit, rootState }) {
+      const token = rootState.userAuth?.token || localStorage.getItem('token');
+      if (!token) return null;
+      try {
+        const response = await axios.get(`${API_CONFIG.REMOTE_URL}/referrals/milestones`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000,
+        });
+        if (!response.data?.success) return null;
+        commit('SET_REFERRAL_MILESTONES', response.data);
+        return response.data;
+      } catch (error) {
+        console.warn('[referrals] milestones unavailable:', error?.message);
+        return null;
       }
     },
 

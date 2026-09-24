@@ -1,7 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-import { publicShareClient, shareIdFrom, shareOrigin, conversationSnapshot } from './publicLinks.js';
+import { publicShareClient, shareIdFrom, shareOrigin, conversationSnapshot, previewLink } from './publicLinks.js';
 
 const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+
+describe('who shared it', () => {
+  const bundle = { version: 1, items: [{ kind: 'agent', sourceId: 'a1', name: 'Researcher', definition: { name: 'Researcher' }, hash: 'h' }] };
+  const client = (ref) => ({ origin: 'https://agnt.gg', fetch: async () => ({ title: 'T', author: 'Alice', ref, bundle }) });
+  const nodeProvider = { nodes: () => [] };
+  it('passes on the referral code the share service recorded for the link', async () => {
+    const preview = await previewLink({ link: 'Ab3xYz9kLmNo', client: client('ALICE33'), nodeProvider });
+    expect(preview.ref).toBe('ALICE33');
+    expect(preview.author).toBe('Alice');
+  });
+  it('drops anything that is not a code', async () => {
+    const preview = await previewLink({ link: 'Ab3xYz9kLmNo', client: client('"><script>'), nodeProvider });
+    expect(preview.ref).toBeNull();
+  });
+});
 
 describe('the share service client', () => {
   it('talks only to the fixed origin, never follows a redirect, and forwards the user sign-in', async () => {
