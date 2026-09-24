@@ -91,7 +91,9 @@ function bundledSourceFiles(dir = SOURCE_ROOT, out = []) {
 
 /** Resolve a relative specifier the way the bundler will, tolerating an omitted extension. */
 function resolveSpecifier(fromFile, spec) {
-  const base = path.resolve(path.dirname(fromFile), spec);
+  // Vite query suffixes (`?raw`, `?url`, ...) select a loader, not a file: the bundler reads
+  // `LICENSE.md` for `LICENSE.md?raw`, so the container must copy the bare path.
+  const base = path.resolve(path.dirname(fromFile), spec.replace(/\?.*$/, ''));
   for (const candidate of [base, `${base}.js`, `${base}.mjs`, `${base}.ts`, path.join(base, 'index.js')]) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
   }

@@ -48,9 +48,9 @@
           </p>
 
           <p class="helper-text">
-            By continuing, you agree to the AGNT
-            <a href="#" @click.prevent="openTermsModal('terms')">Terms</a>
-            and
+            By continuing, you agree to the
+            <a href="#" @click.prevent="openTermsModal('license')">AGNT Community Core License</a>,
+            <a href="#" @click.prevent="openTermsModal('terms')">Terms</a>, and
             <a href="#" @click.prevent="openTermsModal('privacy')">Privacy Policy</a>.
           </p>
         </div>

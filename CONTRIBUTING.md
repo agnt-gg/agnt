@@ -206,8 +206,13 @@ much less than the run that shows it.
 
 ## Licence
 
-AGNT is under the [AGNT Community Core License](./LICENSE.md). By contributing
-you agree your contribution is licensed under the same terms.
+AGNT is source-available under the [AGNT Community Core License](./LICENSE.md).
+It is not open source.
+
+Before we can merge your first pull request, you must sign the
+[AGNT Contributor Agreement](./CONTRIBUTOR_AGREEMENT.md). By contributing, you
+assign ownership of your contribution to AGNT GG, Inc. You receive no payment,
+license, or partner status in return. See Section 9 of the license.
 
 ---
 

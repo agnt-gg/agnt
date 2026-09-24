@@ -62,7 +62,9 @@ const markdownFiles = {
   //   query: "?raw",
   //   import: "default",
   // }),
-  legal: import.meta.glob('./docfiles/legal/*.md', {
+  // The repository LICENSE.md is the single source of truth; the docs render it directly
+  // so an in-app copy can never drift from the license that actually governs the code.
+  legal: import.meta.glob('../../../../LICENSE.md', {
     query: '?raw',
     import: 'default',
   }),

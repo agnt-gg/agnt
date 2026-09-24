@@ -18,126 +18,15 @@
         <!-- Content Area -->
         <div ref="modalBody" class="modal-body">
           <Transition name="tab-fade" mode="out-in">
-            <!-- License (EULA) -->
+            <!-- License: rendered from the repository LICENSE.md, the single source of truth -->
             <div v-if="activeTab === 'license'" key="license" class="content-section">
-              <h3>AGNT Master License Agreement</h3>
-              <p class="subtitle-text">End User License Agreement (EULA)</p>
-              <p class="version">Version 0 (Genesis Epoch)</p>
-              <p class="last-updated">Last Updated: November 24, 2025</p>
-
-              <div class="content-text">
-                <div class="legal-notice">
-                  <strong>THIS IS A LEGALLY BINDING AGREEMENT.</strong>
-                  <p>
-                    READ IT CAREFULLY. BY DOWNLOADING, INSTALLING, OR USING THE SOFTWARE ("AGNT"), YOU (THE "LICENSEE") AGREE TO BE BOUND BY THE TERMS
-                    OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT INSTALL THE SOFTWARE.
-                  </p>
-                </div>
-
-                <h4>1. GRANT OF LICENSE</h4>
+              <div v-if="licenseError" class="content-text">
                 <p>
-                  Subject to your payment of applicable fees and compliance with this Agreement, AGNT GG, Inc. ("Licensor") grants you a limited,
-                  non-exclusive, non-transferable, revocable license to install and execute the AGNT software solely in object code (binary) format on
-                  hardware owned or controlled by you.
+                  The license could not be loaded. Read it at
+                  <a href="https://agnt.gg/LICENSE.md" target="_blank" rel="noopener">agnt.gg/LICENSE.md</a>.
                 </p>
-                <p>
-                  <strong>1.1 Genesis Architect License:</strong> If you hold an Architect Node, this license is Perpetual for the version purchased
-                  and all subsequent updates released during the product's lifespan.
-                </p>
-                <p>
-                  <strong>1.2 Standard License (Builders / Operators):</strong> If you hold a Builder or Operator Node, this license is Term-Based
-                  (Annual) and requires an active subscription to maintain access to the Runtime.
-                </p>
-
-                <h4>2. RESTRICTIONS</h4>
-                <p>You acknowledge that the Software contains proprietary trade secrets of AGNT GG, Inc. You agree NOT to:</p>
-                <ul>
-                  <li>Decompile, disassemble, reverse engineer, or attempt to derive the source code of the Software.</li>
-                  <li>Bypass, modify, or tamper with the License Verification mechanism (the "Auth Handshake").</li>
-                  <li>
-                    Rent, lease, lend, or resell the Software binary to third parties (except via authorized transfer of a Genesis Node with written
-                    consent from Licensor).
-                  </li>
-                  <li>
-                    Create derivative works based on the AGNT Core Runtime. (Note: You are permitted to build and sell Agent Configurations and
-                    Workflows that run on top of the Runtime).
-                  </li>
-                </ul>
-
-                <h4>3. BARE METAL DISCLAIMER & RISK ASSUMPTION</h4>
-                <div class="warning-box">
-                  <strong>⚠️ WARNING: BARE METAL EXECUTION</strong>
-                  <p>The Software runs as a native process with the full privileges of your user account ("Bare Metal"). It is NOT sandboxed.</p>
-                </div>
-                <p>
-                  <strong>3.1 System Access:</strong> You explicitly authorize the Software to read, write, modify, and delete files on your local
-                  storage drives as directed by the automated agents you configure.
-                </p>
-                <p>
-                  <strong>3.2 User Responsibility:</strong> You are solely responsible for configuring the permissions and logic of your Agents. If
-                  you configure an Agent to delete your operating system files, it will do so. Licensor is not liable for data loss, hardware damage,
-                  or system corruption.
-                </p>
-                <p>
-                  <strong>3.3 No Monitoring:</strong> Licensor does not monitor or control the actions of your Agents. You assume full legal liability
-                  for any actions taken by the Software on your behalf, including but not limited to web scraping, automated messaging, and financial
-                  transactions.
-                </p>
-
-                <h4>4. INTELLECTUAL PROPERTY & OWNERSHIP</h4>
-                <p>
-                  <strong>4.1 The Software:</strong> Licensor retains all title, ownership, and intellectual property rights in and to the AGNT Core
-                  Runtime.
-                </p>
-                <p>
-                  <strong>4.2 Your Data:</strong> You retain all title, ownership, and intellectual property rights in and to the data you process,
-                  the Agent definitions (JSON/Python) you create, and the outputs generated by the Software.
-                </p>
-                <p>
-                  <strong>4.3 Trademarks:</strong> "AGNT", "AGNT Labs", "AGNT.gg", and "Annie" (our AI companion and mascot), together with the AGNT
-                  and Annie logos and related names and marks, are trademarks of AGNT GG, Inc. Nothing in this Agreement grants you any right to use
-                  these marks without our prior written permission.
-                </p>
-
-                <h4>5. ALPHA SOFTWARE ACKNOWLEDGEMENT</h4>
-                <p>
-                  You acknowledge that the Software is currently in an "Industrial Alpha" state. It may contain defects, errors, and bugs. It may
-                  function unexpectedly.
-                </p>
-                <p>
-                  <strong>5.1 No Warranty:</strong> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-                  NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
-                </p>
-                <p>
-                  <strong>5.2 Support:</strong> Licensor is under no obligation to provide technical support, updates, or maintenance, except as
-                  explicitly defined in your specific Tier benefits.
-                </p>
-
-                <h4>6. LIMITATION OF LIABILITY</h4>
-                <p>
-                  TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT, OR
-                  CONSEQUENTIAL DAMAGES WHATSOEVER (INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS PROFITS, BUSINESS INTERRUPTION, LOSS
-                  OF BUSINESS INFORMATION, OR ANY OTHER PECUNIARY LOSS) ARISING OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF LICENSOR
-                  HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-                </p>
-
-                <h4>7. TERMINATION</h4>
-                <p><strong>7.1</strong> This Agreement is effective until terminated.</p>
-                <p>
-                  <strong>7.2</strong> Licensor may terminate this Agreement immediately if you breach any provision of Section 2 (Restrictions) or if
-                  your payment is refunded or charged back.
-                </p>
-                <p><strong>7.3</strong> Upon termination, you must cease all use of the Software and destroy all copies in your possession.</p>
-
-                <h4>8. GOVERNING LAW</h4>
-                <p>
-                  This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, United States, without
-                  regard to its conflict of laws principles.
-                </p>
-
-                <h4>9. Contact Information</h4>
-                <p>For questions about this License Agreement, please contact us at: <a href="mailto:legal@agnt.gg">legal@agnt.gg</a></p>
               </div>
+              <div v-else class="content-text license-text" v-html="licenseHtml"></div>
             </div>
 
             <!-- Terms of Service -->
@@ -306,6 +195,21 @@
 <script>
 import { ref, watch, nextTick } from 'vue';
 
+// The license text is loaded from the repository LICENSE.md so the app can never show a
+// different license than the one that governs the code. Both loads are lazy: most users
+// never open this tab, so neither the text nor the markdown renderer ships in the main chunk.
+let licenseHtmlCache = null;
+async function loadLicenseHtml() {
+  if (licenseHtmlCache) return licenseHtmlCache;
+  const [{ default: licenseMarkdown }, { default: showdown }] = await Promise.all([
+    import('../../../LICENSE.md?raw'),
+    import('showdown'),
+  ]);
+  const converter = new showdown.Converter({ tables: true, strikethrough: true });
+  licenseHtmlCache = converter.makeHtml(licenseMarkdown);
+  return licenseHtmlCache;
+}
+
 export default {
   name: 'TermsPrivacyModal',
   props: {
@@ -323,6 +227,35 @@ export default {
   setup(props, { emit }) {
     const activeTab = ref(props.defaultTab);
     const modalBody = ref(null);
+    const licenseHtml = ref('');
+    const licenseError = ref(false);
+
+    const ensureLicenseLoaded = async () => {
+      if (licenseHtml.value || licenseError.value) return;
+      try {
+        licenseHtml.value = await loadLicenseHtml();
+      } catch (error) {
+        console.error('[TermsPrivacyModal] Failed to load LICENSE.md:', error);
+        licenseError.value = true;
+      }
+    };
+
+    // The modal stays mounted, so its tab must be re-selected on every open; otherwise a
+    // "Privacy Policy" or "License" link would open on whichever tab was used last.
+    watch(
+      () => props.show,
+      (isShown) => {
+        if (isShown) activeTab.value = props.defaultTab;
+      },
+    );
+
+    watch(
+      () => [props.show, activeTab.value],
+      ([isShown, tab]) => {
+        if (isShown && tab === 'license') ensureLicenseLoaded();
+      },
+      { immediate: true },
+    );
 
     const close = () => {
       emit('close');
@@ -343,6 +276,8 @@ export default {
     return {
       activeTab,
       modalBody,
+      licenseHtml,
+      licenseError,
       close,
     };
   },
@@ -516,6 +451,85 @@ body.dark .terms-modal {
 
 .content-text a:hover {
   text-decoration: underline;
+}
+
+/* Rendered LICENSE.md — mirrors the heading, text, and link styles above */
+.license-text :deep(h1) {
+  margin: 0 0 8px 0;
+  font-size: 1.8em;
+  color: var(--color-text);
+}
+
+.license-text :deep(h2) {
+  margin: 24px 0 12px 0;
+  font-size: 1.2em;
+  color: var(--color-text);
+}
+
+.license-text :deep(h3) {
+  margin: 20px 0 10px 0;
+  font-size: 1.05em;
+  color: var(--color-text);
+}
+
+.license-text :deep(p),
+.license-text :deep(li) {
+  color: var(--color-text-muted);
+  opacity: 0.9;
+}
+
+.license-text :deep(p) {
+  margin: 12px 0;
+}
+
+.license-text :deep(ul),
+.license-text :deep(ol) {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+
+.license-text :deep(li) {
+  margin: 8px 0;
+}
+
+.license-text :deep(strong) {
+  color: var(--color-text);
+}
+
+.license-text :deep(a) {
+  color: var(--color-green);
+  text-decoration: none;
+}
+
+.license-text :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.license-text :deep(hr) {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 24px 0;
+}
+
+.license-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.92em;
+}
+
+.license-text :deep(th),
+.license-text :deep(td) {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--color-text-muted);
+}
+
+.license-text :deep(th) {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* Special Content Styles */

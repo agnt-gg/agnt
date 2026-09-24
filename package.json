@@ -6,7 +6,7 @@
   "main": "main.js",
   "author": "Nathan Wilbanks <nathan@agnt.gg>",
   "homepage": "https://agnt.gg",
-  "license": "Custom - See LICENSE.MD",
+  "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "scripts": {
     "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js && node scripts/rebuild-native-for-electron.js && node .githooks/install.mjs",

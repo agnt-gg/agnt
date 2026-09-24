@@ -916,7 +916,13 @@ ask before you write the code.
 
 ## 📄 License
 
-This project is licensed under a Custom License. See [LICENSE.md](./LICENSE.md) for details.
+AGNT is source-available, not open source, under the [AGNT Community Core License](./LICENSE.md).
+It is free for personal use, education, nonprofits, and businesses under US$1M revenue and 10 people.
+Larger businesses need a paid license. Paid setup, services, and resale require a Certified Partner
+license, and white-label, OEM, or hosting for others requires an Enterprise agreement. The table at
+the top of the license shows what you can and can't do.
+
+Contributions require the [AGNT Contributor Agreement](./CONTRIBUTOR_AGREEMENT.md).
 
 ---
 

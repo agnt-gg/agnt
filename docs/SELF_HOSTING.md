@@ -942,4 +942,8 @@ Final DEB:                    ~253MB (Full) / ~251MB (Lite)
 
 ## License
 
-This project is licensed under a Custom License. See [LICENSE](../LICENSE.md) for details.
+AGNT is source-available under the [AGNT Community Core License](../LICENSE.md).
+
+Self-hosting is licensed for your own use: yourself, your household, or your own organization. Hosting
+AGNT for anyone else, including clients, requires an Enterprise agreement, and paid setup or support
+for others requires a Certified Partner license. See Sections 4 through 6 of the license.
