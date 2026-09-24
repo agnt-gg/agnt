@@ -24,6 +24,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
 import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
+import { createCacheRoundTracker } from './orchestrator/cacheRoundTracker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = path.join(__dirname, 'OrchestratorService.js');
@@ -69,6 +70,7 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
   };
   const conversationContext = { _turnRound: 1 };
   const sendEvent = (name, data) => events.push({ name, data });
+  const cacheRounds = createCacheRoundTracker();
 
   // Collaborators are injected as the REAL implementations, not stubs, so the
   // extracted bytes are exercised against the same helpers that ship. A stub
@@ -82,6 +84,7 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
     'promptCacheTtlMs',
     'normalizedProvider',
     'model',
+    'cacheRounds',
     `return function accumulateUsage(usage) ${BODY};`
   );
   return {
@@ -92,11 +95,15 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
       readOpenAiShapedCacheUsage,
       promptCacheTtlMs,
       provider,
-      model
+      model,
+      cacheRounds
     ),
     events,
     tokenAccumulator,
     conversationContext,
+    cacheRounds,
+    // Stand-in for runTierStream, which stamps every request before sending.
+    stamp: (messages) => cacheRounds.stamp({ provider, model, messages, tools: [] }),
     cacheEvents: () => events.filter((e) => e.name === 'cache_activity'),
   };
 }
@@ -195,6 +202,44 @@ describe('accumulateUsage -> cache_activity (per-round freshness signal)', () =>
       prompt_tokens_details: { cached_tokens: 0 },
     });
     expect(h.cacheEvents()).toHaveLength(0);
+  });
+});
+
+describe('accumulateUsage -> per-request cache attribution', () => {
+  const history = [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }];
+
+  it('attributes an Anthropic round with its full prompt and 1h/5m write split', () => {
+    const h = makeHarness({ provider: 'claude-code', model: 'claude-opus-5' });
+    h.stamp(history);
+    h.accumulateUsage({
+      input_tokens: 10, output_tokens: 7, cache_read_input_tokens: 0, cache_creation_input_tokens: 3000,
+      cache_creation_5m_input_tokens: 1000, cache_creation_1h_input_tokens: 2000,
+    });
+    expect(h.cacheRounds.rounds()[0]).toMatchObject({
+      cause: 'cold', promptTokens: 3010, uncached: 10, read: 0, write5m: 1000, write1h: 2000, output: 7,
+    });
+    expect(h.cacheEvents()[0].data.cause).toBe('cold');
+  });
+
+  it('names the cause of a break on the live cache_activity event', () => {
+    const h = makeHarness({ provider: 'claude-code', model: 'claude-opus-5' });
+    h.stamp(history);
+    h.accumulateUsage({ input_tokens: 10, cache_creation_input_tokens: 20000 });
+    h.stamp([{ role: 'system', content: 's CHANGED' }, ...history.slice(1), { role: 'assistant', content: 'a' }]);
+    h.accumulateUsage({ input_tokens: 10, cache_creation_input_tokens: 20500 });
+    const last = h.cacheEvents().at(-1).data;
+    expect(last.cause).toBe('system_changed');
+    expect(last.lostTokens).toBe(20010);
+  });
+
+  it('records a round with NO cache activity, because a full miss is the round worth explaining', () => {
+    const h = makeHarness({ provider: 'openai-codex', model: 'gpt-6-astra' });
+    h.stamp(history);
+    h.accumulateUsage({ input_tokens: 90000, output_tokens: 10, input_tokens_details: { cached_tokens: 90000 } });
+    h.stamp([...history, { role: 'assistant', content: 'a' }]);
+    h.accumulateUsage({ input_tokens: 91000, output_tokens: 10 });
+    expect(h.cacheEvents()).toHaveLength(1);
+    expect(h.cacheRounds.rounds()[1]).toMatchObject({ cause: 'unexplained_miss', promptTokens: 91000, uncached: 91000, lostTokens: 90000 });
   });
 });
 

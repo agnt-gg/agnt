@@ -26,6 +26,7 @@ import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConf
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
+import { createCacheRoundTracker, buildCacheTelemetry } from './orchestrator/cacheRoundTracker.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
 import { promptCacheTtlMs, promptCacheBestEffort } from '../utils/promptCacheTtl.js';
 import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
@@ -1469,6 +1470,10 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // write total is treated as 5m (pre-beta behavior).
     cacheCreation5mTokens: 0, cacheCreation1hTokens: 0,
   };
+  // Per-request cache attribution. Seeded with the previous turn's last
+  // request so the first request of this turn is judged against it, which is
+  // where the expensive prefix breaks happen. See cacheRoundTracker.js.
+  const cacheRounds = createCacheRoundTracker({ carried: priorContext?._cacheRoundState ?? null });
 
   try {
     // Process uploaded files
@@ -2083,6 +2088,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // observation that the prefix was alive at that instant -- report it then.
       let roundCacheRead = 0;
       let roundCacheWrite = 0;
+      // Same round, for cache attribution: the full prompt size and the TTL
+      // split, in whichever shape the provider reported them.
+      let roundPromptTokens = 0;
+      let roundWrite5m = 0;
+      let roundWrite1h = 0;
 
       const cacheRead = usage.cache_read_input_tokens || 0;
       const cacheWrite = usage.cache_creation_input_tokens || 0;
@@ -2111,13 +2121,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
         if (write5m + write1h > 0) {
           tokenAccumulator.cacheCreation5mTokens += write5m;
           tokenAccumulator.cacheCreation1hTokens += write1h;
+          roundWrite5m = write5m;
+          roundWrite1h = write1h;
         } else {
           tokenAccumulator.cacheCreation5mTokens += cacheWrite;
+          roundWrite5m = cacheWrite;
         }
+        roundPromptTokens = totalInput;
       } else {
         // OpenAI / others: prompt_tokens is already the full total
         const input = usage.prompt_tokens || usage.input_tokens || 0;
         tokenAccumulator.inputTokens += input;
+        roundPromptTokens = input;
         // Cached-prompt reads. Chat Completions reports these under
         // `prompt_tokens_details.cached_tokens`; the Responses API — which is
         // what OpenAI gpt-5.x and ALL Codex models use — reports the identical
@@ -2148,8 +2163,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
           const writeTtlMs = promptCacheTtlMs(normalizedProvider, model);
           if (writeTtlMs != null && writeTtlMs >= 60 * 60 * 1000) {
             tokenAccumulator.cacheCreation1hTokens += cacheWriteTokens;
+            roundWrite1h = cacheWriteTokens;
           } else {
             tokenAccumulator.cacheCreation5mTokens += cacheWriteTokens;
+            roundWrite5m = cacheWriteTokens;
           }
           roundCacheWrite = cacheWriteTokens;
         }
@@ -2157,12 +2174,25 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       tokenAccumulator.totalTokens = tokenAccumulator.inputTokens + tokenAccumulator.outputTokens;
 
+      // Every round is attributed, including rounds with no cache activity at
+      // all: a full miss on an OpenAI-shaped provider reports zero cache
+      // tokens, and that is exactly the round worth explaining.
+      const cacheRound = cacheRounds.observe({
+        promptTokens: roundPromptTokens,
+        read: roundCacheRead,
+        write5m: roundWrite5m,
+        write1h: roundWrite1h,
+        output,
+      }, promptCacheTtlMs(normalizedProvider, model));
+
       if (roundCacheRead > 0 || roundCacheWrite > 0) {
         sendEvent('cache_activity', {
           at: new Date().toISOString(),
           round: conversationContext._turnRound || 1,
           cacheReadTokens: roundCacheRead,
           cacheCreationTokens: roundCacheWrite,
+          cause: cacheRound?.cause ?? null,
+          lostTokens: cacheRound?.lostTokens ?? 0,
         });
       }
     }
@@ -2957,6 +2987,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
           conversationContext.openai = client;
         }
       }
+      // Stamped here, after failover re-pointing, so the fingerprint names the
+      // provider/model that will actually receive this request.
+      cacheRounds.stamp({ provider: normalizedProvider, model, messages, tools });
       return adapter.callStream(
         messages,
         tools,
@@ -3956,7 +3989,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
           computeSeconds,
           toolCallsCount,
           streamErrorForLogging ? streamErrorForLogging.message : null,
-          tokenUsageForDb
+          tokenUsageForDb,
+          buildCacheTelemetry(finalStatus, tokenAccumulator, cacheRounds)
         );
 
         sendEvent('agent_execution_completed', {
@@ -4057,6 +4091,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // This allows async tools to trigger AI responses later
     conversationManager.store(conversationId, {
       ...conversationContext,
+      _cacheRoundState: cacheRounds.carryState(),
       messages,
       authToken,
       agentExecutionId, // Link autonomous messages to the execution

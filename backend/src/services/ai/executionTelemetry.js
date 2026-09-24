@@ -3,8 +3,39 @@ const roles = ['system', 'user', 'assistant', 'tool'];
 const number = x => Number.isSafeInteger(x) && x >= 0;
 const metricKeys = ['requestIndex','messageBytes','schemaBytes','totalBytes','systemBytes','userBytes','toolBytes','assistantBytes'];
 const outcomes = ['completed','failed','blocked','cancelled','pending'];
+// v2 = v1 + per-request prompt-cache attribution (orchestrator/cacheRoundTracker.js).
+// Declared here, not in the tracker, so the dependency runs one way only.
+export const CACHE_CAUSES = Object.freeze([
+  'cold',              // first request of the conversation this process has seen
+  'model_changed',     // provider or model differs from the previous request (caches are per model)
+  'ttl_expired',       // idle gap exceeded the cache lifetime we asked for
+  'tools_changed',     // the tool array differs from the previous request
+  'system_changed',    // the system block differs from the previous request
+  'history_rewritten', // a message the previous request sent was changed or removed
+  'unexplained_miss',  // everything we control matched, yet the provider read less than it could have
+  'ok',                // read the whole previous prompt back; writes are ordinary tail growth
+]);
+export const MAX_CACHE_ROUNDS = 1000;
+const roundCounts = ['round','promptTokens','uncached','read','write5m','write1h','output','lostTokens','historyLength'];
+const fingerprint = /^[0-9a-f]{12}$/;
+const nullableCount = x => x === null || number(x);
+function normalizeCacheRounds(list) {
+  if (!Array.isArray(list) || list.length > MAX_CACHE_ROUNDS) throw new Error('Invalid cache round telemetry');
+  return list.map((r, i) => {
+    const valid = r && roundCounts.every(k => number(r[k])) && r.round === i + 1
+      && typeof r.firstOfTurn === 'boolean' && nullableCount(r.msSincePrev) && nullableCount(r.divergeAt)
+      && (r.blocksAdded === null || Number.isSafeInteger(r.blocksAdded))
+      && fingerprint.test(r.toolsFp) && fingerprint.test(r.systemFp) && CACHE_CAUSES.includes(r.cause)
+      && (r.divergeRole === null || roles.includes(r.divergeRole));
+    if (!valid) throw new Error('Invalid cache round measurement');
+    return {round:r.round,firstOfTurn:r.firstOfTurn,msSincePrev:r.msSincePrev,
+      ...Object.fromEntries(roundCounts.slice(1).map(k=>[k,r[k]])),
+      blocksAdded:r.blocksAdded,toolsFp:r.toolsFp,systemFp:r.systemFp,cause:r.cause,divergeAt:r.divergeAt,divergeRole:r.divergeRole};
+  });
+}
 export function normalizeExecutionTelemetry(value) {
-  if (!value || value.version !== 1 || !outcomes.includes(value.outcome)) throw new Error('Invalid execution telemetry version/outcome');
+  if (!value || (value.version !== 1 && value.version !== 2) || !outcomes.includes(value.outcome)) throw new Error('Invalid execution telemetry version/outcome');
+  if (value.version === 1 && value.cacheRounds != null) throw new Error('Cache rounds require telemetry version 2');
   const metric = value.requestMetrics;
   let requestMetrics = null;
   if (metric != null) {
@@ -27,8 +58,10 @@ export function normalizeExecutionTelemetry(value) {
     if(!number(t[k]))throw new Error('Invalid tool measurement');return [k,t[k]];
   }));
   if(toolCalls && toolCalls.started!==toolCalls.finished+toolCalls.inFlight)throw new Error('Inconsistent tool measurement');
-  return {version:1,outcome:value.outcome,requestMetrics,usage,usageCoverage:coverage,toolCalls,
+  const envelope = {version:value.version,outcome:value.outcome,requestMetrics,usage,usageCoverage:coverage,toolCalls,
     effectDisposition:toolCalls===null?'unknown':toolCalls.started===0?'no_tool_calls_dispatched':toolCalls.inFlight>0?'in_flight_or_unknown':'tool_calls_observed_effects_not_verified'};
+  if (value.version === 2) envelope.cacheRounds = normalizeCacheRounds(value.cacheRounds ?? []);
+  return envelope;
 }
 export function unavailableTelemetry(outcome='failed') {
   return normalizeExecutionTelemetry({version:1,outcome,requestMetrics:null,usage:null,usageCoverage:'unknown',toolCalls:null});
