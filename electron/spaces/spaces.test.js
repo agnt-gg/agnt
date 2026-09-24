@@ -12,6 +12,32 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const acme = { id: 'acme', name: 'Acme Ops', tenantUrl: 'https://acme.agnt.gg/some/path?x=1' };
 
+describe('the team view preload', () => {
+  // The renderer reads openExternalUrl as "desktop app" and signs in through the
+  // loopback handoff, which a hosted team instance refuses with 403, so a team
+  // view that had it could never sign in.
+  it('exposes no system-browser bridge, so a team view signs in the web way', async () => {
+    const exposed = {};
+    const { createRequire } = await import('module');
+    const require = createRequire(import.meta.url);
+    const Module = require('module');
+    const originalLoad = Module._load;
+    Module._load = function (request, ...rest) {
+      if (request === 'electron') return { contextBridge: { exposeInMainWorld: (name, api) => { exposed[name] = api; } }, ipcRenderer: { send() {}, invoke() {}, on() {}, removeListener() {} } };
+      return originalLoad.call(this, request, ...rest);
+    };
+    try {
+      delete require.cache[require.resolve('./spacePreload.cjs')];
+      require('./spacePreload.cjs');
+    } finally {
+      Module._load = originalLoad;
+    }
+    expect(exposed.electron.isSpaceView).toBe(true);
+    expect(exposed.electron.openExternalUrl).toBeUndefined();
+    expect(typeof exposed.electron.spaces.switch).toBe('function');
+  });
+});
+
 describe('SpaceRegistry', () => {
   it('accepts only https instance origins with sane ids and names', () => {
     expect(validateTeam(acme)).toEqual({ id: 'team:acme', kind: 'team', teamId: 'acme', label: 'Acme Ops', url: 'https://acme.agnt.gg' });

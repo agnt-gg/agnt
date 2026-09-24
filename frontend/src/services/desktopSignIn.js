@@ -43,8 +43,13 @@ const POLL_TIMEOUT_MS = 3 * 60 * 1000;
  * `openExternalUrl` is the existing preload bridge to `shell.openExternal`; in
  * a plain browser it is simply absent, which is the correct signal that this
  * whole strategy does not apply there.
+ *
+ * A team space view is Electron too, but it shows the team's HOSTED instance,
+ * and that instance refuses /auth/desktop/begin (it answers only its own
+ * machine). It signs in the web way, so it never takes this path.
  */
 export function canUseDesktopSignIn(win = globalThis.window) {
+  if (win?.electron?.isSpaceView) return false;
   return typeof win?.electron?.openExternalUrl === 'function';
 }
 

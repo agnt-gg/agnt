@@ -45,6 +45,11 @@ describe('canUseDesktopSignIn', () => {
     expect(canUseDesktopSignIn({ electron: { openExternalUrl() {} } })).toBe(true);
   });
 
+  it('is false in a team space view, whose hosted instance refuses the loopback handoff', () => {
+    expect(canUseDesktopSignIn({ electron: { isSpaceView: true, openExternalUrl() {} } })).toBe(false);
+    expect(canUseDesktopSignIn({ electron: { isSpaceView: true } })).toBe(false);
+  });
+
   it('is false in a plain browser', () => {
     // The bridge is simply absent there, which is the correct signal that this
     // whole strategy does not apply.

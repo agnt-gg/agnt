@@ -6,6 +6,13 @@
  * file dialogs, no reveal/open of local paths, no browser automation bridge,
  * no connection or updater control. Renderer code already feature-detects
  * every one of those, so the team UI simply does not offer them.
+ *
+ * NO openExternalUrl. The renderer reads that bridge as "this is the desktop
+ * app" and signs in through the loopback handoff, whose first call
+ * (/api/auth/desktop/begin) the team's instance refuses with 403: it only
+ * answers its own machine. A team view could therefore never sign in. Without
+ * the bridge it takes the web sign-in (a popup in this view's own session) and
+ * external links still reach the user's browser through hardenSpaceView.
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -14,7 +21,6 @@ const WINDOW_CHANNELS = ['minimize-window', 'maximize-window', 'close-window', '
 contextBridge.exposeInMainWorld('electron', {
   isSpaceView: true,
   send: (channel, data) => { if (WINDOW_CHANNELS.includes(channel)) ipcRenderer.send(channel, data); },
-  openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
   reportError: (payload) => ipcRenderer.send('diagnostics:client-error', payload),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   spaces: {
