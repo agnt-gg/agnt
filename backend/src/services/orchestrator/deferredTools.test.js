@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   anthropicSupportsDeferredTools, responsesSupportsDeferredTools, chooseToolLoadingMode, deferredToolsEnabled,
   buildDeferredCatalog, collectToolLoads, renderToolsForTransport, stripToolLoads, attachToolLoad,
-  renderAnthropicToolLoads, isReferenceOnlyResult, TOOL_LOAD_FIELD, TOOL_REFS_KEY, DEFERRED_MARK,
+  renderAnthropicToolLoads, isReferenceOnlyResult, prepareTierRequest, TOOL_LOAD_FIELD, TOOL_REFS_KEY, DEFERRED_MARK,
 } from './deferredTools.js';
 import { BaseAdapter } from './transports/BaseAdapter.js';
 
@@ -100,6 +100,25 @@ describe('rendering per transport', () => {
     const stripped = stripToolLoads(ledger);
     expect(JSON.stringify(stripped)).not.toContain(TOOL_LOAD_FIELD);
     expect(ledger[1][TOOL_LOAD_FIELD]).toBe(load);
+  });
+});
+
+describe('prepareTierRequest', () => {
+  const tools = [fn('discover_tools')];
+  const messages = [{ role: 'user', content: 'x' }];
+
+  it('a legacy conversation passes through untouched, by reference', () => {
+    const out = prepareTierRequest('anthropic', { tools, messages, catalog: null });
+    expect(out.tools).toBe(tools);
+    expect(out.messages).toBe(messages);
+    expect(out.fingerprintTools).toBe(tools);
+  });
+
+  it('a deferred conversation fingerprints only the resident tools', () => {
+    const out = prepareTierRequest('anthropic', { tools, messages, catalog: [fn('alpha')] });
+    expect(out.tools.map((t) => t.function.name)).toEqual(['discover_tools', 'alpha']);
+    expect(out.fingerprintTools.map((t) => t.function.name)).toEqual(['discover_tools']);
+    expect(out.messages).toBe(messages);
   });
 });
 

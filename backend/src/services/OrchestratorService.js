@@ -28,8 +28,7 @@ import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orches
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { createCacheRoundTracker, buildCacheTelemetry } from './orchestrator/cacheRoundTracker.js';
 import {
-  chooseToolLoadingMode, buildDeferredCatalog, renderToolsForTransport, stripToolLoads,
-  attachToolLoad, DEFERRED_MARK, TOOL_LOAD_FIELD,
+  chooseToolLoadingMode, buildDeferredCatalog, prepareTierRequest, attachToolLoad, TOOL_LOAD_FIELD,
 } from './orchestrator/deferredTools.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
 import { promptCacheTtlMs, promptCacheBestEffort } from '../utils/promptCacheTtl.js';
@@ -3016,25 +3015,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
           conversationContext.openai = client;
         }
       }
-      // Deferred conversations: render the tool surface for THIS tier's
-      // transport. The resident array never changes; loads live in history.
-      // A tier without a deferred mechanism gets resident + loaded tools and a
-      // history with the private load records removed. See deferredTools.js.
-      let wireTools = tools;
-      let wireMessages = messages;
-      const deferredCatalog = conversationContext._deferredToolCatalog;
-      if (Array.isArray(deferredCatalog)) {
-        const style = adapter.deferredToolStyle?.() || null;
-        wireTools = renderToolsForTransport(style, { resident: tools, catalog: deferredCatalog, messages });
-        if (!style) wireMessages = stripToolLoads(messages);
-      }
-      // Stamped here, after failover re-pointing, so the fingerprint names the
-      // provider/model that will actually receive this request. Deferred
-      // definitions are left out: they are not part of the cached prefix.
-      cacheRounds.stamp({ provider: normalizedProvider, model, messages: wireMessages, tools: wireTools.filter((t) => !t?.[DEFERRED_MARK]) });
+      // Rendered for THIS tier's transport (deferredTools.js), then stamped
+      // after failover re-pointing so the fingerprint names the real target.
+      const wire = prepareTierRequest(adapter.deferredToolStyle?.() || null, { tools, messages, catalog: conversationContext._deferredToolCatalog });
+      cacheRounds.stamp({ provider: normalizedProvider, model, messages: wire.messages, tools: wire.fingerprintTools });
       return adapter.callStream(
-        wireMessages,
-        wireTools,
+        wire.messages,
+        wire.tools,
         onChunk,
         conversationContext // Pass context for vision image handling
       );

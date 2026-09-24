@@ -29,10 +29,10 @@ describe('OrchestratorService deferred-tool wiring', () => {
 
   it('renders tools per tier transport, and fingerprints only the resident part', () => {
     const tier = SRC.slice(at('const runTierStream = async'), at('const onProviderFallback'));
-    expect(tier).toContain('renderToolsForTransport(style, { resident: tools, catalog: deferredCatalog, messages })');
-    expect(tier).toContain('if (!style) wireMessages = stripToolLoads(messages);');
-    expect(tier).toContain('tools: wireTools.filter((t) => !t?.[DEFERRED_MARK])');
-    expect(tier.indexOf('renderToolsForTransport')).toBeLessThan(tier.indexOf('adapter.callStream('));
+    expect(tier).toContain('prepareTierRequest(adapter.deferredToolStyle?.() || null, { tools, messages, catalog: conversationContext._deferredToolCatalog })');
+    expect(tier).toContain('tools: wire.fingerprintTools');
+    expect(tier).toMatch(/adapter\.callStream\(\s*wire\.messages,\s*wire\.tools,/);
+    expect(tier.indexOf('prepareTierRequest')).toBeLessThan(tier.indexOf('adapter.callStream('));
   });
 
   it('records a load on the result before the adapter formats it into the ledger', () => {

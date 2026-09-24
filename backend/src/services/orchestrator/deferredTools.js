@@ -118,6 +118,24 @@ export function renderToolsForTransport(style, { resident = [], catalog = [], me
   return [...resident, ...collectToolLoads(messages).filter((s) => !residentNames.has(s.function?.name))];
 }
 
+/**
+ * The request one tier's transport should receive. Legacy conversations (no
+ * catalog) pass through untouched, by reference. A deferred conversation gets
+ * its tool surface rendered for this transport; a transport with no deferred
+ * mechanism also gets a history with the private load records removed.
+ * `fingerprintTools` excludes deferred definitions: they are not part of the
+ * cached prefix, so a change to them is not a prefix change.
+ */
+export function prepareTierRequest(style, { tools, messages, catalog }) {
+  if (!Array.isArray(catalog)) return { tools, messages, fingerprintTools: tools };
+  const rendered = renderToolsForTransport(style, { resident: tools, catalog, messages });
+  return {
+    tools: rendered,
+    messages: style ? messages : stripToolLoads(messages),
+    fingerprintTools: rendered.filter((t) => !t?.[DEFERRED_MARK]),
+  };
+}
+
 /** A copy of `messages` with every `_agntToolLoad` removed; the same array when there are none. */
 export function stripToolLoads(messages) {
   if (!Array.isArray(messages)) return messages;
