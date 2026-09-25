@@ -935,6 +935,8 @@ export default {
           return 'tools';
         case 'plugins':
           return 'plugins';
+        case 'skills':
+          return 'skills';
         case 'featured':
           return 'items';
         case 'free':
@@ -1673,12 +1675,24 @@ export default {
      * and the router pushed a new query). Same function, so the two arrival
      * paths cannot drift apart.
      */
-    const openByAssetId = (assetId) => {
+    const findListing = (assetId) => everyAssetType.value.find((i) => i && i.asset_id === assetId);
+
+    const openByAssetId = async (assetId) => {
       if (!assetId) return;
 
       // Search every bucket, not the filtered view: a link must work whatever
       // tab, category or search the user happened to leave the screen on.
-      const item = everyAssetType.value.find((i) => i && i.asset_id === assetId);
+      let item = findListing(assetId);
+
+      // The buckets only hold what the LAST fetch asked for, and each type tab
+      // fetches its own type. A link arriving while the screen sits on Plugins
+      // would find no agent or skill at all. Fetch the whole catalogue once
+      // before concluding the listing does not exist.
+      if (!item) {
+        await store.dispatch('marketplace/updateFilters', { assetType: 'all' });
+        await store.dispatch('marketplace/fetchMarketplaceItems');
+        item = findListing(assetId);
+      }
 
       if (!item) {
         // Name what was looked for. Silence here reads as "the link is broken"

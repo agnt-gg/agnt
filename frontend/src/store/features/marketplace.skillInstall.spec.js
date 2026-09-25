@@ -106,7 +106,9 @@ describe('marketplace store — installing a skill', () => {
     await expect(store.dispatch('marketplace/installWorkflow', { workflowId: 'listing-1' }))
       .rejects.toThrow('name and description are required');
     expect(fetchSkills).not.toHaveBeenCalled();
-    expect(store.state.marketplace.error).toBe('name and description are required');
+    // The shared local-save helper prefixes context; what matters is that the
+    // server's reason reaches the user rather than a bare status.
+    expect(store.state.marketplace.error).toContain('name and description are required');
   });
 
   it('saves a skill fetched earlier through saveInstalledAsset the same way', async () => {

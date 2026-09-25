@@ -87,10 +87,9 @@
             </div>
           </div>
 
-          <!-- Skills are a published asset type, so this fills with real
-               listings alongside the Create card. It needed no change when that
-               landed: the shelf asks isShelfEligible('skill'), which became
-               true the moment the API accepted the type. -->
+          <!-- Published marketplace skills, installable in one click, beside the
+               Create card. Renders the Create card alone if the catalogue is
+               unreachable. -->
           <MarketplaceShelf
             v-else-if="ownsNothing"
             asset-type="skill"
