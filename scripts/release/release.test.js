@@ -119,6 +119,17 @@ describe('verify-artifacts', () => {
     expect(r.stderr).toMatch(/macho\/arm64, expected mac\/x64/);
   });
 
+  it('a runner that also built the OTHER Mac architecture fails (first dry run)', () => {
+    mod(path.join(tmp, 'mac-arm64'), 'sqlite3/node_sqlite3.node', MACHO_ARM64);
+    fs.writeFileSync(path.join(tmp, 'AGNT-0.6.7-mac-arm64.zip'), storedZip([['AGNT.app/a/node_sqlite3.node', MACHO_ARM64]]));
+    mod(path.join(tmp, 'mac'), 'sqlite3/node_sqlite3.node', MACHO_X64);
+    fs.writeFileSync(path.join(tmp, 'AGNT-0.6.7-mac-x64.zip'), storedZip([['AGNT.app/a/node_sqlite3.node', MACHO_X64]]));
+    const r = run('verify-artifacts.mjs', ['--platform', 'mac', '--arch', 'arm64', '--dist', tmp]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/AGNT-0\.6\.7-mac-x64\.zip is for another architecture/);
+    expect(r.stderr).toMatch(/mac\/ holds a Mac app for another architecture/);
+  });
+
   it('a Windows build with a non-PE module fails', () => {
     mod(path.join(tmp, 'win-unpacked'), 'sharp/sharp.node', elf(62));
     const r = run('verify-artifacts.mjs', ['--platform', 'win', '--arch', 'x64', '--dist', tmp]);

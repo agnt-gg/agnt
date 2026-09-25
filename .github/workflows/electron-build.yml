@@ -72,15 +72,20 @@ jobs:
           # Each Mac architecture builds on its own hardware so npm rebuilds
           # sqlite3, sharp and onnxruntime for that CPU. One arm64 runner
           # building both is what shipped arm64 modules in v0.6.6's Intel zip.
+          # The targets are named here, not only the arch: package.json lists
+          # mac targets with arch [x64, arm64], and an arch in the config beats
+          # --arm64 on the command line, so `--mac --arm64` built BOTH apps on
+          # each runner (the v0.6.6 defect, caught by the native check in the
+          # first release dry run). `--mac dmg zip --arm64` builds one.
           - os: macos-15
             platform: mac
             arch: arm64
-            args: --mac --arm64
+            args: --mac dmg zip --arm64
           # GitHub's last Intel macOS image; available until August 2027.
           - os: macos-15-intel
             platform: mac
             arch: x64
-            args: --mac --x64
+            args: --mac dmg zip --x64
           - os: ubuntu-latest
             platform: linux
             arch: x64

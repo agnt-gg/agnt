@@ -84,7 +84,22 @@ if (platform === 'mac') {
   }
 }
 
-// 3. Nothing from a retired variant, nothing unnamed.
+// 3. Only this runner's architecture. A runner can only verify what it can
+//    run, so an installer for another CPU here is unverified by construction.
+//    (The first release dry run built both Mac apps on each Mac runner.)
+const OTHER_ARCH = { x64: ['arm64', 'ia32', 'universal'], arm64: ['x64', 'ia32', 'universal'] }[arch] || [];
+for (const n of fs.readdirSync(dist)) {
+  if (!/^AGNT-.*\.(exe|dmg|zip|AppImage|deb|rpm)$/.test(n)) continue;
+  const tokens = n.replace(/\.[^.]+$/, '').split('-');
+  if (OTHER_ARCH.some((a) => tokens.includes(a))) problems.push(`${n} is for another architecture than this ${platform}/${arch} runner`);
+}
+for (const d of fs.readdirSync(dist)) {
+  if (platform === 'mac' && /^mac(-arm64|-universal)?$/.test(d) && !unpackedDirs.includes(path.join(dist, d))) {
+    problems.push(`${d}/ holds a Mac app for another architecture than this ${arch} runner`);
+  }
+}
+
+// 4. Nothing from a retired variant, nothing unnamed.
 for (const n of fs.readdirSync(dist)) {
   if (/lite/i.test(n) && /\.(exe|dmg|zip|AppImage|deb|rpm|yml|blockmap)$/.test(n)) problems.push(`retired variant in dist: ${n}`);
 }
