@@ -306,7 +306,9 @@ describe('wiring', () => {
     h.emit('update-downloaded', { version: '0.6.8' });
     expect(await h.invoke('update:install')).toEqual({ ok: true });
     expect(h.order).toEqual(['handoff', 'quitAndInstall']);
-    expect(h.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    // Silent AND relaunch. Non-silent, electron-updater drops the relaunch flag
+    // and Windows shows the full setup wizard (found in the update rehearsal).
+    expect(h.autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
     expect(h.last()).toMatchObject({ phase: 'installing' });
   });
 

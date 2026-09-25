@@ -295,9 +295,16 @@ export function initAutoUpdate({
       log(`[update] backend handoff failed, installing anyway: ${err?.message || err}`);
     }
     marker?.write(version, to);
-    // isSilent=false: Windows shows its installer UI (no silent path without a
-    // certificate). isForceRunAfter=true: the user lands back in AGNT.
-    defer(() => autoUpdater.quitAndInstall(false, true));
+    // isSilent=true: the user already chose this by clicking Restart to update.
+    // Non-silent, electron-updater IGNORES isForceRunAfter and Windows walks the
+    // user through the whole setup wizard (install mode, rescue prompt, Finish)
+    // and never reopens AGNT: measured in the update rehearsal. Silent, the
+    // installer replaces the files, keeps the existing install mode, answers the
+    // file-rescue prompt with its safe default (move the files, /SD IDYES), and
+    // relaunches. A per-machine install still raises UAC; that prompt is the OS's.
+    // macOS (Squirrel) and AppImage ignore isSilent.
+    // isForceRunAfter=true: the user lands back in AGNT, which consumes the marker.
+    defer(() => autoUpdater.quitAndInstall(true, true));
     return { ok: true };
   });
 
