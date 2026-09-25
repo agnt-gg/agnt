@@ -37,6 +37,11 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   // outrun the unwanted welcome overlay that intercepted clicks on CI.
   await page.waitForTimeout(2000);
   await expect(page.locator('.popup-tutorial')).not.toBeVisible();
+  // Lite moved the context tiles out of the thread into the right-hand
+  // inspector (Chat.vue teleports them into it) and starts that inspector
+  // closed. Open it the way a person does, with the toggle above the thread.
+  const inspector = page.getByRole('button', { name: 'Show inspector' });
+  if (await inspector.isVisible()) await inspector.click();
   await page.locator('.tiles-strip').click();
   const compress=page.locator('.compress-row button').filter({hasText:'Compress'});
   await compress.first().click();
@@ -53,7 +58,7 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   await expect.poll(()=>saved?.content && JSON.parse(saved.content).messages.find(m=>m.role==='compaction')?.content).toBe('Edited summary');
   const stored=JSON.parse(saved.content).messages;
   expect(stored.filter(m=>m.role!=='compaction').map(m=>m.content)).toEqual(originals.map(m=>m.content));
-  await page.reload();await page.locator('[data-tour-id="sidebar.chat"]').waitFor();await seed(stored);
+  await page.reload();await page.locator('[data-tour-id="sidebar.chat"]').waitFor({state:'attached'});await seed(stored);
   await expect(page.locator('.compaction-card')).toContainText('Edited summary');
   await page.locator('.compaction-card .fold-undo').click();
   await expect(page.locator('.compaction-card')).toHaveCount(0);
