@@ -139,7 +139,11 @@ export function buildJumpCatalog(src) {
       }
     });
   resources.push({id:'team-library',label:'Personal & team workspaces',icon:'fas fa-users',hint:'shared library',screen:'WorkspaceScreen',action:{type:'teams'}});
-  for(const item of src.outputs||[])if(item.content_type!=='conversation'&&!item.conversation_id)resources.push({id:'output:'+item.id,label:item.title||item.name||'Output',icon:'fas fa-file-alt',hint:item.content_type||'output',screen:'ArtifactsScreen',action:{type:'output',id:item.id}});
+  // Saved outputs that are not conversations are NOT browse rows. They are old
+  // untitled HTML snapshots (no conversation, tool or workflow recorded), so a
+  // row can only read "Output"; listing them made unlabelled rows appear a few
+  // seconds after opening, before anything was typed. Full-text history search
+  // still finds them by what they say (searchSources historySearchItems).
   for(const [key,screen,kind] of [['widgets','WidgetManagerScreen','widget'],['plugins','PluginsScreen','plugin']])for(const item of src[key]||[])resources.push({id:kind+':'+(item.id||item.name),label:item.displayName||item.name||item.title,icon:kind==='widget'?'fas fa-shapes':'fas fa-puzzle-piece',hint:kind,searchText:item.description||'',action:{type:'screen',screen,opts:{select:{kind,id:item.id||item.name}}}});
   resources.push(...(src.history||[]));
   const byId = new Map([...pages, ...assets, ...resources].map(item => [item.id, item]));

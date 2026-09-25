@@ -280,6 +280,7 @@ import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
   import { safeTruncate } from '@/utils/safeTruncate.js';
 import MessageItem from './components/MessageItem.vue';
+import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
 import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
@@ -2192,20 +2193,11 @@ export default {
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`,
           );
         } else {
-          // Legacy HTML format
+          // Legacy HTML snapshot: its own slot, never the conversation on screen.
           const output = data.output || data;
-          const content = output.content || '';
-          const createdAt = output.created_at ? new Date(output.created_at) : new Date();
-
-          store.commit('chat/ADD_MESSAGE', {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: content,
-            timestamp: Date.now(),
-            metadata: ['Loaded from saved outputs', `Created: ${createdAt.toLocaleDateString()}`],
-          });
-
-          terminalLines.value.push(`Loaded saved output from ${createdAt.toLocaleDateString()}`);
+          resetMessageWindow();
+          currentConversationId.value = openLegacyOutputSlot(store, { contentId, output, messageId: generateMessageId() });
+          terminalLines.value.push('Opened saved output in its own chat');
         }
       } catch (error) {
         console.error('Error loading saved output:', error);

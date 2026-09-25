@@ -19,6 +19,14 @@ describe('categorized page and asset search', () => {
     expect(new Set(screens).size).toBe(screens.length);
     expect(groups).toHaveLength(6)
   });
+  it('never lists untitled legacy outputs as browse rows (only history search finds them)', () => {
+    const groups = buildJumpCatalog({
+      sections: ALL_SECTIONS,
+      outputs: [{ id: 'legacy1', title: null, content_type: 'html', conversation_id: null }],
+    });
+    const ids = groups.flatMap((g) => g.items).map((i) => i.id);
+    expect(ids.some((id) => id.includes('legacy1'))).toBe(false);
+  });
   it('does not truncate the catalog to twelve saved objects', () => {
     const agents = Array.from({
       length: 50
