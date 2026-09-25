@@ -2,6 +2,8 @@ import { commitGoalEvaluation, staleEvaluation } from '../../models/GoalEvaluati
 import { taskFailureReason, assessGoalCompletion } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
+import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
+import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
