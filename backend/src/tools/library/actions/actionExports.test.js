@@ -14,7 +14,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe('action modules export something the loader can execute', () => {
   const files = fs.readdirSync(here).filter((f) => f.endsWith('.js') && !f.includes('.test.') && !f.startsWith('_'));
-  it('found the library', () => expect(files.length).toBeGreaterThan(20));
+  // Anti-vacuity only: proves the scan found the folder. The Sep 22 browser
+  // (4 -> 1) and computer-use (5 -> 1) consolidations took it from 20 to 14
+  // modules on purpose; the per-file checks below are the real guarantee.
+  it('found the library', () => expect(files.length).toBeGreaterThan(10));
   for (const file of files) {
     it(file, () => {
       const source = fs.readFileSync(path.join(here, file), 'utf8');

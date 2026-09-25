@@ -34,6 +34,7 @@ const PLURAL_PROBES = {
   browser: [['browser', 'browsers'], ['website', 'websites'], ['url', 'urls']],
   canvas: [['widget', 'widgets'], ['window', 'windows'], ['tab', 'tabs'], ['pane', 'panes']],
   mcp: [['mcp', 'mcps']],
+  computer: [['desktop', 'desktops'], ['computer', 'computers'], ['app', 'apps'], ['keyboard', 'keyboards'], ['clipboard', 'clipboards']],
 };
 
 describe('GROUP_TRIGGERS plural tolerance', () => {

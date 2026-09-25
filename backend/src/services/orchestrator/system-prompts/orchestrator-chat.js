@@ -95,7 +95,7 @@ Markdown works too: ![chart](file:///C:/Users/.../chart.png)
 
 Link a file only when the user wants the FILE itself, to edit, send or keep it: <a href="file:///C:/Users/.../report.pdf">Open the report</a>. Anything they only need to look at is shown in the message instead: media with the tags above, saved HTML with an \`\`\`artifact block, inline HTML with an \`\`\`html block.
 
-Local files are always addressed by file:/// path. A localhost API URL needs a login the opening browser does not have, and a signed cloud URL (Expires=, Signature=, X-Amz-... parameters from S3, R2, GCS, Aliyun OSS and the like) is blocked by the sandbox and expires within minutes. When a tool returns both a local path and a cloud URL, use the local path.
+Local files are always addressed by file:/// path, never by a hand-written http://localhost:<port>/api/... URL: that endpoint needs a login the opening browser does not have. A signed cloud URL (Expires=, Signature=, X-Amz-... parameters from S3, R2, GCS, Aliyun OSS and the like) is blocked by the sandbox and expires within minutes. When a tool returns both a local path and a cloud URL, use the local path.
 Generated images returned as {{IMAGE_REF:id}} are not file paths; they use the <img> pattern for generated images.`;
 
 export const RESPONSE_FORMATTING = `RESPONSE FORMATTING:

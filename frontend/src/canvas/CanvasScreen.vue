@@ -1728,13 +1728,13 @@ export default {
 .cv-sb-upgrade {
   background: rgba(212, 175, 55, 0.14);
   border-color: rgba(212, 175, 55, 0.42);
-  color: #d4af37;
+  color: var(--color-yellow);
 }
 
 .cv-sb-upgrade:hover {
   background: rgba(212, 175, 55, 0.2);
   border-color: rgba(212, 175, 55, 0.6);
-  color: #e3c04a;
+  color: var(--color-yellow);
 }
 
 .cv-sb-upgrade:focus-visible {
