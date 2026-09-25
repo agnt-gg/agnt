@@ -261,7 +261,7 @@ export default {
     nodeStyle() {
       const baseStyle = {
         transform: `translate(${this.node.x}px, ${this.node.y}px)`,
-        border: this.node.isSelected ? '2px solid var(--color-primary)' : '',
+        border: this.node.isSelected ? '2px solid var(--canvas-selected)' : '',
       };
 
       // Use custom dimensions for ALL resizable widget preview nodes if they exist
@@ -618,12 +618,14 @@ export default {
   border-radius: 32px;
 }
 
+/* Selection and success are separate tokens (see _semantic.css): on a
+   green-primary theme, primary IS the success colour. */
 .node.selected::after {
-  border-color: var(--color-primary);
+  border-color: var(--canvas-selected);
 }
 
 .node.selected {
-  border: 3px solid var(--color-primary) !important;
+  border: 3px solid var(--canvas-selected) !important;
   /* border: none !important; */
   /* transition: none; */
   animation: none !important;
@@ -873,13 +875,7 @@ export default {
 }
 
 .node.has-output {
-  /* border: 2px solid #14FF89; */
-  border: 3px solid var(--color-green);
-}
-
-body.dark .node.has-output {
-  border: 3px solid var(--color-green);
-  /* border: 2px solid var(--color-blue); */
+  border: 3px solid var(--canvas-success);
 }
 
 .node.has-error {

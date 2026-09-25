@@ -31,6 +31,8 @@ body.dark.ember {
   /* Semantic colors */
   --color-light-green: #c8b8a8;
   --color-primary: #e09040;
+  /* Canvas selection must never read as success: set explicitly so body.dark does not leak its override in. */
+  --canvas-selected: var(--color-primary);
   --color-secondary: #e8a030;
   --svg-gradient-start: #e09040;
   --svg-gradient-end: #e8a030;

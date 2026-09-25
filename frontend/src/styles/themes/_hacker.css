@@ -31,6 +31,8 @@ body.dark.hacker {
   /* Semantic colors */
   --color-light-green: #19ef83;
   --color-primary: #19ef83;
+  /* Canvas selection must never read as success: every hue in this palette is green; a near-white ring is the only distinct one. */
+  --canvas-selected: #f2fff8;
   --color-secondary: #40e0a0;
   --svg-gradient-start: #19ef83;
   --svg-gradient-end: #40e0a0;

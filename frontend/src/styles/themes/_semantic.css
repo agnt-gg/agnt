@@ -136,6 +136,13 @@ body {
   --fill-indigo: var(--color-indigo);
   --on-fill-indigo: #ffffff; /* #ffffff on #7d3de5 =  5.72:1 — the one fill dark enough that white wins */
 
+  /* Workflow canvas node states. Selection is a user action, success is a run
+     result; on a green-primary theme they used to be the same colour. Themes
+     whose primary is (or is close to) green override --canvas-selected, and
+     canvasStateColors.spec.js measures the pair in every theme. */
+  --canvas-selected: var(--color-primary);
+  --canvas-success: var(--color-green);
+
   /* Generic companion for any accent fill not covered above. Dark themes put
      saturated neon in the fill slot, so the readable label is the ink colour. */
   --text-on-fill: var(--ink-on-fill);

@@ -1,6 +1,8 @@
 /* CYBERPUNK THEME */
 body.dark.cyberpunk {
   --color-primary: var(--color-green);
+  /* Canvas selection must never read as success: primary is the success green here. */
+  --canvas-selected: var(--color-blue);
   --color-secondary: var(--color-blue);
   --svg-gradient-start: var(--color-green);
   --svg-gradient-end: var(--color-blue);

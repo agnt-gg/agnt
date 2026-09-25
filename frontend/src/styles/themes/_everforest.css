@@ -45,6 +45,8 @@ body.dark.everforest {
   /* Semantic colors */
   --color-light-green: #d3c6aa;
   --color-primary: #a7c080;
+  /* Canvas selection must never read as success: primary is the success green here. */
+  --canvas-selected: var(--color-violet);
   --color-secondary: #7fbbb3;
   --svg-gradient-start: #a7c080;
   --svg-gradient-end: #7fbbb3;
@@ -119,6 +121,8 @@ body.everforest:not(.dark) {
   /* Semantic colors */
   --color-light-green: #5c6a72;
   --color-primary: #8da101;
+  /* Canvas selection must never read as success: primary is the success green here. */
+  --canvas-selected: var(--color-blue);
   --color-secondary: #3a94c5;
   --svg-gradient-start: #8da101;
   --svg-gradient-end: #3a94c5;

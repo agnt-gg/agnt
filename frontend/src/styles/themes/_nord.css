@@ -31,6 +31,8 @@ body.dark.nord {
   /* Semantic colors */
   --color-light-green: #d8dee9;
   --color-primary: #88c0d0;
+  /* Canvas selection must never read as success: set explicitly so body.dark does not leak its override in. */
+  --canvas-selected: var(--color-primary);
   --color-secondary: #81a1c1;
   --svg-gradient-start: #88c0d0;
   --svg-gradient-end: #81a1c1;
