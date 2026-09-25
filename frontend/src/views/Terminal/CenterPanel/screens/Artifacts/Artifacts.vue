@@ -2,15 +2,29 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="ArtifactsScreen"
+    :activeRightPanel="isMobile ? 'FileTreePanel' : undefined"
     @screen-change="(screenName) => $emit('screen-change', screenName)"
     @panel-action="handlePanelAction"
   >
     <template #default>
       <MobileFileBrowser v-if="isMobile" v-show="mobileFileBrowserOpen" @open="mobileOpenFile" @manage="baseScreenRef.openMobilePanel('right')" />
-      <div v-show="!isMobile || !mobileFileBrowserOpen" class="ce-root" :class="{ 'ce-compact': isMobile, 'ce-show-editor': mobileFileView === 'editor' }">
+      <!-- Desktop: no side panels. The grid is the page until a file is opened. -->
+      <FilesBrowser
+        v-if="!isMobile"
+        v-show="desktopBrowserOpen"
+        ref="filesBrowserRef"
+        @open="desktopOpenFile"
+        @renamed="(data) => handlePanelAction('file-renamed', data)"
+        @deleted="(data) => handlePanelAction('file-deleted', data)"
+      />
+      <div v-show="isMobile ? !mobileFileBrowserOpen : !desktopBrowserOpen" class="ce-root" :class="{ 'ce-compact': isMobile, 'ce-show-editor': mobileFileView === 'editor' }">
         <nav v-if="isMobile" class="ce-mobile-modes" aria-label="File view"><button aria-label="Back to files" @click="mobileFileBrowserOpen = true">Files</button><button :aria-pressed="mobileFileView === 'preview'" @click="mobileFileView = 'preview'">Preview</button><button :aria-pressed="mobileFileView === 'editor'" @click="mobileFileView = 'editor'">Source</button><button :disabled="!activeTab?.isDirty || isSaving" @click="saveActiveFile">Save</button></nav>
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
+          <button v-if="!isMobile" type="button" class="ce-tabs-files" @click="desktopBrowserOpen = true">
+            <i class="fas fa-th-large" aria-hidden="true"></i>
+            <span>Files</span>
+          </button>
           <div class="ce-tabs-scroll" ref="tabsScrollRef" @wheel="handleTabsWheel">
             <draggable
               v-model="openTabs"
@@ -74,7 +88,7 @@
               <!-- Empty state -->
               <div class="ce-empty" v-else>
                 <i class="fas fa-code"></i>
-                <p>Open a file from the file tree or ask Annie to create one</p>
+                <p>Open a file from Files or ask Annie to create one</p>
                 <span class="ce-shortcut">Files are stored in ~/.agnt/projects/</span>
               </div>
             </div>
@@ -378,6 +392,7 @@ import showdown from 'showdown';
 import 'highlight.js/styles/atom-one-dark.css';
 import draggable from 'vuedraggable';
 import MobileFileBrowser from '@/mobile/MobileFileBrowser.vue';
+import FilesBrowser from './components/FilesBrowser.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, getSettings, saveFile } from '@/services/fileSystemService.js';
@@ -749,7 +764,7 @@ function parseDelimited(content, delimiter) {
 
 export default {
   name: 'ArtifactsScreen',
-  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable },
+  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable, FilesBrowser },
   emits: ['screen-change'],
   setup(_, { emit }) {
     const baseScreenRef = ref(null);
@@ -779,6 +794,16 @@ export default {
     const mobileFileView = ref('preview');
     const mobileFileBrowserOpen = ref(true);
     const mobileOpenFile = filePath => { mobileFileBrowserOpen.value = false; openFile(filePath); };
+    // Desktop: the file grid shows until a file is opened, and again when the
+    // last tab closes or "Files" is pressed.
+    const filesBrowserRef = ref(null);
+    const desktopBrowserOpen = ref(true);
+    const desktopOpenFile = (filePath) => {
+      desktopBrowserOpen.value = false;
+      openFile(filePath);
+    };
+    watch(activeTabPath, (path) => { if (path) desktopBrowserOpen.value = false; });
+    watch(() => openTabs.value.length, (count) => { if (!count) desktopBrowserOpen.value = true; });
     watch(activeTabPath, path => { if(path) mobileFileBrowserOpen.value = false; });
 
     // Preview console state
@@ -2246,6 +2271,7 @@ export default {
 
     // Listen for file_written events from Annie chat
     const handleFileWritten = (e) => {
+      filesBrowserRef.value?.refresh();
       // Two Artifacts windows can be open on one canvas; a file written for
       // one must not push a tab into the other. Unaddressed events (the
       // sidebar artifact chat) still reach every window, unchanged.
@@ -2314,6 +2340,9 @@ export default {
     });
 
     return {
+      filesBrowserRef,
+      desktopBrowserOpen,
+      desktopOpenFile,
       baseScreenRef,
       bodyRef,
       previewFrame,
@@ -2412,6 +2441,25 @@ export default {
 </script>
 
 <style scoped>
+/* Back to the file grid, at the head of the tab strip. */
+.ce-tabs-files {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--terminal-border-color);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.ce-tabs-files:hover {
+  color: var(--color-primary);
+}
+
 .ce-root {
   display: flex;
   flex-direction: column;

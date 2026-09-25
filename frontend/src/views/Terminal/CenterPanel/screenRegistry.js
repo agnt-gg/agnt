@@ -28,7 +28,9 @@
  */
 export const SCREEN_DEFAULTS = Object.freeze({
   AgentsScreen: { leftPanel: 'AgentsPanel', input: false }, // right: dynamic
-  ArtifactsScreen: { leftPanel: 'ArtifactsPanel', rightPanel: 'FileTreePanel', input: false },
+  // Files: no side columns on desktop; the page is a file grid (FilesBrowser).
+  // Phones still open FileTreePanel as their manage sheet (Artifacts passes it).
+  ArtifactsScreen: { leftPanel: false, rightPanel: false, input: false },
   // ── SYSTEM screens ──
   // Approvals (Autonomy) and Improvements (Evolution) are navigated from
   // Settings' own nav, so they render SettingsPanel on the left: the SYSTEM

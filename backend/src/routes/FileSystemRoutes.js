@@ -167,6 +167,23 @@ router.get('/tree', authenticateToken, async (req, res) => {
         return a.name.localeCompare(b.name);
       });
 
+    // ?details=1 adds size and modified time (the Files grid shows both). Opt
+    // in, so the plain tree listing never pays a stat per entry. A file that
+    // vanishes between readdir and stat keeps its entry, without details.
+    if (req.query.details === '1') {
+      await Promise.all(
+        items.map(async (item) => {
+          try {
+            const stat = await fs.stat(path.join(absDir, item.name));
+            item.modifiedAt = stat.mtimeMs;
+            if (item.type === 'file') item.size = stat.size;
+          } catch {
+            /* raced a delete: listed without details */
+          }
+        }),
+      );
+    }
+
     res.json({ items, root: relDir || '/' });
   } catch (error) {
     console.error('FileSystem tree error:', error);

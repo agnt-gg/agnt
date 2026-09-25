@@ -7,8 +7,12 @@ function getHeaders() {
   return headers;
 }
 
-export async function getTree(dir = '') {
-  const params = dir ? `?dir=${encodeURIComponent(dir)}` : '';
+/** @param {{ details?: boolean }} [options] details adds size and modifiedAt to each entry. */
+export async function getTree(dir = '', { details = false } = {}) {
+  const query = new URLSearchParams();
+  if (dir) query.set('dir', dir);
+  if (details) query.set('details', '1');
+  const params = query.toString() ? `?${query}` : '';
   const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/tree${params}`, { headers: getHeaders() });
   if (!res.ok) throw new Error(`Failed to fetch tree: ${res.statusText}`);
   return res.json();
