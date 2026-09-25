@@ -5,12 +5,7 @@
     :activeRightPanel="activeRightPanel"
     screenId="WorkflowsScreen"
     :terminalLines="terminalLines"
-    :leftPanelProps="{
-      allWorkflows,
-      workflowsFilteredByTab,
-      activeTab,
-      selectedWorkflowId,
-    }"
+    :leftPanelProps="{ allWorkflows, selectedWorkflowId }"
     :panelProps="panelProps"
     @submit-input="handleUserInputSubmit"
     @panel-action="handlePanelAction"
@@ -24,7 +19,7 @@
       /> -->
 
       <div class="workflows-panel" @click="onContentClick">
-<MobileCollection v-if="mobileView" view-id="workflows" title="Workflows" count-label="workflows" :items="mobileWorkflows" :search="searchQuery" :tabs="tabs" :active="activeTab" :selected-id="selectedWorkflowId" create-label="Create workflow" icon="fas fa-project-diagram" @update:search="handleSearch" @tab="selectTab" @select="handleWorkflowClick" @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="triggerWorkflowImport">Import</button><button :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+<MobileCollection v-if="mobileView" view-id="workflows" title="Workflows" count-label="workflows" :items="filteredWorkflows" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedWorkflowId" create-label="Create workflow" icon="fas fa-project-diagram" @update:search="handleSearch" @select="handleWorkflowClick" @create="handlePanelAction('create')"><template #actions><button @click="triggerWorkflowImport">Import</button><button :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
 <input
               ref="workflowImportInput"
               type="file"
@@ -33,7 +28,7 @@
               @change="handleWorkflowImportFile"
             />
 <div v-show="!mobileView" class="desktop-view-container">
-        <!-- Header bar -->
+        <!-- Title, count, search. Create, import and export live in the right panel. -->
         <ScreenToolbar
           title="WORKFLOWS"
           :count="filteredWorkflows.length"
@@ -41,86 +36,26 @@
           searchPlaceholder="Search workflows..."
           :searchQuery="searchQuery"
           :searchScope="shelfHasFocus ? 'Marketplace' : ''"
-          :currentLayout="currentLayout"
-          :layoutOptions="['grid', 'table']"
-          :showCollapseToggle="true"
-          :allCategoriesCollapsed="allCategoriesCollapsed"
-          :showHideEmpty="true"
-          :hideEmptyCategories="hideEmptyCategories"
-          :sortOrder="sortOrder"
-          createLabel="New Workflow"
+          :layoutOptions="[]"
+          :showCollapseToggle="false"
+          :showHideEmpty="false"
+          :showSort="false"
           @update:searchQuery="handleSearch"
-          @update:layout="setLayout"
-          @toggleCollapseAll="toggleCollapseAll"
-          @toggleHideEmpty="toggleHideEmptyCategories"
-          @update:sortOrder="(v) => sortOrder = v"
-          @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
-        >
-          <!-- small import/export buttons -->
-          <template #extra-buttons>
-            <Tooltip text="Import Workflow JSON" width="auto">
-              <button class="wm-btn" @click="triggerWorkflowImport">
-                <i class="fas fa-file-import"></i>
-              </button>
-            </Tooltip>
-            <Tooltip :text="selectedWorkflowId ? 'Export selected workflow' : 'Select a workflow to export'" width="auto">
-              <button class="wm-btn" :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">
-                <i class="fas fa-file-export"></i>
-              </button>
-            </Tooltip>
-
-          </template>
-        </ScreenToolbar>
-
-        <!-- Tabs -->
-        <FilterTabs :tabs="tabs" :active="activeTab" @select="selectTab" />
+        />
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="screen-content workflows-content">
           <main class="screen-main-content workflows-main-content fade-in">
-            <!-- Workflows Table -->
-            <BaseTable
-              v-if="currentLayout === 'table'"
-              :items="filteredWorkflows"
-              :columns="tableColumns"
-              :selected-id="selectedWorkflowId"
-              :show-search="false"
-              :show-sort-dropdown="false"
-              :enable-column-sorting="true"
-              search-placeholder="Search workflows..."
-              :search-keys="['name', 'title', 'status', 'category']"
-              :no-results-text="'No workflows found.'"
-              :title-key="'name'"
-              share-kind="workflow"
-              :share-filter="() => activeTab !== 'marketplace'"
-              @row-click="handleWorkflowClick"
-              @search="handleSearch"
-            >
-              <template #status="{ item }">
-                <div :class="['col-status', item.status.toLowerCase()]">[{{ item.status }}]</div>
-              </template>
-              <template #name="{ item }">
-                {{ item.name || item.title }}
-              </template>
-              <template #tools="{ item }">
-                <div class="tools-icons">
-                  <Tooltip v-for="(tool, index) in getToolsWithNames(item)" :key="`tool-icon-${index}`" :text="tool.name" width="auto">
-                    <SvgIcon :name="tool.icon" class="tool-icon" />
-                  </Tooltip>
-                </div>
-              </template>
-            </BaseTable>
 
-            <!-- Category Cards View -->
-            <div v-else-if="currentLayout === 'grid'" class="category-cards-container">
+            <div class="category-cards-container">
               <!-- Nothing owned yet: the empty state IS the storefront. -->
               <MarketplaceShelf
-                v-if="activeTab !== 'marketplace' && ownsNothing"
+                v-if="ownsNothing"
                 asset-type="workflow"
                 variant="full"
                 :query="searchQuery"
                 create-label="Create Workflow"
-                @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
+                @create="handlePanelAction('create')"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
                 @installed="onShelfInstalled"
                 @clear-search="handleSearch('')"
@@ -129,13 +64,7 @@
 
               <!-- Owned, but nothing matched this search: their items are the
                    subject, so this stays a reset rather than a pitch. -->
-              <div
-                v-else-if="
-                  activeTab !== 'marketplace' &&
-                  (Object.keys(workflowsByCategory).length === 0 || Object.values(workflowsByCategory).every((arr) => arr.length === 0))
-                "
-                class="empty-state-container"
-              >
+              <div v-else-if="filteredWorkflows.length === 0" class="empty-state-container">
                 <div class="empty-state">
                   <i class="fas fa-cogs"></i>
                   <p>No workflows match &ldquo;{{ searchQuery }}&rdquo;</p>
@@ -145,157 +74,60 @@
                 </div>
               </div>
 
-              <div v-else class="category-cards-grid">
-                <article
-                  v-for="(workflows, categoryName, index) in workflowsByCategory"
-                  :key="categoryName"
-                  class="category-card"
-                  :class="{
-                    'drag-over': dragOverCategory === categoryName,
-                    'full-width': workflows.length >= 2,
-                  }"
+              <!-- One flat grid: listening/running first, then A–Z. Search in the
+                   header is the only filter. Double-click opens the forge. -->
+              <div v-else class="card-grid workflows-grid" role="list" aria-label="Workflows">
+                <div
+                  v-for="workflow in filteredWorkflows"
+                  :key="workflow.id"
+                  class="workflow-card"
+                  :class="{ selected: selectedWorkflowId === workflow.id, [workflow.status?.toLowerCase()]: !!workflow.status }"
                   role="listitem"
-                  :aria-label="`${categoryName} Category`"
-                  @dragover.prevent="handleDragOver(categoryName)"
-                  @dragleave="handleDragLeave"
-                  @drop="handleDrop($event, categoryName)"
+                  @click="handleWorkflowClick(workflow)"
+                  @dblclick="handleWorkflowDoubleClick(workflow)"
                 >
-                  <div class="category-header" @click="toggleCategoryCollapse(categoryName)">
-                    <div class="category-title">
-                      <span class="category-icon">{{ getCategoryInfo(categoryName).icon }}</span>
-                      {{ categoryName }}
-                    </div>
-                    <div class="category-header-right">
-                      <div class="category-count">{{ workflows.length }} workflows</div>
-                      <button class="collapse-toggle" :class="{ collapsed: isCategoryCollapsed(categoryName) }">
-                        <i class="fas fa-chevron-down"></i>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
-                    <div class="card-row workflows-grid">
-                      <div
-                        v-for="(workflow, index) in workflows"
-                        :key="workflow.id"
-                        class="workflow-card"
-                        :class="{
-                          selected: selectedWorkflowId === workflow.id,
-                          dragging: draggedWorkflow?.id === workflow.id,
-                          'last-odd': workflows.length % 2 === 1 && index === workflows.length - 1,
-                          [workflow.status?.toLowerCase()]: !!workflow.status,
-                        }"
-                        draggable="true"
-                        @click="handleWorkflowClick(workflow)"
-                        @dblclick="handleWorkflowDoubleClick(workflow)"
-                        @dragstart="handleDragStart($event, workflow)"
-                        @dragend="handleDragEnd"
-                      >
-                        <!-- Marketplace Workflow Card -->
-                        <template v-if="activeTab === 'marketplace'">
-                          <div class="marketplace-card-content">
-                            <!-- Row 1: Avatar + Title/Publisher/Description -->
-                            <div class="marketplace-header">
-                              <div class="marketplace-avatar-container">
-                                <div v-if="workflow.preview_image" class="marketplace-avatar">
-                                  <img :src="workflow.preview_image" :alt="workflow.title" />
-                                </div>
-                                <div v-else class="marketplace-avatar-placeholder">
-                                  <i class="fas fa-project-diagram"></i>
-                                </div>
-                              </div>
-
-                              <div class="marketplace-info">
-                                <div class="marketplace-title-row">
-                                  <h3 class="marketplace-name">{{ workflow.title }}</h3>
-                                  <span v-if="workflow.price > 0" class="workflow-price">${{ workflow.price.toFixed(2) }}</span>
-                                  <span v-else class="workflow-price free">FREE</span>
-                                </div>
-
-                                <div class="workflow-publisher">
-                                  <i class="fas fa-user"></i>
-                                  {{ workflow.publisher_pseudonym || workflow.publisher_name || 'Anonymous' }}
-                                </div>
-
-                                <p class="marketplace-description">
-                                  {{ workflow.tagline || workflow.description || 'No description available' }}
-                                </p>
-                              </div>
-                            </div>
-
-                            <!-- Row 2: Ratings and Downloads -->
-                            <div class="marketplace-meta">
-                              <div class="meta-item">
-                                <i class="fas fa-star"></i>
-                                <span>{{ workflow.rating ? workflow.rating.toFixed(1) : '0.0' }}</span>
-                                <span class="meta-count">({{ workflow.rating_count || 0 }})</span>
-                              </div>
-                              <div class="meta-item">
-                                <i class="fas fa-download"></i>
-                                <span>{{ workflow.downloads || 0 }}</span>
-                              </div>
-                              <div v-if="workflow.category" class="meta-item category">
-                                <i class="fas fa-tag"></i>
-                                <span>{{ workflow.category }}</span>
-                              </div>
-                            </div>
-
-                            <!-- Row 3: Install Button -->
-                            <button class="install-button" @click.stop="handleInstallWorkflow(workflow)">
-                              <i class="fas fa-download"></i>
-                              {{ workflow.price > 0 ? 'Purchase' : 'Install' }}
-                            </button>
-                          </div>
-                        </template>
-
-                        <!-- Regular Workflow Card -->
-                        <template v-else>
-                          <div class="workflow-header">
-                            <div class="workflow-avatar-name">
-                              <div class="workflow-avatar">
-                                <div class="avatar-placeholder">
-                                  {{ (workflow.name || workflow.title || 'W').charAt(0).toUpperCase() }}
-                                </div>
-                              </div>
-                              <span class="workflow-name">{{ workflow.name || workflow.title }}</span>
-                            </div>
-                            <div class="workflow-header-end">
-                              <ShareButton class="workflow-share" kind="workflow" :id="workflow.id" :name="workflow.name || workflow.title" />
-                              <span class="workflow-status" :class="workflow.status.toLowerCase()">{{ workflow.status }}</span>
-                            </div>
-                          </div>
-
-                          <div class="workflow-description" :class="{ 'no-tools': !hasToolsOrUptime(workflow) }">
-                            {{ workflow.description || 'No description available' }}
-                          </div>
-
-                          <div v-if="hasToolsOrUptime(workflow)" class="workflow-tools">
-                            <div v-if="getToolsWithNames(workflow).length > 0" class="tools-icons">
-                              <Tooltip
-                                v-for="(tool, index) in getToolsWithNames(workflow).slice(0, 4)"
-                                :key="`tool-${index}`"
-                                :text="tool.name"
-                                width="auto"
-                              >
-                                <span class="tool-icon-small">
-                                  <SvgIcon :name="tool.icon" />
-                                </span>
-                              </Tooltip>
-                              <span v-if="getToolsWithNames(workflow).length > 4" class="tools-overflow">
-                                +{{ getToolsWithNames(workflow).length - 4 }}
-                              </span>
-                            </div>
-                          </div>
-                        </template>
+                  <div class="workflow-header">
+                    <div class="workflow-avatar-name">
+                      <div class="workflow-avatar">
+                        <div class="avatar-placeholder">
+                          {{ (workflow.name || workflow.title || 'W').charAt(0).toUpperCase() }}
+                        </div>
                       </div>
+                      <span class="workflow-name">{{ workflow.name || workflow.title }}</span>
                     </div>
-                    <div v-if="workflows.length === 0" class="empty-category-drop-zone">Drop workflow here to recategorize</div>
+                    <div class="workflow-header-end">
+                      <ShareButton class="workflow-share" kind="workflow" :id="workflow.id" :name="workflow.name || workflow.title" />
+                      <span class="workflow-status" :class="workflow.status.toLowerCase()">{{ workflow.status }}</span>
+                    </div>
                   </div>
-                </article>
+
+                  <div class="workflow-description" :class="{ 'no-tools': !hasToolsOrUptime(workflow) }">
+                    {{ workflow.description || 'No description available' }}
+                  </div>
+
+                  <div v-if="hasToolsOrUptime(workflow)" class="workflow-tools">
+                    <div v-if="getToolsWithNames(workflow).length > 0" class="tools-icons">
+                      <Tooltip
+                        v-for="(tool, index) in getToolsWithNames(workflow).slice(0, 4)"
+                        :key="`tool-${index}`"
+                        :text="tool.name"
+                        width="auto"
+                      >
+                        <span class="tool-icon-small">
+                          <SvgIcon :name="tool.icon" />
+                        </span>
+                      </Tooltip>
+                      <span v-if="getToolsWithNames(workflow).length > 4" class="tools-overflow">
+                        +{{ getToolsWithNames(workflow).length - 4 }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Second run: the user's own work leads, the shelf steps aside. -->
               <MarketplaceShelf
-                v-if="activeTab !== 'marketplace' && !ownsNothing"
+                v-if="!ownsNothing"
                 asset-type="workflow"
                 variant="strip"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
@@ -322,7 +154,6 @@ import { useCleanup } from '@/composables/useCleanup';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
-import BaseTable from '../../../_components/BaseTable.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
@@ -332,11 +163,10 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, MobileCollection, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs, ShareButton },
+  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
@@ -348,7 +178,6 @@ export default {
     const simpleModalRef = ref(null);
     const terminalLines = ref([]);
     const selectedWorkflowId = ref(null);
-    const activeTab = ref('all');
     const searchQuery = ref('');
 
     /* Shelf wiring. `ownsNothing` reads the RAW list, not the tab/search
@@ -356,277 +185,43 @@ export default {
        but is not an empty-state user. */
     const shelfAvailable = ref(false);
     const ownsNothing = computed(() => (store.getters['workflows/allWorkflows'] || []).length === 0);
-    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && activeTab.value !== 'marketplace');
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value);
     // fetchWorkflows takes { activeOnly } only — no force flag exists here.
     const onShelfInstalled = () => store.dispatch('workflows/fetchWorkflows');
-    const currentLayout = ref('grid');
-    const hideEmptyCategories = ref(true);
-    const sortOrder = ref('az');
     let pollingInterval = null;
 
-    const selectedCategory = ref(null);
-    const selectedMainCategory = ref(null);
 
-    // Drag and drop state
-    const draggedWorkflow = ref(null);
-    const dragOverCategory = ref(null);
-    const collapsedCategories = ref(new Set());
 
     // Click handling state
     let clickTimer = null;
 
-    // Define tabs
-    const tabs = [
-      { id: 'all', name: 'All', icon: 'fas fa-list' },
-      { id: 'active', name: 'Active', icon: 'fas fa-play' },
-      { id: 'completed', name: 'Completed', icon: 'fas fa-check' },
-      { id: 'failed', name: 'Failed', icon: 'fas fa-times' },
-      { id: 'marketplace', name: 'Marketplace', icon: 'fas fa-store' },
-    ];
 
-    // Marketplace state
-    const marketplaceWorkflows = computed(() => store.getters['marketplace/filteredMarketplaceWorkflows'] || []);
-    const marketplaceSearchQuery = ref('');
 
     // Tutorial setup
     const { tutorialConfig, startTutorial, onTutorialClose, initializeWorkflowsTutorial } = useWorkflowsTutorial();
 
-    const mainWorkflowCategories = computed(() => {
-      const categories = store.getters['workflows/workflowCategories'] || [];
-      return categories
-        .filter((cat) => {
-          if (!cat) return false;
-          // Include "Uncategorized" as a main category
-          if (cat === 'Uncategorized') return true;
-          // Include categories that don't have dots in their first part (main categories)
-          return !cat.split(' ')[0].includes('.');
-        })
-        .map((cat) => {
-          return {
-            code: cat === 'Uncategorized' ? 'Uncategorized' : cat.split(' ')[0],
-            label: cat,
-          };
-        });
-    });
 
-    const categories = computed(() => store.getters['workflows/workflowCategories']);
 
-    // Define table columns
-    const tableColumns = [
-      { key: 'status', label: 'Status', width: '120px' },
-      { key: 'name', label: 'Name', width: '1.5fr' },
-      { key: 'tools', label: 'Tools', width: '2fr' },
-    ];
 
     const allWorkflows = computed(() => store.getters['workflows/allWorkflows']);
 
-    // Create a new computed property that is only filtered by the active tab
-    const workflowsFilteredByTab = computed(() => {
-      let workflows = allWorkflows.value;
-      switch (activeTab.value) {
-        case 'active':
-          return workflows.filter((w) => w.status === 'running' || w.status === 'listening');
-        case 'completed':
-          return workflows.filter((w) => w.status === 'completed' || w.status === 'stopped');
-        case 'failed':
-          return workflows.filter((w) => w.status === 'error' || w.status === 'insufficient-credits');
-        default: // 'all'
-          return workflows;
-      }
-    });
 
-    // Computed property for filtered workflows
+    // The one list the screen shows: search-narrowed, listening/running first,
+    // then A–Z. Sorts a copy — the old version sorted the store's array in
+    // place inside a computed, and never applied the search box to the grid.
+    const LIVE = new Set(['running', 'listening']);
     const filteredWorkflows = computed(() => {
-      // Marketplace tab returns marketplace items instead of local workflows
-      if (activeTab.value === 'marketplace') {
-        let workflows = marketplaceWorkflows.value;
-        if (searchQuery.value) {
-          const query = searchQuery.value.toLowerCase();
-          workflows = workflows.filter((w) =>
-            [w.name, w.title, w.description].some((val) => val && String(val).toLowerCase().includes(query)),
-          );
-        }
-        return workflows;
-      }
-
-      let workflows = workflowsFilteredByTab.value;
-
-      // Filter by category
-      if (selectedMainCategory.value) {
-        if (selectedMainCategory.value === 'Uncategorized') {
-          // Filter for workflows with empty, null, or undefined categories
-          workflows = workflows.filter((item) => !item.category || item.category.trim() === '');
-        } else {
-          // Filter for workflows that start with the main category code
-          workflows = workflows.filter((item) => item.category && item.category.startsWith(selectedMainCategory.value));
-        }
-      } else if (selectedCategory.value && selectedCategory.value !== 'All Workflows') {
-        if (selectedCategory.value === 'Uncategorized') {
-          // Filter for workflows with empty, null, or undefined categories
-          workflows = workflows.filter((item) => !item.category || item.category.trim() === '');
-        } else {
-          // Filter for exact category match
-          workflows = workflows.filter((item) => item.category === selectedCategory.value);
-        }
-      }
-
-      // Active workflows (running/listening) float to the top
-      const activeStatuses = new Set(['running', 'listening']);
-      workflows.sort((a, b) => {
-        const aActive = activeStatuses.has(a.status) ? 0 : 1;
-        const bActive = activeStatuses.has(b.status) ? 0 : 1;
-        if (aActive !== bActive) return aActive - bActive;
-        const nameA = (a.name || '').toLowerCase();
-        const nameB = (b.name || '').toLowerCase();
-        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-      });
-
-      return workflows;
+      const q = searchQuery.value.trim().toLowerCase();
+      const all = allWorkflows.value || [];
+      const items = q
+        ? all.filter((w) => [w.name, w.title, w.description, w.status, w.category].some((v) => v && String(v).toLowerCase().includes(q)))
+        : [...all];
+      return items.sort(
+        (x, y) =>
+          (LIVE.has(x.status) ? 0 : 1) - (LIVE.has(y.status) ? 0 : 1) ||
+          (x.name || x.title || '').localeCompare(y.name || y.title || '', undefined, { sensitivity: 'base' }),
+      );
     });
-
-    const mobileWorkflows = computed(() => {
-      const query = searchQuery.value.trim().toLowerCase();
-      return filteredWorkflows.value.filter(w => !query || [w.name,w.title,w.description,w.status,w.category].some(v => String(v || '').toLowerCase().includes(query)));
-    });
-    // Add this computed property after the existing computed properties
-    const categoriesWithCounts = computed(() => {
-      const categories = store.getters['workflows/workflowCategories'] || [];
-      const workflows = workflowsFilteredByTab.value;
-
-      return categories.map((category) => {
-        const count = workflows.filter((w) => w.category === category).length;
-        return count > 0 ? `${category} (${count})` : category;
-      });
-    });
-
-    // Group workflows by category for card view
-    const workflowsByCategory = computed(() => {
-      // If marketplace tab is selected, show marketplace workflows
-      if (activeTab.value === 'marketplace') {
-        const marketplaceItems = marketplaceWorkflows.value;
-        // Group marketplace items under a single "Marketplace" category
-        return { 'Marketplace Workflows': marketplaceItems };
-      }
-
-      // Use filteredWorkflows instead of workflowsFilteredByTab to respect category filtering from left panel
-      let workflows = filteredWorkflows.value;
-
-      // Apply search filtering for card view
-      if (searchQuery.value && searchQuery.value.trim() !== '') {
-        const query = searchQuery.value.toLowerCase().trim();
-        workflows = workflows.filter((workflow) => {
-          const searchableFields = [workflow.name || '', workflow.title || '', workflow.status || '', workflow.category || ''];
-          return searchableFields.some((field) => field.toLowerCase().includes(query));
-        });
-      }
-
-      const categories = {};
-
-      // When a specific category is selected, only show that category and its children
-      if (selectedCategory.value && selectedCategory.value !== 'All Workflows') {
-        // Initialize only the selected category
-        categories[selectedCategory.value] = [];
-
-        // If it's a main category, also include its children
-        if (selectedMainCategory.value && selectedMainCategory.value !== 'Uncategorized') {
-          const allCategories = store.getters['workflows/workflowCategories'] || [];
-          allCategories.forEach((category) => {
-            if (category.startsWith(selectedMainCategory.value) && category !== selectedMainCategory.value) {
-              categories[category] = [];
-            }
-          });
-        }
-
-        // Assign workflows to their categories (only the selected ones)
-        workflows.forEach((workflow) => {
-          const category = workflow.category || 'Uncategorized';
-          // For the selected category, always add workflows regardless of whether the category exists in the predefined list
-          if (category === selectedCategory.value) {
-            categories[selectedCategory.value].push(workflow);
-          } else if (categories.hasOwnProperty(category)) {
-            categories[category].push(workflow);
-          }
-        });
-      } else {
-        // When "All Workflows" is selected, show all categories
-        const allCategories = store.getters['workflows/workflowCategories'] || [];
-
-        // Initialize all predefined categories with empty arrays
-        allCategories.forEach((category) => {
-          categories[category] = [];
-        });
-
-        // Always include 'Uncategorized' category
-        if (!categories['Uncategorized']) {
-          categories['Uncategorized'] = [];
-        }
-
-        // First pass: collect all unique categories from workflows to ensure we don't miss any
-        workflows.forEach((workflow) => {
-          const category = workflow.category || 'Uncategorized';
-          if (!categories[category]) {
-            categories[category] = [];
-          }
-        });
-
-        // Second pass: assign workflows to their categories
-        workflows.forEach((workflow) => {
-          const category = workflow.category || 'Uncategorized';
-          categories[category].push(workflow);
-        });
-      }
-
-      // Sort workflows within each category
-      for (const key of Object.keys(categories)) {
-        categories[key].sort((a, b) => {
-          const nameA = (a.name || '').toLowerCase();
-          const nameB = (b.name || '').toLowerCase();
-          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
-      }
-
-      // Sort categories alphabetically (A-Z) and return as sorted object
-      const sortedCategories = {};
-      Object.keys(categories)
-        .sort((a, b) => a.localeCompare(b))
-        .forEach((key) => {
-          // When searching, only show categories that have workflows
-          if (searchQuery.value && searchQuery.value.trim() !== '') {
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else if (hideEmptyCategories.value) {
-            // When hiding empty categories, only show categories with workflows
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else {
-            // When not searching and not hiding empty categories, show all categories
-            sortedCategories[key] = categories[key];
-          }
-        });
-
-      return sortedCategories;
-    });
-
-    // Get category display name and icon
-    const getCategoryInfo = (categoryName) => {
-      const categoryIcons = {
-        'Data Processing': '🔄',
-        Integration: '🔗',
-        'File Management': '📁',
-        Communication: '📧',
-        Analytics: '📊',
-        System: '⚙️',
-        Uncategorized: '📋',
-      };
-
-      return {
-        name: categoryName,
-        icon: categoryIcons[categoryName] || '🔧',
-        count: workflowsByCategory.value[categoryName]?.length || 0,
-      };
-    };
 
     // Get workflow icon based on status
     const getWorkflowIcon = (workflow) => {
@@ -643,30 +238,8 @@ export default {
       return statusIcons[workflow.status] || '🔧';
     };
 
-    // --- Computed Property for Active Right Panel ---
-    const activeRightPanel = computed(() => {
-      // When on marketplace tab, use MarketplacePanel to show marketplace item details
-      if (activeTab.value === 'marketplace') {
-        return 'MarketplacePanel';
-      }
-      // Otherwise use WorkflowsPanel for regular workflow details
-      return 'WorkflowsPanel';
-    });
-
-    // --- Computed Property for Panel Props ---
-    const panelProps = computed(() => {
-      // When on marketplace tab, pass selectedWorkflow for MarketplacePanel
-      if (activeTab.value === 'marketplace') {
-        // Find the selected workflow from marketplace workflows
-        const selectedWorkflow = marketplaceWorkflows.value.find((w) => w.id === selectedWorkflowId.value);
-        return {
-          selectedWorkflow: selectedWorkflow || null,
-          activeTab: 'marketplace',
-        };
-      }
-      // For regular workflow tabs, pass selectedWorkflowId for WorkflowsPanel
-      return { selectedWorkflowId: selectedWorkflowId.value };
-    });
+    const activeRightPanel = computed(() => 'WorkflowsPanel');
+    const panelProps = computed(() => ({ selectedWorkflowId: selectedWorkflowId.value }));
 
     // --- Methods ---
     const scrollToBottom = () => baseScreenRef.value?.scrollToBottom();
@@ -769,78 +342,18 @@ export default {
       }
     };
 
-    const setLayout = (layout) => {
-      currentLayout.value = layout;
-    };
 
-    const toggleHideEmptyCategories = () => {
-      hideEmptyCategories.value = !hideEmptyCategories.value;
-      addLine(`[Workflows] ${hideEmptyCategories.value ? 'Hiding' : 'Showing'} empty categories`, 'info');
-    };
 
-    const toggleCategoryCollapse = (categoryName) => {
-      // Play sound when toggling category collapse
-      if (playSound) {
-        playSound('typewriterKeyPress');
-      }
 
-      if (collapsedCategories.value.has(categoryName)) {
-        collapsedCategories.value.delete(categoryName);
-      } else {
-        collapsedCategories.value.add(categoryName);
-      }
-    };
 
-    const isCategoryCollapsed = (categoryName) => {
-      return collapsedCategories.value.has(categoryName);
-    };
 
-    const allCategoriesCollapsed = computed(() => {
-      const categoryNames = Object.keys(workflowsByCategory.value);
-      return categoryNames.length > 0 && categoryNames.every((name) => collapsedCategories.value.has(name));
-    });
-
-    const toggleCollapseAll = () => {
-      const categoryNames = Object.keys(workflowsByCategory.value);
-
-      if (allCategoriesCollapsed.value) {
-        // Expand all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.delete(name);
-        });
-        addLine('[Workflows] Expanded all categories', 'info');
-      } else {
-        // Collapse all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.add(name);
-        });
-        addLine('[Workflows] Collapsed all categories', 'info');
-      }
-    };
 
     const addLine = (content, type = 'default') => {
       terminalLines.value.push({ content, type });
       nextTick(() => scrollToBottom());
     };
 
-    const onAllSelected = () => {
-      selectedMainCategory.value = null;
-      selectedCategory.value = null;
-      selectedWorkflowId.value = null;
-      addLine('[Workflows] Viewing all workflows (no category filter)', 'info');
-    };
 
-    const onCategorySelected = (payload) => {
-      if (payload.isMainCategory) {
-        selectedMainCategory.value = payload.mainCategory;
-        selectedCategory.value = payload.category;
-      } else {
-        selectedMainCategory.value = null;
-        selectedCategory.value = payload.category;
-      }
-      selectedWorkflowId.value = null;
-      addLine(`[Workflows] Viewing ${payload.category}`, 'info');
-    };
 
     const handleUserInputSubmit = async (input) => {
       addLine(`> ${input}`, 'input');
@@ -874,30 +387,27 @@ export default {
             addLine('Please provide a workflow ID', 'error');
           }
           break;
-        case 'install-workflow':
-          // Handle marketplace item installation from the right panel
-          await handleInstallWorkflow(payload);
-          break;
         default:
-          console.warn('Unhandled panel action in Workflows.vue:', action, payload);
+          addLine(`Unknown command: ${action}. Try list, info, run or stop.`, 'error');
       }
     };
 
     const handlePanelAction = async (action, payload) => {
       console.log('Workflow panel action:', action, payload);
 
-      if (action === 'category-filter-changed') {
-        // Handle category filter changes from the WorkflowsPanel
-        selectedCategory.value = payload.selectedCategory;
-        selectedMainCategory.value = payload.selectedMainCategory;
-        selectedWorkflowId.value = null; // Clear workflow selection when category changes
-
-        if (payload.type === 'all-selected') {
-          addLine('[Workflows] Viewing all workflows (no category filter)', 'info');
-        } else if (payload.type === 'category-selected') {
-          const categoryName = payload.payload.category;
-          addLine(`[Workflows] Viewing ${categoryName}`, 'info');
-        }
+      // Right panel: "+ New workflow" opens the forge on a blank canvas, where
+      // the quickstarts are; import/export act on the list.
+      if (action === 'create') {
+        emit('screen-change', 'WorkflowForgeScreen', { workflowId: null });
+      } else if (action === 'import-workflow') {
+        triggerWorkflowImport();
+      } else if (action === 'export-workflow') {
+        exportSelectedWorkflow();
+      } else if (action === 'close-panel' || action === 'clear-selection') {
+        selectedWorkflowId.value = null;
+      } else if (action === 'select-item' || action === 'select-workflow') {
+        const hit = (allWorkflows.value || []).find((w) => String(w.id) === String(payload?.id ?? payload));
+        if (hit) handleWorkflowClick(hit);
       } else if (action === 'navigate') {
         emit('screen-change', payload);
       } else if (action === 'edit-workflow') {
@@ -973,31 +483,9 @@ export default {
         } catch (error) {
           addLine(`Error deleting workflow: ${error.message}`, 'error');
         }
-      } else if (action === 'install-workflow') {
-        // Handle marketplace item installation from the right panel
-        await handleInstallWorkflow(payload);
       }
     };
 
-    const selectTab = async (tabId) => {
-      activeTab.value = tabId;
-      selectedWorkflowId.value = null;
-      addLine(`[Workflows] Viewing ${tabId} workflows`, 'info');
-
-      // Fetch marketplace workflows when marketplace tab is selected
-      if (tabId === 'marketplace') {
-        try {
-          addLine('[Marketplace] Loading marketplace workflows...', 'info');
-          // Update filters to fetch workflows only, then fetch items
-          await store.dispatch('marketplace/updateFilters', { assetType: 'workflow' });
-          await store.dispatch('marketplace/fetchMarketplaceItems');
-          const count = store.getters['marketplace/filteredMarketplaceWorkflows'].length;
-          addLine(`[Marketplace] Found ${count} workflows in marketplace`, 'success');
-        } catch (error) {
-          addLine(`[Marketplace] Error loading marketplace: ${error.message}`, 'error');
-        }
-      }
-    };
 
     const initializeScreen = () => {
       terminalLines.value = [];
@@ -1172,94 +660,18 @@ export default {
       return hasTools || hasUptime;
     };
 
-    // --- Drag and Drop Methods ---
-    const handleDragStart = (event, workflow) => {
-      draggedWorkflow.value = workflow;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', workflow.id);
 
-      // Add visual feedback
-      event.target.style.opacity = '0.5';
-      addLine(`[Drag] Started dragging workflow: ${workflow.name || workflow.title}`, 'info');
-    };
 
-    const handleDragEnd = (event) => {
-      // Reset visual feedback
-      event.target.style.opacity = '1';
-      draggedWorkflow.value = null;
-      dragOverCategory.value = null;
-    };
 
-    const handleDragOver = (categoryName) => {
-      if (draggedWorkflow.value && draggedWorkflow.value.category !== categoryName) {
-        dragOverCategory.value = categoryName;
-      }
-    };
 
-    const handleDragLeave = () => {
-      dragOverCategory.value = null;
-    };
-
-    const handleDrop = async (event, targetCategory) => {
-      event.preventDefault();
-      dragOverCategory.value = null;
-
-      if (!draggedWorkflow.value) return;
-
-      const workflow = draggedWorkflow.value;
-      const originalCategory = workflow.category || 'Uncategorized';
-
-      // Don't do anything if dropping on the same category
-      if (originalCategory === targetCategory) {
-        addLine(`[Drag] Workflow is already in ${targetCategory}`, 'info');
-        return;
-      }
-
-      try {
-        addLine(`[Drag] Moving workflow "${workflow.name || workflow.title}" from ${originalCategory} to ${targetCategory}...`, 'info');
-
-        // Optimistic update: immediately update the workflow in the store for instant UI feedback
-        const updatedWorkflow = {
-          ...workflow,
-          category: targetCategory === 'Uncategorized' ? '' : targetCategory,
-        };
-
-        // Update the workflow in the store immediately (optimistic update)
-        store.commit('workflows/UPDATE_WORKFLOW', updatedWorkflow);
-
-        // Then send the update to the server in the background
-        try {
-          await handlePanelAction('update-workflow', updatedWorkflow);
-          addLine(`[Drag] Successfully moved workflow to ${targetCategory}`, 'success');
-        } catch (error) {
-          // If server update fails, revert the optimistic update
-          store.commit('workflows/UPDATE_WORKFLOW', workflow);
-          addLine(`[Drag] Error moving workflow: ${error.message}`, 'error');
-          addLine(`[Drag] Reverted workflow back to ${originalCategory}`, 'info');
-        }
-      } catch (error) {
-        addLine(`[Drag] Error moving workflow: ${error.message}`, 'error');
-      } finally {
-        draggedWorkflow.value = null;
-      }
-    };
 
     // --- Marketplace Methods using shared composable ---
     // Initialize the marketplace install composable with modal and terminal logging
     const { handleInstall: marketplaceInstall } = useMarketplaceInstall(simpleModalRef, (msg) => addLine(msg, 'info'));
 
-    const handleInstallWorkflow = async (workflow) => {
-      playSound('typewriterKeyPress');
-      const result = await marketplaceInstall(workflow);
-      if (result.success) {
-        // Switch to "All" tab to show the newly installed workflow
-        activeTab.value = 'all';
-        await store.dispatch('workflows/fetchWorkflows');
-      }
-    };
 
     return {
-      mobileView, mobileWorkflows,
+      mobileView,
       baseScreenRef,
       simpleModalRef,
       terminalLines,
@@ -1267,9 +679,6 @@ export default {
       handlePanelAction,
       emit,
       initializeScreen,
-      tabs,
-      activeTab,
-      selectTab,
       filteredWorkflows,
       selectedWorkflowId,
       onContentClick,
@@ -1281,51 +690,22 @@ export default {
       handleWorkflowImportFile,
       exportSelectedWorkflow,
       getToolsDisplay,
-      tableColumns,
       handleSearch,
       searchQuery,
-      sortOrder,
-      categories,
-      categoriesWithCounts,
-      mainWorkflowCategories,
-      selectedCategory,
-      selectedMainCategory,
-      onCategorySelected,
-      onAllSelected,
       allWorkflows,
       shelfAvailable,
       ownsNothing,
       shelfHasFocus,
       onShelfInstalled,
-      workflowsFilteredByTab,
       getToolsWithNames,
       hasToolsOrUptime,
-      currentLayout,
-      setLayout,
-      workflowsByCategory,
-      getCategoryInfo,
       getWorkflowIcon,
-      hideEmptyCategories,
-      toggleHideEmptyCategories,
-      toggleCategoryCollapse,
-      isCategoryCollapsed,
-      allCategoriesCollapsed,
-      toggleCollapseAll,
       // Drag and drop
-      draggedWorkflow,
-      dragOverCategory,
-      handleDragStart,
-      handleDragEnd,
-      handleDragOver,
-      handleDragLeave,
-      handleDrop,
       // Tutorial
       tutorialConfig,
       startTutorial,
       onTutorialClose,
       // Marketplace
-      marketplaceWorkflows,
-      handleInstallWorkflow,
       // Dynamic panel switching
       activeRightPanel,
       panelProps,

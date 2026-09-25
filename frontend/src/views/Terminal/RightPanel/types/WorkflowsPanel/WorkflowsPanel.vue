@@ -1,9 +1,17 @@
 <template>
   <div class="workflow-panel">
+    <PanelActionBar
+      create-label="New workflow"
+      tour-id="workflows.create-button"
+      :actions="barActions"
+      @panel-action="(...args) => $emit('panel-action', ...args)"
+    />
+
     <div v-if="selectedWorkflow" class="workflow-details">
       <div class="workflow-header">
         <h2 class="workflow-title">{{ selectedWorkflow.name || selectedWorkflow.title }}</h2>
         <div class="workflow-status" :class="selectedWorkflow.status.toLowerCase()">[{{ selectedWorkflow.status }}]</div>
+        <PanelCloseButton label="Close workflow details" @panel-action="(...args) => $emit('panel-action', ...args)" />
       </div>
 
       <div class="workflow-description">
@@ -105,22 +113,12 @@
         />
       </div>
     </div>
-    <!-- Nothing selected: the list beside this panel. ActiveWorkflows (the
-         listening ones, with their last-run state) lives here now rather than
-         on every screen's right panel; Integration Health went to Connectors. -->
-    <ListSummaryPanel
-      v-if="!selectedWorkflow"
-      caption="Workflows"
-      :stats="summaryStats"
-      hint="Click a workflow card to inspect it here as steps, runs and settings. Esc comes back."
-      primary-label="New workflow"
-      @primary="$emit('panel-action', 'navigate', 'WorkflowForgeScreen')"
-    >
-      <ActiveWorkflows
-        @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
-        @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
-      />
-    </ListSummaryPanel>
+    <!-- Nothing selected: what is live right now. Stats are in the left panel. -->
+    <ActiveWorkflows
+      v-else
+      @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
+      @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
+    />
 
 
     <!-- Publish Workflow Modal -->
@@ -154,11 +152,12 @@ import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModa
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ActiveWorkflows from '@/views/Terminal/RightPanel/types/ChatPanel/components/ActiveWorkflows.vue';
-import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import PanelActionBar from '@/views/Terminal/_components/panels/PanelActionBar.vue';
+import PanelCloseButton from '@/views/Terminal/_components/panels/PanelCloseButton.vue';
 
 export default {
   name: 'WorkflowsPanel',
-  components: { BaseButton, CopyToTeamButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, PanelActionBar, PanelCloseButton },
   props: {
     selectedWorkflowId: {
       type: String,
@@ -169,20 +168,11 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
 
-    // Nothing-selected summary: the list beside this panel.
-    const summaryStats = computed(() => {
-      const all = store.getters['workflows/allWorkflows'] || [];
-      const st = (w) => String(w.status || '').toLowerCase();
-      const active = all.filter((w) => ['active', 'listening', 'running', 'enabled'].includes(st(w))).length;
-      const runs = (store.getters['executionHistory/getWorkflowExecutions'] || []);
-      const running = runs.filter((e) => ['running', 'executing', 'in_progress'].includes(String(e.status || '').toLowerCase())).length;
-      return [
-        { label: 'Workflows', value: all.length },
-        { label: 'Listening', value: active },
-        { label: 'Running now', value: running, live: running > 0 },
-        { label: 'Runs recorded', value: runs.length },
-      ];
-    });
+    // Stats live in the left panel; this panel creates and inspects.
+    const barActions = computed(() => [
+      { id: 'import-workflow', label: 'Import workflow JSON', icon: 'fas fa-file-import' },
+      ...(props.selectedWorkflowId ? [{ id: 'export-workflow', label: 'Export this workflow', icon: 'fas fa-file-export' }] : []),
+    ]);
     const selectedCategory = ref('');
 
     const selectedWorkflow = computed(() => {
@@ -670,7 +660,7 @@ export default {
     };
 
     return {
-      summaryStats,
+      barActions,
       selectedWorkflow,
       isWorkflowActive,
       canStart,
@@ -719,6 +709,7 @@ export default {
 .workflow-panel {
   display: flex;
   flex-direction: column;
+  gap: 14px;
   height: 100%;
   overflow-y: auto;
   min-height: 0;
@@ -731,9 +722,16 @@ export default {
 } */
 
 .workflow-header {
+  position: relative;
   margin-bottom: 15px;
   border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
-  padding-bottom: 8px;
+  padding: 0 34px 8px 0;
+}
+
+.workflow-header .panel-close {
+  position: absolute;
+  top: -2px;
+  right: 0;
 }
 
 .workflow-title {
