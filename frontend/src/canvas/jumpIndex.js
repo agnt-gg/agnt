@@ -27,7 +27,6 @@ const SCREEN_ICONS = {
   GoalsScreen: 'fas fa-bullseye',
   TracesScreen: 'fas fa-stream',
   AgentsScreen: 'fas fa-robot',
-  AgentForgeScreen: 'fas fa-robot',
   WorkflowsScreen: 'fas fa-project-diagram',
   WorkflowForgeScreen: 'fas fa-project-diagram',
   ToolsScreen: 'fas fa-wrench',
@@ -97,7 +96,7 @@ export function buildJumpIndex(src) {
 
   const doItems = [
     { id: 'do:new-chat', icon: 'fas fa-plus', label: 'New chat', kbd: '⌘N', action: { type: 'new-chat' }, _hay: ['new chat', 'conversation'] },
-    { id: 'do:new-agent', icon: 'fas fa-robot', label: 'New agent', hint: 'Agent Forge', action: { type: 'screen', screen: 'AgentForgeScreen' }, _hay: ['new agent', 'create agent', 'forge'] },
+    { id: 'do:new-agent', icon: 'fas fa-robot', label: 'New agent', hint: 'Agents', action: { type: 'screen', screen: 'AgentsScreen', opts: { newAgent: true } }, _hay: ['new agent', 'create agent'] },
     { id: 'do:new-workflow', icon: 'fas fa-project-diagram', label: 'New workflow', hint: 'Workflow Forge', action: { type: 'screen', screen: 'WorkflowForgeScreen' }, _hay: ['new workflow', 'create workflow', 'forge'] },
     { id: 'do:new-tool', icon: 'fas fa-wrench', label: 'New tool', hint: 'Tool Forge', action: { type: 'screen', screen: 'ToolForgeScreen' }, _hay: ['new tool', 'create tool', 'forge'] },
     { id: 'do:new-goal', icon: 'fas fa-bullseye', label: 'Run a goal…', hint: 'Goals', action: { type: 'screen', screen: 'GoalsScreen', opts: { newGoal: true } }, _hay: ['new goal', 'run goal', 'create goal'] },

@@ -2425,7 +2425,7 @@ export default {
       } else if (action === 'edit-workflow') {
         emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
       } else if (action === 'edit-agent') {
-        emit('screen-change', 'AgentForgeScreen', { agentId: payload });
+        emit('screen-change', 'AgentsScreen', { select: { kind: 'agent', id: payload } });
       } else if (action === 'new-chat') {
         confirmClearConversation();
         return;

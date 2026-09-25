@@ -140,11 +140,14 @@ describe('resolveSurfaceDelivery — which window applies this event?', () => {
   it.each([
     ['widget-field-updated', 'widget-forge', 'chat-sse-event'],
     ['widget-stream-done', 'widget-forge', 'chat-sse-event'],
-    ['agent-updated', 'agent-forge', 'chat-sse-event'],
     ['tool-field-updated', 'tool-forge', 'chat-sse-event'],
     ['file_written', 'artifacts', 'code-file-written'],
   ])('%s -> %s', (type, widgetId, eventName) => {
     expect(resolveSurfaceDelivery(type)).toMatchObject({ widgetId, eventName });
+  });
+
+  it('does NOT route agent events: the Agent Forge surface they edited is gone', () => {
+    expect(resolveSurfaceDelivery('agent-updated')).toBeNull();
   });
 
   it('does NOT route workflow events — that path is socket-driven and id-addressed', () => {
@@ -280,7 +283,7 @@ describe('routes ↔ real widget registry integrity', () => {
   beforeEach(() => registerAllWidgets());
 
   it('every routed widget exists and DECLARES the events it is sent', () => {
-    for (const type of ['widget-field-updated', 'agent-updated', 'tool-field-updated', 'file_written']) {
+    for (const type of ['widget-field-updated', 'tool-field-updated', 'file_written']) {
       const route = resolveSurfaceDelivery(type);
       const widget = getWidget(route.widgetId);
       expect(widget, `route target ${route.widgetId} is not a registered widget`).toBeTruthy();
@@ -289,7 +292,7 @@ describe('routes ↔ real widget registry integrity', () => {
   });
 
   it('every widget that declares state also declares it in a shape the merge understands', () => {
-    for (const widget of ['workflow-forge', 'tool-forge', 'agent-forge', 'widget-forge', 'artifacts']) {
+    for (const widget of ['workflow-forge', 'tool-forge', 'widget-forge', 'artifacts']) {
       const c = getWidget(widget)?.contributes;
       expect(c, `${widget} declares no contributes`).toBeTruthy();
       expect(Array.isArray(c.state) && c.state.length > 0).toBe(true);
@@ -310,7 +313,6 @@ describe('screens actually call the composable (source guards)', () => {
       '/src/views/Terminal/CenterPanel/screens/WorkflowForge/WorkflowForge.vue',
       '/src/views/Terminal/CenterPanel/screens/WidgetForge/WidgetForge.vue',
       '/src/views/Terminal/CenterPanel/screens/ToolForge/ToolForge.vue',
-      '/src/views/Terminal/CenterPanel/screens/AgentForge/AgentForge.vue',
       '/src/views/Terminal/CenterPanel/screens/Artifacts/Artifacts.vue',
     ],
     { query: '?raw', import: 'default', eager: true },
@@ -322,7 +324,6 @@ describe('screens actually call the composable (source guards)', () => {
 
   it.each([
     '/src/views/Terminal/CenterPanel/screens/WidgetForge/WidgetForge.vue',
-    '/src/views/Terminal/CenterPanel/screens/AgentForge/AgentForge.vue',
     '/src/views/Terminal/CenterPanel/screens/Artifacts/Artifacts.vue',
   ])('%s guards its window listener against sibling-addressed events', (path) => {
     expect(files[path]).toMatch(/if \(!acceptsSurfaceEvent\(/);

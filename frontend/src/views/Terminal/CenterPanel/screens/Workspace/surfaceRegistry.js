@@ -43,7 +43,6 @@ export const SCREEN_WIDGET_MAP = {
   WorkflowForgeScreen: { widgetId: 'workflow-forge', param: 'id', optionKey: 'workflowId' },
   ToolForgeScreen: { widgetId: 'tool-forge', param: 'tool-id', optionKey: 'toolId' },
   TracesScreen: { widgetId: 'traces', param: 'executionId', optionKey: 'selectedExecutionId' },
-  AgentForgeScreen: { widgetId: 'agent-forge' },
   GoalsScreen: { widgetId: 'goals' },
   DashboardScreen: { widgetId: 'dashboard' },
   ArtifactsScreen: { widgetId: 'artifacts' },

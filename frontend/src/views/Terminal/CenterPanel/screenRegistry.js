@@ -27,7 +27,6 @@
  * prop always wins over the registry.
  */
 export const SCREEN_DEFAULTS = Object.freeze({
-  AgentForgeScreen: { rightPanel: 'AgentForgePanel', input: false },
   AgentsScreen: { leftPanel: 'AgentsPanel', input: false }, // right: dynamic
   ArtifactsScreen: { leftPanel: 'ArtifactsPanel', rightPanel: 'FileTreePanel', input: false },
   // ── SYSTEM screens ──

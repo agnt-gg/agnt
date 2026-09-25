@@ -7,7 +7,6 @@
     :terminalLines="terminalLines"
     :leftPanelProps="{
       allAvailableAgents: agents,
-      activeTab: agentTab,
       selectedAgent,
     }"
     :panelProps="panelProps"
@@ -16,8 +15,8 @@
     @base-mounted="initializeScreen"
   >
     <template #default="{ terminalLines }">
-      <div class="agents-panel" :class="{ 'has-details': selectedAgent && agentTab !== 'marketplace', expanded: isDetailsExpanded }" @click="onContentClick">
-<MobileCollection v-if="mobileView" v-show="!selectedAgent || agentTab === 'marketplace'" view-id="agents" title="Agents" count-label="agents" :items="filteredAgentsGrid" :search="searchQuery" :tabs="agentTabs" :active="agentTab" :selected-id="selectedAgent?.id" create-label="Create agent" icon="fas fa-robot" @update:search="handleSearch" @tab="onAgentTabSelect" @select="selectMobileAgent" @create="handlePanelAction('navigate', 'AgentForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="triggerAgentImport">Import</button><button :disabled="!selectedAgent" @click="exportSelectedAgent">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+      <div class="agents-panel" :class="{ 'has-details': !!selectedAgent, expanded: isDetailsExpanded }" @click="onContentClick">
+<MobileCollection v-if="mobileView" v-show="!selectedAgent" view-id="agents" title="Agents" count-label="agents" :items="filteredAgentsGrid" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedAgent?.id" create-label="Create agent" icon="fas fa-robot" @update:search="handleSearch" @select="selectMobileAgent" @create="openCreate()"><template #actions><button @click="triggerAgentImport">Import</button><button :disabled="!selectedAgent" @click="exportSelectedAgent">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
 <input
               ref="agentImportInput"
               type="file"
@@ -26,7 +25,7 @@
               @change="handleAgentImportFile"
             />
 <div v-show="!mobileView" class="desktop-view-container">
-        <!-- Header bar -->
+        <!-- Title, count, search. Create, import and export live in the right panel. -->
         <ScreenToolbar
           title="AGENTS"
           :count="filteredAgentsGrid.length"
@@ -34,39 +33,12 @@
           searchPlaceholder="Search agents..."
           :searchQuery="searchQuery"
           :searchScope="shelfHasFocus ? 'Marketplace' : ''"
-          :currentLayout="currentLayout"
-          :layoutOptions="['grid', 'table']"
-          :showCollapseToggle="true"
-          :allCategoriesCollapsed="allCategoriesCollapsed"
-          :showHideEmpty="true"
-          :hideEmptyCategories="hideEmptyCategories"
-          :sortOrder="sortOrder"
-          createLabel="New Agent"
+          :layoutOptions="[]"
+          :showCollapseToggle="false"
+          :showHideEmpty="false"
+          :showSort="false"
           @update:searchQuery="handleSearch"
-          @update:layout="setLayout"
-          @toggleCollapseAll="toggleCollapseAll"
-          @toggleHideEmpty="toggleHideEmptyCategories"
-          @update:sortOrder="(v) => (sortOrder = v)"
-          @create="handlePanelAction('navigate', 'AgentForgeScreen')"
-        >
-          <!-- small import/export buttons -->
-          <template #extra-buttons>
-            <Tooltip text="Import Agent JSON" width="auto">
-              <button class="wm-btn" @click="triggerAgentImport">
-                <i class="fas fa-file-import"></i>
-              </button>
-            </Tooltip>
-            <Tooltip :text="selectedAgent ? `Export ${selectedAgent.name}` : 'Select an agent to export'" width="auto">
-              <button class="wm-btn" :disabled="!selectedAgent" @click="exportSelectedAgent">
-                <i class="fas fa-file-export"></i>
-              </button>
-            </Tooltip>
-
-          </template>
-        </ScreenToolbar>
-
-        <!-- Tabs -->
-        <FilterTabs :tabs="agentTabs" :active="agentTab" @select="onAgentTabSelect" />
+        />
 
         <!-- Main Content -->
         <div class="screen-content agents-content">
@@ -88,31 +60,19 @@
           </div>
 
           <main v-else class="screen-main-content agents-main-content fade-in">
-            <!-- Table View -->
-            <AgentList
-              v-if="currentLayout === 'table'"
-              :items="filteredAgentsGrid"
-              :columns="tableColumns"
-              :selected-id="selectedAgent?.id"
-              :current-layout="currentLayout"
-              :format-uptime="formatUptime"
-              @row-click="selectAgentGrid"
-              @search="handleSearch"
-            />
 
-            <!-- Category Cards View -->
-            <div v-else-if="currentLayout === 'grid'" class="category-cards-container">
+            <div class="category-cards-container">
               <!-- Nothing owned yet: the empty state IS the storefront. Create
                    stays first-class on top; real, type-scoped inventory sits
                    underneath. Degrades to Create alone if the catalogue is
                    unreachable — see MarketplaceShelf. -->
               <MarketplaceShelf
-                v-if="agentTab !== 'marketplace' && ownsNothing"
+                v-if="ownsNothing"
                 asset-type="agent"
                 variant="full"
                 :query="searchQuery"
                 create-label="Create Agent"
-                @create="handlePanelAction('navigate', 'AgentForgeScreen')"
+                @create="openCreate()"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
                 @installed="onShelfInstalled"
                 @clear-search="handleSearch('')"
@@ -122,7 +82,7 @@
               <!-- Owned, but this search matched none of them. Their own items
                    are the subject here, so this stays a plain reset — not a
                    marketplace pitch. -->
-              <div v-else-if="agentTab !== 'marketplace' && filteredAgentsGrid.length === 0" class="empty-state-container">
+              <div v-else-if="filteredAgentsGrid.length === 0" class="empty-state-container">
                 <div class="empty-state">
                   <i class="fas fa-robot"></i>
                   <p>No agents match &ldquo;{{ searchQuery }}&rdquo;</p>
@@ -132,169 +92,65 @@
                 </div>
               </div>
 
-              <div v-else class="category-cards-grid">
-                <article
-                  v-for="(agents, categoryName, index) in agentsByCategory"
-                  :key="categoryName"
-                  class="category-card"
-                  :class="{
-                    'drag-over': dragOverCategory === categoryName,
-                    'full-width': agents.length >= 2,
-                  }"
-                  role="listitem"
-                  :aria-label="`${categoryName} Category`"
-                  @dragover.prevent="handleDragOver(categoryName)"
-                  @dragleave="handleDragLeave"
-                  @drop="handleDrop($event, categoryName)"
-                >
-                  <div class="category-header" @click="toggleCategoryCollapse(categoryName)">
-                    <div class="category-title">
-                      <span class="category-icon">{{ getCategoryInfo(categoryName).icon }}</span>
-                      {{ categoryName }}
+              <!-- One flat grid: no categories, no grouping, no tabs. Search in
+                   the header is the only filter. -->
+              <div v-else class="card-grid agents-grid" role="list" aria-label="Agents">
+                  <div
+                    v-for="agent in filteredAgentsGrid"
+                    :key="agent.id"
+                    class="agent-card"
+                    :class="{
+                      selected: selectedAgent?.id === agent.id,
+                      active: (agent.status || '').toLowerCase() === 'active',
+                    }"
+                    @click="selectAgent(agent)"
+                  >
+                    <div class="agent-header">
+                      <div class="agent-avatar-name">
+                        <div
+                          :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']"
+                        >
+                          <img
+                            :src="agent.avatar || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
+                            :alt="agent.name"
+                            class="avatar-image"
+                            @error="$event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
+                          />
+                        </div>
+                        <span class="agent-name">{{ agent.name }}</span>
+                      </div>
+                      <span class="agent-status" :class="(agent.status || 'inactive').toLowerCase()">{{ agent.status || 'INACTIVE' }}</span>
                     </div>
-                    <div class="category-header-right">
-                      <div class="category-count">{{ agents.length }} agents</div>
-                      <button class="collapse-toggle" :class="{ collapsed: isCategoryCollapsed(categoryName) }">
-                        <i class="fas fa-chevron-down"></i>
-                      </button>
+
+                    <div class="agent-description" :class="{ 'no-tools': !hasToolsOrUptime(agent) }">
+                      {{ agent.description || 'No description available' }}
+                    </div>
+
+                    <div v-if="hasToolsOrUptime(agent)" class="agent-tools">
+                      <div v-if="getAgentToolsWithIcons(agent).length > 0" class="tools-icons">
+                        <Tooltip
+                          v-for="(tool, index) in getAgentToolsWithIcons(agent).slice(0, 4)"
+                          :key="`tool-${index}`"
+                          :text="tool.name"
+                          width="auto"
+                        >
+                          <span class="tool-icon-small">
+                            <SvgIcon :name="tool.icon" />
+                          </span>
+                        </Tooltip>
+                        <span v-if="(agent.assignedTools?.length || 0) > 4" class="tools-overflow">
+                          +{{ (agent.assignedTools?.length || 0) - 4 }}
+                        </span>
+                      </div>
+                      <span v-if="agent.uptime && agent.uptime > 0" class="uptime">{{ formatUptime(agent.uptime) }}</span>
                     </div>
                   </div>
-                  <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
-                    <!-- Marketplace Agents Grid -->
-                    <div v-if="agentTab === 'marketplace'" class="card-row agents-grid">
-                      <div
-                        v-for="(item, index) in agents"
-                        :key="item.id"
-                        class="agent-card"
-                        :class="{
-                          selected: selectedAgent?.id === item.id,
-                          active: (item.status || '').toLowerCase() === 'active',
-                          'last-odd': agents.length % 2 === 1 && index === agents.length - 1,
-                        }"
-                        @click="selectAgent(item)"
-                      >
-                        <div class="marketplace-card-content">
-                          <!-- Row 1: Avatar + Title/Publisher/Description -->
-                          <div class="marketplace-header">
-                            <div class="marketplace-avatar-container">
-                              <div v-if="item.preview_image || item.avatar" class="marketplace-avatar">
-                                <img :src="item.preview_image || item.avatar" :alt="item.title || item.name" />
-                              </div>
-                              <div v-else class="marketplace-avatar-placeholder">
-                                <i class="fas fa-robot"></i>
-                              </div>
-                            </div>
-
-                            <div class="marketplace-info">
-                              <div class="marketplace-title-row">
-                                <h3 class="marketplace-name">{{ item.title || item.name }}</h3>
-                                <span v-if="item.price > 0" class="item-price">${{ item.price.toFixed(2) }}</span>
-                                <span v-else class="item-price free">FREE</span>
-                              </div>
-
-                              <div class="item-publisher">
-                                <i class="fas fa-user"></i>
-                                {{ item.publisher_pseudonym || item.publisher_name || 'Anonymous' }}
-                              </div>
-
-                              <p class="marketplace-description">
-                                {{ item.tagline || item.description || 'No description available' }}
-                              </p>
-                            </div>
-                          </div>
-
-                          <!-- Row 2: Ratings and Downloads -->
-                          <div class="marketplace-meta">
-                            <div class="meta-item">
-                              <i class="fas fa-star"></i>
-                              <span>{{ item.rating ? item.rating.toFixed(1) : '0.0' }}</span>
-                              <span class="meta-count">({{ item.rating_count || 0 }})</span>
-                            </div>
-                            <div class="meta-item">
-                              <i class="fas fa-download"></i>
-                              <span>{{ item.downloads || 0 }}</span>
-                            </div>
-                            <div v-if="item.category" class="meta-item category">
-                              <i class="fas fa-tag"></i>
-                              <span>{{ item.category }}</span>
-                            </div>
-                          </div>
-
-                          <!-- Row 3: Install Button -->
-                          <button class="install-button" @click.stop="handleInstallAgent(item)">
-                            <i class="fas fa-download"></i>
-                            {{ item.price > 0 ? 'Purchase' : 'Install' }}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <!-- Regular Agents Grid -->
-                    <div v-else class="card-row agents-grid">
-                      <div
-                        v-for="(agent, index) in agents"
-                        :key="agent.id"
-                        class="agent-card"
-                        :class="{
-                          selected: selectedAgent?.id === agent.id,
-                          active: (agent.status || '').toLowerCase() === 'active',
-                          dragging: draggedAgent && draggedAgent.id === agent.id && draggedAgent === agent,
-                          'last-odd': agents.length % 2 === 1 && index === agents.length - 1,
-                        }"
-                        draggable="true"
-                        @click="selectAgent(agent)"
-                        @dragstart="handleDragStart($event, agent)"
-                        @dragend="handleDragEnd"
-                      >
-                        <div class="agent-header">
-                          <div class="agent-avatar-name">
-                            <div
-                              :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']"
-                            >
-                              <img
-                                :src="agent.avatar || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
-                                :alt="agent.name"
-                                class="avatar-image"
-                                @error="$event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
-                              />
-                            </div>
-                            <span class="agent-name">{{ agent.name }}</span>
-                          </div>
-                          <span class="agent-status" :class="(agent.status || 'inactive').toLowerCase()">{{ agent.status || 'INACTIVE' }}</span>
-                        </div>
-
-                        <div class="agent-description" :class="{ 'no-tools': !hasToolsOrUptime(agent) }">
-                          {{ agent.description || 'No description available' }}
-                        </div>
-
-                        <div v-if="hasToolsOrUptime(agent)" class="agent-tools">
-                          <div v-if="getAgentToolsWithIcons(agent).length > 0" class="tools-icons">
-                            <Tooltip
-                              v-for="(tool, index) in getAgentToolsWithIcons(agent).slice(0, 4)"
-                              :key="`tool-${index}`"
-                              :text="tool.name"
-                              width="auto"
-                            >
-                              <span class="tool-icon-small">
-                                <SvgIcon :name="tool.icon" />
-                              </span>
-                            </Tooltip>
-                            <span v-if="(agent.assignedTools?.length || 0) > 4" class="tools-overflow">
-                              +{{ (agent.assignedTools?.length || 0) - 4 }}
-                            </span>
-                          </div>
-                          <span v-if="agent.uptime && agent.uptime > 0" class="uptime">{{ formatUptime(agent.uptime) }}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div v-if="agents.length === 0" class="empty-category-drop-zone">Drop agent here to recategorize</div>
-                  </div>
-                </article>
               </div>
 
               <!-- Second run: the user's own work leads, the shelf steps aside
                    into a compact, dismissible rail. -->
               <MarketplaceShelf
-                v-if="agentTab !== 'marketplace' && !ownsNothing"
+                v-if="!ownsNothing"
                 asset-type="agent"
                 variant="strip"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
@@ -308,7 +164,7 @@
 </div>
         <!-- Agent Details Tabs Section - Only show for non-marketplace tabs -->
         <AgentDetails
-          v-if="selectedAgent && agentTab !== 'marketplace'"
+          v-if="selectedAgent"
           :selected-agent="selectedAgent"
           :save-status="saveStatus"
           :is-details-expanded="isDetailsExpanded"
@@ -331,6 +187,14 @@
         />
 
         <SimpleModal ref="simpleModal" />
+        <AgentCreateModal
+          :open="createOpen"
+          :initial-template="createTemplate"
+          :tools="availableTools"
+          :skills="availableSkills"
+          @close="createOpen = false"
+          @created="onAgentCreated"
+        />
       </div>
     </template>
   </BaseScreen>
@@ -341,14 +205,11 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, inject, computed, watch } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { API_CONFIG } from '@/tt.config.js';
-import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
-import SidebarCategories from '../../../_components/SidebarCategories.vue';
-import AgentList from './components/AgentList.vue';
 import AgentDetails from './components/AgentDetails/AgentDetails.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -356,17 +217,18 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
+import AgentCreateModal from './components/AgentCreateModal.vue';
 import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
   name: 'AgentsScreen',
-  components: { BaseScreen, MobileCollection, TerminalHeader, SidebarCategories, AgentList, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, PopupTutorial, FilterTabs, },
+  components: { BaseScreen, MobileCollection, TerminalHeader, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, PopupTutorial, AgentCreateModal },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
     const store = useStore();
     const route = useRoute();
+    const router = useRouter();
     const playSound = inject('playSound', () => {});
 
     // Initialize tutorial
@@ -388,145 +250,27 @@ export default {
     const shelfAvailable = ref(false);
     const ownsNothing = computed(() => agents.value.length === 0);
     // Only claim the search box while the shelf is the thing it can actually drive.
-    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && agentTab.value !== 'marketplace');
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value);
     const onShelfInstalled = async () => {
       await store.dispatch('agents/fetchAgents', { force: true });
       await loadAgents(true);
     };
-    const currentLayout = ref('grid');
-    const selectedCategory = ref(null);
-    const selectedMainCategory = ref(null);
     const isDetailsExpanded = ref(false);
     const saveStatus = ref(null);
-    const hideEmptyCategories = ref(true);
-    const collapsedCategories = ref(new Set());
-    const sortOrder = ref('az');
 
-    // Drag and drop state
-    const draggedAgent = ref(null);
-    const dragOverCategory = ref(null);
 
-    // Watch agents array and clear drag state when it changes
-    watch(agents, () => {
-      draggedAgent.value = null;
-      dragOverCategory.value = null;
-    });
-
-    // Define table columns
-    const tableColumns = [
-      { key: 'avatar', label: '', width: '60px' },
-      { key: 'name', label: 'Name', width: '2fr' },
-      { key: 'category', label: 'Category', width: '1fr' },
-      { key: 'status', label: 'Status', width: '1fr' },
-      { key: 'tools', label: 'Tools', width: '1fr' },
-      { key: 'uptime', label: 'Uptime', width: '1fr' },
-    ];
-
-    const agentTabs = [
-      { id: 'all', name: 'All Agents', icon: 'fas fa-users' },
-      { id: 'active', name: 'Active Agents', icon: 'fas fa-play' },
-      { id: 'inactive', name: 'Inactive Agents', icon: 'fas fa-stop' },
-      { id: 'marketplace', name: 'Marketplace', icon: 'fas fa-store' },
-    ];
-
-    // Marketplace state
-    const marketplaceAgents = computed(() => store.getters['marketplace/filteredMarketplaceAgents'] || []);
-    const agentTab = ref('all');
-
-    async function onAgentTabSelect(tabId) {
-      agentTab.value = tabId;
-
-      // Clear selection when switching tabs to avoid showing stale details
-      selectedAgent.value = null;
-
-      // Fetch marketplace agents when marketplace tab is selected
-      if (tabId === 'marketplace') {
-        try {
-          terminalLines.value.push('[Marketplace] Loading marketplace agents...');
-          scrollToBottom();
-          // Update filters to fetch agents only
-          await store.dispatch('marketplace/updateFilters', { assetType: 'agent' });
-          await store.dispatch('marketplace/fetchMarketplaceItems');
-          const count = store.getters['marketplace/filteredMarketplaceAgents'].length;
-          terminalLines.value.push(`[Marketplace] Found ${count} agents in marketplace`);
-          scrollToBottom();
-        } catch (error) {
-          terminalLines.value.push(`[Marketplace] Error loading marketplace: ${error.message}`);
-          scrollToBottom();
-        }
-      }
-    }
-
-    // Example agent categories (replace with real categories if available)
-    const mainAgentCategories = [
-      { code: 'Uncategorized', label: 'Uncategorized' },
-      { code: '000', label: '000 - Foundations' },
-      { code: '100', label: '100 - Business & Finance' },
-      { code: '200', label: '200 - Content & Media' },
-      { code: '300', label: '300 - Data & Analytics' },
-      { code: '400', label: '400 - Development & DevOps' },
-      { code: '500', label: '500 - Marketing & Sales' },
-      { code: '600', label: '600 - Operations & Tools' },
-    ];
-
-    // Dummy categories for now (replace with real getter if available)
-    const categories = computed(() => store.getters['agents/agentCategories']);
-
-    // Filtered agents for grid/table view
+    // The one list the screen shows: every agent, narrowed only by search,
+    // A–Z. Sorts a copy — sorting the store's array in place inside a computed
+    // mutated shared state on every render.
     const filteredAgentsGrid = computed(() => {
-      // Marketplace tab returns marketplace items instead of local agents
-      if (agentTab.value === 'marketplace') {
-        let items = marketplaceAgents.value;
-        if (searchQuery.value) {
-          const q = searchQuery.value.toLowerCase();
-          items = items.filter((item) =>
-            [item.name, item.description, item.category].some((val) => val && String(val).toLowerCase().includes(q)),
-          );
-        }
-        items.sort((a, b) => {
-          const nameA = (a.name || '').toLowerCase();
-          const nameB = (b.name || '').toLowerCase();
-          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
-        return items;
-      }
-
-      let items = agents.value;
-      // Filter by tab
-      if (agentTab.value === 'active') {
-        items = items.filter((agent) => (agent.status || 'INACTIVE') === 'ACTIVE');
-      } else if (agentTab.value === 'inactive') {
-        items = items.filter((agent) => (agent.status || 'INACTIVE') === 'INACTIVE');
-      } // 'all' shows all agents
-      // Category filtering
-      if (selectedMainCategory.value) {
-        items = items.filter((item) => item.category && item.category.startsWith(selectedMainCategory.value));
-      } else if (selectedCategory.value && selectedCategory.value !== 'All Agents') {
-        items = items.filter((item) => item.category === selectedCategory.value);
-      }
-      if (searchQuery.value) {
-        const q = searchQuery.value.toLowerCase();
-        items = items.filter((item) =>
-          [item.name, item.status || 'INACTIVE', item.category].some((val) => val && String(val).toLowerCase().includes(q)),
-        );
-      }
-      items.sort((a, b) => {
-        const nameA = (a.name || '').toLowerCase();
-        const nameB = (b.name || '').toLowerCase();
-        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-      });
-      return items;
+      const q = searchQuery.value.trim().toLowerCase();
+      const items = q
+        ? agents.value.filter((agent) =>
+            [agent.name, agent.description, agent.status, agent.category].some((v) => v && String(v).toLowerCase().includes(q)),
+          )
+        : [...agents.value];
+      return items.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
     });
-
-    const setLayout = (layout) => {
-      currentLayout.value = layout;
-    };
-    const selectAgentGrid = (agent) => {
-      selectAgent(agent);
-    };
-    const selectTab = (tabId) => {
-      // If you want to support agent type tabs, add logic here
-    };
 
     // --- BaseScreen Methods Access ---
     const scrollToBottom = () => baseScreenRef.value?.scrollToBottom();
@@ -617,7 +361,7 @@ export default {
       }
     };
 
-    const selectMobileAgent = agent => { selectAgent(agent); if (agentTab.value === 'marketplace') nextTick(() => baseScreenRef.value?.openMobilePanel('right')); };
+    const selectMobileAgent = (agent) => selectAgent(agent);
     const selectAgent = (agent) => {
       // Play sound when selecting an agent
       if (playSound) {
@@ -647,9 +391,6 @@ export default {
         await store.dispatch('agents/fetchAgents', { force });
         agents.value = store.getters['agents/allAgents'];
         terminalLines.value.push('[Agents] Agent list updated.');
-        // Clear drag state to prevent stale references
-        draggedAgent.value = null;
-        dragOverCategory.value = null;
       } catch (error) {
         terminalLines.value.push(`[Agents] Error refreshing agents: ${error.message}`);
         console.error('Error fetching agents:', error);
@@ -795,24 +536,25 @@ export default {
           await nextTick();
           scrollToBottom();
           break;
-        case 'category-filter-changed':
-          // Handle category filter changes from the AgentsPanel
-          selectedCategory.value = payload.selectedCategory;
-          selectedMainCategory.value = payload.selectedMainCategory;
-          selectedAgent.value = null; // Clear agent selection when category changes
-
-          if (payload.type === 'all-selected') {
-            terminalLines.value = ['[Agents] Viewing all agents (no category filter)'];
-          } else if (payload.type === 'category-selected') {
-            const categoryName = payload.payload.category;
-            terminalLines.value = [`[Agents] Viewing ${categoryName}`];
-          }
-          scrollToBottom();
+        // Right panel: "+ New agent", a quickstart template, import/export.
+        case 'create':
+          openCreate();
           break;
-        case 'install-workflow':
-          // Handle marketplace item installation from the right panel
-          await handleInstallAgent(payload);
+        case 'quickstart':
+          openCreate(payload?.id || null);
           break;
+        case 'import-agent':
+          triggerAgentImport();
+          break;
+        case 'export-agent':
+          exportSelectedAgent();
+          break;
+        // Left panel: a row in "Recently active".
+        case 'select-item': {
+          const agent = agents.value.find((a) => String(a.id) === String(payload?.id));
+          if (agent) selectAgent(agent);
+          break;
+        }
         default:
           console.warn('Unhandled panel action in Agents.vue:', action);
       }
@@ -844,6 +586,7 @@ export default {
         scrollToBottom();
         applySelectIntent();
       });
+      applyNewIntent();
 
       // Show tutorial after a short delay
       setTimeout(() => {
@@ -867,33 +610,42 @@ export default {
       }
     };
 
-    // --- Computed Property for Active Right Panel ---
-    const activeRightPanel = computed(() => {
-      // When on marketplace tab, use MarketplacePanel to show marketplace item details
-      if (agentTab.value === 'marketplace') {
-        return 'MarketplacePanel';
-      }
-      // Otherwise use AgentsPanel for regular agent details
-      return 'AgentsPanel';
-    });
+    const activeRightPanel = computed(() => 'AgentsPanel');
+    const panelProps = computed(() => ({ selectedAgent: selectedAgent.value }));
 
-    // --- Computed Property for Panel Props ---
-    const panelProps = computed(() => {
-      // When on marketplace tab, pass selectedWorkflow for MarketplacePanel
-      if (agentTab.value === 'marketplace') {
-        return {
-          selectedWorkflow: selectedAgent.value, // MarketplacePanel expects selectedWorkflow prop
-          activeTab: 'marketplace',
-        };
-      }
-      // For regular agent tabs, pass selectedAgent for AgentsPanel
-      if (!selectedAgent.value) {
-        return { selectedAgent: null };
-      }
-      return {
-        selectedAgent: selectedAgent.value,
-      };
-    });
+    // --- New agent (a modal on this screen; Agent Forge is gone) ---
+    const createOpen = ref(false);
+    const createTemplate = ref(null);
+    const openCreate = (templateId = null) => {
+      createTemplate.value = templateId;
+      createOpen.value = true;
+    };
+    const onAgentCreated = async (created) => {
+      createOpen.value = false;
+      await refreshAgents(true);
+      const agent = created?.id && agents.value.find((a) => String(a.id) === String(created.id));
+      if (agent) selectAgent(agent);
+      terminalLines.value.push(`[Agents] Created ${created?.name || 'agent'}`);
+    };
+
+    // ?new=1 (Jump palette "New agent", Dashboard, old /agent-forge links)
+    // opens the modal. Watched as well as read on mount because this screen is
+    // kept alive. The route is global, so only /agents counts, and the intent
+    // is consumed (removed from the URL) so the next request is a real change.
+    const applyNewIntent = () => {
+      if (route.path !== '/agents' || route.query?.new !== '1') return;
+      openCreate(typeof route.query.template === 'string' ? route.query.template : null);
+      const { new: _consumed, template: _template, ...rest } = route.query;
+      router.replace({ path: route.path, query: rest });
+    };
+    watch(
+      () => [route.path, route.query?.new, route.query?.select],
+      () => {
+        if (route.path !== '/agents') return;
+        applyNewIntent();
+        applySelectIntent();
+      },
+    );
 
     const saveConfiguration = async (configPayload) => {
       if (!selectedAgent.value) return;
@@ -952,7 +704,8 @@ export default {
     const availableWorkflows = ref([]);
     const availableSkills = computed(() => store.getters['skills/allSkills'] || []);
 
-    // Fetch tools and workflows (like AgentForge)
+    // Tools, workflows and skills: the options the details panel and the
+    // new-agent modal offer.
     const fetchToolsAndWorkflows = async (force = false) => {
       try {
         await Promise.all([
@@ -967,29 +720,7 @@ export default {
       }
     };
 
-    // Event handlers for SidebarCategories component
-    const onAllSelected = () => {
-      selectedMainCategory.value = null;
-      selectedCategory.value = null;
-      selectedAgent.value = null;
-      terminalLines.value = ['[Agents] Viewing all agents (no category filter)'];
-      scrollToBottom();
-    };
 
-    const onCategorySelected = (payload) => {
-      if (payload.isMainCategory) {
-        selectedMainCategory.value = payload.mainCategory;
-        selectedCategory.value = payload.category;
-        selectedAgent.value = null;
-        terminalLines.value = [`[Agents] Viewing ${payload.category} (All subcategories)`];
-      } else {
-        selectedMainCategory.value = null;
-        selectedCategory.value = payload.category;
-        selectedAgent.value = null;
-        terminalLines.value = [`[Agents] Viewing ${payload.category}`];
-      }
-      scrollToBottom();
-    };
 
     const toggleDetailsExpanded = () => {
       isDetailsExpanded.value = !isDetailsExpanded.value;
@@ -1430,262 +1161,17 @@ export default {
       return new Date(timestamp).toLocaleString();
     };
 
-    // Category cards functionality
-    const agentsByCategory = computed(() => {
-      // If marketplace tab is selected, show marketplace agents
-      if (agentTab.value === 'marketplace') {
-        const marketplaceItems = marketplaceAgents.value;
-        return { 'Marketplace Agents': marketplaceItems };
-      }
 
-      // Use filteredAgentsGrid to respect tab and category filtering from left panel
-      let agents = filteredAgentsGrid.value;
 
-      // Apply search filtering for card view
-      if (searchQuery.value && searchQuery.value.trim() !== '') {
-        const query = searchQuery.value.toLowerCase().trim();
-        agents = agents.filter((agent) => {
-          const searchableFields = [agent.name || '', agent.description || '', agent.status || '', agent.category || ''];
-          return searchableFields.some((field) => field.toLowerCase().includes(query));
-        });
-      }
 
-      const categories = {};
 
-      // When a specific category is selected, only show that category and its children
-      if (selectedCategory.value && selectedCategory.value !== 'All Agents') {
-        // Initialize only the selected category
-        categories[selectedCategory.value] = [];
 
-        // If it's a main category, also include its children
-        if (selectedMainCategory.value && selectedMainCategory.value !== 'Uncategorized') {
-          const allCategories = store.getters['agents/agentCategories'] || [];
-          allCategories.forEach((category) => {
-            if (category.startsWith(selectedMainCategory.value) && category !== selectedMainCategory.value) {
-              categories[category] = [];
-            }
-          });
-        }
 
-        // Assign agents to their categories (only the selected ones)
-        agents.forEach((agent) => {
-          const category = agent.category || 'Uncategorized';
-          // For the selected category, always add agents regardless of whether the category exists in the predefined list
-          if (category === selectedCategory.value) {
-            categories[selectedCategory.value].push(agent);
-          } else if (categories.hasOwnProperty(category)) {
-            categories[category].push(agent);
-          }
-        });
-      } else {
-        // When "All Agents" is selected, show all categories
-        const allCategories = store.getters['agents/agentCategories'] || [];
 
-        // Initialize all predefined categories with empty arrays
-        allCategories.forEach((category) => {
-          categories[category] = [];
-        });
 
-        // Always include 'Uncategorized' category
-        if (!categories['Uncategorized']) {
-          categories['Uncategorized'] = [];
-        }
 
-        // First pass: collect all unique categories from agents to ensure we don't miss any
-        agents.forEach((agent) => {
-          const category = agent.category || 'Uncategorized';
-          if (!categories[category]) {
-            categories[category] = [];
-          }
-        });
 
-        // Second pass: assign agents to their categories
-        agents.forEach((agent) => {
-          const category = agent.category || 'Uncategorized';
-          categories[category].push(agent);
-        });
-      }
 
-      // Sort agents within each category
-      for (const key of Object.keys(categories)) {
-        categories[key].sort((a, b) => {
-          const nameA = (a.name || '').toLowerCase();
-          const nameB = (b.name || '').toLowerCase();
-          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
-      }
-
-      // Sort categories alphabetically (A-Z) and return as sorted object
-      const sortedCategories = {};
-      Object.keys(categories)
-        .sort((a, b) => a.localeCompare(b))
-        .forEach((key) => {
-          // When searching, only show categories that have agents
-          if (searchQuery.value && searchQuery.value.trim() !== '') {
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else if (hideEmptyCategories.value) {
-            // When hiding empty categories, only show categories with agents
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else {
-            // When not searching and not hiding empty categories, show all categories
-            sortedCategories[key] = categories[key];
-          }
-        });
-
-      return sortedCategories;
-    });
-
-    // Get category display name and icon
-    const getCategoryInfo = (categoryName) => {
-      const categoryIcons = {
-        'Data Science': '📊',
-        Operations: '⚙️',
-        Development: '💻',
-        Uncategorized: '📋',
-        '000 - Foundations': '🏗️',
-        '100 - Business & Finance': '📊',
-        '200 - Content & Media': '💻',
-        '300 - Data & Analytics': '🎨',
-        '400 - Development & DevOps': '💼',
-        '500 - Marketing & Sales': '🤝',
-        '600 - Operations & Tools': '📈',
-      };
-
-      return {
-        name: categoryName,
-        icon: categoryIcons[categoryName] || '🔧',
-        count: agentsByCategory.value[categoryName]?.length || 0,
-      };
-    };
-
-    const toggleHideEmptyCategories = () => {
-      hideEmptyCategories.value = !hideEmptyCategories.value;
-      terminalLines.value.push(`[Agents] ${hideEmptyCategories.value ? 'Hiding' : 'Showing'} empty categories`);
-      scrollToBottom();
-    };
-
-    const toggleCategoryCollapse = (categoryName) => {
-      // Play sound when toggling category collapse
-      if (playSound) {
-        playSound('typewriterKeyPress');
-      }
-
-      if (collapsedCategories.value.has(categoryName)) {
-        collapsedCategories.value.delete(categoryName);
-      } else {
-        collapsedCategories.value.add(categoryName);
-      }
-    };
-
-    const isCategoryCollapsed = (categoryName) => {
-      return collapsedCategories.value.has(categoryName);
-    };
-
-    const allCategoriesCollapsed = computed(() => {
-      const categoryNames = Object.keys(agentsByCategory.value);
-      return categoryNames.length > 0 && categoryNames.every((name) => collapsedCategories.value.has(name));
-    });
-
-    const toggleCollapseAll = () => {
-      const categoryNames = Object.keys(agentsByCategory.value);
-
-      if (allCategoriesCollapsed.value) {
-        // Expand all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.delete(name);
-        });
-        terminalLines.value.push('[Agents] Expanded all categories');
-      } else {
-        // Collapse all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.add(name);
-        });
-        terminalLines.value.push('[Agents] Collapsed all categories');
-      }
-      scrollToBottom();
-    };
-
-    // --- Drag and Drop Methods ---
-    const handleDragStart = (event, agent) => {
-      draggedAgent.value = agent;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', agent.id);
-
-      // Add visual feedback
-      event.target.style.opacity = '0.5';
-      terminalLines.value.push(`[Drag] Started dragging agent: ${agent.name}`);
-      scrollToBottom();
-    };
-
-    const handleDragEnd = (event) => {
-      // Reset visual feedback
-      event.target.style.opacity = '1';
-      draggedAgent.value = null;
-      dragOverCategory.value = null;
-    };
-
-    const handleDragOver = (categoryName) => {
-      if (draggedAgent.value && draggedAgent.value.category !== categoryName) {
-        dragOverCategory.value = categoryName;
-      }
-    };
-
-    const handleDragLeave = () => {
-      dragOverCategory.value = null;
-    };
-
-    const handleDrop = async (event, targetCategory) => {
-      event.preventDefault();
-      dragOverCategory.value = null;
-
-      if (!draggedAgent.value) return;
-
-      const agent = draggedAgent.value;
-      const originalCategory = agent.category || 'Uncategorized';
-
-      // Don't do anything if dropping on the same category
-      if (originalCategory === targetCategory) {
-        terminalLines.value.push(`[Drag] Agent is already in ${targetCategory}`);
-        scrollToBottom();
-        return;
-      }
-
-      try {
-        terminalLines.value.push(`[Drag] Moving agent "${agent.name}" from ${originalCategory} to ${targetCategory}...`);
-        scrollToBottom();
-
-        // Optimistic update: immediately update the agent in the store for instant UI feedback
-        const updatedAgent = {
-          ...agent,
-          category: targetCategory === 'Uncategorized' ? '' : targetCategory,
-        };
-
-        // Update the agent in the store immediately (optimistic update)
-        store.commit('agents/UPDATE_AGENT', updatedAgent);
-
-        // Then send the update to the server in the background
-        try {
-          await store.dispatch('agents/updateAgent', updatedAgent);
-          terminalLines.value.push(`[Drag] Successfully moved agent to ${targetCategory}`);
-          scrollToBottom();
-        } catch (error) {
-          // If server update fails, revert the optimistic update
-          store.commit('agents/UPDATE_AGENT', agent);
-          terminalLines.value.push(`[Drag] Error moving agent: ${error.message}`);
-          terminalLines.value.push(`[Drag] Reverted agent back to ${originalCategory}`);
-          scrollToBottom();
-        }
-      } catch (error) {
-        terminalLines.value.push(`[Drag] Error moving agent: ${error.message}`);
-        scrollToBottom();
-      } finally {
-        draggedAgent.value = null;
-      }
-    };
 
     // Helper method to check if agent has tools or uptime to show
     const hasToolsOrUptime = (agent) => {
@@ -1780,21 +1266,6 @@ export default {
       return 'custom';
     };
 
-    // Handle marketplace agent installation using shared composable
-    const { handleInstall: marketplaceInstall } = useMarketplaceInstall(simpleModal, (msg) => {
-      terminalLines.value.push(msg);
-      scrollToBottom();
-    });
-
-    const handleInstallAgent = async (item) => {
-      playSound('typewriterKeyPress');
-      const result = await marketplaceInstall(item);
-      if (result.success) {
-        // Refresh agents list
-        await refreshAgents(true);
-      }
-    };
-
     // Get agent tools with icons for display
     const getAgentToolsWithIcons = (agent) => {
       const tools = [];
@@ -1854,37 +1325,26 @@ export default {
       emit,
       initializeScreen,
       searchQuery,
-      sortOrder,
       toggleAgent,
       panelProps,
       activeRightPanel,
       saveStatus,
       saveConfiguration,
-      tableColumns,
       handleSearch,
       //
       agentImportInput,
       triggerAgentImport,
       handleAgentImportFile,
       exportSelectedAgent,
-      currentLayout,
-      selectedCategory,
-      selectedMainCategory,
-      categories,
-      setLayout,
-      selectAgentGrid,
-      selectTab,
       filteredAgentsGrid,
+      createOpen,
+      createTemplate,
+      openCreate,
+      onAgentCreated,
       categoryOptions,
-      agentTabs,
-      agentTab,
-      onAgentTabSelect,
       availableTools,
       availableWorkflows,
       availableSkills,
-      onAllSelected,
-      onCategorySelected,
-      mainAgentCategories,
       goalInput,
       isCreatingGoal,
       goals,
@@ -1907,31 +1367,13 @@ export default {
       handleFetchGoals,
       formatTaskTime,
       // Category cards functionality
-      agentsByCategory,
-      getCategoryInfo,
-      hideEmptyCategories,
-      toggleHideEmptyCategories,
-      toggleCategoryCollapse,
-      isCategoryCollapsed,
-      allCategoriesCollapsed,
-      toggleCollapseAll,
       getAgentToolsWithIcons,
       hasToolsOrUptime,
       getToolIcon,
-      // Drag and drop
-      draggedAgent,
-      dragOverCategory,
-      handleDragStart,
-      handleDragEnd,
-      handleDragOver,
-      handleDragLeave,
-      handleDrop,
       // Tutorial
       tutorialConfig,
       startTutorial,
       onTutorialClose,
-      // Marketplace
-      handleInstallAgent,
     };
   },
 };

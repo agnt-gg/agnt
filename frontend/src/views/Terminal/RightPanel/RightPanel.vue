@@ -47,7 +47,7 @@ const loadPanel = (panelName) => {
 // Preload all panel chunks in background so they're ready before navigation
 const ALL_RIGHT_PANELS = [
   'ChatPanel', 'AgentsPanel', 'ToolsPanel', 'WorkflowsPanel',
-  'AgentForgePanel', 'ToolForgePanel', 'WorkflowForgePanel',
+  'ToolForgePanel', 'WorkflowForgePanel',
   'ToolForgeResponsePanel', 'ConnectorsPanel', 'MarketplacePanel',
   'TracesPanel', 'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
   'WidgetForgePanel', 'GoalsPanel', 'FileTreePanel', 'NewsPanel',

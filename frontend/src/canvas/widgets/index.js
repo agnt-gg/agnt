@@ -213,16 +213,17 @@ export function registerAllWidgets() {
     },
   });
 
+  // Agent Forge is gone: new agents are a modal on the Agents screen. The id
+  // stays registered so a saved workspace that placed it still renders.
   registerWidget('agent-forge', {
-    name: 'Agent Forge',
-    icon: 'fas fa-user-cog',
-    category: 'forge',
-    component: lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/AgentForge/AgentForge.vue')),
+    name: 'Agents',
+    icon: 'fas fa-robot',
+    category: 'assets',
+    component: lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/Agents/Agents.vue')),
     defaultSize: { cols: 12, rows: 8 },
-    minSize: { cols: 6, rows: 4 },
-    description: 'Create custom agents',
+    minSize: { cols: 4, rows: 3 },
+    description: 'Agent management',
     isScreenWidget: true,
-    contributes: { state: ['agentContext', 'agentState'], events: ['agent-created', 'agent-updated'] },
   });
 
   registerWidget('widget-manager', {

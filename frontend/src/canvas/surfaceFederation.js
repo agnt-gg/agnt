@@ -189,7 +189,6 @@ export function describeSurfaceBinding(state) {
 
 const PREFIX_ROUTES = [
   { prefix: 'widget-', widgetId: 'widget-forge', eventName: 'chat-sse-event', wrap: 'sse' },
-  { prefix: 'agent-', widgetId: 'agent-forge', eventName: 'chat-sse-event', wrap: 'sse' },
   { prefix: 'tool-', widgetId: 'tool-forge', eventName: 'chat-sse-event', wrap: 'sse' },
 ];
 

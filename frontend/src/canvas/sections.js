@@ -118,7 +118,6 @@ export const MAIN_SECTIONS = [
     label: 'Agents',
     screens: [
       { screen: 'AgentsScreen', label: 'AGENTS' },
-      { screen: 'AgentForgeScreen', label: 'AGENT FORGE' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'MemoryScreen', label: 'MEMORY' },
     ],

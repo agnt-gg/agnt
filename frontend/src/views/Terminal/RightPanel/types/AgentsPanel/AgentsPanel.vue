@@ -1,17 +1,24 @@
 <template>
   <div class="ui-panel agents-panel">
+    <PanelActionBar
+      create-label="New agent"
+      tour-id="agents.create-button"
+      :actions="barActions"
+      @panel-action="(...args) => $emit('panel-action', ...args)"
+    />
+
     <!-- Selected Agent Details -->
     <div v-if="selectedAgent" class="panel-section selected-agent-section">
       <!-- === Display Mode === -->
       <div v-if="!isEditing">
         <div class="selected-agent-header">
-          <h2>Selected Agent Details</h2>
-          <!-- Simple Edit Button -->
+          <h2>{{ selectedAgent.name }}</h2>
           <Tooltip text="Edit Agent" width="auto">
           <span class="edit-button-panel" @click="startEdit">
             <i class="fas fa-edit"></i>
           </span>
           </Tooltip>
+          <PanelCloseButton label="Close agent details" @panel-action="(...args) => $emit('panel-action', ...args)" />
         </div>
         <div class="selected-agent-content">
           <div class="agent-details">
@@ -106,15 +113,24 @@
       </div>
     </div>
 
-    <!-- Nothing selected: the list beside this panel -->
-    <ListSummaryPanel
-      v-else
-      caption="Agents"
-      :stats="summaryStats"
-      hint="Click an agent card to inspect it here: details, tools, missions, actions. Esc comes back."
-      primary-label="New agent"
-      @primary="$emit('panel-action', 'navigate', 'AgentForgeScreen')"
-    />
+    <!-- Nothing selected: this panel is where agents are made. Each template
+         opens the new-agent modal already filled in. -->
+    <div v-else class="panel-section quickstart-section">
+      <h2>Start from a template</h2>
+      <button
+        v-for="template in quickstarts"
+        :key="template.id"
+        type="button"
+        class="quickstart-row"
+        @click="$emit('panel-action', 'quickstart', { id: template.id })"
+      >
+        <i :class="template.icon" aria-hidden="true"></i>
+        <span class="quickstart-text">
+          <strong>{{ template.name }}</strong>
+          <small>{{ template.description }}</small>
+        </span>
+      </button>
+    </div>
 
 
     <!-- Publish Agent Modal -->
@@ -146,7 +162,9 @@ import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModa
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import CustomCategoryDropdown from '../WorkflowsPanel/CustomCategoryDropdown.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import PanelActionBar from '@/views/Terminal/_components/panels/PanelActionBar.vue';
+import PanelCloseButton from '@/views/Terminal/_components/panels/PanelCloseButton.vue';
+import { AGENT_QUICKSTARTS } from '@/views/Terminal/CenterPanel/screens/Agents/agentQuickstarts.js';
 
 export default {
   name: 'AgentsPanel',
@@ -157,7 +175,8 @@ export default {
     SimpleModal,
     CustomCategoryDropdown,
     Tooltip,
-    ListSummaryPanel,
+    PanelActionBar,
+    PanelCloseButton,
   },
   props: {
     selectedAgent: {
@@ -536,21 +555,16 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
-    // Nothing-selected summary: what the list beside this panel holds.
-    const summaryStats = computed(() => {
-      const all = store.getters['agents/allAgents'] || [];
-      const active = all.filter((a) => String(a.status || '').toUpperCase() === 'ACTIVE').length;
-      const running = (store.getters['executionHistory/getAgentExecutions'] || []).filter((e) => ['running', 'executing', 'in_progress'].includes(String(e.status || '').toLowerCase())).length;
-      return [
-        { label: 'Agents', value: all.length },
-        { label: 'Active', value: active },
-        { label: 'Running now', value: running, live: running > 0 },
-        { label: 'Categories', value: new Set(all.map((a) => a.category).filter(Boolean)).size },
-      ];
-    });
+    // Stats live in the left panel now; this panel creates and inspects.
+    const quickstarts = AGENT_QUICKSTARTS;
+    const barActions = computed(() => [
+      { id: 'import-agent', label: 'Import agent JSON', icon: 'fas fa-file-import' },
+      ...(props.selectedAgent ? [{ id: 'export-agent', label: `Export ${props.selectedAgent.name}`, icon: 'fas fa-file-export' }] : []),
+    ]);
 
     return {
-      summaryStats,
+      quickstarts,
+      barActions,
       defaultAvatarUrl,
       handleAvatarUpload,
       removeAvatar,
@@ -735,17 +749,69 @@ select.input {
 
 .selected-agent-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
   margin-bottom: 15px;
   border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
 }
 
 .selected-agent-header h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing selected: templates that open the new-agent modal pre-filled. */
+.quickstart-section h2 {
+  margin-bottom: 10px;
+}
+.quickstart-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.quickstart-row:hover,
+.quickstart-row:focus-visible {
+  border-color: rgba(var(--primary-rgb), 0.45);
+  background: rgba(var(--primary-rgb), 0.05);
+  outline: none;
+}
+.quickstart-row i {
+  width: 16px;
+  margin-top: 3px;
+  color: var(--color-primary);
+}
+.quickstart-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.quickstart-text strong {
+  font-weight: 500;
+  font-size: 13px;
+}
+.quickstart-text small {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
 }
 
 .edit-button-panel {

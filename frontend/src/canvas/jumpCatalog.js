@@ -21,7 +21,7 @@ export const JUMP_CATEGORIES = [{
   {
     id: 'automation',
     label: 'Agents & automation',
-    screens: ['AgentsScreen', 'AgentForgeScreen', 'WorkflowsScreen', 'WorkflowForgeScreen', 'ToolsScreen', 'ToolForgeScreen', 'SkillsScreen', 'WidgetManagerScreen', 'WidgetForgeScreen']
+    screens: ['AgentsScreen', 'WorkflowsScreen', 'WorkflowForgeScreen', 'ToolsScreen', 'ToolForgeScreen', 'SkillsScreen', 'WidgetManagerScreen', 'WidgetForgeScreen']
   },
   {
     id: 'connections',

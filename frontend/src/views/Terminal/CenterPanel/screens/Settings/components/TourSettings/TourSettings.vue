@@ -95,12 +95,6 @@ export default {
     const playSound = inject('playSound', () => {});
     const availableTours = ref([
       {
-        id: 'AgentForgeScreen',
-        name: 'Agent Builder Tour',
-        description: 'Learn how to create and configure custom AI agents',
-        screen: 'AgentForgeScreen',
-      },
-      {
         id: 'AgentsScreen',
         name: 'Agent Assets Tour',
         description: 'Discover how to configure and manage AI agents',

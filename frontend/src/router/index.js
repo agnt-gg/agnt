@@ -127,12 +127,8 @@ const router = createRouter({
       component: Terminal,
       meta: { requiresAuth: true, terminalScreen: 'MarketplaceScreen' },
     },
-    {
-      path: '/agent-forge',
-      name: 'TerminalAgentForge',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'AgentForgeScreen' },
-    },
+    // Agent Forge is now the new-agent modal on Agents; old links still land.
+    { path: '/agent-forge', redirect: { path: '/agents', query: { new: '1' } } },
     {
       path: '/goals',
       name: 'TerminalGoals',

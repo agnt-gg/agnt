@@ -217,10 +217,9 @@ describe('canvas sections registry', () => {
     // Approvals is a rule you set once, so it lives behind Settings.
     const agents = MAIN_SECTIONS.find((s) => s.id === 'agents');
     expect(agents.screens[0].screen).toBe('AgentsScreen');
-    // AGENT FORGE sits immediately after AGENTS and is drawn either way: the
-    // way in to the builder cannot be visible only once you are already in it.
-    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY']);
-    expect(visibleTabs(agents, 'AgentForgeScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY']);
+    // No AGENT FORGE: a new agent is a modal on the Agents page itself.
+    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY']);
+    expect(agents.screens.some((t) => t.screen === 'AgentForgeScreen')).toBe(false);
     expect(agents.screens.some((t) => t.screen === 'AutonomyScreen')).toBe(false);
   });
 
@@ -245,7 +244,7 @@ describe('canvas sections registry', () => {
 
   it('every forge is a permanent tab, directly after the page it builds for', () => {
     const forges = ALL_SECTIONS.flatMap((s) => s.screens).filter((t) => /ForgeScreen$/.test(t.screen));
-    expect(forges.length).toBeGreaterThanOrEqual(4);
+    expect(forges.length).toBeGreaterThanOrEqual(3);
 
     // Not contextual and not hidden: a builder you cannot see is a builder
     // nobody finds.
@@ -255,7 +254,6 @@ describe('canvas sections registry', () => {
     // Adjacency is the whole point of the pairing, so it is pinned rather than
     // left to the order someone happens to type the array in.
     const pairs = {
-      AgentForgeScreen: 'AgentsScreen',
       WorkflowForgeScreen: 'WorkflowsScreen',
       ToolForgeScreen: 'ToolsScreen',
       WidgetForgeScreen: 'WidgetManagerScreen',

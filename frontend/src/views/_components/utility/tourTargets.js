@@ -38,7 +38,7 @@ export const TOUR_TARGETS = [
   { id: 'workflows.run-button',      selector: '[data-tour-id="workflows.run-button"]',      screen: 'WorkflowsScreen', description: 'Activates the current workflow (consumes credits)', safeToSimulate: false },
 
   // ── Agents ─────────────────────────────────────────────────────────
-  { id: 'agents.create-button',      selector: '[data-tour-id="agents.create-button"]',      screen: 'AgentsScreen', description: 'Open AgentForge to create a new agent', safeToSimulate: true },
+  { id: 'agents.create-button',      selector: '[data-tour-id="agents.create-button"]',      screen: 'AgentsScreen', description: 'Open the new-agent modal', safeToSimulate: true },
 
   // ── Dashboard ──────────────────────────────────────────────────────
   { id: 'dashboard.global-pulse-ribbon', selector: '[data-tour-id="dashboard.global-pulse-ribbon"]', screen: 'DashboardScreen', description: 'The Global Pulse ribbon showing live system metrics', safeToSimulate: false },

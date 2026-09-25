@@ -294,7 +294,6 @@ const actions = {
       MarketplaceScreen: 'Marketplace',
       WorkflowForgeScreen: 'Workflow Forge',
       ToolForgeScreen: 'Tool Forge',
-      AgentForgeScreen: 'Agent Forge',
       WidgetManagerScreen: 'Widget Manager',
       WidgetForgeScreen: 'Widget Forge',
     };
@@ -312,7 +311,6 @@ const actions = {
       MarketplaceScreen: 'fas fa-store',
       WorkflowForgeScreen: 'fas fa-hammer',
       ToolForgeScreen: 'fas fa-tools',
-      AgentForgeScreen: 'fas fa-user-cog',
       WidgetManagerScreen: 'fas fa-puzzle-piece',
       WidgetForgeScreen: 'fas fa-magic',
     };

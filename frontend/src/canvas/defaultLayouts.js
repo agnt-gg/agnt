@@ -22,7 +22,6 @@ export const defaultLayouts = {
 
   // ── Forge ──
   WorkflowForgeScreen: [{ widgetId: 'workflow-forge', col: 0, row: 0, cols: 12, rows: 8 }],
-  AgentForgeScreen: [{ widgetId: 'agent-forge', col: 0, row: 0, cols: 12, rows: 8 }],
   ToolForgeScreen: [{ widgetId: 'tool-forge', col: 0, row: 0, cols: 12, rows: 8 }],
 
   // ── System ──
@@ -62,5 +61,4 @@ export const routeScreenMap = {
   '/marketplace': 'MarketplaceScreen',
   '/workflow-forge': 'WorkflowForgeScreen',
   '/tool-forge': 'ToolForgeScreen',
-  '/agent-forge': 'AgentForgeScreen',
 };

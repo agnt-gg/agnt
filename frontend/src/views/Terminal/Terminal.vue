@@ -74,7 +74,6 @@ const screenLoaders = [
   ['DashboardScreen', () => import('./CenterPanel/screens/Dashboard/Dashboard.vue')],
   ['WorkflowForgeScreen', () => import('./CenterPanel/screens/WorkflowForge/WorkflowForge.vue')],
   ['ToolForgeScreen', () => import('./CenterPanel/screens/ToolForge/ToolForge.vue')],
-  ['AgentForgeScreen', () => import('./CenterPanel/screens/AgentForge/AgentForge.vue')],
   ['BallJumperScreen', () => import('./CenterPanel/screens/Minigames/BallJumper/BallJumper.vue')],
   ['ConnectorsScreen', () => import('./CenterPanel/screens/Connectors/Connectors.vue')],
   ['PluginsScreen', () => import('./CenterPanel/screens/Plugins/Plugins.vue')],
@@ -146,6 +145,15 @@ export default {
     });
 
     const changeScreen = (screenName, options = {}) => {
+      // Agent Forge became a modal on Agents. Every old entry point (dashboard,
+      // nav, jump palette, chat's "edit agent") resolves here: with an agent id
+      // it opens that agent, otherwise it opens the new-agent modal.
+      if (screenName === 'AgentForgeScreen') {
+        screenName = 'AgentsScreen';
+        options = options.agentId
+          ? { ...options, select: { kind: 'agent', id: options.agentId } }
+          : { ...options, newAgent: true };
+      }
       const screenRoutes = {
         ChatScreen: '/chat',
         AgentsScreen: '/agents',
@@ -155,7 +163,6 @@ export default {
         SettingsScreen: '/settings',
         WorkflowForgeScreen: '/workflow-forge',
         ToolForgeScreen: '/tool-forge',
-        AgentForgeScreen: '/agent-forge',
         BallJumperScreen: '/ball-jumper',
         ConnectorsScreen: '/connectors',
         PluginsScreen: '/plugins',
@@ -184,7 +191,7 @@ export default {
           router.push({ path: targetPath, query: { executionId: options.selectedExecutionId } });
         } else if (screenName === 'ExperimentsScreen' && options.selectedInsight) {
           router.push({ path: targetPath, query: { insightId: options.selectedInsight.id } });
-        } else if (options.select || options.section || options.status || options.newGoal) {
+        } else if (options.select || options.section || options.status || options.newGoal || options.newAgent) {
           // Generic AGNT One navigation intents, carried in the URL so a
           // deep link reproduces them: `select` opens an entity in the
           // screen's inspector, `section` picks a left-nav view (Settings /
@@ -194,7 +201,7 @@ export default {
           if (options.select) query.select = `${options.select.kind}:${options.select.id}`;
           if (options.section) query.section = options.section;
           if (options.status) query.status = options.status;
-          if (options.newGoal) query.new = '1';
+          if (options.newGoal || options.newAgent) query.new = '1';
           router.push({ path: targetPath, query });
         } else if (route.path !== targetPath) {
           router.push(targetPath);
