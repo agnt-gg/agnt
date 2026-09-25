@@ -37,7 +37,7 @@
           <span class="wm-btn-label">{{ hideEmptyCategories ? 'Empty hidden' : 'Show empty' }}</span>
         </button>
       </Tooltip>
-      <Tooltip :text="sortOrder === 'az' ? 'Sort Z → A' : 'Sort A → Z'" width="auto">
+      <Tooltip v-if="showSort" :text="sortOrder === 'az' ? 'Sort Z → A' : 'Sort A → Z'" width="auto">
         <button class="wm-btn" @click="$emit('update:sortOrder', sortOrder === 'az' ? 'za' : 'az')">
           <i :class="sortOrder === 'az' ? 'fas fa-sort-alpha-down' : 'fas fa-sort-alpha-up-alt'"></i>
           <span class="wm-btn-label">Sort {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</span>
@@ -83,6 +83,8 @@ export default {
     showHideEmpty: { type: Boolean, default: true },
     hideEmptyCategories: { type: Boolean, default: true },
     sortOrder: { type: String, default: 'az' },
+    /** The collection screens show one order (A–Z) and turn this off. */
+    showSort: { type: Boolean, default: true },
     createLabel: { type: String, default: '' },
   },
   emits: ['update:searchQuery', 'update:layout', 'toggleCollapseAll', 'toggleHideEmpty', 'update:sortOrder', 'create'],

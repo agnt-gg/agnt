@@ -139,17 +139,28 @@ describe('the entity cards share one frame', () => {
   });
 });
 
-describe('the category nav panel lives in one component', () => {
+describe('the left browse panels live in shared components', () => {
   const TYPES = path.join(SRC, 'views/Terminal/LeftPanel/types');
+  // The collection screens show stats in the left panel (no category
+  // filtering); the widget library still browses by category.
+  const DELEGATES = {
+    AgentsPanel: 'CollectionStatsPanel',
+    ToolsPanel: 'CollectionStatsPanel',
+    WorkflowsPanel: 'CollectionStatsPanel',
+    SkillsPanel: 'CollectionStatsPanel',
+    WidgetManagerPanel: 'CategoryNavPanel',
+  };
 
-  it('the browse panels delegate to CategoryNavPanel', () => {
-    const delegating = ['AgentsPanel', 'ToolsPanel', 'WorkflowsPanel', 'SkillsPanel', 'WidgetManagerPanel'];
+  it('each browse panel delegates to its shared component and has no stylesheet', () => {
     const offenders = [];
-    for (const name of delegating) {
+    for (const [name, shared] of Object.entries(DELEGATES)) {
       const file = path.join(TYPES, name, `${name}.vue`);
-      if (!fs.existsSync(file)) continue;
+      if (!fs.existsSync(file)) {
+        offenders.push(`${name} is missing`);
+        continue;
+      }
       const raw = fs.readFileSync(file, 'utf8');
-      if (!raw.includes('CategoryNavPanel')) offenders.push(`${name} no longer uses CategoryNavPanel`);
+      if (!raw.includes(shared)) offenders.push(`${name} no longer uses ${shared}`);
       // Re-growing a local stylesheet is how the five copies started.
       if (/<style/.test(raw)) offenders.push(`${name} grew its own <style> block`);
     }

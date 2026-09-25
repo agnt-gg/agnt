@@ -1,25 +1,16 @@
 <template>
-  <CategoryNavPanel
-    root-class="tools-panel"
-    title="/ Tools"
-    icon="fas fa-tools"
-    all-option-label="All Tools"
-    :items="allTools"
-    :categories="toolCategories"
-    :main-categories="mainToolCategories"
-    @panel-action="(...args) => $emit('panel-action', ...args)"
-  />
+  <CollectionStatsPanel title="Tools" icon="fas fa-wrench" :stats="stats" :lists="lists" @panel-action="(...args) => $emit('panel-action', ...args)" />
 </template>
 
 <script>
 import { computed } from 'vue';
 import { useStore } from 'vuex';
-import CategoryNavPanel from '@/views/Terminal/_components/panels/CategoryNavPanel.vue';
-import { uniqueCategories, verbatimMainCategories } from '@/views/Terminal/_components/panels/categoryDerivations.js';
+import CollectionStatsPanel from '@/views/Terminal/_components/panels/CollectionStatsPanel.vue';
+import { recentItems, statusIs } from '@/views/Terminal/_components/panels/collectionStats.js';
 
 export default {
   name: 'ToolsPanel',
-  components: { CategoryNavPanel },
+  components: { CollectionStatsPanel },
   props: {
     allAvailableTools: { type: Array, default: () => [] },
     activeTab: { type: String, default: 'all' },
@@ -28,50 +19,28 @@ export default {
   emits: ['panel-action'],
   setup() {
     const store = useStore();
-
-    // The full tool list is assembled from BOTH stores, mirroring the centre
-    // screen's own allAvailableTools: workflow/system tools (triggers, actions,
-    // utilities, widgets, controls, plus plugins) and saved custom tools.
-    const allTools = computed(() => {
-      const toolLibrary = store.getters['tools/workflowTools'];
-      const systemTools = [];
-      if (toolLibrary) {
-        const processCategory = (categoryTools, categoryName) => {
-          if (!categoryTools) return;
-          categoryTools.forEach((tool) => {
-            systemTools.push({
-              ...tool,
-              id: `system-${tool.type}`,
-              source: tool.isPlugin ? 'plugin' : 'system',
-              category: tool.isPlugin ? 'plugins' : categoryName,
-              isPlugin: tool.isPlugin || false,
-            });
-          });
-        };
-        processCategory(toolLibrary.triggers, 'triggers');
-        processCategory(toolLibrary.actions, 'actions');
-        processCategory(toolLibrary.utilities, 'utilities');
-        processCategory(toolLibrary.widgets, 'widgets');
-        processCategory(toolLibrary.controls, 'controls');
-      }
-
-      const storeCustomTools = (store.getters['tools/customTools'] || []).map((tool) => ({
-        ...tool,
-        title: tool.title || tool.name,
-        source: 'custom',
-        category: 'custom',
-        icon: tool.icon || 'custom',
-      }));
-
-      return [...systemTools, ...storeCustomTools];
+    const library = computed(() => store.getters['tools/workflowTools'] || {});
+    const system = computed(() =>
+      ['triggers', 'actions', 'utilities', 'widgets', 'controls'].flatMap((group) => library.value[group] || []),
+    );
+    const custom = computed(() => store.getters['tools/customTools'] || []);
+    const stats = computed(() => {
+      const plugin = system.value.filter((t) => t.isPlugin).length;
+      return [
+        { label: 'Tools', value: system.value.length + custom.value.length },
+        { label: 'Yours', value: custom.value.length },
+        { label: 'From plugins', value: plugin },
+        { label: 'Built in', value: system.value.length - plugin },
+      ];
     });
-
-    // Tool categories are whatever the tools themselves declare — no grouping
-    // and no relabelling, because the codes are already display-ready.
-    const toolCategories = computed(() => uniqueCategories(allTools.value));
-    const mainToolCategories = computed(() => verbatimMainCategories(toolCategories.value));
-
-    return { allTools, toolCategories, mainToolCategories };
+    const lists = computed(() => [
+      {
+        title: 'Your tools',
+        empty: 'Tools you build appear here.',
+        items: recentItems(custom.value, { date: (t) => t.updated_at || t.created_at, label: (t) => t.title || t.name }),
+      },
+    ]);
+    return { stats, lists };
   },
 };
 </script>

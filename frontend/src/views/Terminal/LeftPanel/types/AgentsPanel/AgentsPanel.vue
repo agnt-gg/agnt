@@ -1,29 +1,19 @@
 <template>
-  <CategoryNavPanel
-    root-class="agents-panel"
-    title="/ Agents"
-    icon="fas fa-users"
-    all-option-label="All Agents"
-    :items="allAgents"
-    :categories="categories"
-    :main-categories="mainAgentCategories"
-    @panel-action="(...args) => $emit('panel-action', ...args)"
-  />
+  <CollectionStatsPanel title="Agents" icon="fas fa-robot" :stats="stats" :lists="lists" @panel-action="(...args) => $emit('panel-action', ...args)" />
 </template>
 
 <script>
 import { computed } from 'vue';
 import { useStore } from 'vuex';
-import CategoryNavPanel from '@/views/Terminal/_components/panels/CategoryNavPanel.vue';
-import { dottedMainCategories } from '@/views/Terminal/_components/panels/categoryDerivations.js';
+import CollectionStatsPanel from '@/views/Terminal/_components/panels/CollectionStatsPanel.vue';
+import { recentItems, statusIs } from '@/views/Terminal/_components/panels/collectionStats.js';
 
 export default {
   name: 'AgentsPanel',
-  components: { CategoryNavPanel },
+  components: { CollectionStatsPanel },
   props: {
-    // Passed by the screen via leftPanelProps. The panel reads Vuex directly so
-    // its data is available before the centre screen has finished mounting;
-    // these stay declared so the props land as props and not as stray attrs.
+    // Passed by the screen via leftPanelProps; the panel reads Vuex so it has
+    // data before the centre screen has mounted. Declared so they are not attrs.
     allAvailableAgents: { type: Array, default: () => [] },
     activeTab: { type: String, default: 'all' },
     selectedAgent: { type: Object, default: null },
@@ -31,10 +21,26 @@ export default {
   emits: ['panel-action'],
   setup() {
     const store = useStore();
-    const categories = computed(() => store.getters['agents/agentCategories'] || []);
-    const allAgents = computed(() => store.getters['agents/allAgents'] || []);
-    const mainAgentCategories = computed(() => dottedMainCategories(categories.value));
-    return { categories, allAgents, mainAgentCategories };
+    const agents = computed(() => store.getters['agents/allAgents'] || []);
+    const stats = computed(() => {
+      const active = agents.value.filter((a) => statusIs(a, 'active')).length;
+      const tools = new Set(agents.value.flatMap((a) => a.assignedTools || [])).size;
+      const credits = agents.value.reduce((sum, a) => sum + (Number(a.creditsUsed) || 0), 0);
+      return [
+        { label: 'Agents', value: agents.value.length },
+        { label: 'Active', value: active, tone: active ? 'good' : '' },
+        { label: 'Tools in use', value: tools },
+        { label: 'Credits used', value: credits.toLocaleString() },
+      ];
+    });
+    const lists = computed(() => [
+      {
+        title: 'Recently active',
+        empty: 'No agent has run yet.',
+        items: recentItems(agents.value, { date: (a) => a.lastActive || a.updated_at, label: (a) => a.name }),
+      },
+    ]);
+    return { stats, lists };
   },
 };
 </script>
