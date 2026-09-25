@@ -78,6 +78,19 @@
       @node-drag-start="handleNodeDragStart"
       @node-drag-end="handleNodeDragEnd"
     />
+    <!-- Empty canvas: never a blank page. Only the cards take the pointer, so
+         nodes can still be dragged in from the palette behind this. -->
+    <section v-if="!nodes.length && availableQuickstarts.length" class="wf-quickstarts" aria-label="Start from a template">
+      <h3>Start from a template</h3>
+      <p>Or drag a node in from the left, or describe the workflow to Annie.</p>
+      <div class="wf-qs-grid">
+        <button v-for="template in availableQuickstarts" :key="template.id" type="button" class="wf-qs-card" @click="applyQuickstart(template)">
+          <i :class="template.icon" aria-hidden="true"></i>
+          <strong>{{ template.name }}</strong>
+          <small>{{ template.description }}</small>
+        </button>
+      </div>
+    </section>
     <!-- <AgentChat /> -->
   </div>
   <div id="generating-modal" class="modal" style="display: none; user-select: none">
@@ -154,6 +167,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
 import AgentChat from './components/AgentChat/AgentChat.vue';
+import { WORKFLOW_QUICKSTARTS, quickstartAvailable, layoutQuickstart } from './workflowQuickstarts.js';
 
 export default {
   name: 'WorkflowDesignerView',
@@ -219,6 +233,14 @@ export default {
   },  computed: {
     selectedWorkflowSecurityOption() {
       return this.workflowSecurityOptions.find((option) => option.value === this.workflowSecurityDraft) || this.workflowSecurityOptions[0];
+    },
+    /** Templates whose every node type is installed here. */
+    availableQuickstarts() {
+      const installed = new Set();
+      for (const group of Object.values(this.backendTools || {})) {
+        if (Array.isArray(group)) for (const schema of group) if (schema?.type) installed.add(schema.type);
+      }
+      return WORKFLOW_QUICKSTARTS.filter((template) => quickstartAvailable(template, installed));
     },
     backendTools() {
       return this.$store.getters['tools/workflowTools'];
@@ -291,6 +313,40 @@ export default {
 
       // 3) Now simply call your existing save logic (no repeated prompt)
       await this.saveCanvasState(false, false);
+    },
+    /**
+     * Build a quickstart with the designer's own primitives so every node gets
+     * the installed schema's defaults. Refuses to run over existing nodes.
+     */
+    applyQuickstart(template) {
+      if (this.nodes.length) return;
+      const schemas = new Map();
+      for (const group of Object.values(this.backendTools || {})) {
+        if (Array.isArray(group)) for (const schema of group) if (schema?.type && !schemas.has(schema.type)) schemas.set(schema.type, schema);
+      }
+      const ids = {};
+      for (const { node, x, y } of layoutQuickstart(template)) {
+        const schema = schemas.get(node.type);
+        const before = this.nodes.length;
+        if (schema) this.createNode({ type: node.type, category: schema.category }, x, y);
+        const created = this.nodes.length > before ? this.nodes[this.nodes.length - 1] : null;
+        if (!created) {
+          // A node could not be created (missing schema, plan gate): leave
+          // nothing half-built behind.
+          this.nodes = [];
+          this.edges = [];
+          return;
+        }
+        created.text = node.name;
+        Object.assign(created.parameters, node.params);
+        ids[node.key] = created.id;
+      }
+      for (const [from, to] of template.edges) this.createEdge({ nodeId: ids[from], type: 'output' }, { nodeId: ids[to], type: 'input' });
+      this.workflowName = template.name;
+      this.$nextTick(() => {
+        this.updateEdges();
+        this.$refs.canvas?.centerGraph({ zoom: 1 });
+      });
     },
     addMobileNode(schema) {
       this.createNode(schema, 180, 80 + this.nodes.length * 140);
@@ -2772,6 +2828,70 @@ export default {
 </script>
 
 <style scoped>
+/* Empty-canvas quickstarts. The layer ignores the pointer; only cards take it. */
+.wf-quickstarts {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 2;
+}
+.wf-quickstarts h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.wf-quickstarts p {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.wf-qs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: 12px;
+}
+.wf-qs-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  background: var(--color-popup);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.wf-qs-card:hover,
+.wf-qs-card:focus-visible {
+  border-color: rgba(var(--primary-rgb), 0.55);
+  transform: translateY(-1px);
+  outline: none;
+}
+.wf-qs-card i {
+  color: var(--color-primary);
+  margin-bottom: 4px;
+}
+.wf-qs-card strong {
+  font-weight: 500;
+  font-size: 13px;
+}
+.wf-qs-card small {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
 /* GLOBAL SHARED STYLES FOR THIS PAGE HERE */
 .workflow-security-overlay{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}.workflow-security-dialog{width:min(680px,calc(100vw - 32px));border:1px solid var(--terminal-border-color-light);border-radius:12px;background:var(--terminal-section-bg);color:var(--color-text);box-shadow:0 24px 80px rgba(0,0,0,.45);padding:24px}.workflow-security-titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.workflow-security-eyebrow{font:700 10px var(--font-family-monospace);letter-spacing:.14em;color:var(--color-primary)}.workflow-security-titlebar h3{margin:6px 0 4px;font-size:20px}.workflow-security-titlebar p{margin:0;color:var(--color-text-muted);font-size:12px}.workflow-security-close{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--terminal-border-color-light);border-radius:8px;background:transparent;color:var(--color-text-muted);cursor:pointer}.workflow-security-close:hover{border-color:var(--color-primary);color:var(--color-primary)}.workflow-security-explainer{display:flex;align-items:flex-start;gap:10px;margin:24px 0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--color-primary) 28%,var(--terminal-border-color-light));border-radius:12px;background:color-mix(in srgb,var(--color-primary) 5%,var(--terminal-bg))}.workflow-security-explainer i{margin-top:2px;color:var(--color-text-muted)}.workflow-security-explainer p{margin:0;color:var(--color-text-muted);font-size:11px;line-height:1.55}.workflow-security-explainer strong{color:var(--color-text)}.workflow-security-slider-wrap{padding:20px 16px;border:1px solid var(--terminal-border-color-light);border-radius:12px;background:color-mix(in srgb,var(--terminal-bg) 45%,transparent)}.workflow-security-scale{display:flex;justify-content:space-between;margin-bottom:12px;color:var(--color-text-muted);font:700 8px var(--font-family-monospace);letter-spacing:.06em;text-transform:uppercase}.workflow-security-selection{display:flex;align-items:flex-start;gap:12px;margin-top:16px;padding:14px;border:1px solid var(--terminal-border-color-light);border-radius:12px}.workflow-security-selection>i{display:grid;place-items:center;width:34px;height:34px;color:var(--color-primary);background:color-mix(in srgb,var(--color-primary) 9%,transparent)}.workflow-security-selection>div{display:flex;flex-direction:column;gap:3px}.workflow-security-selection small{font:700 8px var(--font-family-monospace);letter-spacing:.1em;color:var(--color-text-muted)}.workflow-security-selection strong{font-size:13px}.workflow-security-selection p{margin:2px 0 0;color:var(--color-text-muted);font-size:11px}.workflow-security-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:24px}.workflow-security-cancel,.workflow-security-apply{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}.workflow-security-cancel{border:1px solid var(--terminal-border-color-light);background:transparent;color:var(--color-text)}.workflow-security-apply{border:1px solid var(--color-primary);background:var(--color-primary);color:var(--terminal-bg)}.workflow-security-apply:disabled{opacity:.5;cursor:not-allowed}@media(max-width:700px){.workflow-security-overlay{padding:16px}.workflow-security-dialog{padding:16px}.workflow-security-scale{font-size:7px}.workflow-security-actions{flex-direction:column-reverse}.workflow-security-cancel,.workflow-security-apply{width:100%}}
 
