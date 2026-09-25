@@ -51,144 +51,181 @@
         </div>
       </div>
 
-      <!-- Tasks list -->
-      <div v-if="selectedGoal.tasks && selectedGoal.tasks.length > 0" class="goal-tasks">
-        <h3>Tasks ({{ selectedGoal.tasks.length }})</h3>
-        <div class="tasks-list">
-          <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="task-card" :class="(task.status || '').toLowerCase()">
-            <div class="task-header">
-              <div class="task-info">
-                <span class="task-name">{{ task.title || 'Untitled Task' }}</span>
-                <span class="task-index">Task {{ index + 1 }}</span>
-              </div>
-              <span :class="['task-status', (task.status || '').toLowerCase()]">
-                <i :class="getStatusIcon(task.status)"></i>
-                {{ task.status }}
-              </span>
-            </div>
+      <!-- What it made: the same cards the chat shows for its outputs. -->
+      <section v-if="artifactSource.content" class="goal-section goal-results">
+        <h3>What it made</h3>
+        <ArtifactCards :content="artifactSource.content" :tool-calls="artifactSource.toolCalls" :message-id="'goal:' + selectedGoal.id" />
+      </section>
 
-            <div v-if="task.agent_name" class="task-agent"><i class="fas fa-robot"></i> {{ task.agent_name }}</div>
+      <!-- The plan's acceptance checklist, checked by the evaluator. -->
+      <section v-if="checklist.items.length" class="goal-section goal-checklist">
+        <h3>
+          Checklist
+          <span v-if="checklist.evaluated" class="checklist-count">{{ checklist.met }}/{{ checklist.items.length }} met</span>
+        </h3>
+        <ul>
+          <li v-for="item in checklist.items" :key="item.id" :class="item.met === true ? 'is-met' : item.met === false ? 'is-missed' : 'is-open'">
+            <i :class="item.met === true ? 'fas fa-check-circle' : item.met === false ? 'fas fa-times-circle' : 'far fa-circle'" aria-hidden="true"></i>
+            <span>
+              {{ item.text }}
+              <small v-if="item.evidence && item.evidence !== 'Not assessed'">{{ item.evidence }}</small>
+            </span>
+          </li>
+        </ul>
+        <p v-if="!checklist.evaluated" class="checklist-hint">Checked automatically when the work is evaluated.</p>
+      </section>
 
-            <div v-if="task.description" class="task-desc">{{ task.description }}</div>
+      <!-- Sign-off: the reviewer accepts the result against the checklist. -->
+      <div v-if="canSignOff" class="goal-signoff">
+        <button type="button" class="action-button start" :disabled="isStartingAutonomous" @click="approveGoal">
+          <i class="fas fa-check"></i> Accept & mark done
+        </button>
+        <button type="button" class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> Request changes</button>
+      </div>
 
-            <div class="task-timing">
-              <span v-if="task.started_at">Started: {{ formatTime(task.started_at) }}</span>
-              <span v-if="task.completed_at">Done: {{ formatTime(task.completed_at) }}</span>
-            </div>
-
-            <!-- Output -->
-            <div v-if="task.output" class="task-io-section">
-              <div class="io-toggle" @click="toggleNodeSection(task.id, 'output')">
-                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
-                <span>Output</span>
-                <Tooltip :text="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
-                  <button class="raw-toggle" @click.stop="toggleRawView(task.id)">
-                    <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
-                    {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
-                  </button>
-                </Tooltip>
-              </div>
-              <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
-                <div v-if="isRawView(task.id)" class="output-raw">
-                  <BoundedJson :value="formatJSON(task.output)" filename="task-output.json" />
+      <!-- Everything else is detail: tasks, tool calls, raw evaluation, iterations. -->
+      <details class="goal-work">
+        <summary>Show the work<span v-if="selectedGoal.tasks?.length"> · {{ selectedGoal.tasks.length }} task{{ selectedGoal.tasks.length === 1 ? '' : 's' }}</span></summary>
+        <!-- Tasks list -->
+        <div v-if="selectedGoal.tasks && selectedGoal.tasks.length > 0" class="goal-tasks">
+          <h3>Tasks ({{ selectedGoal.tasks.length }})</h3>
+          <div class="tasks-list">
+            <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="task-card" :class="(task.status || '').toLowerCase()">
+              <div class="task-header">
+                <div class="task-info">
+                  <span class="task-name">{{ task.title || 'Untitled Task' }}</span>
+                  <span class="task-index">Task {{ index + 1 }}</span>
                 </div>
-                <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
+                <span :class="['task-status', (task.status || '').toLowerCase()]">
+                  <i :class="getStatusIcon(task.status)"></i>
+                  {{ task.status }}
+                </span>
               </div>
-            </div>
 
-            <!-- Tool Executions -->
-            <div v-if="getToolExecutions(task.output).length > 0" class="task-io-section tool-executions-section">
-              <div class="io-toggle" @click="toggleNodeSection(task.id, 'tools')">
-                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tools') }"></i>
-                <span>Tool Executions ({{ getToolExecutions(task.output).length }})</span>
+              <div v-if="task.agent_name" class="task-agent"><i class="fas fa-robot"></i> {{ task.agent_name }}</div>
+
+              <div v-if="task.description" class="task-desc">{{ task.description }}</div>
+
+              <div class="task-timing">
+                <span v-if="task.started_at">Started: {{ formatTime(task.started_at) }}</span>
+                <span v-if="task.completed_at">Done: {{ formatTime(task.completed_at) }}</span>
               </div>
-              <div v-show="isNodeSectionExpanded(task.id, 'tools')" class="io-body">
-                <div
-                  v-for="(tool, tIdx) in getToolExecutions(task.output)"
-                  :key="tIdx"
-                  class="tool-exec-item"
-                  :class="{ 'tool-error': toolHasError(tool) }"
-                >
-                  <div class="tool-exec-header" @click="toggleNodeSection(task.id, 'tool-' + tIdx)">
-                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tool-' + tIdx) }"></i>
-                    <span class="tool-exec-name">{{ formatToolName(tool.name || tool.toolName || 'unknown') }}</span>
-                    <span class="tool-exec-badge" :class="toolHasError(tool) ? 'badge-error' : 'badge-ok'">
-                      {{ toolHasError(tool) ? 'error' : 'ok' }}
-                    </span>
+
+              <!-- Output -->
+              <div v-if="task.output" class="task-io-section">
+                <div class="io-toggle" @click="toggleNodeSection(task.id, 'output')">
+                  <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
+                  <span>Output</span>
+                  <Tooltip :text="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                    <button class="raw-toggle" @click.stop="toggleRawView(task.id)">
+                      <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
+                    </button>
+                  </Tooltip>
+                </div>
+                <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
+                  <div v-if="isRawView(task.id)" class="output-raw">
+                    <BoundedJson :value="formatJSON(task.output)" filename="task-output.json" />
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-details">
-                    <div v-if="tool.arguments || tool.args || tool.input" class="tool-exec-block">
-                      <div class="tool-exec-block-label">Input</div>
-                      <BoundedJson :value="formatToolResponse(tool.arguments || tool.args || tool.input)" filename="tool-input.json" />
+                  <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
+                </div>
+              </div>
+
+              <!-- Tool Executions -->
+              <div v-if="getToolExecutions(task.output).length > 0" class="task-io-section tool-executions-section">
+                <div class="io-toggle" @click="toggleNodeSection(task.id, 'tools')">
+                  <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tools') }"></i>
+                  <span>Tool Executions ({{ getToolExecutions(task.output).length }})</span>
+                </div>
+                <div v-show="isNodeSectionExpanded(task.id, 'tools')" class="io-body">
+                  <div
+                    v-for="(tool, tIdx) in getToolExecutions(task.output)"
+                    :key="tIdx"
+                    class="tool-exec-item"
+                    :class="{ 'tool-error': toolHasError(tool) }"
+                  >
+                    <div class="tool-exec-header" @click="toggleNodeSection(task.id, 'tool-' + tIdx)">
+                      <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tool-' + tIdx) }"></i>
+                      <span class="tool-exec-name">{{ formatToolName(tool.name || tool.toolName || 'unknown') }}</span>
+                      <span class="tool-exec-badge" :class="toolHasError(tool) ? 'badge-error' : 'badge-ok'">
+                        {{ toolHasError(tool) ? 'error' : 'ok' }}
+                      </span>
                     </div>
-                    <div v-if="tool.response || tool.output || tool.result" class="tool-exec-block">
-                      <div class="tool-exec-block-label">Output</div>
-                      <BoundedJson :value="formatToolResponse(tool.response || tool.output || tool.result)" :tone="toolHasError(tool) ? 'error' : 'neutral'" filename="tool-output.json" />
+                    <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-details">
+                      <div v-if="tool.arguments || tool.args || tool.input" class="tool-exec-block">
+                        <div class="tool-exec-block-label">Input</div>
+                        <BoundedJson :value="formatToolResponse(tool.arguments || tool.args || tool.input)" filename="tool-input.json" />
+                      </div>
+                      <div v-if="tool.response || tool.output || tool.result" class="tool-exec-block">
+                        <div class="tool-exec-block-label">Output</div>
+                        <BoundedJson :value="formatToolResponse(tool.response || tool.output || tool.result)" :tone="toolHasError(tool) ? 'error' : 'neutral'" filename="tool-output.json" />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Error -->
-            <div v-if="task.error" class="task-io-section error">
-              <div class="io-toggle" @click="toggleNodeSection(task.id, 'error')">
-                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'error') }"></i>
-                <span>Error</span>
+              <!-- Error -->
+              <div v-if="task.error" class="task-io-section error">
+                <div class="io-toggle" @click="toggleNodeSection(task.id, 'error')">
+                  <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'error') }"></i>
+                  <span>Error</span>
+                </div>
+                <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-body">
+                  <BoundedJson :value="task.error" tone="error" filename="task-error.txt" />
+                </div>
               </div>
-              <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-body">
-                <BoundedJson :value="task.error" tone="error" filename="task-error.txt" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Evaluation -->
+        <div v-if="selectedGoal.evaluation" class="goal-evaluation task-io-section">
+          <div class="io-toggle" @click="toggleNodeSection('eval', 'output')">
+            <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('eval', 'output') }"></i>
+            <span>Evaluation</span>
+            <Tooltip :text="isRawView('eval') ? 'View Rendered' : 'View Raw'">
+              <button class="raw-toggle" @click.stop="toggleRawView('eval')">
+                <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
+              </button>
+            </Tooltip>
+          </div>
+          <div v-show="isNodeSectionExpanded('eval', 'output')" class="io-body">
+            <div v-if="isRawView('eval')" class="output-raw">
+              <BoundedJson :value="formatJSON(selectedGoal.evaluation)" filename="evaluation.json" />
+            </div>
+            <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
+          </div>
+        </div>
+
+        <!-- AGI Loop: Iteration Timeline -->
+        <div v-if="goalIterations.length > 0" class="goal-iterations">
+          <h3><i class="fas fa-sync-alt"></i> Iterations ({{ goalIterations.length }})</h3>
+          <div class="iteration-timeline">
+            <div
+              v-for="iter in goalIterations"
+              :key="iter.iteration_number"
+              class="iteration-item"
+              :class="{ passed: iter.evaluation_passed, failed: !iter.evaluation_passed }"
+            >
+              <div class="iteration-header">
+                <span class="iteration-number">#{{ iter.iteration_number }}</span>
+                <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
+                  {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
+                </span>
+              </div>
+              <div class="iteration-meta">
+                <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>
+                <span v-if="iter.replanned_tasks && iter.replanned_tasks.length">
+                  <i class="fas fa-redo"></i> {{ iter.replanned_tasks.length }} re-planned
+                </span>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Evaluation -->
-      <div v-if="selectedGoal.evaluation" class="goal-evaluation task-io-section">
-        <div class="io-toggle" @click="toggleNodeSection('eval', 'output')">
-          <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('eval', 'output') }"></i>
-          <span>Evaluation</span>
-          <Tooltip :text="isRawView('eval') ? 'View Rendered' : 'View Raw'">
-            <button class="raw-toggle" @click.stop="toggleRawView('eval')">
-              <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
-              {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
-            </button>
-          </Tooltip>
-        </div>
-        <div v-show="isNodeSectionExpanded('eval', 'output')" class="io-body">
-          <div v-if="isRawView('eval')" class="output-raw">
-            <BoundedJson :value="formatJSON(selectedGoal.evaluation)" filename="evaluation.json" />
-          </div>
-          <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
-        </div>
-      </div>
-
-      <!-- AGI Loop: Iteration Timeline -->
-      <div v-if="goalIterations.length > 0" class="goal-iterations">
-        <h3><i class="fas fa-sync-alt"></i> Iterations ({{ goalIterations.length }})</h3>
-        <div class="iteration-timeline">
-          <div
-            v-for="iter in goalIterations"
-            :key="iter.iteration_number"
-            class="iteration-item"
-            :class="{ passed: iter.evaluation_passed, failed: !iter.evaluation_passed }"
-          >
-            <div class="iteration-header">
-              <span class="iteration-number">#{{ iter.iteration_number }}</span>
-              <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
-                {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
-              </span>
-            </div>
-            <div class="iteration-meta">
-              <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>
-              <span v-if="iter.replanned_tasks && iter.replanned_tasks.length">
-                <i class="fas fa-redo"></i> {{ iter.replanned_tasks.length }} re-planned
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      </details>
 
       <!-- AGI Loop: Live iteration indicator -->
       <div v-if="liveIteration" class="goal-live-iteration">
@@ -211,10 +248,10 @@
         <!-- Needs review actions -->
         <template v-if="selectedGoal.status === 'needs_review'">
           <button class="action-button edit" @click="reviewOutputs"><i class="fas fa-file-alt"></i> Review Outputs</button>
-          <button class="action-button start" @click="approveGoal" :disabled="isStartingAutonomous">
-            <i class="fas fa-check"></i> {{ boardStage === 'plan' ? 'Approve plan & build' : 'Accept result' }}
-          </button>
-          <button class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> {{ boardStage === 'plan' ? 'Send feedback & retry' : 'Request changes' }}</button>
+          <template v-if="boardStage === 'plan'">
+            <button class="action-button start" @click="approveGoal" :disabled="isStartingAutonomous"><i class="fas fa-check"></i> Approve plan & build</button>
+            <button class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> Send feedback & retry</button>
+          </template>
           <button class="action-button" @click="startAutonomous" :disabled="isStartingAutonomous">
             <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-redo'"></i>
             {{ isStartingAutonomous ? 'Starting...' : 'Retry' }}
@@ -303,6 +340,9 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
+import { goalArtifactSource } from '@/views/Terminal/CenterPanel/screens/Goals/goalArtifacts.js';
+import { reviewChecklist } from '@/views/Terminal/CenterPanel/screens/Goals/goalChecklist.js';
 import { getGoalStage } from '@/views/Terminal/CenterPanel/screens/Goals/goalBoard.js';
 
 const mdConverter = new showdown.Converter({
@@ -325,6 +365,7 @@ export default {
     BaseButton,
     BoundedJson,
     ListSummaryPanel,
+    ArtifactCards,
   },
   props: {
     selectedGoalId: {
@@ -466,6 +507,27 @@ export default {
       if (!selectedGoal.value) return false;
       return ['completed', 'validated', 'failed', 'error', 'stopped'].includes(selectedGoal.value.status);
     });
+
+    // Review: what the goal made, and its checklist as the evaluator left it.
+    const artifactSource = computed(() => goalArtifactSource(selectedGoal.value?.tasks || []));
+    const checklist = computed(() => reviewChecklist(selectedGoal.value));
+    // Sign-off is for finished work awaiting a human: a result in review, or
+    // one the loop completed but nobody has accepted yet.
+    const canSignOff = computed(() => {
+      const status = selectedGoal.value?.status;
+      return (status === 'needs_review' && boardStage.value !== 'plan') || status === 'completed';
+    });
+
+    // The evaluation (with the checked checklist) is fetched when a finished
+    // goal is opened. A goal never evaluated answers 404, which is not an error.
+    watch(
+      () => [selectedGoal.value?.id, selectedGoal.value?.status],
+      ([id, status]) => {
+        if (!id || !['needs_review', 'completed', 'validated'].includes(status)) return;
+        store.dispatch('goals/fetchGoalEvaluation', id).catch((error) => console.warn('Goal evaluation unavailable:', error.message));
+      },
+      { immediate: true },
+    );
 
     // Fetch iterations when a goal is selected
     watch(selectedGoal, (goal) => {
@@ -825,6 +887,9 @@ ${goal.tasks
     };
 
     return {
+      artifactSource,
+      checklist,
+      canSignOff,
       summaryStats,
       selectedGoal,
       showCopiedMessage,
@@ -875,6 +940,93 @@ ${goal.tasks
 </script>
 
 <style scoped>
+/* ── Review-first layout: results, checklist, sign-off, then the work ── */
+.goal-section {
+  margin-top: 14px;
+}
+.goal-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+/* The right panel is narrow: one card per row reads better than two. */
+.goal-results :deep(.artifact-cards) {
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+}
+.checklist-count {
+  margin-left: auto;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text);
+}
+.goal-checklist ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.goal-checklist li {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.goal-checklist li i {
+  margin-top: 2px;
+}
+.goal-checklist li small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.goal-checklist .is-met i {
+  color: var(--color-green);
+}
+.goal-checklist .is-missed i {
+  color: var(--color-red);
+}
+.goal-checklist .is-open i {
+  color: var(--color-text-muted);
+}
+.checklist-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.goal-signoff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.goal-work {
+  margin-top: 16px;
+  border-top: 1px solid var(--terminal-border-color);
+  padding-top: 10px;
+}
+.goal-work > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+.goal-work > summary:hover {
+  color: var(--color-text);
+}
+.goal-work[open] > summary {
+  margin-bottom: 10px;
+}
+
 /* Panel layout — matches WorkflowsPanel */
 .goal-panel {
   display: flex;

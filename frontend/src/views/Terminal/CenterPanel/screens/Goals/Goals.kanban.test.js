@@ -160,7 +160,9 @@ describe('Existing detail handlers with stage-specific labels', () => {
 
   it('accepts results through reviewGoal rather than re-executing them', async () => {
     const { wrapper, dispatch } = setup(GoalsPanel, { selectedGoalId: 'review', goals: sampleGoals });
-    const button = wrapper.findAll('button').find((button) => button.text().includes('Accept result'));
+    // Opening a result for review loads its evaluation (the checked checklist).
+    expect(dispatch).toHaveBeenCalledWith('goals/fetchGoalEvaluation', 'review');
+    const button = wrapper.findAll('button').find((button) => button.text().includes('Accept & mark done'));
     expect(button).toBeDefined();
     await button.trigger('click');
     await flushPromises();
