@@ -9,7 +9,7 @@
 
     DEGRADATION IS THE LOAD-BEARING CASE: if the catalogue is unreachable, or
     this asset type does not exist in the marketplace at all (there is no
-    `skill` or `widget` asset_type server-side), the marketplace section is
+    `widget` asset_type server-side), the marketplace section is
     omitted entirely and the Create path is left exactly as it was. A broken
     grid would be strictly worse than the dead end this replaces.
   -->
@@ -209,7 +209,7 @@ export default {
   name: 'MarketplaceShelf',
   components: { SimpleModal, Tooltip },
   props: {
-    /** agent | workflow | tool | plugin | (skill/widget render nothing — see MARKETPLACE_ASSET_TYPES) */
+    /** agent | workflow | tool | plugin | skill | (widget renders nothing — see MARKETPLACE_ASSET_TYPES) */
     assetType: { type: String, required: true },
     /** 'full' = cold empty state (Create + shelf). 'strip' = compact rail under the user's own items. */
     variant: { type: String, default: 'full' },

@@ -96,11 +96,9 @@
             </div>
           </div>
 
-          <!-- The marketplace has no `skill` asset_type yet (the server's set is
-               agent|workflow|tool|plugin), so today this renders the Create card
-               and nothing else — which is already an improvement on a screen that
-               had no marketplace path at all. The day skills are publishable it
-               fills itself with no change here. -->
+          <!-- Published marketplace skills, installable in one click, beside the
+               Create card. Renders the Create card alone if the catalogue is
+               unreachable. -->
           <MarketplaceShelf
             v-else-if="ownsNothing"
             asset-type="skill"

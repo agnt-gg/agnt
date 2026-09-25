@@ -698,6 +698,7 @@ export default {
       if (assetType === 'tool') return 'Tool';
       if (assetType === 'workflow') return 'Workflow';
       if (assetType === 'plugin') return 'Plugin';
+      if (assetType === 'skill') return 'Skill';
       return 'Item';
     });
 

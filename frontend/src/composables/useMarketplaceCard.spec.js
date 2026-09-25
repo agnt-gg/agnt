@@ -22,20 +22,25 @@ const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const item = (o = {}) => ({ id: 'i1', title: 'Thing', asset_type: 'agent', downloads: 10, published_at: day(100), ...o });
 
 describe('useMarketplaceCard — the closed asset-type set', () => {
-  it('is exactly the four types the server serves', () => {
-    expect([...MARKETPLACE_ASSET_TYPES].sort()).toEqual(['agent', 'plugin', 'tool', 'workflow']);
+  it('is exactly the five types the server publishes', () => {
+    expect([...MARKETPLACE_ASSET_TYPES].sort()).toEqual(['agent', 'plugin', 'skill', 'tool', 'workflow']);
   });
 
-  // This is the guard behind the whole degraded path: Skills and WidgetManager
-  // mount a shelf, and it MUST stay empty until the backend serves those types.
-  it('rejects skill and widget, so their shelves cannot render a bogus grid', () => {
-    expect(isShelfEligible('skill')).toBe(false);
-    expect(isShelfEligible('widget')).toBe(false);
+  // Regression: skill was left out long after the server served it, which hid
+  // every published skill from the app and broke agnt:// links to them.
+  it('accepts skill, which the server publishes', () => {
+    expect(isShelfEligible('skill')).toBe(true);
     expect(isShelfEligible('agent')).toBe(true);
   });
 
+  // WidgetManager mounts a shelf too, and it MUST stay empty until the backend
+  // serves widgets.
+  it('rejects widget, so its shelf cannot render a bogus grid', () => {
+    expect(isShelfEligible('widget')).toBe(false);
+  });
+
   it('cannot be mutated by a caller', () => {
-    expect(() => MARKETPLACE_ASSET_TYPES.push('skill')).toThrow();
+    expect(() => MARKETPLACE_ASSET_TYPES.push('widget')).toThrow();
   });
 });
 
@@ -46,7 +51,9 @@ describe('useMarketplaceCard — icons and labels', () => {
     expect(assetIcon(item({ asset_type: 'plugin' }))).toBe('fas fa-puzzle-piece');
     expect(assetIcon(item({ asset_type: 'workflow' }))).toBe('fas fa-project-diagram');
     expect(assetIcon(item({ asset_type: undefined }))).toBe('fas fa-project-diagram');
+    expect(assetIcon(item({ asset_type: 'skill' }))).toBe('fas fa-graduation-cap');
     expect(assetTypeLabel(item({ asset_type: 'plugin' }))).toBe('Plugin');
+    expect(assetTypeLabel(item({ asset_type: 'skill' }))).toBe('Skill');
     expect(assetTypeLabel(item({ asset_type: 'nonsense' }))).toBe('Workflow');
   });
 });

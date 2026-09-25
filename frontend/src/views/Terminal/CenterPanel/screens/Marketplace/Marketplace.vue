@@ -691,6 +691,7 @@ export default {
       { id: 'agents', name: 'Agents', icon: 'fas fa-robot' },
       { id: 'tools', name: 'Tools', icon: 'fas fa-wrench' },
       { id: 'plugins', name: 'Plugins', icon: 'fas fa-puzzle-piece' },
+      { id: 'skills', name: 'Skills', icon: 'fas fa-graduation-cap' },
       // { id: 'featured', name: 'Featured', icon: 'fas fa-star' },
       { id: 'my-installs', name: 'My Installs', icon: 'fas fa-box-open' },
       { id: 'my-listings', name: 'My Listings', icon: 'fas fa-user-circle' },
@@ -704,6 +705,7 @@ export default {
     const marketplaceAgents = computed(() => store.getters['marketplace/filteredMarketplaceAgents'] || []);
     const marketplaceTools = computed(() => store.getters['marketplace/filteredMarketplaceTools'] || []);
     const marketplacePlugins = computed(() => store.getters['marketplace/filteredMarketplacePlugins'] || []);
+    const marketplaceSkills = computed(() => store.getters['marketplace/filteredMarketplaceSkills'] || []);
     const marketplaceItems = computed(() => store.getters['marketplace/filteredMarketplaceItems'] || []);
     const myPublishedItems = computed(() => store.state.marketplace.myPublishedItems || []);
     const myInstalls = computed(() => store.state.marketplace.myInstalls || []);
@@ -757,6 +759,9 @@ export default {
         case 'plugins':
           items = marketplacePlugins.value;
           break;
+        case 'skills':
+          items = marketplaceSkills.value;
+          break;
         case 'featured':
           items = featuredWorkflows.value;
           break;
@@ -773,7 +778,7 @@ export default {
           // Union every asset type — plugins included. The remote /marketplace/items
           // endpoint already returns all four types; this union was workflows+agents+
           // tools only, which silently hid every plugin from the All tab.
-          const allItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value];
+          const allItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value, ...marketplaceSkills.value];
           const uniqueIds = new Set();
           items = allItems.filter((item) => {
             if (uniqueIds.has(item.id)) {
@@ -787,7 +792,7 @@ export default {
         case 'paid':
           // For free/paid, also combine all asset types and remove duplicates
           // Same union as 'all' — free/paid must not hide plugins either.
-          const combinedItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value];
+          const combinedItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value, ...marketplaceSkills.value];
           const seenIds = new Set();
           items = combinedItems.filter((item) => {
             if (seenIds.has(item.id)) {
@@ -915,6 +920,8 @@ export default {
           return 'tools';
         case 'plugins':
           return 'plugins';
+        case 'skills':
+          return 'skills';
         case 'featured':
           return 'items';
         case 'free':
@@ -1304,6 +1311,12 @@ export default {
           await store.dispatch('marketplace/updateFilters', filterUpdates);
           await store.dispatch('marketplace/fetchMarketplaceItems');
           break;
+        case 'skills':
+          filterUpdates.assetType = 'skill';
+          addLine(`[Marketplace] Viewing skills`, 'info');
+          await store.dispatch('marketplace/updateFilters', filterUpdates);
+          await store.dispatch('marketplace/fetchMarketplaceItems');
+          break;
         case 'free':
           filterUpdates.priceRange = 'free';
           filterUpdates.assetType = 'all';
@@ -1647,13 +1660,27 @@ export default {
      * and the router pushed a new query). Same function, so the two arrival
      * paths cannot drift apart.
      */
-    const openByAssetId = (assetId) => {
+    const findListing = (assetId) =>
+      [marketplaceWorkflows.value, marketplaceAgents.value, marketplaceTools.value, marketplacePlugins.value, marketplaceSkills.value]
+        .flat()
+        .find((i) => i && i.asset_id === assetId);
+
+    const openByAssetId = async (assetId) => {
       if (!assetId) return;
 
       // Search every bucket, not the filtered view: a link must work whatever
       // tab, category or search the user happened to leave the screen on.
-      const pools = [marketplaceWorkflows.value, marketplaceAgents.value, marketplaceTools.value, marketplacePlugins.value];
-      const item = pools.flat().find((i) => i && i.asset_id === assetId);
+      let item = findListing(assetId);
+
+      // The buckets only hold what the LAST fetch asked for, and each type tab
+      // fetches its own type. A link arriving while the screen sits on Plugins
+      // would find no agent or skill at all. Fetch the whole catalogue once
+      // before concluding the listing does not exist.
+      if (!item) {
+        await store.dispatch('marketplace/updateFilters', { assetType: 'all' });
+        await store.dispatch('marketplace/fetchMarketplaceItems');
+        item = findListing(assetId);
+      }
 
       if (!item) {
         // Name what was looked for. Silence here reads as "the link is broken"
