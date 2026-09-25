@@ -43,12 +43,11 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <!-- Live pills: each is a click into the thing it counts. Only the
-             provider pill is always drawn; the others appear when non-zero. -->
+             provider pill is always drawn; the others appear when non-zero.
+             Approvals deliberately have NO pill here: the header is for
+             system state, and approvals live on the Goals board. -->
         <button v-if="pills.running" class="cv-pill" @click="goRunning" v-tooltip="'Running now — open Runs'">
           <span class="cv-pill-dot is-live"></span>{{ pills.running }} running
-        </button>
-        <button v-if="pills.approvals" class="cv-pill" @click="goApprovals" v-tooltip="'Waiting for your approval — open Autonomy'">
-          <span class="cv-pill-dot is-warn"></span>{{ pills.approvals }} to approve
         </button>
         <button v-if="updateAvailable" class="cv-pill is-update" @click="goAbout" v-tooltip="'An update is ready — Settings › About'">
           <i class="fas fa-arrow-circle-up"></i> update
@@ -684,17 +683,12 @@ export default {
     // ── Toolbar pills ──
     const pills = computed(() => ({
       running: badgeLabel(RAIL_BADGE_READERS.traces(store)),
-      approvals: badgeLabel((store.getters['insights/escalatedInsights'] || []).length),
     }));
     const updateAvailable = computed(() => store.getters['shell/updateAvailable']);
     function goRunning() {
       store.dispatch('shell/inspect', { kind: 'running', screen: 'TracesScreen' });
       onCustomPage.value = false;
       emit('screen-change', 'TracesScreen', { status: 'running' });
-    }
-    function goApprovals() {
-      onCustomPage.value = false;
-      emit('screen-change', 'AutonomyScreen');
     }
     // AI Providers is a view INSIDE Connections, so landing on it means naming
     // the view as well as the screen. Both halves are needed and neither is
@@ -1085,7 +1079,6 @@ export default {
       pills,
       updateAvailable,
       goRunning,
-      goApprovals,
       goProviders,
       goAbout,
       jumpKey,
@@ -1357,10 +1350,6 @@ export default {
   background: var(--color-blue, #12e0ff);
   box-shadow: 0 0 6px var(--color-blue, #12e0ff);
   animation: cv-pill-pulse 1.8s infinite;
-}
-.cv-pill-dot.is-warn {
-  background: var(--color-yellow, #ffd700);
-  box-shadow: 0 0 6px var(--color-yellow, #ffd700);
 }
 .cv-pill-dot.is-red {
   background: #fe4e4e;
