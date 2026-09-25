@@ -42,11 +42,25 @@ for (const width of [1920, 1780, 1280, 1024, 900, 768, 390, 320]) {
         };
       });
       await testInfo.attach(`${width}-${state}-geometry`, { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
-      for (const role of ['user', 'assistant']) for (const edge of ['left', 'right', 'width']) {
+      // At 800px and below the compact presentation (styles/components/
+      // _compact-app.css) is a deliberate phone layout: replies run the full
+      // column, borderless, and YOUR messages are right-aligned bubbles capped
+      // at 90%. The fold sits in the transcript like a reply, so there it must
+      // match the reply column exactly, and a user bubble must share its right
+      // edge without claiming its width. Above 800px every bordered card shares
+      // one column, as before.
+      const compact = width <= 800;
+      for (const role of compact ? ['assistant'] : ['user', 'assistant']) for (const edge of ['left', 'right', 'width']) {
         expect(geometry.card[edge], `${state}: fold ${edge} must equal the visible ${role} border`).toBe(geometry[role][edge]);
+      }
+      if (compact) {
+        expect(geometry.user.right, `${state}: user bubble shares the fold's right edge`).toBe(geometry.card.right);
+        expect(geometry.user.width, `${state}: user bubble is the capped phone bubble`).toBeLessThan(geometry.card.width);
+        expect(geometry.user.width).toBeGreaterThanOrEqual(Math.floor(geometry.flow.width * 0.9) - 1);
       }
       expect(geometry.card.right, 'existing right edge is preserved').toBe(geometry.flow.right);
       expect(geometry.shortUser.width, 'short user messages still shrink to their content').toBeLessThan(geometry.user.width);
+      if (compact) return; // phone replies are borderless full-column text; nothing shrinks there
       expect(geometry.shortUser.right).toBe(geometry.card.right);
       expect(geometry.shortAssistant.width, 'short assistant messages still shrink to their content').toBeLessThan(geometry.assistant.width);
       expect(geometry.shortAssistant.left).toBe(geometry.card.left);
