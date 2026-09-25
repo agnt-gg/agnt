@@ -4,7 +4,7 @@
     <div v-if="isFullScreen" class="scanline-overlay"></div>
 
     <!-- Add the panel header with tab controls -->
-    <div class="panel-header">
+    <div class="panel-header" :class="{ 'has-tabs': visibleTabs.length }">
       <div class="left-tabs">
         <h2 class="title">/ {{ panelTitle }}</h2>
         <Tooltip :text="isFullScreen ? 'Contract Panel' : 'Expand Panel'" width="auto">
@@ -13,8 +13,9 @@
           </button>
         </Tooltip>
       </div>
-      <div class="right-tabs">
-        <!-- Show Parameters/Outputs tabs only when a node is selected -->
+      <!-- Only when a node or edge is selected; an empty row here was a blank
+           band between the title and Active Workflows. -->
+      <div v-if="visibleTabs.length" class="right-tabs">
         <button
           v-for="tab in visibleTabs"
           :key="tab.name"
@@ -31,7 +32,7 @@
     <!-- Nothing selected: the same block the forge always had on its right
          (Active Workflows · Integration Health · Resources), plus this
          workflow's last runs after the health section. -->
-    <div class="panel-content wf-summary" v-if="!selectedNodeContent && !selectedEdgeContent">
+    <div class="panel-content panel-scroll wf-summary" v-if="!selectedNodeContent && !selectedEdgeContent">
       <ActiveWorkflows
         @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
         @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
@@ -47,7 +48,7 @@
       </div>
       <ResourcesSection />
     </div>
-    <div v-else-if="selectedNodeContent || selectedEdgeContent">
+    <div v-else class="panel-content panel-scroll">
       <template v-if="selectedNodeContent && selectedNodeContent.error">
         <div class="error-message">
           <h3>Error:</h3>
@@ -315,7 +316,6 @@ export default {
 /* ── This workflow (nothing selected) ── */
 .wf-summary {
   padding: 12px 12px 16px;
-  overflow: auto;
 }
 .wf-sum-sec {
   margin-bottom: 16px;
@@ -455,19 +455,28 @@ export default {
   color: var(--color-text-muted);
 }
 
+/* The panel fills its slot and never grows past it; the body below the header
+   is the one scroller. It used to be height: fit-content with the body set to
+   overflow: hidden, so whatever passed the bottom (Resources) was unreachable. */
 .workflow-editor-panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   background: transparent;
   border: none;
-  min-height: calc(100% - 34px);
-  height: fit-content;
   border-radius: 0 0 8px 0;
   padding: 0;
   transition: all 0.3s ease;
-  scrollbar-width: none;
-  overflow: scroll;
-  gap: 16px;
+  overflow: hidden;
+  gap: 12px;
+}
+
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 /* Add fullscreen styles */
@@ -496,11 +505,8 @@ export default {
 }
 
 .panel-content {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
 }
 
 .panel-header {
@@ -511,11 +517,16 @@ export default {
   align-content: flex-start;
   align-items: flex-start;
   user-select: none;
-  padding: 0 0 16px 0;
-  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
   position: relative;
   z-index: 2; /* Make sure header is above the scanline */
   gap: 8px;
+}
+
+/* The title row carries its own rule; a second one only frames the tabs. */
+.panel-header.has-tabs {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 /* Make sure all content is above scanline overlay */
