@@ -20,6 +20,7 @@ import ProcessManager from './ProcessManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
 import { rememberSessionToken } from '../services/auth/sessionTokenCache.js';
+import { countRunningWorkflows, exitWhenOrphaned } from './workflowProcessLifecycle.js';
 
 console.log('Workflow process starting...');
 console.log(`Workflow process ID: ${process.pid}`);
