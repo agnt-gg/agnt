@@ -26,7 +26,15 @@ describe('the app can find an update at all', () => {
     // the files (electron/autoUpdate.js, agnt-server update-feed.js).
     const publish = [].concat(pkg.build?.publish ?? []);
     expect(publish.length, 'build.publish is missing: no update feed is generated').toBeGreaterThan(0);
-    expect(publish[0]).toEqual({ provider: 'generic', url: 'https://agnt.gg/updates/stable/' });
+    expect(publish[0]).toEqual({ provider: 'generic', url: 'https://agnt.gg/updates/stable/', channel: 'latest' });
+  });
+
+  it('writes latest*.yml even for a prerelease build', () => {
+    // With the generic provider electron-builder derives the channel from the
+    // version: 0.6.7-rc.1 wrote rc.yml. The release tooling, agnt.gg and the
+    // client all use latest*.yml, so every prerelease would have failed at the
+    // manifest step. Found by building the rc installers for the rehearsal.
+    expect([].concat(pkg.build?.publish ?? [])[0]?.channel).toBe('latest');
   });
 
   it('pins downloads to this repository’s GitHub releases', () => {

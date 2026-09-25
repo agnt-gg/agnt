@@ -55,6 +55,6 @@ describe('update IPC contract', () => {
     const pkg = JSON.parse(read('package.json'));
     expect(pkg.agntUpdate.feedBase).toMatch(/^https:\/\/.+\/$/);
     expect(pkg.agntUpdate.assetBase).toBe('https://github.com/agnt-gg/agnt/releases/download/');
-    expect(pkg.build.publish[0]).toEqual({ provider: 'generic', url: 'https://agnt.gg/updates/stable/' });
+    expect(pkg.build.publish[0]).toEqual({ provider: 'generic', url: 'https://agnt.gg/updates/stable/', channel: 'latest' });
   });
 });

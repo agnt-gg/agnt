@@ -135,7 +135,8 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://agnt.gg/updates/stable/"
+        "url": "https://agnt.gg/updates/stable/",
+        "channel": "latest"
       }
     ],
     "win": {
