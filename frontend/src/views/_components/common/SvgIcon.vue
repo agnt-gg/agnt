@@ -75,7 +75,16 @@ export default {
 </script>
 
 <style>
-.svg-icon path[fill] {
+/* Icons are monochrome and follow the theme text colour. Whatever carries the
+   paint gets recoloured: a painted <svg> root (children with no fill of their
+   own inherit it), or the individual shapes. White rect fills are knockouts
+   and are deliberately left alone. SvgIcon.spec.js enforces this contract
+   against every shipped icon. */
+.svg-icon svg[fill]:not([fill='none']),
+.svg-icon path[fill],
+.svg-icon circle[fill],
+.svg-icon ellipse[fill],
+.svg-icon polygon[fill] {
   fill: var(--color-text);
 }
 
