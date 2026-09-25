@@ -112,6 +112,8 @@ export async function completePluginOAuth({ state, code, error, resolveProvider,
   const session = sessions.get(String(state || ''));
   if (!session || Date.now() - session.createdAt > SESSION_TTL_MS) return { ok: false, error: 'This sign-in link has expired. Start again from AGNT.' };
   if (session.status !== 'pending') return { ok: session.status === 'success', error: session.error };
+  // Claim the state before the first await so it is redeemed at most once.
+  session.status = 'exchanging';
   const finish = (status, message) => {
     session.status = status;
     session.error = message;
@@ -138,7 +140,9 @@ export async function completePluginOAuth({ state, code, error, resolveProvider,
 export function getPluginOAuthStatus(sessionId) {
   const session = sessions.get(String(sessionId || ''));
   if (!session) return { status: 'error', error: 'Unknown or expired sign-in session.' };
-  return { status: session.status, error: session.error };
+  // 'exchanging' is internal (the state is claimed, tokens in flight); to the
+  // polling client it is still pending.
+  return { status: session.status === 'exchanging' ? 'pending' : session.status, error: session.error };
 }
 
 /**
