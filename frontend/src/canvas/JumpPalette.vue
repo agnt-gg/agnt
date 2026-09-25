@@ -13,8 +13,15 @@
             <button class="jp-group-label" :aria-expanded="!collapsed.has(group.id)" @click="toggleGroup(group.id)"><i class="fas" :class="collapsed.has(group.id)?'fa-angle-right':'fa-angle-down'" aria-hidden="true"></i>{{ group.label }}<small>{{ group.items.length }}</small></button>
             <div v-if="!collapsed.has(group.id)" class="jp-group-items">
               <template v-for="family in families(group)" :key="family.id">
-                <button class="jp-row" :class="{sel:selected===family.id}" :data-jump-id="family.id" @click="run(family)" @mouseenter="selected=family.id"><span class="jp-ic"><i :class="family.icon"></i></span><span class="jp-label">{{ family.label }}<small v-if="family.snippet" class="jp-snippet">{{ family.snippet }}</small></span><small class="jp-hint">{{ family.hint }}</small></button>
-                <details v-if="family.children.length" class="jp-assets"><summary>{{ family.children.length }} saved {{ family.assetLabel }}</summary><button v-for="item in family.children" :key="item.id" class="jp-row" :data-jump-id="item.id" @click="run(item)"><span class="jp-label">{{ item.label }}</span><small class="jp-hint">{{ item.hint }}</small></button></details>
+                <!-- The count IS the disclosure: one row, one chip, nothing
+                     nested until the user asks for it. -->
+                <div class="jp-family" :class="{sel:selected===family.id}">
+                  <button class="jp-row" :data-jump-id="family.id" @click="run(family)" @mouseenter="selected=family.id"><span class="jp-ic"><i :class="family.icon"></i></span><span class="jp-label">{{ family.label }}<small v-if="family.snippet" class="jp-snippet">{{ family.snippet }}</small></span><small v-if="!family.children.length" class="jp-hint">{{ family.hint }}</small></button>
+                  <button v-if="family.children.length" class="jp-count" :class="{open:expanded.has(family.id)}" :aria-expanded="expanded.has(family.id)" :aria-label="(expanded.has(family.id)?'Hide ':'Show ')+family.children.length+' saved '+family.assetLabel" @click="toggleFamily(family.id)">{{ family.children.length }}<i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <template v-if="family.children.length && expanded.has(family.id)">
+                  <button v-for="item in family.children" :key="item.id" class="jp-row jp-child" :class="{sel:selected===item.id}" :data-jump-id="item.id" @click="run(item)" @mouseenter="selected=item.id"><span class="jp-label">{{ item.label }}</span><small class="jp-hint">{{ item.hint }}</small></button>
+                </template>
               </template>
               <span v-if="!group.items.length" class="jp-empty">No matches</span>
             </div>
@@ -62,6 +69,7 @@ const store = useStore(),
 const query = ref(''),
   selected = ref(null),
   collapsed = ref(new Set()),
+  expanded = ref(new Set()),
   inputRef = ref(null),
   listRef = ref(null),
   dialogRef = ref(null);
@@ -125,6 +133,12 @@ function families(group) {
   return results
 }
 
+function toggleFamily(id) {
+  const next = new Set(expanded.value);
+  next.has(id) ? next.delete(id) : next.add(id);
+  expanded.value = next
+}
+
 function toggleGroup(id) {
   const next = new Set(collapsed.value);
   next.has(id) ? next.delete(id) : next.add(id);
@@ -139,6 +153,7 @@ watch(open, async value => {
     loadCatalog();
     selected.value = null;
     collapsed.value = new Set();
+    expanded.value = new Set();
     await nextTick();
     inputRef.value?.focus()
   } else {catalogEpoch++;catalogAbort?.abort();fileGeneration++;clearTimeout(fileTimer);fileAbort?.abort();catalogLoading.value=false;filePending.value=false;if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});}
@@ -244,6 +259,16 @@ function rows() {
 }
 
 function onKey(e) {
+  // Right/Left open and close the selected row's saved items, but only when
+  // the caret is at the end of the query so text editing keeps its arrows.
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && selected.value && e.target.selectionStart === query.value.length) {
+    const wantOpen = e.key === 'ArrowRight';
+    if (expanded.value.has(selected.value) !== wantOpen && categories.value.some(g => families(g).some(f => f.id === selected.value && f.children.length))) {
+      e.preventDefault();
+      toggleFamily(selected.value);
+    }
+    return
+  }
   if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
   e.preventDefault();
   const visible = rows();
@@ -252,6 +277,8 @@ function onKey(e) {
     const id = selected.value || visible[0]?.dataset.jumpId;
     // Store rows are selectable but live outside `categories`, so Enter has to
     // look in both or the highlighted row does nothing.
+    // Expanded children are rendered from families(), whose ids are the
+    // catalog item ids, so the flat item list still resolves them.
     run([...categories.value.flatMap(g => g.items), ...storeSuggestions.value].find(i => i.id === id));
     return
   }
@@ -263,7 +290,7 @@ function onKey(e) {
 }
 
 function trapFocus(e) {
-  const nodes = [...dialogRef.value.querySelectorAll('input,button,summary')].filter(el => !el.disabled && el.getClientRects().length);
+  const nodes = [...dialogRef.value.querySelectorAll('input,button')].filter(el => !el.disabled && el.getClientRects().length);
   const first = nodes[0],
     last = nodes.at(-1);
   if (e.shiftKey && document.activeElement === first) {
@@ -430,17 +457,61 @@ function trapFocus(e) {
   white-space: nowrap
 }
 
-.jp-assets {
-  margin: 0 8px 6px 30px;
-  border-left: 1px solid var(--terminal-border-color);
-  padding-left: 8px
+.jp-family {
+  display: flex;
+  align-items: center;
+  border-radius: 7px
 }
 
-.jp-assets summary {
-  font-size: 11px;
+.jp-family.sel,
+.jp-family:hover {
+  background: rgba(var(--primary-rgb), .1)
+}
+
+.jp-family .jp-row:hover {
+  background: none
+}
+
+.jp-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 999px;
+  background: none;
   color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 7px 0
+  font: 400 11px 'League Spartan', sans-serif;
+  cursor: pointer
+}
+
+.jp-count i {
+  font-size: 8px;
+  transition: transform .15s ease
+}
+
+.jp-count:hover,
+.jp-count.open {
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), .45)
+}
+
+.jp-count.open i {
+  transform: rotate(180deg)
+}
+
+/* Children sit flush under their page, aligned with its label, no box. */
+.jp-child {
+  padding-left: 44px;
+  font-size: 12px;
+  color: var(--color-text-muted)
+}
+
+.jp-child:hover,
+.jp-child.sel {
+  color: var(--color-text)
 }
 
 .jp-empty {
@@ -475,8 +546,7 @@ function trapFocus(e) {
   font-size: 11px
 }
 
-button:focus-visible,
-summary:focus-visible {
+button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px
 }

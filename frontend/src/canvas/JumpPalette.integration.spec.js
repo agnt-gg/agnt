@@ -91,9 +91,25 @@ describe('JumpPalette real grid', () => {
   it('opens six categories with saved children collapsed', async () => {
     await setup();
     expect(document.querySelectorAll('.jp-group')).toHaveLength(6);
-    expect(document.querySelectorAll('details[open]')).toHaveLength(0);
+    // Saved items hide behind the count chip on their page row: no nested
+    // disclosure box, nothing expanded until clicked.
+    expect(document.querySelectorAll('details')).toHaveLength(0);
+    expect(document.querySelectorAll('.jp-child')).toHaveLength(0);
     expect(document.activeElement).toBe(document.querySelector('input'));
     expect(document.body.textContent).not.toContain('New agent')
+  });
+  it('opens a page row\'s saved items from its count chip and closes them again', async () => {
+    await setup();
+    const chip = document.querySelector('.jp-count');
+    expect(chip.textContent.trim()).toBe('1');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    chip.click();
+    await flushPromises();
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    expect([...document.querySelectorAll('.jp-child')].map(r => r.textContent)).toEqual([expect.stringContaining('Research agent')]);
+    chip.click();
+    await flushPromises();
+    expect(document.querySelectorAll('.jp-child')).toHaveLength(0);
   });
   it('navigates page directly without command execution', async () => {
     const {
