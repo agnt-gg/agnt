@@ -22,9 +22,14 @@ test.describe('Top-right default model selector', () => {
   test('loads a lowercase saved provider without losing its model @ci', async ({ appPage }) => {
     await mockModelSettings(appPage, ['recommended-test-model', savedModel]);
     await gotoApp(appPage, '/settings');
+    // Wait for the settings load to land, as the test below does, before
+    // reading the label: until then it shows the pre-load default
+    // (openai/gpt-4o), and under a full parallel run the load took longer than
+    // the 5 s default, so this read the placeholder and failed only there.
+    await expect.poll(() => appPage.evaluate(() => localStorage.getItem('selectedModel')), { timeout: 30000 }).toBe(savedModel);
     const selector = appPage.getByRole('button', { name: 'Change default AI model' });
     await expect(selector).toBeVisible();
-    await expect(selector).toContainText('openai-codex/' + savedModel);
+    await expect(selector).toContainText('openai-codex/' + savedModel, { timeout: 15000 });
     await expect.poll(() => appPage.evaluate(() => localStorage.getItem('selectedProvider'))).toBe('OpenAI-Codex');
     await expect.poll(() => appPage.evaluate(() => localStorage.getItem('selectedModel'))).toBe(savedModel);
     await appPage.reload({ waitUntil: 'domcontentloaded' });

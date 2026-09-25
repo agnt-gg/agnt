@@ -175,8 +175,14 @@ export { expect };
  */
 export async function gotoApp(page, routePath = '/') {
   await page.goto(routePath, { waitUntil: 'domcontentloaded' });
+  // ATTACHED, not visible. At 800px and below the rail is a drawer that is
+  // closed until opened (CanvasScreen compactLayout: inert, aria-hidden), so
+  // on a phone-width viewport a correctly booted app has a present but HIDDEN
+  // sidebar, and "visible" reported a working app as "never rendered". The
+  // rail only renders for an authenticated session (v-if="isAuthenticated"),
+  // so its presence is still proof that the session is valid.
   await expect(
-    page.locator('[data-tour-id^="sidebar."]').first(),
+    page.locator('[data-tour-id="sidebar.chat"]'),
     `app shell never rendered — the session is probably invalid. Console:\n${(page.__consoleLogs || []).slice(-25).join('\n')}`,
-  ).toBeVisible({ timeout: 60000 });
+  ).toBeAttached({ timeout: 60000 });
 }

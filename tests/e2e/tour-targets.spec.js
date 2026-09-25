@@ -43,7 +43,8 @@ const NOT_IMPLEMENTED = new Set([
   'workflows.add-node-button', // no "Add Node" button exists in the designer
   'workflows.canvas',          // several candidates; which one is "the canvas"?
   'workflows.run-button',      // no Run/Activate button found on the screen
-  'agents.create-button',      // no Create/New Agent button found on the screen
+  // agents.create-button left this list in f20c5ddb ("Make a new agent a
+  // modal on the Agents page"): PanelActionBar carries the id now.
 ]);
 
 /** Where a screen-scoped target lives. Sidebar targets (screen: null) are global. */

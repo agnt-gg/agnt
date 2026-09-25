@@ -57,20 +57,33 @@
  */
 import { test, expect, gotoApp } from './fixtures/appFixture.js';
 
+/**
+ * LITE (943dd0b4 "Give Tools one clean grid") replaced the category groups
+ * with ONE flat grid: your tools, then plugin tools, then built-ins, each A-Z,
+ * with the header search as the only filter. There is no .category-header any
+ * more, so "grouped" is now "ordered": the grid is the list.
+ *
+ * Lite also merged Browser Agent and Browser Control into ONE tool, titled
+ * "Browser" (toolLibrary.json type `browser`). The known built-in these tests
+ * address is that one, matched on its exact name so "Browser" does not also
+ * match a plugin whose name merely contains the word.
+ */
+const toolNamed = (page, name) => page.locator('.tool-card').filter({ has: page.locator('.tool-name', { hasText: new RegExp(`^${name}$`) }) });
+
 test.describe('Tools', () => {
-  test('lists tools grouped into categories @ci', async ({ appPage }) => {
+  test('lists the tool library in one grid @ci', async ({ appPage }) => {
     await gotoApp(appPage, '/');
     await appPage.locator('[data-tour-id="sidebar.tools"]').click();
     await appPage.waitForURL('**/tools');
 
-    // The library actually loaded tools from the backend, and grouped them.
-    // Both are screen-specific; neither exists on any other screen.
-    await expect(appPage.locator('.tool-header').first()).toBeVisible();
-    expect(await appPage.locator('.tool-header').count()).toBeGreaterThan(0);
-    expect(await appPage.locator('.category-header').count()).toBeGreaterThan(0);
+    // The library actually loaded tools from the backend, as one list.
+    const grid = appPage.getByRole('list', { name: 'Tools' });
+    await expect(grid).toBeVisible();
+    await expect(grid.locator('.tool-card').first()).toBeVisible();
+    expect(await grid.locator('.tool-card').count()).toBeGreaterThan(0);
 
     // A known built-in, so this fails if the list renders empty shells.
-    await expect(appPage.locator('.tool-header').filter({ hasText: 'Browser Agent' })).toHaveCount(1);
+    await expect(toolNamed(appPage, 'Browser')).toHaveCount(1);
   });
 
   test('search filters the library @ci', async ({ appPage }) => {
@@ -96,13 +109,14 @@ test.describe('Tools', () => {
     // position: the result order depends on category sorting, so `.first()`
     // would silently start asserting about a different tool the day another
     // category sorts ahead of this one.
-    await expect(appPage.locator('.tool-header').filter({ hasText: 'Browser Agent' })).toHaveCount(1);
+    await expect(toolNamed(appPage, 'Browser')).toHaveCount(1);
 
     // A term that matches nothing must empty the list — proving the filter is
     // really filtering rather than the search being a no-op that left the
     // full list standing.
     await search.fill('zzzz-no-such-tool');
     await expect(appPage.locator('.tool-header')).toHaveCount(0);
+    await expect(appPage.getByText('No tools match')).toBeVisible();
 
     // Clearing restores everything, so the filter is not one-way.
     await search.fill('');

@@ -80,6 +80,21 @@ function mountAttackerFrame(page) {
  * parallel workers it is not, which is how the first version of this spec
  * failed in a full run while passing in isolation.
  */
+/**
+ * Where the defended handler lives. Connectors.vue (the Apps screen) is the
+ * handler this spec was written for, and the only OAuth-message handler a
+ * Lite account is guaranteed to reach: main's home screen happened to mount
+ * the Tools panel, whose composable registers one too, and the spec leaned on
+ * that. Lite's home is Chat, which mounts none, so on '/' the attacker's
+ * messages reached no handler at all and the proof of delivery never came.
+ * (Lite's own connect buttons redirect the whole page to the provider and
+ * come back through the router's OAuth callback, not through postMessage.)
+ */
+async function gotoOAuthHandler(page) {
+  await gotoApp(page, '/connectors');
+  await expect(page.locator('[data-tour-id="sidebar.apps"]')).toHaveClass(/active/, { timeout: 30000 });
+}
+
 function collectRefusals(page) {
   const refusals = [];
   page.on('console', (m) => {
@@ -115,7 +130,7 @@ test.describe('an OAuth code is not redeemed for an untrusted sender', () => {
        </script>`,
     );
 
-    await gotoApp(page, '/');
+    await gotoOAuthHandler(page);
     await mountAttackerFrame(page);
 
     // Wait for PROOF OF DELIVERY rather than for the clock. This is also what
@@ -156,7 +171,7 @@ test.describe('an OAuth code is not redeemed for an untrusted sender', () => {
        </script>`,
     );
 
-    await gotoApp(page, '/');
+    await gotoOAuthHandler(page);
     await mountAttackerFrame(page);
 
     await expect.poll(() => refusals.length, { timeout: 30000 }).toBeGreaterThan(0);
