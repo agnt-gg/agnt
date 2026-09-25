@@ -1049,6 +1049,9 @@ async function armAutoUpdate() {
     autoUpdaterHandle = autoUpdater;
     const updater = initAutoUpdate({
       autoUpdater,
+      // Squirrel.Mac itself: on macOS an update is ready only once Squirrel has
+      // staged it (see electron/autoUpdate.js). Not touched elsewhere.
+      nativeUpdater: process.platform === 'darwin' ? (await import('electron')).autoUpdater : null,
       ipcMain,
       // Every surface the banner can live in: the main window and team spaces.
       getWindows: () => [mainWindow, ...spaceViews.allWebContents().map((webContents) => ({ webContents }))],

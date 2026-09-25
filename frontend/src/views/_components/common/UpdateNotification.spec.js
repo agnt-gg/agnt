@@ -96,6 +96,17 @@ describe('self-updating desktop build', () => {
     expect(w.find('[data-testid="update-ready"]').exists()).toBe(true);
   });
 
+  it('macOS preparing: says so and offers no restart until Squirrel has it', async () => {
+    const d = desktop({ phase: 'preparing', available: { version: '0.6.8' }, needsExplicitInstall: false });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Preparing Update');
+    expect(w.find('.download-btn').exists()).toBe(false);
+    d.push({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: false });
+    await flushPromises();
+    expect(text(w)).toContain('Restart now');
+  });
+
   it('Windows says "Restart to update"; macOS/AppImage say "Restart now"', async () => {
     desktop({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: true });
     let w = mount(UpdateNotification);

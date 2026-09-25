@@ -151,7 +151,7 @@ export function installVerdict(report, { force = false } = {}) {
  */
 export function createUpdateState({ version, platform, onChange = () => {} }) {
   let state = {
-    phase: 'idle', // idle | checking | available | downloading | ready | installing | error | disabled
+    phase: 'idle', // idle | checking | available | downloading | preparing (macOS) | ready | installing | error | disabled
     currentVersion: version,
     platform,
     needsExplicitInstall: needsExplicitInstall(platform),
@@ -196,6 +196,7 @@ export function createInstallMarker({ fs, file }) {
  *
  * @param {object} deps
  * @param {object} deps.autoUpdater          electron-updater's autoUpdater
+ * @param {object} [deps.nativeUpdater]      Electron's own autoUpdater (Squirrel.Mac); macOS only
  * @param {object} deps.ipcMain
  * @param {() => object[]} deps.getWindows   every window to keep in sync
  * @param {boolean} deps.isPackaged
@@ -214,6 +215,7 @@ export function createInstallMarker({ fs, file }) {
  */
 export function initAutoUpdate({
   autoUpdater,
+  nativeUpdater = null,
   ipcMain,
   getWindows,
   isPackaged,
@@ -352,9 +354,34 @@ export function initAutoUpdate({
     state.set({ phase: 'downloading', percent: Math.round(p?.percent ?? 0) });
   });
 
+  const markReady = (v) => {
+    log(`[update] ${v} ready`);
+    state.set({ phase: 'ready', percent: 100, available: { version: v } });
+  };
+
+  // macOS: electron-updater reports "downloaded" when ITS download finishes and
+  // only then hands the zip to Squirrel.Mac, which still has to fetch, unpack
+  // and verify it. Quitting in between installs nothing: measured in the CI
+  // rehearsal on both Apple Silicon and Intel. So on macOS the update is ready
+  // only when Squirrel says so, and until then the banner says "preparing".
+  const waitsForSquirrel = platform === 'darwin' && !!nativeUpdater;
+  let squirrelStaged = false;
+  if (waitsForSquirrel) {
+    nativeUpdater.on('update-downloaded', () => {
+      squirrelStaged = true;
+      const s = state.get();
+      if (s.phase === 'preparing') markReady(s.available?.version);
+    });
+  }
+
   autoUpdater.on('update-downloaded', (info) => {
     log(`[update] ${info?.version} downloaded`);
-    state.set({ phase: 'ready', percent: 100, available: { version: info?.version } });
+    if (waitsForSquirrel && !squirrelStaged) {
+      log(`[update] ${info?.version} handed to Squirrel; not ready until it is staged`);
+      state.set({ phase: 'preparing', percent: 100, available: { version: info?.version } });
+      return;
+    }
+    markReady(info?.version);
   });
 
   autoUpdater.on('error', (err) => {

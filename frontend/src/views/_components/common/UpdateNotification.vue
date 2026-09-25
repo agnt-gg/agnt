@@ -41,6 +41,18 @@
       </div>
     </div>
 
+    <!-- macOS: downloaded, but Squirrel is still unpacking and verifying it.
+         Nothing to click yet; a restart now would install nothing. -->
+    <div v-else-if="view === 'preparing'" class="update-banner" data-testid="update-preparing">
+      <div class="update-content">
+        <div class="update-icon">⬇️</div>
+        <div class="update-text">
+          <span class="update-title">Preparing Update</span>
+          <span class="update-version">v{{ state.available?.version }} · almost ready</span>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="view === 'installing'" class="update-banner" data-testid="update-installing">
       <div class="update-content">
         <div class="update-icon">⬇️</div>
@@ -133,6 +145,7 @@ const view = computed(() => {
     if (s.installed) return 'installed';
     if (s.phase === 'ready') return 'ready';
     if (s.phase === 'downloading') return 'downloading';
+    if (s.phase === 'preparing') return 'preparing';
     if (s.phase === 'installing') return 'installing';
     if (s.phase === 'error') return 'error';
     return null;

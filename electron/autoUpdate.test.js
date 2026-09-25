@@ -156,9 +156,11 @@ describe('the post-restart check', () => {
 });
 
 // ------------------------------------------------------------------ wiring
-function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null } = {}) {
+function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false } = {}) {
   const handlers = new Map();
   const listeners = new Map();
+  const nativeListeners = new Map();
+  const nativeUpdater = native ? { on: (evt, fn) => nativeListeners.set(evt, fn) } : null;
   const sent = [];
   let checks = 0;
   const autoUpdater = {
@@ -177,6 +179,7 @@ function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env
   autoUpdater.quitAndInstall.mockImplementation(() => order.push('quitAndInstall'));
   const result = initAutoUpdate({
     autoUpdater,
+    nativeUpdater,
     ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
     getWindows: () => [win],
     isPackaged,
@@ -195,9 +198,42 @@ function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env
     result, autoUpdater, sent, order, handoffBackend, checks: () => checks,
     invoke: (ch, ...a) => handlers.get(ch)({ sender: {} }, ...a),
     emit: (evt, payload) => listeners.get(evt)?.(payload),
+    emitNative: (evt, payload) => nativeListeners.get(evt)?.(payload),
     last: () => sent.filter(([c]) => c === 'update:state').at(-1)?.[1],
   };
 }
+
+describe('macOS: ready only once Squirrel has staged the update', () => {
+  // electron-updater says "downloaded" before Squirrel.Mac has fetched, unpacked
+  // and verified the update. Quitting then installs nothing (CI rehearsal, both
+  // Mac architectures). The banner must not offer a restart before Squirrel is done.
+  const mac = () => harness({ platform: 'darwin', native: true });
+
+  it('downloaded -> preparing; Squirrel staged -> ready', async () => {
+    const h = mac();
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'preparing', available: { version: '0.6.8' } });
+    expect(await h.invoke('update:install')).toEqual({ ok: false, reason: 'not-ready' });
+    h.emitNative('update-downloaded');
+    expect(h.last()).toMatchObject({ phase: 'ready', available: { version: '0.6.8' } });
+  });
+
+  it('if Squirrel finished first, downloaded goes straight to ready', () => {
+    const h = mac();
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emitNative('update-downloaded');
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'ready' });
+  });
+
+  it('Windows and Linux are ready as soon as the download lands', () => {
+    const h = harness();
+    h.emit('update-available', info('0.6.8'));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'ready' });
+  });
+});
 
 describe('wiring', () => {
   it('a dev build registers the handlers, arms nothing and says why', async () => {
