@@ -5259,7 +5259,9 @@ async function executeToolInner(toolName, args, authToken, context) {
         if (!accessToken) {
           return JSON.stringify({
             success: false,
-            error: `OAuth token not found or invalid for provider '${registryTool.authConfig.authProvider}'. Please connect the application in your settings.`,
+            // Same code plugins return themselves, so callers can offer Connect.
+            code: 'CONNECTION_REQUIRED',
+            error: `'${registryTool.authConfig.authProvider}' is not connected. Connect it in Settings → Connections, then run this again.`,
           });
         }
         params.__auth = { token: accessToken, provider: registryTool.authConfig.authProvider };
