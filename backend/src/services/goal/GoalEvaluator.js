@@ -4,6 +4,7 @@ import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
+import { checklistOf, checklistPrompt, parseChecklistVerdict } from './goalChecklist.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
@@ -66,6 +67,10 @@ class GoalEvaluator {
       // Step 4: Generate comprehensive feedback
       const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model, accumulateUsage);
 
+      // Step 4b: Check the acceptance checklist item by item, so the reviewer
+      // signs off against a pre-checked list instead of reading raw output.
+      const checklist = await this.evaluateChecklist(goal, tasks, userId, provider, model, accumulateUsage);
+
       // Step 5: Determine if goal passed
       const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
       const passed = completionDecision.passed;
@@ -117,6 +122,7 @@ class GoalEvaluator {
           score: te.score,
           criteriaMet: te.criteriaMet,
         })),
+        checklist,
         timestamp: new Date().toISOString(),
       };
 
@@ -162,6 +168,7 @@ class GoalEvaluator {
         scores,
         feedback,
         taskEvaluations,
+        checklist,
         status: newStatus,
         tokenUsage: tokenUsage || undefined,
       };
@@ -169,6 +176,50 @@ class GoalEvaluator {
       console.error('[GoalEvaluator] Error evaluating goal:', error);
       throw error;
     }
+  }
+
+  /**
+   * Check each acceptance-checklist item against the work. Never throws: a
+   * failed model call leaves every item unassessed (met: null) rather than
+   * failing the whole evaluation or inventing a verdict.
+   * @returns {Promise<Array<{id,text,met,evidence}>>}
+   */
+  static async evaluateChecklist(goal, tasks, userId, provider = null, model = null, accumulateUsage = null) {
+    const checklist = checklistOf(goal.success_criteria);
+    if (!checklist.length) return [];
+    try {
+      const raw = await this._complete(checklistPrompt(goal, checklist, tasks), 'You check work against a checklist. Return valid JSON only.', userId, provider, model, accumulateUsage);
+      return parseChecklistVerdict(raw, checklist);
+    } catch (error) {
+      console.error('[GoalEvaluator] Checklist check failed:', error.message);
+      return parseChecklistVerdict('', checklist);
+    }
+  }
+
+  /** One model call with the user's provider/model; returns the text. */
+  static async _complete(prompt, system, userId, provider, model, accumulateUsage) {
+    let useProvider = provider;
+    let useModel = model;
+    if (!useProvider || !useModel) {
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const settings = await UserModel.getUserSettings(userId);
+      useProvider = useProvider || settings?.selectedProvider;
+      useModel = useModel || settings?.selectedModel;
+    }
+    if (!useProvider || !useModel) throw new Error('No provider/model configured for evaluation');
+    const config = getProviderConfig(useProvider);
+    const key = config ? config.key : useProvider.toLowerCase();
+    const adapter = await createLlmAdapter(key, await createLlmClient(key, userId), useModel);
+    const result = await adapter.call(
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+      [],
+    );
+    if (accumulateUsage) accumulateUsage(result.usage || null);
+    const content = result.responseMessage?.content;
+    return typeof content === 'string' ? content : Array.isArray(content) ? content.map((block) => block.text || '').join('') : '';
   }
 
   /**

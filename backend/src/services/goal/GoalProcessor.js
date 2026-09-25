@@ -3,6 +3,7 @@ import TaskModel from '../../models/TaskModel.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
+import { checklistOf } from './goalChecklist.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -205,7 +206,8 @@ Respond with ONLY a valid JSON object (no markdown, no extra text) containing:
   "estimatedDuration": 120,
   "successCriteria": {
     "deliverables": ["list", "of", "expected", "outputs"],
-    "qualityChecks": ["validation", "criteria"]
+    "qualityChecks": ["validation", "criteria"],
+    "checklist": ["A concrete, yes/no-checkable statement the finished work must satisfy"]
   },
   "taskBreakdown": [
     {
@@ -227,6 +229,7 @@ Rules:
 - Keep task titles under 50 characters
 - estimatedDuration is in minutes
 - requiredTools should ONLY use tool types from the AVAILABLE TOOL TYPES list above
+- checklist: 3 to 8 items a reviewer can tick yes or no by looking at the result (e.g. "A PDF report is saved in the workspace", "Every claim cites a source URL"). No vague items like "high quality".
 - Return ONLY the JSON object, no other text
 `;
 
@@ -292,6 +295,10 @@ Rules:
         deliverables: ['Complete the requested task'],
         qualityChecks: ['Output meets requirements'],
       };
+      // The acceptance checklist the evaluator checks and the reviewer signs
+      // off against. Normalised (trimmed, deduped, capped); when the model
+      // omitted it, derived from deliverables and quality checks.
+      analysis.successCriteria.checklist = checklistOf(analysis.successCriteria).map((item) => item.text);
 
       // Validate each task and ensure tool types are valid
       analysis.taskBreakdown = analysis.taskBreakdown.map((task, index) => ({
@@ -323,6 +330,8 @@ Rules:
    * @private
    */
   static _createFallbackAnalysis(goalText, availableToolTypes = []) {
+    // No checklist here on purpose: checklistOf derives one from the
+    // deliverables and quality checks wherever it is read.
     const title = goalText.length > 60 ? goalText.substring(0, 57) + '...' : goalText;
 
     // Default to manual trigger if no tool types available
