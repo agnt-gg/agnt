@@ -196,8 +196,10 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # `github` turns each failure into a run annotation, readable on the run
+      # page without signing in; job logs are not. `list` keeps the log as it was.
       - name: Run the tagged browser suite
-        run: npx playwright test --grep @ci
+        run: npx playwright test --grep @ci --reporter=list,github
 
       # A browser failure that cannot be reproduced locally is worth very little
       # without its trace. playwright.config.js already records one on the first
