@@ -42,7 +42,7 @@ export const MAX_FALLBACKS = 3;
 
 /**
  * Parse the raw `fallback_providers` column (TEXT holding a JSON array) into a
- * clean, de-duplicated, validated array of { provider, model } tiers.
+ * clean, de-duplicated, validated array of { provider, model, reasoning? } tiers.
  *
  * Accepts either already-parsed arrays or JSON strings. Silently drops:
  *   - malformed entries (missing provider),
@@ -50,8 +50,12 @@ export const MAX_FALLBACKS = 3;
  *   - duplicates of the primary or of an earlier fallback (same provider+model),
  *   - anything beyond MAX_FALLBACKS.
  *
+ * `reasoning` is the tier's own effort, present only when the entry carried
+ * a plausible effort token (see normalizeTierReasoning). Absent means "same
+ * as the chat's selection".
+ *
  * @param {string|Array|null|undefined} raw
- * @returns {{provider: string, model: string|null}[]}
+ * @returns {{provider: string, model: string|null, reasoning?: string}[]}
  */
 export function parseFallbackList(raw) {
   let list = raw;

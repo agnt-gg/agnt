@@ -162,3 +162,16 @@ describe('FallbackProviders — model loading', () => {
     expect(call?.payload).toMatchObject({ provider: 'Grok-Build' });
   });
 });
+
+describe('FallbackProviders — one load per provider', () => {
+  it('dispatches fetchProviderModels once when two tiers share a provider', async () => {
+    const { dispatched } = await mountWith([
+      { provider: 'Grok-Build', model: 'grok-4.7' },
+      { provider: 'Grok-Build', model: 'grok-4.5' },
+    ]);
+    const calls = dispatched.filter(
+      (d) => d.type === 'aiProvider/fetchProviderModels' && d.payload?.provider === 'Grok-Build'
+    );
+    expect(calls).toHaveLength(1);
+  });
+});

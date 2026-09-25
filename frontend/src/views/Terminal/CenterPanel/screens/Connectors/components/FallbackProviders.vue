@@ -326,7 +326,11 @@ export default {
           model: e.model || '',
           reasoning: typeof e.reasoning === 'string' ? e.reasoning : '',
         }));
-        for (const r of rows.value) ensureModels(r.provider);
+        // One load per provider: two tiers on the same provider (legacy data,
+        // hand edits) must not dispatch the same revalidation twice.
+        for (const provider of new Set(rows.value.map((r) => r.provider).filter(Boolean))) {
+          ensureModels(provider);
+        }
         dirty.value = false;
       } catch (e) {
         console.warn('[FallbackProviders] load failed:', e);
