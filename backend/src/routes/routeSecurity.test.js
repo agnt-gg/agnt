@@ -146,6 +146,13 @@ const GUARD_NAMES = new Set([
   // CLUSTER_SECRET, so it opens this router and nothing else in the API.
   // See services/cluster/clusterToken.js.
   'authenticateClusterNode',
+  // The desktop app's update handoff (/api/system/busy, /prepare-shutdown).
+  // The caller is Electron main, which holds no user session but spawned this
+  // backend and handed it a per-launch random token (AGNT_CONTROL_TOKEN). Same
+  // standing as the two above: it REJECTS. A missing or wrong token is a 403
+  // (constant-time compare), and without the variable (browser, Docker, npm
+  // start) the routes answer 404. See routes/SystemRoutes.js.
+  'requireControlToken',
 ]);
 
 // The permissive behaviour still exists, but a route must now opt into it by
