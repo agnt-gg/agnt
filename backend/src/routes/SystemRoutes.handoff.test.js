@@ -14,6 +14,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 
+// Only /restart uses it, and the real one opens the database on import. Each
+// mount() resets modules, so without this every test re-ran the schema set-up
+// against one shared file and an in-flight migration hit SQLITE_SCHEMA.
+vi.mock('./Middleware.js', () => ({ authenticateToken: (req, res, next) => next() }));
+
 const TOKEN = 'a'.repeat(64);
 let server;
 let base;

@@ -51,8 +51,12 @@ describe('WorkflowProcess boots', () => {
       expect(reply.success).toBe(true);
       expect(reply.data).toEqual({ running: 0 });
     } finally {
+      // Windows keeps the child's handle on agnt.db until the process is fully
+      // gone; removing the directory before that fails with EBUSY.
+      const gone = child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise((r) => child.once('exit', r));
       child.kill('SIGKILL');
-      fs.rmSync(dataDir, { recursive: true, force: true });
+      await gone;
+      fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }, 90000);
 });
