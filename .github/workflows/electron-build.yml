@@ -1,37 +1,89 @@
 name: Build Electron Apps
 run-name: ${{ github.ref_name }}
 
+# A release is published only when every one of these holds:
+#   1. the test suites pass on the tagged commit             (test)
+#   2. each platform builds on its OWN OS and architecture   (build)
+#   3. every shipped native module is that architecture      (verify-artifacts)
+#   4. macOS is signed and notarized, verified after build   (codesign / stapler)
+#   5. the feeds and files form a valid release manifest     (release-manifest)
+#   6. the draft on GitHub holds exactly those files         (verify-release)
+# Only then is the draft published. Each step exists because a release shipped
+# without it: v0.6.6's Intel zip held arm64 modules, its feeds pointed at
+# AGNT-Lite, and v0.6.2-0.6.5 were published with no files at all.
+
 on:
   push:
     tags:
-      # Both spellings BUILD, and both must also RELEASE — see the release job.
-      # A bare `0.6.8` tag used to build three platforms and then publish
-      # nothing, because only the release job was gated on `refs/tags/v`.
-      - 'v*.*.*'  # Supports v0.3.7
-      - '*.*.*'   # Supports 0.3.7
+      # v-prefixed only. Clients and agnt.gg look for files under
+      # releases/download/v<version>/; a bare tag would publish at an address
+      # nothing reads, and release-manifest refuses it.
+      - 'v*.*.*'
+  # A manual run builds and verifies all four targets and publishes nothing:
+  # the release job below runs for tags only. Use it as the dry run before
+  # tagging a release.
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-electron-full:
-    name: Build Electron Full
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Backend and app tests
+        run: npx vitest run
+      - name: Frontend tests
+        run: npx vitest run
+        working-directory: frontend
+
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: test
     strategy:
+      fail-fast: true
       matrix:
-        os: [windows-2022, macos-latest, ubuntu-latest]
         include:
           - os: windows-2022
             platform: win
-            artifact: AGNT*-win-*.exe
-          - os: macos-latest
+            arch: x64
+            args: --win --x64
+          # Each Mac architecture builds on its own hardware so npm rebuilds
+          # sqlite3, sharp and onnxruntime for that CPU. One arm64 runner
+          # building both is what shipped arm64 modules in v0.6.6's Intel zip.
+          - os: macos-15
             platform: mac
-            artifact: AGNT*-mac-*.{dmg,zip}
+            arch: arm64
+            args: --mac --arm64
+          # GitHub's last Intel macOS image; available until August 2027.
+          - os: macos-15-intel
+            platform: mac
+            arch: x64
+            args: --mac --x64
           - os: ubuntu-latest
             platform: linux
-            artifact: AGNT*-linux-*.{AppImage,deb,rpm}
+            arch: x64
+            args: --linux --x64
 
     runs-on: ${{ matrix.os }}
+    env:
+      # Release builds fail closed: missing notarization credentials and a
+      # native-module check that cannot run are errors, not warnings.
+      AGNT_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '' }}
 
     steps:
       - name: Checkout repository
@@ -42,13 +94,16 @@ jobs:
         shell: bash
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          npm version $VERSION --no-git-tag-version --allow-same-version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # cache: 'npm'  # Disabled - package-lock.json is gitignored
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
 
       - name: Setup MSVC (Windows only - for native module builds)
         if: runner.os == 'Windows'
@@ -64,31 +119,32 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install setuptools wheel
 
+      # npm ci installs exactly the lockfile, so every platform ships the same
+      # dependency versions that the test job just tested.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
         env:
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Install frontend dependencies
-        run: |
-          cd frontend
-          npm install
+        run: npm ci
+        working-directory: frontend
         env:
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
+        run: npm run build
+        working-directory: frontend
 
-      - name: Build Electron Full (${{ matrix.platform }})
-        run: npm run build:${{ matrix.platform }}
+      # --publish never: publishing is the release job's decision, made only
+      # after the whole release has been checked.
+      - name: Build Electron (${{ matrix.platform }}-${{ matrix.arch }})
+        run: npx electron-builder ${{ matrix.args }} --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
@@ -100,55 +156,90 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Verify native modules are ${{ matrix.platform }}-${{ matrix.arch }}
+        run: node scripts/release/verify-artifacts.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --dist dist
+
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          APP=$(ls -d dist/mac*/AGNT.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose "$APP"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: electron-full-${{ matrix.platform }}
+          name: electron-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
           path: |
-            dist/AGNT*-${{ matrix.platform }}-*.exe
-            dist/AGNT*-${{ matrix.platform }}-*.dmg
-            dist/AGNT*-${{ matrix.platform }}-*.zip
-            dist/AGNT*-${{ matrix.platform }}-*.AppImage
-            dist/AGNT*-${{ matrix.platform }}-*.deb
-            dist/AGNT*-${{ matrix.platform }}-*.rpm
-            # THE FEED. latest*.yml is what electron-updater reads to learn a
-            # new version exists and to verify the download's sha512; without
-            # it the installers are just files nobody is told about. The
-            # .blockmap beside each one is what makes an update a ~20-50 MB
-            # delta instead of a ~300 MB re-download.
-            dist/latest*.yml
+            dist/AGNT-*.exe
+            dist/AGNT-*.dmg
+            dist/AGNT-*.zip
+            dist/AGNT-*.AppImage
+            dist/AGNT-*.deb
+            dist/AGNT-*.rpm
             dist/*.blockmap
+            dist/latest*.yml
           retention-days: 30
 
   release:
-    name: Create GitHub Release
-    needs: [build-electron-full]
+    name: Publish release
+    needs: build
     runs-on: ubuntu-latest
-    # Any version tag, with or without the v — the build job accepts both, and
-    # a tag that builds but never publishes is a release that silently is not one.
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Display structure of downloaded files
-        run: ls -R artifacts
+      - name: Assemble the release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          # Every platform's files; each Mac build wrote its own latest-mac.yml,
+          # so those two are merged below instead of overwriting each other.
+          for d in artifacts/electron-*; do
+            find "$d" -maxdepth 1 -type f ! -name 'latest-mac.yml' -exec cp -n {} release/ \;
+          done
+          node scripts/release/merge-mac-feed.mjs \
+            artifacts/electron-mac-arm64/latest-mac.yml \
+            artifacts/electron-mac-x64/latest-mac.yml \
+            release/latest-mac.yml
+          ls -la release
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/**/*
-          # NOT a draft. electron-updater reads the repository's latest
-          # PUBLISHED release; a draft is invisible to it, so every client
-          # would keep reporting itself up to date no matter what shipped.
-          draft: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and validate the release manifest
+        run: node scripts/release/release-manifest.mjs --tag "$TAG" --dir release
+
+      - name: Upload as a draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAGS=(--draft --title "$TAG" --generate-notes --verify-tag)
+          if [[ "$TAG" == *-* ]]; then FLAGS+=(--prerelease); fi
+          gh release create "$TAG" release/* "${FLAGS[@]}"
+
+      - name: Verify the draft holds exactly the validated files
+        run: node scripts/release/verify-release.mjs --tag "$TAG" --manifest release/release-manifest.json
+
+      # Only now does anyone see it. The website and the updater follow
+      # agnt.gg's channel (update-channels.json), not "latest release", so
+      # publishing here does not by itself move a single client.
+      - name: Publish
+        run: gh release edit "$TAG" --draft=false

@@ -55,19 +55,39 @@ describe('the release actually carries the feed', () => {
     expect(workflow).toMatch(/dist\/\*\.blockmap/);
   });
 
-  it('publishes the release instead of drafting it', () => {
-    // electron-updater reads the latest PUBLISHED release. A draft is
-    // invisible to it, so clients keep reporting themselves up to date.
-    expect(workflow).toMatch(/draft:\s*false/);
-    expect(workflow).not.toMatch(/draft:\s*true/);
+  it('drafts, verifies the draft, and only then publishes', () => {
+    // v0.6.2-0.6.5 were published with zero assets. The release is uploaded
+    // as a draft, checked against the validated manifest, then published.
+    const create = workflow.indexOf('gh release create');
+    const verify = workflow.indexOf('scripts/release/verify-release.mjs');
+    const publish = workflow.indexOf('gh release edit "$TAG" --draft=false');
+    expect(workflow).toMatch(/FLAGS=\(--draft /);
+    expect(workflow).toMatch(/gh release create "\$TAG" release\/\* "\$\{FLAGS\[@\]\}"/);
+    expect(create).toBeGreaterThan(0);
+    expect(verify).toBeGreaterThan(create);
+    expect(publish).toBeGreaterThan(verify);
+    expect(workflow).toMatch(/scripts\/release\/release-manifest\.mjs/);
   });
 
-  it('releases every tag it builds', () => {
-    // The build job triggers on `v*.*.*` AND `*.*.*`, so gating the release job
-    // on `refs/tags/v` meant a bare `0.6.8` tag built three platforms and
-    // published nothing.
-    expect(workflow).toMatch(/startsWith\(github\.ref, 'refs\/tags\/'\)/);
-    expect(workflow).not.toMatch(/startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  it('releases every tag it builds, and builds only tags it can release', () => {
+    // A bare `0.6.8` tag used to build and publish nothing. Now only v-tags
+    // trigger a build, because clients look under releases/download/v<version>/,
+    // and the release job is gated on the same prefix.
+    expect(workflow).toMatch(/tags:\s*\n(\s*#.*\n)*\s*- 'v\*\.\*\.\*'/);
+    expect(workflow).not.toMatch(/- '\*\.\*\.\*'/);
+    expect(workflow).toMatch(/if: startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  });
+
+  it('builds each Mac architecture on its own runner and checks what it ships', () => {
+    // v0.6.6's Intel zip held arm64 native modules from a single arm64 runner.
+    expect(workflow).toMatch(/os: macos-15\s*\n\s*platform: mac\s*\n\s*arch: arm64/);
+    expect(workflow).toMatch(/os: macos-15-intel\s*\n\s*platform: mac\s*\n\s*arch: x64/);
+    expect(workflow).toMatch(/scripts\/release\/verify-artifacts\.mjs --platform \$\{\{ matrix\.platform \}\} --arch \$\{\{ matrix\.arch \}\}/);
+    expect(workflow).toMatch(/scripts\/release\/merge-mac-feed\.mjs/);
+  });
+
+  it('does not build until the tests pass', () => {
+    expect(workflow).toMatch(/build:\s*\n\s*name:[^\n]*\n\s*needs: test/);
   });
 });
 

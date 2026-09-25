@@ -172,6 +172,13 @@ function nativePackages(unpackedNodeModules) {
  */
 async function verifyNativeModules(context, appOutDir, appPath) {
   const platformName = context.packager.platform.name; // windows | mac | linux
+  // On a release build "could not verify" is a failure: every CI runner builds
+  // for its own OS and architecture, so the probe can always run there, and an
+  // unverified release is exactly what shipped 0.6.6. Local builds still warn.
+  const cannotVerify = (message) => {
+    if (process.env.AGNT_RELEASE === '1') throw new Error(`${message} (AGNT_RELEASE=1: a release must verify its native modules)`);
+    console.log(message);
+  };
   const hostMatches =
     (platformName === 'windows' && process.platform === 'win32') ||
     (platformName === 'mac' && process.platform === 'darwin') ||
@@ -189,7 +196,7 @@ async function verifyNativeModules(context, appOutDir, appPath) {
     // Cross-building: the packaged binary cannot run here. Say so plainly
     // rather than passing silently, because an unverified build is exactly what
     // shipped 0.6.6.
-    console.log(
+    cannotVerify(
       `[native] ⚠ cross-platform build (${platformName} on ${process.platform}) — ` +
         `CANNOT verify ${modules.length} native module(s): ${modules.join(', ')}`,
     );
@@ -205,7 +212,7 @@ async function verifyNativeModules(context, appOutDir, appPath) {
         : path.join(appOutDir, context.packager.executableName || productName.toLowerCase());
 
   if (!fs.existsSync(exe)) {
-    console.log(`[native] ⚠ packaged executable not found at ${exe} — skipping verification`);
+    cannotVerify(`[native] ⚠ packaged executable not found at ${exe} — skipping verification`);
     return;
   }
 
@@ -220,7 +227,7 @@ async function verifyNativeModules(context, appOutDir, appPath) {
     windowsHide: true,
   });
   if (canProbe.status !== 0) {
-    console.log(
+    cannotVerify(
       `[native] ⚠ the packaged Electron will not start here ` +
         `(${(canProbe.stderr || '').trim().split('\n')[0] || `exit ${canProbe.status}`}) — ` +
         `CANNOT verify ${modules.length} native module(s)`,

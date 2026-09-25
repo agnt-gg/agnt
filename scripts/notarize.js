@@ -43,6 +43,12 @@ export default async function notarizing(context) {
   const teamId = process.env.APPLE_TEAM_ID || '56BD35UF2U';
 
   if (!appleId || !appleIdPassword) {
+    // A release must be notarized: Gatekeeper blocks an un-notarized app on
+    // first launch, and Squirrel.Mac refuses an update whose signature does not
+    // match. Warning and shipping anyway is how a release breaks every Mac.
+    if (process.env.AGNT_RELEASE === '1') {
+      throw new Error('[Notarize] APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD missing on a release build: refusing to ship an un-notarized app.');
+    }
     console.warn('[Notarize] ⚠️  Missing APPLE_ID or APPLE_APP_SPECIFIC_PASSWORD — skipping notarization.');
     return;
   }
