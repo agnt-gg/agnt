@@ -151,6 +151,12 @@ class UserService {
           if (entry.model !== undefined && entry.model !== null && typeof entry.model !== 'string') {
             return res.status(400).json({ error: 'fallbackProviders entry "model" must be a string or null' });
           }
+          // Optional per-tier effort. Omitted/null/'' = same as the chat's
+          // selection. The token shape is enforced by parseFallbackChain on
+          // save; here we only reject a wrong TYPE, loudly, like `model`.
+          if (entry.reasoning !== undefined && entry.reasoning !== null && typeof entry.reasoning !== 'string') {
+            return res.status(400).json({ error: 'fallbackProviders entry "reasoning" must be a string or null' });
+          }
         }
       }
 

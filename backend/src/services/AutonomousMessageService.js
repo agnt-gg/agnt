@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import conversationManager from './ConversationManager.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
-import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
+import { buildProviderChain, runWithFallback, createCustomProviderIdResolver, tierReasoningOptions } from './orchestrator/ProviderFallback.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import AgentModel from '../models/AgentModel.js';
 import UserModel from '../models/UserModel.js';
@@ -321,7 +321,8 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               const { getTextModels } = await import('./ai/ProviderRegistry.js');
               const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
               client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
-              adapter = await createLlmAdapter(np, client, tierModel);
+              // Tier effort if configured; else no options, as before.
+              adapter = await createLlmAdapter(np, client, tierModel, tierReasoningOptions(tier));
               context.provider = np;
               context.normalizedProvider = np;
               context.model = tierModel;
@@ -415,7 +416,8 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               const { getTextModels } = await import('./ai/ProviderRegistry.js');
               const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
               client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
-              adapter = await createLlmAdapter(np, client, tierModel);
+              // Tier effort if configured; else no options, as before.
+              adapter = await createLlmAdapter(np, client, tierModel, tierReasoningOptions(tier));
               context.provider = np;
               context.normalizedProvider = np;
               context.model = tierModel;

@@ -11,10 +11,31 @@
  *   - NULL / '' / malformed JSON / non-array  → []
  *   - each entry must have a non-empty string `provider`; others dropped
  *   - `model` coerced to a trimmed string or null
+ *   - optional `reasoning` (effort for THIS tier) kept only when it is a
+ *     plausible effort token; absent means "same as the chat's selection"
  *   - capped at MAX_FALLBACK_TIERS (3)
  */
 
 export const MAX_FALLBACK_TIERS = 3;
+
+// Effort values are short lowercase tokens ('default', 'low', 'xhigh', 'max',
+// 'off', 'on', …). Anything else is dropped rather than stored, so a malformed
+// client cannot park arbitrary text in the column. Whether the tier's MODEL
+// accepts the value is deliberately NOT decided here: that is the wire
+// builder's job at request time, against the live control (which for
+// grok-build comes from the proxy and can change without a code change).
+const REASONING_TOKEN_RE = /^[a-z][a-z0-9_-]{0,15}$/;
+
+/**
+ * Normalise a tier's optional reasoning effort.
+ * @param {unknown} value
+ * @returns {string|null} lowercase token, or null for "not set"
+ */
+export function normalizeTierReasoning(value) {
+  if (typeof value !== 'string') return null;
+  const v = value.trim().toLowerCase();
+  return REASONING_TOKEN_RE.test(v) ? v : null;
+}
 
 /**
  * Parse a raw fallback_providers column value into a clean array.
@@ -30,10 +51,17 @@ export function parseFallbackChain(raw) {
   if (!Array.isArray(parsed)) return [];
   return parsed
     .filter((e) => e && typeof e === 'object' && typeof e.provider === 'string' && e.provider.trim())
-    .map((e) => ({
-      provider: e.provider.trim(),
-      model: typeof e.model === 'string' && e.model.trim() ? e.model.trim() : null,
-    }))
+    .map((e) => {
+      const tier = {
+        provider: e.provider.trim(),
+        model: typeof e.model === 'string' && e.model.trim() ? e.model.trim() : null,
+      };
+      // Key omitted (not null) when unset, so existing chains keep their exact
+      // stored shape and nothing that compares tiers sees a new field.
+      const reasoning = normalizeTierReasoning(e.reasoning);
+      if (reasoning) tier.reasoning = reasoning;
+      return tier;
+    })
     .slice(0, MAX_FALLBACK_TIERS);
 }
 
@@ -47,4 +75,4 @@ export function serializeFallbackChain(value) {
   return JSON.stringify(parseFallbackChain(value));
 }
 
-export default { MAX_FALLBACK_TIERS, parseFallbackChain, serializeFallbackChain };
+export default { MAX_FALLBACK_TIERS, normalizeTierReasoning, parseFallbackChain, serializeFallbackChain };
