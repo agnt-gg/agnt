@@ -433,6 +433,20 @@ class WorkflowProcessBridge {
     }
   }
 
+  /**
+   * How many workflows are mid-execution in the child right now. Armed
+   * triggers waiting for an event are not "running"; an engine executing nodes
+   * is. Rejects when the child cannot answer — the caller reports that as
+   * unknown, never as zero.
+   * @returns {Promise<{ running: number }>}
+   */
+  async busyReport() {
+    const result = await this.sendMessage('BUSY_REPORT', {}, 3000);
+    const running = Number(result?.running);
+    if (!Number.isFinite(running)) throw new Error('workflow process gave no running count');
+    return { running };
+  }
+
   onStatusUpdate(listener) {
     this.statusUpdateListeners.push(listener);
   }

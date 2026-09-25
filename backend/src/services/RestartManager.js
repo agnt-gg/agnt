@@ -30,12 +30,126 @@ const DRAIN_DEADLINE_MS = 15000;
 // supervisor respawns with identical options.
 const MANIFEST_PATH = path.join(process.cwd(), 'restart-manifest.json');
 
+// Each busy source gets this long to answer before it counts as "unknown".
+const BUSY_SOURCE_TIMEOUT_MS = 3000;
+
+/** Resolve `promise`, or reject after `ms` — a busy source must never hang the check. */
+function within(ms, promise, what) {
+  let t;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      t = setTimeout(() => reject(new Error(`${what} did not answer in ${ms}ms`)), ms);
+      t.unref?.();
+    }),
+  ]).finally(() => clearTimeout(t));
+}
+
+/**
+ * Where "is anything running?" is answered. Injected in tests; the defaults are
+ * imported lazily so this module keeps no import-time dependency on them.
+ */
+const DEFAULT_BUSY_SOURCES = {
+  goals: async () => (await import('../models/GoalModel.js')).default.countExecuting(),
+  chats: async () => (await import('./orchestrator/activeRuns.js')).liveRuns().length,
+  tools: async () => {
+    const queue = (await import('./AsyncToolQueue.js')).default;
+    let n = 0;
+    for (const e of queue.executions.values()) if (e.status === 'queued' || e.status === 'running') n++;
+    return n;
+  },
+  // Filled in by attach(): only the workflow child knows which engine is mid-run.
+  workflows: null,
+};
+
 class RestartManager {
   constructor() {
     this.state = 'running'; // 'running' | 'draining'
     this.server = null;
     this.workflowBridge = null;
     this.startedAt = Date.now();
+    this.shutdownHandler = null;
+    this.busySources = { ...DEFAULT_BUSY_SOURCES };
+  }
+
+  /**
+   * The process's own guaranteed-to-exit shutdown (server.js gracefulShutdown):
+   * flushes in-flight chat turns to disk, stops the workflow child, closes the
+   * server, exits 0. prepareShutdown() ends in this.
+   */
+  setShutdownHandler(fn) {
+    this.shutdownHandler = fn;
+  }
+
+  /** Replace busy sources (tests). Unlisted sources keep their defaults. */
+  setBusySources(sources) {
+    this.busySources = { ...this.busySources, ...sources };
+  }
+
+  /**
+   * What would a shutdown right now interrupt?
+   *
+   * Every source is asked independently and with a timeout. One that fails or
+   * stalls is named in `unknown` and contributes nothing to the counts — an
+   * unanswered question is never reported as "nothing running".
+   *
+   * @returns {Promise<{ goals: number, chats: number, workflows: number, tools: number, unknown: string[] }>}
+   */
+  async busyReport() {
+    const report = { goals: 0, chats: 0, workflows: 0, tools: 0, unknown: [] };
+    await Promise.all(
+      Object.keys(report)
+        .filter((k) => k !== 'unknown')
+        .map(async (key) => {
+          const source = this.busySources[key];
+          if (!source) { report.unknown.push(key); return; }
+          try {
+            const n = Number(await within(BUSY_SOURCE_TIMEOUT_MS, Promise.resolve().then(source), key));
+            if (!Number.isFinite(n) || n < 0) throw new Error(`${key} answered ${n}`);
+            report[key] = n;
+          } catch (err) {
+            console.warn(`[RestartManager] busy source ${key} unavailable: ${err.message}`);
+            report.unknown.push(key);
+          }
+        })
+    );
+    report.unknown.sort();
+    return report;
+  }
+
+  /**
+   * Step one of an update handoff. Checks busy and starts draining in the same
+   * tick, so nothing can start in between; refuses (and changes nothing) if work
+   * is running, unless `force`.
+   *
+   * @returns {Promise<{ ok: true } | { ok: false, reason: 'busy'|'unknown'|'draining', busy?: object }>}
+   */
+  async prepareShutdown({ force = false, reason = 'update' } = {}) {
+    if (this.state === 'draining') return { ok: false, reason: 'draining' };
+    if (!force) {
+      const busy = await this.busyReport();
+      // Re-check: a restart may have begun while the sources were answering.
+      if (this.state === 'draining') return { ok: false, reason: 'draining' };
+      const total = busy.goals + busy.chats + busy.workflows + busy.tools;
+      if (total > 0) return { ok: false, reason: 'busy', busy };
+      if (busy.unknown.length) return { ok: false, reason: 'unknown', busy };
+    }
+    this.state = 'draining';
+    console.log(`[RestartManager] Shutdown prepared (${reason}${force ? ', forced' : ''}); new work now gets 503`);
+    return { ok: true };
+  }
+
+  /**
+   * Step two: exit. Called after the HTTP response to prepare-shutdown has been
+   * sent. The shutdown handler guarantees termination on its own; the fallback
+   * covers an early-boot process that never registered one.
+   */
+  beginShutdown(reason = 'update') {
+    if (this.shutdownHandler) return this.shutdownHandler(reason);
+    console.warn('[RestartManager] No shutdown handler registered - exiting directly');
+    Promise.resolve(this.workflowBridge?.shutdown?.())
+      .catch(() => {})
+      .finally(() => process.exit(0));
   }
 
   /**
@@ -45,6 +159,9 @@ class RestartManager {
   attach({ server, workflowBridge }) {
     this.server = server;
     this.workflowBridge = workflowBridge;
+    if (workflowBridge?.busyReport && !this.busySources.workflows) {
+      this.busySources.workflows = async () => (await workflowBridge.busyReport()).running;
+    }
   }
 
   isDraining() {

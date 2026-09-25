@@ -180,6 +180,10 @@ function setupIPCHandlers() {
           result = await handleReloadPlugins();
           break;
 
+        case 'BUSY_REPORT':
+          result = handleBusyReport();
+          break;
+
         default:
           success = false;
           error = `Unknown message type: ${type}`;
@@ -246,6 +250,10 @@ async function handleRestartActiveWorkflows() {
   return { message: 'Active workflows restart initiated' };
 }
 
+function handleBusyReport() {
+  return { running: countRunningWorkflows(ProcessManager.activeWorkflows) };
+}
+
 // Handle plugin reload (called when plugins are installed/uninstalled)
 async function handleReloadPlugins() {
   console.log('[WorkflowProcess] Reloading plugins...');
@@ -308,6 +316,14 @@ ProcessManager.on('workflowStatusUpdate', (workflowId, statusData) => {
       userId: statusData.userId,
     },
   });
+});
+
+// See workflowProcessLifecycle.js: a backend that dies must not leave this
+// process running its triggers with nobody to report to.
+exitWhenOrphaned(process, {
+  isShuttingDown: () => isShuttingDown,
+  markShuttingDown: () => { isShuttingDown = true; },
+  release: () => ProcessManager.releaseResources(),
 });
 
 // Handle uncaught exceptions

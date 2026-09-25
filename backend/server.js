@@ -991,6 +991,11 @@ function startServer() {
     // SIGINT too: Ctrl-C in a dev terminal produced exactly the same orphan.
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+    // And for a desktop update. On Windows the supervisor's kill() is
+    // TerminateProcess, so SIGTERM never arrives and none of the above runs;
+    // the update handoff (POST /api/system/prepare-shutdown) calls it directly.
+    RestartManager.setShutdownHandler((reason) => gracefulShutdown(reason));
+
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
       console.error('Uncaught Exception:', error);
