@@ -771,14 +771,18 @@ export default {
       // IMPORTANT: Immediately update/sanitize edge coordinates after loading them
       this.updateEdges();
 
-      // 4) Update canvas transform
+      // 4) Centre the graph in the viewport it is opening in. The saved
+      //    offsets were relative to whatever window and panel widths existed
+      //    when it was saved, so restoring them put workflows off to one side.
+      //    The saved zoom is kept when the graph fits at it.
       this.$nextTick(() => {
-        if (this.$refs.canvas) {
-          this.$refs.canvas.zoomLevel = workflowData.zoomLevel || 1;
-          this.$refs.canvas.canvasOffsetX = workflowData.canvasOffsetX || 0;
-          this.$refs.canvas.canvasOffsetY = workflowData.canvasOffsetY || 0;
-          this.$refs.canvas.updateCanvasTransform();
-        }
+        const canvas = this.$refs.canvas;
+        if (!canvas) return;
+        canvas.zoomLevel = workflowData.zoomLevel || 1;
+        canvas.canvasOffsetX = workflowData.canvasOffsetX || 0;
+        canvas.canvasOffsetY = workflowData.canvasOffsetY || 0;
+        canvas.updateCanvasTransform();
+        canvas.centerGraph({ zoom: workflowData.zoomLevel || 1 });
       });
 
       // 5) Process media data in the background AFTER initial render

@@ -76,6 +76,7 @@
 <script>
 import Node from './components/Node/Node.vue';
 import Edge from './components/Edge/Edge.vue';
+import { centeredView } from './canvasView.js';
 
 export default {
   name: 'Canvas',
@@ -115,7 +116,9 @@ export default {
       canvasOffsetX: 0,
       canvasOffsetY: 0,
       zoomLevel: 1,
-      minZoomLevel: 0.5,
+      // One floor for wheel, Fit and load-centring: a graph centred at 0.3
+      // must not jump to a higher floor on the first wheel tick.
+      minZoomLevel: 0.2,
       maxZoomLevel: 2,
       zoomSpeed: 0.001,
       selectedEdgeIndex: null,
@@ -156,7 +159,48 @@ export default {
       };
     },
   },
+  beforeUnmount() {
+    this._centerObserver?.disconnect();
+  },
   methods: {
+    /**
+     * Centre the graph in the viewport. `zoom` is kept when the graph fits at
+     * it; `fit` zooms to fill instead. A canvas mounted while hidden has no
+     * size yet, so the request is held and applied the first time it has one.
+     */
+    centerGraph({ zoom = this.zoomLevel, fit = false } = {}) {
+      const host = this.$el?.getBoundingClientRect?.();
+      const elements = new Map([...(this.$refs.canvas?.querySelectorAll?.('.node[data-id]') || [])].map((el) => [el.dataset.id, el]));
+      const boxes = this.nodes.map((node) => {
+        const el = elements.get(String(node.id));
+        return { x: node.x, y: node.y, width: el?.offsetWidth || this.nodeWidth, height: el?.offsetHeight || 48 };
+      });
+      const view = centeredView(boxes, host, { zoom, fit, minZoom: this.minZoomLevel });
+      if (!view) {
+        if (boxes.length && !(host?.width > 0)) this.deferCentering({ zoom, fit });
+        return false;
+      }
+      this.zoomLevel = view.zoom;
+      this.canvasOffsetX = view.offsetX;
+      this.canvasOffsetY = view.offsetY;
+      this.$emit('update:zoomLevel', view.zoom);
+      this.updateCanvasTransform();
+      return true;
+    },
+    deferCentering(request) {
+      if (typeof ResizeObserver === 'undefined') return;
+      this._pendingCenter = request;
+      if (this._centerObserver) return;
+      this._centerObserver = new ResizeObserver(() => {
+        if (!this._pendingCenter || !(this.$el.getBoundingClientRect().width > 0)) return;
+        const pending = this._pendingCenter;
+        this._pendingCenter = null;
+        this._centerObserver.disconnect();
+        this._centerObserver = null;
+        this.centerGraph(pending);
+      });
+      this._centerObserver.observe(this.$el);
+    },
     isStartNodeTrigger(nodeId) {
       const node = this.nodes.find((n) => n.id === nodeId);
       return node && node.category === 'trigger';
@@ -361,13 +405,9 @@ export default {
       e.currentTarget.releasePointerCapture?.(e.pointerId);
       if (!['pointercancel', 'lostpointercapture'].includes(e.type) && gesture.index >= 0 && !gesture.moved) this.$emit('select-node', gesture.index);
     },
-    mobileZoom(delta) { this.zoomLevel=Math.max(.2,Math.min(2,this.zoomLevel+delta)); this.updateCanvasTransform(); },
+    mobileZoom(delta) { this.zoomLevel=Math.max(this.minZoomLevel,Math.min(2,this.zoomLevel+delta)); this.updateCanvasTransform(); },
     fitMobileGraph() {
-      if(!this.nodes.length) return;
-      const host=this.$el.getBoundingClientRect();const minX=Math.min(...this.nodes.map(n=>n.x)), minY=Math.min(...this.nodes.map(n=>n.y));
-      const width=Math.max(...this.nodes.map(n=>n.x+this.nodeWidth))-minX+40,height=Math.max(...this.nodes.map(n=>n.y+100))-minY+40;
-      this.zoomLevel=Math.max(.2,Math.min(1,(host.width-24)/width,(host.height-24)/height));
-      this.canvasOffsetX=12-minX*this.zoomLevel;this.canvasOffsetY=12-minY*this.zoomLevel;this.updateCanvasTransform();
+      this.centerGraph({ fit: true });
     },
     startDragging(e, index) {
       // Deselect edge immediately when starting to drag a node
