@@ -59,7 +59,10 @@ jobs:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
     needs: test
     strategy:
-      fail-fast: true
+      # Every platform reports its own result. The release job needs all four
+      # anyway, so one failure still stops the release; it just no longer hides
+      # whether the others would have built.
+      fail-fast: false
       matrix:
         include:
           - os: windows-2022
@@ -167,11 +170,7 @@ jobs:
       # viewer; annotations do not.
       - name: Report why the build failed
         if: failure()
-        shell: bash
-        run: |
-          [ -f electron-builder.log ] || exit 0
-          TAIL=$(grep -v '^\s*$' electron-builder.log | tail -n 40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
-          echo "::error title=electron-builder failed (${{ matrix.platform }}-${{ matrix.arch }})::$TAIL"
+        run: node scripts/release/annotate-failure.mjs electron-builder.log "electron-builder failed (${{ matrix.platform }}-${{ matrix.arch }})"
 
       - name: Verify native modules are ${{ matrix.platform }}-${{ matrix.arch }}
         run: node scripts/release/verify-artifacts.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --dist dist
