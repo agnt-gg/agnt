@@ -273,6 +273,12 @@ try {
     const downloaded = await waitForLog(first, new RegExp(`\\[update\\] ${NEW.replace(/\./g, '\\.')} downloaded`), 300000);
     check('finds and downloads the update', downloaded, requests.filter((r) => !r.includes('.blockmap')).slice(-3).join(' | '));
     if (!downloaded) throw new Error('update never downloaded');
+    // Quit only once the app says it is ready, as a user would when the banner
+    // offers a restart. On macOS that is after Squirrel has staged the update;
+    // before this change the app said "ready" too early and a quit installed nothing.
+    const ready = await waitForLog(first, new RegExp(`\\[update\\] ${NEW.replace(/\./g, '\\.')} ready`), 300000);
+    check('app reports the update ready', ready);
+    if (!ready) throw new Error('update never became ready');
     check('app quits cleanly', await quit(first));
 
     // Installed?

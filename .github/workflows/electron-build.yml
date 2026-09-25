@@ -147,7 +147,10 @@ jobs:
       # --publish never: publishing is the release job's decision, made only
       # after the whole release has been checked.
       - name: Build Electron (${{ matrix.platform }}-${{ matrix.arch }})
-        run: npx electron-builder ${{ matrix.args }} --publish never
+        shell: bash
+        run: |
+          set -o pipefail
+          npx electron-builder ${{ matrix.args }} --publish never 2>&1 | tee electron-builder.log
         env:
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
@@ -159,6 +162,16 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # A failed build's reason, on the run page. Job logs need a signed-in
+      # viewer; annotations do not.
+      - name: Report why the build failed
+        if: failure()
+        shell: bash
+        run: |
+          [ -f electron-builder.log ] || exit 0
+          TAIL=$(grep -v '^\s*$' electron-builder.log | tail -n 40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=electron-builder failed (${{ matrix.platform }}-${{ matrix.arch }})::$TAIL"
 
       - name: Verify native modules are ${{ matrix.platform }}-${{ matrix.arch }}
         run: node scripts/release/verify-artifacts.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --dist dist
