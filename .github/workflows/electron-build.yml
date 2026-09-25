@@ -19,9 +19,13 @@ on:
       # releases/download/v<version>/; a bare tag would publish at an address
       # nothing reads, and release-manifest refuses it.
       - 'v*.*.*'
-  # A manual run builds and verifies all four targets and publishes nothing:
-  # the release job below runs for tags only. Use it as the dry run before
-  # tagging a release.
+    # THE DRY RUN. A push to release-rehearsal/<anything> runs this workflow
+    # exactly as a tag would (tests, all four builds, fail-closed signing and
+    # native checks, the Mac feed merge, the release manifest) and stops before
+    # a GitHub release is created. Nothing is tagged, uploaded or published.
+    branches:
+      - 'release-rehearsal/**'
+  # A manual run builds and verifies all four targets and publishes nothing.
   workflow_dispatch:
 
 permissions:
@@ -83,7 +87,7 @@ jobs:
     env:
       # Release builds fail closed: missing notarization credentials and a
       # native-module check that cannot run are errors, not warnings.
-      AGNT_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '' }}
+      AGNT_RELEASE: ${{ (startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/release-rehearsal/')) && '1' || '' }}
 
     steps:
       - name: Checkout repository
@@ -160,7 +164,7 @@ jobs:
         run: node scripts/release/verify-artifacts.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --dist dist
 
       - name: Verify macOS signature and notarization
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
+        if: runner.os == 'macOS' && env.AGNT_RELEASE == '1'
         shell: bash
         run: |
           APP=$(ls -d dist/mac*/AGNT.app | head -1)
@@ -188,7 +192,9 @@ jobs:
     name: Publish release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tags publish. Rehearsal branches run the same assembly and validation and
+    # stop there: every step that touches a GitHub release is tag-only.
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release-rehearsal/')
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -202,6 +208,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Rehearsal version (branch runs only)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: echo "TAG=v$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -228,6 +238,7 @@ jobs:
         run: node scripts/release/release-manifest.mjs --tag "$TAG" --dir release
 
       - name: Upload as a draft
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
@@ -236,10 +247,12 @@ jobs:
           gh release create "$TAG" release/* "${FLAGS[@]}"
 
       - name: Verify the draft holds exactly the validated files
+        if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/release/verify-release.mjs --tag "$TAG" --manifest release/release-manifest.json
 
       # Only now does anyone see it. The website and the updater follow
       # agnt.gg's channel (update-channels.json), not "latest release", so
       # publishing here does not by itself move a single client.
       - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
         run: gh release edit "$TAG" --draft=false

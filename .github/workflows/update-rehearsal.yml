@@ -1,0 +1,132 @@
+name: Update rehearsal
+run-name: rehearsal ${{ github.ref_name }}
+
+# Does an installed AGNT actually update itself? For each platform: build the
+# app twice (an old and a new prerelease), serve the new one from a local feed
+# exactly as agnt.gg would, install the old one, and let it update. See
+# scripts/release/rehearse-update.mjs for what each platform must prove.
+#
+# Runs on pushes to release-rehearsal/* branches only. Nothing is published,
+# tagged or uploaded to a release; main is untouched.
+#
+# Windows is rehearsed interactively (it installs on a click; Windows Sandbox,
+# per-user and per-machine) because a CI runner has no one to click.
+
+on:
+  push:
+    branches: ['release-rehearsal/**']
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    name: ${{ matrix.kind }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            kind: mac
+            arch: arm64
+            targets: --mac zip --arm64
+          - os: macos-15-intel
+            kind: mac
+            arch: x64
+            targets: --mac zip --x64
+          - os: ubuntu-latest
+            kind: appimage
+            arch: x64
+            targets: --linux AppImage --x64
+          - os: ubuntu-latest
+            kind: deb
+            arch: x64
+            targets: --linux deb --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      FEED: http://127.0.0.1:8787/updates/
+      ASSETS: http://127.0.0.1:8787/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python setuptools (native module builds)
+        run: python -m pip install setuptools wheel
+
+      - name: Linux display and FUSE
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libfuse2t64
+          Xvfb :99 -screen 0 1280x1024x24 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      # The same app built twice; only the version differs. The feed and file
+      # addresses point at the local server the rehearsal starts. No APPLE_ID:
+      # a local install is not quarantined, so notarization is not exercised
+      # here (the release dry run does that); Squirrel still requires, and the
+      # rehearsal checks, a valid Developer ID signature.
+      - name: Build 0.6.7-rc.1 (old)
+        run: >-
+          npx electron-builder ${{ matrix.targets }} --publish never
+          -c.directories.output=dist-old
+          -c.extraMetadata.version=0.6.7-rc.1
+          -c.extraMetadata.agntUpdate.feedBase=$FEED
+          -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      - name: Build 0.6.7-rc.2 (new)
+        run: >-
+          npx electron-builder ${{ matrix.targets }} --publish never
+          -c.directories.output=dist-new
+          -c.extraMetadata.version=0.6.7-rc.2
+          -c.extraMetadata.agntUpdate.feedBase=$FEED
+          -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      - name: Verify native modules (old and new)
+        run: |
+          node scripts/release/verify-artifacts.mjs --platform ${{ runner.os == 'macOS' && 'mac' || 'linux' }} --arch ${{ matrix.arch }} --dist dist-old
+          node scripts/release/verify-artifacts.mjs --platform ${{ runner.os == 'macOS' && 'mac' || 'linux' }} --arch ${{ matrix.arch }} --dist dist-new
+
+      - name: Rehearse the update
+        run: node scripts/release/rehearse-update.mjs --kind ${{ matrix.kind }} --old dist-old --new dist-new --out rehearsal-out
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-${{ matrix.kind }}-${{ matrix.arch }}
+          path: rehearsal-out
+          retention-days: 14

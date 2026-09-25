@@ -94,6 +94,15 @@ describe('the release actually carries the feed', () => {
     expect(workflow).toMatch(/scripts\/release\/merge-mac-feed\.mjs/);
   });
 
+  it('a rehearsal branch runs everything but can never create or publish a release', () => {
+    // release-rehearsal/* is the dry run. Every step that talks to GitHub
+    // Releases must be tag-only, or a rehearsal could publish.
+    expect(workflow).toMatch(/branches:\s*\n\s*- 'release-rehearsal\/\*\*'/);
+    const releaseSteps = workflow.split(/\n      - name: /).filter((s) => /gh release (create|edit)|verify-release\.mjs/.test(s));
+    expect(releaseSteps.length).toBe(3);
+    for (const s of releaseSteps) expect(s).toMatch(/\n        if: startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  });
+
   it('does not build until the tests pass', () => {
     expect(workflow).toMatch(/build:\s*\n\s*name:[^\n]*\n\s*needs: test/);
   });
