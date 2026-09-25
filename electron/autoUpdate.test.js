@@ -233,6 +233,19 @@ describe('wiring', () => {
     expect(h.last()).toMatchObject({ phase: 'ready', available: { version: '0.6.8' } });
   });
 
+  it('every PUSHED state says the build updates itself, not only the pulled one', () => {
+    // The banner decides "self-updating" from `enabled`. Pushes used to omit it,
+    // so the first push (downloading) turned the banner off and the Restart
+    // button never appeared. Found in the update rehearsal.
+    const h = harness();
+    h.emit('checking-for-update');
+    h.emit('update-available', info('0.6.8'));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    const pushes = h.sent.filter(([c]) => c === 'update:state').map(([, s]) => s);
+    expect(pushes.length).toBeGreaterThan(2);
+    for (const s of pushes) expect(s).toMatchObject({ enabled: true, disabledReason: null });
+  });
+
   it('a feed that fails the pin is refused loudly and nothing is downloaded', () => {
     const h = harness();
     h.emit('update-available', { version: '0.6.8', files: [{ url: 'https://evil.example/AGNT-0.6.8-win-x64.exe' }] });

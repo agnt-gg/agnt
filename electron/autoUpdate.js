@@ -229,12 +229,18 @@ export function initAutoUpdate({
   defer = (fn) => setImmediate(fn),
 }) {
   const support = updateSupport({ isPackaged, platform, env });
+  // Every copy of the state the renderer sees carries `enabled`, pushed or
+  // pulled. The banner decides "this build updates itself" from that field; a
+  // push without it read as "not enabled" and hid the Restart button the moment
+  // the download finished. Found in the update rehearsal.
+  const withSupport = (s) => ({ ...s, enabled: support.enabled, disabledReason: support.reason || null });
   const state = createUpdateState({
     version,
     platform,
     onChange: (s) => {
+      const payload = withSupport(s);
       for (const win of getWindows() || []) {
-        if (win && !win.isDestroyed?.() && win.webContents) win.webContents.send('update:state', s);
+        if (win && !win.isDestroyed?.() && win.webContents) win.webContents.send('update:state', payload);
       }
     },
   });
@@ -249,7 +255,7 @@ export function initAutoUpdate({
 
   // Handlers are registered unconditionally: the renderer asks regardless, and
   // a missing handler surfaces as an opaque "no handler for channel" rejection.
-  ipcMain.handle('update:state', async () => ({ ...state.get(), enabled: support.enabled, disabledReason: support.reason || null }));
+  ipcMain.handle('update:state', async () => withSupport(state.get()));
   ipcMain.handle('update:check', async (evt) => {
     if (refuseSender(evt, 'update:check')) return { ok: false, reason: 'refused' };
     return check({ userInitiated: true });
