@@ -1,14 +1,22 @@
 <template>
   <div class="ui-panel skills-panel">
+    <PanelActionBar
+      create-label="New skill"
+      tour-id="skills.create-button"
+      :actions="[{ id: 'import-skill', label: 'Import SKILL.md', icon: 'fas fa-file-import' }]"
+      @panel-action="(...args) => $emit('panel-action', ...args)"
+    />
+
     <!-- Selected Skill Details -->
     <div v-if="selectedSkill" class="panel-section selected-skill-section">
       <div class="selected-skill-header">
-        <h2>{{ isDiscovered ? 'Discovered Skill' : 'Selected Skill Details' }}</h2>
+        <h2>{{ isDiscovered ? 'Discovered Skill' : formatSkillName(selectedSkill.name) }}</h2>
         <Tooltip v-if="!isDiscovered && !isReadonly" text="Edit Skill" width="auto">
           <span class="edit-button-panel" @click="handleEdit">
             <i class="fas fa-edit"></i>
           </span>
         </Tooltip>
+        <PanelCloseButton label="Close skill details" @panel-action="(...args) => $emit('panel-action', ...args)" />
       </div>
 
       <div class="selected-skill-content">
@@ -73,15 +81,19 @@
       </div>
     </div>
 
-    <!-- Nothing selected: the list beside this panel -->
-    <ListSummaryPanel
-      v-else
-      caption="Skills"
-      :stats="summaryStats"
-      hint="Click a skill card to read its playbook, resources and history here."
-      primary-label="New skill"
-      @primary="$emit('panel-action', 'open-create-modal')"
-    />
+    <!-- Nothing selected: skills other tools left on this machine, one click
+         from being usable here. Stats are in the left panel. -->
+    <div v-else class="panel-section found-section">
+      <h2>Found on this machine</h2>
+      <p v-if="!foundOnDisk.length" class="found-empty">No SKILL.md files found in the scanned folders.</p>
+      <div v-for="skill in foundOnDisk" :key="skill.name" class="found-row">
+        <span class="found-text">
+          <strong>{{ formatSkillName(skill.name) }}</strong>
+          <small>{{ skill.description }}</small>
+        </span>
+        <button type="button" class="found-import" @click="$emit('panel-action', 'import-discovered-skill', skill)">Import</button>
+      </div>
+    </div>
 
   </div>
 </template>
@@ -92,11 +104,12 @@ import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import PanelActionBar from '@/views/Terminal/_components/panels/PanelActionBar.vue';
+import PanelCloseButton from '@/views/Terminal/_components/panels/PanelCloseButton.vue';
 
 export default {
   name: 'SkillsPanel',
-  components: { BaseButton, CopyToTeamButton, Tooltip, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, Tooltip, PanelActionBar, PanelCloseButton },
   props: {
     selectedSkill: {
       type: Object,
@@ -114,13 +127,10 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-    const summaryStats = computed(() => {
-      const all = store.getters['skills/allSkills'] || [];
-      return [
-        { label: 'Skills', value: all.length },
-        { label: 'Discovered', value: all.filter((s) => s.discovered || s.source === 'discovered').length },
-        { label: 'Enabled', value: all.filter((s) => s.enabled !== false).length },
-      ];
+    // Discovered skills whose name is not already a skill here.
+    const foundOnDisk = computed(() => {
+      const have = new Set((store.getters['skills/allSkills'] || []).map((sk) => String(sk.name).toLowerCase()));
+      return (store.getters['skills/discoveredSkills'] || []).filter((sk) => sk?.name && !have.has(String(sk.name).toLowerCase())).slice(0, 8);
     });
     const formatDate = (dateString) => {
       if (!dateString) return 'N/A';
@@ -187,7 +197,7 @@ export default {
     };
 
     return {
-      summaryStats,
+      foundOnDisk,
       formatDate,
       formatSkillName,
       formatAllowedTools,
@@ -241,17 +251,73 @@ export default {
 
 .selected-skill-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
   margin-bottom: 15px;
   border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
 }
 
 .selected-skill-header h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing selected: SKILL.md files on disk that are not skills here yet. */
+.found-section h2 {
+  margin-bottom: 10px;
+}
+.found-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+.found-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 9px;
+}
+.found-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.found-text strong {
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.found-text small {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.found-import {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--primary-rgb), 0.35);
+  border-radius: 7px;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.found-import:hover {
+  background: rgba(var(--primary-rgb), 0.1);
 }
 
 .edit-button-panel {

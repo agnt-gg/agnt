@@ -19,22 +19,12 @@
           searchPlaceholder="Search skills..."
           :searchQuery="searchQuery"
           :searchScope="shelfHasFocus ? 'Marketplace' : ''"
-          :sortOrder="sortOrder"
-          :currentLayout="'grid'"
           :layoutOptions="[]"
           :showCollapseToggle="false"
           :showHideEmpty="false"
-          :createLabel="activeView === 'skills' ? 'New Skill' : ''"
+          :showSort="false"
           @update:searchQuery="(v) => (searchQuery = v)"
-          @update:sortOrder="(v) => (sortOrder = v)"
-          @create="openCreateModal"
-        >
-          <template v-if="activeView === 'skills'" #extra-buttons>
-            <Tooltip text="Import SKILL.md"
-              ><button class="import-btn" @click="triggerImport"><i class="fas fa-file-import"></i> Import</button></Tooltip
-            >
-          </template>
-        </ScreenToolbar>
+        />
         <input ref="importFileInput" type="file" accept=".md" style="display: none" @change="handleImportFile" />
 
         <!-- View switcher -->
@@ -55,7 +45,7 @@
           </div>
         </div>
 
-<MobileCollection v-if="mobileView && activeView !== 'evolution'" :view-id="activeView === 'skills' ? 'skills' : 'skills-discovered'" :title="activeView === 'skills' ? 'Skills' : 'Discovered skills'" count-label="skills" :items="activeView === 'skills' ? filteredSkills : filteredDiscoveredSkills" v-model:search="searchQuery" :selected-id="selectedSkill?.id" :create-label="activeView === 'skills' ? 'Create skill' : ''" icon="fas fa-brain" @select="activeView === 'skills' ? selectSkill($event) : selectDiscoveredSkill($event)" @create="openCreateModal"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button v-if="activeView === 'skills'" @click="triggerImport">Import SKILL.md</button><button v-else @click="rescanSkills">Rescan</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button><div v-if="activeView === 'discovered'" class="m-scan-locations"><strong>Scan locations</strong><p v-for="location in discoveryScanLocations" :key="typeof location === 'string' ? location : location.path">{{ typeof location === 'string' ? location : location.path }}</p><small v-if="discoveryLastScan">Last scan: {{ discoveryLastScan }}</small></div></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ SKILLS VIEW ═══ -->
+<MobileCollection v-if="mobileView && activeView !== 'evolution'" :view-id="activeView === 'skills' ? 'skills' : 'skills-discovered'" :title="activeView === 'skills' ? 'Skills' : 'Discovered skills'" count-label="skills" :items="activeView === 'skills' ? filteredSkills : filteredDiscoveredSkills" v-model:search="searchQuery" :selected-id="selectedSkill?.id" :create-label="activeView === 'skills' ? 'Create skill' : ''" icon="fas fa-brain" @select="activeView === 'skills' ? selectSkill($event) : selectDiscoveredSkill($event)" @create="openCreateModal"><template #actions><button v-if="activeView === 'skills'" @click="triggerImport">Import SKILL.md</button><button v-else @click="rescanSkills">Rescan</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button><div v-if="activeView === 'discovered'" class="m-scan-locations"><strong>Scan locations</strong><p v-for="location in discoveryScanLocations" :key="typeof location === 'string' ? location : location.path">{{ typeof location === 'string' ? location : location.path }}</p><small v-if="discoveryLastScan">Last scan: {{ discoveryLastScan }}</small></div></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ SKILLS VIEW ═══ -->
         <template v-if="activeView === 'skills'">
           <div v-if="filteredSkills.length > 0" class="card-grid skills-grid">
             <div
@@ -526,10 +516,8 @@ const importFileInput = ref(null);
 
 const terminalLines = ref(['Skills initialized.']);
 const searchQuery = ref('');
-const sortOrder = ref('az');
 const activeView = ref('skills');
 const selectedSkill = ref(null);
-const selectedCategory = ref(null);
 
 // Create/Edit modal
 const showModal = ref(false);
@@ -597,7 +585,7 @@ const sortByName = (list, key = 'name') => {
   const sorted = [...list].sort((a, b) => {
     const an = (a?.[key] || '').toLowerCase();
     const bn = (b?.[key] || '').toLowerCase();
-    return sortOrder.value === 'az' ? an.localeCompare(bn) : bn.localeCompare(an);
+    return an.localeCompare(bn);
   });
   return sorted;
 };
@@ -610,7 +598,6 @@ const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value &
 
 const filteredSkills = computed(() => {
   let result = allSkills.value;
-  if (selectedCategory.value) result = result.filter((s) => (s.category || 'general') === selectedCategory.value);
   const q = searchQuery.value.toLowerCase();
   if (q)
     result = result.filter(
@@ -683,10 +670,17 @@ const initializeScreen = () => {
 
 const handlePanelAction = (action, payload) => {
   if (action === 'navigate') emit('screen-change', payload);
-  else if (action === 'category-filter-changed') {
-    selectedCategory.value = payload?.selectedCategory || null;
-    selectedSkill.value = null;
-  } else if (action === 'open-create-modal') openCreateModal();
+  // Right panel: "+ New skill", import; left panel: a recent skill.
+  else if (action === 'create' || action === 'open-create-modal') openCreateModal();
+  else if (action === 'import-skill') triggerImport();
+  else if (action === 'close-panel' || action === 'clear-selection') selectedSkill.value = null;
+  else if (action === 'select-item') {
+    const hit = allSkills.value.find((sk) => String(sk.id) === String(payload?.id));
+    if (hit) {
+      activeView.value = 'skills';
+      selectSkill(hit);
+    }
+  }
   else if (action === 'open-edit-modal') openEditModal(payload);
   else if (action === 'export-skill') exportSkill(payload);
   else if (action === 'publish-skill') openPublishModal(payload);
