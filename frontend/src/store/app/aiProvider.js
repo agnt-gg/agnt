@@ -37,6 +37,7 @@ import {
   isChutesKimiReasoningModel,
   isChutesGlmReasoningModel,
   isChutesQwenReasoningModel,
+  isGrokBuildReasoningModel,
 } from '@llm/reasoningPredicates.js';
 
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
@@ -700,6 +701,19 @@ export function inferReasoningControl(providerKey, modelId) {
       ]);
     }
     return null;
+  }
+
+  // Grok Build: the backend's /metadata carries the per-model list the proxy
+  // publishes (incl. Max/xhigh where accepted), and wins over this. This is
+  // the same offline fallback the backend uses: the grades every grok-4.x takes.
+  if (lowerProvider === 'grok-build') {
+    if (!isGrokBuildReasoningModel(modelId)) return null;
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ]);
   }
 
   return null;

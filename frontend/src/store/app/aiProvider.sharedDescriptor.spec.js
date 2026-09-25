@@ -75,4 +75,13 @@ describe('controls the store now derives correctly', () => {
   it('a non-reasoning model still gets nothing', () => {
     expect(inferReasoningControl('groq', 'llama-3.3-70b-versatile')).toBeNull();
   });
+
+  it('grok-build offers the offline effort grades every grok-4.x takes', () => {
+    // The per-model list (incl. xhigh) arrives from /metadata and wins over this;
+    // xhigh is excluded here because grok-4.5 rejects it.
+    const control = inferReasoningControl('grok-build', 'grok-4.7');
+    expect(control?.kind).toBe('effort');
+    expect(control.options.map((o) => o.value)).toEqual(['default', 'low', 'medium', 'high']);
+    expect(inferReasoningControl('grok-build', 'cursor-grok-4.6')).toBeNull();
+  });
 });

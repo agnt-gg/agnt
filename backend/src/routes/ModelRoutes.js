@@ -11,6 +11,7 @@ import {
   getModelMetadataForClient,
   registerDynamicPricing,
   registerDynamicPricingFromModels,
+  registerGrokBuildProxyCatalog,
 } from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
@@ -23,6 +24,7 @@ import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
 import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
 import { persistLastModels, getLastSuccessfulModels } from '../services/ai/lastModelsCache.js';
+import { listProxyModelEntries as listGrokBuildProxyModelEntries } from '../services/ai/grokBuildProxyModels.js';
 import { extractToken, requireAuthHeader, verifyAuthToken } from '../utils/authGuard.js';
 
 // ───────────────────────── PERSISTENT LAST-SUCCESSFUL MODEL CACHE ──────────────────────
@@ -425,7 +427,13 @@ router.get('/:provider/models', async (req, res) => {
         const models = [...(cfg?.fallbackModels || [])];
         return res.json({ success: true, models, cached: false, count: models.length });
       }
-      // Grok Build CLI — local subscription; list via `grok models` or static fallback
+      // Grok Build — local subscription. The catalogue comes from the chat
+      // proxy's own GET /v1/models, deliberately NOT `grok models`: the CLI
+      // also lists ids it routes elsewhere (cursor-*, cline-pass-*), and AGNT
+      // talks to cli-chat-proxy directly, which 400s on those. The proxy's list
+      // is the surface AGNT actually hits, so new grok-* releases appear
+      // without a code change. The static fallbackModels answer only when that
+      // fetch fails. checkApiUsable is still called: it is the auth gate.
       else if (providerLower === 'grok-build') {
         const { default: GrokBuildAuthManager } = await import('../services/auth/GrokBuildAuthManager.js');
         const status = await GrokBuildAuthManager.checkApiUsable();
@@ -435,13 +443,23 @@ router.get('/:provider/models', async (req, res) => {
             error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
           });
         }
-        let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
-        if (models.length === 0) {
+        const entries = await listGrokBuildProxyModelEntries();
+        let models = entries.map((e) => e.id);
+        const dynamic = models.length > 0;
+        if (dynamic) {
+          // Persisted so getTextModels('grok-build') widens its static list and
+          // the failover chain stops substituting a newly released model a
+          // user configured — same reason as cursor-cli below.
+          persistLastModels('grok-build', models);
+          // Per-model effort lists feed getReasoningControl. Registered BEFORE
+          // responding: the client's /metadata request follows this one.
+          registerGrokBuildProxyCatalog(entries);
+        } else {
           const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
           const cfg = getProviderConfig('grok-build');
           models = [...(cfg?.fallbackModels || ['grok-4.5'])];
         }
-        return res.json({ success: true, models, cached: false, count: models.length });
+        return res.json({ success: true, models, cached: false, count: models.length, dynamic });
       }
       // Cursor Agent CLI — local subscription; list via cursor-agent models or static fallback
       else if (providerLower === 'cursor-cli') {
@@ -571,8 +589,9 @@ router.post('/:provider/models/refresh', async (req, res) => {
       }
       apiKey = resolved.apiKey;
     } else if (providerLower === 'grok-build') {
-      // CLI transport: refresh means re-asking the local CLI, never HTTP — the
-      // config baseURL is decorative and GenericProviderService must not be hit.
+      // Borrowed-CLI-OAuth transport: GenericProviderService must not be hit
+      // (it has no way to mint the grok token). The auth manager asks the
+      // proxy directly with the CLI's credential.
       const { default: GrokBuildAuthManager } = await import('../services/auth/GrokBuildAuthManager.js');
       const status = await GrokBuildAuthManager.checkApiUsable({ forceRefresh: true });
       if (!status.apiUsable) {
@@ -581,12 +600,19 @@ router.post('/:provider/models/refresh', async (req, res) => {
           error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
         });
       }
-      let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
-      if (models.length === 0) {
+      // Proxy /v1/models, bypassing the TTL cache — see the sibling branch
+      // above for why this is not the CLI's own list.
+      const entries = await listGrokBuildProxyModelEntries({ forceRefresh: true });
+      let models = entries.map((e) => e.id);
+      const dynamic = models.length > 0;
+      if (dynamic) {
+        persistLastModels('grok-build', models);
+        registerGrokBuildProxyCatalog(entries);
+      } else {
         const cfg = getProviderConfig('grok-build');
         models = [...(cfg?.fallbackModels || ['grok-4.5'])];
       }
-      return res.json({ success: true, models, cached: false, count: models.length });
+      return res.json({ success: true, models, cached: false, count: models.length, dynamic });
     } else if (providerLower === 'cursor-cli') {
       const { default: CursorCliAuthManager } = await import('../services/auth/CursorCliAuthManager.js');
       const status = await CursorCliAuthManager.checkApiUsable({ forceRefresh: true });

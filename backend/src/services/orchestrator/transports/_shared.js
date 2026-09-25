@@ -756,6 +756,19 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
     return null;
   }
 
+  if (normalizedProvider === 'grok-build') {
+    // cli-chat-proxy validates the value — an effort a model does not list is
+    // a 400 "Invalid reasoning effort.", not a silent no-op. The selection is
+    // sticky across model switches (see the OpenRouter branch below), so a
+    // 'xhigh' picked on grok-4.7 can arrive attached to grok-4.5, which does
+    // not take it. Send ONLY what this model's control offers; anything else
+    // (including the legacy 'on' and an 'off' no Grok model lists) means
+    // "send nothing" and the proxy uses its own default, which is always legal.
+    const offered = new Set((reasoningControl.options || []).map((o) => o.value));
+    if (normalizedValue === 'off' || !offered.has(normalizedValue)) return null;
+    return { reasoning_effort: normalizedValue };
+  }
+
   if (normalizedProvider === 'openrouter') {
     let effort = normalizedValue;
     if (effort === 'on') {
