@@ -1,632 +1,221 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+
+/**
+ * The update banner has two jobs and must never mix them:
+ *
+ *   - a desktop build that updates itself renders ONLY main's update state
+ *     (electron/autoUpdate.js): downloading, ready, blocked, error, installed
+ *   - everything else (browser, Docker, deb/rpm, dev) gets the agnt.gg notice:
+ *     "a new version exists", with a Download button
+ *
+ * A self-updating build showing the Download notice would send the user to a
+ * browser to fetch a file already on their disk.
+ */
+
+let electronMock = null;
+vi.mock('@/composables/useElectron', () => ({
+  useElectron: () => ({ electron: electronMock }),
+}));
+vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: 'http://localhost:3333/api' } }));
+
 import UpdateNotification from './UpdateNotification.vue';
 
-// Mock the config
-vi.mock('@/tt.config.js', () => ({
-  API_CONFIG: {
-    BASE_URL: 'http://localhost:3000',
-  },
-}));
+const base = {
+  enabled: true,
+  phase: 'idle',
+  currentVersion: '0.6.7',
+  needsExplicitInstall: true,
+  available: null,
+  percent: null,
+  error: null,
+  blocked: null,
+  installed: null,
+};
 
-// Mock fetch globally
-global.fetch = vi.fn();
-
-describe('UpdateNotification', () => {
-  let wrapper;
-  let mockElectron;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-
-    // Setup mock electron object
-    mockElectron = {
-      getAppVersion: vi.fn().mockResolvedValue('1.0.0'),
-      checkForUpdates: vi.fn().mockResolvedValue({
-        updateAvailable: false,
-        latestVersion: '1.0.0',
-      }),
-      openDownloadPage: vi.fn(),
-      onUpdateAvailable: vi.fn(),
-    };
-
-    // Reset fetch mock
-    global.fetch.mockReset();
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ version: '1.0.0' }),
-    });
-
-    // Clear localStorage
-    localStorage.clear();
-  });
-
-  afterEach(() => {
-    if (wrapper) {
-      wrapper.unmount();
-    }
-    vi.useRealTimers();
-    delete window.electron;
-    localStorage.clear();
-  });
-
-  const createWrapper = (withElectron = true) => {
-    if (withElectron) {
-      window.electron = mockElectron;
-    } else {
-      delete window.electron;
-    }
-
-    return mount(UpdateNotification, {
-      global: {
-        stubs: {
-          Transition: false,
-        },
-      },
-      attachTo: document.body,
-    });
+function desktop(initial = {}) {
+  let push = null;
+  const api = {
+    state: vi.fn(async () => ({ ...base, ...initial })),
+    check: vi.fn(async () => ({ ...base })),
+    install: vi.fn(async () => ({ ok: true })),
+    onState: vi.fn((cb) => {
+      push = cb;
+      return () => (push = null);
+    }),
   };
+  electronMock = {
+    autoUpdate: api,
+    getAppVersion: vi.fn(async () => '0.6.7'),
+    checkForUpdates: vi.fn(async () => ({ updateAvailable: true, latestVersion: '9.9.9' })),
+    openDownloadPage: vi.fn(),
+  };
+  return { api, push: (s) => push?.({ ...base, ...s }) };
+}
 
-  describe('Rendering', () => {
-    it('does not show banner initially when no update available', async () => {
-      wrapper = createWrapper();
-      await flushPromises();
+const text = (w) => w.text().replace(/\s+/g, ' ');
 
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-    });
+beforeEach(() => {
+  localStorage.clear();
+  globalThis.fetch = vi.fn(async () => ({ json: async () => ({}) }));
+});
+afterEach(() => {
+  electronMock = null;
+});
 
-    it('shows banner when update is available', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-    });
-
-    it('displays current and new version numbers', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.text()).toContain('v1.0.0');
-      expect(wrapper.text()).toContain('v2.0.0');
-    });
-
-    it('displays update icon', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-icon').text()).toBe('🚀');
-    });
-
-    it('displays "Update Available" title', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-title').text()).toBe('Update Available');
-    });
-
-    it('displays Download and Later buttons', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.download-btn').text()).toBe('Download');
-      expect(wrapper.find('.dismiss-btn').text()).toBe('Later');
-    });
+describe('self-updating desktop build', () => {
+  it('idle shows nothing, and never the agnt.gg Download notice', async () => {
+    const d = desktop();
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(electronMock.checkForUpdates).not.toHaveBeenCalled();
+    d.push({ phase: 'checking' });
+    await flushPromises();
+    expect(w.find('.update-banner').exists()).toBe(false);
   });
 
-  describe('Version Detection', () => {
-    it('gets version from Electron when available', async () => {
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(mockElectron.getAppVersion).toHaveBeenCalled();
-    });
-
-    it('falls back to API when Electron version fails', async () => {
-      mockElectron.getAppVersion.mockRejectedValue(new Error('Not available'));
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/version');
-    });
-
-    it('uses API version when Electron is not available', async () => {
-      global.fetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ version: '1.5.0' }),
-      });
-
-      wrapper = createWrapper(false);
-      await flushPromises();
-
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/version');
-    });
+  it('starts from the state main already has (reload after a download)', async () => {
+    desktop({ phase: 'ready', available: { version: '0.6.8' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('[data-testid="update-ready"]').exists()).toBe(true);
+    expect(text(w)).toContain('v0.6.7 → v0.6.8');
   });
 
-  describe('Update Check', () => {
-    it('checks for updates via Electron when available', async () => {
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(mockElectron.checkForUpdates).toHaveBeenCalled();
-    });
-
-    it('falls back to backend API when Electron check fails', async () => {
-      mockElectron.checkForUpdates.mockRejectedValue(new Error('Failed'));
-      global.fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ version: '1.0.0' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              updateAvailable: true,
-              latestVersion: '2.0.0',
-            }),
-        });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/updates/check');
-    });
-
-    it('uses backend API when Electron is not available', async () => {
-      global.fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ version: '1.0.0' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              updateAvailable: true,
-              latestVersion: '2.0.0',
-            }),
-        });
-
-      wrapper = createWrapper(false);
-      await flushPromises();
-
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/updates/check');
-    });
+  it('follows downloading → ready from pushed state', async () => {
+    const d = desktop();
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    d.push({ phase: 'downloading', available: { version: '0.6.8' }, percent: 42 });
+    await flushPromises();
+    expect(text(w)).toContain('Downloading Update');
+    expect(text(w)).toContain('42%');
+    d.push({ phase: 'ready', available: { version: '0.6.8' } });
+    await flushPromises();
+    expect(w.find('[data-testid="update-ready"]').exists()).toBe(true);
   });
 
-  describe('Download Action', () => {
-    it('opens download page via Electron when clicked', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      await wrapper.find('.download-btn').trigger('click');
-
-      expect(mockElectron.openDownloadPage).toHaveBeenCalled();
-    });
-
-    it('opens download URL in browser when Electron not available', async () => {
-      const mockOpen = vi.fn();
-      window.open = mockOpen;
-
-      global.fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ version: '1.0.0' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              updateAvailable: true,
-              latestVersion: '2.0.0',
-            }),
-        });
-
-      wrapper = createWrapper(false);
-      await flushPromises();
-
-      await wrapper.find('.download-btn').trigger('click');
-
-      expect(mockOpen).toHaveBeenCalledWith('https://agnt.gg/downloads', '_blank');
-    });
-
-    it('hides banner after clicking download', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-
-      await wrapper.find('.download-btn').trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-    });
+  it('Windows says "Restart to update"; macOS/AppImage say "Restart now"', async () => {
+    desktop({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: true });
+    let w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Restart to update');
+    desktop({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: false });
+    w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Restart now');
   });
 
-  describe('Dismiss Action', () => {
-    it('hides banner when Later is clicked', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-
-      await wrapper.find('.dismiss-btn').trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-    });
-
-    it('stores dismissed version in localStorage', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      await wrapper.find('.dismiss-btn').trigger('click');
-
-      expect(localStorage.getItem('agnt_dismissed_update')).toBe('2.0.0');
-    });
-
-    it('does not show banner for previously dismissed version', async () => {
-      localStorage.setItem('agnt_dismissed_update', '2.0.0');
-
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-    });
-
-    it('shows banner for new version after dismissing old one', async () => {
-      localStorage.setItem('agnt_dismissed_update', '2.0.0');
-
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '3.0.0',
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-    });
+  it('clicking restart installs without force', async () => {
+    const d = desktop({ phase: 'ready', available: { version: '0.6.8' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    await w.find('.download-btn').trigger('click');
+    await flushPromises();
+    expect(d.api.install).toHaveBeenCalledWith({ force: false });
+    expect(text(w)).toContain('Restarting…');
   });
 
-  describe('Manual Update Check', () => {
-    it('exposes checkNow method', async () => {
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(typeof wrapper.vm.checkNow).toBe('function');
-    });
-
-    it('checkNow triggers update check and shows banner', async () => {
-      mockElectron.checkForUpdates
-        .mockResolvedValueOnce({
-          updateAvailable: false,
-          latestVersion: '1.0.0',
-        })
-        .mockResolvedValueOnce({
-          updateAvailable: true,
-          latestVersion: '2.0.0',
-        });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-
-      await wrapper.vm.checkNow();
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-    });
-
-    it('checkNow returns null when Electron not available', async () => {
-      wrapper = createWrapper(false);
-      await flushPromises();
-
-      const result = await wrapper.vm.checkNow();
-
-      expect(result).toBe(null);
-    });
-
-    it('checkNow returns update result', async () => {
-      const updateResult = {
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      };
-      mockElectron.checkForUpdates.mockResolvedValue(updateResult);
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      const result = await wrapper.vm.checkNow();
-
-      expect(result).toEqual(updateResult);
-    });
+  it('busy: says what is running and offers Restart anyway, which forces', async () => {
+    const d = desktop({ phase: 'ready', available: { version: '0.6.8' }, blocked: { reason: 'busy', busy: { goals: 2, chats: 1, workflows: 0, tools: 0 } } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('2 goals, 1 chat still running');
+    expect(text(w)).toContain('Restart anyway');
+    await w.find('.download-btn').trigger('click');
+    expect(d.api.install).toHaveBeenCalledWith({ force: true });
   });
 
-  describe('Update Notification Listener', () => {
-    it('registers update listener when Electron available', async () => {
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(mockElectron.onUpdateAvailable).toHaveBeenCalled();
-    });
-
-    it('shows banner when update notification received', async () => {
-      let updateCallback;
-      mockElectron.onUpdateAvailable.mockImplementation((callback) => {
-        updateCallback = callback;
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-
-      // Simulate update notification
-      updateCallback({ latestVersion: '2.0.0' });
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-    });
-
-    it('does not show banner from listener if already dismissed', async () => {
-      let updateCallback;
-      mockElectron.onUpdateAvailable.mockImplementation((callback) => {
-        updateCallback = callback;
-      });
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      // First show and dismiss
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
-      await wrapper.vm.checkNow();
-      await wrapper.vm.$nextTick();
-
-      await wrapper.find('.dismiss-btn').trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-
-      // Try to show via listener - should not show because dismissed
-      updateCallback({ latestVersion: '2.0.0' });
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-banner').exists()).toBe(false);
-    });
+  it("unknown: says it can't tell, and still offers Restart anyway", async () => {
+    desktop({ phase: 'ready', available: { version: '0.6.8' }, blocked: { reason: 'unknown', busy: { unknown: ['backend'] } } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain("Can't tell what's running");
+    expect(text(w)).toContain('Restart anyway');
   });
 
-  describe('Error Handling', () => {
-    it('handles Electron version error gracefully', async () => {
-      mockElectron.getAppVersion.mockRejectedValue(new Error('Failed'));
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      // Should not throw
-      expect(wrapper.exists()).toBe(true);
-    });
-
-    it('handles update check error gracefully', async () => {
-      mockElectron.checkForUpdates.mockRejectedValue(new Error('Failed'));
-      global.fetch.mockRejectedValue(new Error('Network error'));
-
-      wrapper = createWrapper();
-      await flushPromises();
-
-      // Should not throw
-      expect(wrapper.exists()).toBe(true);
-    });
-
-    it('handles API version error gracefully', async () => {
-      global.fetch.mockRejectedValue(new Error('Network error'));
-
-      wrapper = createWrapper(false);
-      await flushPromises();
-
-      // Should not throw
-      expect(wrapper.exists()).toBe(true);
-    });
+  it('a refused install re-enables the button', async () => {
+    const d = desktop({ phase: 'ready', available: { version: '0.6.8' } });
+    d.api.install.mockResolvedValueOnce({ ok: false, reason: 'busy' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    await w.find('.download-btn').trigger('click');
+    await flushPromises();
+    expect(w.find('.download-btn').attributes('disabled')).toBeUndefined();
   });
 
-  describe('desktop auto-update', () => {
-    /**
-     * The banner used to have exactly one job: send the user to a browser. Now
-     * the desktop build downloads the update itself, so the banner has to tell
-     * the difference between "go and fetch this" and "it is already here".
-     *
-     * Everything here is feature-detected on `electron.autoUpdate`, which
-     * browser and Docker users do not have — the tests above run without it and
-     * must keep passing unchanged, which is what proves the fallback survives.
-     */
-    let onDownloaded;
-    let onProgress;
-
-    const withAutoUpdate = (install = vi.fn().mockResolvedValue({ ok: true })) => {
-      mockElectron.autoUpdate = {
-        status: vi.fn().mockResolvedValue({ enabled: true }),
-        install,
-        onDownloaded: vi.fn((cb) => {
-          onDownloaded = cb;
-          return vi.fn();
-        }),
-        onProgress: vi.fn((cb) => {
-          onProgress = cb;
-          return vi.fn();
-        }),
-      };
-      return install;
-    };
-
-    it('shows progress while downloading, with nothing to click', async () => {
-      withAutoUpdate();
-      wrapper = createWrapper();
-      await flushPromises();
-
-      onProgress({ percent: 42 });
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.text()).toContain('Downloading Update');
-      expect(wrapper.text()).toContain('42%');
-      // A live button before the file exists is a button that fails.
-      expect(wrapper.find('.download-btn').exists()).toBe(false);
-    });
-
-    it('offers a RESTART once the update is downloaded, not a download', async () => {
-      withAutoUpdate();
-      wrapper = createWrapper();
-      await flushPromises();
-
-      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.update-title').text()).toBe('Update Ready');
-      expect(wrapper.find('.download-btn').text()).toBe('Restart to update');
-    });
-
-    it('a ready update outranks an available one', async () => {
-      // Otherwise the user is sent to a browser to fetch a file already on disk.
-      mockElectron.checkForUpdates.mockResolvedValue({ updateAvailable: true, latestVersion: '2.0.0' });
-      withAutoUpdate();
-      wrapper = createWrapper();
-      await flushPromises();
-      expect(wrapper.find('.update-title').text()).toBe('Update Available');
-
-      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
-      await wrapper.vm.$nextTick();
-
-      // `find` would return whichever banner is first in the DOM, and during
-      // the leave transition that is still the OLD one — an assertion that
-      // fails for a reason unrelated to the behaviour under test.
-      const titles = wrapper.findAll('.update-title').map((t) => t.text());
-      expect(titles).toContain('Update Ready');
-      expect(wrapper.text()).toContain('Restart to update');
-    });
-
-    it('asks main to install when the button is pressed', async () => {
-      const install = withAutoUpdate();
-      wrapper = createWrapper();
-      await flushPromises();
-
-      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.download-btn').trigger('click');
-      await flushPromises();
-
-      expect(install).toHaveBeenCalled();
-      // Never the browser: the file is already downloaded.
-      expect(mockElectron.openDownloadPage).not.toHaveBeenCalled();
-    });
-
-    it('explains a refusal the user can act on', async () => {
-      // Main refuses to restart while a goal is executing. Saying so turns a
-      // dead button into an instruction.
-      const install = vi.fn().mockResolvedValue({ ok: false, reason: 'goal-running', goals: 2 });
-      withAutoUpdate(install);
-      wrapper = createWrapper();
-      await flushPromises();
-
-      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.download-btn').trigger('click');
-      await flushPromises();
-
-      expect(wrapper.text()).toContain('2 goals still running');
-      // Still pressable once the goals finish.
-      expect(wrapper.find('.download-btn').attributes('disabled')).toBeUndefined();
-    });
-
-    it('ANTI-VACUITY: without the bridge the old download banner is unchanged', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({ updateAvailable: true, latestVersion: '2.0.0' });
-      delete mockElectron.autoUpdate;
-      wrapper = createWrapper();
-      await flushPromises();
-
-      expect(wrapper.find('.download-btn').text()).toBe('Download');
-    });
+  it('error: shows the message and Retry runs a check', async () => {
+    const d = desktop({ phase: 'error', error: { message: 'sha512 checksum mismatch', during: 'download' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Update failed');
+    expect(text(w)).toContain('sha512 checksum mismatch');
+    await w.find('.download-btn').trigger('click');
+    expect(d.api.check).toHaveBeenCalled();
   });
 
-  describe('Styling', () => {
-    it('has correct CSS classes on banner', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
+  it('after a restart: confirms the version, or says it did not take', async () => {
+    desktop({ installed: { from: '0.6.7', to: '0.6.8', ok: true, running: '0.6.8' } });
+    let w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Updated to v0.6.8');
+    desktop({ installed: { from: '0.6.7', to: '0.6.8', ok: false, running: '0.6.7' } });
+    w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('The update did not install');
+    expect(text(w)).toContain('Still running v0.6.7');
+  });
 
-      wrapper = createWrapper();
-      await flushPromises();
+  it('Later hides this state only; the next news shows again', async () => {
+    const d = desktop({ phase: 'ready', available: { version: '0.6.8' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    await w.find('.dismiss-btn').trigger('click');
+    expect(w.find('.update-banner').exists()).toBe(false);
+    d.push({ phase: 'ready', available: { version: '0.6.8' } });
+    await flushPromises();
+    expect(w.find('.update-banner').exists()).toBe(false);
+    d.push({ phase: 'error', error: { message: 'offline', during: 'check' } });
+    await flushPromises();
+    expect(w.find('[data-testid="update-error"]').exists()).toBe(true);
+  });
 
-      expect(wrapper.find('.update-banner').exists()).toBe(true);
-      expect(wrapper.find('.update-content').exists()).toBe(true);
-      expect(wrapper.find('.update-actions').exists()).toBe(true);
-    });
+  it('unsubscribes on unmount', async () => {
+    const d = desktop();
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    w.unmount();
+    expect(d.api.onState).toHaveBeenCalledTimes(1);
+  });
+});
 
-    it('has correct button classes', async () => {
-      mockElectron.checkForUpdates.mockResolvedValue({
-        updateAvailable: true,
-        latestVersion: '2.0.0',
-      });
+describe('builds that do not update themselves', () => {
+  it('a disabled desktop build (deb/rpm, dev) falls back to the agnt.gg notice', async () => {
+    desktop({ enabled: false, phase: 'disabled', disabledReason: 'linux-package-manager' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('[data-testid="update-notice"]').exists()).toBe(true);
+    expect(text(w)).toContain('v0.6.7 → v9.9.9');
+    await w.find('.download-btn').trigger('click');
+    expect(electronMock.openDownloadPage).toHaveBeenCalled();
+  });
 
-      wrapper = createWrapper();
-      await flushPromises();
+  it('a browser (no Electron) uses the backend check', async () => {
+    electronMock = null;
+    globalThis.fetch = vi.fn(async (u) => ({
+      json: async () => (String(u).endsWith('/version') ? { version: '0.6.6' } : { updateAvailable: true, latestVersion: '0.6.7', currentVersion: '0.6.6' }),
+    }));
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('v0.6.6 → v0.6.7');
+  });
 
-      expect(wrapper.find('.download-btn').classes()).toContain('update-btn');
-      expect(wrapper.find('.dismiss-btn').classes()).toContain('update-btn');
-    });
+  it('a dismissed notice version stays dismissed', async () => {
+    localStorage.setItem('agnt_dismissed_update', '9.9.9');
+    desktop({ enabled: false, phase: 'disabled' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('.update-banner').exists()).toBe(false);
   });
 });

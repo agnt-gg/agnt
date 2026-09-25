@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 // One boot id for this app launch, exported into the env so the backend and
 // the workflow child inherit it. Every record from every process then shares
 // a correlation key with no IPC required.
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { installDiagnostics, diagnosticsDir } from './backend/src/diagnostics/install.js';
 import { installElectronCrashHooks } from './backend/src/diagnostics/electronHooks.js';
 import {
@@ -908,7 +908,12 @@ app.on('before-quit', () => {
   for (const id of [...browserBridges.keys()]) closeBrowserBridge(id);
 });
 
+// The agnt.gg notifier ("a new version exists, go download it"). Kept for the
+// installs the self-updater does not serve: dev checkouts, deb/rpm, and any
+// build where the updater failed to arm. Where it IS armed, answering here too
+// would put a "Download" button beside a download already in progress.
 ipcMain.handle('check-for-updates', async () => {
+  if (autoUpdateArmed) return { updateAvailable: false, managedBy: 'auto-update' };
   try {
     const updateInfo = await checkForUpdates();
     return updateInfo;
@@ -930,42 +935,91 @@ ipcMain.handle('get-app-version', () => {
 // with its reasoning; this is the wiring.
 
 /**
- * How many goals are mid-execution RIGHT NOW.
- *
- * ASKED OVER HTTP, DELIBERATELY. The obvious implementation reads the SQLite
- * file directly — and it cannot be used: requiring sqlite3 in the Electron MAIN
- * process ABORTS it. Not an exception, a native abort, so the try/catch around
- * this call could not contain it and pressing "Restart to update" would kill
- * AGNT instead of updating it. Measured on Electron 33.4.11 (ABI 130) against
- * both the dev and packaged builds of the module; the backend gets away with it
- * only because it is a forked child, not the main process.
- *
- * `/api/goals/health` needs no token, which matters because main holds none.
- *
- * Never throws, and answers 0 whenever it cannot tell. A permanently dead
- * update button is a worse failure than the bounded risk of a restart the user
- * explicitly asked for.
+ * THE CONTROL TOKEN. Minted once per launch and handed to the backend we spawn
+ * (AGNT_CONTROL_TOKEN). The backend's update routes, /api/system/busy and
+ * /api/system/prepare-shutdown, answer only to it: a web page on localhost
+ * cannot read it, and the custom header forces a CORS preflight it cannot pass.
  */
-async function countExecutingGoals() {
-  // In remote mode the goals live on another machine and quitting THIS app
-  // cannot destroy them, so there is nothing to protect.
-  if (isRemoteActive()) return 0;
+const CONTROL_TOKEN = randomBytes(32).toString('hex');
 
+/**
+ * What an update restart would interrupt, from the backend that owns the work.
+ *
+ * Over HTTP, deliberately: requiring sqlite3 in the Electron MAIN process
+ * aborts it natively (measured on Electron 33.4.11, ABI 130), so main never
+ * opens the database itself.
+ *
+ * @returns {Promise<object|null>} { goals, chats, workflows, tools, unknown }, or
+ *   null when it cannot tell. null is reported to the user as "can't tell", with
+ *   Restart anyway, never treated as idle.
+ */
+async function getBusyReport() {
+  // In remote mode the work lives on another machine; quitting THIS app
+  // cannot interrupt it.
+  if (isRemoteActive()) return { goals: 0, chats: 0, workflows: 0, tools: 0, unknown: [] };
   try {
-    const res = await fetch(`${localBackendUrl()}/api/goals/health`, {
-      signal: AbortSignal.timeout(3000),
+    const res = await fetch(`${localBackendUrl()}/api/system/busy`, {
+      headers: { 'x-agnt-control-token': CONTROL_TOKEN },
+      signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return 0;
-    const body = await res.json();
-    return Number(body?.executing) || 0;
+    return res.ok ? await res.json() : null;
   } catch {
-    // Backend not up, not reachable, or too old to report the field — in every
-    // one of those cases there is no evidence of running work.
-    return 0;
+    return null;
   }
 }
 
+/**
+ * Ask the backend to stop cleanly before the installer runs, then wait for it
+ * to be gone.
+ *
+ * Without this, Windows never ran the backend's shutdown: utilityProcess kill
+ * is TerminateProcess and the NSIS installer force-kills what is left, so
+ * in-flight chat turns were not journaled and the workflow helper was orphaned.
+ * The backend re-checks busy itself, atomically with starting its drain, so
+ * work that began after our check refuses here and nothing is stopped.
+ *
+ * @returns {Promise<{ ok: true } | { ok: false, reason: string, busy?: object }>}
+ */
+async function handoffBackend({ force = false } = {}) {
+  if (isRemoteActive() || !backendProcess) return { ok: true };
+  const child = backendProcess;
+  const exited = new Promise((resolve) => child.once('exit', resolve));
+  // Mark the exit as ours BEFORE it happens, so the supervisor does not read a
+  // clean exit 0 as a crash and respawn the backend under the installer.
+  supervisor.state = 'quitting';
+  let res;
+  try {
+    res = await fetch(`${localBackendUrl()}/api/system/prepare-shutdown`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-agnt-control-token': CONTROL_TOKEN },
+      body: JSON.stringify({ force }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    supervisor.state = 'running';
+    throw err;
+  }
+  if (res.status === 409) {
+    supervisor.state = 'running';
+    return { ok: false, ...(await res.json().catch(() => ({ reason: 'busy' }))) };
+  }
+  if (!res.ok) {
+    supervisor.state = 'running';
+    throw new Error(`prepare-shutdown answered ${res.status}`);
+  }
+  // The backend's own shutdown has a hard deadline; if it still is not gone,
+  // reapBackend ends it the old way.
+  const gone = await Promise.race([exited.then(() => true), new Promise((r) => setTimeout(() => r(false), 12000))]);
+  if (!gone) await reapBackend();
+  else {
+    backendReaped = true;
+    backendProcess = null;
+  }
+  return { ok: true };
+}
+
 let autoUpdaterHandle = null;
+let autoUpdateArmed = false;
 
 async function armAutoUpdate() {
   try {
@@ -988,26 +1042,34 @@ async function armAutoUpdate() {
     // module for that reason.
     const updaterModule = await import('electron-updater');
     const autoUpdater = updaterModule.default?.autoUpdater ?? updaterModule.autoUpdater;
-    const { initAutoUpdate } = await import('./electron/autoUpdate.js');
+    const { initAutoUpdate, createInstallMarker } = await import('./electron/autoUpdate.js');
 
     if (!autoUpdater) throw new Error('electron-updater exported no autoUpdater');
 
     autoUpdaterHandle = autoUpdater;
-    const { enabled } = initAutoUpdate({
+    const updater = initAutoUpdate({
       autoUpdater,
       ipcMain,
-      getWindow: () => mainWindow,
+      // Every surface the banner can live in: the main window and team spaces.
+      getWindows: () => [mainWindow, ...spaceViews.allWebContents().map((webContents) => ({ webContents }))],
       isPackaged: app.isPackaged,
       platform: process.platform,
-      countExecutingGoals,
+      version: APP_VERSION,
+      config: packageJson.agntUpdate || {},
+      env: process.env,
+      getBusyReport,
+      handoffBackend,
+      marker: createInstallMarker({ fs, file: path.join(app.getPath('userData'), 'update-install.json') }),
+      refuseSender: refuseSpaceSender,
       log: (...a) => console.log(...a),
     });
-    if (!enabled) return;
+    if (!updater.enabled) return;
+    autoUpdateArmed = true;
 
     // Not at launch: the first seconds belong to the backend starting and the
     // window painting, and an update check competing for that is a slower cold
     // start in exchange for nothing.
-    const check = () => autoUpdater.checkForUpdates().catch(() => {});
+    const check = () => updater.check().catch(() => {});
     setTimeout(check, 30_000);
     setInterval(check, 6 * 60 * 60 * 1000);
   } catch (err) {
@@ -1302,6 +1364,7 @@ function startBackend() {
     USER_DATA_PATH: userDataPath,
     APP_PATH: __dirname, // Pass the app path for backend to access bundled files
     UNPACKED_PATH: unpackedPath, // Path to unpacked files (for utilityProcess which can't read ASAR)
+    AGNT_CONTROL_TOKEN: CONTROL_TOKEN, // update handoff; see getBusyReport()
     NODE_ENV: app.isPackaged ? 'production' : 'development',
     NODE_PATH: nodePathValue,
     PUPPETEER_SKIP_DOWNLOAD: 'true',

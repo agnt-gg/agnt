@@ -124,28 +124,25 @@ contextBridge.exposeInMainWorld('electron', {
 
   /**
    * Auto-update (desktop only). Renderer code MUST feature-detect
-   * `window.electron?.autoUpdate` — browser and Docker users have no Electron
+   * `window.electron?.autoUpdate`: browser and Docker users have no Electron
    * bridge and keep the agnt.gg download banner instead.
    *
-   * The update downloads itself in the background on every platform. macOS and
-   * Linux then install it when the app is quit; Windows waits for `install()`,
-   * because with no code-signing certificate the installer raises SmartScreen
-   * and a prompt cannot appear after a user has closed the app.
+   * Main owns one update state (electron/autoUpdate.js createUpdateState) and
+   * pushes every change on 'update:state'; `state()` returns it on demand, so a
+   * reload or a second window always starts from the truth.
    */
   autoUpdate: {
-    // { enabled, platform, needsExplicitInstall }
-    status: () => ipcRenderer.invoke('update:status'),
-    // { ok: true } | { ok: false, reason: 'goal-running', goals } | { ok:false, reason:'not-packaged' }
-    install: () => ipcRenderer.invoke('update:install'),
-    onDownloaded: (cb) => {
-      const h = (_e, p) => cb(p);
-      ipcRenderer.on('update:downloaded', h);
-      return () => ipcRenderer.removeListener('update:downloaded', h);
-    },
-    onProgress: (cb) => {
-      const h = (_e, p) => cb(p);
-      ipcRenderer.on('update:progress', h);
-      return () => ipcRenderer.removeListener('update:progress', h);
+    // { phase, currentVersion, available, percent, error, blocked, installed, needsExplicitInstall, enabled, disabledReason }
+    state: () => ipcRenderer.invoke('update:state'),
+    // a user-initiated check; resolves with the state it ended in
+    check: () => ipcRenderer.invoke('update:check'),
+    // { ok: true } | { ok: false, reason: 'busy'|'unknown'|'not-ready'|..., busy? }
+    // force: the user chose "Restart anyway" after being told what will stop
+    install: (opts = {}) => ipcRenderer.invoke('update:install', { force: opts.force === true }),
+    onState: (cb) => {
+      const h = (_e, s) => cb(s);
+      ipcRenderer.on('update:state', h);
+      return () => ipcRenderer.removeListener('update:state', h);
     },
   },
 });
