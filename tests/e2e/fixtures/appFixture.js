@@ -40,6 +40,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { e2ePort, loginUser, signTestToken, TEST_JWT_SECRET } from './auth.js';
+import { ONION_STORAGE_KEY, UNLOCK_RULES } from '../../../frontend/src/services/navigationOnion.js';
 
 // tests/e2e/fixtures/ -> tests/e2e/ -> tests/ -> repo root
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -100,6 +101,17 @@ async function startBackend(port) {
 }
 
 export const test = base.extend({
+  /**
+   * THE RAIL GROWS WITH THE ACCOUNT (frontend/src/services/navigationOnion.js):
+   * a new account sees only Chat, and every other row appears once the thing
+   * it manages exists. These specs sign in as an EMPTY account, so without
+   * this every sidebar click they make targets a row that is, correctly, not
+   * there. Seeded exactly as the unit specs seed it (CanvasScreen.*.spec.js):
+   * every row earned. A spec about the young account opts out with
+   * test.use({ earnedRail: false }) (see rail-onion.spec.js).
+   */
+  earnedRail: [true, { option: true }],
+
   /** One backend per worker. */
   agntBackend: [async ({}, use, workerInfo) => {
     const backend = await startBackend(e2ePort(workerInfo.workerIndex));
@@ -117,8 +129,16 @@ export const test = base.extend({
    * workflows) must register them before the app boots, or the app fetches the
    * real empty list first and the mock arrives too late to matter.
    */
-  appPage: async ({ browser, agntBackend }, use) => {
+  appPage: async ({ browser, agntBackend, earnedRail }, use) => {
     const context = await browser.newContext({ baseURL: agntBackend.baseUrl });
+    if (earnedRail) {
+      const earned = ['chat', ...UNLOCK_RULES.map((rule) => rule.id)];
+      await context.addInitScript(({ key, ids }) => {
+        // Only when absent: a spec that changes the rail keeps its change
+        // across the reloads it performs.
+        if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ version: 1, unlocked: ids, seeded: ids, fresh: [] }));
+      }, { key: ONION_STORAGE_KEY, ids: earned });
+    }
     const page = await context.newPage();
     const consoleLogs = [];
     page.on('console', (m) => consoleLogs.push(`[${m.type()}] ${m.text()}`));

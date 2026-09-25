@@ -1,4 +1,5 @@
 import { ref, readonly } from 'vue';
+import { revealSidebarTargets } from '@/services/tourReveal.js';
 
 // Singleton state — the host component is mounted once at App root and
 // every chat surface dispatches into this same instance.
@@ -11,6 +12,14 @@ const meta = ref({});
 export function useAITour() {
   function start({ tourId: id, steps, mode: m = 'tour', title } = {}) {
     if (!Array.isArray(steps) || steps.length === 0) return;
+    // A step may name a rail row this account has not unlocked yet; put it on
+    // the rail first, or the popup points at nothing (see tourReveal.js). The
+    // popup measures its target after a delay, so the row has rendered by then.
+    try {
+      revealSidebarTargets(steps);
+    } catch (error) {
+      console.warn('[useAITour] could not reveal tour targets:', error?.message || error);
+    }
     config.value = stepsToPopupConfig(steps);
     tourId.value = id || `ai-${Date.now()}`;
     mode.value = m;
