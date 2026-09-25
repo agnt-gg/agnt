@@ -46,6 +46,16 @@ describe('update IPC contract', () => {
     }
   });
 
+  it('the banner is mounted once, at the app root, so it shows before sign-in too', () => {
+    // Windows installs only on a click. A fresh install opens on the sign-in
+    // page; with the banner inside the signed-in shell there was nothing to click.
+    const app = read('frontend/src/App.vue');
+    const terminal = read('frontend/src/views/Terminal/Terminal.vue');
+    expect(app).toMatch(/<UpdateNotification \/>/);
+    expect(terminal).not.toMatch(/<UpdateNotification\b/);
+    expect(terminal).not.toMatch(/import UpdateNotification/);
+  });
+
   it('the backend gets the control token its update routes require', () => {
     expect(read('main.js')).toMatch(/AGNT_CONTROL_TOKEN:\s*CONTROL_TOKEN/);
     expect(read('backend/src/routes/SystemRoutes.js')).toMatch(/process\.env\.AGNT_CONTROL_TOKEN/);

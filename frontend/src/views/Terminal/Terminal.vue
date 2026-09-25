@@ -1,8 +1,8 @@
 <!-- Terminal.vue -->
 <template>
   <TerminalLayout>
-    <!-- Update Notification Banner -->
-    <UpdateNotification />
+    <!-- The update banner is mounted once, in App.vue, so it also shows on the
+         sign-in page. -->
 
     <!-- Canvas navigation shell with direct screen rendering -->
     <CanvasScreen
@@ -46,7 +46,6 @@ import { useStore } from 'vuex';
 
 // Layout and common
 import TerminalLayout from '@/views/_components/layout/TerminalLayout.vue';
-import UpdateNotification from '@/views/_components/common/UpdateNotification.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
 
 // Canvas system (provides navigation sidebar + toolbar)
@@ -116,7 +115,6 @@ export default {
     TerminalLayout,
     CanvasScreen,
     OnboardingModal,
-    UpdateNotification,
   },
   setup() {
     const route = useRoute();
