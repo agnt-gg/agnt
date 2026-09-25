@@ -9,6 +9,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { escapeHtml } from '@/utils/vizError.js';
 import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
@@ -16,9 +17,6 @@ import {
 
 // The modal renders its message as HTML. Text a plugin author wrote is
 // untrusted, so it is escaped before it gets anywhere near it.
-const escapeHtml = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
 function pluginConnectMessage(provider, lead) {
   const parts = [`<p>${escapeHtml(lead)}</p>`];
   if (provider.instructions) parts.push(`<p>${escapeHtml(provider.instructions)}</p>`);
