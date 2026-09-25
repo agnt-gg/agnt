@@ -1,9 +1,12 @@
 <template>
   <div class="tool-panel">
+    <PanelActionBar create-label="New tool" tour-id="tools.create-button" @panel-action="(...args) => $emit('panel-action', ...args)" />
+
     <div v-if="selectedTool" class="tool-details">
       <div class="tool-header">
         <h2 class="tool-title">{{ selectedTool.title }}</h2>
         <div class="tool-type">[{{ selectedTool.type }}]</div>
+        <PanelCloseButton label="Close tool details" @panel-action="(...args) => $emit('panel-action', ...args)" />
       </div>
 
       <div class="tool-description">
@@ -80,14 +83,17 @@
         <CopyToTeamButton kind="tool" :id="selectedTool.id" :name="selectedTool.title || selectedTool.name" />
       </div>
     </div>
-    <ListSummaryPanel
-      v-else
-      caption="Tools"
-      :stats="summaryStats"
-      hint="Click a tool card to inspect its schema, usage and tests here."
-      primary-label="New tool"
-      @primary="$emit('panel-action', 'navigate', 'ToolForgeScreen')"
-    />
+    <!-- Nothing selected: what stops tools working. Every provider an
+         installed tool needs that is not connected yet, one click each. -->
+    <section v-else class="needs-connection">
+      <h3>Needs a connection</h3>
+      <p v-if="!missingProviders.length" class="needs-empty"><i class="fas fa-check-circle"></i> Every tool you have is connected.</p>
+      <button v-for="p in missingProviders" :key="p.id" type="button" class="needs-row" @click="handleProviderToggle(p.id)">
+        <span class="needs-name">{{ p.name }}</span>
+        <span class="needs-count">{{ p.tools }} tool{{ p.tools === 1 ? '' : 's' }}</span>
+        <span class="needs-cta">Connect</span>
+      </button>
+    </section>
 
 
     <!-- Publish Tool Modal -->
@@ -115,14 +121,15 @@ import { API_CONFIG } from '@/tt.config.js';
 import { deleteTool } from '@/views/Terminal/RightPanel/types/ToolForgePanel/components/ToolPanel/components/TopMenu/components/ToolActions/toolActionsApi.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
-import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import PanelActionBar from '@/views/Terminal/_components/panels/PanelActionBar.vue';
+import PanelCloseButton from '@/views/Terminal/_components/panels/PanelCloseButton.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 export default {
   name: 'ToolsPanel',
-  components: { BaseButton, CopyToTeamButton, MarketplaceFormModal, SimpleModal, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, MarketplaceFormModal, SimpleModal, PanelActionBar, PanelCloseButton },
   props: {
     selectedTool: {
       type: Object,
@@ -354,19 +361,24 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
-    // Nothing-selected summary: what the list beside this panel holds.
-    const summaryStats = computed(() => {
-      const all = store.getters['tools/allTools'] || [];
-      return [
-        { label: 'Tools', value: all.length },
-        { label: 'Custom', value: (store.getters['tools/customTools'] || []).length },
-        { label: 'Built in', value: (store.getters['tools/builtinTools'] || []).length },
-        { label: 'From plugins', value: all.filter((t) => t.is_plugin).length },
-      ];
+    // Nothing selected: providers installed tools need but cannot use yet.
+    const providerLabel = (id) =>
+      (store.state.appAuth?.allProviders || []).find((p) => String(p.id).toLowerCase() === String(id).toLowerCase())?.name || id;
+    const missingProviders = computed(() => {
+      const library = store.getters['tools/workflowTools'] || {};
+      const needed = new Map();
+      for (const group of Object.values(library)) {
+        if (!Array.isArray(group)) continue;
+        for (const tool of group) if (tool?.authProvider) needed.set(tool.authProvider, (needed.get(tool.authProvider) || 0) + 1);
+      }
+      return [...needed]
+        .filter(([id]) => !isProviderConnected(id))
+        .map(([id, tools]) => ({ id, name: providerLabel(id), tools }))
+        .sort((x, y) => x.name.localeCompare(y.name));
     });
 
     return {
-      summaryStats,
+      missingProviders,
       formatConfigValue,
       isCustomTool,
       inputParams,
@@ -409,11 +421,71 @@ export default {
 
 .tool-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 0;
   border-bottom: 1px solid var(--terminal-border-color-light);
   padding-bottom: 8px;
+}
+
+.tool-header .tool-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Nothing selected: providers installed tools still need. */
+.needs-connection h3 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.needs-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+.needs-empty i {
+  color: var(--color-green);
+  margin-right: 6px;
+}
+.needs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 9px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.needs-row:hover,
+.needs-row:focus-visible {
+  border-color: rgba(var(--primary-rgb), 0.45);
+  outline: none;
+}
+.needs-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.needs-count {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.needs-cta {
+  font-size: 11px;
+  color: var(--color-primary);
 }
 
 .tool-title {

@@ -5,11 +5,7 @@
     :activeRightPanel="activeRightPanel"
     screenId="ToolsScreen"
     :terminalLines="terminalLines"
-    :leftPanelProps="{
-      allAvailableTools,
-      activeTab,
-      selectedTool,
-    }"
+    :leftPanelProps="{ allAvailableTools, selectedTool }"
     :panelProps="panelProps"
     @panel-action="handlePanelAction"
     @screen-change="(screenName) => emit('screen-change', screenName)"
@@ -22,9 +18,9 @@
       /> -->
 
       <div class="tools-panel">
-<MobileCollection v-if="mobileView" view-id="tools" title="Tools" count-label="tools" :items="filteredTools" :search="searchQuery" :tabs="tabs" :active="activeTab" :selected-id="selectedTool?.id" create-label="Create tool" icon="fas fa-wrench" @update:search="handleSearch" @tab="selectTab" @select="selectTool" @create="handlePanelAction('navigate', 'ToolForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+<MobileCollection v-if="mobileView" view-id="tools" title="Tools" count-label="tools" :items="filteredTools" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedTool?.id" create-label="Create tool" icon="fas fa-wrench" @update:search="handleSearch" @select="selectTool" @create="handlePanelAction('create')"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
 <div v-show="!mobileView" class="desktop-view-container">
-        <!-- Header bar -->
+        <!-- Title, count, search. Create lives in the right panel. -->
         <ScreenToolbar
           title="TOOLS"
           :count="filteredTools.length"
@@ -32,80 +28,25 @@
           searchPlaceholder="Search tools..."
           :searchQuery="searchQuery"
           :searchScope="shelfHasFocus ? 'Marketplace' : ''"
-          :currentLayout="currentLayout"
-          :layoutOptions="['grid', 'table']"
-          :showCollapseToggle="true"
-          :allCategoriesCollapsed="allCategoriesCollapsed"
-          :showHideEmpty="true"
-          :hideEmptyCategories="hideEmptyCategories"
-          :sortOrder="sortOrder"
-          createLabel="New Tool"
+          :layoutOptions="[]"
+          :showCollapseToggle="false"
+          :showHideEmpty="false"
+          :showSort="false"
           @update:searchQuery="handleSearch"
-          @update:layout="setLayout"
-          @toggleCollapseAll="toggleCollapseAll"
-          @toggleHideEmpty="toggleHideEmptyCategories"
-          @update:sortOrder="(v) => sortOrder = v"
-          @create="handlePanelAction('navigate', 'ToolForgeScreen')"
         />
-
-        <!-- Tabs -->
-        <FilterTabs :tabs="tabs" :active="activeTab" @select="selectTab" />
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="screen-content tools-content" @click="onContentClick">
           <main class="screen-main-content tools-main-content fade-in">
-            <!-- List View -->
-            <div v-if="currentLayout === 'table'" class="wm-list">
-              <div
-                v-for="tool in filteredTools"
-                :key="tool.id"
-                class="wm-list-row"
-                :class="{
-                  selected: selectedTool?.id === tool.id,
-                  'tool-plugin': tool.isPlugin,
-                  'tool-pro': !tool.isPlugin && tool.requiresPro,
-                  'tool-custom': !tool.isPlugin && !tool.requiresPro && tool.source === 'custom',
-                  'tool-system': !tool.isPlugin && !tool.requiresPro && tool.source === 'system',
-                }"
-                @click="selectTool(tool)"
-              >
-                <div class="wm-list-icon">
-                  <SvgIcon v-if="tool.icon" :name="tool.icon" class="wm-list-svg" />
-                  <i v-else class="fas fa-wrench"></i>
-                </div>
-                <div class="wm-list-name">{{ tool.title || tool.type }}</div>
-                <div class="wm-list-desc">{{ tool.description || 'No description available' }}</div>
-                <div class="wm-list-badges">
-                  <span v-if="tool.isPlugin" class="wm-badge wm-badge-plugin">PLUGIN</span>
-                  <span v-if="tool.requiresPro" class="wm-badge wm-badge-pro">PRO</span>
-                  <span v-if="tool.source && !tool.isPlugin" class="wm-badge wm-badge-builtin">{{ tool.source }}</span>
-                  <button
-                    v-if="tool.authProvider"
-                    class="tool-auth-badge"
-                    :class="{ connected: isProviderConnected(tool.authProvider) }"
-                    @click.stop="handleProviderToggle(tool.authProvider)"
-                  >
-                    {{ isProviderConnected(tool.authProvider) ? 'Connected' : 'Connect' }}
-                  </button>
-                </div>
-                <span v-if="tool.type" class="wm-list-type">{{ tool.type }}</span>
-              </div>
-              <div v-if="filteredTools.length === 0" class="wm-empty">
-                <div class="wm-empty-icon"><i class="fas fa-wrench"></i></div>
-                <div class="wm-empty-text">No tools found</div>
-              </div>
-            </div>
-
-            <!-- Category Cards View -->
-            <div v-else class="category-cards-container">
+            <div class="category-cards-container">
               <!-- Nothing owned yet: the empty state IS the storefront. -->
               <MarketplaceShelf
-                v-if="activeTab === 'custom' && ownsNothing"
+                v-if="ownsNothing && !searchQuery && !filteredTools.length"
                 asset-type="tool"
                 variant="full"
                 :query="searchQuery"
                 create-label="Create Tool"
-                @create="handlePanelAction('navigate', 'ToolForgeScreen')"
+                @create="handlePanelAction('create')"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
                 @installed="onShelfInstalled"
                 @clear-search="handleSearch('')"
@@ -113,7 +54,7 @@
               />
 
               <!-- Owned, but nothing matched this search. -->
-              <div v-else-if="activeTab === 'custom' && Object.keys(toolsByCategory).length === 0" class="empty-state-container">
+              <div v-else-if="filteredTools.length === 0" class="empty-state-container">
                 <div class="empty-state">
                   <i class="fas fa-wrench"></i>
                   <p>No tools match &ldquo;{{ searchQuery }}&rdquo;</p>
@@ -123,169 +64,62 @@
                 </div>
               </div>
 
-              <div v-else class="category-cards-grid">
-                <article
-                  v-for="(tools, categoryName, index) in toolsByCategory"
-                  :key="categoryName"
-                  class="category-card"
+              <!-- One flat grid: your tools, then plugin tools, then built-ins,
+                   each A–Z. Search in the header is the only filter. -->
+              <div v-else class="card-grid tools-grid" role="list" aria-label="Tools">
+                <div
+                  v-for="tool in filteredTools"
+                  :key="tool.id"
+                  class="tool-card"
                   :class="{
-                    'drag-over': dragOverCategory === categoryName,
-                    'full-width': tools.length >= 2,
+                    selected: selectedTool?.id === tool.id,
+                    'tool-plugin': tool.isPlugin,
+                    'tool-pro': !tool.isPlugin && tool.requiresPro,
+                    'tool-custom': !tool.isPlugin && !tool.requiresPro && tool.source === 'custom',
+                    'tool-system': !tool.isPlugin && !tool.requiresPro && tool.source === 'system',
                   }"
-                  role="listitem"
-                  :aria-label="`${categoryName} Category`"
-                  @dragover.prevent="handleDragOver(categoryName)"
-                  @dragleave="handleDragLeave"
-                  @drop="handleDrop($event, categoryName)"
+                  @click="selectTool(tool)"
                 >
-                  <div class="category-header" @click="toggleCategoryCollapse(categoryName)">
-                    <div class="category-title">
-                      <span class="category-icon">{{ getCategoryInfo(categoryName).icon }}</span>
-                      {{ getCategoryInfo(categoryName).displayName }}
+                  <div class="tool-header">
+                    <div class="tool-icon-name">
+                      <div class="tool-icon-wrapper">
+                        <SvgIcon v-if="tool.icon" :name="tool.icon" class="tool-icon" />
+                        <div v-else class="tool-icon-placeholder">
+                          {{ (tool.title || tool.type || 'T').charAt(0).toUpperCase() }}
+                        </div>
+                      </div>
+                      <span class="tool-name">{{ tool.title || tool.type }}</span>
                     </div>
-                    <div class="category-header-right">
-                      <div class="category-count">{{ tools.length }} tools</div>
-                      <button class="collapse-toggle" :class="{ collapsed: isCategoryCollapsed(categoryName) }">
-                        <i class="fas fa-chevron-down"></i>
+                    <div class="tool-badges">
+                      <span v-if="tool.isPlugin" class="tool-plugin-badge">PLUGIN</span>
+                      <span v-if="tool.requiresPro" class="tool-pro-badge">PRO</span>
+                      <span v-if="tool.source && !tool.isPlugin" class="tool-source" :class="(tool.source || '').toLowerCase()">{{
+                        tool.source
+                      }}</span>
+                      <!-- Only your own tools are yours to share; system and plugin tools ship with AGNT. -->
+                      <ShareButton v-if="tool.source === 'custom' && !tool.isPlugin" kind="tool" :id="tool.id" :name="tool.title || tool.type" />
+                      <button
+                        v-if="tool.authProvider"
+                        class="tool-auth-badge"
+                        :class="{ connected: isProviderConnected(tool.authProvider) }"
+                        @click.stop="handleProviderToggle(tool.authProvider)"
+                      >
+                        {{ isProviderConnected(tool.authProvider) ? 'Connected' : 'Connect' }}
                       </button>
                     </div>
                   </div>
-                  <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
-                    <!-- Marketplace Tools Grid -->
-                    <div v-if="activeTab === 'marketplace'" class="card-row tools-grid">
-                      <div
-                        v-for="(item, index) in tools"
-                        :key="item.id"
-                        class="tool-card"
-                        :class="{
-                          selected: selectedTool?.id === item.id,
-                          'last-odd': tools.length % 2 === 1 && index === tools.length - 1,
-                          'tool-plugin': item.isPlugin,
-                          'tool-pro': !item.isPlugin && item.requiresPro,
-                          'tool-custom': !item.isPlugin && !item.requiresPro && item.source === 'custom',
-                          'tool-system': !item.isPlugin && !item.requiresPro && item.source === 'system',
-                        }"
-                        @click="selectTool(item)"
-                      >
-                        <div class="marketplace-card-content">
-                          <!-- Row 1: Avatar + Title/Publisher/Description -->
-                          <div class="marketplace-header">
-                            <div class="marketplace-avatar-container">
-                              <div v-if="item.preview_image || item.image_url" class="marketplace-avatar">
-                                <img :src="item.preview_image || item.image_url" :alt="item.title || item.name" />
-                              </div>
-                              <div v-else class="marketplace-avatar-placeholder">
-                                <i class="fas fa-wrench"></i>
-                              </div>
-                            </div>
 
-                            <div class="marketplace-info">
-                              <div class="marketplace-title-row">
-                                <h3 class="marketplace-name">{{ item.title || item.name }}</h3>
-                                <span v-if="item.price > 0" class="item-price">${{ item.price.toFixed(2) }}</span>
-                                <span v-else class="item-price free">FREE</span>
-                              </div>
-
-                              <div class="item-publisher">
-                                <i class="fas fa-user"></i>
-                                {{ item.publisher_pseudonym || item.publisher_name || item.author_name || 'Anonymous' }}
-                              </div>
-
-                              <p class="marketplace-description">
-                                {{ item.tagline || item.description || 'No description available' }}
-                              </p>
-                            </div>
-                          </div>
-
-                          <!-- Row 2: Ratings and Downloads -->
-                          <div class="marketplace-meta">
-                            <div class="meta-item">
-                              <i class="fas fa-star"></i>
-                              <span>{{ item.rating ? item.rating.toFixed(1) : '0.0' }}</span>
-                              <span class="meta-count">({{ item.rating_count || 0 }})</span>
-                            </div>
-                            <div class="meta-item">
-                              <i class="fas fa-download"></i>
-                              <span>{{ item.downloads || 0 }}</span>
-                            </div>
-                            <div v-if="item.category" class="meta-item category">
-                              <i class="fas fa-tag"></i>
-                              <span>{{ item.category }}</span>
-                            </div>
-                          </div>
-
-                          <!-- Row 3: Install Button -->
-                          <button class="install-button" @click.stop="handleInstallTool(item)">
-                            <i class="fas fa-download"></i>
-                            {{ item.price > 0 ? 'Purchase' : 'Install' }}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <!-- Regular Tools Grid -->
-                    <div v-else class="card-row tools-grid">
-                      <div
-                        v-for="(tool, index) in tools"
-                        :key="tool.id"
-                        class="tool-card"
-                        :class="{
-                          selected: selectedTool?.id === tool.id,
-                          dragging: draggedTool?.id === tool.id,
-                          'last-odd': tools.length % 2 === 1 && index === tools.length - 1,
-                          'tool-plugin': tool.isPlugin,
-                          'tool-pro': !tool.isPlugin && tool.requiresPro,
-                          'tool-custom': !tool.isPlugin && !tool.requiresPro && tool.source === 'custom',
-                          'tool-system': !tool.isPlugin && !tool.requiresPro && tool.source === 'system',
-                        }"
-                        draggable="true"
-                        @click="selectTool(tool)"
-                        @dragstart="handleDragStart($event, tool)"
-                        @dragend="handleDragEnd"
-                      >
-                        <div class="tool-header">
-                          <div class="tool-icon-name">
-                            <div class="tool-icon-wrapper">
-                              <SvgIcon v-if="tool.icon" :name="tool.icon" class="tool-icon" />
-                              <div v-else class="tool-icon-placeholder">
-                                {{ (tool.title || tool.type || 'T').charAt(0).toUpperCase() }}
-                              </div>
-                            </div>
-                            <span class="tool-name">{{ tool.title || tool.type }}</span>
-                          </div>
-                          <div class="tool-badges">
-                            <span v-if="tool.isPlugin" class="tool-plugin-badge">PLUGIN</span>
-                            <span v-if="tool.requiresPro" class="tool-pro-badge">PRO</span>
-                            <span v-if="tool.source && !tool.isPlugin" class="tool-source" :class="(tool.source || '').toLowerCase()">{{
-                              tool.source
-                            }}</span>
-                            <!-- Only your own tools are yours to share; system and plugin tools ship with AGNT. -->
-                            <ShareButton v-if="tool.source === 'custom' && !tool.isPlugin" kind="tool" :id="tool.id" :name="tool.title || tool.type" />
-                            <button
-                              v-if="tool.authProvider"
-                              class="tool-auth-badge"
-                              :class="{ connected: isProviderConnected(tool.authProvider) }"
-                              @click.stop="handleProviderToggle(tool.authProvider)"
-                            >
-                              {{ isProviderConnected(tool.authProvider) ? 'Connected' : 'Connect' }}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div class="tool-description">
-                          {{ tool.description || 'No description available' }}
-                        </div>
-
-                        <div v-if="tool.type" class="tool-type">Type: {{ tool.type }}</div>
-                      </div>
-                    </div>
-                    <div v-if="tools.length === 0" class="empty-category-drop-zone">Drop tool here to recategorize</div>
+                  <div class="tool-description">
+                    {{ tool.description || 'No description available' }}
                   </div>
-                </article>
+
+                  <div v-if="tool.type" class="tool-type">Type: {{ tool.type }}</div>
+                </div>
               </div>
 
               <!-- Second run: the user's own work leads, the shelf steps aside. -->
               <MarketplaceShelf
-                v-if="activeTab === 'custom' && !ownsNothing"
+                v-if="!searchQuery"
                 asset-type="tool"
                 variant="strip"
                 @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
@@ -310,7 +144,6 @@ import { useStore } from 'vuex';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
-import BaseCardGrid from '../../../_components/BaseCardGrid/BaseCardGrid.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -319,7 +152,6 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 import { useToolsTutorial } from './useToolsTutorial.js';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
@@ -333,7 +165,7 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, MobileCollection, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs, ShareButton },
+  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
@@ -344,25 +176,14 @@ export default {
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const selectedTool = ref(null);
-    const activeTab = ref('all');
     const searchQuery = ref('');
 
     /* Shelf wiring. Reads the RAW custom-tool list, not the searched one. */
     const shelfAvailable = ref(false);
     const ownsNothing = computed(() => (store.getters['tools/customTools'] || []).length === 0);
-    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && activeTab.value === 'custom');
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && !filteredTools.value.length);
     const onShelfInstalled = () => store.dispatch('tools/fetchTools');
-    const selectedCategory = ref(null);
-    const selectedMainCategory = ref(null);
-    const openMainCategories = ref({});
-    const currentLayout = ref('grid');
-    const hideEmptyCategories = ref(true);
-    const collapsedCategories = ref(new Set());
-    const sortOrder = ref('az');
 
-    // Drag and drop state
-    const draggedTool = ref(null);
-    const dragOverCategory = ref(null);
 
     const customTools = computed(() => store.getters['tools/customTools'] || []);
     const isLoading = computed(() => store.getters['tools/isLoading']);
@@ -370,41 +191,7 @@ export default {
     // Inject playSound function
     const playSound = inject('playSound');
 
-    // Define main tool categories based on actual tools
-    const mainToolCategories = computed(() => {
-      // Get unique categories from all available tools
-      const categories = new Set();
 
-      allAvailableTools.value.forEach((tool) => {
-        if (tool.category) {
-          categories.add(tool.category);
-        }
-      });
-
-      // Convert to array and sort
-      const sortedCategories = Array.from(categories).sort();
-
-      // Map to the expected format with icons
-      return sortedCategories.map((category) => ({
-        code: category,
-        label: category,
-        icon: getCategoryIcon(category),
-      }));
-    });
-
-    // Helper function to get category icons
-    const getCategoryIcon = (categoryName) => {
-      const categoryIcons = {
-        triggers: 'fas fa-play',
-        actions: 'fas fa-bolt',
-        utilities: 'fas fa-wrench',
-        widgets: 'fas fa-th-large',
-        controls: 'fas fa-sliders-h',
-        plugins: 'fas fa-puzzle-piece',
-        custom: 'fas fa-user',
-      };
-      return categoryIcons[categoryName] || 'fas fa-tools';
-    };
 
     // Convert system tools from Vuex store (workflowTools) to consistent format
     const systemTools = computed(() => {
@@ -462,199 +249,28 @@ export default {
 
     const scrollToBottom = () => baseScreenRef.value?.scrollToBottom();
 
-    // Table Columns Definition
-    const tableColumns = [
-      { key: 'icon', label: '', width: '40px' },
-      { key: 'title', label: 'Name', width: '1.5fr' },
-      { key: 'description', label: 'Description', width: '4fr' },
-    ];
 
-    // --- Tabs ---
-    const tabs = computed(() => {
-      return [
-        { id: 'all', name: 'All', icon: 'fas fa-list' },
-        { id: 'system', name: 'System', icon: 'fas fa-cogs' },
-        { id: 'custom', name: 'Custom', icon: 'fas fa-user' },
-        { id: 'plugins', name: 'Plugins', icon: 'fas fa-puzzle-piece' },
-        { id: 'marketplace', name: 'Marketplace', icon: 'fas fa-store' },
-      ];
-    });
 
-    // Marketplace state
-    const marketplaceTools = computed(() => store.getters['marketplace/filteredMarketplaceTools'] || []);
 
-    // --- Filtered Tools ---
+    // --- The one list the screen shows ---
+    // Your tools first, then plugin tools, then built-ins; A–Z within each.
+    // Search is the only filter. Sorts a copy (the old version sorted the
+    // computed source in place).
+    const toolRank = (tool) => (tool.source === 'custom' ? 0 : tool.isPlugin ? 1 : 2);
     const filteredTools = computed(() => {
-      // Marketplace tab returns marketplace items instead of local tools
-      if (activeTab.value === 'marketplace') {
-        let tools = marketplaceTools.value;
-        if (searchQuery.value) {
-          const query = searchQuery.value.toLowerCase();
-          tools = tools.filter(
-            (tool) =>
-              (tool.title && tool.title.toLowerCase().includes(query)) ||
-              (tool.name && tool.name.toLowerCase().includes(query)) ||
-              (tool.description && tool.description.toLowerCase().includes(query)),
-          );
-        }
-        return tools;
-      }
-
-      let tools = allAvailableTools.value;
-
-      // Apply tab filtering first
-      if (activeTab.value === 'system') {
-        tools = tools.filter((tool) => tool.source === 'system' && !tool.isPlugin);
-      } else if (activeTab.value === 'custom') {
-        tools = tools.filter((tool) => tool.source === 'custom');
-      } else if (activeTab.value === 'plugins') {
-        tools = tools.filter((tool) => tool.isPlugin === true);
-      }
-      // Note: 'all' tab shows all tools, no filtering needed
-
-      // Apply category filtering from sidebar
-      if (selectedMainCategory.value) {
-        tools = tools.filter((tool) => tool.category === selectedMainCategory.value);
-      } else if (selectedCategory.value && selectedCategory.value !== 'All Tools') {
-        const mainCategory = mainToolCategories.find((m) => m.label === selectedCategory.value);
-        if (mainCategory) {
-          tools = tools.filter((tool) => tool.category === mainCategory.code);
-        }
-      }
-
-      // Apply search filtering
-      if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase();
-        tools = tools.filter(
-          (tool) =>
-            (tool.title && tool.title.toLowerCase().includes(query)) ||
-            (tool.type && tool.type.toLowerCase().includes(query)) ||
-            (tool.description && tool.description.toLowerCase().includes(query)),
-        );
-      }
-
-      tools.sort((a, b) => {
-        const nameA = (a.title || a.type || '').toLowerCase();
-        const nameB = (b.title || b.type || '').toLowerCase();
-        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-      });
-
-      return tools;
+      const q = searchQuery.value.trim().toLowerCase();
+      const all = allAvailableTools.value;
+      const items = q
+        ? all.filter((tool) => [tool.title, tool.type, tool.description].some((v) => v && String(v).toLowerCase().includes(q)))
+        : [...all];
+      return items.sort(
+        (x, y) => toolRank(x) - toolRank(y) || (x.title || x.type || '').localeCompare(y.title || y.type || '', undefined, { sensitivity: 'base' }),
+      );
     });
 
-    // Group tools by category for card view
-    const toolsByCategory = computed(() => {
-      // If marketplace tab is selected, show marketplace tools
-      if (activeTab.value === 'marketplace') {
-        const marketplaceItems = marketplaceTools.value;
-        return { 'Marketplace Tools': marketplaceItems };
-      }
 
-      // Start with all available tools, not filteredTools, to ensure search works across all tools
-      let tools = allAvailableTools.value;
-
-      // Apply tab filtering first
-      if (activeTab.value === 'system') {
-        // System tools: non-plugin system tools only
-        tools = tools.filter((tool) => tool.source === 'system' && !tool.isPlugin);
-      } else if (activeTab.value === 'custom') {
-        tools = tools.filter((tool) => tool.source === 'custom');
-      } else if (activeTab.value === 'plugins') {
-        // Plugin tools only
-        tools = tools.filter((tool) => tool.isPlugin === true);
-      }
-
-      // Apply search filtering for card view
-      if (searchQuery.value && searchQuery.value.trim() !== '') {
-        const query = searchQuery.value.toLowerCase().trim();
-        tools = tools.filter((tool) => {
-          const searchableFields = [tool.title || '', tool.type || '', tool.description || '', tool.category || ''];
-          return searchableFields.some((field) => field.toLowerCase().includes(query));
-        });
-      }
-
-      const categories = {};
-
-      // When a specific category is selected from sidebar, only show that category
-      if (selectedCategory.value && selectedCategory.value !== 'All Tools') {
-        // Initialize only the selected category
-        categories[selectedCategory.value] = [];
-
-        // Filter tools to only those in the selected category
-        const filteredByCategory = tools.filter((tool) => tool.category === selectedCategory.value);
-        categories[selectedCategory.value] = filteredByCategory;
-      } else {
-        // When "All Tools" is selected, show all categories
-        // First pass: collect all unique categories from tools to ensure we don't miss any
-        tools.forEach((tool) => {
-          const category = tool.category || 'Uncategorized';
-          if (!categories[category]) {
-            categories[category] = [];
-          }
-        });
-
-        // Second pass: assign tools to their categories
-        tools.forEach((tool) => {
-          const category = tool.category || 'Uncategorized';
-          categories[category].push(tool);
-        });
-      }
-
-      // Sort tools within each category
-      for (const key of Object.keys(categories)) {
-        categories[key].sort((a, b) => {
-          const nameA = (a.title || a.type || '').toLowerCase();
-          const nameB = (b.title || b.type || '').toLowerCase();
-          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
-      }
-
-      // Sort categories alphabetically (A-Z) and return as sorted object
-      const sortedCategories = {};
-      Object.keys(categories)
-        .sort((a, b) => a.localeCompare(b))
-        .forEach((key) => {
-          // When searching, only show categories that have tools
-          if (searchQuery.value && searchQuery.value.trim() !== '') {
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else if (hideEmptyCategories.value) {
-            // When hiding empty categories, only show categories with tools
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else {
-            // When not searching and not hiding empty categories, show all categories
-            sortedCategories[key] = categories[key];
-          }
-        });
-
-      return sortedCategories;
-    });
-
-    // --- Computed Property for Active Right Panel ---
-    const activeRightPanel = computed(() => {
-      // When on marketplace tab, use MarketplacePanel to show marketplace item details
-      if (activeTab.value === 'marketplace') {
-        return 'MarketplacePanel';
-      }
-      // Otherwise use ToolsPanel for regular tool details
-      return 'ToolsPanel';
-    });
-
-    // --- Computed Property for Panel Props ---
-    const panelProps = computed(() => {
-      // When on marketplace tab, pass selectedWorkflow for MarketplacePanel
-      if (activeTab.value === 'marketplace') {
-        return {
-          selectedWorkflow: selectedTool.value, // MarketplacePanel expects selectedWorkflow prop
-          activeTab: 'marketplace',
-        };
-      }
-      // For regular tool tabs, pass selectedTool for ToolsPanel
-      return { selectedTool: selectedTool.value };
-    });
+    const activeRightPanel = computed(() => 'ToolsPanel');
+    const panelProps = computed(() => ({ selectedTool: selectedTool.value }));
 
     // --- Methods ---
     const onContentClick = (e) => {
@@ -680,27 +296,6 @@ export default {
       }
     };
 
-    const selectTab = async (tabId) => {
-      activeTab.value = tabId;
-      selectedTool.value = null; // Clear selection when switching tabs
-
-      // Fetch marketplace tools when marketplace tab is selected
-      if (tabId === 'marketplace') {
-        try {
-          terminalLines.value.push('[Marketplace] Loading marketplace tools...');
-          scrollToBottom();
-          // Update filters to fetch tools only
-          await store.dispatch('marketplace/updateFilters', { assetType: 'tool' });
-          await store.dispatch('marketplace/fetchMarketplaceItems');
-          const count = store.getters['marketplace/filteredMarketplaceTools'].length;
-          terminalLines.value.push(`[Marketplace] Found ${count} tools in marketplace`);
-          scrollToBottom();
-        } catch (error) {
-          terminalLines.value.push(`[Marketplace] Error loading marketplace: ${error.message}`);
-          scrollToBottom();
-        }
-      }
-    };
 
     const handleSearch = (query) => {
       searchQuery.value = query;
@@ -712,20 +307,16 @@ export default {
         case 'close-panel':
           selectedTool.value = null;
           break;
-        case 'category-filter-changed':
-          // Handle category filter changes from the ToolsPanel
-          selectedCategory.value = payload.selectedCategory;
-          selectedMainCategory.value = payload.selectedMainCategory;
-          selectedTool.value = null; // Clear tool selection when category changes
-
-          if (payload.type === 'all-selected') {
-            terminalLines.value = ['[Tools] Viewing all tools (no category filter)'];
-          } else if (payload.type === 'category-selected') {
-            const categoryName = payload.payload.category;
-            terminalLines.value = [`[Tools] Viewing ${categoryName}`];
-          }
-          scrollToBottom();
+        // Right panel: "+ New tool" opens the forge on a blank tool.
+        case 'create':
+          emit('screen-change', 'ToolForgeScreen');
           break;
+        // Left panel: a row in "Your tools".
+        case 'select-item': {
+          const hit = allAvailableTools.value.find((t) => String(t.id) === String(payload?.id));
+          if (hit) selectTool(hit);
+          break;
+        }
         case 'navigate':
           emit('screen-change', payload);
           break;
@@ -735,10 +326,6 @@ export default {
         case 'delete-tool':
           selectedTool.value = null;
           break;
-        case 'install-workflow':
-          // Handle marketplace item installation from the right panel
-          await handleInstallTool(payload);
-          break;
         default:
           console.warn('Unhandled panel action in Tools.vue:', action, payload);
       }
@@ -746,8 +333,6 @@ export default {
 
     const initializeScreen = () => {
       selectedTool.value = null;
-      activeTab.value = 'all';
-      currentLayout.value = 'grid'; // Set to grid since table button is hidden
 
       // Check if we already have tools in the store
       const hasSystemTools = store.getters['tools/workflowTools'] && Object.keys(store.getters['tools/workflowTools']).length > 0;
@@ -780,115 +365,16 @@ export default {
       { deep: true },
     );
 
-    const setLayout = (layout) => {
-      currentLayout.value = layout;
-    };
 
-    // Get category display name and icon
-    const getCategoryInfo = (categoryName) => {
-      const categoryIcons = {
-        triggers: '🎯',
-        actions: '⚡',
-        utilities: '🔧',
-        widgets: '🎨',
-        controls: '🎛️',
-        plugins: '🧩',
-        custom: '👤',
-      };
 
-      const categoryDisplayNames = {
-        triggers: 'Triggers',
-        actions: 'Actions',
-        utilities: 'Utilities',
-        widgets: 'Widgets',
-        controls: 'Controls',
-        plugins: 'Plugins',
-        custom: 'Custom',
-      };
 
-      return {
-        name: categoryName,
-        displayName: categoryDisplayNames[categoryName] || categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-        icon: categoryIcons[categoryName] || '🔧',
-        count: toolsByCategory.value[categoryName]?.length || 0,
-      };
-    };
 
-    const toggleHideEmptyCategories = () => {
-      hideEmptyCategories.value = !hideEmptyCategories.value;
-      terminalLines.value.push(`[Tools] ${hideEmptyCategories.value ? 'Hiding' : 'Showing'} empty categories`);
-      scrollToBottom();
-    };
 
-    const toggleCategoryCollapse = (categoryName) => {
-      // Play sound when toggling category collapse
-      if (playSound) {
-        playSound('typewriterKeyPress');
-      }
 
-      if (collapsedCategories.value.has(categoryName)) {
-        collapsedCategories.value.delete(categoryName);
-      } else {
-        collapsedCategories.value.add(categoryName);
-      }
-    };
 
-    const isCategoryCollapsed = (categoryName) => {
-      return collapsedCategories.value.has(categoryName);
-    };
 
-    const allCategoriesCollapsed = computed(() => {
-      const categoryNames = Object.keys(toolsByCategory.value);
-      return categoryNames.length > 0 && categoryNames.every((name) => collapsedCategories.value.has(name));
-    });
 
-    const toggleCollapseAll = () => {
-      const categoryNames = Object.keys(toolsByCategory.value);
 
-      if (allCategoriesCollapsed.value) {
-        // Expand all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.delete(name);
-        });
-        terminalLines.value.push('[Tools] Expanded all categories');
-      } else {
-        // Collapse all categories
-        categoryNames.forEach((name) => {
-          collapsedCategories.value.add(name);
-        });
-        terminalLines.value.push('[Tools] Collapsed all categories');
-      }
-      scrollToBottom();
-    };
-
-    // --- Drag and Drop Methods ---
-    const handleDragStart = (event, tool) => {
-      draggedTool.value = tool;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', tool.id);
-
-      // Add visual feedback
-      event.target.style.opacity = '0.5';
-      terminalLines.value.push(`[Drag] Started dragging tool: ${tool.title || tool.type}`);
-      scrollToBottom();
-    };
-
-    const handleDragEnd = (event) => {
-      // Reset visual feedback
-      event.target.style.opacity = '1';
-      draggedTool.value = null;
-      dragOverCategory.value = null;
-    };
-
-    const handleDragOver = (categoryName) => {
-      if (draggedTool.value && draggedTool.value.category !== categoryName) {
-        dragOverCategory.value = categoryName;
-      }
-    };
-
-    const handleDragLeave = () => {
-      dragOverCategory.value = null;
-    };
 
     // Initialize marketplace install composable
     const simpleModalRef = ref(null);
@@ -897,54 +383,7 @@ export default {
     // Provider connection composable
     const { isProviderConnected, handleProviderToggle } = useProviderConnection(simpleModalRef);
 
-    // Handle marketplace tool installation with proper feedback
-    const handleInstallTool = async (item) => {
-      playSound('typewriterKeyPress');
-      terminalLines.value.push(`[Marketplace] Installing tool: ${item.name || item.title}...`);
-      scrollToBottom();
 
-      const result = await installMarketplaceItem(item, 'tool');
-
-      if (result.success) {
-        terminalLines.value.push(`[Marketplace] Successfully installed: ${item.name || item.title}`);
-        // Refresh tools list
-        await store.dispatch('tools/fetchTools');
-      } else {
-        terminalLines.value.push(`[Marketplace] ${result.error}`);
-      }
-      scrollToBottom();
-    };
-
-    const handleDrop = async (event, targetCategory) => {
-      event.preventDefault();
-      dragOverCategory.value = null;
-
-      if (!draggedTool.value) return;
-
-      const tool = draggedTool.value;
-      const originalCategory = tool.category || 'Uncategorized';
-
-      // Don't do anything if dropping on the same category
-      if (originalCategory === targetCategory) {
-        terminalLines.value.push(`[Drag] Tool is already in ${targetCategory}`);
-        scrollToBottom();
-        return;
-      }
-
-      try {
-        terminalLines.value.push(`[Drag] Moving tool "${tool.title || tool.type}" from ${originalCategory} to ${targetCategory}...`);
-        scrollToBottom();
-
-        // For now, just show the message - actual implementation would update the tool's category
-        terminalLines.value.push(`[Drag] Tool category update functionality not yet implemented`);
-        scrollToBottom();
-      } catch (error) {
-        terminalLines.value.push(`[Drag] Error moving tool: ${error.message}`);
-        scrollToBottom();
-      } finally {
-        draggedTool.value = null;
-      }
-    };
 
     onMounted(() => {
       initializeScreen();
@@ -960,16 +399,13 @@ export default {
     });
 
     return {
+      onShelfInstalled,
       mobileView,
       baseScreenRef,
       terminalLines,
       filteredTools,
       isLoading,
       selectedTool,
-      tabs,
-      activeTab,
-      tableColumns,
-      selectTab,
       onContentClick,
       selectTool,
       handleSearch,
@@ -980,10 +416,6 @@ export default {
       customTools,
       allAvailableTools,
       scrollToBottom,
-      selectedCategory,
-      selectedMainCategory,
-      currentLayout,
-      setLayout,
       // Dynamic panel switching
       activeRightPanel,
       panelProps,
@@ -992,27 +424,9 @@ export default {
       shelfAvailable,
       ownsNothing,
       shelfHasFocus,
-      onShelfInstalled,
-      sortOrder,
       // Category functionality
-      toolsByCategory,
-      getCategoryInfo,
-      hideEmptyCategories,
-      toggleHideEmptyCategories,
-      toggleCategoryCollapse,
-      isCategoryCollapsed,
-      allCategoriesCollapsed,
-      toggleCollapseAll,
       // Drag and drop
-      draggedTool,
-      dragOverCategory,
-      handleDragStart,
-      handleDragEnd,
-      handleDragOver,
-      handleDragLeave,
-      handleDrop,
       // Marketplace
-      handleInstallTool,
       simpleModalRef,
       // Provider connection
       isProviderConnected,
