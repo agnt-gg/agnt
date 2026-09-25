@@ -744,7 +744,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             model: {
               type: 'string',
               description:
-                "Grok Build model id (default from AGNT_GROK_DEFAULT_MODEL or 'grok-4.5'). If rejected, AGNT retries with the account default.",
+                "Grok Build model id (default from AGNT_GROK_DEFAULT_MODEL or 'grok-4.5'). Examples: grok-4.7, grok-4.7-build-fast, grok-4.6, grok-4.5. If rejected, AGNT retries with the account default.",
             },
             cwd: {
               type: 'string',

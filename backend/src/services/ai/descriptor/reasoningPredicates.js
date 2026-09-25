@@ -209,6 +209,16 @@ export function isChutesQwenReasoningModel(modelId) {
   return /^qwen\/qwen3/i.test(String(modelId || ''));
 }
 
+// ── Grok Build (cli-chat-proxy.grok.com) ────────────────────────────────────
+// Every grok-4.x the proxy serves takes OpenAI-compatible `reasoning_effort`.
+// This predicate is only the OFFLINE fallback: when the proxy's /v1/models has
+// been read, its per-model `reasoning_efforts` list decides instead (see
+// getReasoningControl). Verified live 2026-09: low/high/xhigh accepted on
+// grok-4.7, an unknown value 400s "Invalid reasoning effort."
+export function isGrokBuildReasoningModel(modelId) {
+  return /^grok-4\.\d/.test(lc(modelId));
+}
+
 // ── Shared value helpers (UI and transport must agree on these too) ─────────
 export function normalizeReasoningValue(value) {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'default';

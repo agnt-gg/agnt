@@ -34,13 +34,15 @@
 
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
+import { normalizeTierReasoning } from './fallbackChain.js';
+import { isReasoningEnabledValue } from '../ai/descriptor/reasoningPredicates.js';
 
 /** Hard ceiling on fallback tiers (excludes the primary). */
 export const MAX_FALLBACKS = 3;
 
 /**
  * Parse the raw `fallback_providers` column (TEXT holding a JSON array) into a
- * clean, de-duplicated, validated array of { provider, model } tiers.
+ * clean, de-duplicated, validated array of { provider, model, reasoning? } tiers.
  *
  * Accepts either already-parsed arrays or JSON strings. Silently drops:
  *   - malformed entries (missing provider),
@@ -48,8 +50,12 @@ export const MAX_FALLBACKS = 3;
  *   - duplicates of the primary or of an earlier fallback (same provider+model),
  *   - anything beyond MAX_FALLBACKS.
  *
+ * `reasoning` is the tier's own effort, present only when the entry carried
+ * a plausible effort token (see normalizeTierReasoning). Absent means "same
+ * as the chat's selection".
+ *
  * @param {string|Array|null|undefined} raw
- * @returns {{provider: string, model: string|null}[]}
+ * @returns {{provider: string, model: string|null, reasoning?: string}[]}
  */
 export function parseFallbackList(raw) {
   let list = raw;
@@ -71,7 +77,8 @@ export function parseFallbackList(raw) {
     if (!provider) continue;
     const model =
       typeof entry.model === 'string' && entry.model.trim() ? entry.model.trim() : null;
-    out.push({ provider, model });
+    const reasoning = normalizeTierReasoning(entry.reasoning);
+    out.push(reasoning ? { provider, model, reasoning } : { provider, model });
   }
   return out;
 }
@@ -206,6 +213,27 @@ export function resolveTierModel(provider, model) {
 }
 
 /**
+ * Adapter reasoning options for a tier.
+ *
+ * A fallback tier with its own `reasoning` uses it. Every other tier — the
+ * primary, and any fallback saved before tiers could carry an effort — gets
+ * `inherited`, which is exactly what each caller passed before this existed
+ * (the turn's selection in OrchestratorService, nothing in the autonomous
+ * loop). So an unconfigured chain behaves byte-for-byte as it did.
+ *
+ * @param {{primary?: boolean, reasoning?: string}} tier
+ * @param {{reasoningEnabled?: boolean, reasoningValue?: string}} [inherited]
+ * @returns {{reasoningEnabled?: boolean, reasoningValue?: string}}
+ */
+export function tierReasoningOptions(tier, inherited = {}) {
+  if (!tier || tier.primary || !tier.reasoning) return inherited;
+  return {
+    reasoningValue: tier.reasoning,
+    reasoningEnabled: isReasoningEnabledValue(tier.reasoning),
+  };
+}
+
+/**
  * Build the ordered provider chain for a turn.
  *
  *   tier 0 = primary (the resolved default / request provider)
@@ -230,7 +258,10 @@ export function resolveTierModel(provider, model) {
  * @param {Iterable<string>} [args.customProviderIds]  active custom provider
  *   UUIDs for this user. Omit and custom providers are dropped from the chain
  *   (the pre-existing behavior).
- * @returns {{provider: string, model: string|null, tier: number, primary: boolean}[]}
+ * @returns {{provider: string, model: string|null, tier: number, primary: boolean, reasoning?: string}[]}
+ *   `reasoning` is present only on a fallback tier that configured its own
+ *   effort. Absent means "use the turn's selection" — the pre-existing
+ *   behaviour, so chains saved before this field existed run unchanged.
  */
 export function buildProviderChain({ provider, model, fallbackEnabled, fallbackProviders, customProviderIds }) {
   const primaryProviderLc = String(provider || '').toLowerCase();
@@ -296,7 +327,12 @@ export function buildProviderChain({ provider, model, fallbackEnabled, fallbackP
     if (seen.has(key)) continue;
     seen.add(key);
 
-    chain.push({ provider: canonical, model: usableModel, tier, primary: false });
+    const entry = { provider: canonical, model: usableModel, tier, primary: false };
+    // Carried as-is. Whether this model accepts it is settled by the wire
+    // builder against the live control, which drops a value the model does
+    // not offer instead of sending it into a 400.
+    if (cand.reasoning) entry.reasoning = cand.reasoning;
+    chain.push(entry);
     tier += 1;
   }
 
@@ -492,6 +528,7 @@ export async function runWithFallback({ chain, runOne, shouldStop, onFallback })
 }
 
 export default {
+  tierReasoningOptions,
   MAX_FALLBACKS,
   parseFallbackList,
   isKnownProvider,

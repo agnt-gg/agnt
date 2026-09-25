@@ -41,6 +41,7 @@ import {
   isChutesKimiReasoningModel,
   isChutesGlmReasoningModel,
   isChutesQwenReasoningModel,
+  isGrokBuildReasoningModel,
 } from './descriptor/reasoningPredicates.js';
 
 export {
@@ -634,8 +635,21 @@ const PROVIDER_CONFIGS = [
       // reports prompt_tokens_details.cached_tokens. Full AGNT tool registry.
       text: { supportsStreaming: true, supportsTools: true },
     },
-    recommendedModels: ['grok-4.5'],
-    fallbackModels: ['grok-4.5'],
+    recommendedModels: ['grok-4.5', 'grok-4.6', 'grok-4.7'],
+    // OFFLINE FALLBACK ONLY. The picker reads cli-chat-proxy's own
+    // GET /v1/models (grokBuildProxyModels.listProxyModelEntries), which is the
+    // surface AGNT sends chat to. It is deliberately not synced from
+    // `grok models`: the CLI also prints cursor-* / cline-pass-* ids it routes
+    // elsewhere, and the proxy answers those with 400 "Model not found".
+    //
+    // Probed live (CLI 1.0.41), with AGNT's request headers: grok-4.7,
+    // grok-4.7-build-fast, grok-4.6 and grok-4.5 answer 200, and /v1/models
+    // returned exactly those four.
+    //
+    // grok-4.5 stays FIRST deliberately: `[0]` is read as the provider default
+    // wherever a grok-build tier has no model, so reordering would re-point
+    // every model-less tier.
+    fallbackModels: ['grok-4.5', 'grok-4.6', 'grok-4.7', 'grok-4.7-build-fast'],
     modelMetadata: {
       'grok-4.5': {
         contextWindow: 512000,
@@ -644,6 +658,35 @@ const PROVIDER_CONFIGS = [
         outputCostPer1M: 0,
         supportsVision: false,
         supportsTools: true, // HTTP proxy transport — see capabilities.text above
+        reasoning: true,
+      },
+      // Same family as grok-4.5.
+      'grok-4.6': {
+        contextWindow: 512000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+      // Same family again; mirrors grok-4.6.
+      'grok-4.7': {
+        contextWindow: 512000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+      'grok-4.7-build-fast': {
+        contextWindow: 512000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true,
         reasoning: true,
       },
     },
@@ -1762,6 +1805,30 @@ export function hydrateDynamicPricing(rows) {
     n += 1;
   }
   return n;
+}
+
+/**
+ * Record what cli-chat-proxy.grok.com's /v1/models says about each model, so
+ * getReasoningControl can offer exactly the efforts the proxy accepts.
+ *
+ * `reasoningEfforts` is ALWAYS written — as [] when the proxy says the model
+ * takes no effort. That empty list is a real answer ("offer nothing"), and is
+ * what stops the offline predicate fallback from offering a selector the
+ * proxy would reject with 400 "Invalid reasoning effort."
+ *
+ * @param {Array<{id: string, contextWindow?: number, reasoningEfforts: string[], reasoningDefaultEffort?: string}>} entries
+ */
+export function registerGrokBuildProxyCatalog(entries) {
+  for (const e of entries || []) {
+    if (!e?.id) continue;
+    const efforts = Array.isArray(e.reasoningEfforts) ? e.reasoningEfforts : [];
+    registerDynamicPricing('grok-build', e.id, {
+      contextWindow: Number.isFinite(e.contextWindow) && e.contextWindow > 0 ? e.contextWindow : undefined,
+      reasoning: efforts.length > 0 ? true : undefined,
+      reasoningEfforts: efforts,
+      reasoningDefaultEffort: e.reasoningDefaultEffort || undefined,
+    });
+  }
 }
 
 /**
@@ -2952,6 +3019,30 @@ export function getReasoningControl(providerKey, modelId) {
       ]);
     }
     return null;
+  }
+
+  if (lowerProvider === 'grok-build') {
+    // The proxy's own /v1/models publishes a per-model effort list
+    // (registerGrokBuildProxyCatalog), and it is the whole truth for that
+    // model — the OPPOSITE precedence from OpenRouter above, where the catalog
+    // is incomplete. Unlike OpenRouter it is also the surface we send to, so
+    // an empty list means "offer nothing", not "unknown".
+    //
+    // Live 2026-09: grok-4.7 / -build-fast / 4.6 publish xhigh/high/medium/low,
+    // grok-4.5 publishes high/medium/low. None publishes `none`, so no Off.
+    const published = dynamicPricingCache.get(`grok-build:${modelId}`);
+    if (Array.isArray(published?.reasoningEfforts)) {
+      return buildPublishedReasoningControl('grok-build', modelId);
+    }
+    // Offline / cold cache: the grades every grok-4.x lists. xhigh is left out
+    // on purpose — grok-4.5 does not accept it.
+    if (!isGrokBuildReasoningModel(modelId)) return null;
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ]);
   }
 
   return null;

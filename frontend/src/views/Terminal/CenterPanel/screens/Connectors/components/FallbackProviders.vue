@@ -59,6 +59,17 @@
             :placeholder="modelPlaceholderFor(row.provider)"
             @option-selected="(opt) => onModelChange(idx, opt.value)"
           />
+          <!-- Shown only when this tier's model has an effort control, i.e.
+               exactly where the Chat selector would show one. -->
+          <CustomSelect
+            v-if="effortOptionsFor(row).length"
+            class="fb-select fb-effort"
+            :options="effortOptionsFor(row)"
+            :model-value="row.reasoning"
+            placeholder="Effort"
+            v-tooltip="'Reasoning effort for this backup'"
+            @option-selected="(opt) => onEffortChange(idx, opt.value)"
+          />
         </div>
 
         <button class="fb-remove" v-tooltip="'Remove'" @click="removeRow(idx)">
@@ -112,7 +123,6 @@ import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import {
   AI_PROVIDERS_WITH_API,
   PROVIDER_DISPLAY_NAMES,
-  PROVIDER_FETCH_ACTIONS,
   resolveProviderKey,
 } from '@/store/app/aiProvider.js';
 
@@ -128,7 +138,9 @@ export default {
     // 'static' | 'dynamic'. When dynamic, this list is superseded by the
     // router's own ranking and is shown read-only rather than removed.
     const routingMode = ref('static');
-    const rows = ref([]); // [{ provider: <displayName>, model: <id|''> }]
+    // reasoning: '' = same as the chat's selection (the key is then omitted
+    // on save, which is also what every chain saved before this field has).
+    const rows = ref([]); // [{ provider: <displayName>, model: <id|''>, reasoning: <effort|''> }]
     const dirty = ref(false);
     const saving = ref(false);
     const statusMsg = ref('');
@@ -196,22 +208,56 @@ export default {
       return 'Provider default';
     }
 
+    // Always ask the store. fetchProviderModels paints from its cache at once
+    // and revalidates models AND per-model metadata (which carries the effort
+    // control) in the background, so this is cheap.
+    //
+    // It used to return early whenever a list was already in memory, which
+    // pinned a tab to whatever list it first saw (grok-4.7 never appeared
+    // until a full reload). It also went through PROVIDER_FETCH_ACTIONS, whose
+    // generated names had no action behind them for Grok-Build, Cursor and
+    // Antigravity, so those rows never loaded here at all. fetchProviderModels
+    // handles built-ins, custom UUIDs and Local alike.
     async function ensureModels(providerName) {
       if (!providerName) return;
-      if (modelsFor(providerName).length > 0) return;
-      // PROVIDER_FETCH_ACTIONS is keyed by built-in display name, so a custom
-      // UUID finds no action and the model list would stay empty forever.
-      // fetchProviderModels already routes custom ids to the per-provider
-      // /custom-providers/:id/models endpoint.
-      if (isCustomProviderId(providerName)) {
-        try {
-          await store.dispatch('aiProvider/fetchProviderModels', { provider: providerName });
-        } catch (e) { /* non-fatal */ }
-        return;
-      }
-      const action = PROVIDER_FETCH_ACTIONS[providerName];
-      if (!action) return;
-      try { await store.dispatch(action); } catch (e) { /* non-fatal */ }
+      try {
+        await store.dispatch('aiProvider/fetchProviderModels', { provider: providerName });
+      } catch (e) { /* non-fatal */ }
+    }
+
+    // The same control the Chat selector shows for this provider+model:
+    // backend metadata first (per-model, e.g. grok-build's proxy-published
+    // efforts), else the frontend's inferred fallback.
+    function reasoningControlFor(row) {
+      if (!row?.provider || !row?.model) return null;
+      return (
+        store.state.aiProvider?.modelMetadata?.[row.provider]?.[row.model]?.reasoningControl ||
+        store.getters['aiProvider/inferReasoningControl']?.(row.provider, row.model) ||
+        null
+      );
+    }
+    function effortOptionsFor(row) {
+      const control = reasoningControlFor(row);
+      if (!control?.options?.length) return [];
+      return [
+        { label: 'Effort: same as chat', value: '' },
+        ...control.options.map((o) => ({
+          // 'Default' next to 'same as chat' is ambiguous; this one means the
+          // provider's own default for that model.
+          label: o.value === 'default' ? 'Provider default' : o.label,
+          value: o.value,
+        })),
+      ];
+    }
+    // Clear an effort the row's CURRENT model does not offer. Only after a
+    // user change: on load the metadata may not have arrived yet, and an
+    // unconfirmed value must not be discarded (the wire drops it anyway if the
+    // model really does not take it).
+    function reconcileEffort(idx) {
+      const row = rows.value[idx];
+      if (!row?.reasoning) return;
+      const offered = effortOptionsFor(row).map((o) => o.value);
+      if (!offered.includes(row.reasoning)) row.reasoning = '';
     }
 
     // CustomSelect option lists ({ label, value }).
@@ -236,7 +282,7 @@ export default {
 
     function addRow() {
       if (rows.value.length >= MAX) return;
-      rows.value.push({ provider: '', model: '' });
+      rows.value.push({ provider: '', model: '', reasoning: '' });
       markDirty();
     }
     function removeRow(idx) { rows.value.splice(idx, 1); markDirty(); }
@@ -244,12 +290,22 @@ export default {
     async function onProviderChange(idx, val) {
       rows.value[idx].provider = val;
       rows.value[idx].model = '';
+      // Effort values are per provider; never carry one across.
+      rows.value[idx].reasoning = '';
       markDirty();
       await ensureModels(val);
       const models = modelsFor(val);
       if (models.length && !rows.value[idx].model) rows.value[idx].model = models[0];
     }
-    function onModelChange(idx, val) { rows.value[idx].model = val; markDirty(); }
+    function onModelChange(idx, val) {
+      rows.value[idx].model = val;
+      reconcileEffort(idx);
+      markDirty();
+    }
+    function onEffortChange(idx, val) {
+      rows.value[idx].reasoning = val || '';
+      markDirty();
+    }
 
     function authToken() {
       return localStorage.getItem('token') || localStorage.getItem('authToken') || '';
@@ -268,8 +324,13 @@ export default {
         rows.value = list.slice(0, MAX).map((e) => ({
           provider: e.provider || '',
           model: e.model || '',
+          reasoning: typeof e.reasoning === 'string' ? e.reasoning : '',
         }));
-        for (const r of rows.value) ensureModels(r.provider);
+        // One load per provider: two tiers on the same provider (legacy data,
+        // hand edits) must not dispatch the same revalidation twice.
+        for (const provider of new Set(rows.value.map((r) => r.provider).filter(Boolean))) {
+          ensureModels(provider);
+        }
         dirty.value = false;
       } catch (e) {
         console.warn('[FallbackProviders] load failed:', e);
@@ -292,7 +353,12 @@ export default {
           .filter((r) => r.provider)
           .filter((r) => !(isCustomProviderId(r.provider) && !r.model))
           .slice(0, MAX)
-          .map((r) => ({ provider: r.provider, model: r.model || null }));
+          .map((r) => ({
+            provider: r.provider,
+            model: r.model || null,
+            // Omitted, not null, when unset: "same as chat".
+            ...(r.reasoning ? { reasoning: r.reasoning } : {}),
+          }));
         const res = await fetch('/api/users/settings', {
           method: 'PUT',
           headers: {
@@ -336,8 +402,8 @@ export default {
       MAX,
       enabled, routingMode, rows, dirty, saving, statusMsg, statusOk,
       connectableProviders, modelsFor, providerOptionsFor, modelOptionsFor, hasCandidates,
-      modelPlaceholderFor, isCustomProviderId,
-      markDirty, addRow, removeRow, onProviderChange, onModelChange, save,
+      modelPlaceholderFor, isCustomProviderId, effortOptionsFor,
+      markDirty, addRow, removeRow, onProviderChange, onModelChange, onEffortChange, save,
     };
   },
 };
@@ -469,6 +535,8 @@ export default {
   min-width: 0;
 }
 .fb-select { flex: 1 1 0; min-width: 0; }
+/* Effort values are short (Low / Max / Provider default). */
+.fb-select.fb-effort { flex: 0 1 170px; }
 
 .fb-remove {
   background: transparent; border: none;

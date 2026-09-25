@@ -13,7 +13,7 @@ import { createLlmClient } from './ai/LlmService.js';
 // 'provider_recovered' and clear the entry. Ephemeral, per-process, tiny.
 const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
-import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
+import { buildProviderChain, runWithFallback, createCustomProviderIdResolver, tierReasoningOptions } from './orchestrator/ProviderFallback.js';
 import { resolveRoutingMode, parseRoutingPolicy } from './orchestrator/routingMode.js';
 import { buildRoutedChain } from './orchestrator/DynamicRouter.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
@@ -2964,7 +2964,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // across to a different provider (it would be an invalid model id).
         model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
         client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+        // A tier with its own effort uses it; otherwise the turn's selection
+        // carries over, as it always has. Hoisted so this call keeps passing
+        // conversationId inline (llmAdapters.openRouterCache.test.js checks).
+        const tierReasoning = tierReasoningOptions(tier, { reasoningEnabled, reasoningValue });
+        adapter = await createLlmAdapter(normalizedProvider, client, model, { ...tierReasoning, conversationId });
         conversationContext.llmClient = client;
         // Keep the shared conversation context in sync so tools that resolve
         // provider/model from context (analyze_image, custom tool execution,

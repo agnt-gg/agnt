@@ -37,6 +37,7 @@ import {
   isChutesKimiReasoningModel,
   isChutesGlmReasoningModel,
   isChutesQwenReasoningModel,
+  isGrokBuildReasoningModel,
 } from '@llm/reasoningPredicates.js';
 
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
@@ -700,6 +701,19 @@ export function inferReasoningControl(providerKey, modelId) {
       ]);
     }
     return null;
+  }
+
+  // Grok Build: the backend's /metadata carries the per-model list the proxy
+  // publishes (incl. Max/xhigh where accepted), and wins over this. This is
+  // the same offline fallback the backend uses: the grades every grok-4.x takes.
+  if (lowerProvider === 'grok-build') {
+    if (!isGrokBuildReasoningModel(modelId)) return null;
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ]);
   }
 
   return null;
@@ -1505,6 +1519,21 @@ export default {
     },
     async fetchZAIModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Z.AI', forceRefresh });
+    },
+    // PROVIDER_FETCH_ACTIONS generates a name for EVERY built-in provider, and
+    // hardRefreshProviderModels, ProviderSelector and OnboardingModal dispatch
+    // it. These three had no action behind the name, so for them Vuex logged
+    // "unknown action type" and did nothing — e.g. the picker's refresh button
+    // re-fetched on the backend but never updated the list on screen.
+    // aiProvider.fetchActions.spec.js keeps the map and the actions in step.
+    async fetchGrokBuildModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Grok-Build', forceRefresh });
+    },
+    async fetchCursorModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Cursor', forceRefresh });
+    },
+    async fetchAntigravityModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Antigravity', forceRefresh });
     },
 
     async fetchLocalModels({ commit, state }, { forceRefresh = false } = {}) {

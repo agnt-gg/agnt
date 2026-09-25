@@ -99,23 +99,43 @@
           </span>
 
           <div v-if="agentConfig.fallbackEnabled" class="fallback-chain">
-            <div v-for="(row, index) in agentConfig.fallbackProviders" :key="index" class="fallback-row">
+            <div
+              v-for="(row, index) in agentConfig.fallbackProviders"
+              :key="index"
+              class="fallback-row"
+              :class="{ 'has-effort': fallbackEffortOptions(row).length > 0 }"
+            >
               <span class="fallback-tier" :aria-label="`Fallback tier ${index + 1}`">{{ index + 1 }}</span>
+              <!-- Explicit handlers rather than v-model: a provider or model
+                   change must also settle the row's effort. -->
               <BaseSelect
                 :id="`agentFallbackProvider${index}`"
                 :label="`Fallback ${index + 1} Provider`"
-                v-model="row.provider"
+                :model-value="row.provider"
                 :options="fallbackProviderOptions(index)"
                 placeholder="Select provider"
                 maxHeight="200px"
+                @update:model-value="(val) => onFallbackProviderChange(index, val)"
               />
               <BaseSelect
                 :id="`agentFallbackModel${index}`"
                 label="Model"
-                v-model="row.model"
+                :model-value="row.model"
                 :options="fallbackModelOptions(row.provider)"
                 :disabled="!row.provider"
                 :placeholder="fallbackModelPlaceholder(row.provider)"
+                maxHeight="200px"
+                @update:model-value="(val) => onFallbackModelChange(index, val)"
+              />
+              <!-- Only where this model has an effort control, i.e. exactly
+                   where the Chat selector would show one. -->
+              <BaseSelect
+                v-if="fallbackEffortOptions(row).length"
+                :id="`agentFallbackEffort${index}`"
+                label="Effort"
+                v-model="row.reasoning"
+                :options="fallbackEffortOptions(row)"
+                placeholder="Effort: same as chat"
                 maxHeight="200px"
               />
               <button type="button" class="fallback-remove" :aria-label="`Remove fallback ${index + 1}`" @click="removeFallback(index)">
@@ -338,6 +358,8 @@ function initializeAgentConfig(agent) {
       ? agent.fallbackProviders.slice(0, MAX_FALLBACKS).map((entry) => ({
           provider: entry?.provider || '',
           model: entry?.model || '',
+          // '' = same as the chat's selection (key omitted on save).
+          reasoning: typeof entry?.reasoning === 'string' ? entry.reasoning : '',
         }))
       : [],
     toolAccessMode: agent.toolAccessMode === 'open' ? 'open' : 'restricted',
@@ -443,9 +465,58 @@ const hasFallbackCandidates = computed(() => {
   );
 });
 
+// Same rules as the global editor (Connectors → Fallback Providers): the
+// control the Chat selector would show for this provider+model — backend
+// metadata first (per-model, e.g. grok-build's proxy-published efforts), else
+// the frontend's inferred fallback.
+function fallbackReasoningControl(row) {
+  if (!row?.provider || !row?.model) return null;
+  return (
+    store.state.aiProvider?.modelMetadata?.[row.provider]?.[row.model]?.reasoningControl ||
+    store.getters['aiProvider/inferReasoningControl']?.(row.provider, row.model) ||
+    null
+  );
+}
+
+function fallbackEffortOptions(row) {
+  const control = fallbackReasoningControl(row);
+  if (!control?.options?.length) return [];
+  return [
+    { value: '', label: 'Effort: same as chat' },
+    ...control.options.map((o) => ({
+      value: o.value,
+      // 'Default' beside 'same as chat' is ambiguous: this is the provider's.
+      label: o.value === 'default' ? 'Provider default' : o.label,
+    })),
+  ];
+}
+
+function onFallbackProviderChange(index, provider) {
+  const row = agentConfig.value.fallbackProviders[index];
+  if (!row) return;
+  if (row.provider !== provider) {
+    row.model = '';
+    // Effort values are per provider; never carry one across.
+    row.reasoning = '';
+  }
+  row.provider = provider;
+}
+
+// Clear an effort the newly chosen model does not offer. Only on a user
+// change: at load the metadata may not have arrived, and an unconfirmed value
+// must not be discarded (the wire drops it anyway if the model rejects it).
+function onFallbackModelChange(index, model) {
+  const row = agentConfig.value.fallbackProviders[index];
+  if (!row) return;
+  row.model = model;
+  if (row.reasoning && !fallbackEffortOptions(row).some((o) => o.value === row.reasoning)) {
+    row.reasoning = '';
+  }
+}
+
 function addFallback() {
   if (agentConfig.value.fallbackProviders.length >= MAX_FALLBACKS) return;
-  agentConfig.value.fallbackProviders.push({ provider: '', model: '' });
+  agentConfig.value.fallbackProviders.push({ provider: '', model: '', reasoning: '' });
 }
 
 function removeFallback(index) {
@@ -575,7 +646,12 @@ const saveConfiguration = async () => {
         .filter((entry) => entry.provider)
         .filter((entry) => !(isCustomProviderId(entry.provider) && !entry.model))
         .slice(0, MAX_FALLBACKS)
-        .map((entry) => ({ provider: entry.provider, model: entry.model || null })),
+        .map((entry) => ({
+          provider: entry.provider,
+          model: entry.model || null,
+          // Omitted, not null, when unset: "same as chat".
+          ...(entry.reasoning ? { reasoning: entry.reasoning } : {}),
+        })),
       toolAccessMode: agentConfig.value.toolAccessMode,
       assignedTools: agentConfig.value.tools,
       assignedWorkflows: agentConfig.value.workflows,
@@ -923,6 +999,9 @@ textarea.input {
   grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 32px;
   gap: 8px;
   align-items: end;
+}
+.fallback-row.has-effort {
+  grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr) 32px;
 }
 .fallback-tier {
   align-self: center;

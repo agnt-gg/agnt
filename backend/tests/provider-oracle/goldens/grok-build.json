@@ -647,10 +647,10 @@
       "stream": {
         "ok": true,
         "surface": "chat.completions.create",
-        "canonical": "{\"body\":{\"messages\":[{\"content\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"role\":\"system\"},{\"content\":\"Prove that sqrt(2) is irrational.\",\"role\":\"user\"}],\"model\":\"grok-4.5\",\"stream\":true,\"stream_options\":{\"include_usage\":true}},\"options\":null}",
-        "canonicalHash": "2a66ec5f8ae6fd21",
-        "orderHash": "c3d8392f3143cc87",
-        "bytes": 278,
+        "canonical": "{\"body\":{\"messages\":[{\"content\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"role\":\"system\"},{\"content\":\"Prove that sqrt(2) is irrational.\",\"role\":\"user\"}],\"model\":\"grok-4.5\",\"reasoning_effort\":\"high\",\"stream\":true,\"stream_options\":{\"include_usage\":true}},\"options\":null}",
+        "canonicalHash": "c4a6f30586bbd56a",
+        "orderHash": "fb3b78ab7d7f3121",
+        "bytes": 304,
         "wire": {
           "body": {
             "model": "grok-4.5",
@@ -667,7 +667,8 @@
             "stream": true,
             "stream_options": {
               "include_usage": true
-            }
+            },
+            "reasoning_effort": "high"
           },
           "options": null
         }
@@ -675,10 +676,10 @@
       "nonStream": {
         "ok": true,
         "surface": "chat.completions.create",
-        "canonical": "{\"body\":{\"messages\":[{\"content\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"role\":\"system\"},{\"content\":\"Prove that sqrt(2) is irrational.\",\"role\":\"user\"}],\"model\":\"grok-4.5\"},\"options\":null}",
-        "canonicalHash": "c12f2e596cf47160",
-        "orderHash": "0339c495e349556a",
-        "bytes": 224,
+        "canonical": "{\"body\":{\"messages\":[{\"content\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"role\":\"system\"},{\"content\":\"Prove that sqrt(2) is irrational.\",\"role\":\"user\"}],\"model\":\"grok-4.5\",\"reasoning_effort\":\"high\"},\"options\":null}",
+        "canonicalHash": "86480a92997b1180",
+        "orderHash": "ba10f8c6fca64819",
+        "bytes": 250,
         "wire": {
           "body": {
             "model": "grok-4.5",
@@ -691,7 +692,8 @@
                 "role": "user",
                 "content": "Prove that sqrt(2) is irrational."
               }
-            ]
+            ],
+            "reasoning_effort": "high"
           },
           "options": null
         }
