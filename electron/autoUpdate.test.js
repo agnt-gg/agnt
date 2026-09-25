@@ -8,7 +8,10 @@
  * a root-password prompt after closing the app, or a dev checkout updating
  * itself.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   channelFor,
@@ -19,6 +22,7 @@ import {
   checkUpdateInfo,
   installVerdict,
   createInstallMarker,
+  keepAppImagePath,
   initAutoUpdate,
 } from './autoUpdate.js';
 
@@ -202,6 +206,78 @@ function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env
     last: () => sent.filter(([c]) => c === 'update:state').at(-1)?.[1],
   };
 }
+
+describe('an updated AppImage stays where the user launched it', () => {
+  // Real files, real links: this is a filesystem contract, so it is tested on
+  // one. Symlinks need privileges on Windows, so there the test is skipped;
+  // CI's Linux rehearsal runs the real update.
+  const canLink = (() => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-link-'));
+    try { fs.symlinkSync(path.join(d, 'a'), path.join(d, 'b')); return true; } catch { return false; } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  })();
+  const it_ = canLink ? it : it.skip;
+  let dir;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-keep-')); });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const at = (n) => path.join(dir, n);
+
+  it_('moves the new version to the old path and links the new name to it', () => {
+    // What electron-updater leaves: old file deleted, new one beside it.
+    fs.writeFileSync(at('AGNT-0.6.8-linux-x86_64.AppImage'), 'new');
+    const where = keepAppImagePath({ fs, path, oldPath: at('AGNT-0.6.7-linux-x86_64.AppImage'), newPath: at('AGNT-0.6.8-linux-x86_64.AppImage') });
+    expect(where).toBe(at('AGNT-0.6.7-linux-x86_64.AppImage'));
+    expect(fs.readFileSync(at('AGNT-0.6.7-linux-x86_64.AppImage'), 'utf8')).toBe('new');
+    expect(fs.lstatSync(at('AGNT-0.6.8-linux-x86_64.AppImage')).isSymbolicLink()).toBe(true);
+    // The updater relaunches the new name; it must still reach the new version.
+    expect(fs.readFileSync(at('AGNT-0.6.8-linux-x86_64.AppImage'), 'utf8')).toBe('new');
+  });
+
+  it_('the next update clears the previous link and keeps the same path', () => {
+    const home = at('AGNT-0.6.7-linux-x86_64.AppImage');
+    fs.writeFileSync(at('AGNT-0.6.8-linux-x86_64.AppImage'), 'v8');
+    keepAppImagePath({ fs, path, oldPath: home, newPath: at('AGNT-0.6.8-linux-x86_64.AppImage') });
+    // Second update: electron-updater deletes the real file, writes 0.6.9.
+    fs.unlinkSync(home);
+    fs.writeFileSync(at('AGNT-0.6.9-linux-x86_64.AppImage'), 'v9');
+    keepAppImagePath({ fs, path, oldPath: home, newPath: at('AGNT-0.6.9-linux-x86_64.AppImage') });
+    expect(fs.readFileSync(home, 'utf8')).toBe('v9');
+    expect(fs.existsSync(at('AGNT-0.6.8-linux-x86_64.AppImage'))).toBe(false);
+    expect(fs.readdirSync(dir).sort()).toEqual(['AGNT-0.6.7-linux-x86_64.AppImage', 'AGNT-0.6.9-linux-x86_64.AppImage']);
+  });
+
+  it('if it cannot link, it puts the file back where the updater relaunches it', () => {
+    const moves = [];
+    const fake = {
+      renameSync: (a, b) => moves.push([a, b]),
+      symlinkSync: () => { throw new Error('EPERM'); },
+    };
+    const where = keepAppImagePath({ fs: fake, path, oldPath: '/a/old.AppImage', newPath: '/a/new.AppImage' });
+    expect(where).toBe('/a/new.AppImage');
+    expect(moves).toEqual([['/a/new.AppImage', '/a/old.AppImage'], ['/a/old.AppImage', '/a/new.AppImage']]);
+  });
+
+  it('if it cannot move, the updater\'s result stands', () => {
+    const fake = { renameSync: () => { throw new Error('EXDEV'); }, symlinkSync: vi.fn() };
+    expect(keepAppImagePath({ fs: fake, path, oldPath: '/a/old', newPath: '/b/new' })).toBe('/b/new');
+    expect(fake.symlinkSync).not.toHaveBeenCalled();
+  });
+
+  it('is wired for an AppImage and only for an AppImage', () => {
+    const listeners = (env, platform = 'linux') => {
+      const on = new Map();
+      initAutoUpdate({
+        autoUpdater: { setFeedURL() {}, on: (e, f) => on.set(e, f), checkForUpdates: async () => {} },
+        ipcMain: { handle() {} }, getWindows: () => [], isPackaged: true, platform, version: '0.6.7', env,
+        config: { feedBase: FEED, assetBase: ASSETS }, getBusyReport: async () => idle, handoffBackend: async () => {},
+        fs, path, log: () => {}, defer: (f) => f(),
+      });
+      return on.has('appimage-filename-updated');
+    };
+    expect(listeners({ APPIMAGE: '/home/u/AGNT-0.6.7-linux-x86_64.AppImage' })).toBe(true);
+    expect(listeners({})).toBe(false); // deb/rpm: updater off
+    expect(listeners({ APPIMAGE: '/x' }, 'win32')).toBe(false);
+  });
+});
 
 describe('macOS: ready only once Squirrel has staged the update', () => {
   // electron-updater says "downloaded" before Squirrel.Mac has fetched, unpacked

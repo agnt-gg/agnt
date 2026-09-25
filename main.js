@@ -1063,6 +1063,8 @@ async function armAutoUpdate() {
       getBusyReport,
       handoffBackend,
       marker: createInstallMarker({ fs, file: path.join(app.getPath('userData'), 'update-install.json') }),
+      fs,
+      path,
       refuseSender: refuseSpaceSender,
       log: (...a) => console.log(...a),
     });

@@ -173,6 +173,56 @@ export function createUpdateState({ version, platform, onChange = () => {} }) {
 }
 
 /**
+ * Keep an updated AppImage at the path the user launched it from.
+ *
+ * electron-updater keeps the old file name only when that name carries no
+ * version. Ours always does: every AppImage anyone downloads is named
+ * AGNT-<version>-linux-x86_64.AppImage. So an update deleted the file the user
+ * launched and wrote AGNT-<new>-... beside it, and every desktop shortcut,
+ * dock pin and launcher entry pointing at the old path stopped working after
+ * the first update (seen in the CI rehearsal).
+ *
+ * Called from electron-updater's `appimage-filename-updated`, which fires after
+ * the new file is in place and BEFORE the updater relaunches `newPath`. The
+ * new version is moved back to the user's path, and `newPath` becomes a link to
+ * it so that relaunch still works (the AppImage runtime resolves the link, so
+ * the app sees its real path and the next update targets it again). Links left
+ * by earlier updates are removed. On any failure the updater's own result is
+ * kept: a working app at a new name beats a broken one at the old name.
+ *
+ * @returns {string} where the new version now lives
+ */
+export function keepAppImagePath({ fs, path, oldPath, newPath, log = () => {} }) {
+  if (!fs || !oldPath || !newPath || oldPath === newPath) return newPath;
+  try {
+    fs.renameSync(newPath, oldPath);
+  } catch (err) {
+    log(`[update] AppImage stays at ${newPath}: could not move it back (${err?.message || err})`);
+    return newPath;
+  }
+  try {
+    fs.symlinkSync(oldPath, newPath);
+  } catch (err) {
+    // Without the link the updater's relaunch of newPath would find nothing.
+    try { fs.renameSync(oldPath, newPath); } catch { /* both failed: newPath is gone either way */ }
+    log(`[update] AppImage stays at ${newPath}: could not link it (${err?.message || err})`);
+    return newPath;
+  }
+  const dir = path.dirname(oldPath);
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const candidate = path.join(dir, name);
+      if (candidate === newPath || !/^AGNT-.*\.AppImage$/.test(name)) continue;
+      try {
+        if (fs.lstatSync(candidate).isSymbolicLink() && path.resolve(dir, fs.readlinkSync(candidate)) === oldPath) fs.unlinkSync(candidate);
+      } catch { /* not ours to judge */ }
+    }
+  } catch { /* an unreadable folder only means old links stay */ }
+  log(`[update] AppImage kept at ${oldPath}`);
+  return oldPath;
+}
+
+/**
  * Record, before a restart, which version we expect to come back as; read it on
  * the next launch to say whether the update actually took.
  */
@@ -208,6 +258,8 @@ export function createInstallMarker({ fs, file }) {
  * @param {(opts: { force: boolean }) => Promise<{ ok: true } | { ok: false, reason: string, busy?: object }>} deps.handoffBackend
  *        ask the backend to prepare (it re-checks busy atomically) and exit cleanly
  * @param {object} [deps.marker]            createInstallMarker(...)
+ * @param {object} [deps.fs]                node:fs, for keepAppImagePath (AppImage only)
+ * @param {object} [deps.path]              node:path, likewise
  * @param {(evt: object, channel: string) => boolean} [deps.refuseSender]  true = refuse (team spaces are remote origins)
  * @param {(...a: any[]) => void} [deps.log]
  * @param {(fn: Function) => void} [deps.defer]
@@ -226,11 +278,16 @@ export function initAutoUpdate({
   getBusyReport,
   handoffBackend,
   marker = null,
+  fs = null,
+  path = null,
   refuseSender = () => false,
   log = console.log,
   defer = (fn) => setImmediate(fn),
 }) {
   const support = updateSupport({ isPackaged, platform, env });
+  if (support.enabled && platform === 'linux' && env.APPIMAGE && fs && path) {
+    autoUpdater.on('appimage-filename-updated', (newPath) => keepAppImagePath({ fs, path, oldPath: env.APPIMAGE, newPath, log }));
+  }
   // Every copy of the state the renderer sees carries `enabled`, pushed or
   // pulled. The banner decides "this build updates itself" from that field; a
   // push without it read as "not enabled" and hid the Restart button the moment

@@ -302,17 +302,28 @@ try {
       const sig = (() => { try { execFileSync('codesign', ['--verify', '--deep', '--strict', macApp], { encoding: 'utf8', stdio: 'pipe' }); return 'valid'; } catch (e) { return String(e.stderr || e.message).trim(); } })();
       check('installed bundle signature is valid', sig === 'valid', sig);
     } else {
+      // The new version must be AT THE PATH THE USER LAUNCHED, because that is
+      // what every desktop shortcut and dock pin points at (keepAppImagePath in
+      // electron/autoUpdate.js). electron-updater alone moved it to a new
+      // versioned name and deleted this one.
       const dir = path.dirname(appimagePath);
-      const newName = path.basename(findFile(newDir, /\.AppImage$/));
-      const expectedPath = path.join(dir, newName);
-      const end = Date.now() + 60000;
-      while (Date.now() < end && !fs.existsSync(expectedPath)) await sleep(1000);
       const want = await sha512File(findFile(newDir, /\.AppImage$/));
-      const got = fs.existsSync(expectedPath) ? await sha512File(expectedPath) : null;
+      const end = Date.now() + 60000;
+      let got = null;
+      while (Date.now() < end) {
+        try { got = fs.statSync(appimagePath).isFile() ? await sha512File(appimagePath) : null; } catch { got = null; }
+        if (got === want) break;
+        await sleep(1000);
+      }
       installedNew = got === want;
-      check('new AppImage installed (versioned name, as downloaded)', installedNew, `${fs.readdirSync(dir).join(', ')}`);
-      check('old AppImage removed', !fs.existsSync(appimagePath), path.basename(appimagePath));
-      relaunchPath = expectedPath;
+      const listing = fs.readdirSync(dir).map((n) => {
+        const p = path.join(dir, n);
+        return fs.lstatSync(p).isSymbolicLink() ? `${n} -> ${fs.readlinkSync(p)}` : n;
+      });
+      check('new AppImage is at the path the user launched (shortcuts keep working)', installedNew, listing.join(', '));
+      const stray = listing.filter((n) => !n.includes(' -> ') && n !== path.basename(appimagePath));
+      check('no second copy left beside it', stray.length === 0, stray.join(', '));
+      relaunchPath = appimagePath; // the shortcut
     }
     if (!installedNew) throw new Error('new version not installed');
 
