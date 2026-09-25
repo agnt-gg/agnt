@@ -20,13 +20,18 @@ const workflow = fs.readFileSync(
 
 describe('the app can find an update at all', () => {
   it('declares a publish target', () => {
-    // Without this, electron-builder emits NO latest.yml — and with no feed the
-    // installers are just files nobody is ever told about.
+    // Without this, electron-builder emits NO latest.yml, and with no feed the
+    // installers are just files nobody is ever told about. Since 0.6.7 the
+    // target is agnt.gg's generic feed: it decides the version, GitHub holds
+    // the files (electron/autoUpdate.js, agnt-server update-feed.js).
     const publish = [].concat(pkg.build?.publish ?? []);
-    expect(publish.length, 'build.publish is missing — no update feed is generated').toBeGreaterThan(0);
-    expect(publish[0].provider).toBe('github');
-    expect(publish[0].owner).toBe('agnt-gg');
-    expect(publish[0].repo).toBe('agnt');
+    expect(publish.length, 'build.publish is missing: no update feed is generated').toBeGreaterThan(0);
+    expect(publish[0]).toEqual({ provider: 'generic', url: 'https://agnt.gg/updates/stable/' });
+  });
+
+  it('pins downloads to this repository’s GitHub releases', () => {
+    expect(pkg.agntUpdate?.assetBase).toBe('https://github.com/agnt-gg/agnt/releases/download/');
+    expect(pkg.agntUpdate?.feedBase).toBe('https://agnt.gg/updates/');
   });
 
   it('ships electron-updater as a runtime dependency', () => {
@@ -109,14 +114,15 @@ describe('main must not load a native module to decide about updating', () => {
     ).toBe(false);
   });
 
-  it('asks the backend for the executing-goal count instead', () => {
-    expect(main).toMatch(/\/api\/goals\/health/);
+  it('asks the backend what is running instead', () => {
+    expect(main).toMatch(/\/api\/system\/busy/);
   });
 
-  it('ANTI-VACUITY: the interlock still exists', () => {
-    // If countExecutingGoals were deleted outright, the two rules above would
-    // pass while the protection was gone.
-    expect(main).toMatch(/countExecutingGoals/);
+  it('ANTI-VACUITY: the interlock still exists and is wired', () => {
+    // If getBusyReport were deleted outright, the two rules above would pass
+    // while the protection was gone.
+    expect(main).toMatch(/async function getBusyReport\(/);
+    expect(main).toMatch(/getBusyReport,\s*\n\s*handoffBackend,/);
   });
 });
 
