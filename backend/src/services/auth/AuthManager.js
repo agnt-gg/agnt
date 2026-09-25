@@ -6,6 +6,8 @@ import { decrypt, encrypt } from '../../utils/encryption.js';
 import ENV_KEY_MAP from './envKeyMap.js';
 import { discoverSessions } from './sessionDiscovery.js';
 import { getAuthEntry } from './AuthDispatcher.js';
+import { getPluginAuthProvider } from '../../plugins/pluginAuth.js';
+import { getPluginOAuthAccessToken, CLIENT_ROW_SUFFIX, clientRowId } from '../../plugins/pluginOAuth.js';
 
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
@@ -54,6 +56,14 @@ class AuthManager {
       if (envValue && envValue.trim()) {
         return envValue.trim();
       }
+    }
+
+    // A plugin-declared OAuth provider lives only in this install: its tokens
+    // are local and refreshed against the plugin's token endpoint. Nothing
+    // about it exists remotely, so the remote tier would only ever 404.
+    const pluginProvider = getPluginAuthProvider(providerId);
+    if (pluginProvider?.type === 'oauth2') {
+      return getPluginOAuthAccessToken({ provider: pluginProvider, userId, store: this });
     }
 
     // Tier 2: local SQLite api_keys (encrypted)
@@ -135,7 +145,8 @@ class AuthManager {
           resolve(rows || []);
         });
       });
-      apiKeyRows.forEach((r) => r.provider_id && connected.add(r.provider_id));
+      // OAuth client credentials share this table but are not a connection.
+      apiKeyRows.forEach((r) => r.provider_id && !r.provider_id.endsWith(CLIENT_ROW_SUFFIX) && connected.add(r.provider_id));
     } catch (err) {
       console.warn('getConnectedApps: api_keys lookup failed:', err.message);
     }
@@ -220,7 +231,9 @@ class AuthManager {
               return db.run('ROLLBACK', () => reject(err));
             }
 
-            db.run('DELETE FROM api_keys WHERE user_id = ? AND provider_id = ?', [userId, providerId], (err) => {
+            // Disconnecting also forgets any OAuth client credentials the user
+            // entered for a plugin provider: a disconnect leaves nothing behind.
+            db.run('DELETE FROM api_keys WHERE user_id = ? AND provider_id IN (?, ?)', [userId, providerId, clientRowId(providerId)], (err) => {
               if (err) {
                 console.error('Error deleting API keys:', err);
                 return db.run('ROLLBACK', () => reject(err));
@@ -734,7 +747,9 @@ class AuthManager {
         `INSERT OR REPLACE INTO oauth_tokens 
         (id, user_id, provider_id, access_token, refresh_token, expires_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [generateUUID(), userId, providerId, encrypt(tokens.access_token), encrypt(tokens.refresh_token) || null, tokens.expires_at || null],
+        // encrypt(null) does not throw, it returns a ciphertext of "", so the
+        // absence of a refresh token has to be decided before encrypting.
+        [generateUUID(), userId, providerId, encrypt(tokens.access_token), tokens.refresh_token ? encrypt(tokens.refresh_token) : null, tokens.expires_at || null],
         (err) => {
           if (err) {
             console.error('Error saving tokens:', err);

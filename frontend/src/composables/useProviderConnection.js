@@ -14,6 +14,18 @@ import {
   hasOAuthMessagePayload,
 } from '@/utils/oauthMessageOrigin.js';
 
+// The modal renders its message as HTML. Text a plugin author wrote is
+// untrusted, so it is escaped before it gets anywhere near it.
+const escapeHtml = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+function pluginConnectMessage(provider, lead) {
+  const parts = [`<p>${escapeHtml(lead)}</p>`];
+  if (provider.instructions) parts.push(`<p>${escapeHtml(provider.instructions)}</p>`);
+  if (provider.helpUrl) parts.push(`<p>Where to find it: <code>${escapeHtml(provider.helpUrl)}</code></p>`);
+  return `<div style="text-align:left">${parts.join('')}</div>`;
+}
+
 export function useProviderConnection(modalRef) {
   const store = useStore();
 
@@ -87,20 +99,30 @@ export function useProviderConnection(modalRef) {
     });
     if (cached) return cached;
 
+    // Same precedence as the merged list: the remote catalogue first, then
+    // connections declared by installed plugins.
+    let remote = null;
     try {
       const token = localStorage.getItem('token');
-      if (!token) return null;
-      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const providers = await response.json();
-      return providers.find((p) => {
-        const pid = String(p?.id || '').toLowerCase();
-        return pid === normalizedId || pid.replace(/[^a-z0-9]/g, '') === strippedId;
-      });
+      if (token) {
+        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const providers = await response.json();
+        remote = providers.find((p) => {
+          const pid = String(p?.id || '').toLowerCase();
+          return pid === normalizedId || pid.replace(/[^a-z0-9]/g, '') === strippedId;
+        });
+      }
     } catch (error) {
       console.error('Error fetching provider details:', error);
+    }
+    if (remote) return remote;
+    try {
+      const { providers = [] } = await providerAuthService.listPluginProviders();
+      return providers.find((p) => String(p.id).toLowerCase() === normalizedId) || null;
+    } catch {
       return null;
     }
   };
@@ -313,6 +335,79 @@ export function useProviderConnection(modalRef) {
     }
   };
 
+  // ── plugin-declared connections ──────────────────────────
+  // Stored in this install via /api/providers/:id/auth/*, never remotely.
+
+  const connectPluginApiKey = async (providerId, provider) => {
+    const label = provider.keyLabel || 'API key';
+    const apiKey = await showPrompt(
+      `Connect ${provider.name}`,
+      pluginConnectMessage(provider, `Paste your ${provider.name} ${label}.`),
+      '',
+      { confirmText: 'Connect', inputType: 'password' },
+    );
+    if (!apiKey) return;
+    try {
+      const result = await providerAuthService.connect(providerId, { apiKey });
+      if (!result?.success) throw new Error(result?.error || 'Failed to save');
+      await refreshHealth();
+      await showAlert('Connected', `${provider.name} is connected.`);
+    } catch (error) {
+      await showAlert('Connection Failed', error?.response?.data?.error || error.message);
+    }
+  };
+
+  const connectPluginOAuth = async (providerId, provider) => {
+    let client = {};
+    if (provider.needsClientCredentials) {
+      const clientId = await showPrompt(
+        `Connect ${provider.name}`,
+        pluginConnectMessage(
+          provider,
+          `Create an OAuth app in your ${provider.name} developer settings with this redirect URI, then paste its client ID: ${provider.redirectUri || ''}`,
+        ),
+        '',
+        { confirmText: 'Next' },
+      );
+      if (!clientId) return;
+      const clientSecret = await showPrompt(`Connect ${provider.name}`, 'Paste the client secret (leave empty for a public client).', '', {
+        confirmText: 'Sign in',
+        inputType: 'password',
+      });
+      if (clientSecret === null) return;
+      client = { clientId, clientSecret: clientSecret || undefined };
+    }
+    try {
+      const { authUrl, sessionId } = await providerAuthService.startPluginOAuth(providerId, client);
+      if (window.electron?.openExternalUrl) window.electron.openExternalUrl(authUrl);
+      else window.open(authUrl, '_blank', 'noopener');
+      const confirmed = await modalRef.value.showModal({
+        title: `${provider.name} sign-in`,
+        message: `<p>Finish signing in to ${escapeHtml(provider.name)} in your browser, then come back here.</p>`,
+        confirmText: 'I have signed in',
+        cancelText: 'Cancel',
+        showCancel: true,
+      });
+      if (!confirmed) return;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const status = await providerAuthService.pollPluginOAuthStatus(providerId, sessionId);
+        if (status.status === 'success') {
+          await refreshHealth();
+          await showAlert('Connected', `${provider.name} is connected.`);
+          return;
+        }
+        if (status.status === 'error') {
+          await showAlert('Connection Failed', status.error || 'Sign-in failed.');
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      await showAlert('Connection Failed', 'Sign-in did not complete. Try again.');
+    } catch (error) {
+      await showAlert('Connection Failed', error?.response?.data?.error || error.message);
+    }
+  };
+
   // ── remote provider flows (unchanged) ──────────────────────
 
   const connectOAuthApp = async (app) => {
@@ -450,6 +545,14 @@ export function useProviderConnection(modalRef) {
     // Check if this is a local CLI provider via capabilities
     try {
       const capsResult = await providerAuthService.getCapabilities(normalizedId);
+      // Only when the plugin's definition is the one in use: an id the remote
+      // catalogue also knows keeps the remote flow, where existing keys live.
+      if (capsResult?.plugin && providerDetails.pluginProvided) {
+        if (connected) return disconnectProvider(normalizedId, providerDetails);
+        const caps = capsResult.capabilities || [];
+        if (caps.includes('oauth-plugin')) return connectPluginOAuth(normalizedId, providerDetails);
+        if (caps.includes('connect-apikey')) return connectPluginApiKey(normalizedId, providerDetails);
+      }
       if (capsResult?.local) {
         if (connected) {
           return disconnectProvider(normalizedId, providerDetails);

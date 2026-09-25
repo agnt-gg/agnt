@@ -15,6 +15,17 @@ import CodexCliService from '../services/ai/CodexCliService.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { authenticateToken } from './Middleware.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
+import { listPluginAuthProviders, publicProviderView, getPluginAuthProvider } from '../plugins/pluginAuth.js';
+import { startPluginOAuth, completePluginOAuth, getPluginOAuthStatus } from '../plugins/pluginOAuth.js';
+
+// The redirect URI a plugin OAuth app must register. Always loopback on the
+// port this server is actually listening on: never derived from the Host
+// header, which the caller controls.
+const pluginRedirectUri = (req, providerId) =>
+  `http://localhost:${req.socket.localPort}/api/providers/${encodeURIComponent(providerId)}/auth/plugin-oauth/callback`;
+
+const escapeHtml = (value) =>
+  String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const router = express.Router();
 
@@ -37,6 +48,23 @@ router.get('/auth/discover', requireAuthHeader, (req, res) => {
     console.error('[ProviderAuth] Session discovery failed:', error.message);
     return res.status(500).json({ success: false, error: error.message || 'Discovery failed' });
   }
+});
+
+/**
+ * Connection definitions contributed by installed plugins, for the
+ * Connections list. Same registration rule as /auth/discover: before the
+ * :providerId param middleware.
+ */
+router.get('/auth/plugins', requireAuthHeader, (req, res) => {
+  const { providers, problems } = listPluginAuthProviders();
+  res.json({
+    success: true,
+    providers: providers.map((provider) => ({
+      ...publicProviderView(provider),
+      redirectUri: provider.type === 'oauth2' ? pluginRedirectUri(req, provider.id) : undefined,
+    })),
+    problems,
+  });
 });
 
 // ─────────────────────────── PARAM MIDDLEWARE ───────────────────────────
@@ -229,6 +257,63 @@ router.get('/:providerId/auth/oauth/start', requireAuthHeader, async (req, res) 
   } catch (error) {
     res.status(500).json({ success: false, error: error.message || 'Failed to start OAuth flow' });
   }
+});
+
+// ─────────────────────────── PLUGIN OAUTH ───────────────────────────
+// Generic authorization-code + PKCE for providers a plugin declared with
+// type "oauth2". See plugins/pluginOAuth.js.
+
+router.post('/:providerId/auth/plugin-oauth/start', authenticateToken, async (req, res) => {
+  const { providerEntry, providerId } = req;
+  if (!providerEntry.plugin || !providerEntry.caps.includes('oauth-plugin')) {
+    return res.status(400).json({ success: false, error: 'This provider does not use plugin OAuth' });
+  }
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+  try {
+    const { clientId, clientSecret } = req.body || {};
+    const result = await startPluginOAuth({
+      provider: providerEntry.provider,
+      userId,
+      redirectUri: pluginRedirectUri(req, providerId),
+      client: clientId ? { clientId, clientSecret } : null,
+      store: AuthManager,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    const status = error.code === 'CLIENT_CREDENTIALS_REQUIRED' ? 400 : 500;
+    res.status(status).json({ success: false, code: error.code, error: error.message });
+  }
+});
+
+// Reached by the user's browser from the provider, so it carries no AGNT
+// credential. The state value is the capability: it is 192 random bits, single
+// use, expires in ten minutes, and must belong to the provider in the path.
+router.get('/:providerId/auth/plugin-oauth/callback', async (req, res) => {
+  const { providerId } = req;
+  const outcome = !req.providerEntry.plugin
+    ? { ok: false, error: 'Unknown connection.' }
+    : await completePluginOAuth({
+        state: req.query.state,
+        code: req.query.code,
+        error: req.query.error,
+        resolveProvider: (id) => (id === providerId ? getPluginAuthProvider(id) : null),
+        store: AuthManager,
+      });
+  const title = outcome.ok ? 'Connected' : 'Connection failed';
+  const message = outcome.ok ? 'You can close this window and return to AGNT.' : outcome.error || 'Something went wrong.';
+  res
+    .status(outcome.ok ? 200 : 400)
+    .type('html')
+    .set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+    .send(
+      `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui,sans-serif;background:#0b0d18;color:#e6e8f2;display:grid;place-items:center;height:100vh;margin:0"><main style="text-align:center"><h1 style="font-weight:500">${title}</h1><p>${escapeHtml(message)}</p></main></body>`
+    );
+});
+
+router.get('/:providerId/auth/plugin-oauth/status', requireAuthHeader, (req, res) => {
+  if (!req.providerEntry.plugin) return res.status(400).json({ success: false, error: 'Not a plugin provider' });
+  res.json({ success: true, ...getPluginOAuthStatus(req.query.sessionId) });
 });
 
 // ─────────────────────────── OAUTH EXCHANGE (claude-code PKCE) ───────────────────────────

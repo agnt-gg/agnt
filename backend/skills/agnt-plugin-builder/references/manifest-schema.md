@@ -77,7 +77,48 @@ When set, `authProvider` **must** also be set to the provider slug.
 
 **Built-in provider slugs:** `openai`, `anthropic`, `google`, `github`, `slack`, `discord`, `twitter`, `stripe`, `notion`, `openweathermap`, `dropbox`, `gmail` (for Google workspace), `spotify`, `elevenlabs`.
 
-For one-off API keys with no existing provider, skip `authRequired` and just add a `password`-type parameter — the user pastes the key per node. Simpler but less reusable.
+### Declaring a provider AGNT does not know — top-level `auth`
+
+If the service is not a built-in provider, **declare it in the manifest** so it
+appears in Settings → Connections with a real Connect button. Do not ask for keys
+as node parameters.
+
+```json
+"auth": [
+  {
+    "id": "pipedrive",
+    "name": "Pipedrive",
+    "icon": "pipedrive",
+    "type": "apikey",
+    "keyLabel": "API token",
+    "instructions": "Pipedrive → Settings → Personal preferences → API",
+    "helpUrl": "https://pipedrive.readme.io/docs/how-to-find-the-api-token"
+  },
+  {
+    "id": "ga4",
+    "name": "Google Analytics",
+    "type": "oauth2",
+    "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": ["https://www.googleapis.com/auth/analytics.readonly"],
+    "authorizationParams": { "access_type": "offline", "prompt": "consent" }
+  }
+]
+```
+
+Then the tool sets `"authRequired": "apiKey"` (or `"oauth"`) and
+`"authProvider": "pipedrive"`; at run time the credential arrives as
+`parameters.__auth.token`.
+
+| Field | Rule |
+|---|---|
+| `id` | `^[a-z0-9][a-z0-9_-]{0,63}$`. What tools name in `authProvider`. A built-in provider id cannot be redefined; the remote catalogue wins on a clash. |
+| `type` | `apikey` or `oauth2`. |
+| `keyLabel`, `instructions`, `helpUrl` | Shown on Connect. Plain text (rendered escaped); `helpUrl` must be https. |
+| `authorizationUrl`, `tokenUrl` | oauth2 only, https only. Authorization code flow with PKCE (`"pkce": false` to disable), tokens stored locally and refreshed automatically. |
+| `scopes`, `scopeSeparator` | oauth2 only. Separator defaults to a space. |
+| `clientId` | Optional public client. Omit it and the user is asked for their own client ID/secret, with the redirect URI to register shown to them. Never put a client secret in a manifest. |
+| `authorizationParams` | Extra string query parameters. The flow's own (`client_id`, `redirect_uri`, `state`, `scope`, PKCE) cannot be overridden. |
 
 ---
 

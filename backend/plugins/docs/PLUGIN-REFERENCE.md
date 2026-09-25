@@ -280,8 +280,34 @@ your `execute()`. Rules:
 - ✅ The token is scoped to the workflow's user — correct on shared/multi-user
   instances.
 
-Users connect providers in **Settings → Integrations**. For OAuth providers,
+Users connect providers in **Settings → Connections**. For OAuth providers,
 AuthManager handles refresh; your tool always receives a valid access token.
+
+### Declaring a provider AGNT does not ship
+
+A plugin for a service AGNT has no provider for declares one in a top-level
+`auth` array, and its tools reference it by `authProvider`:
+
+```json
+"auth": [
+  { "id": "pipedrive", "name": "Pipedrive", "type": "apikey",
+    "keyLabel": "API token", "instructions": "Settings → Personal preferences → API" },
+  { "id": "ga4", "name": "Google Analytics", "type": "oauth2",
+    "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": ["https://www.googleapis.com/auth/analytics.readonly"],
+    "authorizationParams": { "access_type": "offline", "prompt": "consent" } }
+]
+```
+
+The declaration appears in Connections while the plugin is installed and
+disappears with it. Credentials are stored encrypted in this install; OAuth uses
+the authorization-code flow with PKCE against a loopback redirect
+(`/api/providers/<id>/auth/plugin-oauth/callback`) and refreshes tokens before
+they expire. Omit `clientId` and the user supplies their own OAuth app. Built-in
+provider ids cannot be redefined, and a provider the remote catalogue defines
+keeps its remote flow. Invalid declarations are logged at load and skipped; the
+tools still load. Full field rules: `skills/agnt-plugin-builder/references/manifest-schema.md`.
 
 ---
 

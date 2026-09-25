@@ -58,6 +58,23 @@ function notifyLocalBackendProviderChanged(event, providerId) {
 // The symptom was a fresh sign-in showing none of the user's connected
 // integrations until they reloaded the page, which cleared this module's
 // closure state along with everything else.
+/**
+ * Append the connections installed plugins declare (manifest `auth`) to a
+ * provider list. A provider the list already has wins: the remote catalogue and
+ * the CLI providers are authoritative for their own ids. A failure here costs
+ * the plugin rows only, never the list it was given.
+ */
+export async function mergePluginProviders(providers) {
+  try {
+    const { providers: declared = [] } = await providerAuthService.listPluginProviders();
+    const known = new Set(providers.map((p) => p.id));
+    return [...providers, ...declared.filter((p) => p?.id && !known.has(p.id))];
+  } catch (error) {
+    console.warn('Plugin-declared connections unavailable:', error?.message || error);
+    return providers;
+  }
+}
+
 let _fetchConnectedAppsInFlight = null;
 
 const state = {
@@ -391,14 +408,15 @@ const actions = {
         }
       }
 
-      commit('SET_ALL_PROVIDERS', mergedProviders);
+      commit('SET_ALL_PROVIDERS', await mergePluginProviders(mergedProviders));
       return { authoritative: true };
     } catch (error) {
       console.error('Error fetching all providers:', error);
       // Still expose the CLI-tied local providers even if the remote fetch fails.
       // Chutes is intentionally absent: it requires the remote auth service to
       // store/retrieve its API key, so showing it offline would be misleading.
-      commit('SET_ALL_PROVIDERS', [
+      // Plugin connections are local by construction, so they are kept too.
+      commit('SET_ALL_PROVIDERS', await mergePluginProviders([
         {
           id: 'openai-codex',
           name: 'OpenAI Codex',
@@ -453,7 +471,7 @@ const actions = {
           instructions: 'Uses the local Cursor Agent CLI (~/.cursor). Sign in with `cursor-agent login`. Uses your Cursor subscription — no API key.',
           localOnly: true,
         },
-      ]);
+      ]));
 
       // Committing this is right — the CLI providers genuinely do work with no
       // remote — but it is six providers where the real catalogue is seventy.

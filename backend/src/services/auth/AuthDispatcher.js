@@ -12,6 +12,7 @@ import GeminiCliAuthManager from './GeminiCliAuthManager.js';
 import AntigravityAuthManager from './AntigravityAuthManager.js';
 import GrokBuildAuthManager from './GrokBuildAuthManager.js';
 import CursorCliAuthManager from './CursorCliAuthManager.js';
+import { getPluginAuthProvider } from '../../plugins/pluginAuth.js';
 
 // ─────────────────────────── SCHEME MAP ───────────────────────────
 
@@ -77,12 +78,35 @@ const AUTH_SCHEME_MAP = {
  */
 export function getAuthEntry(providerId) {
   const config = getProviderConfig(providerId);
-  if (!config) return null;
+  // Built-in providers always win: a plugin cannot redefine how an AI
+  // provider or CLI authenticates by declaring the same id.
+  if (!config) return getPluginAuthEntry(providerId);
 
   const schemeEntry = AUTH_SCHEME_MAP[config.authScheme];
   if (!schemeEntry) return null;
 
   return { ...schemeEntry, config };
+}
+
+/**
+ * A provider a plugin declared in its manifest. Its credentials are stored in
+ * this install (api_keys / oauth_tokens), never remotely, so it takes the
+ * routes' non-local branch for connect/disconnect and the `plugin` flag for the
+ * OAuth routes.
+ */
+function getPluginAuthEntry(providerId) {
+  const provider = getPluginAuthProvider(providerId);
+  if (!provider) return null;
+  const caps = provider.type === 'oauth2' ? ['status', 'oauth-plugin', 'disconnect'] : ['status', 'connect-apikey', 'disconnect'];
+  return {
+    manager: null,
+    local: false,
+    remote: false,
+    plugin: true,
+    caps,
+    provider,
+    config: { key: provider.id, name: provider.name, authScheme: `plugin-${provider.type}` },
+  };
 }
 
 /**
@@ -97,6 +121,7 @@ export function getCapabilities(providerId) {
     providerName: entry.config.name,
     local: entry.local || false,
     remote: entry.remote || false,
+    plugin: entry.plugin || false,
     capabilities: entry.caps,
   };
 }

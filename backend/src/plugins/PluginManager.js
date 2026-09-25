@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import ToolConfig from '../tools/ToolConfig.js';
 import PluginAssetLoader from './PluginAssetLoader.js';
 import db from '../models/database/index.js';
+import { bindPluginSource, normalizeAuthDeclaration } from './pluginAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +80,10 @@ class PluginManager {
     // This ensures plugins are loaded from outside the ASAR archive
     const userDataPath = process.env.USER_DATA_PATH || getDefaultUserDataPath();
     this.pluginsDir = path.join(userDataPath, 'plugins', 'installed');
+
+    // Auth providers declared in manifests are derived from this map on every
+    // lookup, so install/reload/uninstall need no extra bookkeeping.
+    bindPluginSource(() => this.getAllPlugins());
   }
 
   static getInstance() {
@@ -328,6 +333,13 @@ class PluginManager {
         } catch (assetError) {
           console.error(`[PluginManager] ${pluginName}: ecosystem asset install failed:`, assetError);
         }
+      }
+
+      // A bad auth declaration is reported, not fatal: the plugin's tools still
+      // load and simply report CONNECTION_REQUIRED until it is fixed.
+      for (const declaration of Array.isArray(manifest.auth) ? manifest.auth : manifest.auth === undefined ? [] : [null]) {
+        const { error } = normalizeAuthDeclaration(declaration, manifest.name);
+        if (error) console.warn(`[PluginManager] ${pluginName}: ignoring auth declaration: ${error}`);
       }
 
       console.log(`[PluginManager] Loaded plugin: ${pluginName} (${manifest.tools.length} tools)`);

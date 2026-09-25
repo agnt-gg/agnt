@@ -59,6 +59,21 @@ export default {
     return axios.post(`${base(providerId)}/set-auth-method`, { method }).then((r) => r.data);
   },
 
+  // Connections contributed by installed plugins (manifest `auth` entries).
+  listPluginProviders() {
+    return axios.get(`${API_CONFIG.BASE_URL}/providers/auth/plugins`).then((r) => r.data);
+  },
+
+  // Generic OAuth for a plugin provider. Client credentials travel in the body,
+  // never the query string, and are only needed when the manifest has none.
+  startPluginOAuth(providerId, client = {}) {
+    return axios.post(`${base(providerId)}/plugin-oauth/start`, client).then((r) => r.data);
+  },
+
+  pollPluginOAuthStatus(providerId, sessionId) {
+    return axios.get(`${base(providerId)}/plugin-oauth/status`, { params: { sessionId } }).then((r) => r.data);
+  },
+
   setGcpProject(providerId, projectId) {
     return axios.post(`${base(providerId)}/gcp-project`, { projectId }).then((r) => r.data);
   },
