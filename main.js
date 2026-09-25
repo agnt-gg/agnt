@@ -1065,6 +1065,7 @@ async function armAutoUpdate() {
       marker: createInstallMarker({ fs, file: path.join(app.getPath('userData'), 'update-install.json') }),
       fs,
       path,
+      execPath: process.execPath,
       refuseSender: refuseSpaceSender,
       log: (...a) => console.log(...a),
     });

@@ -149,12 +149,29 @@ export function installVerdict(report, { force = false } = {}) {
  * The single source of truth for "where is the update at", owned by main and
  * pushed to every renderer, so a reload or a second window sees the same state.
  */
-export function createUpdateState({ version, platform, onChange = () => {} }) {
+/**
+ * Is this a Windows install for all users (under Program Files)? Updating one
+ * needs administrator rights, so a standard user gets a Windows permission
+ * prompt, and cancelling it leaves AGNT closed until they reopen it (it then
+ * reports the update as not installed and offers it again). The banner says
+ * so up front rather than let the cancel surprise them.
+ */
+export function isPerMachineInstall({ platform, execPath, env = {} }) {
+  if (platform !== 'win32' || !execPath) return false;
+  const exe = String(execPath).toLowerCase().replace(/\//g, '\\');
+  return [env.ProgramW6432, env.ProgramFiles, env['ProgramFiles(x86)']]
+    .filter(Boolean)
+    .some((dir) => exe.startsWith(String(dir).toLowerCase().replace(/[\\/]+$/, '') + '\\'));
+}
+
+export function createUpdateState({ version, platform, perMachine = false, onChange = () => {} }) {
   let state = {
     phase: 'idle', // idle | checking | available | downloading | preparing (macOS) | ready | installing | error | disabled
     currentVersion: version,
     platform,
     needsExplicitInstall: needsExplicitInstall(platform),
+    // Windows will ask for administrator permission when the update installs.
+    needsPermission: platform === 'win32' && !!perMachine,
     available: null, // { version }
     percent: null,
     error: null, // { message, during }
@@ -260,6 +277,7 @@ export function createInstallMarker({ fs, file }) {
  * @param {object} [deps.marker]            createInstallMarker(...)
  * @param {object} [deps.fs]                node:fs, for keepAppImagePath (AppImage only)
  * @param {object} [deps.path]              node:path, likewise
+ * @param {string} [deps.execPath]          process.execPath, to tell an all-users Windows install
  * @param {(evt: object, channel: string) => boolean} [deps.refuseSender]  true = refuse (team spaces are remote origins)
  * @param {(...a: any[]) => void} [deps.log]
  * @param {(fn: Function) => void} [deps.defer]
@@ -280,6 +298,7 @@ export function initAutoUpdate({
   marker = null,
   fs = null,
   path = null,
+  execPath = null,
   refuseSender = () => false,
   log = console.log,
   defer = (fn) => setImmediate(fn),
@@ -296,6 +315,7 @@ export function initAutoUpdate({
   const state = createUpdateState({
     version,
     platform,
+    perMachine: isPerMachineInstall({ platform, execPath, env }),
     onChange: (s) => {
       const payload = withSupport(s);
       for (const win of getWindows() || []) {

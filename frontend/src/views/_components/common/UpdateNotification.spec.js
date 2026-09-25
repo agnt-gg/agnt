@@ -107,6 +107,17 @@ describe('self-updating desktop build', () => {
     expect(text(w)).toContain('Restart now');
   });
 
+  it('an all-users Windows install says Windows will ask for permission', async () => {
+    desktop({ phase: 'ready', available: { version: '0.6.8' }, needsPermission: true });
+    let w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Windows will ask for permission');
+    desktop({ phase: 'ready', available: { version: '0.6.8' }, needsPermission: false });
+    w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).not.toContain('permission');
+  });
+
   it('Windows says "Restart to update"; macOS/AppImage say "Restart now"', async () => {
     desktop({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: true });
     let w = mount(UpdateNotification);

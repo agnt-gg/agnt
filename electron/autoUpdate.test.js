@@ -23,8 +23,22 @@ import {
   installVerdict,
   createInstallMarker,
   keepAppImagePath,
+  isPerMachineInstall,
   initAutoUpdate,
 } from './autoUpdate.js';
+
+describe('isPerMachineInstall', () => {
+  const env = { ProgramFiles: 'C:\\Program Files', ProgramW6432: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)' };
+  it('an all-users install lives under Program Files', () => {
+    expect(isPerMachineInstall({ platform: 'win32', execPath: 'C:\\Program Files\\AGNT\\AGNT.exe', env })).toBe(true);
+    expect(isPerMachineInstall({ platform: 'win32', execPath: 'c:/program files (x86)/AGNT/AGNT.exe', env })).toBe(true);
+  });
+  it('a per-user install, a lookalike folder, or another OS is not', () => {
+    expect(isPerMachineInstall({ platform: 'win32', execPath: 'C:\\Users\\u\\AppData\\Local\\Programs\\AGNT\\AGNT.exe', env })).toBe(false);
+    expect(isPerMachineInstall({ platform: 'win32', execPath: 'C:\\Program Files Extra\\AGNT\\AGNT.exe', env })).toBe(false);
+    expect(isPerMachineInstall({ platform: 'darwin', execPath: 'C:\\Program Files\\AGNT\\AGNT.exe', env })).toBe(false);
+  });
+});
 
 const ASSETS = 'https://github.com/agnt-gg/agnt/releases/download/';
 const FEED = 'https://agnt.gg/updates/';

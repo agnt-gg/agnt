@@ -13,6 +13,7 @@
           <span class="update-version">
             <template v-if="blockedText">{{ blockedText }}</template>
             <template v-else>v{{ state.currentVersion }} → v{{ state.available?.version }}</template>
+            <template v-if="state.needsPermission"> · Windows will ask for permission</template>
           </span>
         </div>
       </div>
