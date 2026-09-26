@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { SpaceRegistry, validateTeam, PRIMARY_SPACE_ID } from './SpaceRegistry.js';
+import { SpaceRegistry, validateTeam, isIdentityOrigin, PRIMARY_SPACE_ID } from './SpaceRegistry.js';
 import { SpaceViews, partitionFor, spaceUrl } from './SpaceViews.js';
-import { installSpaceIpc, hardenSpaceView } from './spaceIpc.js';
+import { installSpaceIpc, hardenSpaceView, HANDOFF_TTL_MS } from './spaceIpc.js';
 
 let dir;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-spaces-')); });
@@ -23,7 +23,7 @@ describe('the team view preload', () => {
     const Module = require('module');
     const originalLoad = Module._load;
     Module._load = function (request, ...rest) {
-      if (request === 'electron') return { contextBridge: { exposeInMainWorld: (name, api) => { exposed[name] = api; } }, ipcRenderer: { send() {}, invoke() {}, on() {}, removeListener() {} } };
+      if (request === 'electron') return { contextBridge: { exposeInMainWorld: (name, api) => { exposed[name] = api; } }, ipcRenderer: { send() {}, sendSync() { return null; }, invoke() {}, on() {}, removeListener() {} } };
       return originalLoad.call(this, request, ...rest);
     };
     try {
@@ -35,6 +35,119 @@ describe('the team view preload', () => {
     expect(exposed.electron.isSpaceView).toBe(true);
     expect(exposed.electron.openExternalUrl).toBeUndefined();
     expect(typeof exposed.electron.spaces.switch).toBe('function');
+    expect(typeof exposed.electron.takeSessionHandoff).toBe('function');
+  });
+});
+
+describe('which teams share the personal session', () => {
+  const local = { id: 'dev', name: 'Dev', tenantUrl: 'http://localhost:4000' };
+  const shares = registry => Object.fromEntries(registry.list().map(s => [s.id, s.sharesIdentity]));
+
+  it('only AGNT-hosted https instances qualify', () => {
+    expect(isIdentityOrigin('https://acme.t1.agnt.gg')).toBe(true);
+    expect(isIdentityOrigin('https://acme.agnt.gg')).toBe(true);
+    expect(isIdentityOrigin('http://acme.agnt.gg')).toBe(false);
+    expect(isIdentityOrigin('https://agnt.gg.evil.example')).toBe(false);
+    expect(isIdentityOrigin('https://evilagnt.gg')).toBe(false);
+    expect(isIdentityOrigin('http://localhost:4000')).toBe(false);
+    expect(isIdentityOrigin('not a url')).toBe(false);
+  });
+
+  it('the personal window can grant it; a team view never can', () => {
+    const registry = new SpaceRegistry(dir);
+    registry.syncTeams([acme, local], { trusted: true });
+    expect(shares(registry)).toEqual({ 'team:acme': true, 'team:dev': false });
+
+    // Anything running inside a team page could register its own tenant.
+    registry.syncTeams([{ id: 'evil', name: 'Evil', tenantUrl: 'https://evil.t1.agnt.gg' }]);
+    expect(shares(registry)['team:evil']).toBe(false);
+  });
+
+  it('a team view may keep it on an unchanged team but loses it by re-pointing one', () => {
+    const registry = new SpaceRegistry(dir);
+    registry.syncTeams([acme], { trusted: true });
+    registry.syncTeams([acme], { replace: true });
+    expect(shares(registry)['team:acme']).toBe(true);
+    registry.syncTeams([{ ...acme, tenantUrl: 'https://attacker.t1.agnt.gg' }]);
+    expect(shares(registry)['team:acme']).toBe(false);
+  });
+
+  it('survives a restart, and a hand-edited file cannot grant it', () => {
+    new SpaceRegistry(dir).syncTeams([acme], { trusted: true });
+    expect(shares(new SpaceRegistry(dir))['team:acme']).toBe(true);
+    fs.writeFileSync(path.join(dir, 'spaces.json'), JSON.stringify({ spaces: [{ teamId: 'dev', label: 'Dev', url: 'http://localhost:4000', sharesIdentity: true }] }));
+    expect(shares(new SpaceRegistry(dir))).toEqual({ 'team:dev': false });
+  });
+});
+
+describe('switching keeps the same user', () => {
+  const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1MSJ9.c2lnbmF0dXJl';
+  function setup({ session = JWT } = {}) {
+    const handlers = {};
+    const ipcMain = { handle: (c, fn) => { handlers[c] = fn; }, on: (c, fn) => { handlers[c] = fn; } };
+    const registry = new SpaceRegistry(dir);
+    const primary = { name: 'primary' };
+    const page = (spaceId, url) => ({ spaceId, getURL: () => url });
+    const acmeView = page('team:acme', 'https://acme.agnt.gg/?team=acme');
+    const views = { activeId: PRIMARY_SPACE_ID, show: vi.fn(s => ({ ok: true, activeId: s ? s.id : PRIMARY_SPACE_ID })), close: vi.fn(), spaceIdFor: s => s?.spaceId || PRIMARY_SPACE_ID };
+    const clock = { t: 1_000 };
+    const readPrimarySession = vi.fn(async () => session);
+    installSpaceIpc({ ipcMain, registry, views, primaryLabel: () => 'Personal', broadcast: vi.fn(), isPrimarySender: s => s === primary, readPrimarySession, now: () => clock.t });
+    const call = (sender, channel, ...args) => handlers[channel]({ sender }, ...args);
+    const take = sender => { const event = { sender }; handlers['spaces:take-session'](event); return event.returnValue; };
+    return { call, take, primary, page, acmeView, clock, readPrimarySession };
+  }
+
+  it('hands the personal session to the team page it switched to, exactly once', async () => {
+    const { call, take, primary, acmeView } = setup();
+    await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    await call(primary, 'spaces:switch', 'team:acme');
+    expect(take(acmeView)).toBe(JWT);
+    // A reload later must not pick up a session the personal window may have ended since.
+    expect(take(acmeView)).toBeNull();
+  });
+
+  it('gives nothing to the personal window, another team, or a page that left the team origin', async () => {
+    const { call, take, primary, page } = setup();
+    await call(primary, 'spaces:sync-teams', [acme, { id: 'beta', name: 'Beta', tenantUrl: 'https://beta.agnt.gg' }], { replace: true });
+    await call(primary, 'spaces:switch', 'team:acme');
+    expect(take(primary)).toBeNull();
+    expect(take(page('team:beta', 'https://beta.agnt.gg/'))).toBeNull();
+    expect(take(page('team:acme', 'https://phish.example/login'))).toBeNull();
+    // The failed attempt spent it; the real page cannot now be tricked into a second one either.
+    expect(take(page('team:acme', 'https://acme.agnt.gg/'))).toBeNull();
+  });
+
+  it('never reads the personal session for a team a team view registered', async () => {
+    const { call, take, page, readPrimarySession } = setup();
+    const acmeView = page('team:acme', 'https://acme.agnt.gg/');
+    await call(acmeView, 'spaces:sync-teams', [{ id: 'evil', name: 'Evil', tenantUrl: 'https://evil.t1.agnt.gg' }]);
+    await call(acmeView, 'spaces:switch', 'team:evil');
+    expect(readPrimarySession).not.toHaveBeenCalled();
+    expect(take(page('team:evil', 'https://evil.t1.agnt.gg/'))).toBeNull();
+  });
+
+  it('expires if the page does not take it in time, and parks nothing when signed out', async () => {
+    const { call, take, primary, acmeView, clock } = setup();
+    await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    await call(primary, 'spaces:switch', 'team:acme');
+    clock.t += HANDOFF_TTL_MS + 1;
+    expect(take(acmeView)).toBeNull();
+
+    const signedOut = setup({ session: null });
+    await signedOut.call(signedOut.primary, 'spaces:sync-teams', [acme], { replace: true });
+    await signedOut.call(signedOut.primary, 'spaces:switch', 'team:acme');
+    expect(signedOut.take(signedOut.acmeView)).toBeNull();
+  });
+
+  it('still switches when the personal session cannot be read', async () => {
+    const { call, take, primary, acmeView, readPrimarySession } = setup();
+    readPrimarySession.mockRejectedValueOnce(new Error('renderer gone'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    expect(await call(primary, 'spaces:switch', 'team:acme')).toMatchObject({ ok: true });
+    expect(take(acmeView)).toBeNull();
+    warn.mockRestore();
   });
 });
 

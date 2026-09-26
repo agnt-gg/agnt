@@ -1781,6 +1781,17 @@ installSpaceIpc({
   registry: spaceRegistry,
   views: spaceViews,
   primaryLabel: () => (isRemoteActive() ? 'Personal (cloud)' : 'Personal'),
+  // The personal window's own page, and nothing else: not its popups, not a team view.
+  isPrimarySender: (sender) => Boolean(sender && mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents),
+  // Its current session, read from its own storage. Null on the connection
+  // status page (a file:// document has no session) or when signed out.
+  readPrimarySession: async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
+    const contents = mainWindow.webContents;
+    if (!/^https?:/i.test(contents.getURL())) return null;
+    const token = await contents.executeJavaScript("localStorage.getItem('token')", true);
+    return typeof token === 'string' ? token : null;
+  },
   broadcast: (channel, payload) => {
     for (const contents of [mainWindow?.webContents, ...spaceViews.allWebContents()]) {
       if (contents && !contents.isDestroyed()) contents.send(channel, payload);

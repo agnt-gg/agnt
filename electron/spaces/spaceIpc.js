@@ -9,7 +9,21 @@ import { PRIMARY_SPACE_ID } from './SpaceRegistry.js';
 
 const TEAM_LIST_LIMIT = 50;
 
-export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadcast }) {
+/** How long a parked session waits for the team view to boot and take it. */
+export const HANDOFF_TTL_MS = 60_000;
+
+const looksLikeSessionToken = value =>
+  typeof value === 'string' && value.length < 8192 && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(value);
+
+/**
+ * @param {object} deps
+ * @param {(sender: any) => boolean} [deps.isPrimarySender]  is this the personal window itself?
+ *   Only it may mark a team as sharing the personal session. Defaults to "no", so a
+ *   caller that does not wire it gets the safe behaviour.
+ * @param {() => Promise<string|null>} [deps.readPrimarySession]  the personal window's
+ *   current session token, or null when it is signed out.
+ */
+export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadcast, isPrimarySender = () => false, readPrimarySession = async () => null, now = Date.now }) {
   // Unread counts, reported by each space's own renderer about ITSELF. A space can never set
   // another space's count: the id comes from the sender, not the message.
   const unread = new Map();
@@ -30,19 +44,61 @@ export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadc
 
   ipcMain.handle('spaces:list', event => state(event.sender));
 
-  ipcMain.handle('spaces:switch', (_event, id, options = {}) => {
+  // SWITCHING KEEPS YOU AS YOU.
+  //
+  // A team view is its own session partition, so it used to start signed out
+  // and ask for a second sign-in, as the same person, on the same issuer. The
+  // personal session is parked here for that one space and taken by its page at
+  // boot (see spaces:take-session). Parked rather than pushed so the page can
+  // adopt it before anything mounts, and single-use with a short life so a
+  // later reload cannot pick up a session the personal window has since ended.
+  const parked = new Map(); // spaceId -> { token, until }
+
+  ipcMain.handle('spaces:switch', async (_event, id, options = {}) => {
     if (typeof id !== 'string' || !registry.has(id)) return { ok: false, error: 'Unknown space' };
     const projectId = typeof options?.projectId === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(options.projectId) ? options.projectId : null;
-    const result = views.show(id === PRIMARY_SPACE_ID ? null : registry.get(id), { projectId });
+    const space = id === PRIMARY_SPACE_ID ? null : registry.get(id);
+    if (space?.sharesIdentity) {
+      let token = null;
+      try { token = await readPrimarySession(); } catch (error) { console.warn('[spaces] could not read the personal session:', error?.message || error); }
+      if (looksLikeSessionToken(token)) parked.set(space.id, { token, until: now() + HANDOFF_TTL_MS });
+      else parked.delete(space.id);
+    }
+    const result = views.show(space, { projectId });
     if (result.ok) announce();
     return result;
   });
 
-  ipcMain.handle('spaces:sync-teams', (_event, teams, options = {}) => {
+  // Synchronous on purpose: the page asks from its preload-exposed bridge at
+  // module scope, before mount, where it cannot await. Every condition is
+  // re-checked at release, not at parking, because this is the moment the
+  // token leaves the main process:
+  //   - the asker must BE that space's view (not the personal window, not a
+  //     popup, not another team);
+  //   - the space must still share identity;
+  //   - the page must still be on the space's own origin. A team page can
+  //     navigate itself anywhere https; a view that has wandered off must not
+  //     be handed the session on its next load.
+  ipcMain.on('spaces:take-session', event => {
+    event.returnValue = null;
+    const id = views.spaceIdFor(event.sender);
+    const entry = parked.get(id);
+    if (!entry) return;
+    parked.delete(id);
+    const space = registry.get(id);
+    if (!space?.sharesIdentity || entry.until < now()) return;
+    let origin = null;
+    try { origin = new URL(event.sender.getURL()).origin; } catch { return; }
+    if (origin !== new URL(space.url).origin) return;
+    event.returnValue = entry.token;
+  });
+
+  ipcMain.handle('spaces:sync-teams', (event, teams, options = {}) => {
     if (!Array.isArray(teams) || teams.length > TEAM_LIST_LIMIT) return { ok: false, error: 'Invalid team list' };
-    const { changed, removed } = registry.syncTeams(teams, { replace: options?.replace === true });
+    const trusted = isPrimarySender(event?.sender) === true;
+    const { changed, removed } = registry.syncTeams(teams, { replace: options?.replace === true, trusted });
     // Losing a team closes its view: a removed member must not keep a live session on screen.
-    for (const id of removed) { views.close(id); unread.delete(id); }
+    for (const id of removed) { views.close(id); unread.delete(id); parked.delete(id); }
     if (changed) announce();
     return { ok: true, changed };
   });

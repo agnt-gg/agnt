@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('electron', {
   send: (channel, data) => { if (WINDOW_CHANNELS.includes(channel)) ipcRenderer.send(channel, data); },
   reportError: (payload) => ipcRenderer.send('diagnostics:client-error', payload),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  // The personal session, when this space was just switched to and shares it.
+  // Synchronous so boot can adopt it before mount. Null in every other case.
+  takeSessionHandoff: () => {
+    try { return ipcRenderer.sendSync('spaces:take-session'); } catch { return null; }
+  },
   spaces: {
     list: () => ipcRenderer.invoke('spaces:list'),
     switch: (id, options) => ipcRenderer.invoke('spaces:switch', id, options),

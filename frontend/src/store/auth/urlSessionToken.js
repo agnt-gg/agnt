@@ -103,6 +103,39 @@ export function adoptTokenFromUrl(store, loc = globalThis.location, hist = globa
 }
 
 /**
+ * Adopt the personal session the desktop app hands a team space it has just
+ * switched to (electron/spaces/spaceIpc.js, spaces:take-session).
+ *
+ * A team space is its own browser session, so without this it booted signed
+ * out and asked the same person to sign in a second time. The desktop only
+ * offers the session to an AGNT-hosted team the user's own account listed, and
+ * only to that team's own page; here it is adopted exactly like a URL token.
+ *
+ * Deliberately NOT recorded as `adoptedToken`: that tells the sign-in screen
+ * the user just signed in and should be navigated. Switching is not signing in;
+ * the user stays on whatever the team page opens to.
+ *
+ * @param {object} store  the Vuex store
+ * @param {Window} [win]  injectable for tests
+ * @returns {boolean} whether a token was adopted
+ */
+export function adoptSpaceSessionHandoff(store, win = globalThis.window) {
+  try {
+    const bridge = win?.electron;
+    if (!bridge?.isSpaceView || typeof bridge.takeSessionHandoff !== 'function') return false;
+    const token = bridge.takeSessionHandoff();
+    if (!looksLikeJwt(token)) return false;
+    if (store.state?.userAuth?.token === token) return true;
+    store.commit('userAuth/SET_TOKEN', token);
+    return true;
+  } catch (error) {
+    // Failing costs a sign-in; throwing here costs the whole app.
+    console.warn('[boot] could not take the session from the desktop app:', error?.message);
+    return false;
+  }
+}
+
+/**
  * Take the adopted token, if there was one. Single-use: the sign-in path reads
  * it exactly once to decide whether to confirm the session and navigate.
  */

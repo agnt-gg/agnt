@@ -29,7 +29,7 @@ vi.mock('@/services/mediaAuth.js', () => ({
   clearMediaCookie: vi.fn(),
 }));
 
-const { adoptTokenFromUrl, consumeAdoptedToken, __resetAdoptedTokenForTests } = await import(
+const { adoptTokenFromUrl, adoptSpaceSessionHandoff, consumeAdoptedToken, __resetAdoptedTokenForTests } = await import(
   './urlSessionToken.js'
 );
 
@@ -52,6 +52,48 @@ function makeStore() {
 function rewrittenUrl(hist) {
   return hist.replaceState.mock.calls[0]?.[2];
 }
+
+describe('a team space taking the personal session from the desktop app', () => {
+  const spaceWindow = (handoff) => ({ electron: { isSpaceView: true, takeSessionHandoff: vi.fn(() => handoff) } });
+
+  beforeEach(() => {
+    __resetAdoptedTokenForTests();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('adopts it, so switching does not ask the same person to sign in again', () => {
+    const store = makeStore();
+    expect(adoptSpaceSessionHandoff(store, spaceWindow(JWT))).toBe(true);
+    expect(store.commit).toHaveBeenCalledWith('userAuth/SET_TOKEN', JWT);
+  });
+
+  it('is not a sign-in: the sign-in screen is not told to navigate', () => {
+    adoptSpaceSessionHandoff(makeStore(), spaceWindow(JWT));
+    expect(consumeAdoptedToken()).toBeNull();
+  });
+
+  it('does nothing outside a team space, or when nothing was handed over', () => {
+    const store = makeStore();
+    const personal = { electron: { takeSessionHandoff: vi.fn(() => JWT) } };
+    expect(adoptSpaceSessionHandoff(store, personal)).toBe(false);
+    expect(personal.electron.takeSessionHandoff).not.toHaveBeenCalled();
+    expect(adoptSpaceSessionHandoff(store, spaceWindow(null))).toBe(false);
+    expect(adoptSpaceSessionHandoff(store, {})).toBe(false);
+    expect(adoptSpaceSessionHandoff(store, undefined)).toBe(false);
+    expect(store.commit).not.toHaveBeenCalled();
+  });
+
+  it('never lets garbage evict a working session', () => {
+    const store = makeStore();
+    expect(adoptSpaceSessionHandoff(store, spaceWindow('not-a-token'))).toBe(false);
+    expect(store.commit).not.toHaveBeenCalled();
+  });
+
+  it('boot survives a bridge that throws', () => {
+    const win = { electron: { isSpaceView: true, takeSessionHandoff: () => { throw new Error('ipc gone'); } } };
+    expect(adoptSpaceSessionHandoff(makeStore(), win)).toBe(false);
+  });
+});
 
 describe('adopting a token handed over in the URL', () => {
   beforeEach(() => {

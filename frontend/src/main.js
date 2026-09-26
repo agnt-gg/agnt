@@ -14,7 +14,7 @@ import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
-import { adoptTokenFromUrl } from '@/store/auth/urlSessionToken.js';
+import { adoptTokenFromUrl, adoptSpaceSessionHandoff } from '@/store/auth/urlSessionToken.js';
 import { handOffSessionTokenToOpener } from '@/utils/oauthPopupHandoff.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
@@ -107,7 +107,9 @@ const isSessionHandoffPopup = handOffSessionTokenToOpener();
 // so the store cannot seed itself the way it does on desktop. Adopt it here —
 // synchronously, before mount — so no component can ever observe a null token
 // and poll without one. See store/auth/urlSessionToken.js.
-if (!isSessionHandoffPopup) adoptTokenFromUrl(store);
+// A token in the URL wins; otherwise a team space the desktop just switched to
+// takes the personal session, so switching never asks for a second sign-in.
+if (!isSessionHandoffPopup && !adoptTokenFromUrl(store)) adoptSpaceSessionHandoff(store);
 
 // Load the user's data when a session STARTS, and drop it when one ends —
 // however that happens. Installed before anything can change sessionState so
