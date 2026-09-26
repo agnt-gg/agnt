@@ -87,6 +87,24 @@ function parseStoredMessages(rawContent) {
 }
 
 /**
+ * The client's saved quick-reply suggestions, or null.
+ *
+ * They live inside the content column, so rule 3 (carry every column over)
+ * does not reach them on its own: a turn-end write that re-serializes the
+ * transcript would silently drop them. Carried verbatim — the client anchors
+ * each set to the user turn it answers and ignores one that no longer
+ * matches, so carrying a stale set is harmless and dropping a fresh one is not.
+ */
+function parseStoredSuggestions(rawContent) {
+  try {
+    const suggestions = JSON.parse(rawContent)?.suggestions;
+    return suggestions && typeof suggestions === 'object' && !Array.isArray(suggestions) ? suggestions : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The sequence of things the USER said — a conversation's skeleton.
  *
  * Assistant turns are legitimately rewritten on every pass: merged across
@@ -244,7 +262,12 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
       userId,
       existing.workflow_id,
       existing.tool_id,
-      serializeTranscript({ conversationId, title, messages: incoming }),
+      serializeTranscript({
+        conversationId,
+        title,
+        messages: incoming,
+        suggestions: parseStoredSuggestions(existing.content),
+      }),
       !!existing.is_shareable,
       'conversation',
       conversationId,

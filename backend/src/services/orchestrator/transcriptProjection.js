@@ -84,8 +84,9 @@ export function serializeTranscript({
   messages = [],
   agentId = null,
   agentName = null,
+  suggestions = null,
 } = {}) {
-  return JSON.stringify({
+  const payload = {
     conversationId,
     title,
     agentId,
@@ -94,7 +95,14 @@ export function serializeTranscript({
     messages: messages.map(toStoredMessage),
     createdAt: messages[0]?.timestamp || Date.now(),
     updatedAt: Date.now(),
-  });
+  };
+  // The client's quick-reply pills, anchored to the user turn they answer.
+  // Opaque here: the client validates the anchor on read, so a set carried
+  // past a newer turn simply stops showing rather than showing stale.
+  if (suggestions && typeof suggestions === 'object' && !Array.isArray(suggestions)) {
+    payload.suggestions = suggestions;
+  }
+  return JSON.stringify(payload);
 }
 
 /**

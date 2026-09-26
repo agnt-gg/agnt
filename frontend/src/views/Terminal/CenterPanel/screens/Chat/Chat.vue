@@ -309,6 +309,7 @@ import GoalProgressWidget from './components/GoalProgressWidget.vue';
 import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { serializeTranscript } from '@/services/conversationTranscript.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -990,8 +991,19 @@ export default {
       { id: 3, text: 'Research a topic', icon: 'fas fa-search', prompt: 'Research a topic for me and give me a short sourced summary. Ask me the topic first.' },
       { id: 4, text: 'What can you do?', icon: 'fas fa-compass', prompt: 'In a few lines, what can you do for me? Suggest three things to try first.' },
     ];
-    const suggestions = ref([...initialSuggestions]);
-    const isLoadingSuggestions = ref(false);
+    // Suggestions belong to the conversation, not to this screen: they live in
+    // the conversation's store slot and are saved with its transcript, so a
+    // switch shows that conversation's own pills and never the last one's.
+    // A conversation the user has not spoken in yet gets the starters.
+    const suggestions = computed(() => {
+      const own = store.getters['chat/conversationSuggestions'](store.state.chat.activeConversationId);
+      if (own.length) return own;
+      const hasUserTurn = (store.state.chat.messages || []).some((m) => m.role === 'user');
+      return hasUserTurn ? [] : initialSuggestions;
+    });
+    const isLoadingSuggestions = computed(() =>
+      store.getters['chat/isLoadingConversationSuggestions'](store.state.chat.activeConversationId),
+    );
 
     // Monitoring Panel State
     const isMonitoringCollapsed = ref(true); // Collapsed by default
@@ -1721,9 +1733,18 @@ export default {
           break;
         }
         case 'final_content':
-          if (isActiveView) {
-            delete messageStates.value[data.assistantMessageId];
-            updateSuggestionsWithAI(displayMessages.value.slice(-2)[0]?.content, data.content);
+          if (isActiveView) delete messageStates.value[data.assistantMessageId];
+          // For the conversation that produced this answer, whether or not it
+          // is on screen — a chat finishing in the background has its pills
+          // ready when the user opens it. Forced: a new reply (e.g. a floor
+          // pass) can change what is worth suggesting without a new user turn.
+          //
+          // Deferred one microtask: stream callbacks run BEFORE the store
+          // applies this event (handleScopedStreamEvent, same tick), and the
+          // request must read the conversation with its final answer in it.
+          {
+            const suggestFor = streamConvId || activeId;
+            queueMicrotask(() => fetchSuggestionsFor(suggestFor, { force: true }));
           }
           break;
         case 'error':
@@ -1884,51 +1905,31 @@ export default {
       return { type: 'streaming', text: '' };
     };
 
-    const updateSuggestionsWithAI = async (lastUserMessage, lastAssistantMessage) => {
-      if (isLoadingSuggestions.value) return;
-
-      isLoadingSuggestions.value = true;
-      const token = localStorage.getItem('token');
-
-      try {
-        const recentHistory = displayMessages.value.slice(-10).map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
-
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/suggestions`, {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({
-            history: recentHistory,
-            lastUserMessage,
-            lastAssistantMessage,
-            provider: store.state.aiProvider.selectedProvider,
-            model: store.state.aiProvider.selectedModel,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.suggestions && Array.isArray(data.suggestions)) {
-            suggestions.value = data.suggestions;
-          }
-        } else {
-          console.error('Failed to fetch suggestions');
-        }
-      } catch (error) {
-        console.error('Error fetching AI suggestions:', error);
-      } finally {
-        isLoadingSuggestions.value = false;
-      }
+    // Generate suggestions for one named conversation. The store writes the
+    // result back to that conversation only, and drops it if the user has
+    // moved on to a newer turn there in the meantime.
+    const fetchSuggestionsFor = (conversationId, { force = false } = {}) => {
+      if (!conversationId) return Promise.resolve(false);
+      return store.dispatch('chat/fetchConversationSuggestions', {
+        conversationId,
+        provider: store.state.aiProvider.selectedProvider,
+        model: store.state.aiProvider.selectedModel,
+        force,
+      });
     };
+
+    // Backfill for a conversation opened without a current set: saved before
+    // suggestions were stored, or its last set answers an older turn. No-op
+    // when the conversation already has valid ones, and while it streams
+    // (final_content generates them when the turn lands).
+    const backfillActiveSuggestions = () => {
+      const conversationId = store.state.chat.activeConversationId;
+      const conv = conversationId ? store.state.chat.conversations[conversationId] : null;
+      if (!conv || conv.isStreaming) return;
+      const hasTurn = conv.messages.some((m) => m.role === 'user') && conv.messages.some((m) => m.role === 'assistant');
+      if (hasTurn) fetchSuggestionsFor(conversationId);
+    };
+    watch(() => store.state.chat.activeConversationId, backfillActiveSuggestions);
 
     const executeSuggestion = (suggestion) => {
       handleUserInputSubmit(suggestion.prompt || suggestion.text);
@@ -2054,27 +2055,17 @@ export default {
           ? safeTruncate(firstUserMessage.content, 100, '...')
           : 'Untitled Conversation';
 
-        // Persist {{IMAGE_REF:id}} tokens AS-IS — do NOT inline base64.
-        // Images are already persisted to disk server-side at generation time
-        // and MessageItem resolves refs to /api/images/:id on render. Inlining
-        // made image-heavy conversation blobs ~6x larger and slowed loads.
-        const conversationData = {
+        // The ONE transcript serializer, fed the conversation's FULL message
+        // list — not displayMessages, which hides everything above a
+        // compaction fold — so a manual save keeps contentParts, compaction
+        // markers and the conversation's suggestions exactly like autosave.
+        const activeConv = store.getters['chat/activeConversation'];
+        const serializedConversation = serializeTranscript({
           conversationId: currentConversationId.value,
           title: conversationTitle,
-          messages: displayMessages.value.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            timestamp: msg.timestamp,
-            metadata: msg.metadata || [],
-            toolCalls: msg.toolCalls || [],
-            files: msg.files || [], // Include uploaded files (reference images)
-            agentName: msg.agentName || undefined,
-            agentIcon: msg.agentIcon || undefined,
-          })),
-          createdAt: displayMessages.value[0]?.timestamp || Date.now(),
-          updatedAt: Date.now(),
-        };
+          messages: store.state.chat.messages || [],
+          suggestions: activeConv?.suggestions || null,
+        });
 
         const saveStartedAt = Date.now();
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {
@@ -2084,7 +2075,7 @@ export default {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            content: JSON.stringify(conversationData),
+            content: serializedConversation,
             contentType: 'conversation',
             conversationId: currentConversationId.value,
             isShareable: false,
@@ -2181,6 +2172,9 @@ export default {
           store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: convId, messages: conversationData.messages });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: contentId });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: conversationData.title || null });
+          // Before activation, so the switch watcher sees the saved set and
+          // does not regenerate one this conversation already has.
+          store.commit('chat/SCOPED_SET_SUGGESTIONS', { conversationId: convId, suggestions: conversationData.suggestions || null });
           store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
           // Restore the conversation's persisted skill/goal bindings so the
           // chips reappear and the orchestrator system prompt picks them up.
@@ -2342,13 +2336,7 @@ export default {
           terminalLines.value = ['Please connect an AI provider to begin.'];
         }
       } else {
-        const lastMessages = displayMessages.value.slice(-2);
-        const lastUser = lastMessages.find((m) => m.role === 'user');
-        const lastAssistant = lastMessages.find((m) => m.role === 'assistant');
-
-        if (lastUser && lastAssistant) {
-          await updateSuggestionsWithAI(lastUser.content, lastAssistant.content);
-        }
+        backfillActiveSuggestions();
       }
 
       // PHASE 3: Fire-and-forget background data (don't block the UI)
@@ -2491,7 +2479,6 @@ export default {
       clearInput();
       focusInput();
 
-      suggestions.value = [...initialSuggestions];
       // New conversation gets its own fresh monitoring slot (lazy-created on
       // first access). No need to touch other conversations' slots.
       resetMonitoringStateFor(newConvId);
@@ -2781,7 +2768,6 @@ export default {
           runningToolCalls.value = {};
           messageStates.value = {};
           currentConversationId.value = null;
-          suggestions.value = [...initialSuggestions];
 
           terminalLines.value = ['[Auto-Switch] Local AI provider connected via LM Studio'];
 
@@ -2813,7 +2799,6 @@ export default {
         runningToolCalls.value = {};
         messageStates.value = {};
         currentConversationId.value = null;
-        suggestions.value = [...initialSuggestions];
 
         terminalLines.value = ['[Auto-Switch] Local AI provider disconnected'];
 

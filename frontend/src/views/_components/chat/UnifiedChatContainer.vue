@@ -695,11 +695,8 @@ export default {
         channelKey: props.channelKey,
         welcomeMessage: buildWelcomeMessage(),
       });
-      // Generated suggestions describe the conversation we just deleted.
-      store.dispatch('chatUnified/setSuggestions', {
-        channelKey: props.channelKey,
-        suggestions: [...props.initialSuggestions],
-      });
+      // clearConversation drops the deleted conversation's suggestions with
+      // it, so the host's initialSuggestions show again (see `suggestions`).
       emit('cleared');
       focusInput();
     };

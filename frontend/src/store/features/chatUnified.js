@@ -16,6 +16,13 @@ import {
   scopeTranscriptToChannel,
   deriveTitle,
 } from '@/services/conversationTranscript.js';
+import {
+  anchorSuggestions,
+  normalizeStoredSuggestions,
+  requestSuggestions,
+  suggestionAnchor,
+  suggestionsFor,
+} from '@/services/conversationSuggestions.js';
 // The key only — workspaceStorage.js is deliberately import-free and
 // side-effect-free, so reading workspace state here never boots the
 // useWorkspaces singleton (which MINTS a workspace on import). Two writers to
@@ -118,7 +125,9 @@ const blankConversation = () => ({
   messages: [],
   conversationId: null,
   lastUpdate: Date.now(),
-  suggestions: [],
+  // `{ items, anchor }` or null — the pills for THIS conversation at its
+  // latest user turn, saved with its transcript. See conversationSuggestions.js.
+  suggestions: null,
   // The content_outputs row this channel's transcript is saved to. Held so
   // every save UPDATES one row instead of creating a new one per turn.
   savedOutputId: null,
@@ -228,7 +237,7 @@ export const reclaimSplitKeys = (conversations) => {
             messages: conv.messages || [],
             conversationId: conv.conversationId || null,
             lastUpdate: conv.lastUpdate || Date.now(),
-            suggestions: conv.suggestions || [],
+            suggestions: normalizeStoredSuggestions(conv.suggestions),
           };
           adopted++;
         }
@@ -326,7 +335,7 @@ const migrateLegacyChannel = (state, channelKey) => {
         messages: legacyConv.messages || [],
         conversationId: legacyConv.conversationId || null,
         lastUpdate: legacyConv.lastUpdate || Date.now(),
-        suggestions: legacyConv.suggestions || [],
+        suggestions: normalizeStoredSuggestions(legacyConv.suggestions),
       };
       persistConversations(state.conversations);
     }
@@ -381,7 +390,12 @@ export default {
 
   mutations: {
     SET_CONVERSATION(state, { channelKey, conversation }) {
-      state.conversations[channelKey] = { ...blankConversation(), ...conversation };
+      state.conversations[channelKey] = {
+        ...blankConversation(),
+        ...conversation,
+        // Validated at the door: only an anchored set is ever stored.
+        suggestions: normalizeStoredSuggestions(conversation?.suggestions),
+      };
       persistConversations(state.conversations);
     },
     INITIALIZE_CHANNEL(state, { channelKey, welcomeMessage }) {
@@ -500,9 +514,10 @@ export default {
       state.conversations[channelKey].savedOutputId = outputId;
       persistConversations(state.conversations);
     },
+    /** Store an anchored set (`{ items, anchor }`); anything else clears. */
     SET_SUGGESTIONS(state, { channelKey, suggestions }) {
       ensureChannel(state, channelKey);
-      state.conversations[channelKey].suggestions = suggestions || [];
+      state.conversations[channelKey].suggestions = normalizeStoredSuggestions(suggestions);
       state.conversations[channelKey].lastUpdate = Date.now();
       persistConversations(state.conversations);
     },
@@ -510,7 +525,7 @@ export default {
       if (state.conversations[channelKey]) {
         state.conversations[channelKey].messages = welcomeMessage ? [welcomeMessage] : [];
         state.conversations[channelKey].conversationId = null;
-        state.conversations[channelKey].suggestions = [];
+        state.conversations[channelKey].suggestions = null;
         state.conversations[channelKey].lastUpdate = Date.now();
       } else if (welcomeMessage) {
         state.conversations[channelKey] = { ...blankConversation(), messages: [welcomeMessage] };
@@ -642,8 +657,12 @@ export default {
     },
     getConversationId: (state) => (channelKey) =>
       state.conversations[channelKey]?.conversationId || null,
-    getSuggestions: (state) => (channelKey) =>
-      state.conversations[channelKey]?.suggestions || [],
+    // Only the channel's CURRENT conversation's set, and only while it still
+    // answers that conversation's latest user turn.
+    getSuggestions: (state) => (channelKey) => {
+      const conv = state.conversations[channelKey];
+      return conv ? suggestionsFor(conv.suggestions, conv.messages) : [];
+    },
     isStreaming: (state) => (channelKey) => !!state.streamingChannels[channelKey],
     isLoadingSuggestions: (state) => (channelKey) =>
       !!state.loadingSuggestionsChannels[channelKey],
@@ -683,6 +702,10 @@ export default {
       const isWorkspace = channelKey.startsWith('workspace:');
       const local = state.conversations[channelKey] || blankConversation();
       const localCount = Array.isArray(local.messages) ? local.messages.length : 0;
+      // Which conversation the seat held BEFORE this call. Read now: the id
+      // realignment below writes the incoming id onto this same object, after
+      // which the seat's old thread and the incoming one look identical.
+      const heldConversationId = local.conversationId || null;
       // Prefer the id already on this channel, then the id synced via workspaces.
       let conversationId = local.conversationId || (isWorkspace ? readWorkspaceChannelConversation(channelKey) : null);
       // Publish any local id so other devices can discover this thread even
@@ -720,7 +743,10 @@ export default {
             conversationId,
             savedOutputId: saved.outputId || null,
             lastUpdate: saved.updatedAt ? Date.parse(saved.updatedAt) || Date.now() : Date.now(),
-            suggestions: local.suggestions || [],
+            // The adopted conversation's own set. The channel's previous set
+            // belongs to whatever conversation this channel held before, so
+            // it is kept only when that was this same conversation.
+            suggestions: saved.suggestions || (heldConversationId === conversationId ? local.suggestions : null),
           },
         });
         if (isWorkspace) writeWorkspaceChannelConversation(channelKey, conversationId);
@@ -758,7 +784,9 @@ export default {
           conversationId: remote.conversationId || conversationId,
           savedOutputId: local.savedOutputId || null,
           lastUpdate: remote.updatedAt ? Date.parse(remote.updatedAt) || Date.now() : Date.now(),
-          suggestions: local.suggestions || [],
+          // The provider log carries no suggestions; keep the channel's only
+          // when it was already this conversation (see the transcript path).
+          suggestions: heldConversationId === (remote.conversationId || conversationId) ? local.suggestions : null,
         },
       });
       if (isWorkspace) writeWorkspaceChannelConversation(channelKey, remote.conversationId || conversationId);
@@ -793,6 +821,7 @@ export default {
         conversationId: conv.conversationId,
         title: deriveTitle(conv.messages),
         messages: conv.messages,
+        suggestions: conv.suggestions,
         // This transcript belongs to the surface it was typed into, not to the
         // user's main conversation list. Without this the sidebar lists every
         // workspace, artifact and widget chat alongside real conversations.
@@ -857,11 +886,6 @@ export default {
     addMessage({ commit }, { channelKey, message }) {
       if (!channelKey || !message) return;
       commit('ADD_MESSAGE', { channelKey, message });
-    },
-
-    setSuggestions({ commit }, { channelKey, suggestions }) {
-      if (!channelKey) return;
-      commit('SET_SUGGESTIONS', { channelKey, suggestions });
     },
 
     toggleToolCallExpansion({ commit, state }, { channelKey, messageId, toolCallIndex }) {
@@ -1209,46 +1233,47 @@ export default {
     },
 
     /**
-     * Optionally fetch contextual suggestions from /orchestrator/suggestions.
+     * Fetch contextual suggestions for the channel's CURRENT conversation.
+     *
+     * The result is kept only if, when it lands, the channel still holds the
+     * same conversation at the same user turn — a channel can be cleared or
+     * re-pointed at another conversation while the request is out, and the
+     * answer must not follow the channel into it. Saved with the transcript.
+     *
+     * @returns {Promise<boolean>} true when a new set was stored.
      */
-    async fetchSuggestions({ commit, state, rootState }, { channelKey, chatType, contextLabel }) {
-      if (state.loadingSuggestionsChannels[channelKey]) return;
+    async fetchSuggestions({ commit, dispatch, state, rootState }, { channelKey, chatType, contextLabel }) {
+      if (!channelKey || state.loadingSuggestionsChannels[channelKey]) return false;
       const conv = state.conversations[channelKey];
       const messages = conv?.messages || [];
-      if (messages.length < 2) return;
-
-      const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content;
-      const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant')?.content;
-      if (!lastUserMessage || !lastAssistantMessage) return;
+      const requestedFor = suggestionAnchor(messages);
+      if (!requestedFor) return false;
+      const conversationId = conv.conversationId;
 
       commit('SET_LOADING_SUGGESTIONS', { channelKey, isLoading: true });
       try {
-        const { API_CONFIG } = await import('@/tt.config.js');
-        const token = localStorage.getItem('token');
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const recentHistory = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
         const channelPM = resolveChannelProviderModel(channelKey, rootState.aiProvider);
-        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/suggestions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            history: recentHistory,
-            lastUserMessage,
-            lastAssistantMessage,
-            provider: channelPM.provider,
-            model: channelPM.model,
-            context: contextLabel || chatType,
-          }),
+        const items = await requestSuggestions({
+          messages,
+          provider: channelPM.provider,
+          model: channelPM.model,
+          context: contextLabel || chatType,
         });
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data?.suggestions)) {
-            commit('SET_SUGGESTIONS', { channelKey, suggestions: data.suggestions.slice(0, 2) });
-          }
+        if (!items) return false;
+
+        const live = state.conversations[channelKey];
+        if (!live || live.conversationId !== conversationId) return false;
+        const anchored = anchorSuggestions(items.slice(0, 2), live.messages);
+        if (
+          !anchored ||
+          anchored.anchor.userTurns !== requestedFor.userTurns ||
+          anchored.anchor.lastUserHash !== requestedFor.lastUserHash
+        ) {
+          return false;
         }
-      } catch (e) {
-        console.error('[chatUnified] fetchSuggestions error:', e);
+        commit('SET_SUGGESTIONS', { channelKey, suggestions: anchored });
+        dispatch('saveChannelTranscript', { channelKey }).catch(() => { /* logged by saveTranscript */ });
+        return true;
       } finally {
         commit('SET_LOADING_SUGGESTIONS', { channelKey, isLoading: false });
       }

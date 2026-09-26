@@ -172,15 +172,14 @@ describe('UnifiedChatContainer — clear chat action', () => {
     expect(payload.welcomeMessage.role).toBe('assistant');
   });
 
-  it('resets suggestions to the host-supplied initial set', async () => {
+  it('shows the host-supplied initial set when the cleared channel has none of its own', async () => {
+    // The store drops a cleared conversation's suggestions (chatUnified
+    // CLEAR_CONVERSATION); the container falls back to the host's starters.
     const wrapper = mountChat({ compactInput: false }, spies);
     wrapper.vm.confirmModalRef.showModal = vi.fn().mockResolvedValue(true);
     await wrapper.vm.onClearChat();
 
-    expect(spies.setSuggestions).toHaveBeenCalledTimes(1);
-    const payload = spies.setSuggestions.mock.calls[0][1];
-    expect(payload.channelKey).toBe('workspace:ws_1');
-    expect(payload.suggestions).toEqual([{ id: 's1', text: 'Open a widget' }]);
+    expect(wrapper.vm.suggestions).toEqual([{ id: 's1', text: 'Open a widget' }]);
   });
 
   it('emits the previously-dead `cleared` event', async () => {

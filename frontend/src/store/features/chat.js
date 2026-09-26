@@ -8,6 +8,14 @@ import { reattachRun, cancelRun, fetchConversation } from '@/services/chatServic
 import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
+import {
+  anchorSuggestions,
+  isAnchoredTo,
+  normalizeStoredSuggestions,
+  requestSuggestions,
+  suggestionAnchor,
+  suggestionsFor,
+} from '@/services/conversationSuggestions.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
@@ -484,6 +492,10 @@ function createConversationState(conversationId) {
     agentAvatar: null,
     streamEventCallbacks: [],
     pendingSteer: '', // Per-conversation so switching chats doesn't drag a steer
+    // Quick-reply pills, for the same reason: `{ items, anchor }` or null,
+    // saved with the transcript. See conversationSuggestions.js.
+    suggestions: null,
+    isLoadingSuggestions: false,
     // Group-chat floor state: agents queued to respond (via mention_agent),
     // how many agent-initiated turns this human message has consumed, and the
     // last agent dispatched (self-repeat cycle guard).
@@ -501,6 +513,19 @@ function createConversationState(conversationId) {
     // Bounded (LIVE_RUNS_KEPT); the history store is the record.
     liveRuns: [],
   };
+}
+
+/**
+ * The key a conversation slot is stored under right now, found by identity.
+ *
+ * An async action must not re-resolve its slot by the id it started with:
+ * MIGRATE_CONVERSATION_ID re-keys a slot from its temp- id to the server's
+ * UUID while requests are in flight. The slot OBJECT is carried over intact,
+ * so identity is the one address that survives the rename.
+ */
+function slotKeyOf(state, conv) {
+  if (!conv) return null;
+  return Object.keys(state.conversations).find((key) => state.conversations[key] === conv) || null;
 }
 
 /** Live runs remembered per conversation. Only the running ones matter; the
@@ -636,6 +661,15 @@ export default {
       // Mirror to flat state only while this conversation is the one on
       // screen; the chip belongs to the conversation that owns the steer.
       if (state.activeConversationId === conversationId) state.pendingSteer = next;
+    },
+    /** Replace one conversation's suggestions; null clears them. */
+    SCOPED_SET_SUGGESTIONS(state, { conversationId, suggestions }) {
+      const conv = state.conversations[conversationId];
+      if (conv) conv.suggestions = normalizeStoredSuggestions(suggestions);
+    },
+    SCOPED_SET_SUGGESTIONS_LOADING(state, { conversationId, value }) {
+      const conv = state.conversations[conversationId];
+      if (conv) conv.isLoadingSuggestions = !!value;
     },
     CLEAR_PENDING_STEER(state) {
       const conv = state.conversations[state.activeConversationId];
@@ -1632,6 +1666,17 @@ export default {
     agentConversationId: (state) => (agentId) => findAgentConversationId(state.conversations, agentId),
     // Concurrent conversation getters
     activeConversation: (state) => state.conversations[state.activeConversationId] || null,
+    /**
+     * The suggestions to show for a conversation: its own, and only while
+     * they still answer its latest user turn. [] otherwise — never another
+     * conversation's.
+     */
+    conversationSuggestions: (state) => (conversationId) => {
+      const conv = conversationId ? state.conversations[conversationId] : null;
+      return conv ? suggestionsFor(conv.suggestions, conv.messages) : [];
+    },
+    isLoadingConversationSuggestions: (state) => (conversationId) =>
+      !!(conversationId && state.conversations[conversationId]?.isLoadingSuggestions),
     isAnyConversationStreaming: (state, getters) =>
       Object.values(state.conversations).some(
         (c) => c.isStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0),
@@ -2724,6 +2769,12 @@ export default {
       commit('SCOPED_SET_MESSAGES', { conversationId, messages: [...stored.messages, ...unsaved] });
       commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId, id: outputId });
       if (row.title) commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId, title: row.title });
+      // Adopt the stored suggestions only when this tab has none of its own
+      // for the adopted transcript; the anchor decides whether they still show.
+      const adopted = state.conversations[conversationId];
+      if (stored.suggestions && adopted && !isAnchoredTo(adopted.suggestions, adopted.messages)) {
+        commit('SCOPED_SET_SUGGESTIONS', { conversationId, suggestions: stored.suggestions });
+      }
 
       console.log(
         `[Chat] Restored ${stored.messages.length} stored messages for ${conversationId}`
@@ -2839,6 +2890,51 @@ export default {
     },
 
     /**
+     * Generate the quick-reply suggestions for ONE conversation.
+     *
+     * The result is written to the conversation that asked, never to the one
+     * on screen when it lands, and only if that conversation has not moved
+     * past the user turn the request was made for. Saved with the transcript.
+     *
+     * `force` regenerates even when a valid set exists — a new assistant
+     * reply (a floor pass) can change what is worth suggesting without the
+     * user having said anything new.
+     *
+     * @returns {Promise<boolean>} true when a new set was stored.
+     */
+    async fetchConversationSuggestions({ commit, state, dispatch }, { conversationId, provider, model, force = false } = {}) {
+      const conv = conversationId ? state.conversations[conversationId] : null;
+      if (!conv || conv.isLoadingSuggestions || conv.agentId) return false;
+      if (!force && isAnchoredTo(conv.suggestions, conv.messages)) return false;
+      const requestedFor = suggestionAnchor(conv.messages);
+      if (!requestedFor) return false;
+
+      commit('SCOPED_SET_SUGGESTIONS_LOADING', { conversationId, value: true });
+      try {
+        const items = await requestSuggestions({ messages: conv.messages, provider, model });
+        // Evicted while the request was out: there is nowhere left to write.
+        const slotKey = slotKeyOf(state, conv);
+        if (!items || !slotKey) return false;
+        const anchored = anchorSuggestions(items, conv.messages);
+        // The user said something newer (or edited and resent) meanwhile, so
+        // these answer a question the conversation has already moved past.
+        if (
+          !anchored ||
+          anchored.anchor.userTurns !== requestedFor.userTurns ||
+          anchored.anchor.lastUserHash !== requestedFor.lastUserHash
+        ) {
+          return false;
+        }
+        commit('SCOPED_SET_SUGGESTIONS', { conversationId: slotKey, suggestions: anchored });
+        dispatch('autosaveConversation', { debounce: true, conversationId: slotKey });
+        return true;
+      } finally {
+        const slotKey = slotKeyOf(state, conv);
+        if (slotKey) commit('SCOPED_SET_SUGGESTIONS_LOADING', { conversationId: slotKey, value: false });
+      }
+    },
+
+    /**
      * Autosave conversation with debouncing.
      * Accepts optional conversationId to save a background conversation.
      */
@@ -2942,6 +3038,7 @@ export default {
           messages,
           agentId: agentId || null,
           agentName: agentName || null,
+          suggestions: conv ? conv.suggestions : null,
         });
 
         // Saves never mark read — the email model. A save records that the

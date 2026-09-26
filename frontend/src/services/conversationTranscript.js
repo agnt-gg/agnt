@@ -31,6 +31,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { hydrateMessage } from './chatStreamReducer.js';
+import { normalizeStoredSuggestions } from './conversationSuggestions.js';
 
 const authHeaders = () => {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -85,8 +86,9 @@ export function serializeTranscript({
   messages = [],
   agentId = null,
   agentName = null,
+  suggestions = null,
 } = {}) {
-  return JSON.stringify({
+  const payload = {
     conversationId,
     title,
     agentId,
@@ -95,7 +97,13 @@ export function serializeTranscript({
     messages: messages.map(toStoredMessage),
     createdAt: messages[0]?.timestamp || Date.now(),
     updatedAt: Date.now(),
-  });
+  };
+  // The quick-reply pills are part of the conversation, anchored to the turn
+  // they answer (conversationSuggestions.js). Omitted when there are none so
+  // a plain transcript's payload is unchanged.
+  const storedSuggestions = normalizeStoredSuggestions(suggestions);
+  if (storedSuggestions) payload.suggestions = storedSuggestions;
+  return JSON.stringify(payload);
 }
 
 /**
@@ -121,6 +129,9 @@ export function parseTranscript(raw) {
     conversationId: parsed.conversationId || null,
     title: parsed.title || null,
     messages: messages.map(hydrateMessage),
+    // Validated, not trusted: null for transcripts saved before suggestions
+    // were stored, and for anything malformed.
+    suggestions: normalizeStoredSuggestions(parsed.suggestions),
   };
 }
 
@@ -153,6 +164,7 @@ export async function saveTranscript({
   agentId = null,
   agentName = null,
   channelKey = null,
+  suggestions = null,
 } = {}) {
   if (!conversationId) return { ok: false, error: 'no_conversation_id' };
   if (!messages.length) return { ok: false, error: 'empty' };
@@ -163,7 +175,7 @@ export async function saveTranscript({
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         id: outputId || undefined,
-        content: serializeTranscript({ conversationId, title, messages, agentId, agentName }),
+        content: serializeTranscript({ conversationId, title, messages, agentId, agentName, suggestions }),
         contentType: 'conversation',
         conversationId,
         isShareable: false,
@@ -189,7 +201,7 @@ export async function saveTranscript({
 /**
  * Load the transcript saved for a conversation, if there is one.
  *
- * @returns {Promise<{outputId:string, title:string|null, messages:Array}|null>}
+ * @returns {Promise<{outputId:string, title:string|null, messages:Array, suggestions:object|null}|null>}
  *          null means "nothing saved" — a legitimate answer for a conversation
  *          that predates durable saving, not an error.
  */
@@ -213,6 +225,7 @@ export async function loadTranscriptByConversationId(conversationId) {
       outputId: row.id,
       title: parsed.title || row.title || null,
       messages: parsed.messages,
+      suggestions: parsed.suggestions,
       updatedAt: row.updated_at || row.updatedAt || null,
     };
   } catch (e) {

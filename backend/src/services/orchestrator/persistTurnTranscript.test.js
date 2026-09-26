@@ -160,6 +160,35 @@ describe('finishing the row a departed client left behind', () => {
     expect(saved.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
   });
 
+  it('carries the client\'s saved suggestions through the rewrite, verbatim', async () => {
+    // Suggestions live INSIDE the content column, so carrying the other
+    // columns over does not protect them: re-serializing without them erased
+    // every conversation's pills at the end of each turn.
+    const conversationId = 'conv-suggestions';
+    const suggestions = {
+      items: [{ id: 1, text: 'Show me the logs', prompt: 'Show me the logs' }],
+      anchor: { userTurns: 1, lastUserHash: 'abc123' },
+    };
+    await ContentOutputModel.createOrUpdate('out-suggestions', USER, null, null,
+      JSON.stringify({ conversationId, title: 't', messages: [{ role: 'user', content: 'hi' }], suggestions }),
+      false, 'conversation', conversationId, 'hi');
+
+    const result = await persistTurnTranscript({ conversationId, userId: USER, providerMessages: providerHistory() });
+
+    expect(result.written).toBe(true);
+    expect(JSON.parse((await getRow('out-suggestions')).content).suggestions).toEqual(suggestions);
+  });
+
+  it('writes no suggestions field for a row that never had one', async () => {
+    const conversationId = 'conv-no-suggestions';
+    await ContentOutputModel.createOrUpdate('out-no-suggestions', USER, null, null,
+      storedTranscript([{ role: 'user', content: 'hi' }]), false, 'conversation', conversationId, 'hi');
+
+    await persistTurnTranscript({ conversationId, userId: USER, providerMessages: providerHistory() });
+
+    expect(JSON.parse((await getRow('out-no-suggestions')).content)).not.toHaveProperty('suggestions');
+  });
+
   it('tells other tabs, so an open sidebar stops showing the stale preview', async () => {
     const conversationId = 'conv-broadcast';
     await ContentOutputModel.createOrUpdate('out-broadcast', USER, null, null,
