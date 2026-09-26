@@ -370,7 +370,21 @@ const actions = {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to create goal');
+      if (!response.ok) {
+        // Keep the server's explanation (e.g. which model could not be reached)
+        // instead of a generic failure; no goal was created.
+        let body = null;
+        try { body = await response.json(); } catch { /* not JSON */ }
+        const failure = new Error(body?.error || `Failed to create goal (HTTP ${response.status})`);
+        Object.assign(failure, {
+          status: response.status,
+          code: body?.code || null,
+          provider: body?.provider || null,
+          model: body?.model || null,
+          retryable: body?.retryable === true,
+        });
+        throw failure;
+      }
 
       const data = await response.json();
 
