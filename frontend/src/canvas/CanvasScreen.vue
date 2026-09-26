@@ -7,11 +7,11 @@
       <button v-if="compactLayout" class="cv-mobile-inspector" type="button" aria-label="Open page inspector" @click="requestMobileInspector"><i class="fas fa-info-circle"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
       <!-- Which space everything on screen belongs to. Only shown in a team, where it matters. -->
-      <span v-if="activeTeamId" class="cv-space-chip" role="status" :aria-label="'Working in team ' + workspaceLabel"><i class="fas fa-users" aria-hidden="true"></i>{{ workspaceLabel }}</span>
+      <span v-if="activeTeamId" class="cv-space-chip" role="status" :aria-label="'Working in workspace ' + workspaceLabel"><i class="fas fa-users" aria-hidden="true"></i>{{ workspaceLabel }}</span>
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
-        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : 'Teams' }}</span></template>
+        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : 'Members' }}</span></template>
         <template v-else-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
@@ -115,7 +115,8 @@
         :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
         <WorkspaceSwitcher
           :model-value="activeTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
-          :error="workspaceError" :unread="spaceUnread" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
+          :error="workspaceError" :unread="spaceUnread" :account="accountEmail" :personal-hint="personalHint"
+          @select="selectWorkspace" @refresh="loadWorkspaceTeams"
         />
         <!-- No Search row here on purpose. The rail lists DESTINATIONS, and
              search is an action, not a page — it is reached from the jump bar
@@ -334,7 +335,9 @@ import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
 import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
-import { currentTeamScope, openPersonal, openTeam } from '@/composables/useSpaces.js';
+import { currentTeamScope, homeOrigin, onTeamInstance, openPersonal, openTeam } from '@/composables/useSpaces.js';
+import { rememberInstanceTeam } from '@/utils/teamScopeTransport.js';
+import { teamRequest } from '@/utils/teamClient.js';
 import LibraryHome from './LibraryHome.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { API_CONFIG } from '@/tt.config.js';
@@ -515,7 +518,12 @@ export default {
       canAnnounce: computed(() => !compactLayout.value && !store.getters['userAuth/shouldShowOnboarding']),
     });
     const teamNavigationTab = ref('Members');
-    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===activeTeamId.value)?.name || (activeTeamId.value ? 'Team' : 'Personal'));
+    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===activeTeamId.value)?.name || (activeTeamId.value ? 'Workspace' : 'Personal'));
+    // Who is signed in HERE: each instance is its own site, so a mismatch is otherwise invisible.
+    const accountEmail = computed(() => store.state.userAuth?.userEmail || '');
+    // Where Personal leads from a workspace: the instance this tab came from, by name.
+    const personalHint = computed(() => { if(!activeTeamId.value)return ''; const home=homeOrigin(); try{return home?new URL(home).hostname.split('.')[0]:''}catch{return ''} });
+    const NO_PERSONAL_SPACE='This is a shared workspace. Your personal space is the AGNT desktop app, or a Personal Cloud instance.';
     let workspaceGeneration = 0;
     let workspaceRequest = null;
     const showLibrary = ref(false);
@@ -601,8 +609,37 @@ export default {
       if (item.type === 'page') return onCustomPage.value && item.id === activePageId.value;
       return !onCustomPage.value && activeSection.value?.id === item.id;
     }
+    // Asked once per page: the owner's first visit creates the team's default
+    // project, which every team-scoped request needs (ScopeApiMiddleware).
+    let projectEnsured=false;
+    function ensureTeamProject(team){
+      if(projectEnsured)return;projectEnsured=true;
+      teamRequest('/'+encodeURIComponent(team.id)+'/workspaces/default').catch(error=>{
+        if(error.code==='no_default_project')workspaceError.value='The owner of '+team.name+' has not opened it yet.';
+        else console.warn('[spaces] default project:',error.message);
+      });
+    }
+    /**
+     * Is this page a team's own instance? Learned from the team list: the team
+     * whose instance address IS this page's origin. Such a page is only ever that
+     * team (the backend enforces it: routes/TeamInstanceScope.js); remembering it
+     * makes the next load the team from first paint instead of "Personal".
+     */
+    function adoptInstanceTeam(teams){
+      const own=teams.find(t=>{try{return Boolean(t.tenantUrl)&&new URL(t.tenantUrl).origin===window.location.origin}catch{return false}});
+      if(own){
+        rememberInstanceTeam(own);
+        if(activeTeamId.value!==own.id){activeTeamId.value=own.id;selectedTeamId.value=own.id;}
+      } else if(onTeamInstance()){
+        // No longer on that team: stop labelling this page as it. The server refuses its data anyway.
+        rememberInstanceTeam(null);
+      }
+      const active=teams.find(t=>t.id===activeTeamId.value);
+      if(active)ensureTeamProject(active);
+    }
     function syncWorkspaceTeams(teams) {
       workspaceTeams.value=teams;workspaceError.value='';teamsLoaded.value=true;
+      adoptInstanceTeam(teams);
       if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
       // The desktop keeps one space per team; this list is the full membership, so a removed team's space closes.
       window.electron?.spaces?.syncTeams(teams.filter(t=>t.tenantUrl).map(t=>({id:t.id,name:t.name,tenantUrl:t.tenantUrl})),{replace:true})
@@ -633,7 +670,7 @@ export default {
       if(id==='__manage'){openPrimary('teams');return;}
       if(id===activeTeamId.value){showTeamWorkspace.value=false;showLibrary.value=false;return;}
       try {
-        if(!id){await openPersonal();return;}
+        if(!id){if(!(await openPersonal()))workspaceError.value=NO_PERSONAL_SPACE;return;}
         const team=workspaceTeams.value.find(t=>t.id===id);if(!team)return;
         if(!(await openTeam(team)))workspaceError.value=team.name+' has no instance address yet.';
       } catch(error){workspaceError.value='Cannot open that space.';console.warn('[spaces]',error.message);}
@@ -1054,7 +1091,7 @@ export default {
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryActive, openPrimary, isNavigationItemActive,
-      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
+      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,accountEmail,personalHint,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,

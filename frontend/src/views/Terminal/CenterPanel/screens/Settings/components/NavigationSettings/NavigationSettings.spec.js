@@ -54,10 +54,10 @@ describe('Settings → Navigation', () => {
     const listed = wrapper.findAll('.nav-row .item-copy strong').map((node) => node.text());
     const everyRow = groupedNavigation(PAGES.slice(0, 2), { includeHidden: true }).flatMap((group) => group.items);
     expect(listed).toEqual(everyRow.map((item) => item.label));
-    // Library and Teams open a panel rather than a screen, but the user sees
+    // Library and Members open a panel rather than a screen, but the user sees
     // them on the rail, so they are configured here like anything else.
     expect(listed).toContain('Library');
-    expect(listed).toContain('Teams');
+    expect(listed).toContain('Members');
     const library = everyRow.find((item) => item.id === 'library');
     expect(wrapper.findAll('.nav-row').at(listed.indexOf('Library')).text()).toContain('Built-in page');
     expect(library.key).toBe('virtual:library');

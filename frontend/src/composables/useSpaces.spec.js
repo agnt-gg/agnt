@@ -12,8 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const tenantRequest = vi.fn();
 vi.mock('@/utils/teamClient.js', () => ({ tenantRequest: (...args) => tenantRequest(...args) }));
 
-const { acceptableHome, homeOrigin, openPersonal, openTeam } = await import('./useSpaces.js');
-const { resolveTeamScope } = await import('@/utils/teamScopeTransport.js');
+const { acceptableHome, homeOrigin, openPersonal, openTeam, signedInUrl, currentTeamScope } = await import('./useSpaces.js');
+const { resolveTeamScope, rememberInstanceTeam } = await import('@/utils/teamScopeTransport.js');
 
 const assign = vi.fn();
 function visit(href) {
@@ -31,6 +31,41 @@ beforeEach(() => {
   delete window.electron;
 });
 afterEach(() => vi.unstubAllGlobals());
+
+describe('carrying the same user to another instance', () => {
+  const CODE = 'c'.repeat(43);
+  const host = (fetchImpl, token = 'eyJ.session.token') => ({
+    location: { origin: 'https://goku.t1.agnt.gg' },
+    localStorage: { getItem: key => (key === 'token' ? token : null) },
+    fetch: fetchImpl,
+  });
+  const minted = (code = CODE) => vi.fn(async () => ({ ok: true, json: async () => ({ code }) }));
+
+  it('asks api.agnt.gg for a code bound to the destination and carries it after #', async () => {
+    const fetchImpl = minted();
+    const url = await signedInUrl('https://bravo.t1.agnt.gg/?team=t', host(fetchImpl));
+    expect(url).toBe('https://bravo.t1.agnt.gg/?team=t#agnt-signin=' + CODE);
+    const [endpoint, init] = fetchImpl.mock.calls[0];
+    expect(endpoint).toBe('https://api.agnt.gg/tenants/bravo/signin-code');
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer eyJ.session.token' } });
+  });
+
+  it('never mints one for this page, a non-AGNT host, plain http, or without a session', async () => {
+    const fetchImpl = minted();
+    expect(await signedInUrl('https://goku.t1.agnt.gg/x', host(fetchImpl))).toBe('https://goku.t1.agnt.gg/x');
+    expect(await signedInUrl('https://evil.example/', host(fetchImpl))).toBe('https://evil.example/');
+    expect(await signedInUrl('http://bravo.t1.agnt.gg/', host(fetchImpl))).toBe('http://bravo.t1.agnt.gg/');
+    expect(await signedInUrl('https://bravo.t1.agnt.gg/', host(fetchImpl, null))).toBe('https://bravo.t1.agnt.gg/');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('any failure falls back to the plain address: the worst case is signing in', async () => {
+    const plain = 'https://bravo.t1.agnt.gg/';
+    expect(await signedInUrl(plain, host(vi.fn(async () => ({ ok: false, json: async () => ({}) }))))).toBe(plain);
+    expect(await signedInUrl(plain, host(vi.fn(async () => { throw new Error('offline'); })))).toBe(plain);
+    expect(await signedInUrl(plain, host(minted('not a code!')))).toBe(plain);
+  });
+});
 
 describe('where Personal may go', () => {
   it('a sibling instance on the same fleet domain, over https', () => {
@@ -107,6 +142,28 @@ describe('the round trip goku -> bravo team -> Personal', () => {
     tenantRequest.mockRejectedValue(new Error('offline'));
     await openPersonal();
     expect(assign).toHaveBeenCalledWith('https://bravo.t1.agnt.gg/chat');
+  });
+
+  it('on a team\'s own instance with nowhere else to go, Personal refuses instead of turning the team personal', async () => {
+    visit('https://bravo.t1.agnt.gg/chat');
+    rememberInstanceTeam({ id: 'bravo-team', name: 'bravo' });
+    tenantRequest.mockResolvedValue({ tenants: [{ slug: 'bravo', url: 'https://bravo.t1.agnt.gg', isOwner: true, status: 'active' }] });
+    try {
+      expect(currentTeamScope()).toEqual({ teamId: 'bravo-team', workspaceId: null });
+      expect(await openPersonal()).toBe(false);
+      expect(assign).not.toHaveBeenCalled();
+    } finally { localStorage.removeItem('agnt.instanceTeam'); }
+  });
+
+  it('the instance\'s own team wins over a stale session scope, and a matching address', async () => {
+    visit('https://bravo.t1.agnt.gg/?team=bravo-team&workspace=p1');
+    sessionStorage.setItem('agnt.teamScope', JSON.stringify({ teamId: 'somewhere-else' }));
+    rememberInstanceTeam({ id: 'bravo-team', name: 'bravo' });
+    try {
+      expect(resolveTeamScope(window)).toEqual({ teamId: 'bravo-team', workspaceId: 'p1' });
+      visit('https://bravo.t1.agnt.gg/chat');
+      expect(resolveTeamScope(window)).toEqual({ teamId: 'bravo-team', workspaceId: null });
+    } finally { localStorage.removeItem('agnt.instanceTeam'); }
   });
 
   it('already home: nothing happens', async () => {

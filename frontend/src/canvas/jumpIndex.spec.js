@@ -35,7 +35,7 @@ describe('jumpIndex', () => {
     expect(goto.find((i) => i.action.screen === 'WidgetManagerScreen').label).toBe('Tools › Widgets');
     expect(goto.find((i) => i.action.screen === 'SkillsScreen').label).toBe('Agents › Skills');
     expect(goto.find((i) => i.action.screen === 'MemoryScreen').label).toBe('Agents › Memory');
-    expect(goto.find((i) => i.action.screen === 'WorkspaceScreen').label).toBe('Chat › Workspaces');
+    expect(goto.find((i) => i.action.screen === 'WorkspaceScreen').label).toBe('Chat › Canvas');
   });
 
   it('opens entities as inspect actions on their owning screen', () => {

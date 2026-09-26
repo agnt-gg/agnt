@@ -52,17 +52,17 @@
 export const MAIN_SECTIONS = [
   // ── TODAY ── where you land: talk, or see what is going on.
   {
-    // Workspaces is a tab of Chat, not a row. A workspace is a chat with a
-    // custom canvas around it — the same conversation, arranged — so it lives
-    // one tab to the right of the thread rather than one row down the rail
-    // under a word ("Workspaces") that means five things to five people.
+    // Canvas is a tab of Chat, not a row: a chat with a custom canvas around
+    // it — the same conversation, arranged — so it lives one tab to the right
+    // of the thread. It was labelled WORKSPACES until "workspace" came to mean
+    // one thing only: a shared cloud instance (the space switcher).
     id: 'chat',
     group: 'TODAY',
     icon: 'fas fa-comments',
     label: 'Chat',
     screens: [
       { screen: 'ChatScreen', label: 'CHAT' },
-      { screen: 'WorkspaceScreen', label: 'WORKSPACES' },
+      { screen: 'WorkspaceScreen', label: 'CANVAS' },
     ],
   },
   {

@@ -70,6 +70,7 @@ import TeamRoutes, {getTeamRepository} from './src/routes/TeamRoutes.js';
 import {createHostedOperatorBoundary} from './src/routes/HostedOperatorBoundary.js';
 import {createPersonalAssetBoundary} from './src/routes/PersonalAssetBoundary.js';
 import {createScopeApiMiddleware} from './src/routes/ScopeApiMiddleware.js';
+import {createTeamInstanceScope} from './src/routes/TeamInstanceScope.js';
 import {createShareRouter} from './src/routes/ShareRoutes.js';
 import {createDataRouter} from './src/routes/DataRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
@@ -242,6 +243,8 @@ if (frontendExists) {
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api', async (_req,res,next)=>{if(!process.env.AGNT_TENANT_SLUG)return next();try{await dbReady;next();}catch{res.status(503).json({error:'Tenant storage migration is not ready'});}});
+// Before the scope middleware: on a team's instance, a request that names no team is that team's.
+app.use('/api', createTeamInstanceScope());
 app.use('/api', createScopeApiMiddleware(authenticateToken,
   async id => {const repository=getTeamRepository();await repository.ready;return repository.get('SELECT * FROM shared_workspaces WHERE id=?',[id]);},
   // The table is created on first team use; before that there is simply no default.

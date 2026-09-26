@@ -1,5 +1,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { tenantRequest } from '@/utils/teamClient.js';
+import { instanceTeam } from '@/utils/teamScopeTransport.js';
+import { API_CONFIG } from '@/tt.config.js';
 
 const HOME_KEY = 'agnt.homeOrigin';
 const isLoopback = hostname => ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
@@ -16,13 +18,47 @@ const bridge = () => (typeof window !== 'undefined' ? window.electron?.spaces : 
 export const hasSpaceHost = () => Boolean(bridge());
 export const teamSpaceId = teamId => 'team:' + teamId;
 
-/** The team scope this page was opened with, if any. Mirrors teamScopeTransport. */
+/** The team scope this page runs in, if any. Mirrors teamScopeTransport.resolveTeamScope. */
 export function currentTeamScope(host = typeof window !== 'undefined' ? window : null) {
   if (!host) return null;
   const params = new URLSearchParams(host.location.search);
   const teamId = params.get('team');
+  const own = instanceTeam(host);
+  if (own && (!teamId || teamId === own.teamId)) return { teamId: own.teamId, workspaceId: params.get('workspace') || null };
   if (teamId) return { teamId, workspaceId: params.get('workspace') || null };
   try { return JSON.parse(host.sessionStorage.getItem('agnt.teamScope') || 'null'); } catch { return null; }
+}
+
+/** Is this page a team's own instance? Then it has no personal mode at all. */
+export const onTeamInstance = (host = window) => Boolean(instanceTeam(host));
+
+const SIGN_IN_CODE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * The address to open another cloud instance at, carrying a one-time sign-in
+ * code for it after `#`, so it opens as the same user.
+ *
+ * Without it the other instance opened as whoever last signed in THERE, since a
+ * browser keeps a separate sign-in per site (measured: a different account).
+ * The code is minted by api.agnt.gg for that one instance, works once, for a
+ * minute; the fragment never reaches any server's logs. Every failure falls
+ * back to the plain address: the worst case is being asked to sign in.
+ */
+export async function signedInUrl(target, host = window) {
+  const url = new URL(target);
+  try {
+    if (url.origin === host.location.origin || url.protocol !== 'https:' || !url.hostname.endsWith('.agnt.gg')) return url.href;
+    const token = host.localStorage.getItem('token');
+    if (!token) return url.href;
+    const slug = url.hostname.split('.')[0];
+    const response = await host.fetch(API_CONFIG.REMOTE_URL + '/tenants/' + encodeURIComponent(slug) + '/signin-code', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    if (!response.ok) return url.href;
+    const { code } = await response.json();
+    if (SIGN_IN_CODE.test(code || '')) url.hash = 'agnt-signin=' + code;
+  } catch (error) {
+    console.warn('[spaces] could not carry your sign-in over:', error.message);
+  }
+  return url.href;
 }
 
 /**
@@ -92,7 +128,7 @@ export async function openTeam(team, projectId = null) {
     const result = await host.switch(teamSpaceId(team.id), { projectId });
     return result?.ok !== false;
   }
-  window.location.assign(teamUrl(team, projectId));
+  window.location.assign(await signedInUrl(teamUrl(team, projectId)));
   return true;
 }
 
@@ -104,6 +140,10 @@ export async function openTeam(team, projectId = null) {
  * "Personal" from a team kept the user on the team's instance: what they made
  * there was saved on the team's server and listed in its team view, and never
  * reached the instance they thought they were on.
+ *
+ * Returns false when there is no personal space to go to: on a team's own
+ * instance there is no personal mode, so without a home of your own (your
+ * personal cloud, or the desktop app) Personal is somewhere else entirely.
  */
 export async function openPersonal() {
   const host = bridge();
@@ -113,10 +153,11 @@ export async function openPersonal() {
   if (home) {
     window.sessionStorage.removeItem('agnt.teamScope');
     window.sessionStorage.removeItem(HOME_KEY);
-    window.location.assign(home + '/');
+    window.location.assign(await signedInUrl(home + '/'));
     return true;
   }
   if (!inTeam) return true;
+  if (onTeamInstance()) return false;
   // No instance of your own to go to: Personal is your own space on this one.
   const url = new URL(window.location.href);
   url.searchParams.delete('team'); url.searchParams.delete('workspace'); url.searchParams.delete('home');

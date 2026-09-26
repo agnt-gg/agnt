@@ -15,6 +15,7 @@ import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
 import { adoptTokenFromUrl, adoptSpaceSessionHandoff } from '@/store/auth/urlSessionToken.js';
+import { takeInstanceSignInCode, redeemInstanceSignInCode } from '@/store/auth/instanceSignIn.js';
 import { handOffSessionTokenToOpener } from '@/utils/oauthPopupHandoff.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
@@ -111,6 +112,12 @@ const isSessionHandoffPopup = handOffSessionTokenToOpener();
 // takes the personal session, so switching never asks for a second sign-in.
 if (!isSessionHandoffPopup && !adoptTokenFromUrl(store)) adoptSpaceSessionHandoff(store);
 
+// Arriving from another cloud instance with a one-time sign-in code: redeem it
+// BEFORE mount, so the page never starts as whoever was signed in here before.
+// Only this navigation waits; every other boot mounts exactly as it did.
+const instanceSignInCode = isSessionHandoffPopup ? null : takeInstanceSignInCode();
+const credentialsReady = instanceSignInCode ? redeemInstanceSignInCode(store, instanceSignInCode) : null;
+
 // Load the user's data when a session STARTS, and drop it when one ends —
 // however that happens. Installed before anything can change sessionState so
 // the very first transition is observed.
@@ -166,7 +173,11 @@ app.config.errorHandler = (err, _instance, info) => {
 // Unless this document is a sign-in popup that has already handed its token
 // back and is closing. Mounting there is the whole defect: a second complete
 // copy of AGNT, running in a chromeless 600x700 window, issuing real requests.
-if (!isSessionHandoffPopup) app.mount('#app');
+const mountApp = () => app.mount('#app');
+if (!isSessionHandoffPopup) {
+  if (credentialsReady) credentialsReady.finally(mountApp);
+  else mountApp();
+}
 
 // Dev-only: `__auditContrast()` in the console reports any on-screen text that
 // is unreadable against its ACTUAL rendered backdrop. Static analysis cannot
@@ -249,4 +260,7 @@ window.addEventListener('beforeunload', () => {
 // Initialize app data in background AFTER mount (non-blocking)
 // Skipped in a handoff popup: nothing mounted, and the session belongs to the
 // window we just posted the token to.
-if (!isSessionHandoffPopup) initializeApp().catch(console.error);
+if (!isSessionHandoffPopup) {
+  if (credentialsReady) credentialsReady.finally(() => initializeApp().catch(console.error));
+  else initializeApp().catch(console.error);
+}

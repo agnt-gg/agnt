@@ -182,12 +182,13 @@ describe('canvas sections registry', () => {
   });
 
   // ── Regression locks for the plain-English rail (2026-09-03) ──
-  it('Workspaces is a Chat toolbar tab, not a sidebar row', () => {
-    // A workspace is a chat with a custom canvas around it — closer to a
-    // conversation than to anything else on the rail.
+  it('Canvas is a Chat toolbar tab, not a sidebar row', () => {
+    // A canvas is a chat with a custom layout around it — closer to a
+    // conversation than to anything else on the rail. "Workspace" now means
+    // only a shared cloud instance, so the tab is not called that.
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
     expect(chat.group).toBe('TODAY');
-    expect(visibleTabs(chat, 'ChatScreen').map((t) => t.label)).toEqual(['CHAT', 'WORKSPACES']);
+    expect(visibleTabs(chat, 'ChatScreen').map((t) => t.label)).toEqual(['CHAT', 'CANVAS']);
     expect(MAIN_SECTIONS.some((s) => s.id === 'workspaces')).toBe(false);
   });
 

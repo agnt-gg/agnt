@@ -12,7 +12,8 @@ export const PERSONAL_GROUP = 'PERSONAL';
 // regroup. CanvasScreen.openPrimary(id) knows how to open them.
 export const VIRTUAL_SECTIONS = [
   { id: 'library', group: 'ASSETS', icon: 'fas fa-book-open', label: 'Library' },
-  { id: 'teams', group: 'ASSETS', icon: 'fas fa-users', label: 'Teams' },
+  // The id stays 'teams' so saved rail layouts keep this row; the word users read is Members.
+  { id: 'teams', group: 'ASSETS', icon: 'fas fa-users', label: 'Members' },
 ];
 
 // The single registry behind BOTH the rail and Settings → Navigation. The rail

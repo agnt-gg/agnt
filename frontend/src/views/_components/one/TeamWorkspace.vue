@@ -2,13 +2,12 @@
   <section class="team-workspace main-panel" :class="'team-panel'">
     <header class="team-header">
       <div class="title">
-        <h2>{{ currentTeam ? currentTeam.name : 'Teams' }}</h2>
+        <h2>{{ currentTeam ? currentTeam.name : 'Workspaces' }}</h2>
         <p v-if="currentTeam">{{ roleLabel(currentTeam.role) }} · <a :href="currentTeam.tenantUrl" target="_blank" rel="noopener">{{ host(currentTeam.tenantUrl) }}</a></p>
       </div>
       <div class="actions">
         <button v-if="currentTeam && !onTeamInstance" class="primary" @click="open(currentTeam)">Open {{ currentTeam.name }}</button>
         <button v-if="currentTeam && !onTeamInstance && !inTeamSpace" @click="copyFrom = currentTeam">Copy from {{ currentTeam.name }}…</button>
-        <button v-if="unteamedBusinessTenants.length" @click="mode = 'create'">Enable a team</button>
         <button @click="mode = 'join'">Join with an invitation</button>
       </div>
     </header>
@@ -16,14 +15,8 @@
     <div v-if="error" class="error" role="alert">{{ error }} <button class="link" @click="error = ''">Dismiss</button></div>
     <p v-if="loading" class="loading" role="status">Loading…</p>
 
-    <form v-if="mode === 'create'" class="team-body" @submit.prevent="create">
-      <h3>Enable a team</h3>
-      <p>A team is one of your Business or Enterprise cloud instances, shared with the people you choose.</p>
-      <CustomSelect v-model="tenantSlug" :options="unteamedBusinessTenants.map(t => ({ value: t.slug, label: t.slug + ' · ' + (t.planName || t.plan) }))" placeholder="Choose an instance" aria-label="Cloud instance" />
-      <div class="inline-form"><button class="primary" :disabled="busy || !tenantSlug">Enable team</button><button type="button" @click="mode = ''">Cancel</button></div>
-    </form>
-    <form v-else-if="mode === 'join'" class="team-body" @submit.prevent="join">
-      <h3>Join a team</h3>
+    <form v-if="mode === 'join'" class="team-body" @submit.prevent="join">
+      <h3>Join a workspace</h3>
       <p>Sign in with the invited email, then paste the invitation code. Codes are single use and expire after seven days.</p>
       <input v-model="inviteToken" required autocomplete="off" aria-label="Invitation code" placeholder="Invitation code" />
       <div class="inline-form"><button class="primary" :disabled="busy">Join</button><button type="button" @click="mode = ''">Cancel</button></div>
@@ -44,19 +37,15 @@
 
     <div v-else-if="!mode" class="team-body">
       <template v-if="teams.length">
-        <p>Each team is a shared, always-on instance. Open one to work in it; your personal work stays private.</p>
-        <ul class="rows" aria-label="Your teams">
+        <p>Each workspace is a shared cloud instance. Open one to work in it; your personal work stays private.</p>
+        <ul class="rows" aria-label="Your workspaces">
           <li v-for="team in teams" :key="team.id">
             <div class="who"><strong>{{ team.name }}</strong><span>{{ roleLabel(team.role) }} · {{ team.seats?.used }}/{{ team.seats?.total }} seats</span></div>
             <div class="actions"><button @click="select(team.id)">Manage</button><button class="primary" @click="open(team)">Open</button></div>
           </li>
         </ul>
       </template>
-      <template v-else-if="unteamedBusinessTenants.length">
-        <p>You have a Business instance that is not a team yet.</p>
-        <div><button class="primary" @click="mode = 'create'">Enable a team</button></div>
-      </template>
-      <ProGate v-else feature="teams" label="Teams" suggest="business" hint="AGNT Team is one always-on instance shared by three people, with a shared credential vault and audit receipts. $99/mo.">
+      <ProGate v-else feature="teams" label="Workspaces" suggest="business" hint="AGNT Team is one always-on instance shared by three people, with a shared credential vault and audit receipts. $99/mo.">
         <template #preview><p>Work together in a shared, always-on instance. Add people, share agents and automations, and keep personal work private.</p></template>
       </ProGate>
     </div>
@@ -65,7 +54,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
-import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ProGate from '@/components/ProGate.vue';
 import TeamMembers from '@/views/_components/team/TeamMembers.vue';
 import TeamProjects from '@/views/_components/team/TeamProjects.vue';
@@ -86,7 +74,7 @@ const props = defineProps({ selectedTeamId: { type: String, default: '' }, initi
 const emit = defineEmits(['close', 'update:selectedTeamId', 'teams-loaded', 'open-billing']);
 const store = useStore();
 const teams = ref([]), tenants = ref([]), teamId = ref(props.selectedTeamId), tab = ref(normalizeTab(props.initialTab));
-const mode = ref(''), tenantSlug = ref(''), inviteToken = ref(''), busy = ref(false), loading = ref(false), error = ref('');
+const mode = ref(''), inviteToken = ref(''), busy = ref(false), loading = ref(false), error = ref('');
 let generation = 0;
 const copyFrom = ref(null);
 // Copying INTO Personal is started from Personal, where the personal backend lives.
@@ -95,8 +83,6 @@ const inTeamSpace = Boolean(currentTeamScope());
 const currentTeam = computed(() => teams.value.find(t => t.id === teamId.value) || null);
 const onTeamInstance = computed(() => { try { return Boolean(currentTeam.value?.tenantUrl) && window.location.origin === new URL(currentTeam.value.tenantUrl).origin; } catch { return false; } });
 const seats = computed(() => tenants.value.find(t => t.slug === currentTeam.value?.tenantSlug)?.seats || currentTeam.value?.seats || { used: 0, total: 0 });
-/** Business/Enterprise instances the user owns that are not teams yet. */
-const unteamedBusinessTenants = computed(() => tenants.value.filter(t => t.isOwner && t.status === 'active' && ['business', 'enterprise'].includes(t.plan) && !teams.value.some(team => team.tenantSlug === t.slug)));
 const host = url => { try { return new URL(url).host; } catch { return url; } };
 const showError = message => { error.value = message; };
 
@@ -117,8 +103,9 @@ async function loadTeams() {
   } finally { if (ticket === generation) loading.value = false; }
 }
 function select(id) { teamId.value = id; mode.value = ''; emit('update:selectedTeamId', id); }
-const open = (team, projectId = null) => perform(async () => { if (!(await openTeam(team, projectId))) throw new Error('This team has no instance address yet.'); });
-const create = () => perform(async () => { const team = await teamRequest('', { method: 'POST', body: JSON.stringify({ tenantSlug: tenantSlug.value.trim() }) }); await loadTeams(); select(team.id); });
+// No "create a team" here: every Business instance IS its workspace, made by the
+// control plane the first time its owner lists teams (IndependentTeamService.adoptOwnedTenants).
+const open = (team, projectId = null) => perform(async () => { if (!(await openTeam(team, projectId))) throw new Error('This workspace has no instance address yet.'); });
 const join = () => perform(async () => { const team = await teamRequest('/accept', { method: 'POST', body: JSON.stringify({ token: inviteToken.value.trim() }) }); inviteToken.value = ''; await loadTeams(); select(team.id); });
 
 onMounted(() => perform(loadTeams));
