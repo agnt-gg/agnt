@@ -21,10 +21,10 @@ afterEach(async () => { clearPreparedBundles(); await Promise.all(roots.splice(0
 
 describe('portable sharing', () => {
   it('preserves generated download suffixes and extension metadata without treating them as files', async () => {
-    const source = `<script>function download(id) { a.download='agnt-resonance-'+id+'.svg'; } const extensions=['.png','.html','.json','.woff2','.mp4']; const asset='curve.svg';</script><div data-extension=".svg"></div>`;
+    const source = `<script src="app.js"></script><script>function download(id) { a.download='agnt-resonance-'+id+'.svg'; } const extensions=['.png','.html','.json','.woff2','.mp4']; const asset='curve.svg'; fetch('config.json');</script><div data-extension=".svg"></div>`;
     const root = await fixture({ 'site/index.html': source, 'site/curve.svg': '<svg></svg>', 'site/config.json': '{"extension":".svg"}', 'site/app.js': "const suffix='.svg';" });
     const manifest = await prepare(root);
-    expect(await text(manifest, 'index.html')).toBe(source.replace("'curve.svg'", "'./curve.svg'"));
+    expect(await text(manifest, 'index.html')).toBe(source.replace("'curve.svg'", "'./curve.svg'").replace('src="app.js"', 'src="./app.js"').replace("'config.json'", "'./config.json'"));
     expect(await text(manifest, 'config.json')).toBe('{"extension":".svg"}');
     expect(await text(manifest, 'app.js')).toBe("const suffix='.svg';");
     expect(manifest.files.some(file => file.path === '.svg')).toBe(false);
@@ -36,7 +36,7 @@ describe('portable sharing', () => {
     }
   });
   it('rewrites BOTH observatory links in a non-entry preview and leaves the design untouched', async () => {
-    const root = await fixture({ 'site/index.html': '<h1>Design</h1>', 'site/observatory.html': '<canvas></canvas>' });
+    const root = await fixture({ 'site/index.html': '<h1>Design</h1><a href="preview.html">preview</a>', 'site/observatory.html': '<canvas></canvas>' });
     const source = `<iframe src="${url(root, 'site/observatory.html')}"></iframe><a href="${url(root, 'site/observatory.html')}">open</a>`;
     await fs.writeFile(path.join(root, 'site/preview.html'), source);
     const manifest = await prepare(root);
@@ -66,7 +66,7 @@ describe('portable sharing', () => {
     const root = await fixture({ 'site/index.html': '', 'site/pic one.png': 'image', 'site/movie.mp4': 'video' });
     const local = `http://localhost:3333/api/local-file/${path.join(root, 'site/pic one.png').replace(/\\/g, '/')}`;
     const raw = '/api/filesystem/raw?path=site%2Fmovie.mp4';
-    const source = `<img src="${local}" srcset="${url(root, 'site/pic one.png')} 1x, ${url(root, 'site/pic one.png')} 2x"><video poster="${local}"><source src="${raw}"></video><style>.a{background:url('${url(root, 'site/pic one.png')}')}</style><script>const film='${url(root, 'site/movie.mp4')}';</script>`;
+    const source = `<img src="${local}" srcset="${url(root, 'site/pic one.png')} 1x, ${url(root, 'site/pic one.png')} 2x"><video poster="${local}"><source src="${raw}"></video><style>.a{background:url('${url(root, 'site/pic one.png')}')}</style><script>const film='${url(root, 'site/movie.mp4')}'; const model='model.gltf';</script>`;
     await fs.writeFile(path.join(root, 'site/index.html'), source);
     await fs.writeFile(path.join(root, 'site/model.gltf'), JSON.stringify({ buffers:[{uri:url(root, 'site/movie.mp4')}] }));
     const manifest = await prepare(root);
@@ -84,7 +84,7 @@ describe('portable sharing', () => {
   });
   it('uses the chat base directory for sibling tabs and does not overwrite an existing index', async () => {
     const root = await fixture({ 'site/index.html': 'original', 'site/a.html': 'A', 'site/b.html': 'B' });
-    const manifest = await prepare(root, { entryPath: undefined, html: '<iframe src="a.html"></iframe><script>frame.src="b.html"</script>', baseDir: path.join(root, 'site') });
+    const manifest = await prepare(root, { entryPath: undefined, html: '<a href="index.html">home</a><iframe src="a.html"></iframe><script>frame.src="b.html"</script>', baseDir: path.join(root, 'site') });
     expect(manifest.entryPath).not.toBe('index.html');
     expect(manifest.files.map(f => f.path)).toEqual(expect.arrayContaining(['index.html','a.html','b.html']));
     expect(await text(manifest, manifest.entryPath)).toContain('./a.html');
@@ -135,7 +135,7 @@ describe('portable sharing', () => {
     expect(await text(manifest, 'index.html')).toBe(source);
   });
   it('rejects cross-owner access, tampered paths and changed files', async () => {
-    const root = await fixture({ 'site/index.html': 'ok', 'site/video.mp4': 'original' });
+    const root = await fixture({ 'site/index.html': '<video src="video.mp4"></video>', 'site/video.mp4': 'original' });
     const manifest = await prepare(root);
     await expect(readPreparedFile(manifest.preparationId, 'video.mp4', 'other')).rejects.toThrow(/expired|owner|preparation/i);
     await expect(readPreparedFile(manifest.preparationId, '../index.html', 'owner')).rejects.toThrow(/declared|Unsafe/);
@@ -151,11 +151,104 @@ describe('portable sharing', () => {
     expect(html).not.toContain('/api/');
     expect(manifest.files.some(f=>f.path.endsWith('/index.html'))).toBe(true);
   });
-  it('excludes auto-discovered development reports but includes explicitly linked harness files', async () => {
+  it('excludes development reports from an included folder but keeps explicitly linked harness files', async () => {
     const root = await fixture({ 'site/index.html':'<script type="module" src="_runtime.mjs"></script>', 'site/_runtime.mjs':'export const n=1;', 'site/_shoot.mjs':"const url='file:///' + root;", 'site/verification-final/report.json':JSON.stringify({stack:'at file:///C:/private/script.js:1:2'}) });
+    const referenced = await prepare(root);
+    expect(referenced.files.map(f=>f.path)).toEqual(['index.html','_runtime.mjs']);
+    const opted = await prepare(root, { includeDirs:['site'] });
+    expect(opted.files.map(f=>f.path).sort()).toEqual(['_runtime.mjs','index.html']);
+    expect(opted.excluded.map(f=>f.reason)).toContain('development_artifact');
+    expect(opted.sources['_runtime.mjs'].reason).toBe('referenced by index.html');
+  });
+  it('publishes only what the entry references, never the rest of its folder', async () => {
+    const root = await fixture({
+      'site/index.html': '<img src="pic.png">', 'site/pic.png': 'pic',
+      'site/draft.html': '<p>unfinished</p>', 'site/notes.txt': 'private', 'site/render/frame-001.png': Buffer.alloc(4096),
+    });
+    const manifest = await prepare(root, { limits:{ maxFiles:10, maxFileBytes:10000, maxTotalBytes:1000, maxEntryBytes:1000 } });
+    expect(manifest.files.map(f => f.path)).toEqual(['index.html','pic.png']);
+    expect(manifest.sources['index.html'].reason).toBe('the entry');
+    expect(manifest.sources['pic.png']).toMatchObject({ kind:'reference', from:'index.html', reason:'referenced by index.html' });
+    expect(manifest.warnings).toEqual([]);
+  });
+  it('does not sweep the chat base directory for a code block', async () => {
+    const root = await fixture({ 'site/index.html':'old', 'site/big.bin': Buffer.alloc(2048), 'site/other.png':'x' });
+    const manifest = await prepare(root, { entryPath:undefined, html:'<p>standalone</p>', baseDir:path.join(root,'site'), limits:{ maxFiles:2, maxFileBytes:10000, maxTotalBytes:500, maxEntryBytes:1000 } });
+    expect(manifest.files.map(f => f.path)).toEqual(['__agnt_share__.html']);
+  });
+  it('matches runtime-built names as patterns inside exactly one folder', async () => {
+    const script = "const frame = `frames/${String(i).padStart(3,'0')}.png`; const level = 'levels/level_' + n + '.json'; a.download = 'export-' + id + '.svg';";
+    const root = await fixture({
+      'site/index.html': `<script>${script}</script>`,
+      'site/frames/000.png':'a', 'site/frames/001.png':'b', 'site/frames/notes.txt':'no', 'site/frames/deeper/002.png':'no', 'site/frames/.hidden.png':'no',
+      'site/levels/level_1.json':'{}', 'site/levels/level_2.json':'{}', 'site/levels/other.json':'no', 'site/unrelated.png':'no',
+    });
     const manifest = await prepare(root);
-    expect(manifest.files.map(f=>f.path)).toEqual(['index.html','_runtime.mjs']);
-    expect(manifest.excluded.map(f=>f.reason)).toContain('development_artifact');
+    expect(manifest.files.map(f => f.path).sort()).toEqual(['frames/000.png','frames/001.png','index.html','levels/level_1.json','levels/level_2.json']);
+    expect(manifest.sources['frames/000.png']).toMatchObject({ kind:'pattern', pattern:'frames/*.png', from:'index.html' });
+    expect(manifest.sources['levels/level_2.json'].reason).toBe('matched by levels/level_*.json in index.html');
+    expect(await text(manifest, 'index.html')).toBe(`<script>${script}</script>`);   // runtime strings are left as written
+  });
+  it('captures a runtime-built image inside template markup and the fonts its stylesheet names', async () => {
+    const root = await fixture({
+      'magazine/index.html': '<link rel="stylesheet" href="style.css"><script>book.innerHTML=`<img src="assets/threshold/${page}.jpg"><img src="assets/cover.png">`</script>',
+      'magazine/assets/threshold/04.jpg': Buffer.from([1,2,3]), 'magazine/assets/cover.png':'c', 'magazine/assets/fonts/League.woff2': Buffer.from([4,5]),
+      'magazine/assets/unused/big.mov':'x', 'magazine/style.css': '@font-face{src:url(assets/fonts/League.woff2)}',
+    });
+    const manifest = await prepare(root, { entryPath:'magazine/index.html' });
+    expect(manifest.files.map(f => f.path).sort()).toEqual(['assets/cover.png','assets/fonts/League.woff2','assets/threshold/04.jpg','index.html','style.css']);
+  });
+  it('warns about loads with computed paths, suggests the folder, and captures it only when opted in', async () => {
+    const root = await fixture({ 'site/index.html':'<script>const url = pick(); fetch(url); img.src = frames[i];</script>', 'site/data/x.json':'{}', 'site/data/y.json':'{}' });
+    const manifest = await prepare(root);
+    expect(manifest.files.map(f => f.path)).toEqual(['index.html']);
+    expect(manifest.warnings).toHaveLength(1);
+    expect(manifest.warnings[0]).toMatchObject({ kind:'runtime_load', file:'index.html', folder:'site' });
+    expect(manifest.warnings[0].detail).toMatch(/^2 loads with a computed path/);
+    const opted = await prepare(root, { includeDirs:['site/data'] });
+    expect(opted.files.map(f => f.path).sort()).toEqual(['data/x.json','data/y.json','index.html']);
+    expect(opted.sources['data/x.json'].reason).toBe('in included folder site/data');
+    expect(opted.includeDirs).toEqual(['site/data']);
+    expect(opted.preparationSource.includeDirs).toEqual(['site/data']);
+  });
+  it('does not warn for literal loads, data URLs or object URLs, even through a variable', async () => {
+    const inline = "fetch('config.json'); img.src = canvas.toDataURL(); v.src = URL.createObjectURL(blob); if (a.src == b) {}";
+    // minified self-contained worker: the blob URL is held in a variable first
+    const worker = 'const r=URL.createObjectURL(new Blob([s],{type:"text/javascript"}));const w=new Worker(r);let $d=c.toDataURL();img.src=$d;';
+    const root = await fixture({ 'site/index.html':`<script>${inline}</script><script>${worker}</script>`, 'site/config.json':'{}' });
+    const manifest = await prepare(root);
+    expect(manifest.warnings).toEqual([]);
+  });
+  it('still warns when a variable holds a computed file path', async () => {
+    const root = await fixture({ 'site/index.html':'<script>const r = base + name; const w = new Worker(r); const blob = URL.createObjectURL(x);</script>' });
+    const manifest = await prepare(root);
+    expect(manifest.warnings.map(w => w.detail)).toEqual(['1 load with a computed path, e.g. new Worker(r']);
+  });
+  it('names what pushed the bundle over its limit', async () => {
+    // entry 43 bytes + 30 + 30 = 103 > 100: the second frame trips the limit
+    const root = await fixture({ 'site/index.html':'<script>const f=`frames/${i}.png`;</script>', 'site/frames/1.png':Buffer.alloc(30), 'site/frames/2.png':Buffer.alloc(30) });
+    await expect(prepare(root, { limits:{ maxFiles:10, maxFileBytes:1000, maxTotalBytes:100, maxEntryBytes:1000 } }))
+      .rejects.toThrow('Bundle exceeds the 100 byte total limit: 60 bytes in 2 files matched by frames/*.png in index.html; 43 bytes in 1 file for the entry');
+  });
+  it('applies editor content to referenced files and ignores dirty tabs nothing references', async () => {
+    const root = await fixture({ 'site/index.html':'<script src="app.js"></script>', 'site/app.js':"const old='x';", 'site/pic.png':'pic', 'site/unrelated.html':'u' });
+    const manifest = await prepare(root, { overrides:[{ path:'app.js', content:"const art='pic.png';" }, { path:'unrelated.html', content:'edited' }] });
+    expect(manifest.files.map(f => f.path)).toEqual(['index.html','app.js','pic.png']);
+    expect(await text(manifest, 'app.js')).toBe("const art='./pic.png';");
+  });
+  it('follows srcdoc documents and url() inside script strings', async () => {
+    const root = await fixture({ 'site/index.html':'<iframe srcdoc="<img src=&quot;pic.png&quot;>"></iframe><script>el.style.backgroundImage = "url(\'bg.png\')";</script>', 'site/pic.png':'p', 'site/bg.png':'b' });
+    const manifest = await prepare(root);
+    expect(manifest.files.map(f => f.path).sort()).toEqual(['bg.png','index.html','pic.png']);
+    const html = await text(manifest, 'index.html');
+    expect(html).toContain('srcdoc="<img src=&quot;./pic.png&quot;>"');
+    expect(html).toContain('url(\\"./bg.png\\")');
+  });
+  it('refuses filesystem roots, hidden folders and malformed includeDirs', async () => {
+    const root = await fixture({ 'site/index.html':'ok', '.private/x.txt':'secret' });
+    await expect(prepare(root, { includeDirs:[path.parse(root).root] })).rejects.toThrow(/filesystem root/);
+    await expect(prepare(root, { includeDirs:['.private'] })).rejects.toThrow(/excluded/);
+    await expect(prepare(root, { includeDirs:'site' })).rejects.toThrow(/includeDirs/);
   });
   it('keeps the configured file and byte limits for added dependencies', async () => {
     const root = await fixture({ 'site/index.html': '<img src="../image.png">', 'image.png': 'picture' });

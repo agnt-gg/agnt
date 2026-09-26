@@ -315,6 +315,7 @@
           <div class="error-icon">Failed</div>
           <p>{{ shareError }}</p>
           <button class="share-retry-btn" @click="retryShare">Try Again</button>
+          <button v-if="shareIncludeDirs.length" class="share-retry-btn" @click="undoIncludedFolders">Undo included folders</button>
         </div>
 
         <div v-else-if="shareResult" class="share-modal-success">
@@ -356,8 +357,14 @@
           </div>
           <div v-if="shareManifest" class="share-bundle-summary">
             <strong>Complete creation bundle</strong>
-            <span>{{ shareManifest.totals.files }} files · {{ (shareManifest.totals.bytes / 1048576).toFixed(1) }} MB</span>
-            <label for="shareBundleRoot">Bundle root</label>
+            <ShareBundlePreflight
+              :manifest="shareManifest"
+              :include-dirs="shareIncludeDirs"
+              :busy="isPreparingShare"
+              @include-folder="includeShareFolder"
+              @remove-folder="removeShareFolder"
+            />
+            <label for="shareBundleRoot">Bundle root (sets the published layout)</label>
             <div class="share-input">
               <input id="shareBundleRoot" v-model="shareRootPath" placeholder="Workspace-relative directory" @keyup.enter="refreshShareManifest" />
               <button class="share-copy-btn" @click="refreshShareManifest">Rescan</button>
@@ -401,6 +408,7 @@ import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
 import { artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { injectArtifactPreviewBase } from '@/utils/artifactPreviewBase.js';
 import { dirtyOverrides, prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
+import ShareBundlePreflight from '@/components/common/ShareBundlePreflight.vue';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 
@@ -764,7 +772,7 @@ function parseDelimited(content, delimiter) {
 
 export default {
   name: 'ArtifactsScreen',
-  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable, FilesBrowser },
+  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable, FilesBrowser, ShareBundlePreflight },
   emits: ['screen-change'],
   setup(_, { emit }) {
     const baseScreenRef = ref(null);
@@ -887,6 +895,7 @@ export default {
     const shareManifest = ref(null);
     const shareProgress = ref(null);
     const shareRootPath = ref('');
+    const shareIncludeDirs = ref([]); // folders the user opted in to publish whole
     const resumableBundleId = ref(null);
     const isPreparingShare = ref(false);
 
@@ -920,6 +929,7 @@ export default {
       shareManifest.value = null;
       shareProgress.value = null;
       shareRootPath.value = '';
+      shareIncludeDirs.value = [];
       resumableBundleId.value = null;
       copiedLink.value = false;
       copiedEmbed.value = false;
@@ -937,11 +947,25 @@ export default {
       isPreparingShare.value = true;
       shareError.value = null;
       try {
-        shareManifest.value = await prepareArtifactBundle(activeTab.value.path, store.state.userAuth?.token, shareRootPath.value.trim());
+        shareManifest.value = await prepareArtifactBundle(activeTab.value.path, store.state.userAuth?.token, shareRootPath.value.trim(), shareIncludeDirs.value);
         shareRootPath.value = shareManifest.value.rootPath;
         resumableBundleId.value = null;
       } catch (error) { shareError.value = error.message || 'Could not inspect this bundle root.'; }
       finally { isPreparingShare.value = false; }
+    };
+    const includeShareFolder = (dir) => {
+      if (shareIncludeDirs.value.includes(dir)) return;
+      shareIncludeDirs.value = [...shareIncludeDirs.value, dir];
+      return refreshShareManifest();
+    };
+    const removeShareFolder = (dir) => {
+      shareIncludeDirs.value = shareIncludeDirs.value.filter((item) => item !== dir);
+      return refreshShareManifest();
+    };
+    const undoIncludedFolders = () => {
+      shareIncludeDirs.value = [];
+      shareError.value = null;
+      return refreshShareManifest();
     };
 
     const closeShareModal = () => {
@@ -2421,6 +2445,10 @@ export default {
       shareManifest,
       shareProgress,
       shareRootPath,
+      shareIncludeDirs,
+      includeShareFolder,
+      removeShareFolder,
+      undoIncludedFolders,
       refreshShareManifest,
       shareEmbedCode,
       copiedLink,

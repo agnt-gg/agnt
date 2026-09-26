@@ -45,8 +45,11 @@ export function dirtyOverrides(openTabs, rootPath) {
   const prefix = rootPath ? `${rootPath.replace(/\\/g, '/').replace(/\/$/, '')}/` : '';
   return openTabs.filter((tab) => tab.isDirty && tab.path.replace(/\\/g, '/').startsWith(prefix)).map((tab) => ({ path: tab.path.replace(/\\/g, '/').slice(prefix.length), content: tab.content }));
 }
-export async function prepareArtifactBundle(entryPath, token, rootPath) {
-  const source = typeof entryPath === 'object' ? entryPath : { entryPath, ...(rootPath === undefined ? {} : { rootPath }) };
+// includeDirs: folders the user opted in to publish whole. Everything else in a
+// bundle is there because the entry references it (or a runtime-name pattern).
+export async function prepareArtifactBundle(entryPath, token, rootPath, includeDirs = []) {
+  const source = typeof entryPath === 'object' ? { ...entryPath } : { entryPath, ...(rootPath === undefined ? {} : { rootPath }) };
+  if (includeDirs.length) source.includeDirs = includeDirs;
   const response = await fetch(`${API_CONFIG.BASE_URL}/filesystem/publish-manifest`, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify(source) });
   return (await checked(response, 'Bundle preflight')).json();
 }
@@ -81,7 +84,8 @@ export async function publishArtifactBundle({ title, manifest, token, overrides 
     }
   }
   if (!bundle) {
-    const { preparationId, preparationSource, imported, rootPath, ...publicManifest } = manifest;
+    // Local-only: preparation handles, source paths, and the why/warnings that name local folders.
+    const { preparationId, preparationSource, imported, rootPath, sources, warnings, includeDirs, ...publicManifest } = manifest;
     const init = await checked(await fetchImpl(REMOTE_BUNDLE_API, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify({ title, source:'desktop-app', entryPath:manifest.entryPath, manifest:{...publicManifest, files} }) }), 'Bundle initialization');
     bundle = await init.json();
     onBundle(bundle.id);

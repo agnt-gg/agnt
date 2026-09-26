@@ -437,21 +437,23 @@ router.post('/rename', authenticateToken, async (req, res) => {
   }
 });
 
-// Prepare an owner-bound upload snapshot. Preserve directory capture for
-// runtime assets, then collect external dependencies and rewrite local URLs.
-// Chat HTML and editor overrides go through the same path as disk entries.
+// Prepare an owner-bound upload snapshot: the entry plus everything it
+// references (and runtime-name patterns), with local URLs rewritten. Folders
+// travel whole only when listed in includeDirs. Chat HTML and editor overrides
+// go through the same path as disk entries.
 router.post('/publish-manifest', authenticateToken, async (req, res) => {
   try {
     const workspaceRoot = await getWorkspaceRoot();
     const manifest = await preparePortableBundle({
       workspaceRoot, ownerId: req.user.id,
       entryPath: req.body?.entryPath, rootPath: req.body?.rootPath,
-      html: req.body?.html, baseDir: req.body?.baseDir, overrides: req.body?.overrides,
+      html: req.body?.html, baseDir: req.body?.baseDir, overrides: req.body?.overrides ?? [],
+      includeDirs: req.body?.includeDirs ?? [],
     });
     res.json(manifest);
   } catch (error) {
     console.error('[ArtifactBundles] Manifest failed:', error);
-    res.status(/required|Unsafe|exceeds|escapes|missing|excluded|cannot include|not declared|not a regular/.test(error.message) || error.code === 'ENOENT' ? 400 : 500).json({ error: error.message });
+    res.status(/required|Unsafe|exceeds|escapes|missing|excluded|cannot include|not declared|not a regular|includeDirs|Refusing/.test(error.message) || error.code === 'ENOENT' ? 400 : 500).json({ error: error.message });
   }
 });
 

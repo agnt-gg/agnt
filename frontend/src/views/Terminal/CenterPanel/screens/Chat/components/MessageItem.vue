@@ -336,6 +336,7 @@
             <p>{{ shareError }}</p>
             <div class="share-error-actions">
               <button v-if="canRetryShare" class="share-retry-btn" @click="retryShare">Try Again</button>
+              <button v-if="shareIncludeDirs.length" class="share-retry-btn" @click="undoIncludedFolders">Undo included folders</button>
               <button v-if="shareFallbackHTML" class="share-retry-btn" @click="shareFallbackCodeOnly">Prepare from chat HTML</button>
             </div>
           </div>
@@ -387,12 +388,20 @@
             </div>
             <div v-if="shareManifest" class="share-bundle-summary">
               <strong>Complete creation bundle</strong>
-              <span>{{ shareManifest.totals.files }} files · {{ (shareManifest.totals.bytes / 1048576).toFixed(1) }} MB</span>
-              <label for="shareBundleRoot">Bundle root</label>
-              <div class="share-input">
-                <input id="shareBundleRoot" v-model="shareRootPath" placeholder="Workspace-relative directory" @keyup.enter="refreshShareManifest" />
-                <button class="share-copy-btn" @click="refreshShareManifest">Rescan</button>
-              </div>
+              <ShareBundlePreflight
+                :manifest="shareManifest"
+                :include-dirs="shareIncludeDirs"
+                :busy="isPreparingShare"
+                @include-folder="includeShareFolder"
+                @remove-folder="removeShareFolder"
+              />
+              <template v-if="shareEntryPath">
+                <label for="shareBundleRoot">Bundle root (sets the published layout)</label>
+                <div class="share-input">
+                  <input id="shareBundleRoot" v-model="shareRootPath" placeholder="Workspace-relative directory" @keyup.enter="refreshShareManifest" />
+                  <button class="share-copy-btn" @click="refreshShareManifest">Rescan</button>
+                </div>
+              </template>
               <span>Entry: {{ shareManifest.entryPath }}</span>
               <span v-if="shareManifest.excluded.length">{{ shareManifest.excluded.length }} unsafe/generated paths excluded</span>
             </div>
@@ -456,6 +465,7 @@ import {
 } from '@/utils/htmlBlockFilePairing.js';
 import { localFileUrlToAbsolutePath, isPublishableEntry, resolveWorkspaceEntry, titleFromEntryPath } from '@/utils/workspacePath.js';
 import { prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
+import ShareBundlePreflight from '@/components/common/ShareBundlePreflight.vue';
 
 // Lazy-loaded heavy library caches (loaded on first use)
 let _hljs = null;
@@ -587,6 +597,7 @@ export default {
     BrowserLiveCard,
     ConnectCard,
     ShareCard,
+    ShareBundlePreflight,
   },
   directives: {
     'morph-html': vMorphHtml,
@@ -786,6 +797,7 @@ export default {
     const shareManifest = ref(null);
     const shareProgress = ref(null);
     const shareRootPath = ref('');
+    const shareIncludeDirs = ref([]); // folders the user opted in to publish whole
     const shareEntryPath = ref(''); // workspace-relative entry, retained for rescan/retry
     const shareFallbackHTML = ref(''); // code-block text, offered when preflight refuses the file
     const resumableBundleId = ref(null);
@@ -2882,6 +2894,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       shareManifest.value = null;
       shareProgress.value = null;
       shareRootPath.value = '';
+      shareIncludeDirs.value = [];
       shareEntryPath.value = '';
       shareFallbackHTML.value = '';
       resumableBundleId.value = null;
@@ -2931,14 +2944,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       }
     };
 
-    // Re-run preflight against a different bundle root. Lets the user publish a
-    // parent directory when the entry's own folder is not the whole creation.
+    // Re-run preflight: after the bundle root (layout) or the opted-in folders
+    // change. Works for a file-backed preview and for a chat code block.
     const refreshShareManifest = async () => {
-      if (!shareEntryPath.value) return;
+      if (!shareEntryPath.value && !pendingShareHTML.value) return;
       isPreparingShare.value = true;
       shareError.value = null;
       try {
-        shareManifest.value = await prepareArtifactBundle(shareEntryPath.value, store.state.userAuth?.token, shareRootPath.value.trim());
+        const token = store.state.userAuth?.token;
+        shareManifest.value = shareEntryPath.value
+          ? await prepareArtifactBundle(shareEntryPath.value, token, shareRootPath.value.trim(), shareIncludeDirs.value)
+          : await prepareArtifactBundle({ html:pendingShareHTML.value, baseDir:getBaseDirFromToolCalls() || undefined }, token, undefined, shareIncludeDirs.value);
         shareRootPath.value = shareManifest.value.rootPath;
         // A new root means a new file set; the half-uploaded bundle keyed to the
         // old one can no longer be resumed into.
@@ -2948,6 +2964,23 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       } finally {
         isPreparingShare.value = false;
       }
+    };
+
+    // Opt a folder in (from a runtime-load warning or typed) or back out again.
+    const includeShareFolder = (dir) => {
+      if (shareIncludeDirs.value.includes(dir)) return;
+      shareIncludeDirs.value = [...shareIncludeDirs.value, dir];
+      return refreshShareManifest();
+    };
+    const removeShareFolder = (dir) => {
+      shareIncludeDirs.value = shareIncludeDirs.value.filter((item) => item !== dir);
+      return refreshShareManifest();
+    };
+    // An opted-in folder that breaks preflight (too large, unreadable) is undone
+    // from the error view, which otherwise hides the folder list.
+    const undoIncludedFolders = () => {
+      shareIncludeDirs.value = [];
+      return refreshShareManifest();
     };
 
     // Retry preparation from the chat source, never publish an incomplete wrapper.
@@ -3142,6 +3175,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       // Bundle share (a preview backed by a real file publishes its directory)
       openBundleShareModal,
       refreshShareManifest,
+      shareIncludeDirs,
+      includeShareFolder,
+      removeShareFolder,
+      undoIncludedFolders,
       shareFallbackCodeOnly,
       shareFallbackHTML,
       shareManifest,
