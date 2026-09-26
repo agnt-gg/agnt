@@ -75,6 +75,31 @@ The authentication middleware (`authenticateToken`) will:
 - Store token and user data in session for backend operations
 - Continue as unauthenticated if no valid token is provided
 
+### API keys (integrations)
+
+A sign-in token expires after 30 days and nothing refreshes it, so it is the
+wrong credential for a bot or script. Use an **AGNT API key** instead: create
+one under **Settings → API Key**, then send it exactly like a token:
+
+```
+Authorization: Bearer agnt_sk_<64 hex characters>
+```
+
+- A key does not expire. It stops working only when it is replaced or revoked.
+- One key per account. Generating a new key revokes the previous one; revoking
+  leaves none. The key is shown once; api.agnt.gg stores only its SHA-256.
+- It works on a desktop install and on a hosted tenant. The backend cannot check
+  a key locally, so it asks api.agnt.gg (`GET /users/auth/status`) and caches
+  the answer for 5 minutes, the same path a tenant uses for tokens, including
+  the membership check. A revoked key can therefore keep working here for up to
+  5 minutes.
+- A key is accepted wherever a sign-in token is, including the calls this
+  backend makes to api.agnt.gg on your behalf. When no live sign-in token is
+  held, background work (pollers, workflow nodes, provider credentials) uses
+  the key; a live sign-in token always takes precedence.
+- A key cannot create another key. Creating and revoking keys requires the
+  signed-in app.
+
 ### Hosted instances (AGNT Cloud)
 
 A desktop install verifies tokens locally with `JWT_SECRET`. A **hosted tenant**

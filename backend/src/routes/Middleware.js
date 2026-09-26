@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import db from "../models/database/index.js";
 import { resolveSecret } from "../utils/secretResolver.js";
 import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
+import { isApiKey } from "../services/auth/apiKey.js";
 import { isPermittedUser, NOT_A_MEMBER } from "../services/auth/tenantOwnership.js";
 
 dotenv.config();
@@ -241,11 +242,15 @@ class Middleware {
       //
       // Opt-in via AGNT_AUTH_MODE=verify-remote, so desktop is bit-for-bit
       // unchanged: it verifies locally and never makes this call.
+      //
+      // An AGNT API key (agnt_sk_…) takes this path on every install: only
+      // the issuer holds key hashes, and a key never expires, which is the
+      // point of having one. See services/auth/apiKey.js.
       const { isRemoteVerifyMode, verifyViaIssuer } = await import(
         '../services/auth/remoteTokenVerifier.js'
       );
 
-      if (isRemoteVerifyMode()) {
+      if (isRemoteVerifyMode() || isApiKey(token)) {
         const remote = await verifyViaIssuer(token);
         if (remote.ok) {
           const userId = remote.user.id || remote.user.userId;

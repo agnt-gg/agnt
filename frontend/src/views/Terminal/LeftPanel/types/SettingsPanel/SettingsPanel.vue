@@ -97,6 +97,7 @@ const GENERAL_ITEMS = Object.freeze([
   { id: 'billing', icon: 'fas fa-wallet', label: 'Billing' },
   { id: 'profile', icon: 'fas fa-user', label: 'Profile' },
   { id: 'referrals', icon: 'fas fa-users', label: 'Referrals' },
+  { id: 'api-keys', icon: 'fas fa-key', label: 'API Key' },
 ]);
 
 const ASSISTANT_ITEMS = Object.freeze([

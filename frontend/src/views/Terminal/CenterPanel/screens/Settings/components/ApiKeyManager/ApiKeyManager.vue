@@ -1,22 +1,28 @@
 <template>
   <div class="api-key-display">
     <h3 style="margin-bottom: 12px">
-      AGNT.gg API Key
+      AGNT API Key
       <span v-if="!isPro" class="pro-badge-label"> <i class="fas fa-lock"></i> PRO </span>
     </h3>
 
+    <p class="api-key-help">
+      For bots, scripts and other integrations calling your AGNT. Send it as
+      <code>Authorization: Bearer &lt;key&gt;</code>. It does not expire; generating a new key replaces the old one.
+    </p>
+
     <div class="key-container-wrapper">
       <div class="key-container" :class="{ locked: !isPro }">
-        <input type="text" :value="displayApiKey" readonly ref="apiKeyInput" :disabled="!isPro" />
-        <Tooltip :text="isPro ? 'Copy API Key' : 'Upgrade to PRO to access API Key'" width="auto">
-          <button
-            @click="isPro ? copyApiKey() : null"
-            class="copy-button"
-            :class="{ disabled: !isPro }"
-            :disabled="!isPro"
-          >
+        <input
+          type="text"
+          :value="newKey || 'Generate a key to see it here. It is shown once.'"
+          readonly
+          ref="apiKeyInput"
+          :disabled="!isPro || !newKey"
+          data-test="api-key-value"
+        />
+        <Tooltip v-if="newKey" text="Copy API Key" width="auto">
+          <button @click="copyApiKey" class="copy-button" data-test="api-key-copy">
             <i class="fa fa-copy"></i>
-            <i v-if="!isPro" class="fas fa-lock lock-icon"></i>
           </button>
         </Tooltip>
       </div>
@@ -25,56 +31,94 @@
         <p>Upgrade to PRO to unlock</p>
       </div>
     </div>
+
+    <p v-if="newKey" class="api-key-warning">Copy this key now. Only a hash of it is stored, so it cannot be shown again.</p>
+
+    <div v-if="isPro" class="api-key-actions">
+      <button class="copy-button" :disabled="busy" @click="generateKey" data-test="api-key-generate">
+        <i class="fas fa-key"></i> {{ newKey ? 'Generate another key' : 'Generate key' }}
+      </button>
+      <button class="copy-button" :disabled="busy" @click="revokeKey" data-test="api-key-revoke">
+        <i class="fas fa-ban"></i> Revoke key
+      </button>
+    </div>
     <SimpleModal ref="modal" />
   </div>
 </template>
 
 <script>
 import { computed, ref } from 'vue';
+import axios from 'axios';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useLicense } from '@/composables/useLicense';
+import { API_CONFIG } from '@/tt.config.js';
 
+/**
+ * An AGNT API key: minted by api.agnt.gg, returned exactly once, stored there
+ * only as a hash. This screen used to show the 30-day sign-in token under this
+ * name, which is why integrations built on it stopped working a month later.
+ */
 export default {
-  name: 'ApiKeyDisplay',
-  components: { SvgIcon, SimpleModal, Tooltip },
+  name: 'ApiKeyManager',
+  components: { SimpleModal, Tooltip },
   setup() {
     const store = useStore();
     const apiKeyInput = ref(null);
     const modal = ref(null);
+    const newKey = ref('');
+    const busy = ref(false);
 
-    // Use verified license for premium check
     const { isPremium, hasApiAccess } = useLicense();
     const isPro = computed(() => isPremium.value && hasApiAccess.value);
 
-    const apiKey = computed(() => store.state.userAuth.token || '');
-    const maskedApiKey = computed(() => {
-      if (apiKey.value.length > 10) {
-        return apiKey.value.slice(0, 12) + '...' + apiKey.value.slice(-12);
-      }
-      return apiKey.value;
-    });
+    const authHeaders = () => ({ Authorization: `Bearer ${store.state.userAuth.token}` });
 
-    const displayApiKey = computed(() => {
-      if (!isPro.value) {
-        return '••••••••••••••••••••••••••••••••';
-      }
-      return maskedApiKey.value;
-    });
+    const showAlert = (title, message) => modal.value.showModal({ title, message, confirmText: 'OK', showCancel: false });
+    const confirm = (title, message, confirmText) => modal.value.showModal({ title, message, confirmText, cancelText: 'Cancel' });
 
-    const showAlert = async (title, message) => {
-      await modal.value.showModal({
-        title,
-        message,
-        confirmText: 'OK',
-        showCancel: false,
-      });
+    const failureMessage = (error, action) => {
+      if (error?.response?.status === 403) return 'API keys need a plan with API access.';
+      return `Could not ${action} the key. ${error?.response?.data?.error || error?.message || ''}`.trim();
+    };
+
+    const generateKey = async () => {
+      const ok = await confirm(
+        'Generate API key',
+        'Any key you generated before stops working immediately. Continue?',
+        'Generate',
+      );
+      if (!ok) return;
+      busy.value = true;
+      try {
+        const { data } = await axios.post(`${API_CONFIG.REMOTE_URL}/users/generate-api-key`, {}, { headers: authHeaders() });
+        if (!data?.apiKey) throw new Error('The server returned no key.');
+        newKey.value = data.apiKey;
+      } catch (error) {
+        await showAlert('Error', failureMessage(error, 'generate'));
+      } finally {
+        busy.value = false;
+      }
+    };
+
+    const revokeKey = async () => {
+      const ok = await confirm('Revoke API key', 'Integrations using your key stop working immediately. Continue?', 'Revoke');
+      if (!ok) return;
+      busy.value = true;
+      try {
+        await axios.delete(`${API_CONFIG.REMOTE_URL}/users/api-key`, { headers: authHeaders() });
+        newKey.value = '';
+        await showAlert('Revoked', 'Your API key no longer works.');
+      } catch (error) {
+        await showAlert('Error', failureMessage(error, 'revoke'));
+      } finally {
+        busy.value = false;
+      }
     };
 
     const copyApiKey = async () => {
-      const text = apiKey.value;
+      const text = newKey.value;
       try {
         // navigator.clipboard is undefined outside secure contexts (plain HTTP on a
         // LAN IP for self-hosted Docker), so fall back to the legacy execCommand path.
@@ -91,28 +135,18 @@ export default {
           document.body.appendChild(textarea);
           textarea.focus();
           textarea.select();
-          const ok = document.execCommand('copy');
+          const copied = document.execCommand('copy');
           document.body.removeChild(textarea);
-          if (!ok) throw new Error('execCommand copy returned false');
+          if (!copied) throw new Error('execCommand copy returned false');
         }
         await showAlert('Success', 'API Key copied to clipboard!');
       } catch (err) {
         console.error('Failed to copy API Key:', err);
-        await showAlert(
-          'Error',
-          'Failed to copy automatically. Select the key above and copy it manually (Ctrl/Cmd+C).',
-        );
+        await showAlert('Error', 'Failed to copy automatically. Select the key above and copy it manually (Ctrl/Cmd+C).');
       }
     };
 
-    return {
-      maskedApiKey,
-      displayApiKey,
-      copyApiKey,
-      apiKeyInput,
-      modal,
-      isPro,
-    };
+    return { apiKeyInput, modal, newKey, busy, isPro, generateKey, revokeKey, copyApiKey };
   },
 };
 </script>
@@ -120,6 +154,41 @@ export default {
 <style scoped>
 .api-key-display {
   width: 100%;
+}
+
+.api-key-help,
+.api-key-warning {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary, var(--color-light-med-navy));
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.api-key-warning {
+  margin-top: 8px;
+  color: var(--color-yellow);
+}
+
+.api-key-help code {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.95em;
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.api-key-actions .copy-button {
+  margin-left: 0;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.api-key-actions .copy-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pro-badge-label {
@@ -134,38 +203,6 @@ export default {
   border: 1px solid rgba(255, 215, 0, 0.4);
   font-weight: 600;
   margin-left: 8px;
-}
-
-.pro-locked-message {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--color-text);
-  background: rgba(255, 215, 0, 0.05);
-  border: 1px solid rgba(255, 215, 0, 0.2);
-  border-radius: 8px;
-  margin-top: 8px;
-}
-
-.pro-locked-message i {
-  font-size: 3em;
-  color: var(--color-yellow);
-  margin-bottom: 16px;
-}
-
-.pro-locked-message h4 {
-  margin: 0 0 8px 0;
-  color: var(--color-text);
-  font-size: 1.2em;
-}
-
-.pro-locked-message p {
-  margin: 0;
-  color: var(--color-light-med-navy);
-  font-size: 0.95em;
-}
-
-body.dark .pro-locked-message h4 {
-  color: var(--color-dull-white);
 }
 
 .key-container-wrapper {
@@ -219,17 +256,13 @@ input {
   padding: 8px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  /* Both of these were PHYSICAL names that the light theme remaps against
-     their own meaning: --color-dull-white becomes var(--color-text) (#4a4a60)
-     and --color-dark-navy becomes #ffffff. The field therefore painted dark ink
-     as its surface and white ink as its text. */
   background-color: var(--color-darker-0);
   color: var(--text-primary);
+  font-family: var(--font-family-mono, monospace);
 }
 
 input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .copy-button {
@@ -245,44 +278,15 @@ input:disabled {
   gap: 4px;
 }
 
-.copy-button:hover:not(.disabled) {
+.copy-button:hover:not(:disabled) {
   background-color: var(--color-navy);
-}
-
-.copy-button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.copy-button.disabled:hover {
-  background-color: var(--color-light-navy);
-}
-
-.lock-icon {
-  font-size: 10px;
-  color: var(--color-yellow);
 }
 
 body.dark .copy-button {
   background-color: var(--color-dull-navy);
 }
 
-body.dark .copy-button:hover:not(.disabled) {
+body.dark .copy-button:hover:not(:disabled) {
   background-color: var(--color-navy);
 }
-
-body.dark .copy-button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-body.dark .copy-button.disabled:hover {
-  background-color: var(--color-dull-navy);
-}
-
-/* body.dark input {
-  background-color: var(--color-ultra-dark-navy);
-  color: var(--color-dull-white);
-  border-color: var(--color-dull-navy);
-} */
 </style>

@@ -41,6 +41,7 @@ import {
   verifiedUserSync,
   verifyViaIssuer,
 } from '../services/auth/remoteTokenVerifier.js';
+import { isApiKey } from '../services/auth/apiKey.js';
 
 /**
  * "I have no answer for this token", as distinct from "this token is bad".
@@ -202,7 +203,10 @@ export function verifyAuthToken(token) {
     // So the sync path now reports what it actually knows. Callers that CAN
     // await resolve it for real (see requireAuth); callers that cannot get a
     // refusal that does not end the session.
-    return { ok: false, reason: isRemoteVerifyMode() ? UNVERIFIED : 'invalid' };
+    //
+    // An API key is the same case on every install: only the issuer can
+    // answer for it, so an empty cache means "ask", never "invalid".
+    return { ok: false, reason: isRemoteVerifyMode() || isApiKey(token) ? UNVERIFIED : 'invalid' };
   }
 }
 

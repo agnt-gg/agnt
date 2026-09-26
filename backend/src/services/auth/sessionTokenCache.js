@@ -72,6 +72,7 @@
  * test in sessionTokenCache.test.js actually cares about.
  */
 import { createHash } from 'crypto';
+import { isApiKey } from './apiKey.js';
 
 /** @type {{token: string, userId: string, seenAt: number, expiresAt: number|null} | null} */
 let current = null;
@@ -148,6 +149,14 @@ function supersedes(incomingToken, incumbent) {
   // from 30-day to 7-day tokens) would pin the slot to a dead credential and
   // the rule below would never let the live one in.
   if (incumbent.expiresAt !== null && incumbent.expiresAt <= Date.now()) return true;
+
+  // An API key never expires, so the expiry rule below cannot rank it.
+  // A live sign-in token is preferred: it is what the signed-in app holds,
+  // and signing out ends it. A key fills the slot only when no live token
+  // does (a headless install driven by a bot), a sign-in token always
+  // takes the slot back, and a new key replaces an old one.
+  if (isApiKey(incomingToken)) return isApiKey(incumbent.token);
+  if (isApiKey(incumbent.token)) return true;
 
   const incomingExpiry = tokenExpiryMs(incomingToken);
 
@@ -270,7 +279,9 @@ export function rememberSessionToken(token, userId) {
   // The slot becomes stable under alternation, and background work always holds
   // the longest-lived proof of the user's session.
   if (current && !supersedes(token, current)) {
-    reportSupersededOnce(token, current);
+    // A key deferring to a live sign-in token is the designed order, not a
+    // superseded credential, so it is not reported.
+    if (!isApiKey(token)) reportSupersededOnce(token, current);
     return;
   }
 

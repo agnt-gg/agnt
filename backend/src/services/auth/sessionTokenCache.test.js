@@ -137,6 +137,13 @@ describe('two valid credentials for one user do not fight over the slot', () => 
   const LONGER = jwtExpiring('2026-09-21T00:00:00Z', 'longer');
   const SHORTER = jwtExpiring('2026-09-10T00:00:00Z', 'shorter');
 
+  // The fixtures carry fixed expiries, so the clock is pinned before both.
+  // On the real clock they expired and the expired-incumbent rule took over.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));
+  });
+
   it('refuses a token that dies sooner than the one already held', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     rememberSessionToken(LONGER, 'user-1');
