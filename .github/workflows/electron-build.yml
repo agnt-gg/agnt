@@ -152,6 +152,15 @@ jobs:
         run: npm run build
         working-directory: frontend
 
+      # Spotlight indexes every disk image the moment it mounts, and can still
+      # hold it when electron-builder detaches the DMG it just built:
+      # "hdiutil: couldn't eject disk4 - Resource busy" on all six retries, after
+      # a successful notarization (Intel Mac, release dry run on d3a2ed7f). The
+      # build machine is throwaway, so indexing is simply switched off.
+      - name: Stop Spotlight holding the disk images (macOS)
+        if: runner.os == 'macOS'
+        run: sudo mdutil -a -i off || true
+
       # --publish never: publishing is the release job's decision, made only
       # after the whole release has been checked.
       - name: Build Electron (${{ matrix.platform }}-${{ matrix.arch }})
