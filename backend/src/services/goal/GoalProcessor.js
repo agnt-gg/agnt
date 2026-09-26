@@ -11,6 +11,43 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * A goal could not be planned. Typed so the route can answer with an
+ * actionable status instead of a generic 500, and so no goal record is
+ * written: planning runs before GoalModel.create.
+ *   PLANNER_NOT_CONFIGURED   no provider/model selected (400, not retryable)
+ *   PLANNER_NOT_CONNECTED    the provider has no usable credentials (400, not retryable)
+ *   PLANNER_UNAVAILABLE      the model could not be reached or the client failed (502)
+ *   PLANNER_INVALID_RESPONSE the reply was not a JSON plan (502)
+ *   PLANNER_INVALID_PLAN     the plan failed validation (502)
+ */
+const NOT_RETRYABLE = ['PLANNER_NOT_CONFIGURED', 'PLANNER_NOT_CONNECTED'];
+export class GoalPlanningError extends Error {
+  constructor(code, message, { provider = null, model = null, reason = null, retryable = !NOT_RETRYABLE.includes(code), cause } = {}) {
+    super(message, cause ? { cause } : undefined);
+    this.name = 'GoalPlanningError';
+    this.code = code;
+    this.status = NOT_RETRYABLE.includes(code) ? 400 : 502;
+    this.provider = provider;
+    this.model = model;
+    this.reason = reason;
+    this.retryable = retryable;
+  }
+}
+
+// Client construction failures that mean "connect this provider first".
+const MISSING_CREDENTIALS = /missing (access token|api key|credentials)|no api key|not (connected|authenticated)|api key (is )?(missing|not (set|configured))/i;
+
+async function plannerName(provider, config, userId) {
+  if (config?.name) return config.name;
+  try {
+    const { default: CustomOpenAIProviderService } = await import('../ai/CustomOpenAIProviderService.js');
+    const custom = await CustomOpenAIProviderService.getProviderById(provider, userId);
+    if (custom?.provider_name) return custom.provider_name;
+  } catch { /* the id is still a usable label */ }
+  return provider;
+}
+
 class GoalProcessor {
   /**
    * Processes a user goal by analyzing it, creating a goal record, and breaking it down into tasks.
@@ -91,8 +128,8 @@ class GoalProcessor {
     const goalText = goal.description ? `${goal.title}: ${goal.description}` : goal.title;
     console.log(`[GoalProcessor] Bootstrapping task plan for existing goal ${goalId}: ${goalText.substring(0, 100)}...`);
 
-    // _analyzeGoal falls back to _createFallbackAnalysis on LLM failure,
-    // so this always yields at least one task breakdown entry.
+    // _analyzeGoal throws a GoalPlanningError when no usable plan comes back,
+    // so no placeholder task is ever created for this goal.
     const analysis = await this._analyzeGoal(goalText, userId, provider, model);
     const tasks = await this._createTasks(goalId, analysis.taskBreakdown);
 
@@ -244,20 +281,36 @@ Rules:
         if (!analysisModel) analysisModel = userSettings?.selectedModel;
       }
       if (!analysisProvider || !analysisModel) {
-        throw new Error('No provider/model configured. Please set your default provider and model in settings.');
+        throw new GoalPlanningError('PLANNER_NOT_CONFIGURED', 'No provider/model configured. Please set your default provider and model in settings.');
       }
       const _cfg = getProviderConfig(analysisProvider);
       const normalizedProvider = _cfg ? _cfg.key : analysisProvider.toLowerCase();
+      const plannerLabel = `${await plannerName(analysisProvider, _cfg, userId)} (${analysisModel})`;
+      const planner = { provider: normalizedProvider, model: analysisModel };
       console.log(`[GoalProcessor] Using provider: ${normalizedProvider}, model: ${analysisModel}`);
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, analysisModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are a goal analysis assistant. Return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ], []);
+      let adapterResult;
+      try {
+        const client = await createLlmClient(normalizedProvider, userId);
+        const adapter = await createLlmAdapter(normalizedProvider, client, analysisModel);
+        adapterResult = await adapter.call([
+          { role: 'system', content: 'You are a goal analysis assistant. Return valid JSON only.' },
+          { role: 'user', content: prompt },
+        ], []);
+      } catch (error) {
+        if (MISSING_CREDENTIALS.test(error.message || '')) {
+          throw new GoalPlanningError('PLANNER_NOT_CONNECTED', `${plannerLabel} is not connected (${error.message}). Connect it in Settings, or choose another model.`, { ...planner, reason: error.message, cause: error });
+        }
+        throw new GoalPlanningError('PLANNER_UNAVAILABLE', `${plannerLabel} could not be reached: ${error.message}`, { ...planner, reason: error.message, cause: error });
+      }
+      // Transports return an exhausted-retry error as assistant text flagged
+      // recoveredFromError; that is a failed call, not a plan to parse.
+      if (adapterResult?.recoveredFromError) {
+        const reason = adapterResult.recoveredError || 'Provider error';
+        throw new GoalPlanningError('PLANNER_UNAVAILABLE', `${plannerLabel} could not be reached: ${reason}`, { ...planner, reason });
+      }
 
       let analysisResult = '';
-      if (adapterResult.responseMessage?.content) {
+      if (adapterResult?.responseMessage?.content) {
         if (typeof adapterResult.responseMessage.content === 'string') {
           analysisResult = adapterResult.responseMessage.content;
         } else if (Array.isArray(adapterResult.responseMessage.content)) {
@@ -278,11 +331,18 @@ Rules:
       console.log('Cleaned AI response:', cleanedResult);
 
       // Parse the JSON response
-      const analysis = JSON.parse(cleanedResult);
+      let analysis;
+      try {
+        analysis = JSON.parse(cleanedResult);
+      } catch (error) {
+        throw new GoalPlanningError('PLANNER_INVALID_RESPONSE', `${plannerLabel} did not return a JSON plan. Try again, or choose a model that follows JSON instructions.`, { ...planner, reason: error.message, cause: error });
+      }
 
-      // Validate the analysis structure
-      if (!analysis.title || !analysis.taskBreakdown || !Array.isArray(analysis.taskBreakdown)) {
-        throw new Error('Invalid analysis structure');
+      // Validate the analysis structure; an empty plan would create a goal
+      // with nothing to execute.
+      if (!analysis || !analysis.title || !Array.isArray(analysis.taskBreakdown) || analysis.taskBreakdown.length === 0) {
+        const reason = 'Invalid analysis structure';
+        throw new GoalPlanningError('PLANNER_INVALID_PLAN', `${plannerLabel} returned an unusable plan: ${reason}`, { ...planner, reason });
       }
 
       // Ensure required fields have defaults
@@ -308,87 +368,11 @@ Rules:
       console.log('Validated analysis:', analysis);
       return analysis;
     } catch (error) {
+      // No fabricated fallback plan: a goal the model did not plan would carry
+      // a placeholder task and hide why planning failed.
       console.error('Error analyzing goal with AI:', error);
-      console.log('Falling back to basic analysis...');
-
-      // Fallback to basic analysis
-      return this._createFallbackAnalysis(goalText, availableToolTypes);
+      throw error;
     }
-  }
-  /**
-   * Creates a fallback analysis when AI analysis fails, providing a basic task breakdown.
-   * @param {string} goalText - The text description of the goal.
-   * @param {string[]} availableToolTypes - Array of available tool types for task assignment.
-   * @returns {Object} An analysis object with basic task breakdown.
-   * @private
-   */
-  static _createFallbackAnalysis(goalText, availableToolTypes = []) {
-    const title = goalText.length > 60 ? goalText.substring(0, 57) + '...' : goalText;
-
-    // Default to manual trigger if no tool types available
-    const defaultTools = availableToolTypes.length > 0 ? ['manual-trigger'] : ['general'];
-
-    // For simple goals, just create one task
-    const isSimpleGoal = goalText.length < 100 && !goalText.includes(' and ') && !goalText.includes(',');
-
-    if (isSimpleGoal) {
-      return {
-        title: title,
-        priority: 'medium',
-        estimatedDuration: 30, // Simple goals should be quick
-        successCriteria: {
-          deliverables: ['Complete the requested task'],
-          qualityChecks: ['Output meets requirements'],
-        },
-        taskBreakdown: [
-          {
-            title: title.length > 50 ? goalText.substring(0, 47) + '...' : title,
-            description: goalText,
-            requiredTools: defaultTools,
-            dependencies: [],
-            estimatedDuration: 30,
-            orderIndex: 0,
-          },
-        ],
-      };
-    }
-
-    // For complex goals, break into multiple tasks
-    return {
-      title: title,
-      priority: 'medium',
-      estimatedDuration: 120, // 2 hours default
-      successCriteria: {
-        deliverables: ['Complete the requested task'],
-        qualityChecks: ['Output meets requirements'],
-      },
-      taskBreakdown: [
-        {
-          title: 'Analyze Requirements',
-          description: `Understand and analyze what needs to be done for: ${goalText}`,
-          requiredTools: defaultTools,
-          dependencies: [],
-          estimatedDuration: 30,
-          orderIndex: 0,
-        },
-        {
-          title: 'Execute Main Task',
-          description: goalText,
-          requiredTools: defaultTools,
-          dependencies: [],
-          estimatedDuration: 60,
-          orderIndex: 1,
-        },
-        {
-          title: 'Review and Finalize',
-          description: 'Review the completed work and make any necessary adjustments',
-          requiredTools: defaultTools,
-          dependencies: [],
-          estimatedDuration: 30,
-          orderIndex: 2,
-        },
-      ],
-    };
   }
   /**
    * Creates task records in the database for each task in the breakdown.
