@@ -1,7 +1,7 @@
 import GoalModel from '../models/GoalModel.js';
 import TaskModel from '../models/TaskModel.js';
 import GoalIterationModel from '../models/GoalIterationModel.js';
-import GoalProcessor from '../services/goal/GoalProcessor.js';
+import GoalProcessor, { GoalPlanningError } from '../services/goal/GoalProcessor.js';
 import TaskOrchestrator from '../services/goal/TaskOrchestrator.js';
 import GoalEvaluator from '../services/goal/GoalEvaluator.js';
 import GoldenStandardModel from '../models/GoldenStandardModel.js';
@@ -64,6 +64,17 @@ class GoalService {
       });
     } catch (error) {
       console.error('Error creating goal:', error);
+      if (error instanceof GoalPlanningError) {
+        // No goal was created; tell the user what failed and whether a retry can help.
+        return res.status(error.status).json({
+          error: error.message,
+          code: error.code,
+          provider: error.provider,
+          model: error.model,
+          reason: error.reason,
+          retryable: error.retryable,
+        });
+      }
       res.status(500).json({
         error: 'Failed to create goal',
         details: error.message,
