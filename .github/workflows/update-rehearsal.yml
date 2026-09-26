@@ -92,28 +92,43 @@ jobs:
       # here (the release dry run does that); Squirrel still requires, and the
       # rehearsal checks, a valid Developer ID signature.
       - name: Build 0.6.7-rc.1 (old)
+        shell: bash
         run: >-
+          set -o pipefail;
           npx electron-builder ${{ matrix.targets }} --publish never
           -c.directories.output=dist-old
           -c.extraMetadata.version=0.6.7-rc.1
           -c.extraMetadata.agntUpdate.feedBase=$FEED
           -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+          2>&1 | tee build-old.log
         env:
           SETUPTOOLS_USE_DISTUTILS: local
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
 
       - name: Build 0.6.7-rc.2 (new)
+        shell: bash
         run: >-
+          set -o pipefail;
           npx electron-builder ${{ matrix.targets }} --publish never
           -c.directories.output=dist-new
           -c.extraMetadata.version=0.6.7-rc.2
           -c.extraMetadata.agntUpdate.feedBase=$FEED
           -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+          2>&1 | tee build-new.log
         env:
           SETUPTOOLS_USE_DISTUTILS: local
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      # A failed build's reason, on the run page: job logs need a signed-in
+      # viewer, annotations do not. (A deb build failed here once with no way to
+      # see why from outside.)
+      - name: Report why a build failed
+        if: failure()
+        run: |
+          node scripts/release/annotate-failure.mjs build-old.log "rc.1 build failed (${{ matrix.kind }} ${{ matrix.arch }})"
+          node scripts/release/annotate-failure.mjs build-new.log "rc.2 build failed (${{ matrix.kind }} ${{ matrix.arch }})"
 
       - name: Verify native modules (old and new)
         run: |
