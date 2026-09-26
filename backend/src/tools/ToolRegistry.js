@@ -71,7 +71,7 @@ class ToolRegistry {
 
         try {
           const files = await fs.readdir(categoryPath);
-          const jsFiles = files.filter((file) => file.endsWith('.js') && file !== 'BaseAction.js' && file !== 'BaseTrigger.js');
+          const jsFiles = files.filter((file) => file.endsWith('.js') && !/\.(test|spec)\.js$/.test(file) && file !== 'BaseAction.js' && file !== 'BaseTrigger.js');
 
           for (const file of jsFiles) {
             const toolType = file.replace('.js', '');
