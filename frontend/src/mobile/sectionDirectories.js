@@ -32,6 +32,12 @@ export const settingsDirectory = [
         "icon": "fas fa-users",
         "label": "Referrals",
         "description": "Invites and commissions"
+      },
+      {
+        "id": "api-keys",
+        "icon": "fas fa-key",
+        "label": "API Key",
+        "description": "A key for bots and scripts that never expires"
       }
     ]
   },
