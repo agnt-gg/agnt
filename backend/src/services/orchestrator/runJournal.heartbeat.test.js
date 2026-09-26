@@ -160,17 +160,22 @@ describe('what the heartbeat is FOR: retrying a write that failed', () => {
     const run = makeRun('hb-persistent');
     await blockJournalWrites();
 
+    // Let the throttled write fire and FAIL first. While it is still pending
+    // the heartbeat rightly skips the run, so an earlier version of this test
+    // spent its "blocked" window with the heartbeat doing nothing at all and
+    // passed only if the ~3s throttle happened to land inside the wait below.
     journal.journalRun(run);
+    await new Promise((r) => setTimeout(r, 3200));
     journal.startJournalHeartbeat(() => [run], { intervalMs: 40 });
 
-    // Several heartbeat cycles pass with the directory still unwritable.
+    // Now several heartbeat cycles run, and fail, with the directory unwritable.
     await new Promise((r) => setTimeout(r, 300));
     expect(await journalFor('hb-persistent')).toBeUndefined();
 
     await restoreJournalWrites();
-    const found = await until(() => journalFor('hb-persistent'), { what: 'recovery once writable' });
+    const found = await until(() => journalFor('hb-persistent'), { timeout: 10000, what: 'recovery once writable' });
     expect(found.conversationId).toBe('hb-persistent');
-  }, 20000);
+  }, 25000);
 });
 
 describe('what the heartbeat must NOT do: churn', () => {
@@ -232,7 +237,8 @@ describe('what the heartbeat must NOT do: churn', () => {
     expect(await journalFor('hb-pending')).toBeUndefined();
 
     // ...and the throttle still delivers on its own schedule.
-    const found = await until(() => journalFor('hb-pending'), { timeout: 6000, what: 'the throttled write' });
+    // ~3s throttle, with headroom for a loaded parallel run.
+    const found = await until(() => journalFor('hb-pending'), { timeout: 10000, what: 'the throttled write' });
     expect(found.events).toHaveLength(3);
   }, 20000);
 

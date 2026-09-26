@@ -20,7 +20,10 @@ describe('web_scrape uses the local scraper', () => {
     expect(scrape).toHaveBeenCalledWith({ url: 'https://example.com' });
     expect(result.success).toBe(true);
     expect(result.textContent).toBe('text of https://example.com');
-  });
+    // The first import of tools.js boots the whole tool registry and the
+    // database; under a loaded parallel run that alone passed the 5s default
+    // ("Test timed out in 5000ms" in the orchestrator suite on a 20-core box).
+  }, 30000);
 
   it('runs any number in parallel with nothing serialising them', async () => {
     const { TOOLS } = await import('./tools.js');

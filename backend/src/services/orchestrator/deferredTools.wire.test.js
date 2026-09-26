@@ -14,7 +14,20 @@
  *   - no private `_agnt*` field ever reaches a wire.
  * Live counterparts (real cache reads) are in harness-audit/spike_transition.mjs.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// The claude-code system block carries the Claude CLI version, read from
+// clientVersions.js: on a fresh data dir that is the fallback, plus a LIVE npm
+// lookup started in the background. When the lookup landed mid-conversation
+// the later requests carried a different version, so "the system block is
+// byte-identical" failed on network timing (reproduced locally 1 run in 3,
+// and in CI). The version is pinned here; its live resolution is tested in
+// clientVersions.test.js, and no wire test should touch the network.
+vi.mock('../ai/clientVersions.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getCachedClientVersion: () => '2.1.999',
+  getClientVersion: async () => '2.1.999',
+}));
 import { makeCaptureClient } from '../../../tests/provider-oracle/capture.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { foldBlocksIntoLastToolResult } from './turnContinuity.js';
