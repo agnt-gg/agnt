@@ -44,13 +44,16 @@ test.describe('Chat Feature', () => {
   test('without a provider the input is locked and says what to do @ci', async ({ appPage }) => {
     // Every input to Chat.vue hasConnectedAIProvider, pinned: a selected
     // provider with nothing connected, no custom provider, no local server.
-    // Pinning only the connected list passed on one machine and failed in CI,
-    // where the fresh account's default provider counted as connected.
+    // store/auth/appAuth.js fetchConnectedApps merges THREE lanes (local
+    // backend, remote agnt.gg, CLI status probes), and pinning only the local
+    // one passed on this machine and failed in CI, where another lane
+    // reported the provider connected. All three are pinned empty here.
     await appPage.route('**/api/users/settings', (route) => {
       if (route.request().method() !== 'GET') return route.fulfill(json({ success: true }));
       return route.fulfill(json({ selectedProvider: 'openai', selectedModel: 'gpt-test', routingMode: 'static' }));
     });
-    await appPage.route('**/api/auth/connected', (route) => route.fulfill(json([])));
+    await appPage.route(/\/auth\/connected(\?|$)/, (route) => route.fulfill(json([])));
+    await appPage.route(/\/api\/providers\/[^/]+\/auth\/status(\?|$)/, (route) => route.fulfill(json({ available: false, apiUsable: false })));
     await appPage.route('**/api/custom-providers', (route) => route.fulfill(json({ providers: [] })));
     await appPage.route('http://127.0.0.1:1234/**', (route) => route.abort());
     await gotoApp(appPage, '/chat');
