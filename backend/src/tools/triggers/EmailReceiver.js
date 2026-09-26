@@ -2,6 +2,15 @@ import axios from 'axios';
 import { EventEmitter } from 'events';
 import { authHeader } from '../../services/auth/sessionTokenCache.js';
 
+// One short line per failure: status plus the server's own reason. Logging the
+// axios error itself dumped the request, socket and agent every 10 seconds.
+function describePollFailure(error) {
+  const status = error?.response?.status;
+  const data = error?.response?.data;
+  const reason = [data?.error, data?.reason, data?.service].filter(v => typeof v === 'string').join(', ');
+  return status ? `HTTP ${status}${reason ? ` (${reason})` : ''}` : (error?.message || 'unknown error');
+}
+
 /**
  * Inbound email trigger poller.
  *
@@ -27,6 +36,7 @@ class EmailReceiver extends EventEmitter {
     this.remoteUrl = process.env.REMOTE_URL;
     this.pollInterval = null;
     this.activeTriggers = new Set(); // Track active triggers
+    this.lastPollFailure = null; // logged once per distinct failure
     this.pollingEnabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING !== 'true';
 
     if (this.pollingEnabled) {
@@ -54,6 +64,10 @@ class EmailReceiver extends EventEmitter {
   async pollForTriggers() {
     try {
       const response = await axios.get(`${this.remoteUrl}/email/poll`, { headers: authHeader() });
+      if (this.lastPollFailure) {
+        console.log('Local EmailReceiver: polling recovered.');
+        this.lastPollFailure = null;
+      }
       const { triggers } = response.data;
 
       // Only log if there are triggers to process
@@ -90,7 +104,18 @@ class EmailReceiver extends EventEmitter {
         }
       }
     } catch (error) {
-      console.error('Local EmailReceiver: Error polling for workflow triggers:', error);
+      const failure = describePollFailure(error);
+      // 410 'retired' is the service saying it will not serve this client; retrying
+      // every 10 seconds cannot change that, so stop until the next start.
+      if (error?.response?.status === 410) {
+        console.warn(`Local EmailReceiver: email triggers unavailable, ${failure}; polling stopped until restart.`);
+        this.stopPolling();
+        return;
+      }
+      if (failure !== this.lastPollFailure) {
+        console.warn(`Local EmailReceiver: polling failed, ${failure}; will keep retrying quietly.`);
+        this.lastPollFailure = failure;
+      }
     }
   }
   async _triggerWorkflowByEmail(workflowId, email) {
