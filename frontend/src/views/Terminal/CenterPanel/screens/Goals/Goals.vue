@@ -293,6 +293,29 @@
                 </div>
               </div>
             </div>
+            <div v-if="createError" class="create-error" role="alert">
+              <i class="fas fa-exclamation-triangle"></i>
+              <div class="create-error-text">
+                <strong>No goal was created.</strong> {{ createError.message }}
+                <span v-if="createError.code === 'PLANNER_NOT_CONFIGURED'">Choose a default provider and model in Settings.</span>
+              </div>
+              <router-link
+                v-if="['PLANNER_NOT_CONFIGURED', 'PLANNER_NOT_CONNECTED'].includes(createError.code)"
+                to="/settings"
+                class="modal-btn create-error-retry"
+                @click="showCreateModal = false"
+              >
+                Open Settings
+              </router-link>
+              <button
+                v-if="createError.retryable"
+                class="modal-btn create-error-retry"
+                @click="handleCreateGoal"
+                :disabled="isCreatingGoal || !goalInput.trim()"
+              >
+                Try again
+              </button>
+            </div>
             <div class="modal-footer">
               <span class="modal-hint">Ctrl+Enter to create · Esc to close</span>
               <div class="modal-actions">
@@ -419,6 +442,8 @@ export default {
 
     // Create-goal modal
     const showCreateModal = ref(false);
+    // Why the last create attempt failed; shown inside the modal, input kept.
+    const createError = ref(null);
     const goalInput = ref('');
     const goalInputRef = ref(null);
     const newGoalPriority = ref('medium');
@@ -698,6 +723,7 @@ export default {
       if (!goalInput.value.trim()) return;
       if (scheduleType.value !== 'none' && (!computedCron.value || cronPreviewError.value)) return;
       const goalText = goalInput.value.trim();
+      createError.value = null;
       try {
         const newGoal = await store.dispatch('goals/createGoal', {
           text: goalText,
@@ -729,6 +755,7 @@ export default {
         resetCreateModal();
         baseScreenRef.value?.scrollToBottom();
       } catch (error) {
+        createError.value = { message: error.message, code: error.code || null, retryable: error.retryable === true };
         terminalLines.value.push(`Error creating goal: ${error.message}`);
         baseScreenRef.value?.scrollToBottom();
       }
@@ -828,7 +855,10 @@ export default {
     // Focus textarea when modal opens
     watch(showCreateModal, (open) => {
       if (open) nextTick(() => goalInputRef.value?.focus());
+      else createError.value = null;
     });
+    // An edited goal is a new request; the previous failure no longer applies.
+    watch(goalInput, () => { createError.value = null; });
 
     onMounted(() => {
       document.addEventListener('keydown', onKeyDown);
@@ -844,6 +874,7 @@ export default {
     });
 
     return {
+      createError,
       baseScreenRef,
       toolbarRef,
       simpleModal,
@@ -1575,6 +1606,33 @@ body[data-page='terminal-goals'] .scrollable-content {
 .cron-preview-error {
   font-size: 0.82em;
   color: var(--color-red);
+}
+
+.create-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-red);
+  border-left-width: 3px;
+  border-radius: 6px;
+  color: var(--color-red);
+  font-size: 0.88em;
+  line-height: 1.4;
+}
+
+.create-error-text {
+  flex: 1;
+  color: var(--color-text);
+}
+
+.create-error-text strong {
+  color: var(--color-red);
+}
+
+.create-error-retry {
+  flex-shrink: 0;
 }
 
 .cron-preview-list {
