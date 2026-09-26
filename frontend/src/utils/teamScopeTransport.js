@@ -17,7 +17,17 @@ export function teamScopeHeaders(url,baseUrl,scope){
 export function resolveTeamScope(host=window){
  const params=new URLSearchParams(host.location.search);
  const teamId=params.get('team');
- if(teamId){const scope={teamId,workspaceId:params.get('workspace')||null};try{host.sessionStorage.setItem('agnt.teamScope',JSON.stringify(scope));}catch{}return scope;}
+ if(teamId){
+  const scope={teamId,workspaceId:params.get('workspace')||null};
+  try{
+   host.sessionStorage.setItem('agnt.teamScope',JSON.stringify(scope));
+   // Where this tab came from, so "Personal" can go back there. Recorded now for the
+   // same reason as the scope: the router drops the query string. Validated where it
+   // is used (useSpaces.homeOrigin), never trusted as stored.
+   const home=params.get('home');if(home)host.sessionStorage.setItem('agnt.homeOrigin',home);
+  }catch{}
+  return scope;
+ }
  try{const stored=JSON.parse(host.sessionStorage.getItem('agnt.teamScope')||'null');return stored?.teamId?{teamId:String(stored.teamId),workspaceId:stored.workspaceId?String(stored.workspaceId):null}:null;}catch{return null;}
 }
 /** Context changes reload the page: no in-flight personal response can hydrate a team store. */
