@@ -8,6 +8,9 @@ export async function initializeTeamOwnership(databasePath){
  const repository=databaseRepository(db);
  try{await repository.run('PRAGMA foreign_keys=ON');await repository.run('PRAGMA busy_timeout=10000');
  const result=await migrateOwnership(repository);
+ // Once per database, on the boot that first scopes it; later boots find nothing unscoped.
+ const orphanCounts=Object.entries(result.orphaned||{});
+ if(orphanCounts.length)console.warn('[ownership] filed rows whose parent no longer exists under system:orphaned:',orphanCounts.map(([table,n])=>`${table}=${n}`).join(' '));
  await repository.run('BEGIN IMMEDIATE');try{await installOwnershipTriggers(repository,OWNERSHIP_INVENTORY);await repository.run('COMMIT');}catch(error){await repository.run('ROLLBACK');throw error;}
  return result;
  }finally{await new Promise((resolve,reject)=>db.close(error=>error?reject(error):resolve()));}
