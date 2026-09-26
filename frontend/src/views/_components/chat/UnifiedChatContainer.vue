@@ -77,7 +77,6 @@
         </span>
         <button class="voice-end-btn" type="button" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
       </div>
-      <ImageSettings compact />
       <ImageReferencePicker v-if="showAttachments" :collection="imageReferenceCollection" :scope-key="imageReferenceCollection.scopeKey" :disabled="isProcessing" @attach-files="onAttachImageReference" />
       <ChatInputBar
         ref="inputBarRef"
@@ -101,6 +100,7 @@
           host — which is exactly how this shipped invisible.
         -->
         <template #primary-buttons>
+          <ImageSettings compact />
           <Tooltip
             v-if="showVoiceInput"
             :text="voiceActive ? 'End voice conversation' : 'Start a voice conversation (hands-free)'"

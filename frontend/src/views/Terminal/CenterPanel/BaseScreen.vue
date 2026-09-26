@@ -98,7 +98,6 @@
             <button type="button" class="voice-end-btn" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
           </div>
 
-          <ImageSettings compact />
           <ImageReferencePicker :collection="imageReferenceCollection" :scope-key="conversationId" :disabled="isStreaming || isInputDisabled" @attach-files="attachImageReference" />
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
@@ -144,6 +143,7 @@
               @change="handleFileSelect"
               style="display: none"
             />
+            <ImageSettings v-if="!isStreaming" compact />
             <Tooltip text="Attach files" width="auto">
               <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button">
                 <i class="fas fa-paperclip"></i>
