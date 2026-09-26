@@ -197,8 +197,15 @@ export async function handleCompaction(req, res) {
     const message = error?.message || 'Compression failed';
     console.error('[Compaction] Failed:', message);
     if (executionId) {
-      AgentExecutionModel.update(executionId, 'failed', null, (Date.now() - startedAt) / 1000, 0, message)
-        .catch(() => {});
+      // Recorded BEFORE the response, like the success path: a client that
+      // refreshes Activity on the 502 must not find this run still "running",
+      // and a record that could not be written is logged, not dropped (it
+      // would otherwise stay "running" forever with nothing said).
+      try {
+        await AgentExecutionModel.update(executionId, 'failed', null, (Date.now() - startedAt) / 1000, 0, message);
+      } catch (recordError) {
+        console.warn('[Compaction] Could not record the failed run:', recordError?.message || recordError);
+      }
     }
     return res.status(502).json({ success: false, error: message });
   }
