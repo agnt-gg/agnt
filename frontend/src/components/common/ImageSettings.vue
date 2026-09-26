@@ -1,7 +1,14 @@
 <template>
-  <section class="image-settings" aria-label="Image generation settings">
-    <button v-if="compact" type="button" class="image-settings-toggle" @click="open = !open">Images: {{ selected?.label || 'Configure provider' }}</button>
-    <div v-if="!compact || open" class="image-settings-panel">
+  <section class="image-settings" :class="{ compact }" aria-label="Image generation settings">
+    <Tooltip v-if="compact && !open" :text="compactLabel" width="auto">
+      <button type="button" class="image-settings-toggle" :class="{ configured: !!selected }" :aria-label="compactLabel" :aria-expanded="open" @click="open = true">
+        <i class="fas fa-image" aria-hidden="true"></i>
+      </button>
+    </Tooltip>
+    <button v-else-if="compact" type="button" class="image-settings-toggle active" aria-label="Close image settings" :aria-expanded="open" @click="open = false">
+      <i class="fas fa-image" aria-hidden="true"></i>
+    </button>
+    <div v-if="!compact || open" class="image-settings-panel" :class="{ popover: compact }" @keydown.escape="open = false">
       <h3>Image generation</h3><p>Independent of your conversation model. No automatic provider fallback.</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <label>Image provider</label>
@@ -32,9 +39,12 @@
 import {ref,computed,onMounted,onBeforeUnmount} from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 const props=defineProps({compact:Boolean});
 const open=ref(false),busy=ref(false),error=ref(''),saved=ref(false),connections=ref([]),settings=ref(null),draftConnection=ref(''),mode=ref('latest'),pin=ref(''),allow=ref(false);
 const selected=computed(()=>connections.value.find(c=>c.id===draftConnection.value));
+// In the composer, images is one icon among the input buttons; its tooltip names the current provider.
+const compactLabel=computed(()=>`Images: ${selected.value?.label || 'not set up'}`);
 const providerOptions=computed(()=>connections.value.map(c=>({label:c.label+(c.connected?'':' · not connected'),value:c.id})));
 const modelOptions=[{label:'Latest · Quality',value:'latest'},{label:'Latest · Fast',value:'latest-fast'},{label:'Specific model / snapshot',value:'pinned'}];
 const controller = new AbortController();
@@ -62,5 +72,10 @@ onMounted(()=>{load();window.addEventListener('agnt:image-settings-changed',refr
 onBeforeUnmount(()=>{controller.abort();window.removeEventListener('agnt:image-settings-changed',refresh);});
 </script>
 <style scoped>
-.image-settings{font-size:12px;color:var(--color-text);margin:8px 0}.image-settings-panel{padding:14px;border:1px solid var(--terminal-border-color);border-radius:8px;background:var(--color-background)}h3{margin:0 0 8px}p{line-height:1.5;opacity:.85}label{display:block;margin:10px 0 5px}.billing{font-weight:600}button,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--terminal-border-color);border-radius:5px;padding:7px 10px;margin:6px 6px 0 0}button{cursor:pointer}button:disabled{opacity:.5}input[type=checkbox]{margin-right:6px}[role=alert]{color:var(--color-red)}
+.image-settings{font-size:12px;color:var(--color-text);margin:8px 0}
+.image-settings.compact{position:relative;margin:0;display:flex;align-items:center;flex-shrink:0}
+.image-settings.compact .image-settings-toggle{width:36px;height:36px;border-radius:50%;border:none;margin:0 0 0 8px;padding:0;background:var(--color-darker-2);color:var(--color-light-med-navy);display:flex;align-items:center;justify-content:center;transition:all .2s}
+.image-settings.compact .image-settings-toggle:hover,.image-settings.compact .image-settings-toggle.active{background:var(--color-darker-0);color:var(--color-green)}
+.image-settings.compact .image-settings-toggle.configured{color:var(--color-green)}
+.image-settings-panel.popover{position:absolute;right:0;bottom:calc(100% + 10px);width:min(360px,80vw);z-index:50}.image-settings-panel{padding:14px;border:1px solid var(--terminal-border-color);border-radius:8px;background:var(--color-background)}h3{margin:0 0 8px}p{line-height:1.5;opacity:.85}label{display:block;margin:10px 0 5px}.billing{font-weight:600}button,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--terminal-border-color);border-radius:5px;padding:7px 10px;margin:6px 6px 0 0}button{cursor:pointer}button:disabled{opacity:.5}input[type=checkbox]{margin-right:6px}[role=alert]{color:var(--color-red)}
 </style>
