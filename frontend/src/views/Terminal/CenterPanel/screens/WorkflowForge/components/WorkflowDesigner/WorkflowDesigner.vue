@@ -82,7 +82,8 @@
          nodes can still be dragged in from the palette behind this. -->
     <section v-if="!nodes.length && availableQuickstarts.length" class="wf-quickstarts" aria-label="Start from a template">
       <h3>Start from a template</h3>
-      <p>Or drag a node in from the left, or describe the workflow to Annie.</p>
+      <p v-if="compact">Or tap Add node, or describe the workflow to Annie.</p>
+      <p v-else>Or drag a node in from the left, or describe the workflow to Annie.</p>
       <div class="wf-qs-grid">
         <button v-for="template in availableQuickstarts" :key="template.id" type="button" class="wf-qs-card" @click="applyQuickstart(template)">
           <i :class="template.icon" aria-hidden="true"></i>

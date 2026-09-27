@@ -43,8 +43,10 @@
               <!-- Cumulative Credits Usage Chart - Full Width -->
               <CumulativeCreditsChart class="fade-in" />
 
-              <!-- Global Pulse Ribbon -->
+              <!-- Global Pulse Ribbon. On phones the overview tiles above carry
+                   the same counts, so the ribbon would only repeat them. -->
               <GlobalPulseRibbon
+                v-if="!mobileView"
                 class="fade-in"
                 :agntScoreData="agntScoreData"
                 :goalsData="goalsData"
@@ -62,13 +64,14 @@
                 <!-- Top Row -->
                 <div class="grid-row top-row fade-in-stagger">
                   <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
-                  <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
+                  <AgentsSwarm v-if="!mobileView" :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
                   <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
                 </div>
 
                 <!-- Middle Row -->
                 <div class="grid-row middle-row fade-in-stagger">
-                  <ToolsInventory :toolsData="toolsInventoryData" />
+                  <!-- An unlabeled icon wall: useful at desk width, noise on a phone. -->
+                  <ToolsInventory v-if="!mobileView" :toolsData="toolsInventoryData" />
                   <RunsQueue :runsData="runsQueueData" />
                 </div>
 

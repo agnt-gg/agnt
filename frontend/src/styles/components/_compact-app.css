@@ -14,6 +14,34 @@
      readers but take no space. */
   .cv-root.cv-compact :is(.m-collection-heading h1,.m-directory > h1,.m-file-browser > header h1) { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .cv-root.cv-compact .autonomy-screen > .screen-header { display: none; }
+  /* Dashboard lists: one page scroll, never a scroller inside a scroller.
+     The first five rows show; the overview tiles link to the full pages. */
+  .cv-root.cv-compact :is(.goals-list,.workflows-list) { max-height: none !important; overflow: visible !important; -webkit-mask-image: none !important; mask-image: none !important; }
+  .cv-root.cv-compact :is(.goals-list > .goal-item,.workflows-list > .workflow-item):nth-child(n+6) { display: none; }
+  .cv-root.cv-compact .dashboard-grid .grid-row { display: flex !important; flex-direction: column; gap: 12px; }
+  .cv-root.cv-compact .dashboard-inner-content { display: flex; flex-direction: column; gap: 12px; padding-bottom: 24px !important; }
+  /* Tool Forge: one 12px gutter for picker, toolbar and cards; the sticky Run
+     bar is a real bar (background, rule, inset button) so the card scrolling
+     under it reads as scrolling, not as clipped. */
+  .cv-root.cv-compact .tool-editor-panel > .custom-select,
+  .cv-root.cv-compact .tool-editor-panel > :first-child > .custom-select { box-sizing: border-box; width: auto !important; margin: 8px 12px 0 !important; }
+  .cv-root.cv-compact .tool-editor-panel .panel-header { box-sizing: border-box; padding: 6px 8px 8px !important; }
+  .cv-root.cv-compact .tool-forge-center-panel .bottom-actions { box-sizing: border-box; padding: 10px 12px !important; background: var(--color-background); border-top: 1px solid var(--terminal-border-color); z-index: 5; }
+  .cv-root.cv-compact .tool-forge-center-panel .bottom-actions .generate { width: 100%; min-height: 48px; border-radius: 12px !important; font-size: 15px; }
+  .cv-root.cv-compact .tool-forge-center-panel :is(.info-card,.code-card) { margin-left: 12px !important; margin-right: 12px !important; width: auto !important; }
+  /* Widget Forge toolbar: back + widget name on one row, the actions on the
+     next, right-aligned. One row squeezed the name down to a single letter. */
+  .cv-root.cv-compact .wf-toolbar { flex-wrap: wrap !important; align-items: center; gap: 8px; padding: 8px 12px !important; }
+  .cv-root.cv-compact .wf-toolbar .wf-toolbar-title { flex: 1 1 calc(100% - 56px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .cv-root.cv-compact .wf-toolbar .wf-toolbar-right { flex: 1 1 100% !important; display: flex; flex-wrap: nowrap !important; gap: 6px; width: auto !important; justify-content: flex-end; }
+  .cv-root.cv-compact .wf-toolbar .wf-toolbar-right button { min-height: 40px; padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+  .cv-root.cv-compact .wf-preview-panel { padding: 0 12px 16px; box-sizing: border-box; }
+  /* Workflow Forge empty state: template cards keep the page gutter, and the
+     hint names the touch control instead of a drag target that isn't there. */
+  .cv-root.cv-compact .wf-quickstarts { box-sizing: border-box; padding: 0 12px !important; max-width: 100%; }
+  .cv-root.cv-compact .wf-quickstarts > :is(div,ul):has(> *) { grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important; gap: 10px; }
+  /* Chat tool rows are full-width boxes: padding belongs inside the width. */
+  .cv-root.cv-compact .message-wrapper :is(.tool-execution-details,.reasoning-toggle) { box-sizing: border-box; max-width: 100%; }
   .cv-root.cv-compact .autonomy-screen :is(.tab-content,.tab-panel,.manager-container) { border: 0 !important; padding: 0 !important; background: transparent !important; }
   .cv-root.cv-compact .m-collection { gap: 12px; padding-top: 12px; }
   .cv-root.cv-compact .m-collection-heading p { margin: 0; font-size: 12px; }
@@ -30,7 +58,9 @@
   .cv-mobile-identity h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cv-root.cv-compact .cv-mobile-browse { grid-column: 3; grid-row: 1; }
   .cv-root.cv-compact .cv-mobile-new-chat { grid-column: 4; grid-row: 1; }
-  .cv-root.cv-compact .cv-jump { grid-column: 5; grid-row: 1; position: static !important; margin: 0 !important; width: 44px; height: 44px; border: 0 !important; background: transparent !important; }
+  .cv-root.cv-compact .cv-jump { grid-column: 5; grid-row: 1; position: static !important; margin: 0 !important; width: 44px; height: 44px; padding: 0 !important; display: grid !important; place-items: center; border: 0 !important; border-radius: 10px; background: transparent !important; color: var(--color-text-muted) !important; }
+  .cv-root.cv-compact .cv-jump :is(i,svg) { font-size: 16px !important; width: 16px; height: 16px; }
+  .cv-root.cv-compact .cv-jump :not(i):not(svg):not(:has(i,svg)) { display: none; }
   .cv-root.cv-compact .cv-mobile-inspector { grid-column: 6; grid-row: 1; }
   .cv-mobile-icon { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-text-muted); font-size: 16px; cursor: pointer; }
   .cv-mobile-icon:active { background: color-mix(in srgb,var(--color-text) 8%,transparent); }
@@ -81,7 +111,10 @@
   body :is(.wm-header-left,.wm-header-right,.controls-left,.controls-right,.wm-search,.search-wrapper,.wf-toolbar-right,.tabs-left) { min-width: 0; max-width: 100%; flex-wrap: wrap; }
   body :is(.view-tabs,.status-tabs,.tab-strip,.filter-tabs,.tab-bar,.tabs,.panel-tabs,.mk-chips,.category-pills) { max-width: 100%; min-width: 0; overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; }
   body :is(.view-tabs,.tab-strip,.filter-tabs,.tabs,.panel-tabs) > button { flex-shrink: 0; min-height: 44px; }
-  body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content,.skills-screen,.memory-screen,.experiments-screen,.autonomy-screen,.dashboard-inner-content) { padding: 15px !important; min-width: 0; max-width: 100%; box-sizing: border-box !important; }
+  body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content,.autonomy-screen,.dashboard-inner-content) { padding: 15px !important; min-width: 0; max-width: 100%; box-sizing: border-box !important; }
+  /* Skills, Memory and Experiments pad their own tab bar and list; a page
+     gutter on top of that doubled the inset and narrowed every card. */
+  body :is(.skills-screen,.memory-screen,.experiments-screen) { min-width: 0; max-width: 100%; box-sizing: border-box !important; }
   /* A screen root is exactly as wide as the phone. Several roots were
      width:100% + padding in content-box, which pushed their right edge
      30px past the screen and clipped every card inside. */
@@ -153,15 +186,20 @@
   body :is(.pack-studio,.pack-main,.pack-layout,.publish-form,.plugin-builder) { min-width: 0; grid-template-columns: minmax(0,1fr) !important; }
   body :is(.pack-library,.pack-contents,.plugin-card,.oauth-app-item) { min-width: 0; width: 100%; }
   body .node-based-tool { min-width: 0; width: 100%; }
-  body .node-based-tool .canvas-state-controls { position: relative; display: flex; flex-wrap: wrap; height: auto; gap: 6px; padding: 7px; left: auto; top: auto; width: 100%; }
-  body .node-based-tool #workflow-name { max-width: 100%; font-size: 13px; overflow-wrap: anywhere; }
+  /* The workflow's name + run/save bar is its own row. WorkflowForge pins it
+     absolute at top:16px for desktop, which on a phone landed it on top of the
+     touch controls; !important because that page rule is scoped and wins. */
+  .cv-root.cv-compact .node-based-tool .canvas-state-controls { position: relative !important; inset: auto !important; width: auto !important; box-sizing: border-box; display: flex; flex-wrap: nowrap; align-items: center; height: auto; gap: 4px; margin: 0; padding: 6px 10px; border: 0 !important; border-bottom: 1px solid var(--terminal-border-color) !important; border-radius: 0 !important; background: var(--color-background) !important; z-index: 3; }
+  .cv-root.cv-compact .node-based-tool #workflow-name { flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cv-root.cv-compact .node-based-tool .canvas-state-controls :is(button,.tooltip-container) { flex: none; }
+  .cv-root.cv-compact .node-based-tool .canvas-state-controls button { width: 44px; height: 44px; }
   body .node-based-tool #canvas-container { touch-action: none; width: 100%; min-width: 0; }
   body .node-based-tool #sidebar-wrapper:not(.closed) { position: absolute; inset: 55px 0 0; width: 100%; max-width: 100%; z-index: 50; background: var(--color-background); }
   body .node-based-tool #sidebar-wrapper.closed { width: 0; min-width: 0; }
   body .node-based-tool #sidebar:not(.closed) { width: 100%; max-width: 100%; }
   body .node-based-tool .close-sidebar-button { min-width: 44px; min-height: 44px; }
-  .compact-workflow-controls { display: flex; gap: 5px; flex-wrap: wrap; padding: 6px; }
-  .compact-workflow-controls button { min-height: 44px; border: 1px solid var(--terminal-border-color); border-radius: 8px; color: var(--color-text); background: var(--color-background); padding: 8px 10px; }
+  .compact-workflow-controls { position: relative; z-index: 3; display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 6px 28px 6px 10px; background: var(--color-background); border-bottom: 1px solid var(--terminal-border-color); -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
+  .compact-workflow-controls button { flex: none; min-height: 40px; border: 1px solid var(--terminal-border-color); border-radius: 20px; color: var(--color-text); background: var(--color-darker-0, var(--color-background)); padding: 8px 14px; font: inherit; font-size: 13px; white-space: nowrap; }
   .compact-connection-form { display: grid; gap: 10px; padding: 12px; background: var(--color-background); }
   .compact-connection-form label { display: grid; gap: 6px; font-size: 12px; }
   .compact-connection-form select { min-height: 44px; width: 100%; }

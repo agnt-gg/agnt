@@ -4,7 +4,7 @@
     <div v-if="isAuthenticated" class="cv-toolbar">
       <button v-if="compactLayout" type="button" class="cv-mobile-menu" aria-label="Open navigation" :aria-expanded="!!navigationOpen" @click="openMobileNavigation"><i class="fas fa-bars"></i></button>
       <div v-if="compactLayout" class="cv-mobile-identity"><h1>{{ mobileTitle }}</h1></div>
-      <button v-if="compactLayout && mobilePanels.left" class="cv-mobile-icon cv-mobile-browse" type="button" data-mobile-panel="left" :aria-label="screenName === 'ChatScreen' ? 'Saved chats' : 'Browse ' + mobileTitle" @click="requestMobilePanel('left')"><i :class="screenName === 'ChatScreen' ? 'fas fa-history' : 'fas fa-stream'" aria-hidden="true"></i></button>
+      <button v-if="compactLayout && mobilePanels.left" class="cv-mobile-icon cv-mobile-browse" type="button" data-mobile-panel="left" :aria-label="screenName === 'ChatScreen' ? 'Saved chats' : 'Browse ' + mobileTitle" @click="requestMobilePanel('left')"><i :class="screenName === 'ChatScreen' ? 'fas fa-history' : 'fas fa-columns'" aria-hidden="true"></i></button>
       <button v-if="compactLayout && screenName === 'ChatScreen' && !showLibrary && !showTeamWorkspace && !onCustomPage" class="cv-mobile-icon cv-mobile-new-chat" type="button" aria-label="New chat" @click="requestMobileNewChat"><i class="fas fa-edit" aria-hidden="true"></i></button>
       <button v-if="compactLayout && mobilePanels.right" class="cv-mobile-icon cv-mobile-inspector" type="button" data-mobile-panel="right" :aria-label="screenName === 'ChatScreen' ? 'This chat' : 'Inspector'" @click="requestMobilePanel('right')"><i class="fas fa-info-circle" aria-hidden="true"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
