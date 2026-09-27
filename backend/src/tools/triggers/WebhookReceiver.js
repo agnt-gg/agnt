@@ -106,12 +106,13 @@ class LocalWebhookReceiver extends EventEmitter {
       }
     }
 
+    const since = this.webhooks.get(workflowId)?.since ?? existing?.cursor ?? Date.now();
     this.webhooks.set(workflowId, {
       userId,
       endpointId: endpoint.id,
       slug: endpoint.slug,
       url: endpoint.url,
-      since: this.webhooks.get(workflowId)?.since ?? existing?.cursor ?? Date.now(),
+      since,
       method,
       authType,
       authToken,
@@ -141,6 +142,13 @@ class LocalWebhookReceiver extends EventEmitter {
     } catch (dbError) {
       console.error(`Error persisting webhook to local database: ${dbError.message}`);
     }
+
+    // THE STARTING POINT IS DURABLE. The cursor used to be saved only after
+    // the first delivered event, so an endpoint that had never received one
+    // restarted at "now" on every boot - and a hosted instance the fleet woke
+    // to collect an event skipped it, because the event was older than the
+    // boot. Measured on charlie 2026-09-27. Record it on first registration.
+    if (existing?.cursor == null) await this._persistCursor(workflowId, since);
 
     console.log(`Webhook registered for workflow ${workflowId}: ${endpoint.url}`);
     return endpoint.url;
@@ -218,12 +226,22 @@ class LocalWebhookReceiver extends EventEmitter {
     }
   }
 
+  /** Save a read position; never fatal (the in-memory one still works this run). */
+  async _persistCursor(workflowId, cursor) {
+    try {
+      await WebhookModel.saveCursor(workflowId, cursor);
+    } catch (error) {
+      console.error(`LocalWebhookReceiver: ${workflowId}: could not save the event cursor: ${error.message}`);
+    }
+  }
+
   /** Swap a dead hosted endpoint for a live one and record the new URL. */
   async _replaceEndpoint(workflowId, webhook) {
     try {
       const endpoint = await createEndpoint(workflowId);
       Object.assign(webhook, { endpointId: endpoint.id, slug: endpoint.slug, url: endpoint.url, since: Date.now() });
       await WebhookModel.attachEndpoint(workflowId, webhook.userId, { endpoint_id: endpoint.id, slug: endpoint.slug, webhook_url: endpoint.url });
+      await this._persistCursor(workflowId, webhook.since);
       console.log(`LocalWebhookReceiver: ${workflowId}: hosted endpoint was gone; now ${endpoint.url}`);
     } catch (error) {
       const failure = serviceFailure(error);
