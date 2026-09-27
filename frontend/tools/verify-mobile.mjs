@@ -50,7 +50,7 @@ await check('Group actions fit phone',()=>page.$eval('.action-menu',e=>{const r=
 await page.evaluate(()=>document.body.click());await page.click('.left-panel-component .mobile-close-button');
 await check('Tools picker fits and retains channel',async()=>{await page.click('.chat-tools-button');await new Promise(r=>setTimeout(r,300));return page.$eval('.chat-tool-selector',e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;});});
 await page.keyboard.press('Escape');
-await check('New chat asks before clearing',async()=>{await page.evaluate(()=>[...document.querySelectorAll('.mobile-chat-navigation button')].find(b=>b.textContent.includes('New chat')).click());await new Promise(r=>setTimeout(r,180));return page.evaluate(()=>!!document.querySelector('.modal-overlay')&&MOBILE_FIXTURE.store.state.chat.activeConversationId==='conversation-two');});
+await check('New chat asks before clearing',async()=>{await page.click('.cv-mobile-new-chat');await new Promise(r=>setTimeout(r,180));return page.evaluate(()=>!!document.querySelector('.modal-overlay')&&MOBILE_FIXTURE.store.state.chat.activeConversationId==='conversation-two');});
 await page.keyboard.press('Escape');await new Promise(r=>setTimeout(r,100));
 await check('Cancel preserves conversation',()=>page.evaluate(()=>MOBILE_FIXTURE.store.state.chat.activeConversationId==='conversation-two'&&!document.querySelector('.modal-overlay')));
 await check('No compact geometry writes',()=>page.evaluate(()=>!window.__themeWrites.some(t=>t.mobile&&/WIDTH|SIZED/.test(t.type))));

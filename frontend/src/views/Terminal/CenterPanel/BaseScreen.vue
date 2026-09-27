@@ -9,11 +9,6 @@
     <RateLimitBanner />
     <!-- <PromoBanner /> -->
 
-    <nav v-if="isMobile && !hidePanels && screenId !== 'ChatScreen'" class="mobile-screen-actions" aria-label="Page panels">
-      <button v-if="leftPanelEnabled" type="button" data-mobile-panel="left" :aria-expanded="mobilePanel === 'left'" @click="openMobilePanel('left')"><i class="fas fa-comments"></i>{{ screenId === 'ChatScreen' ? 'Saved Chats' : 'Browse' }}</button>
-      <button v-if="screenId === 'ChatScreen'" type="button" @click="mobileNewChat"><i class="fas fa-plus"></i>New chat</button>
-      <button v-if="rightPanelEnabled" type="button" data-mobile-panel="right" :aria-expanded="mobilePanel === 'right'" @click="openMobilePanel('right')"><i class="fas fa-info-circle"></i>{{ screenId === 'ChatScreen' ? 'This chat' : 'Inspector' }}</button>
-    </nav>
     <div class="three-panel-container">
       <button v-if="isMobile && mobilePanel" class="mobile-panel-scrim" aria-label="Close panel" @click="closeMobilePanel()"></button>
       <!-- Left Panel -->
@@ -65,11 +60,6 @@
         <div class="scrollable-content">
           <slot :terminal-lines="terminalLines"></slot>
         </div>
-        <nav v-if="isMobile && screenId === 'ChatScreen' && !hidePanels" class="mobile-chat-navigation" aria-label="Conversation navigation">
-          <button type="button" data-mobile-panel="left" :aria-expanded="mobilePanel === 'left'" @click="openMobilePanel('left')"><i class="fas fa-comments"></i>Saved Chats</button>
-          <button type="button" @click="mobileNewChat"><i class="fas fa-plus"></i>New chat</button>
-          <button type="button" data-mobile-panel="right" :aria-expanded="mobilePanel === 'right'" @click="openMobilePanel('right')"><i class="fas fa-info-circle"></i>This chat</button>
-        </nav>
         <!-- Input line container -->
         <div class="input-container" :class="{ 'input-disabled': isInputDisabled }" v-if="showInputLine">
           <!-- The disconnected-provider notice used to sit here as a red
@@ -1605,6 +1595,23 @@ export default {
       if (isMobile.value) { openMobilePanel('right'); return; }
       toggleRightPanelCollapsed();
     };
+    // The phone header's New chat button. Only the active chat screen answers.
+    const onMobileNewChat = () => {
+      if (!screenActive || insideWidgetCanvas || props.screenId !== 'ChatScreen') return;
+      mobileNewChat();
+    };
+    // Tell the phone header which panels this screen has, so it draws exactly
+    // the Browse / Inspector buttons that work. Embedded screens (widget
+    // windows) never claim the header.
+    const publishScreenPanels = () => {
+      if (!screenActive || insideWidgetCanvas) return;
+      store.commit('shell/SET_SCREEN_PANELS', {
+        screenId: props.screenId,
+        left: !props.hidePanels && leftPanelEnabled.value,
+        right: !props.hidePanels && rightPanelEnabled.value,
+      });
+    };
+    watch(() => [props.screenId, props.hidePanels, leftPanelEnabled.value, rightPanelEnabled.value], publishScreenPanels);
 
     // --- Lifecycle ---
     onMounted(async () => {
@@ -1615,6 +1622,8 @@ export default {
       terminalContentRef.value?.addEventListener('click', handleContainerClick);
       window.addEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
       window.addEventListener('agnt:toggle-right-panel', onToggleRightPanel);
+      window.addEventListener('agnt:mobile-new-chat', onMobileNewChat);
+      publishScreenPanels();
       window.addEventListener('agnt:expand-artifact',onExpandArtifact);
       window.addEventListener('keydown',onArtifactEscape);
       // Only focus input if the input line exists
@@ -1649,6 +1658,7 @@ export default {
     onDeactivated(() => { screenActive = false; closeMobilePanel({ restoreFocus: false }); isProviderSelectorOpen.value = false; isToolSelectorOpen.value = false; });
     onActivated(() => {
       screenActive = true;
+      publishScreenPanels();
       setDataPage();
       emit('base-mounted');
       if (inputEnabled.value && !isMobile.value) {
@@ -1668,6 +1678,7 @@ export default {
       unobserveLayout();
       window.removeEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
       window.removeEventListener('agnt:toggle-right-panel', onToggleRightPanel);
+      window.removeEventListener('agnt:mobile-new-chat', onMobileNewChat);
       window.removeEventListener('agnt:expand-artifact',onExpandArtifact);
       window.removeEventListener('keydown',onArtifactEscape);
       if (terminalContentRef.value) {
@@ -1891,8 +1902,6 @@ export default {
 <style scoped>
 .terminal-content.artifact-active.artifact-expanded .main-panel,.terminal-content.artifact-active.artifact-expanded .left-panel-component,.terminal-content.artifact-active.artifact-expanded .resize-handle{display:none!important}.terminal-content.artifact-active.artifact-expanded .right-panel-component{width:100%!important;flex:1!important}
 @media screen and (max-width:800px){.terminal-content.artifact-active .right-panel-component{display:flex!important;position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;transform:none!important;z-index:100;background:var(--color-popup)}.terminal-content.artifact-active .main-panel{visibility:hidden}.terminal-content.artifact-active .right-panel-component.collapsed{width:100%!important}}
-.mobile-screen-actions { display: flex; flex: 0 0 auto; justify-content: space-between; gap: 4px; border-bottom: 1px solid var(--terminal-border-color); padding: 4px 8px; }
-.mobile-screen-actions button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--color-text); display: flex; align-items: center; gap: 7px; font: inherit; font-size: 12px; cursor: pointer; }
 .mobile-panel-scrim { position: absolute; inset: 0; border: 0; background: rgba(0,0,0,.45); z-index: 1198; }
 .terminal-content.mobile-presentation .left-panel-component, .terminal-content.mobile-presentation .right-panel-component { position: absolute; inset: 0; width: 100%; max-width: 100%; height: 100%; z-index: 1199; transform: none; visibility: hidden; pointer-events: none; background: var(--color-background); }
 .terminal-content.mobile-presentation .mobile-panel-visible { visibility: visible; pointer-events: auto; }

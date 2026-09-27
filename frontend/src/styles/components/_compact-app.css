@@ -2,17 +2,41 @@
    desktop geometry, saved widget positions, and application state are untouched. */
 .compact-speaker { display: none; }
 @media (max-width: 800px) {
+  .cv-root.cv-compact { min-height: 0; }
+  .cv-root.cv-compact .mobile-destinations { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); flex: 0 0 auto; padding: 4px 4px max(4px,env(safe-area-inset-bottom)); background: var(--color-background); border-top: 1px solid var(--terminal-border-color); z-index: 40; }
+  .mobile-destinations button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 52px; min-width: 0; padding: 6px 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .mobile-destinations button i { font-size: 18px; }
+  .mobile-destinations button[aria-current=page] { color: var(--color-green); background: color-mix(in srgb,var(--color-green) 9%,transparent); }
+  .mobile-destinations button:focus-visible { outline: 2px solid var(--color-green); outline-offset: -2px; }
+  .cv-root.cv-compact .cv-toolbar .cv-nav-panels.cv-single-tab { display: none; }
+  .cv-root.cv-compact .cv-toolbar .cv-right { display: none; }
+  /* The app header already names the page: in-page titles stay for screen
+     readers but take no space. */
+  .cv-root.cv-compact :is(.m-collection-heading h1,.m-directory > h1,.m-file-browser > header h1) { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cv-root.cv-compact .autonomy-screen > .screen-header { display: none; }
+  .cv-root.cv-compact .autonomy-screen :is(.tab-content,.tab-panel,.manager-container) { border: 0 !important; padding: 0 !important; background: transparent !important; }
+  .cv-root.cv-compact .m-collection { gap: 12px; padding-top: 12px; }
+  .cv-root.cv-compact .m-collection-heading p { margin: 0; font-size: 12px; }
+}
+
+@media (max-width: 800px) {
   html body { --mobile-gutter: 15px; }
   /* Same title / tab / jump hierarchy as the approved reference. */
-  .cv-root.cv-compact .cv-toolbar { display: grid !important; grid-template-columns: 44px minmax(0,1fr) 44px 44px; gap: 0 !important; padding: 5px 8px 0 !important; height: auto !important; }
+  /* One header row: menu · title · browse · new chat · search · inspector.
+     Empty auto columns collapse, so each page shows only the buttons it has. */
+  .cv-root.cv-compact .cv-toolbar { display: grid !important; grid-template-columns: 44px minmax(0,1fr) auto auto auto auto; align-items: center; gap: 0 !important; padding: 4px 6px 0 !important; height: auto !important; }
   .cv-root.cv-compact .cv-mobile-menu { grid-column: 1; grid-row: 1; }
-  .cv-mobile-identity { grid-column: 2; grid-row: 1; min-width: 0; padding-left: 6px; }
-  .cv-mobile-identity small { display: block; font: 8px var(--font-family-monospace,monospace); color: var(--color-green); letter-spacing: .1em; }
-  .cv-mobile-identity strong { display: block; font-size: 19px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cv-root.cv-compact .cv-jump { grid-column: 3; grid-row: 1; position: static !important; margin: 0 !important; }
-  .cv-mobile-inspector { grid-column: 4; grid-row: 1; width: 44px; min-height: 44px; color: var(--color-text-muted); background: transparent; border: 0; }
-  .cv-root.cv-compact .cv-nav-panels { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 43px; gap: 4px; padding: 4px 0; border-top: 1px solid var(--terminal-border-color); }
-  .cv-root.cv-compact .cv-pbtn { flex: 0 0 auto; min-height: 36px; padding: 8px 12px; font-size: 11px; border-radius: 8px; }
+  .cv-mobile-identity { grid-column: 2; grid-row: 1; min-width: 0; padding-left: 4px; }
+  .cv-mobile-identity h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cv-root.cv-compact .cv-mobile-browse { grid-column: 3; grid-row: 1; }
+  .cv-root.cv-compact .cv-mobile-new-chat { grid-column: 4; grid-row: 1; }
+  .cv-root.cv-compact .cv-jump { grid-column: 5; grid-row: 1; position: static !important; margin: 0 !important; width: 44px; height: 44px; border: 0 !important; background: transparent !important; }
+  .cv-root.cv-compact .cv-mobile-inspector { grid-column: 6; grid-row: 1; }
+  .cv-mobile-icon { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-text-muted); font-size: 16px; cursor: pointer; }
+  .cv-mobile-icon:active { background: color-mix(in srgb,var(--color-text) 8%,transparent); }
+  .cv-mobile-icon:focus-visible { outline: 2px solid var(--color-green); outline-offset: -2px; }
+  .cv-root.cv-compact .cv-nav-panels { grid-column: 1 / -1; grid-row: 2; width: 100%; box-sizing: border-box; min-height: 44px; gap: 4px; padding: 2px 28px 6px 2px; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
+  .cv-root.cv-compact .cv-pbtn { flex: 0 0 auto; min-height: 36px; padding: 8px 12px; font-size: 13px; letter-spacing: 0; text-transform: none; border-radius: 18px; }
   .cv-root.cv-compact .cv-pbtn.on { color: var(--color-green); background: color-mix(in srgb,var(--color-green) 9%,transparent); }
   .cv-root.cv-compact .cv-right { grid-column: 1 / -1; grid-row: 3; display: flex; width: 100%; overflow-x: auto; flex-wrap: nowrap; justify-content: flex-start; max-height: 40px; }
   .cv-root.cv-compact .cv-right:has(.cv-global-model):not(:has(.cv-pill)) { max-height: 0; overflow: hidden; }
@@ -36,8 +60,6 @@
   .message-wrapper .message-text p { margin: 0 0 10px !important; }
   .message-wrapper .reasoning-toggle, .message-wrapper .tool-execution-details { border: 1px solid var(--terminal-border-color); border-radius: 10px; padding: 9px 12px; width: 100%; min-height: 44px; font-size: 12px; }
   .message-wrapper .message-timestamp { font-size: 9px; }
-  .mobile-chat-navigation { display: flex; flex: 0 0 auto; justify-content: space-between; border-top: 1px solid var(--terminal-border-color); padding: 3px 10px; background: var(--color-background); }
-  .mobile-chat-navigation button { display: flex; align-items: center; gap: 6px; min-height: 44px; border: 0; background: transparent; color: var(--color-text-muted); font-size: 11px; padding: 5px; }
   .terminal-content.mobile-presentation .input-container { margin: 0 !important; padding: 6px 12px max(10px,env(safe-area-inset-bottom)) !important; border: 0 !important; width: 100%; }
   .terminal-content.mobile-presentation .input-line { display: grid !important; grid-template-columns: repeat(4,minmax(0,1fr)) 44px; gap: 3px 4px !important; align-items: center; padding: 0 !important; }
   .terminal-content.mobile-presentation .input-highlight-container { grid-column: 1 / 5; grid-row: 2; border: 1px solid var(--terminal-border-color); border-radius: 23px 0 0 23px; padding: 5px 12px; width: 100%; min-height: 46px; }
@@ -59,7 +81,16 @@
   body :is(.wm-header-left,.wm-header-right,.controls-left,.controls-right,.wm-search,.search-wrapper,.wf-toolbar-right,.tabs-left) { min-width: 0; max-width: 100%; flex-wrap: wrap; }
   body :is(.view-tabs,.status-tabs,.tab-strip,.filter-tabs,.tab-bar,.tabs,.panel-tabs,.mk-chips,.category-pills) { max-width: 100%; min-width: 0; overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; }
   body :is(.view-tabs,.tab-strip,.filter-tabs,.tabs,.panel-tabs) > button { flex-shrink: 0; min-height: 44px; }
-  body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content,.skills-screen,.memory-screen,.experiments-screen,.autonomy-screen,.dashboard-inner-content) { padding: 15px !important; min-width: 0; max-width: 100%; }
+  body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content,.skills-screen,.memory-screen,.experiments-screen,.autonomy-screen,.dashboard-inner-content) { padding: 15px !important; min-width: 0; max-width: 100%; box-sizing: border-box !important; }
+  /* A screen root is exactly as wide as the phone. Several roots were
+     width:100% + padding in content-box, which pushed their right edge
+     30px past the screen and clipped every card inside. */
+  .terminal-content.mobile-presentation .scrollable-content > *,
+  .terminal-content.mobile-presentation .scrollable-content > * > :is(form,section,div) { box-sizing: border-box; max-width: 100%; min-width: 0; }
+  .terminal-content.mobile-presentation :is(.main-content-grid,.info-card,.code-card) { box-sizing: border-box !important; max-width: 100%; }
+  /* In-page tab strips scroll sideways instead of running off the screen. */
+  .terminal-content.mobile-presentation :is(.plugins-container > .tabs,.autonomy-screen .tab-strip,.tab-bar) { display: flex; flex-wrap: nowrap !important; overflow-x: auto; max-width: 100%; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
+  .terminal-content.mobile-presentation :is(.plugins-container > .tabs,.autonomy-screen .tab-strip,.tab-bar) > * { flex: 0 0 auto; min-height: 44px; }
   body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content) .content-header { margin-bottom: 16px; }
   body :is(input,textarea,select) { max-width: 100%; }
   body input:not([type=checkbox]):not([type=radio]):not([type=range]), body textarea, body select { font-size: 16px; }
@@ -235,7 +266,6 @@
  .skills-screen>.tab-bar,.experiments-screen>.tab-bar{flex-shrink:0;padding:8px 15px!important;box-sizing:border-box;max-width:100%;}
  .memory-screen>.m-collection{min-height:0;}
  .goals-screen{width:100%!important;padding:0!important;position:relative;}
- .mobile-presentation .mobile-screen-actions{order:3;border-top:1px solid var(--terminal-border-color);border-bottom:0;}
  .mobile-presentation .three-panel-container{order:2;}
  .mobile-presentation .scrollable-content{padding:0!important;}
  body .mobile-section-body :is(.card,.settings-card,.profile-card,.billing-card,.provider-card,.referral-card){border:1px solid var(--terminal-border-color);border-radius:14px;background:var(--color-darker-0);padding:15px;box-sizing:border-box;}
@@ -291,12 +321,10 @@
  body .agent-details-section .avatar-controls{flex-direction:row!important;gap:8px;}
  body .agent-details-section .config-item>label{font-size:12px!important;color:var(--color-text-muted);margin-bottom:7px;}
  body .agent-details-section .config-item>.input{width:100%;border-radius:10px;border:1px solid var(--terminal-border-color);min-height:46px;padding:11px;box-sizing:border-box;font-size:16px;}
- .mobile-presentation:has(.agents-panel.has-details)>.mobile-screen-actions{display:none;}
  .mobile-presentation .input-line[data-mobile-composer]{position:relative;grid-template-columns:repeat(4,minmax(0,1fr)) 44px!important;}
  .mobile-presentation .input-line[data-mobile-composer]>.input-highlight-container{grid-column:1/-1!important;border-radius:24px!important;padding-right:52px!important;}
  .mobile-presentation .input-line[data-mobile-composer] .chat-send-button,.mobile-presentation .input-line[data-mobile-composer] .chat-stop-button{position:relative;grid-column:5;z-index:1;margin-right:3px!important;}
  .mobile-presentation .input-line[data-mobile-composer] .chat-attach-button,.mobile-presentation .input-line[data-mobile-composer] .chat-provider-button,.mobile-presentation .input-line[data-mobile-composer] .chat-tools-button,.mobile-presentation .input-line[data-mobile-composer] .chat-voice-button{border:0!important;background:none!important;border-radius:0!important;font-size:11px!important;}
- .mobile-presentation .mobile-chat-navigation{width:100%;box-sizing:border-box;}
  .mobile-presentation .message-wrapper .reasoning-toggle{box-sizing:border-box!important;max-width:100%;font-size:12px!important;}
  .mobile-conversation-heading{position:relative;isolation:isolate;width:100%;box-sizing:border-box;padding:5px 0 16px!important;}
  .mobile-conversation-heading small{position:static!important;}

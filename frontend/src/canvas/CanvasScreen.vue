@@ -3,8 +3,10 @@
     <!-- ── TOOLBAR (top bar + titlebar) ── -->
     <div v-if="isAuthenticated" class="cv-toolbar">
       <button v-if="compactLayout" type="button" class="cv-mobile-menu" aria-label="Open navigation" :aria-expanded="!!navigationOpen" @click="openMobileNavigation"><i class="fas fa-bars"></i></button>
-      <div v-if="compactLayout" class="cv-mobile-identity"><small>AGNT / ONE</small><strong>{{ activePage?.name && onCustomPage ? activePage.name : (untabbedScreenLabel || activeSectionTabs.find(tab => tab.screen === screenName)?.label || activeSection?.label || 'AGNT') }}</strong></div>
-      <button v-if="compactLayout" class="cv-mobile-inspector" type="button" aria-label="Open page inspector" @click="requestMobileInspector"><i class="fas fa-info-circle"></i></button>
+      <div v-if="compactLayout" class="cv-mobile-identity"><h1>{{ mobileTitle }}</h1></div>
+      <button v-if="compactLayout && mobilePanels.left" class="cv-mobile-icon cv-mobile-browse" type="button" data-mobile-panel="left" :aria-label="screenName === 'ChatScreen' ? 'Saved chats' : 'Browse ' + mobileTitle" @click="requestMobilePanel('left')"><i :class="screenName === 'ChatScreen' ? 'fas fa-history' : 'fas fa-stream'" aria-hidden="true"></i></button>
+      <button v-if="compactLayout && screenName === 'ChatScreen' && !showLibrary && !showTeamWorkspace && !onCustomPage" class="cv-mobile-icon cv-mobile-new-chat" type="button" aria-label="New chat" @click="requestMobileNewChat"><i class="fas fa-edit" aria-hidden="true"></i></button>
+      <button v-if="compactLayout && mobilePanels.right" class="cv-mobile-icon cv-mobile-inspector" type="button" data-mobile-panel="right" :aria-label="screenName === 'ChatScreen' ? 'This chat' : 'Inspector'" @click="requestMobilePanel('right')"><i class="fas fa-info-circle" aria-hidden="true"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
       <!-- Which space everything on screen belongs to. Only shown in a team, where it matters. -->
       <span v-if="activeTeamId" class="cv-space-chip" role="status" :aria-label="'Working in workspace ' + workspaceLabel"><i class="fas fa-users" aria-hidden="true"></i>{{ workspaceLabel }}</span>
@@ -26,7 +28,7 @@
             :class="{ on: screenName === tab.screen, ctx: tab.ctx }"
             @click="$emit('screen-change', tab.screen)"
           >
-            {{ tab.label }}
+            {{ compactLayout ? titleCase(tab.label) : tab.label }}
             <span v-if="tab.screen === 'ChatScreen' && hasUnreadChats" class="cv-unread-dot"></span>
           </button>
         </template>
@@ -244,6 +246,15 @@
       </div>
     </div>
 
+    <nav v-if="isAuthenticated && compactLayout" class="mobile-destinations" aria-label="Primary navigation" :inert="navigationOpen ? true : undefined">
+      <button v-for="destination in mobileDestinations" :key="destination.screen" type="button"
+        :aria-current="!showLibrary && !showTeamWorkspace && !onCustomPage && screenName === destination.screen ? 'page' : undefined"
+        @click="openMobileDestination(destination.screen)">
+        <i :class="destination.icon" aria-hidden="true"></i><span>{{ destination.label }}</span>
+      </button>
+      <button type="button" :aria-expanded="!!navigationOpen" :aria-current="onMobileDestination ? undefined : 'page'" @click="openMobileNavigation"><i class="fas fa-th-large" aria-hidden="true"></i><span>All pages</span></button>
+    </nav>
+
     <!-- Context menu -->
     <Teleport to="body">
       <div v-if="ctxMenu.show" class="cv-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
@@ -318,6 +329,7 @@
 <script>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { titleCase } from './titleCase.js';
 import WidgetCanvas from './WidgetCanvas.vue';
 import WidgetCatalog from './WidgetCatalog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -678,6 +690,38 @@ export default {
     // The rail rows that are not screens: Search opens the palette, Teams and
     // Library open a panel over whatever is mounted (which is how a draft in
     // the screen underneath survives a trip through them).
+    const mobileDestinations = [
+      { screen: 'ChatScreen', label: 'Chat', icon: 'fas fa-comment' },
+      { screen: 'DashboardScreen', label: 'Dashboard', icon: 'fas fa-chart-line' },
+      { screen: 'GoalsScreen', label: 'Goals', icon: 'fas fa-bullseye' },
+      { screen: 'TracesScreen', label: 'Activity', icon: 'fas fa-bolt' },
+    ];
+    const onMobileDestination = computed(() => !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value
+      && mobileDestinations.some((destination) => destination.screen === props.screenName));
+    // The phone header names the page you are on (the approved atlas: Skills,
+    // not Agents, while the Skills tab is open). The section's sibling pages
+    // sit beneath it as chips; pages render no second title of their own.
+    const mobileTitle = computed(() => {
+      if (showLibrary.value) return 'Library';
+      if (showTeamWorkspace.value) return 'Members';
+      if (onCustomPage.value && activePage.value?.name) return activePage.value.name;
+      if (untabbedScreenLabel.value) return untabbedScreenLabel.value;
+      return titleCase(activeSectionTabs.value.find((tab) => tab.screen === props.screenName)?.label || activeSection.value?.label || 'AGNT');
+    });
+    const mobilePanels = computed(() => {
+      const panels = store.getters['shell/screenPanels'] || {};
+      const onScreen = !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value && panels.screenId === props.screenName;
+      return { left: onScreen && panels.left, right: onScreen && panels.right };
+    });
+    const requestMobilePanel = (side) => window.dispatchEvent(new CustomEvent(side === 'left' ? 'agnt:toggle-left-panel' : 'agnt:toggle-right-panel'));
+    const requestMobileNewChat = () => window.dispatchEvent(new CustomEvent('agnt:mobile-new-chat'));
+    function openMobileDestination(screen) {
+      closeMobileNavigation({ restoreFocus: false });
+      showLibrary.value = false;
+      showTeamWorkspace.value = false;
+      onCustomPage.value = false;
+      emit('screen-change', screen, {});
+    }
     function openPrimary(id) {
       if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
       // Library is always this space's library: every API it calls is already scoped to the space.
@@ -1086,11 +1130,10 @@ export default {
     });
 
     return {
-      requestMobileInspector: () => window.dispatchEvent(new CustomEvent('toggle-right-panel')),
       compactLayout, navigationElement, navigationOpen, openMobileNavigation, closeMobileNavigation,
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
-      primaryActive, openPrimary, isNavigationItemActive,
+      primaryActive, openPrimary, isNavigationItemActive, mobileDestinations, openMobileDestination, onMobileDestination, mobileTitle, mobilePanels, requestMobilePanel, requestMobileNewChat, titleCase,
       activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,accountEmail,personalHint,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,

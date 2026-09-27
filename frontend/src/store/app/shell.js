@@ -12,6 +12,11 @@
  *   jumpOpen — whether the ⌘K palette is showing. Kept in the store rather
  *              than in CanvasScreen so a screen can open it too (the composer
  *              hint, the empty states) without a prop chain.
+ *   screenPanels — which side panels the ACTIVE screen offers. The phone
+ *              header owns the Browse / Inspector buttons, but only the
+ *              screen knows whether it has those panels; without this the
+ *              header either shows dead buttons or each screen draws its own
+ *              extra toolbar row.
  *
  * Nothing here is user data; it is deliberately NOT a resettable module.
  */
@@ -21,6 +26,7 @@ export default {
     inspect: null, // { kind, id, screen?, payload?, nonce }
     jumpOpen: false,
     updateAvailable: null, // { version } when the updater has one waiting
+    screenPanels: { screenId: null, left: false, right: false },
   }),
   mutations: {
     SET_INSPECT(state, target) {
@@ -34,6 +40,9 @@ export default {
     },
     SET_UPDATE_AVAILABLE(state, info) {
       state.updateAvailable = info || null;
+    },
+    SET_SCREEN_PANELS(state, { screenId = null, left = false, right = false } = {}) {
+      state.screenPanels = { screenId, left: !!left, right: !!right };
     },
   },
   actions: {
@@ -65,5 +74,6 @@ export default {
     inspect: (state) => state.inspect,
     jumpOpen: (state) => state.jumpOpen,
     updateAvailable: (state) => state.updateAvailable,
+    screenPanels: (state) => state.screenPanels,
   },
 };
