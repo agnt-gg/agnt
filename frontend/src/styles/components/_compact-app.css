@@ -2,8 +2,14 @@
    desktop geometry, saved widget positions, and application state are untouched. */
 .compact-speaker { display: none; }
 @media (max-width: 800px) {
+  /* Phone surfaces. --color-background is `transparent` while a custom
+     wallpaper is on (theme.js), so nothing on a phone paints with it directly.
+     chrome: bars and buttons, tinted like the header by the opacity slider.
+     sheet:  surfaces over scrolling content, solid so text never shows through. */
+  html body { --m-chrome: var(--color-background); --m-sheet: var(--color-background); }
+  html body.custom-bg { --m-chrome: rgba(var(--color-background-rgb, 0, 0, 0), var(--bg-opacity, 0.9)); --m-sheet: rgb(var(--color-background-rgb, 0, 0, 0)); }
   .cv-root.cv-compact { min-height: 0; }
-  .cv-root.cv-compact .mobile-destinations { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); flex: 0 0 auto; padding: 4px 4px max(4px,env(safe-area-inset-bottom)); background: var(--color-background); border-top: 1px solid var(--terminal-border-color); z-index: 40; }
+  .cv-root.cv-compact .mobile-destinations { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); flex: 0 0 auto; padding: 4px 4px max(4px,env(safe-area-inset-bottom)); background: var(--m-chrome); border-top: 1px solid var(--terminal-border-color); z-index: 40; }
   .mobile-destinations button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 52px; min-width: 0; padding: 6px 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; font-weight: 500; white-space: nowrap; }
   .mobile-destinations button i { font-size: 18px; }
   .mobile-destinations button[aria-current=page] { color: var(--color-green); background: color-mix(in srgb,var(--color-green) 9%,transparent); }
@@ -26,7 +32,7 @@
   .cv-root.cv-compact .tool-editor-panel > .custom-select,
   .cv-root.cv-compact .tool-editor-panel > :first-child > .custom-select { box-sizing: border-box; width: auto !important; margin: 8px 12px 0 !important; }
   .cv-root.cv-compact .tool-editor-panel .panel-header { box-sizing: border-box; padding: 6px 8px 8px !important; }
-  .cv-root.cv-compact .tool-forge-center-panel .bottom-actions { box-sizing: border-box; padding: 10px 12px !important; background: var(--color-background); border-top: 1px solid var(--terminal-border-color); z-index: 5; }
+  .cv-root.cv-compact .tool-forge-center-panel .bottom-actions { box-sizing: border-box; padding: 10px 12px !important; background: var(--m-sheet); border-top: 1px solid var(--terminal-border-color); z-index: 5; }
   .cv-root.cv-compact .tool-forge-center-panel .bottom-actions .generate { width: 100%; min-height: 48px; border-radius: 12px !important; font-size: 15px; }
   .cv-root.cv-compact .tool-forge-center-panel :is(.info-card,.code-card) { margin-left: 12px !important; margin-right: 12px !important; width: auto !important; }
   /* Widget Forge toolbar: back + widget name on one row, the actions on the
@@ -171,7 +177,7 @@
   body :is(.table-container,.table-view-container,.memory-table-container,.experiments-table-container) table { width: max-content; min-width: 100%; }
   body :is(.wm-list-row,.mk-list-row) { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
   body :is(.wm-list-desc,.wm-list-name,.mk-list-name) { min-width: 0; overflow-wrap: anywhere; }
-  body .agents-panel > .agent-details-section, body .goals-screen > .goal-detail-view { position: absolute; inset: 0; z-index: 30; height: 100% !important; width: 100%; background: var(--color-background); border-radius: 0; margin: 0; max-height: none; overflow: auto; }
+  body .agents-panel > .agent-details-section, body .goals-screen > .goal-detail-view { position: absolute; inset: 0; z-index: 30; height: 100% !important; width: 100%; background: var(--m-sheet); border-radius: 0; margin: 0; max-height: none; overflow: auto; }
   body .agent-details-section .tab-content { overflow: auto; flex: 1; min-height: 0; }
   body :is(.modal-overlay,.popup-overlay,.terminal-modal,.workflow-security-overlay) { padding: 8px !important; align-items: flex-end; }
   body :is(.modal-content,.modal-container,.popup-content,.terminal-modal-content,.workflow-security-dialog) { min-width: 0 !important; width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px) !important; max-height: calc(var(--app-height) - 32px) !important; overflow-y: auto; border-radius: 18px 18px 10px 10px; padding: 16px; }
@@ -228,7 +234,7 @@
   /* The workflow's name + run/save bar is its own row. WorkflowForge pins it
      absolute at top:16px for desktop, which on a phone landed it on top of the
      touch controls; !important because that page rule is scoped and wins. */
-  .cv-root.cv-compact .node-based-tool .canvas-state-controls { position: relative !important; inset: auto !important; width: auto !important; box-sizing: border-box; display: flex; flex-wrap: nowrap; align-items: center; height: auto; gap: 4px; margin: 0; padding: 6px 10px; border: 0 !important; border-bottom: 1px solid var(--terminal-border-color) !important; border-radius: 0 !important; background: var(--color-background) !important; z-index: 3; }
+  .cv-root.cv-compact .node-based-tool .canvas-state-controls { position: relative !important; inset: auto !important; width: auto !important; box-sizing: border-box; display: flex; flex-wrap: nowrap; align-items: center; height: auto; gap: 4px; margin: 0; padding: 6px 10px; border: 0 !important; border-bottom: 1px solid var(--terminal-border-color) !important; border-radius: 0 !important; background: var(--m-chrome) !important; z-index: 3; }
   .cv-root.cv-compact .node-based-tool #workflow-name { flex: 1 1 auto; min-width: 0; font-size: 15px; font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cv-root.cv-compact .node-based-tool .canvas-state-controls :is(button,.tooltip-container) { flex: none; }
   .cv-root.cv-compact .node-based-tool .canvas-state-controls button { width: 44px; height: 44px; }
@@ -240,11 +246,11 @@
   .cv-root.cv-compact .node-based-tool > #canvas-container { flex: 1 1 0; min-height: 0; height: auto !important; }
   /* Tiny-node toggle: a solid button, not a transparent ring over the graph. */
   .cv-root.cv-compact .node-based-tool .canvas-view-controls { bottom: 12px !important; right: 12px !important; }
-  .cv-root.cv-compact .node-based-tool .canvas-view-controls button { width: 44px; height: 44px; opacity: 1 !important; background: var(--color-background) !important; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  .cv-root.cv-compact .node-based-tool .canvas-view-controls button { width: 44px; height: 44px; opacity: 1 !important; background: var(--m-chrome) !important; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
   /* Add-node palette: a full sheet over the editor with a reachable close
      button. It was offset for the old floating toolbar (so it covered Add
      node) and 406px wide (so its own close button was off-screen). */
-  .cv-root.cv-compact .node-based-tool #sidebar-wrapper:not(.closed) { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; padding: 0 !important; box-sizing: border-box; z-index: 50; background: var(--color-background); }
+  .cv-root.cv-compact .node-based-tool #sidebar-wrapper:not(.closed) { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; padding: 0 !important; box-sizing: border-box; z-index: 50; background: var(--m-sheet); }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; padding: 0 !important; }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; align-items: stretch !important; box-sizing: border-box; padding: 8px 12px 32px !important; overflow-y: auto; }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .sidebar-section { width: auto !important; max-width: none !important; align-items: stretch !important; }
@@ -256,14 +262,14 @@
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .sidebar-section > .title { color: var(--color-text); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .expand-section { align-self: center; min-height: 36px; display: grid; place-items: center; font-size: 13px; color: var(--color-text-muted); }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .search-input { width: calc(100% - 52px) !important; box-sizing: border-box; min-height: 44px; flex: none; }
-  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .close-sidebar-button { position: absolute !important; top: 8px !important; right: 10px !important; left: auto !important; width: 44px !important; height: 44px !important; z-index: 2; display: grid; place-items: center; border: 1px solid var(--terminal-border-color); border-radius: 12px; background: var(--color-background); font-size: 0 !important; color: var(--color-text); }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .close-sidebar-button { position: absolute !important; top: 8px !important; right: 10px !important; left: auto !important; width: 44px !important; height: 44px !important; z-index: 2; display: grid; place-items: center; border: 1px solid var(--terminal-border-color); border-radius: 12px; background: var(--m-chrome); font-size: 0 !important; color: var(--color-text); }
   .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .close-sidebar-button::before { content: '\f00d'; font-family: 'Font Awesome 5 Free'; font-weight: 900; font-size: 17px; }
-  .compact-workflow-controls { position: relative; z-index: 3; flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 6px 10px; background: var(--color-background); border-bottom: 1px solid var(--terminal-border-color); }
+  .compact-workflow-controls { position: relative; z-index: 3; flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 6px 10px; background: var(--m-chrome); border-bottom: 1px solid var(--terminal-border-color); }
   .compact-workflow-controls button { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid var(--terminal-border-color); border-radius: 20px; color: var(--color-text); background: transparent; padding: 8px 12px; font: inherit; font-size: 13px; white-space: nowrap; }
   .compact-workflow-controls button[aria-pressed=true] { color: var(--color-green); border-color: color-mix(in srgb,var(--color-green) 35%,transparent); background: color-mix(in srgb,var(--color-green) 10%,transparent); }
   .compact-workflow-controls .compact-view-controls { display: flex; gap: 4px; margin-left: auto; }
   .compact-workflow-controls button.icon-only { width: 40px; padding: 0; justify-content: center; }
-  .compact-connection-form { display: grid; gap: 10px; padding: 12px; background: var(--color-background); }
+  .compact-connection-form { display: grid; gap: 10px; padding: 12px; background: var(--m-sheet); }
   .compact-connection-form label { display: grid; gap: 6px; font-size: 12px; }
   .compact-connection-form select { min-height: 44px; width: 100%; }
 }
@@ -281,13 +287,13 @@
  /* Jump-to-latest is a solid button; jump-to-top is dropped (the saved-chat
     list is the way back to the start of a long thread). */
  .terminal-content.mobile-presentation .chat-scroll-controls .tooltip-container:has(> [aria-label='Scroll to top']) { display: none; }
- .terminal-content.mobile-presentation .chat-scroll-controls .scroll-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--terminal-border-color); background: var(--color-background); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+ .terminal-content.mobile-presentation .chat-scroll-controls .scroll-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--terminal-border-color); background: var(--m-chrome); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
  /* Rows and headers with an absolute corner button reserve room for its 40px
     touch size (the desktop reservation was sized for a ~24px button). */
  .terminal-content.mobile-presentation .workflow-header { padding-right: 48px !important; }
  .terminal-content.mobile-presentation .output-item .output-content { padding-right: 44px !important; box-sizing: border-box; }
  /* Security: the sticky save bar is solid, so text scrolling under it is hidden, not overprinted. */
- body .policy-footer { background: var(--color-background) !important; border-top: 1px solid var(--terminal-border-color); backdrop-filter: none !important; }
+ body .policy-footer { background: var(--m-sheet) !important; border-top: 1px solid var(--terminal-border-color); backdrop-filter: none !important; }
  /* Billing: a plan comparison is a table only on desktop; on a phone each row stacks. */
  body .comparison-table-wrapper { overflow: visible !important; }
  body table.comparison-table, body table.comparison-table :is(thead,tbody,tr,th,td) { display: block !important; width: auto !important; min-width: 0 !important; }
@@ -330,7 +336,7 @@
 .docs-mobile-toggle { display:none; }
 @media(max-width:800px) {
  body .docs-container { display:flex; flex-direction:column; padding:0; width:100%; min-width:0; height:var(--app-height); }
- body .docs-mobile-toggle { display:block; flex-shrink:0; min-height:48px; background:var(--color-background); color:var(--color-text); border:1px solid var(--terminal-border-color); }
+ body .docs-mobile-toggle { display:block; flex-shrink:0; min-height:48px; background: var(--m-chrome); color:var(--color-text); border:1px solid var(--terminal-border-color); }
  body .docs-container .sidebar { display:none; width:100%; max-width:100%; position:static; overflow:auto; }
  body .docs-container.docs-navigation-open .sidebar { display:block; flex:1; }
  body .docs-container.docs-navigation-open .doc-content-wrapper { display:none; }
@@ -350,7 +356,7 @@
 }
 
 @media(max-width:800px){
- body .agents-panel.has-details > .agent-details-section { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-height:0; max-height:none; z-index:35; box-sizing:border-box; background:var(--color-background); }
+ body .agents-panel.has-details > .agent-details-section { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; min-height:0; max-height:none; z-index:35; box-sizing:border-box; background: var(--m-sheet); }
  body .agents-panel.has-details > :is(.screen-toolbar,.wm-header,.wm-tabs,.agents-content) { visibility:hidden; }
  body .agents-panel.has-details .agent-details-section .tabs-header { flex-wrap:nowrap; }
  body .agents-panel.has-details .agent-details-section .tabs-left { overflow-x:auto; flex-wrap:nowrap; min-width:0; }
@@ -381,7 +387,7 @@
 @media(max-width:800px){
  .desktop-view-container{display:none!important;}
  .mobile-section-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;width:100%;}
- .mobile-section-back{display:flex;align-items:center;gap:9px;min-height:48px;flex:none;border:0;border-bottom:1px solid var(--terminal-border-color);background:var(--color-background);color:var(--color-text);padding:9px 15px;font:13px inherit;cursor:pointer;}
+ .mobile-section-back{display:flex;align-items:center;gap:9px;min-height:48px;flex:none;border:0;border-bottom:1px solid var(--terminal-border-color);background: var(--m-chrome);color:var(--color-text);padding:9px 15px;font:13px inherit;cursor:pointer;}
  .mobile-section-body .settings-content,.mobile-section-body .connectors-content{flex:0 0 auto;height:auto;overflow:visible;box-sizing:border-box;}
  .mobile-section-body .content-header{margin:0 0 18px!important;padding:0!important;}
  .mobile-section-body .content-title{font-size:22px!important;font-weight:500;letter-spacing:-.025em;line-height:1.1;}

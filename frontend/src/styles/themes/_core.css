@@ -65,6 +65,7 @@ body.custom-bg .main-panel,
 body.custom-bg .left-panel,
 body.custom-bg .controls-panel,
 body.custom-bg .cv-toolbar,
+body.custom-bg .mobile-destinations,
 body.custom-bg .cv-sidebar,
 body.custom-bg #left-sidebar {
   background: rgba(var(--color-background-rgb, 0, 0, 0), var(--bg-opacity, 0.9)) !important;
