@@ -289,8 +289,32 @@ export function rememberSessionToken(token, userId) {
   notify(current);
 }
 
-/** The remembered token, or null. Never throws. */
+// ---------------------------------------------------------------------------
+// THE INSTANCE KEY: WHAT A HOSTED INSTANCE PRESENTS WHEN NOBODY IS SIGNED IN
+// ---------------------------------------------------------------------------
+// A hosted instance is woken by the fleet to collect a webhook or an email,
+// with no browser anywhere near it. The session token above only arrives with
+// a signed-in request, so after every wake or rollout the pollers had nothing
+// to present and collected nothing. The fleet now hands each instance its own
+// credential (agnt_ik_..., issued by api.agnt.gg, bound to this tenant and its
+// owner, rotated on every recreate, dead when the tenant is suspended). It is
+// a FALLBACK: a live signed-in token still wins, being the user's own.
+// Desktops have no instance key and behave exactly as before.
+const INSTANCE_KEY_PATTERN = /^agnt_ik_[0-9a-f]{64}$/;
+
+function instanceCredential() {
+  const key = process.env.AGNT_INSTANCE_KEY;
+  const owner = process.env.AGNT_TENANT_OWNER;
+  if (!process.env.AGNT_TENANT_SLUG || !owner || !INSTANCE_KEY_PATTERN.test(key || '')) return null;
+  return { token: key, userId: owner };
+}
+
+/** The remembered token, else this hosted instance's key, else null. Never throws. */
 export function getSessionToken() {
+  return rememberedToken() ?? instanceCredential()?.token ?? null;
+}
+
+function rememberedToken() {
   if (poisoned || !current) return null;
 
   // The token's OWN expiry, not merely how long since we last saw it. `seenAt`
@@ -310,10 +334,10 @@ export function getSessionToken() {
   return current.token;
 }
 
-/** The user the remembered token belongs to, or null. */
+/** The user getSessionToken() acts for, or null. */
 export function getSessionUserId() {
-  if (poisoned || !current) return null;
-  return current.userId;
+  if (rememberedToken()) return current.userId;
+  return instanceCredential()?.userId ?? null;
 }
 
 /**
