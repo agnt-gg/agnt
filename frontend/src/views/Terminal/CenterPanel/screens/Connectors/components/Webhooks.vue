@@ -70,7 +70,11 @@
               {{ webhook.workflow_name || 'Unnamed Workflow' }}
             </span>
           </div>
-          <div class="webhook-url">
+          <div v-if="!isHostedWebhookUrl(webhook.webhook_url)" class="webhook-url">
+            <span class="label">URL:</span>
+            <span class="url-inactive">Not active - start the workflow to get its hosted URL</span>
+          </div>
+          <div v-else class="webhook-url">
             <span class="label">URL:</span>
             <code class="url-text">{{ webhook.webhook_url }}</code>
             <Tooltip :text="isPro ? 'Copy URL' : 'Included with AGNT Pro'" width="auto">
@@ -123,6 +127,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useLicense } from '@/composables/useLicense';
 import UpgradeModal from '@/components/UpgradeModal.vue';
+import { isHostedWebhookUrl } from '@/utils/webhookUrl.js';
 
 export default {
   name: 'Webhooks',
@@ -227,6 +232,7 @@ export default {
       formatDate,
       deleteWebhookConfirm,
       getStatusClass,
+      isHostedWebhookUrl,
     };
   },
 };
@@ -418,6 +424,11 @@ body.dark .webhook-card {
   align-items: center;
   gap: 8px;
   font-size: 0.9em;
+}
+
+.webhook-url .url-inactive {
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 .webhook-url .label {

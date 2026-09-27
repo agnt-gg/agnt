@@ -61,7 +61,7 @@ const PLANS = [
       { label: 'Search', value: '150 searches + 750 pages / mo' },
       { label: 'Sandbox', value: '100 compute-minutes / mo' },
       { label: 'Mail', value: '1,000 units · 1 inbox' },
-      { label: 'Webhooks', value: '1,000 units · 1 endpoint' },
+      { label: 'Webhooks', value: '1,000 units · 3 endpoints' },
     ],
     meta: '1 seat.',
   },

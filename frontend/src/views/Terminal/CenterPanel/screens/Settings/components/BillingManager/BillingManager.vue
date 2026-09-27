@@ -359,7 +359,7 @@ export default {
           originalPrice: null,
           tagline: 'Your agent, hosted. Everything included.',
           features: [
-            ...six('100M credits / mo', '150 searches + 750 pages / mo', '100 compute-minutes / mo', '1,000 units · 1 inbox', '1,000 units · 1 endpoint'),
+            ...six('100M credits / mo', '150 searches + 750 pages / mo', '100 compute-minutes / mo', '1,000 units · 1 inbox', '1,000 units · 3 endpoints'),
             { text: 'Runtime', included: true, detail: 'Sleeps when idle · 8 active hrs/day' },
             { text: 'Seats', included: true, detail: '1' },
           ],
