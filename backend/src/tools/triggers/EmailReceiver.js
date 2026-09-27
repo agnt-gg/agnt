@@ -1,6 +1,13 @@
 import { EventEmitter } from 'events';
-import { listInbound } from '../../services/agntMail.js';
-import { serviceFailure } from '../../services/agntServices.js';
+import { listInbound, releaseInboxReader } from '../../services/agntMail.js';
+import { serviceFailure, hostedInstanceSlug } from '../../services/agntServices.js';
+import TriggerCursorModel from '../../models/TriggerCursorModel.js';
+
+// Where the inbox read position is stored (TriggerCursorModel).
+const CURSOR_SOURCE = 'mail:inbound';
+// After boot, workflows take a moment to return to listening. Mail is only
+// declared unwatched once nobody has listened for this long.
+const LISTENER_GRACE_MS = 5 * 60 * 1000;
 
 /**
  * Inbound email trigger, served by mail.agnt.gg.
@@ -13,6 +20,13 @@ import { serviceFailure } from '../../services/agntServices.js';
  *
  * Hosted mail is part of AGNT Pro. A free account's poll gets a plan refusal,
  * which is logged once per poll; nothing is queued locally for it.
+ *
+ * THE CURSOR IS DURABLE. It used to start at Date.now() on every boot, so mail
+ * that arrived while the app was closed - or while a hosted instance slept,
+ * which is exactly when the fleet wakes it to collect mail - was skipped for
+ * good. It is now stored, and resumes where it left off. The one thing that
+ * moves it without delivering is nobody listening at all (past a boot grace),
+ * so a workflow created weeks later does not replay weeks of old mail.
  */
 /** The bare, lower-cased address in `Name <addr>` or `addr` form. */
 function addressOf(value) {
@@ -27,7 +41,10 @@ class EmailReceiver extends EventEmitter {
     this.processManager = processManager;
     this.pollInterval = null;
     this.activeTriggers = new Set();
-    this.since = Date.now();
+    this.since = null; // loaded from TriggerCursorModel on the first poll
+    this.persistedSince = null;
+    this.bootedAt = Date.now();
+    this.readerReleased = false;
     this.polling = false;
     this.lastDenial = 0;
     this.pollingEnabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING !== 'true';
@@ -66,12 +83,75 @@ class EmailReceiver extends EventEmitter {
     return out;
   }
 
+  /** Resume from the stored position; a first-ever start begins at now. */
+  async _loadSince() {
+    if (this.since !== null) return;
+    try {
+      const stored = await TriggerCursorModel.get(CURSOR_SOURCE);
+      this.since = stored ?? Date.now();
+      this.persistedSince = stored;
+      // Record a first-ever start now, not on the first delivery: otherwise a
+      // restart before any mail arrived would begin again at a later "now"
+      // and skip whatever came in between.
+      if (stored === null) await this._saveSince();
+    } catch (error) {
+      // An unreadable store must not stop mail: fall back to the old behaviour.
+      console.error('Local EmailReceiver: could not load the inbox cursor, starting from now:', error.message);
+      this.since = Date.now();
+    }
+  }
+
+  async _saveSince() {
+    if (this.since === this.persistedSince) return;
+    try {
+      await TriggerCursorModel.save(CURSOR_SOURCE, this.since);
+      this.persistedSince = this.since;
+    } catch (error) {
+      console.error('Local EmailReceiver: could not save the inbox cursor:', error.message);
+    }
+  }
+
+  /**
+   * Nobody is listening. Once the boot grace has passed, mail arriving now is
+   * unwatched: move the cursor to the present so a workflow created later does
+   * not replay it. At most once a minute, so this is not a write per poll.
+   */
+  async _skipUnwatchedMail() {
+    const now = Date.now();
+    if (now - this.bootedAt < LISTENER_GRACE_MS) return;
+    await this._releaseReader();
+    if (now - this.since < 60000) return;
+    this.since = now;
+    await this._saveSince();
+  }
+
+  /**
+   * A hosted instance that once read the inbox is counted as its reader, and
+   * the fleet wakes it for new mail. With nothing listening it would be woken
+   * and never read - so it says once that it no longer reads. Desktops are
+   * never counted and never need to.
+   */
+  async _releaseReader() {
+    if (this.readerReleased || !hostedInstanceSlug()) return;
+    try {
+      await releaseInboxReader();
+      this.readerReleased = true;
+    } catch (error) {
+      console.error('Local EmailReceiver: could not release the inbox reader:', serviceFailure(error).error || error.message);
+    }
+  }
+
   async pollForTriggers() {
     if (this.polling) return;
-    const workflowIds = this._listeningWorkflows();
-    if (workflowIds.length === 0) return; // nobody listening: do not spend a request
     this.polling = true;
     try {
+      await this._loadSince();
+      const workflowIds = this._listeningWorkflows();
+      if (workflowIds.length === 0) {
+        await this._skipUnwatchedMail(); // nobody listening: do not spend a request
+        return;
+      }
+      this.readerReleased = false; // listening again: the next read re-registers
       let inbox, messages;
       try {
         ({ inbox, messages } = await listInbound({ since: this.since }));
@@ -107,6 +187,7 @@ class EmailReceiver extends EventEmitter {
         advanced = Math.max(advanced, message.createdAt || advanced);
       }
       this.since = advanced;
+      await this._saveSince();
     } catch (error) {
       console.error('Local EmailReceiver: Error polling for inbound mail:', error);
     } finally {

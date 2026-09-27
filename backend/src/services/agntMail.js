@@ -32,6 +32,19 @@ export async function defaultInbox() {
   return inFlight;
 }
 
+/**
+ * A hosted instance with nothing listening on the inbox tells mail.agnt.gg to
+ * stop counting it as a reader, so new mail no longer wakes it. Never creates
+ * an inbox to do so: no inbox means nothing to release.
+ */
+export async function releaseInboxReader() {
+  const list = await callService('mail', '/inboxes');
+  const inbox = (list.inboxes || []).filter((i) => i.state === 'active').sort((a, b) => (a.created_at || 0) - (b.created_at || 0))[0];
+  if (!inbox) return false;
+  await callService('mail', `/inboxes/${inbox.id}/reader`, { method: 'DELETE' });
+  return true;
+}
+
 /** Forget the cached inbox (sign-out, account switch). */
 export function resetInboxCache() {
   cachedInbox = null;

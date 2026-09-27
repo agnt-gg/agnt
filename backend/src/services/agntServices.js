@@ -31,6 +31,12 @@ export const SERVICES = Object.freeze({
   webhooks: { base: 'https://webhooks.agnt.gg/hooks/v1', feature: 'hostedWebhooks', docs: 'https://webhooks.agnt.gg/docs.html' },
 });
 
+/** This process's hosted-instance slug, or null on a desktop install. */
+export function hostedInstanceSlug() {
+  const slug = process.env.AGNT_TENANT_SLUG;
+  return slug && /^[a-z0-9-]{1,40}$/.test(slug) ? slug : null;
+}
+
 export class ServiceError extends Error {
   constructor(service, status, code, detail) {
     super(`${service}: ${code}`);
@@ -81,6 +87,12 @@ export async function callService(service, path, { method = 'GET', body, idempot
   // fresh key would be a second billable operation rather than a retry — the
   // exact way a "harmless" backoff double-charges someone.
   if (idempotent) headers['Idempotency-Key'] = 'agnt-' + crypto.randomUUID();
+  // A hosted instance and its owner's desktop are the same account, so the
+  // service cannot otherwise tell whose read a pull is. It records how far
+  // each INSTANCE has read, and the fleet wakes a sleeping instance only for
+  // events newer than that. A desktop sends nothing and is never counted.
+  const instance = hostedInstanceSlug();
+  if (instance) headers['X-AGNT-Instance'] = instance;
 
   const url = new URL(s.base + path);
   if (query) for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));

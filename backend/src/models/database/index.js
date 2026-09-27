@@ -684,6 +684,17 @@ function createTables() {
         });
       });
 
+      // Durable read positions for shared trigger sources (the account inbox).
+      // See TriggerCursorModel: without it a restart skipped everything that
+      // arrived while the app was down or the hosted instance was asleep.
+      db.run(
+        `CREATE TABLE IF NOT EXISTS trigger_cursors (
+        source TEXT PRIMARY KEY,
+        cursor INTEGER NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+      );
+
       // ==================== OAUTH_TOKENS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS oauth_tokens (
         id TEXT PRIMARY KEY,
