@@ -373,6 +373,11 @@ function trapFocus(e) {
   padding: 18px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Groups are overflow:hidden, which drops their minimum height to zero; in
+     a fixed-height scroller that let auto rows shrink below their content and
+     the groups overlapped (one column on a phone). Rows size to content and
+     the list scrolls instead. */
+  grid-auto-rows: max-content;
   gap: 13px;
   align-content: start;
   align-items: start

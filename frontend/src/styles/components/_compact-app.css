@@ -40,6 +40,45 @@
      hint names the touch control instead of a drag target that isn't there. */
   .cv-root.cv-compact .wf-quickstarts { box-sizing: border-box; padding: 0 12px !important; max-width: 100%; }
   .cv-root.cv-compact .wf-quickstarts > :is(div,ul):has(> *) { grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important; gap: 10px; }
+  /* ── Shared surfaces ── */
+  /* Dialogs are bottom sheets: full width, as tall as they need up to nearly
+     the whole screen, body scrolls, actions stay on screen. Dialogs teleport
+     to <body>, so these rules cannot be scoped under .cv-root. */
+  body .modal-overlay { padding: 0 !important; align-items: flex-end !important; justify-content: stretch !important; }
+  body .modal-overlay > .modal-container { box-sizing: border-box; width: 100% !important; max-width: 100% !important; max-height: calc(var(--app-height, 100vh) - 16px) !important; margin: 0 !important; padding: 0 !important; border-radius: 16px 16px 0 0 !important; display: flex !important; flex-direction: column; overflow: hidden; }
+  body .modal-overlay > .modal-container > .modal-header { flex: none; padding: 12px 12px 12px 18px !important; }
+  body .modal-overlay > .modal-container > .modal-header :is(h2,h3) { font-size: 17px; }
+  body .modal-overlay > .modal-container > .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 18px !important; }
+  body .modal-overlay .modal-body.two-col { grid-template-columns: minmax(0,1fr) !important; }
+  body .modal-overlay > .modal-container > .modal-footer { flex: none; gap: 8px; padding: 10px 14px max(12px, env(safe-area-inset-bottom)) !important; border-top: 1px solid var(--terminal-border-color); }
+  body .modal-overlay .modal-hint { display: none !important; }
+  body .modal-overlay .modal-footer .modal-actions { flex: 1; justify-content: flex-end; }
+  body .modal-overlay .modal-footer button { min-height: 44px; white-space: nowrap; }
+  /* Side sheets: one inset, not a padded card inside a padded panel. */
+  .terminal-content.mobile-presentation .mobile-panel-body { padding: 10px 10px 20px !important; }
+  .terminal-content.mobile-presentation .mobile-panel-body .panel-section { padding: 14px !important; }
+  .terminal-content.mobile-presentation .mobile-close-button { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+  /* Label / value rows: a readable label column and a value column wide
+     enough that words never break mid-word; long prose stacks. */
+  .terminal-content.mobile-presentation .mobile-panel-body .detail-row { display: grid !important; grid-template-columns: minmax(84px, 36%) minmax(0,1fr); gap: 4px 12px; align-items: baseline; }
+  .terminal-content.mobile-presentation .mobile-panel-body .detail-row > * { min-width: 0; text-align: left !important; overflow-wrap: break-word; word-break: normal; white-space: normal; }
+  .terminal-content.mobile-presentation .mobile-panel-body .detail-row.description-display { grid-template-columns: minmax(0,1fr); }
+  /* Every chip / filter strip scrolls sideways with a fade, never shrinks or wraps its chips. */
+  body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.m-filters .view-tabs,.filter-tabs,.chip-row) { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; gap: 6px; max-width: 100%; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
+  body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.m-filters .view-tabs,.filter-tabs,.chip-row) > * { flex: none !important; width: auto !important; min-width: 0 !important; white-space: nowrap; }
+  body .m-filters .view-tabs > button { min-height: 36px; padding: 7px 13px; border: 1px solid var(--terminal-border-color); border-radius: 18px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 13px; }
+  body .m-filters .view-tabs > button:is(.active,[aria-selected=true],[aria-pressed=true]) { color: var(--color-green); border-color: color-mix(in srgb,var(--color-green) 30%,transparent); background: color-mix(in srgb,var(--color-green) 10%,transparent); }
+  /* Text inputs are 16px on phones: anything smaller makes iOS zoom the page on focus. */
+  body :is(input:not([type]),input[type=text],input[type=search],input[type=email],input[type=url],input[type=password],input[type=number],input[type=tel],textarea,select) { font-size: 16px !important; }
+  /* Apps & Settings sections: one gutter. The page pads 15px, so a section
+     card pads 14px, not another 24px. Control rows wrap instead of clipping. */
+  body .connectors-content :is(.connectors-section,.provider-section) { padding: 14px !important; box-sizing: border-box; }
+  body .connectors-content :is(.controls-bar,.controls-group) { flex-wrap: wrap; max-width: 100%; min-width: 0; gap: 8px; }
+  body .connectors-content .search-wrapper { flex: 1 1 100%; min-width: 0; }
+  body .connectors-content .content-title-row { flex-wrap: wrap; gap: 8px; }
+  /* Billing: the plan comparison scrolls inside its card. */
+  body .comparison-table-wrapper { max-width: 100%; overflow-x: auto; }
+  body .current-plan-badge { box-sizing: border-box; max-width: 100%; }
   /* Chat tool rows are full-width boxes: padding belongs inside the width. */
   .cv-root.cv-compact .message-wrapper :is(.tool-execution-details,.reasoning-toggle) { box-sizing: border-box; max-width: 100%; }
   .cv-root.cv-compact .autonomy-screen :is(.tab-content,.tab-panel,.manager-container) { border: 0 !important; padding: 0 !important; background: transparent !important; }
