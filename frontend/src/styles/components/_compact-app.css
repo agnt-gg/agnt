@@ -233,12 +233,36 @@
   .cv-root.cv-compact .node-based-tool .canvas-state-controls :is(button,.tooltip-container) { flex: none; }
   .cv-root.cv-compact .node-based-tool .canvas-state-controls button { width: 44px; height: 44px; }
   body .node-based-tool #canvas-container { touch-action: none; width: 100%; min-width: 0; }
-  body .node-based-tool #sidebar-wrapper:not(.closed) { position: absolute; inset: 55px 0 0; width: 100%; max-width: 100%; z-index: 50; background: var(--color-background); }
-  body .node-based-tool #sidebar-wrapper.closed { width: 0; min-width: 0; }
-  body .node-based-tool #sidebar:not(.closed) { width: 100%; max-width: 100%; }
-  body .node-based-tool .close-sidebar-button { min-width: 44px; min-height: 44px; }
-  .compact-workflow-controls { position: relative; z-index: 3; display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 6px 28px 6px 10px; background: var(--color-background); border-bottom: 1px solid var(--terminal-border-color); -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
-  .compact-workflow-controls button { flex: none; min-height: 40px; border: 1px solid var(--terminal-border-color); border-radius: 20px; color: var(--color-text); background: var(--color-darker-0, var(--color-background)); padding: 8px 14px; font: inherit; font-size: 13px; white-space: nowrap; }
+  /* Workflow Forge is a column on phones: name bar, touch controls, canvas.
+     The canvas takes what is left. Its desktop height is 100vh, which ran it
+     ~260px under the bottom bar and centred every graph below the fold. */
+  .cv-root.cv-compact .node-based-tool { display: flex !important; flex-direction: column; height: 100% !important; min-height: 0; overflow: hidden; }
+  .cv-root.cv-compact .node-based-tool > #canvas-container { flex: 1 1 0; min-height: 0; height: auto !important; }
+  /* Tiny-node toggle: a solid button, not a transparent ring over the graph. */
+  .cv-root.cv-compact .node-based-tool .canvas-view-controls { bottom: 12px !important; right: 12px !important; }
+  .cv-root.cv-compact .node-based-tool .canvas-view-controls button { width: 44px; height: 44px; opacity: 1 !important; background: var(--color-background) !important; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  /* Add-node palette: a full sheet over the editor with a reachable close
+     button. It was offset for the old floating toolbar (so it covered Add
+     node) and 406px wide (so its own close button was off-screen). */
+  .cv-root.cv-compact .node-based-tool #sidebar-wrapper:not(.closed) { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; padding: 0 !important; box-sizing: border-box; z-index: 50; background: var(--color-background); }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; padding: 0 !important; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar { position: absolute !important; inset: 0 !important; width: auto !important; max-width: none !important; align-items: stretch !important; box-sizing: border-box; padding: 8px 12px 32px !important; overflow-y: auto; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .sidebar-section { width: auto !important; max-width: none !important; align-items: stretch !important; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .node.starter { width: auto !important; max-width: none !important; margin: 0 !important; box-sizing: border-box; gap: 10px; justify-content: flex-start; border-radius: 12px !important; }
+  /* The palette's dashed outline is a fixed 240×48 SVG background; stretched
+     across a full-width row its rounded ends warp. A real border scales. */
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .node { background-image: none !important; border: 1px dashed var(--terminal-border-color) !important; border-radius: 12px !important; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .node > svg:last-child { margin-left: auto !important; flex: none; opacity: .6; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .sidebar-section > .title { color: var(--color-text); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .inner-sidebar .expand-section { align-self: center; min-height: 36px; display: grid; place-items: center; font-size: 13px; color: var(--color-text-muted); }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .search-input { width: calc(100% - 52px) !important; box-sizing: border-box; min-height: 44px; flex: none; }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .close-sidebar-button { position: absolute !important; top: 8px !important; right: 10px !important; left: auto !important; width: 44px !important; height: 44px !important; z-index: 2; display: grid; place-items: center; border: 1px solid var(--terminal-border-color); border-radius: 12px; background: var(--color-background); font-size: 0 !important; color: var(--color-text); }
+  .cv-root.cv-compact .node-based-tool #sidebar:not(.closed) .close-sidebar-button::before { content: '\f00d'; font-family: 'Font Awesome 5 Free'; font-weight: 900; font-size: 17px; }
+  .compact-workflow-controls { position: relative; z-index: 3; flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 6px 10px; background: var(--color-background); border-bottom: 1px solid var(--terminal-border-color); }
+  .compact-workflow-controls button { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid var(--terminal-border-color); border-radius: 20px; color: var(--color-text); background: transparent; padding: 8px 12px; font: inherit; font-size: 13px; white-space: nowrap; }
+  .compact-workflow-controls button[aria-pressed=true] { color: var(--color-green); border-color: color-mix(in srgb,var(--color-green) 35%,transparent); background: color-mix(in srgb,var(--color-green) 10%,transparent); }
+  .compact-workflow-controls .compact-view-controls { display: flex; gap: 4px; margin-left: auto; }
+  .compact-workflow-controls button.icon-only { width: 40px; padding: 0; justify-content: center; }
   .compact-connection-form { display: grid; gap: 10px; padding: 12px; background: var(--color-background); }
   .compact-connection-form label { display: grid; gap: 6px; font-size: 12px; }
   .compact-connection-form select { min-height: 44px; width: 100%; }
@@ -251,6 +275,33 @@
  body .plugins-container .empty-state { padding:20px 8px; }
  body .node-based-tool #sidebar.closed { display:none; }
  body .node-based-tool #sidebar-wrapper.closed { display:none; }
+ /* Chat on phones. The edit button floated into the text flow so the message
+    wraps around it instead of running under it. */
+ .terminal-content.mobile-presentation .message-edit-btn { position: static !important; float: right; margin: -6px -6px 4px 8px; opacity: .7; }
+ /* Jump-to-latest is a solid button; jump-to-top is dropped (the saved-chat
+    list is the way back to the start of a long thread). */
+ .terminal-content.mobile-presentation .chat-scroll-controls .tooltip-container:has(> [aria-label='Scroll to top']) { display: none; }
+ .terminal-content.mobile-presentation .chat-scroll-controls .scroll-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--terminal-border-color); background: var(--color-background); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+ /* Rows and headers with an absolute corner button reserve room for its 40px
+    touch size (the desktop reservation was sized for a ~24px button). */
+ .terminal-content.mobile-presentation .workflow-header { padding-right: 48px !important; }
+ .terminal-content.mobile-presentation .output-item .output-content { padding-right: 44px !important; box-sizing: border-box; }
+ /* Security: the sticky save bar is solid, so text scrolling under it is hidden, not overprinted. */
+ body .policy-footer { background: var(--color-background) !important; border-top: 1px solid var(--terminal-border-color); backdrop-filter: none !important; }
+ /* Billing: a plan comparison is a table only on desktop; on a phone each row stacks. */
+ body .comparison-table-wrapper { overflow: visible !important; }
+ body table.comparison-table, body table.comparison-table :is(thead,tbody,tr,th,td) { display: block !important; width: auto !important; min-width: 0 !important; }
+ body table.comparison-table tr { padding: 10px 0; border-bottom: 1px solid var(--terminal-border-color); }
+ body table.comparison-table :is(th,td) { padding: 3px 0 !important; text-align: left !important; border: 0 !important; }
+ body table.comparison-table .popular-badge { position: static !important; display: inline-block; transform: none !important; margin: 0 0 4px; }
+ /* The connection form is a panel in the column; it scrolls itself and the
+    floating canvas toggle steps aside while it is open. */
+ .cv-root.cv-compact .node-based-tool > .compact-connection-form { flex: none; max-height: 45%; overflow-y: auto; box-sizing: border-box; padding-right: 12px !important; border-bottom: 1px solid var(--terminal-border-color); box-shadow: 0 6px 12px -8px rgba(0,0,0,.6); font-family: inherit; }
+ .cv-root.cv-compact .compact-connection-form > button { min-height: 44px; border-radius: 10px; font: inherit; font-size: 14px; }
+ .cv-root.cv-compact .compact-connection-form > button[type=submit], .cv-root.cv-compact .compact-connection-form > button:not([type]) { background: var(--color-green); color: var(--color-background); border: 0; font-weight: 600; }
+ .cv-root.cv-compact .compact-connection-form > button:not([type]):disabled { opacity: .45; }
+ .cv-root.cv-compact .compact-connection-form > button[type=button] { background: transparent; color: var(--color-text); border: 1px solid var(--terminal-border-color); text-align: left; padding: 10px 12px; font-size: 13px; }
+ .cv-root.cv-compact .node-based-tool:has(> .compact-connection-form) .canvas-view-controls { display: none; }
  body .ws-root.ws-compact .ws-empty-region,body .ws-root.ws-compact .ws-empty-space { display:none; }
  body .ws-root.ws-compact .widget-frame.compact-widget:has(.workspace-chat-widget), body .ws-root.ws-compact .widget-frame.compact-widget:has(.wcw-root) { order:-1; }
 }

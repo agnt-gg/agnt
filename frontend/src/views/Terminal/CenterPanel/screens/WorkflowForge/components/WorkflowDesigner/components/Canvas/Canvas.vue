@@ -175,7 +175,9 @@ export default {
         const el = elements.get(String(node.id));
         return { x: node.x, y: node.y, width: el?.offsetWidth || this.nodeWidth, height: el?.offsetHeight || 48 };
       });
-      const view = centeredView(boxes, host, { zoom, fit, minZoom: this.minZoomLevel });
+      // On a phone a whole-graph fit is unreadable; open at a legible zoom instead.
+      const narrow = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 800px)').matches;
+      const view = centeredView(boxes, host, { zoom, fit, minZoom: this.minZoomLevel, readableZoom: narrow ? 0.6 : 0 });
       if (!view) {
         if (boxes.length && !(host?.width > 0)) this.deferCentering({ zoom, fit });
         return false;

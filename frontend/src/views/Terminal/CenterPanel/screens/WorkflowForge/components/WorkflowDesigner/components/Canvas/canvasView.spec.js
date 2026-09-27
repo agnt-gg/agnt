@@ -47,6 +47,29 @@ describe('centeredView', () => {
     expect(centeredView(huge, viewport).zoom).toBe(0.2);
   });
 
+  it('on a narrow viewport keeps labels readable and shows where the flow starts', () => {
+    const phone = { width: 390, height: 580 };
+    const wide = [
+      { x: 100, y: 200, width: 200, height: 50 },
+      { x: 2000, y: 600, width: 200, height: 50 },
+    ];
+    const view = centeredView(wide, phone, { zoom: 1, readableZoom: 0.6 });
+    expect(view.zoom).toBe(0.6);
+    // The graph's top-left corner lands at the 24px inset, on screen.
+    expect(onScreen(100, 195, view.offsetX, view.zoom)).toBeCloseTo(24);
+    expect(onScreen(200, 290, view.offsetY, view.zoom)).toBeCloseTo(24);
+  });
+
+  it('readableZoom never overrides a graph that already fits, nor an explicit fit', () => {
+    const small = [{ x: 0, y: 0, width: 200, height: 50 }];
+    expect(centeredView(small, { width: 390, height: 580 }, { zoom: 0.8, readableZoom: 0.6 }).zoom).toBe(0.8);
+    const wide = [
+      { x: 0, y: 0, width: 200, height: 50 },
+      { x: 3000, y: 0, width: 200, height: 50 },
+    ];
+    expect(centeredView(wide, { width: 390, height: 580 }, { fit: true, readableZoom: 0.6 }).zoom).toBeLessThan(0.6);
+  });
+
   it('declines when there is nothing to centre or nowhere to centre it', () => {
     expect(centeredView([], viewport)).toBeNull();
     expect(centeredView([{ x: 0, y: 0, width: 1, height: 1 }], { width: 0, height: 0 })).toBeNull();

@@ -41,7 +41,9 @@
       />
     </div>
 
-    <nav v-if="compact" class="compact-workflow-controls" aria-label="Workflow touch controls"><button @click="mobilePaletteOpen = !mobilePaletteOpen">Add node</button><button @click="$refs.canvas.fitMobileGraph()">Fit graph</button><button @click="$refs.canvas.mobileZoom(-0.1)">Zoom −</button><button @click="$refs.canvas.mobileZoom(0.1)">Zoom +</button><button @click="mobileConnections = !mobileConnections">Connections</button></nav>
+    <!-- Two labelled actions and three icon view controls: all five fit a 320px
+         phone on one row, so nothing sits off-screen behind a scroll. -->
+    <nav v-if="compact" class="compact-workflow-controls" aria-label="Workflow touch controls"><button type="button" :aria-pressed="mobilePaletteOpen" @click="mobilePaletteOpen = !mobilePaletteOpen"><i class="fas fa-plus" aria-hidden="true"></i>Add node</button><button type="button" :aria-pressed="mobileConnections" @click="mobileConnections = !mobileConnections"><i class="fas fa-link" aria-hidden="true"></i>Connect</button><span class="compact-view-controls"><button type="button" class="icon-only" aria-label="Fit graph" @click="$refs.canvas.fitMobileGraph()"><i class="fas fa-expand-arrows-alt" aria-hidden="true"></i></button><button type="button" class="icon-only" aria-label="Zoom out" @click="$refs.canvas.mobileZoom(-0.1)"><i class="fas fa-search-minus" aria-hidden="true"></i></button><button type="button" class="icon-only" aria-label="Zoom in" @click="$refs.canvas.mobileZoom(0.1)"><i class="fas fa-search-plus" aria-hidden="true"></i></button></span></nav>
     <form v-if="compact && mobileConnections" class="compact-connection-form" @submit.prevent="connectMobileNodes">
       <label>From node<CustomSelect v-model="mobileFrom" :options="nodes.map(n => ({ label: n.text, value: n.id }))" placeholder="Select source" /></label>
       <label>To node<CustomSelect v-model="mobileTo" :options="nodes.map(n => ({ label: n.text, value: n.id }))" placeholder="Select destination" /></label>

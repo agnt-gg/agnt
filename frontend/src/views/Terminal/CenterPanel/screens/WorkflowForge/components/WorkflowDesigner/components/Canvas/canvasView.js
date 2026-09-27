@@ -9,12 +9,16 @@
  *
  * @param {Array<{x:number,y:number,width:number,height:number}>} boxes node rectangles in canvas space
  * @param {{width:number,height:number}} viewport the visible canvas size in px
- * @param {{zoom?:number, fit?:boolean, minZoom?:number, maxZoom?:number, padding?:number}} options
+ * @param {{zoom?:number, fit?:boolean, minZoom?:number, maxZoom?:number, padding?:number, readableZoom?:number}} options
  *   zoom: the zoom to keep when the graph fits at it (a workflow's saved zoom).
  *   fit:  zoom to fill the viewport instead (still capped at maxZoom).
+ *   readableZoom: the smallest zoom at which node labels can be read. When a
+ *     graph only fits below it (a wide graph on a phone), shrinking it to fit
+ *     makes every label unreadable, so instead keep this zoom and show the
+ *     graph's start, top-left, where the flow begins. Ignored when `fit`.
  * @returns {{zoom:number, offsetX:number, offsetY:number} | null} null when there is nothing to centre on
  */
-export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom = 0.2, maxZoom = 1, padding = 48 } = {}) {
+export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom = 0.2, maxZoom = 1, padding = 48, readableZoom = 0 } = {}) {
   if (!boxes?.length || !(viewport?.width > 0) || !(viewport?.height > 0)) return null;
   const minX = Math.min(...boxes.map((b) => b.x));
   const minY = Math.min(...boxes.map((b) => b.y));
@@ -30,6 +34,16 @@ export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom =
 
   const centreX = viewport.width / 2;
   const centreY = viewport.height / 2;
+  if (!fit && readableZoom > 0 && clamped < readableZoom) {
+    // Screen position of canvas point p is c + o + z·(p − c); put (minX, minY) at the padding.
+    const readable = Math.min(maxZoom, readableZoom);
+    const inset = Math.min(padding, 24);
+    return {
+      zoom: readable,
+      offsetX: inset - centreX - readable * (minX - centreX),
+      offsetY: inset - centreY - readable * (minY - centreY),
+    };
+  }
   return {
     zoom: clamped,
     offsetX: clamped * (centreX - (minX + maxX) / 2),
