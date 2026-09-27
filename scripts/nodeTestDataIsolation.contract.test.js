@@ -41,7 +41,9 @@ function runProbe(extraArgs) {
 describe('npm run test:node is isolated from real user data', () => {
   it('loads the isolation setup before any node:test file', () => {
     const { scripts } = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-    expect(scripts['test:node']).toMatch(/^node --import \.\/tests\/setup\/isolate-data-dir\.mjs --test /);
+    // Isolation must be the FIRST preload, so it runs before anything else can
+    // import the database. Other preloads may follow it.
+    expect(scripts['test:node']).toMatch(/^node --import \.\/tests\/setup\/isolate-data-dir\.mjs (--import \S+ )*--test /);
   });
 
   it('CONTROL: without it, a node:test file resolves into the real directory', () => {
