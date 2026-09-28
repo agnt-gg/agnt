@@ -1259,14 +1259,16 @@ export default {
     },
 
     /**
-     * A paid account with no provider chosen starts on the model that comes
-     * with the plan. Runs once per install (the choice is persisted like any
-     * other), never overrides a selection the user made, and does nothing for
-     * free accounts — they keep the "connect a provider" prompt.
+     * A signed-in account with no provider chosen starts on AGNT Flash: paid
+     * plans include it, and free accounts get one-time trial credits so a first
+     * run works before any key is connected. Runs once per install (the choice
+     * is persisted like any other) and never overrides a selection the user
+     * made. When the trial is spent, models.agnt.gg says so in the chat, with
+     * the upgrade and bring-your-own-key options.
      */
     async applyIncludedModelDefault({ commit, dispatch, state, rootGetters }) {
       if (state.selectedProvider) return;
-      if (!rootGetters['userAuth/isPremium']) return;
+      if (!rootGetters['userAuth/isPremium'] && !rootGetters['userAuth/isAuthenticated']) return;
       if (!state.providers.includes('agnt')) return;
       try {
         await dispatch('fetchProviderModels', { provider: 'agnt' });

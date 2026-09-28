@@ -238,7 +238,7 @@ export default {
   },
   emits: ['close'],
   setup(props, { emit }) {
-    const { hasModels } = useLicense();
+    const { modelsAccess } = useLicense();
     const store = useStore();
     const selectorRef = ref(null);
     const providerSelect = ref(null);
@@ -311,8 +311,8 @@ export default {
         return isLocalServerRunning.value;
       }
 
-      // AGNT Models is connected by the plan, not by a key.
-      if (resolveProviderKey(selectedProvider.value) === 'agnt') return hasModels.value;
+      // AGNT Models is connected by the account (plan or trial), not by a key.
+      if (resolveProviderKey(selectedProvider.value) === 'agnt') return !!modelsAccess.value;
 
       // Custom providers are always "connected" (they're user-created)
       const isCustom = customProviders.value.some((p) => p.id === selectedProvider.value);
@@ -355,9 +355,11 @@ export default {
       const builtInOptions = providers.value.map((provider) => {
         const key = resolveProviderKey(provider);
         if (key === 'agnt') {
-          // Included with Pro: no key to connect. Free accounts see it, badged, so
-          // the upgrade is discoverable from the place they would use it.
-          return { label: hasModels.value ? 'AGNT Flash · included' : 'AGNT Flash · PRO', value: provider, disabled: !hasModels.value };
+          // No key to connect: paid plans include it and signed-in free accounts
+          // get one-time trial credits. Signed out, it stays badged so the upgrade
+          // is discoverable from the place it would be used.
+          const label = { included: 'AGNT Flash · included', trial: 'AGNT Flash · free trial' }[modelsAccess.value] || 'AGNT Flash · PRO';
+          return { label, value: provider, disabled: !modelsAccess.value };
         }
         return {
           label: PROVIDER_DISPLAY_NAMES[provider] || provider,

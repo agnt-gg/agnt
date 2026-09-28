@@ -131,6 +131,17 @@ export function useLicense() {
   const hasHostedWebhooks = computed(() => serviceEnabled('hostedWebhooks'));
 
   /**
+   * How this account reaches AGNT Flash: 'included' on a paid plan, 'trial' for
+   * a signed-in free account (one-time trial credits), null when signed out.
+   * models.agnt.gg decides how many trial credits are left and says so itself
+   * when they run out, so the app does not guess at the balance.
+   */
+  const modelsAccess = computed(() => {
+    if (hasModels.value) return 'included';
+    return store.getters['userAuth/isAuthenticated'] ? 'trial' : null;
+  });
+
+  /**
    * Check if plugins are enabled
    */
   const hasPlugins = computed(() => {
@@ -214,6 +225,7 @@ export function useLicense() {
   return {
     // Hosted services (Pro)
     hasModels,
+    modelsAccess,
     hasSearch,
     hasSandbox,
     hasMail,
