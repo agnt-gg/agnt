@@ -61,6 +61,7 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 import { BaseAdapter } from './BaseAdapter.js';
+import { agntServiceNotice } from './agntServiceNotice.js';
 import {
   findLastInjectableUserIndex,
   sanitizeKimiToolSchemas,
@@ -323,7 +324,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
+              content: agntServiceNotice(error, this.provider) ?? `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
               tool_calls: [],
             },
             toolCalls: [],
@@ -893,7 +894,7 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
             return {
               responseMessage: {
                 role: 'assistant',
-                content: `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
+                content: agntServiceNotice(streamIteratorError, this.provider) ?? `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
                 tool_calls: [],
               },
               toolCalls: [],
@@ -990,7 +991,7 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
+              content: agntServiceNotice(error, this.provider) ?? `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
               tool_calls: [],
             },
             toolCalls: [],
