@@ -138,6 +138,12 @@ afterEach(async () => {
 
 const act = (action, params = {}) => performBrowserAction('u1', browser.url(), action, params);
 
+/** What a sequence of keystrokes would have put in the field. */
+const typedText = (inputs) => inputs
+  .filter((i) => i.method === 'Input.dispatchKeyEvent' && i.params.type === 'keyDown' && i.params.text !== '\r')
+  .map((i) => i.params.text)
+  .join('');
+
 describe('snapshot: the page as text with spendable refs', () => {
   it('refs interactive elements, orients with headings, and drops the ignored', async () => {
     const { snapshot } = await act('snapshot');
@@ -166,12 +172,32 @@ describe('click: lands at the centre of the ref\'s box', () => {
     await act('click', { ref: 'e1' });
 
     const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
-    // A hover precedes the press, as a real pointer would — :hover styles and
-    // mouseenter handlers fire before the click lands.
-    expect(mouse.map((m) => m.params.type)).toEqual(['mouseMoved', 'mousePressed', 'mouseReleased']);
-    // content quad [10,20 110,20 110,60 10,60] -> centre (60, 40)
-    expect(mouse[1].params.x).toBe(60);
-    expect(mouse[1].params.y).toBe(40);
+    const types = mouse.map((m) => m.params.type);
+    // The pointer TRAVELS to the element (a teleporting pointer is a bot
+    // tell), then presses and releases — :hover styles and mouseenter
+    // handlers fire before the click lands.
+    expect(types.slice(-2)).toEqual(['mousePressed', 'mouseReleased']);
+    const path = types.slice(0, -2);
+    expect(path.length).toBeGreaterThanOrEqual(4);
+    expect(path.every((t) => t === 'mouseMoved')).toBe(true);
+    // content quad [10,20 110,20 110,60 10,60] -> centre (60, 40): the path
+    // ends exactly there and the click lands exactly there.
+    const arrive = mouse[mouse.length - 3];
+    expect([arrive.params.x, arrive.params.y]).toEqual([60, 40]);
+    expect([mouse[mouse.length - 2].params.x, mouse[mouse.length - 2].params.y]).toEqual([60, 40]);
+    expect([mouse[mouse.length - 1].params.x, mouse[mouse.length - 1].params.y]).toEqual([60, 40]);
+  });
+
+  it('a second click starts its path where the first one left the pointer', async () => {
+    await act('snapshot');
+    await act('click', { ref: 'e1' });
+    browser.state.inputs = [];
+    await act('click', { ref: 'e1' });
+    const firstMove = browser.state.inputs.find((i) => i.params?.type === 'mouseMoved');
+    // Already on the element, so the path stays near it rather than jumping in
+    // from a random point — a pointer has one position, and it persists.
+    expect(Math.abs(firstMove.params.x - 60)).toBeLessThanOrEqual(5);
+    expect(Math.abs(firstMove.params.y - 40)).toBeLessThanOrEqual(5);
   });
 
   it('accepts the @ spelling, because that is how snapshots print refs', async () => {
@@ -222,8 +248,7 @@ describe('a CSS selector is the deterministic handle — no snapshot, no model, 
 
   it('types by selector', async () => {
     await act('type', { selector: '#go', text: 'from a workflow' });
-    const insert = browser.state.inputs.find((i) => i.method === 'Input.insertText');
-    expect(insert.params.text).toBe('from a workflow');
+    expect(typedText(browser.state.inputs)).toBe('from a workflow');
   });
 
   it('says plainly when nothing matches', async () => {
@@ -260,12 +285,35 @@ describe('a CSS selector is the deterministic handle — no snapshot, no model, 
 });
 
 describe('type: replaces, and can submit', () => {
-  it('focuses the node, selects what is there, and inserts the text', async () => {
+  it('focuses the node, selects what is there, and TYPES short text key by key', async () => {
     await act('snapshot');
     await act('type', { ref: 'e2', text: 'new@x.com' });
 
-    const insert = browser.state.inputs.find((i) => i.method === 'Input.insertText');
-    expect(insert.params.text).toBe('new@x.com');
+    // Keystrokes, not a paste: text that appears whole is a bot tell.
+    expect(typedText(browser.state.inputs)).toBe('new@x.com');
+    const keys = browser.state.inputs.filter((i) => i.method === 'Input.dispatchKeyEvent');
+    expect(keys.map((k) => k.params.type).slice(0, 2)).toEqual(['keyDown', 'keyUp']);
+    expect(browser.state.inputs.some((i) => i.method === 'Input.insertText')).toBe(false);
+  });
+
+  it('inserts long text whole, because typing it would cost seconds', async () => {
+    await act('snapshot');
+    const essay = 'word '.repeat(60);
+    await act('type', { ref: 'e2', text: essay });
+    expect(browser.state.inputs.find((i) => i.method === 'Input.insertText').params.text).toBe(essay);
+  });
+
+  it('inserts multi-line text whole, because a typed newline would submit the form', async () => {
+    await act('snapshot');
+    await act('type', { ref: 'e2', text: 'line one\nline two' });
+    expect(browser.state.inputs.find((i) => i.method === 'Input.insertText').params.text).toBe('line one\nline two');
+    expect(browser.state.inputs.some((i) => i.params?.text === '\r')).toBe(false);
+  });
+
+  it('an empty string still clears the field', async () => {
+    await act('snapshot');
+    await act('type', { ref: 'e2', text: '' });
+    expect(browser.state.inputs.find((i) => i.method === 'Input.insertText').params.text).toBe('');
   });
 
   it('submit presses Enter with a carriage return, so forms actually submit', async () => {
@@ -273,9 +321,11 @@ describe('type: replaces, and can submit', () => {
     await act('type', { ref: 'e2', text: 'q', submit: true });
 
     const keys = browser.state.inputs.filter((i) => i.method === 'Input.dispatchKeyEvent');
-    expect(keys[0].params.type).toBe('keyDown');
-    expect(keys[0].params.text).toBe('\r');
-    expect(keys[0].params.windowsVirtualKeyCode).toBe(13);
+    const enter = keys.find((k) => k.params.text === '\r');
+    expect(enter.params.type).toBe('keyDown');
+    expect(enter.params.windowsVirtualKeyCode).toBe(13);
+    // After the text, not before it.
+    expect(keys.indexOf(enter)).toBeGreaterThan(keys.findIndex((k) => k.params.text === 'q'));
   });
 });
 

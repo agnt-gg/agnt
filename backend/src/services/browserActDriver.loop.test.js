@@ -45,6 +45,9 @@ async function fakeBrowser() {
     slow: null,
     /** CDP method whose next call returns a transport-shaped timeout error. */
     failOnce: null,
+    /** Block-probe answer while the page is a bot wall; `clearsOnReload` lifts it after one reload. */
+    blockPage: null,
+    reloads: 0,
     sockets: new Set(),
   };
   const tabOf = (sessionId) => state.tabs.find((t) => t.targetId === state.sessions.get(sessionId));
@@ -101,6 +104,12 @@ async function fakeBrowser() {
           if (expr.includes('readyState')) return reply({ result: { value: 'complete' } });
           if (expr.includes('innerWidth')) return reply({ result: { value: JSON.stringify({ w: 1280, h: 800 }) } });
           if (expr.includes('selectAll')) return reply({ result: { value: true } });
+          if (expr.includes('agnt-block-probe')) {
+            const probe = state.blockPage
+              ? { probe: 'agnt-block-probe', ...state.blockPage.probe }
+              : { probe: 'agnt-block-probe', title: tab.title, text: 'x'.repeat(1500), textLength: 9000, markers: {} };
+            return reply({ result: { value: JSON.stringify(probe) } });
+          }
           if (expr.includes('const css =')) {
             // The wait predicate. Evaluate it against the fake's state.
             const needle = /needle = "([^"]*)"/.exec(expr)?.[1] || '';
@@ -121,6 +130,10 @@ async function fakeBrowser() {
         case 'Page.navigate':
           tab.url = m.params.url;
           tab.title = 'Navigated';
+          return reply({});
+        case 'Page.reload':
+          state.reloads += 1;
+          if (state.blockPage?.clearsOnReload) state.blockPage = null;
           return reply({});
         case 'Page.handleJavaScriptDialog':
           state.dialog = null;
@@ -364,9 +377,68 @@ describe('select and hover', () => {
     await act('snapshot');
     await act('hover', { ref: 'e1' });
     const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
-    expect(mouse.map((m) => m.params.type)).toEqual(['mouseMoved']);
-    expect(mouse[0].params.x).toBe(60);
+    expect(mouse.length).toBeGreaterThanOrEqual(4);
+    expect(mouse.every((m) => m.params.type === 'mouseMoved')).toBe(true);
+    expect(mouse[mouse.length - 1].params.x).toBe(60);
   });
+});
+
+describe('Runtime.enable is a fingerprint, so it waits until it is needed', () => {
+  // MEASURED 2026-09-27: zillow.com (PerimeterX) blocked 3/3 sessions whose
+  // pages had Runtime enabled and served 3/3 without it, all else equal.
+  it('connecting, navigating, clicking and typing never enable it', async () => {
+    await act('navigate', { url: 'https://shop.example/' });
+    await act('click', { ref: 'e1' });
+    await act('type', { ref: 'e2', text: 'hi' });
+    expect(browser.state.calls).not.toContain('Runtime.enable');
+  });
+
+  it('console enables it once, and it stays on for the tab', async () => {
+    await act('snapshot');
+    await act('console');
+    await act('errors');
+    await act('console');
+    expect(browser.state.calls.filter((c) => c === 'Runtime.enable')).toHaveLength(1);
+  });
+
+  it('a new tab starts with it off again', async () => {
+    await act('console');
+    await act('open', { url: 'two.example' });
+    const before = browser.state.calls.filter((c) => c === 'Runtime.enable').length;
+    await act('snapshot');
+    expect(browser.state.calls.filter((c) => c === 'Runtime.enable')).toHaveLength(before);
+    await act('errors');
+    expect(browser.state.calls.filter((c) => c === 'Runtime.enable')).toHaveLength(before + 1);
+  });
+});
+
+describe('a bot-protection wall is reported, not mistaken for a page', () => {
+  const WALL = { title: 'Access to this page has been denied', text: 'Press & Hold to confirm you are a human', textLength: 60, markers: {} };
+
+  it('a clean page is not flagged and costs no reload', async () => {
+    const r = await act('navigate', { url: 'https://fine.example/' });
+    expect(r.blocked).toBeUndefined();
+    expect(r.recoveredFromBlock).toBeUndefined();
+    expect(browser.state.reloads).toBe(0);
+  });
+
+  it('reloads ONCE, and names the vendor when the wall stays', async () => {
+    browser.state.blockPage = { probe: WALL, clearsOnReload: false };
+    const r = await act('navigate', { url: 'https://zillow.example/homes' });
+    expect(browser.state.reloads).toBe(1);
+    expect(r.blocked).toMatchObject({ by: 'PerimeterX (HUMAN)', retried: true });
+    expect(r.blocked.hint).toMatch(/will not help/);
+    // Still a normal result the agent can read: the page is there, it is a wall.
+    expect(r.snapshot).toContain('URL: https://zillow.example/homes');
+  }, 10000);
+
+  it('a wall that a reload clears (Reddit\'s first hit) comes back as the page, noted', async () => {
+    browser.state.blockPage = { probe: { ...WALL, title: 'Reddit - Prove your humanity' }, clearsOnReload: true };
+    const r = await act('navigate', { url: 'https://reddit.example/r/x' });
+    expect(browser.state.reloads).toBe(1);
+    expect(r.blocked).toBeUndefined();
+    expect(r.recoveredFromBlock.by).toBe('Reddit');
+  }, 10000);
 });
 
 describe('the page can be debugged from the tool', () => {

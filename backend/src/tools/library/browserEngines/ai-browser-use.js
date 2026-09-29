@@ -574,6 +574,8 @@ class AIBrowserUse extends BaseAction {
           ANONYMIZED_TELEMETRY: 'false',
           BROWSER_USE_CLOUD_SYNC: 'false',
         },
+        // No console window flashing on Windows; output is piped and captured.
+        windowsHide: true,
       });
 
       let stdout = '';

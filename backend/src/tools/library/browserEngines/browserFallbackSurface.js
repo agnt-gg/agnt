@@ -46,6 +46,7 @@ import fs from 'fs';
 import path from 'path';
 import PathManager from '../../../utils/PathManager.js';
 import { requiredChromeFlags, shouldRunHeadless, describeRuntime } from '../../../services/browserRuntime.js';
+import { headlessLaunchProfile } from './browserStealth.js';
 
 /** The browser we launched, if it is still running. */
 let session = null;
@@ -337,12 +338,76 @@ async function closeOverCdp(cdpUrl, port, log) {
   log('[Browser Control] the previous browser did not exit; launching anyway.');
 }
 
+/** Budget for swapping the startup tab; past it the launch proceeds with the tab it has. */
+const STARTUP_TAB_SWAP_MS = 5000;
+
 /**
- * Launch a browser we own and return its CDP endpoint.
+ * Replace a headless browser's STARTUP tab with a CDP-created one.
  *
- * Reused across calls: relaunching per step would throw away the page the last
- * step navigated to, which is the whole point of an interactive loop.
+ * MEASURED 2026-09-27 (Chrome 154, headless=new, G2's DataDome, 3 runs each):
+ * the tab Chrome launches with reports document.hasFocus() === false and an
+ * innerHeight 56px short of its window; every consumer that attaches to it
+ * (the verbs driver, the stream, browser-use) inherits a page that never has
+ * focus — blocked 3/3. A tab opened with Target.createTarget reports focus and
+ * the full viewport — served 3/3. Same flags, same IP, same start page.
+ *
+ * Best effort by design: if anything here fails, the launch continues with
+ * the startup tab, which is exactly the behaviour before this existed.
  */
+async function replaceStartupTab(cdpUrl, url, log) {
+  const socket = new WebSocket(cdpUrl, { handshakeTimeout: 2000 });
+  const pending = new Map();
+  let nextId = 1;
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = nextId;
+    nextId += 1;
+    pending.set(id, { resolve, reject });
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+  socket.on('message', (raw) => {
+    let message;
+    try { message = JSON.parse(raw.toString()); } catch { return; }
+    const waiter = pending.get(message.id);
+    if (!waiter) return;
+    pending.delete(message.id);
+    if (message.error) waiter.reject(new Error(message.error.message));
+    else waiter.resolve(message.result || {});
+  });
+  const failAll = (err) => {
+    for (const waiter of pending.values()) waiter.reject(err);
+    pending.clear();
+  };
+  socket.on('close', () => failAll(new Error('connection closed')));
+
+  const swap = (async () => {
+    await new Promise((resolve, reject) => {
+      socket.once('open', resolve);
+      socket.once('error', reject);
+    });
+    const { targetInfos = [] } = await send('Target.getTargets');
+    const startupTabs = targetInfos.filter((target) => target.type === 'page');
+    // Create first: closing the last tab of a headless browser can end it.
+    await send('Target.createTarget', { url });
+    for (const tab of startupTabs) {
+      // eslint-disable-next-line no-await-in-loop -- a handful at most, in order.
+      await send('Target.closeTarget', { targetId: tab.targetId });
+    }
+  })();
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${STARTUP_TAB_SWAP_MS}ms`)), STARTUP_TAB_SWAP_MS);
+  });
+  try {
+    await Promise.race([swap, deadline]);
+  } catch (err) {
+    swap.catch(() => {});
+    log(`[Browser Control] kept the startup tab (could not replace it: ${err.message}).`);
+  } finally {
+    clearTimeout(timer);
+    try { socket.close(); } catch { /* gone */ }
+  }
+}
+
 /**
  * What a freshly launched, streamed browser shows before its first task.
  *
@@ -359,6 +424,12 @@ const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
   + 'AGNT Browser — ready.<br>Ask Annie to browse something.</div>',
 )}`;
 
+/**
+ * Launch a browser we own and return its CDP endpoint.
+ *
+ * Reused across calls: relaunching per step would throw away the page the last
+ * step navigated to, which is the whole point of an interactive loop.
+ */
 export async function ensureFallbackSurface({ log = console.log, browser = '', hidden = false } = {}) {
   const wanted = String(browser || '').trim().toLowerCase();
 
@@ -460,10 +531,23 @@ async function launchBrowser({ log, browser, hidden = false }) {
   // malfunction — it was the first thing reported when /view shipped without
   // this. Visible stays the default for the agent's own launches on a desktop,
   // where the OS window is the only way to watch at all.
+  //
+  // No --disable-gpu here: it was only ever paired with going headless, and it
+  // makes WebGL report Microsoft's software rasteriser — a bot tell that got
+  // this browser blocked on protected sites. See browserStealth.js.
   if (hidden && !runtimeFlags.includes('--headless=new')) {
-    runtimeFlags.push('--headless=new', '--disable-gpu');
+    runtimeFlags.push('--headless=new');
   }
-  log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${hidden ? 'hidden, ' : ''}${describeRuntime()})`);
+  // Headless Chrome announces itself (HeadlessChrome UA, navigator.webdriver,
+  // an 800x600 screen). Present like the headed browser instead, whichever
+  // reason made this launch headless.
+  let presentation = '';
+  if (runtimeFlags.includes('--headless=new')) {
+    const profile = headlessLaunchProfile({ executable, key });
+    runtimeFlags.push(...profile.flags);
+    presentation = profile.userAgent ? `, presenting as Chrome ${profile.version}` : ', default user agent';
+  }
+  log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${hidden ? 'hidden, ' : ''}${describeRuntime()}${presentation})`);
 
   const child = spawn(executable, [
     '--remote-debugging-port=0',
@@ -523,6 +607,9 @@ async function launchBrowser({ log, browser, hidden = false }) {
     const endpoint = readEndpoint(profilePath);
     if (endpoint) {
       session.cdpUrl = endpoint;
+      if (runtimeFlags.includes('--headless=new')) {
+        await replaceStartupTab(endpoint, hidden ? START_PAGE : 'about:blank', log);
+      }
       log(`[Browser Control] ${label} is listening at ${endpoint}`);
       return endpoint;
     }
@@ -547,7 +634,7 @@ export function closeFallbackSurface() {
   try {
     if (process.platform === 'win32') {
       // Chrome spawns a process tree; killing only the launcher orphans it.
-      spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore' });
+      spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
     } else {
       child.kill();
     }

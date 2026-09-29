@@ -19,6 +19,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { EventEmitter } from 'events';
+import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -30,7 +31,9 @@ vi.mock('../../../utils/PathManager.js', () => ({
 }));
 
 const spawn = vi.fn();
-vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a) }));
+// spawnSync is how browserStealth reads `--version` off Windows; answering
+// nothing keeps the launch on its no-override path, deterministically.
+vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a), spawnSync: () => ({ stdout: '' }) }));
 
 const {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, _fallbackSessionForTests,
@@ -42,6 +45,8 @@ const PORT_FILE = path.join(PROFILE, 'DevToolsActivePort');
 
 /** Commands spawned, as { command, args }. */
 let spawned;
+/** Port the fake browser writes into DevToolsActivePort. */
+let fakePort = 51999;
 /** How the fake browser behaves once launched. */
 let browserBehaviour;
 
@@ -96,7 +101,7 @@ beforeEach(() => {
       // websocket path on line 2.
       setTimeout(() => {
         fs.mkdirSync(PROFILE, { recursive: true });
-        fs.writeFileSync(PORT_FILE, '51999\n/devtools/browser/abc-123\n');
+        fs.writeFileSync(PORT_FILE, `${fakePort}\n/devtools/browser/abc-123\n`);
       }, 10);
     } else if (browserBehaviour === 'exits-immediately') {
       setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 10);
@@ -179,6 +184,32 @@ describe('the browser it opens is its own', () => {
     expect(args.some((a) => a.startsWith('data:text/html'))).toBe(true);
   });
 
+  it('a hidden launch presents like a headed browser, because headless ones get blocked', async () => {
+    // MEASURED 2026-09-27: with --headless=new --disable-gpu alone, protected
+    // sites (Home Depot, Lowe's, Zillow, Walmart, Etsy) served 11 of 28 pages;
+    // with these flags, 24-27 of 28. The tells were navigator.webdriver, an
+    // 800x600 screen, and the software WebGL renderer --disable-gpu forces.
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+
+    const args = launchCalls()[0].args;
+    expect(args).toContain('--disable-blink-features=AutomationControlled');
+    expect(args).toContain('--window-size=1920,1080');
+    expect(args).toContain('--screen-info={1920x1080}');
+    expect(args, 'on a desktop the GPU stays on: disabling it is a fingerprint').not.toContain('--disable-gpu');
+    expect(args.join(' ')).not.toMatch(/HeadlessChrome/);
+  });
+
+  it('a visible launch carries none of the headless presentation flags', async () => {
+    // A visible browser already reports the right UA and screen, and
+    // --disable-blink-features puts an "unsupported flag" bar across it.
+    await ensureFallbackSurface({ log: () => {} });
+
+    const args = launchCalls()[0].args;
+    expect(args).not.toContain('--disable-blink-features=AutomationControlled');
+    expect(args.some((a) => a.startsWith('--window-size='))).toBe(false);
+    expect(args.some((a) => a.startsWith('--user-agent='))).toBe(false);
+  });
+
   it('stays VISIBLE with about:blank by default — the agent\'s window on a desktop', async () => {
     await ensureFallbackSurface({ log: () => {} });
 
@@ -201,7 +232,10 @@ describe('the browser it opens is its own', () => {
 
     const args = launchCalls()[0].args;
     expect(args).toContain('--headless=new');
+    // No display means no GPU to use: the machine keeps --disable-gpu.
     expect(args).toContain('--disable-gpu');
+    // And it still presents like a headed browser.
+    expect(args).toContain('--disable-blink-features=AutomationControlled');
   });
 
   it('reuses a live browser across a hidden/visible mismatch instead of relaunching', async () => {
@@ -221,6 +255,67 @@ describe('the browser it opens is its own', () => {
     expect(joined).not.toMatch(/--profile-directory/);
     // Adopting an already-running browser is the exact thing to avoid.
     expect(joined).not.toMatch(/--remote-debugging-port=9222\b/);
+  });
+});
+
+describe('a headless launch starts on a tab that has focus', () => {
+  // MEASURED 2026-09-27: headless Chrome's STARTUP tab reports
+  // document.hasFocus() === false and a short viewport; G2 (DataDome) blocked
+  // it 3/3 and served a CDP-created tab 3/3. So the launcher swaps it.
+  let wss;
+  let cdpCalls;
+
+  beforeEach(async () => {
+    cdpCalls = [];
+    wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((resolve) => { wss.once('listening', resolve); });
+    fakePort = wss.address().port;
+    wss.on('connection', (socket) => {
+      socket.on('message', (raw) => {
+        const m = JSON.parse(raw.toString());
+        cdpCalls.push({ method: m.method, params: m.params });
+        const results = {
+          'Target.getTargets': { targetInfos: [{ targetId: 'STARTUP', type: 'page', url: 'data:...' }, { targetId: 'SW', type: 'service_worker' }] },
+          'Target.createTarget': { targetId: 'FRESH' },
+        };
+        socket.send(JSON.stringify({ id: m.id, result: results[m.method] || {} }));
+      });
+    });
+  });
+
+  afterEach(async () => {
+    fakePort = 51999;
+    for (const client of wss.clients) client.terminate();
+    await new Promise((resolve) => { wss.close(resolve); });
+  });
+
+  it('opens a fresh tab on the start page, THEN closes the startup tab', async () => {
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+
+    const methods = cdpCalls.map((c) => c.method);
+    expect(methods).toEqual(['Target.getTargets', 'Target.createTarget', 'Target.closeTarget']);
+    // Create before close: closing a headless browser's last tab can end it.
+    expect(cdpCalls[1].params.url.startsWith('data:text/html')).toBe(true);
+    // Only pages are closed — never a service worker or anything else.
+    expect(cdpCalls[2].params).toEqual({ targetId: 'STARTUP' });
+  });
+
+  it('leaves a VISIBLE browser\'s tab alone — the swap is a headless fix', async () => {
+    await ensureFallbackSurface({ log: () => {} });
+    expect(cdpCalls).toHaveLength(0);
+  });
+
+  it('never fails a launch over it: an unreachable endpoint keeps the startup tab', async () => {
+    for (const client of wss.clients) client.terminate();
+    await new Promise((resolve) => { wss.close(resolve); });
+    wss = new WebSocketServer({ port: 0, host: '127.0.0.1' }); // afterEach needs something to close
+    await new Promise((resolve) => { wss.once('listening', resolve); });
+    const logs = [];
+
+    const url = await ensureFallbackSurface({ log: (m) => logs.push(m), hidden: true });
+
+    expect(url).toContain(`:${fakePort}/`);
+    expect(logs.some((m) => /kept the startup tab/.test(m))).toBe(true);
   });
 });
 

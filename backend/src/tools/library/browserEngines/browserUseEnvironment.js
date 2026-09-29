@@ -247,6 +247,8 @@ export function runProcess(command, args, { streamLogs = false } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      // No console window flashing on Windows; output is piped and captured.
+      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';

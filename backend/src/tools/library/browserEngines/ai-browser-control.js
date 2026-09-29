@@ -468,6 +468,10 @@ class AIBrowserControl extends BaseAction {
           BH_RECORD: '0',
           BH_DOMAIN_SKILLS: '0',
         },
+        // A console app spawned without this flashes a window on Windows —
+        // once per script step, which read as the desktop "popping windows
+        // every second". Output is piped, so nothing is lost.
+        windowsHide: true,
       });
 
       let stdout = '';

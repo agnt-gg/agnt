@@ -35,6 +35,18 @@
  *                  the wrong one.
  *   SELF-DEBUG.    console / errors / requests ring buffers so an agent
  *                  iterating on a frontend can see WHY the page broke.
+ *                  Runtime.enable is sent only when console/errors is first
+ *                  asked for: bot protection (PerimeterX) detects it, and
+ *                  MEASURED on zillow.com it was the difference between
+ *                  blocked 3/3 and served 3/3. Chrome replays the console
+ *                  messages it kept when Runtime is enabled late.
+ *   LOOKS HUMAN.   Clicks travel a short eased path and hold the button for a
+ *                  moment; short text is typed as keystrokes. A pointer that
+ *                  teleports and text that appears whole are both bot tells.
+ *   BLOCKS.        A navigation that lands on a bot-protection wall is
+ *                  reloaded once (Reddit's first-hit challenge clears that
+ *                  way) and otherwise reported as `blocked`, by vendor, so
+ *                  the agent stops retrying a page it cannot have.
  *   LOOPS.         The same (verb, params, result) three times in a row is
  *                  refused with a "stop and report" hint — a stuck agent
  *                  otherwise burns tokens until the step ceiling.
@@ -65,6 +77,7 @@
  */
 
 import { CdpConnection, attachToPage } from './cdpConnection.js';
+import { BLOCK_PROBE_EXPRESSION, classifyBlockPage, blockedHint } from './browserBlockDetection.js';
 
 /** userId -> live driver session. One per user: the ref map is the agent's working memory. */
 const drivers = new Map();
@@ -123,7 +136,9 @@ function pushCapped(list, item) {
  */
 async function enableObservers(driver) {
   const { connection, sessionId } = driver;
-  await connection.send('Runtime.enable', {}, sessionId).catch(() => {});
+  // NOT Runtime.enable — see ensureRuntimeObservers. The listener below still
+  // handles Runtime events; they simply do not flow until it is enabled.
+  driver.runtimeEnabled = false;
   await connection.send('Network.enable', {}, sessionId).catch(() => {});
 
   // Tab switches re-enable observers for a new session. Remove the old
@@ -169,6 +184,11 @@ async function enableObservers(driver) {
       case 'Network.responseReceived': {
         const r = driver.requests.find((x) => x.id === p.requestId);
         if (r) { r.status = p.response?.status ?? null; r.mimeType = p.response?.mimeType || null; }
+        // The main frame's document status, for block detection. The main
+        // frame's id is the target id; the Electron bridge sends no frameId.
+        if (p.type === 'Document' && (!p.frameId || p.frameId === driver.targetId)) {
+          driver.documentStatus = p.response?.status ?? null;
+        }
         break;
       }
       case 'Network.loadingFailed': {
@@ -187,6 +207,19 @@ async function enableObservers(driver) {
   };
   driver.observerListener = observerListener;
   connection.onEvent(observerListener);
+}
+
+/**
+ * Turn on console/exception capture for the current tab, on first need.
+ *
+ * Runtime.enable is a known automation fingerprint, so it is not sent at
+ * connect. Enabling late loses little: Chrome replays the console messages
+ * and exceptions it stored for the page. Once on, it stays on for that tab.
+ */
+async function ensureRuntimeObservers(driver) {
+  if (driver.runtimeEnabled) return;
+  await driver.connection.send('Runtime.enable', {}, driver.sessionId).catch(() => {});
+  driver.runtimeEnabled = true;
 }
 
 async function driverFor(userId, cdpUrl) {
@@ -215,6 +248,11 @@ async function driverFor(userId, cdpUrl) {
     /** Rolling (verb, params, result) fingerprints for the loop guard. */
     history: [],
     observerListener: null,
+    runtimeEnabled: false,
+    /** HTTP status of the main frame's last document response. */
+    documentStatus: null,
+    /** Where the synthetic pointer last was; a real mouse moves from there. */
+    pointer: null,
   };
   connection.onEvent((message) => {
     if (message.method === '__closed') drivers.delete(userId);
@@ -258,6 +296,8 @@ async function attachDriverTo(driver, targetId) {
   driver.console = [];
   driver.errors = [];
   driver.requests = [];
+  driver.documentStatus = null;
+  driver.pointer = null;
   await driver.connection.send('Page.enable', {}, sessionId).catch(() => {});
   await driver.connection.send('DOM.enable', {}, sessionId).catch(() => {});
   await driver.connection.send('DOM.getDocument', { depth: 0 }, sessionId).catch(() => {});
@@ -631,6 +671,73 @@ async function detectNewTab(driver, tabsBefore) {
   return fresh ? { ...fresh, hint: `A new tab opened. Use action="focus" tabId="${fresh.id}" to drive it.` } : null;
 }
 
+// ─── human-shaped input ──────────────────────────────────────────────────────────
+
+const randomBetween = (min, max) => min + Math.random() * (max - min);
+
+/** Text at most this long is typed as keystrokes; longer text is inserted whole. */
+const KEYSTROKE_MAX_CHARS = 160;
+
+/**
+ * Move the pointer to `target` along a short eased curve, from wherever it
+ * last was. A pointer that appears on the element with no path is one of the
+ * cheapest bot signals to read. Always ends EXACTLY on target, so the click
+ * lands where elementCentre said. Costs ~100-250ms.
+ */
+async function movePointer(driver, target) {
+  const start = driver.pointer || {
+    x: Math.max(0, target.x + randomBetween(-240, 240)),
+    y: Math.max(0, target.y + randomBetween(-160, 160)),
+  };
+  const distance = Math.hypot(target.x - start.x, target.y - start.y);
+  const steps = Math.min(14, Math.max(4, Math.round(distance / 40)));
+  const bend = Math.min(80, distance * 0.2);
+  const c1 = { x: start.x + (target.x - start.x) * 0.3 + randomBetween(-bend, bend), y: start.y + (target.y - start.y) * 0.1 + randomBetween(-bend, bend) };
+  const c2 = { x: start.x + (target.x - start.x) * 0.8 + randomBetween(-bend / 2, bend / 2), y: start.y + (target.y - start.y) * 0.9 + randomBetween(-bend / 2, bend / 2) };
+
+  for (let i = 1; i <= steps; i += 1) {
+    if (driver.dialog) return;
+    const linear = i / steps;
+    const t = linear < 0.5 ? 2 * linear * linear : 1 - ((-2 * linear + 2) ** 2) / 2;
+    const u = 1 - t;
+    const point = i === steps ? target : {
+      x: Math.round(u ** 3 * start.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t ** 3 * target.x),
+      y: Math.round(u ** 3 * start.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t ** 3 * target.y),
+    };
+    // eslint-disable-next-line no-await-in-loop -- the path is sequential by nature.
+    await sendInput(driver, { type: 'mouseMoved', x: point.x, y: point.y });
+    // eslint-disable-next-line no-await-in-loop
+    if (i < steps) await sleep(randomBetween(6, 16));
+  }
+  driver.pointer = { x: target.x, y: target.y };
+}
+
+/**
+ * Type text the way a keyboard does: keyDown/keyUp per character, with the
+ * uneven rhythm of a person. Text that a keyboard would not produce in one
+ * pass (newlines would submit forms, astral characters are not one key) or
+ * that is long enough to cost seconds is inserted whole, as before.
+ */
+async function typeText(driver, text) {
+  const value = String(text ?? '');
+  const keystrokes = value.length > 0
+    && value.length <= KEYSTROKE_MAX_CHARS
+    && !/[\r\n\t\uD800-\uDFFF]/.test(value);
+  if (!keystrokes) {
+    await driver.connection.send('Input.insertText', { text: value }, driver.sessionId);
+    return;
+  }
+  for (const character of value) {
+    if (driver.dialog) return;
+    // eslint-disable-next-line no-await-in-loop -- keystrokes are sequential.
+    await sendInput(driver, { type: 'keyDown', key: character, text: character, unmodifiedText: character }, 'Input.dispatchKeyEvent');
+    // eslint-disable-next-line no-await-in-loop
+    await sendInput(driver, { type: 'keyUp', key: character }, 'Input.dispatchKeyEvent');
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(randomBetween(8, 30) + (character === ' ' ? randomBetween(10, 40) : 0));
+  }
+}
+
 async function clickRef(driver, { ref, selector } = {}) {
   const before = await assertFreshOrSelector(driver, { ref, selector });
   const backendNodeId = await resolveActionTarget(driver, { ref, selector });
@@ -638,8 +745,10 @@ async function clickRef(driver, { ref, selector } = {}) {
   const { x, y } = await elementCentre(driver, backendNodeId);
 
   const base = { x, y, button: 'left', clickCount: 1 };
-  await sendInput(driver, { type: 'mouseMoved', x, y });
+  await movePointer(driver, { x, y });
+  if (!driver.dialog) await sleep(randomBetween(40, 110));
   await sendInput(driver, { type: 'mousePressed', ...base });
+  if (!driver.dialog) await sleep(randomBetween(45, 110));
   await sendInput(driver, { type: 'mouseReleased', ...base });
 
   if (!driver.dialog) await sleep(300);
@@ -657,7 +766,7 @@ async function assertFreshOrSelector(driver, { selector } = {}) {
 async function hoverRef(driver, { ref, selector } = {}) {
   const backendNodeId = await resolveActionTarget(driver, { ref, selector });
   const { x, y } = await elementCentre(driver, backendNodeId);
-  await sendInput(driver, { type: 'mouseMoved', x, y });
+  await movePointer(driver, { x, y });
   await sleep(150);
   return pageState(driver);
 }
@@ -669,7 +778,7 @@ async function typeIntoRef(driver, { ref, selector, text, submit = false } = {})
   await driver.connection.send('DOM.focus', { backendNodeId }, driver.sessionId);
   // Replace, don't append: "type X into the box" means the box then holds X.
   await evaluate(driver, 'document.execCommand("selectAll")').catch(() => {});
-  await driver.connection.send('Input.insertText', { text: String(text ?? '') }, driver.sessionId);
+  await typeText(driver, text);
 
   if (submit) {
     const state = await dispatchKey(driver, 'Enter');
@@ -807,10 +916,14 @@ async function pressKey(driver, chord) {
 async function scrollPage(driver, deltaY) {
   const dims = await evaluate(driver, 'JSON.stringify({ w: innerWidth, h: innerHeight })').catch(() => null);
   const { w = 1280, h = 800 } = (() => { try { return JSON.parse(dims); } catch { return {}; } })() || {};
+  // A wheel turns where the pointer IS; one that fires from a spot the
+  // pointer never visited is another teleport.
+  const at = driver.pointer || { x: Math.round(w / 2), y: Math.round(h / 2) };
+  driver.pointer = at;
   await driver.connection.send('Input.dispatchMouseEvent', {
     type: 'mouseWheel',
-    x: Math.round(w / 2),
-    y: Math.round(h / 2),
+    x: at.x,
+    y: at.y,
     deltaX: 0,
     deltaY: Number(deltaY) || 600,
   }, driver.sessionId);
@@ -892,14 +1005,44 @@ function normaliseUrl(url) {
   return `https://${target}`;
 }
 
+/** Is the page in front of us a bot-protection wall? null when it is not, or cannot be read. */
+async function detectBlock(driver) {
+  if (driver.dialog) return null;
+  const raw = await evaluate(driver, BLOCK_PROBE_EXPRESSION).catch(() => null);
+  let probe;
+  try { probe = JSON.parse(raw); } catch { return null; }
+  if (probe?.probe !== 'agnt-block-probe') return null;
+  return classifyBlockPage({ ...probe, status: driver.documentStatus });
+}
+
 async function navigateTo(driver, url) {
   const target = normaliseUrl(url);
   driver.refs.clear();
   driver.refUrl = null;
+  driver.documentStatus = null;
   await driver.connection.send('Page.navigate', { url: target }, driver.sessionId, { timeoutMs: NAVIGATE_TIMEOUT_MS });
   await waitForLoad(driver);
+
+  // ONE reload, never more. MEASURED: Reddit challenges the first page of a
+  // fresh session and serves it on the next load; the other vendors do not
+  // relent, and hammering them only hardens the block.
+  let block = await detectBlock(driver);
+  let recovered = null;
+  if (block) {
+    await sleep(randomBetween(1500, 3000));
+    driver.documentStatus = null;
+    await driver.connection.send('Page.reload', {}, driver.sessionId, { timeoutMs: NAVIGATE_TIMEOUT_MS }).catch(() => {});
+    await waitForLoad(driver);
+    const after = await detectBlock(driver);
+    if (!after) recovered = block;
+    block = after;
+  }
+
   const snap = await takeSnapshot(driver, { maxChars: INLINE_SNAPSHOT_CHARS }).catch(() => null);
-  return snap || pageState(driver);
+  const result = snap || await pageState(driver);
+  if (block) return { ...result, blocked: { ...block, retried: true, hint: blockedHint(block) } };
+  if (recovered) return { ...result, recoveredFromBlock: { ...recovered } };
+  return result;
 }
 
 async function goBack(driver) {
@@ -1070,8 +1213,8 @@ async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried =
       case 'open': result = await openTab(driver, params.url); break;
       case 'focus': result = await focusTab(driver, params.tabId); break;
       case 'close': result = await closeTab(driver, params.tabId); break;
-      case 'console': result = formatConsole(driver, { filter: params.filter, maxChars: params.maxChars }); break;
-      case 'errors': result = formatErrors(driver, { maxChars: params.maxChars }); break;
+      case 'console': await ensureRuntimeObservers(driver); result = formatConsole(driver, { filter: params.filter, maxChars: params.maxChars }); break;
+      case 'errors': await ensureRuntimeObservers(driver); result = formatErrors(driver, { maxChars: params.maxChars }); break;
       case 'requests': result = formatRequests(driver, { filter: params.filter, maxChars: params.maxChars }); break;
       default:
         throw new Error(`Unknown browser action "${action}". One of: ${BROWSER_ACTIONS.join(', ')}`);
