@@ -944,7 +944,6 @@ export default {
 .workflows-main-content > * {
   width: 100%;
   max-width: 1048px;
-  margin-right: -10px;
 }
 
 /* Ensure header stays at the top */
@@ -1120,7 +1119,9 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  width: calc(50% - 4px);
+  /* A .card-grid cell: the grid sizes the card. Any width here is a
+     fraction of the cell, not of the row. */
+  min-width: 0;
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1148,11 +1149,6 @@ export default {
   color: var(--color-text-muted);
 }
 
-/* IF USING FULL WIDTH LAST HANGING CHADS */
-.workflow-card.last-odd {
-  width: 100%;
-}
-
 .workflow-card:hover {
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
@@ -1171,7 +1167,6 @@ export default {
   justify-content: space-between;
   margin-bottom: 6px;
   gap: 8px;
-  flex: 1;
 }
 
 .workflow-icon {
@@ -1307,8 +1302,10 @@ export default {
   line-height: 1.4;
   overflow: hidden;
   display: -webkit-box;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  flex: 1;
+  /* Never grow: see .agent-description in Agents.vue. */
+  flex: 0 1 auto;
 }
 
 .workflow-description.no-tools {
@@ -1370,10 +1367,6 @@ export default {
 
 /* Responsive: single column on smaller screens */
 @media (max-width: 640px) {
-  .workflow-card {
-    width: 100%;
-  }
-
   .category-cards-grid {
     gap: 12px;
   }

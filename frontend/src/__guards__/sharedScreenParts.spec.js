@@ -41,7 +41,8 @@ const screenFiles = () => {
 
 /** Declarations of a top-level rule for `selector`, ignoring @media variants. */
 const ruleBodies = (css, selector) => {
-  const re = new RegExp(`(^|\\})\\s*\\${selector}\\s*\\{([^}]*)\\}`, 'g');
+  // A rule starts the stylesheet, or follows a rule or a comment.
+  const re = new RegExp(`(^|\\}|\\*/)\\s*\\${selector}\\s*\\{([^}]*)\\}`, 'g');
   return [...css.matchAll(re)].map((m) => m[2].trim());
 };
 
@@ -65,6 +66,32 @@ describe('the shared screen layout is the only definition', () => {
       for (const cls of ['.screen-content', '.screen-main-content', '.card-grid', '.card-row']) {
         if (ruleBodies(css, cls).length) offenders.push(`${rel} re-declares ${cls}`);
       }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+});
+
+describe('collection cards are sized by their grid', () => {
+  // Agents, Tools and Workflows moved from a wrapping .card-row (cards set
+  // their own `width: calc(50% - 4px)`) to .card-grid. The width stayed, and
+  // inside a grid cell 50% means half the CELL: every card rendered at half
+  // its column with names cut to "A.". A grid cell must not size itself.
+  const CARDS = {
+    'Agents/Agents.vue': '.agent-card',
+    'Tools/Tools.vue': '.tool-card',
+    'Workflows/Workflows.vue': '.workflow-card',
+  };
+
+  it('no card inside a .card-grid declares a width', () => {
+    const offenders = [];
+    for (const [rel, selector] of Object.entries(CARDS)) {
+      const raw = fs.readFileSync(path.join(SCREENS, rel), 'utf8');
+      const css = (raw.match(/<style[\s\S]*?<\/style>/g) || []).join('\n');
+      expect(raw, `${rel} no longer renders its cards in a .card-grid`).toMatch(/class="card-grid /);
+      for (const body of ruleBodies(css, selector)) {
+        if (/(^|;|\s)width\s*:/.test(body)) offenders.push(`${rel} ${selector} sets a width`);
+      }
+      if (ruleBodies(css, `${selector}.last-odd`).length) offenders.push(`${rel} still sizes ${selector}.last-odd`);
     }
     expect(offenders, offenders.join('\n')).toEqual([]);
   });
