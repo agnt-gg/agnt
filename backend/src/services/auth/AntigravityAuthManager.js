@@ -241,6 +241,7 @@ class AntigravityAuthManager {
     this._lastApiStatus = null;
     this._refreshInFlight = null;
     this._codeAssistProject = null;
+    this._onboarded = false;
     this._currentTier = null;
     this._paidTier = null;
   }
@@ -397,6 +398,12 @@ class AntigravityAuthManager {
     };
     writeCredentials(credData);
     this._lastApiCheck = null;
+    // A fresh sign-in may be a different Google account: forget the previous
+    // account's onboarding, project and tier so they are re-read for this one.
+    this._onboarded = false;
+    this._codeAssistProject = null;
+    this._currentTier = null;
+    this._paidTier = null;
 
     console.log('[AntigravityAuth] OAuth tokens saved to ~/.antigravity/oauth_creds.json');
   }
@@ -446,6 +453,7 @@ class AntigravityAuthManager {
     fs.writeFileSync(envPath, envContent, 'utf8');
 
     this._codeAssistProject = null;
+    this._onboarded = false;
     this._lastApiCheck = null;
 
     console.log('[AntigravityAuth] GCP project saved:', projectId);
@@ -719,9 +727,17 @@ class AntigravityAuthManager {
 
   // ── Onboarding ─────────────────────────────────────────────
   // The gateway requires users to be onboarded before generateContent works.
+  //
+  // "Onboarded" is cached as its own fact, not inferred from having a project:
+  // a standard-tier Antigravity account is onboarded with NO project (verified
+  // live 2026-09-30: onboardUser answers {done:true, cloudaicompanionProject:{}}
+  // and loadCodeAssist never reports one). Keyed on the project, every model
+  // list and every chat re-ran loadCodeAssist + onboardUser — two control-plane
+  // calls per request, against the PRD-109 request-volume posture. Reset by the
+  // same sign-in / project-change / disconnect paths as the project.
 
   async ensureOnboarded(oauth2Client) {
-    if (this._codeAssistProject) return this._codeAssistProject;
+    if (this._onboarded) return this._codeAssistProject || undefined;
 
     const authClient = oauth2Client || this.getOAuth2Client();
     if (!authClient) return undefined;
@@ -750,10 +766,11 @@ class AntigravityAuthManager {
         '| project:', data.cloudaicompanionProject || 'none',
         '| gcpProject:', gcpProject || 'none');
 
-      if (data.currentTier && data.cloudaicompanionProject) {
-        this._codeAssistProject = data.cloudaicompanionProject;
-        console.log('[AntigravityAuth] Onboarded, project:', this._codeAssistProject, 'tier:', this._currentTier);
-        return this._codeAssistProject;
+      if (data.currentTier) {
+        this._codeAssistProject = data.cloudaicompanionProject || null;
+        this._onboarded = true;
+        console.log('[AntigravityAuth] Onboarded, project:', this._codeAssistProject || 'none', 'tier:', this._currentTier);
+        return this._codeAssistProject || undefined;
       }
 
       // Need to onboard — pick the best available tier (prefer paid)
@@ -765,9 +782,9 @@ class AntigravityAuthManager {
 
       const tierId = selectedTier.id;
       console.log(`[AntigravityAuth] Onboarding user to ${tierId}...`);
-      await this._onboardToTier(authClient, ANTIGRAVITY_CONTROL_BASE, META, tierId);
+      this._onboarded = await this._onboardToTier(authClient, ANTIGRAVITY_CONTROL_BASE, META, tierId);
 
-      return this._codeAssistProject;
+      return this._codeAssistProject || undefined;
     } catch (error) {
       console.error('[AntigravityAuth] Onboarding failed:', error.message);
       return undefined;
@@ -785,19 +802,25 @@ class AntigravityAuthManager {
       headers: ANTIGRAVITY_HEADERS,
     });
 
+    // Google answers either synchronously ({done:true, response}) or with a
+    // long-running operation to poll. Returns true once onboarding completed.
+    const finish = (operation) => {
+      const proj = operation.response?.cloudaicompanionProject;
+      this._codeAssistProject = proj?.id || proj?.name || null;
+      console.log(`[AntigravityAuth] Onboarded to ${tierId}, project:`, this._codeAssistProject || 'none');
+      return true;
+    };
+    if (onboardRes.data?.done) return finish(onboardRes.data);
+
     const opName = onboardRes.data?.name;
     if (opName) {
       for (let i = 0; i < 10; i++) {
         const opRes = await authClient.request({ url: `${base}/${opName}`, method: 'GET', headers: ANTIGRAVITY_HEADERS });
-        if (opRes.data?.done) {
-          const proj = opRes.data.response?.cloudaicompanionProject;
-          this._codeAssistProject = proj?.id || proj?.name;
-          console.log(`[AntigravityAuth] Onboarded to ${tierId}, project:`, this._codeAssistProject);
-          return;
-        }
+        if (opRes.data?.done) return finish(opRes.data);
         await new Promise(r => setTimeout(r, 1000));
       }
     }
+    return false;
   }
 
   // ── Dynamic Model Listing ──────────────────────────────────
@@ -848,9 +871,11 @@ class AntigravityAuthManager {
       const credPath = resolveCredentialsPath();
       if (fs.existsSync(credPath)) {
         fs.unlinkSync(credPath);
-      }      this._lastApiCheck = null;
+      }
+      this._lastApiCheck = null;
       this._lastApiStatus = null;
       this._codeAssistProject = null;
+      this._onboarded = false;
       this._currentTier = null;
       this._paidTier = null;
       this._cooldownUntil = 0; // clear cooldown so a re-check doesn't report stale "available"
