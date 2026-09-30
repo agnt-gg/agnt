@@ -42,6 +42,9 @@ const OPTIONAL_BRANCHES = {
 // strftime('%s', x) reads both formats the app writes: sqlite's own
 // '2026-08-22 02:06:00' and ISO '2026-08-22T02:06:00.000Z'. Comparing those as
 // TEXT once blinded the fleet to every schedule the app had ever fired.
+//
+// workflow_run: a run left open by a crash is swept at boot; the two-hour cap
+// keeps one that somehow survives from pinning the instance awake for ever.
 const CORE_BRANCHES = `
     SELECT 'trigger' AS source, tw.workflow_id || ':' || tw.node_id AS ref, 'due' AS kind,
            CAST(tw.next_fire_at / 1000 AS INTEGER) AS due_at
@@ -58,8 +61,6 @@ const CORE_BRANCHES = `
     SELECT 'task', id, 'in_flight', CAST(strftime('%s', 'now') AS INTEGER)
       FROM tasks WHERE status IN ('running', 'assigned')
     UNION ALL
-    -- A run left open by a crash is swept at boot; the age cap keeps one that
-    -- somehow survives from pinning the instance awake for ever.
     SELECT 'workflow_run', id, 'in_flight', CAST(strftime('%s', 'now') AS INTEGER)
       FROM workflow_executions
      WHERE end_time IS NULL AND status IN ('started', 'running')
