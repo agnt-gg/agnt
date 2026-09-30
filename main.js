@@ -434,6 +434,8 @@ async function startLocalBoot() {
   // process with no window at all. The occupied path has already opened one.
   if (!mainWindow || mainWindow.isDestroyed()) createWindow({ initial: 'status' });
   attachWindowBehaviour();
+  // Seconds since this process started — the three numbers a person feels.
+  console.log(`[boot] window shown at ${process.uptime().toFixed(1)}s`);
   if (outcome === 'occupied') return;
   let lastPushedSecond = -1;
   healthPoll = pollBackendHealth({
@@ -450,8 +452,11 @@ async function startLocalBoot() {
       healthPoll = null;
       supervisor.state = 'running';
       connectPhase = 'ready';
-      console.log('Backend is ready. Loading the app...');
+      console.log(`[boot] backend answered at ${process.uptime().toFixed(1)}s; loading the app`);
       loadActiveTarget();
+      mainWindow?.webContents.once('did-finish-load', () => {
+        console.log(`[boot] app loaded at ${process.uptime().toFixed(1)}s`);
+      });
     },
   });
 }
