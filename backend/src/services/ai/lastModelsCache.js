@@ -26,13 +26,17 @@ const CACHE_FILE = pathManager.getPath('last-models.json');
 
 let memoryCache = null;
 
-function load() {
-  if (memoryCache) return memoryCache;
+function readDisk() {
   try {
-    memoryCache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) || {};
+    const parsed = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
-    memoryCache = {};
+    return {};
   }
+}
+
+function load() {
+  if (!memoryCache) memoryCache = readDisk();
   return memoryCache;
 }
 
@@ -43,12 +47,24 @@ function load() {
  */
 export function persistLastModels(providerKey, models) {
   if (!providerKey || !Array.isArray(models) || models.length === 0) return;
-  const cache = load();
-  cache[String(providerKey).toLowerCase()] = { models, timestamp: Date.now() };
+  const key = String(providerKey).toLowerCase();
+  const entry = { models, timestamp: Date.now() };
+
+  // Merge into what is on disk NOW, not into this process's snapshot. The file
+  // is shared by the app, CLI tools and test runs; writing the snapshot back
+  // silently undid every other writer's change — including deleting an entry,
+  // which the running app re-added on its next successful fetch.
+  const onDisk = readDisk();
+  onDisk[key] = entry;
   try {
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+    const tmp = `${CACHE_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(onDisk, null, 2));
+    fs.renameSync(tmp, CACHE_FILE); // atomic: a reader never sees half a file
+    memoryCache = onDisk;
   } catch (err) {
+    // Still serve this fetch from memory for the rest of the process.
+    load()[key] = entry;
     console.warn(`[lastModelsCache] Failed to persist for ${providerKey}: ${err.message}`);
   }
 }

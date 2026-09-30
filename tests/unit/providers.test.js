@@ -1,7 +1,7 @@
 /**
  * Provider configuration and schema validation tests.
  *
- * Run: node --test tests/unit/providers.test.js
+ * Run: npm run test:node   (a bare `node --test` skips data-dir isolation)
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

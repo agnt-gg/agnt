@@ -1,5 +1,9 @@
 /**
- * Vitest setup: force every test worker into a throwaway data directory.
+ * Test setup: force every test process into a throwaway data directory.
+ *
+ * Loaded two ways: as vitest's setupFiles entry, and by `npm run test:node`
+ * via `node --import` (node:test passes --import to each per-file child).
+ * Guarded by scripts/nodeTestDataIsolation.contract.test.js.
  *
  * WHY THIS EXISTS (2026-07-26)
  * ────────────────────────────
