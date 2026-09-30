@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import browser from './library/actions/browser.js';
 import computerUse from './library/actions/computer-use.js';
+import triggerTimer from './library/triggers/trigger-timer.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
@@ -34,7 +35,9 @@ const manifests = MANIFEST_PATHS.map((manifestPath) => ({
 const entriesOf = (manifest) => Object.values(manifest).flat().filter((entry) => entry?.type);
 const entryFor = (manifest, type) => entriesOf(manifest).find((entry) => entry.type === type);
 
-const TOOLS = [browser, computerUse];
+// trigger-timer: its time-zone parameter and fire-on-start meaning changed
+// with durable timers; the editor and the model read the manifest, not the file.
+const TOOLS = [browser, computerUse, triggerTimer];
 
 // De-registered 2026-09: `browser` is the one browser tool, and these three are
 // engines behind it, living outside every scanned directory. A manifest entry

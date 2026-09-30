@@ -459,6 +459,12 @@ export default {
             if (typeof nodeData.parameters[key] === 'object' && nodeData.parameters[key].hasOwnProperty('type')) {
               // This is a parameter definition from toolLibrary
               newNode.parameters[key] = nodeData.parameters[key].default || '';
+              // A default only the editor can know. The Timer Trigger's zone:
+              // a hosted instance runs in UTC, so "09:00" must carry the
+              // author's zone or it fires at 09:00 UTC.
+              if (nodeData.parameters[key].defaultFrom === 'browserTimeZone' && !newNode.parameters[key]) {
+                newNode.parameters[key] = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+              }
               if (nodeData.parameters[key].inputType === 'select') {
                 newNode.parameters[key + '_options'] = nodeData.parameters[key].options;
               }

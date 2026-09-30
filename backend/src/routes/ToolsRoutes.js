@@ -8,6 +8,7 @@ import ToolRegistry from '../tools/ToolRegistry.js';
 import PluginManager from '../plugins/PluginManager.js';
 import CustomToolModel from '../models/CustomToolModel.js';
 import { authenticateToken } from './Middleware.js';
+import { applyPlanLocks } from '../services/hostedPlanLimits.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -174,7 +175,10 @@ router.get('/workflow-tools', authenticateToken, async (req, res) => {
       customToolsFromDb: customToolsFromDb.length,
     });
 
-    res.json(result);
+    // Per-instance, not in the manifest: a sleeping hosted plan cannot use
+    // every timer interval, and the editor greys those out rather than hiding
+    // them. See hostedPlanLimits.js.
+    res.json(applyPlanLocks(result));
   } catch (error) {
     console.error('Error fetching workflow tools:', error);
     res.status(500).json({ error: 'Failed to fetch workflow tools' });

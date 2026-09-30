@@ -208,8 +208,9 @@
                   <CustomSelect
                     :model-value="getParameterValue(key)"
                     :placeholder="`Select ${formatParameterLabel(key)}`"
-                    :options="(isAIProviderOrModelField(key) ? getOptionsForParameter(key) : param.options).map((option) => ({ label: option, value: option }))"
+                    :options="selectOptionsFor(key, param)"
                     @update:model-value="updateParameter(key, $event)"
+                    @locked-option="openUpgradeFor($event)"
                   />
                 </template>
                 <!-- IF FIELD IS TEXTAREA -->
@@ -416,6 +417,7 @@
       </div>
     </Teleport>
     <SimpleModal ref="modal" />
+    <UpgradeModal :open="upgradeReason !== ''" :reason="upgradeReason" suggest="always_on" @close="upgradeReason = ''" />
   </div>
 </template>
 
@@ -428,6 +430,7 @@ import { API_CONFIG, AI_PROVIDERS_CONFIG } from '@/tt.config';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
+import UpgradeModal from '@/components/UpgradeModal.vue';
 
 // Lazy-load CodeMirror and its dependencies only when codearea fields are present
 // Resolves to the component itself, not { default }: Vue only unwraps `.default`
@@ -455,6 +458,7 @@ export default {
   name: 'PanelTab',
   components: {
     CustomSelect,
+    UpgradeModal,
     SvgIcon,
     Codemirror,
     SimpleModal,
@@ -489,6 +493,8 @@ export default {
       },
       showTooltip: false,
       tooltipMessage: '',
+      // Non-empty while the upgrade modal is open; the text says what was locked.
+      upgradeReason: '',
       toolDocsCache: {}, // Cache for loaded markdown docs
       converter: null, // Showdown converter instance
       availableAgents: [], // List of available agents
@@ -923,6 +929,20 @@ export default {
       }
 
       return props;
+    },
+    // Options for a select parameter. `lockedOptions` ({ option: reason }) is
+    // overlaid by the backend for options this instance's plan cannot use;
+    // they stay in the list, greyed out with the reason, so the upgrade that
+    // unlocks them is discoverable.
+    selectOptionsFor(key, param) {
+      const values = this.isAIProviderOrModelField(key) ? this.getOptionsForParameter(key) : param.options || [];
+      const locked = param.lockedOptions || {};
+      return values.map((option) =>
+        locked[option] ? { label: option, value: option, locked: true, lockedHint: locked[option] } : { label: option, value: option }
+      );
+    },
+    openUpgradeFor(option) {
+      this.upgradeReason = `"${option.label}" isn't available on your plan. ${option.lockedHint || ''}`.trim();
     },
     getParameterValue(key) {
       // ⚠️ CRITICAL: This method is ONLY for UI DISPLAY purposes

@@ -1286,6 +1286,21 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
+
+      // A trigger's next fire time, written down so it survives the process and
+      // the fleet can wake a sleeping instance for it. See TriggerWakeModel.js.
+      db.run(`CREATE TABLE IF NOT EXISTS trigger_wakes (
+        workflow_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        next_fire_at INTEGER NOT NULL,
+        anchor_at INTEGER,
+        schedule_key TEXT,
+        cursor TEXT,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (workflow_id, node_id)
+      )`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_trigger_wakes_due ON trigger_wakes(next_fire_at)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_type, target_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS schedule_runs (
@@ -2353,6 +2368,42 @@ const dbReady = skipSchemaInit
       }
     } catch (error) {
       console.error('Startup stale-run sweep failed (non-fatal):', error);
+    }
+
+    // Same reasoning for workflow runs. A run open at boot belonged to the
+    // previous process — on a hosted instance, usually one the fleet put to
+    // sleep. Left open it reads as running forever, and tenant_due_work would
+    // count it as work in flight.
+    try {
+      const sweptRuns = await new Promise((resolve, reject) => {
+        db.run(
+          // 'stopped', not agent_executions' 'interrupted': it is the terminal
+          // status ExecutionModel.update already writes, so the run list and its
+          // terminal-status guard know it.
+          `UPDATE workflow_executions
+             SET status = 'stopped', end_time = CURRENT_TIMESTAMP
+           WHERE end_time IS NULL AND status IN ('started', 'running')`,
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      });
+      if (sweptRuns > 0) {
+        console.log(`Startup sweep: marked ${sweptRuns} stale workflow run(s) as 'stopped'`);
+      }
+    } catch (error) {
+      console.error('Startup workflow-run sweep failed (non-fatal):', error);
+    }
+
+    // Rebuilt every boot: it spans optional tables. See dueWorkView.js. Non-fatal
+    // for the app — but loud, because without it a sleeping instance is never
+    // woken for its triggers.
+    try {
+      const { refreshDueWorkView } = await import('../dueWorkView.js');
+      await refreshDueWorkView(db);
+    } catch (error) {
+      console.error('tenant_due_work view could not be built — hosted wake-for-work is blind:', error);
     }
   })
   .then(async () => {

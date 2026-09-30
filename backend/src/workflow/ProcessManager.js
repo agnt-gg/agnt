@@ -3,6 +3,7 @@ import db from '../models/database/index.js';
 import { dbRunWithRetry } from '../models/database/index.js';
 import ProcessWorker from './ProcessWorker.js';
 import WorkflowModel from '../models/WorkflowModel.js';
+import TriggerWakeModel from '../models/TriggerWakeModel.js';
 import EmailReceiver from '../tools/triggers/EmailReceiver.js';
 import WebhookReceiver from '../tools/triggers/WebhookReceiver.js';
 
@@ -44,7 +45,7 @@ class ProcessManager extends EventEmitter {
     }
 
     try {
-      this.queue.push({ workflow, userId, triggerData });
+      this.queue.push({ workflow, userId, triggerData, activation: 'user' });
       console.log(`Workflow ${workflowId} scheduled to queue for execution. Queue length: ${this.queue.length}`);
       await this._updateWorkflowStatus(workflowId, 'queued');
       this.emit('workAdded');
@@ -87,6 +88,16 @@ class ProcessManager extends EventEmitter {
 
     // Update workflow status
     await this._updateWorkflowStatus(workflowId, 'stopped');
+
+    // The user switched it off, so its saved fire times are no longer
+    // promises. (A process shutdown never comes through here — those rows must
+    // survive a sleep.) Failure is harmless: tenant_due_work already ignores
+    // triggers of stopped workflows, and the next activation re-anchors.
+    try {
+      await TriggerWakeModel.deleteForWorkflow(workflowId);
+    } catch (error) {
+      console.error(`Could not clear saved trigger times for ${workflowId}:`, error.message);
+    }
 
     // Emit status update
     this.emit('workflowStatusUpdate', workflowId, {
@@ -172,8 +183,10 @@ class ProcessManager extends EventEmitter {
           const workflow = JSON.parse(workflowData.workflow_data);
           workflow.id = workflowData.id;
 
-          // Queue the workflow for restart instead of immediately activating
-          this.queue.push({ workflow, userId: workflowData.user_id, triggerData: null });
+          // Queue the workflow for restart instead of immediately activating.
+          // 'restore', not 'user': the workflow was already on, so triggers
+          // resume their saved schedule and fire-on-start does not fire again.
+          this.queue.push({ workflow, userId: workflowData.user_id, triggerData: null, activation: 'restore' });
           totalQueued++;
         }
 

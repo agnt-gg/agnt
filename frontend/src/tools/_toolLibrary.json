@@ -17,7 +17,7 @@
             "No"
           ],
           "default": "Yes",
-          "description": "Fire the trigger immediately when the workflow starts"
+          "description": "Fire once immediately when you switch the workflow on (not when the app restarts)"
         },
         "scheduleType": {
           "type": "string",
@@ -33,6 +33,7 @@
         "schedule": {
           "type": "string",
           "inputType": "select",
+          "inputSize": "half",
           "options": [
             "Every Minute",
             "Every 5 Minutes",
@@ -73,6 +74,17 @@
             "Sunday"
           ],
           "description": "Select the days to run the trigger at the specific time",
+          "conditional": {
+            "field": "scheduleType",
+            "value": "Specific Time"
+          }
+        },
+        "timezone": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "defaultFrom": "browserTimeZone",
+          "description": "Time zone for the time above, e.g. America/New_York (also used by Monthly). Filled in with yours.",
           "conditional": {
             "field": "scheduleType",
             "value": "Specific Time"

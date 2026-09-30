@@ -9,6 +9,14 @@ import { ConversationWorkScheduler } from './conversationWorkScheduler.js';
 export async function createConversationWorkRuntime({ database, runSegment, verify, onError = console.error, concurrency = 1 }) {
   const store = new ConversationWorkModel(database);
   await store.initialize();
+  // conversation_work may have just been created; the fleet's due-work view
+  // only includes tables that existed when it was built. See dueWorkView.js.
+  try {
+    const { refreshDueWorkView } = await import('../../models/dueWorkView.js');
+    await refreshDueWorkView(database);
+  } catch (error) {
+    onError(error);
+  }
   const operations = new ConversationOperationModel(store);
   const snapshots = new ConversationSnapshotModel(store);
   const inbox = new ConversationWorkInbox(store);

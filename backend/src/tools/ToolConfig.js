@@ -8,28 +8,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const calculateNextSpecificTime = (specificTime, specificDays) => {
-  const now = new Date();
-  const [hours, minutes] = specificTime.split(':').map(Number);
-  const targetTime = new Date(now);
-  targetTime.setHours(hours, minutes, 0, 0);
-
-  if (targetTime <= now) {
-    targetTime.setDate(targetTime.getDate() + 1);
-  }
-
-  while (!specificDays.includes(getDayName(targetTime.getDay()))) {
-    targetTime.setDate(targetTime.getDate() + 1);
-  }
-
-  return targetTime.getTime() - now.getTime();
-};
-
-const getDayName = (dayIndex) => {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  return days[dayIndex];
-};
-
 export default {
   triggers: {
     'generic-trigger': {
@@ -162,87 +140,6 @@ export default {
     //     newRow: inputData.newRow,
     //   }),
     // },
-    'trigger-timer': {
-      setup: async (engine, node) => {
-        if (!node.parameters) {
-          throw new Error('Timer trigger node is missing parameters');
-        }
-
-        const { fireOnStart, scheduleType, schedule, specificTime, specificDays } = node.parameters;
-
-        const parseSchedule = (scheduleType, schedule, specificTime, specificDays) => {
-          const now = new Date();
-          if (scheduleType === 'Interval') {
-            switch (schedule) {
-              case 'Every Minute':
-                return 60 * 1000;
-              case 'Every 5 Minutes':
-                return 5 * 60 * 1000;
-              case 'Every 15 Minutes':
-                return 15 * 60 * 1000;
-              case 'Every 30 Minutes':
-                return 30 * 60 * 1000;
-              case 'Hourly':
-                return 60 * 60 * 1000;
-              case 'Daily':
-                return 24 * 60 * 60 * 1000;
-              case 'Weekly':
-                return 7 * 24 * 60 * 60 * 1000;
-              case 'Monthly': {
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                return Math.min(nextMonth.getTime() - now.getTime(), 2147483647);
-              }
-              default:
-                throw new Error(`Invalid schedule: ${schedule}`);
-            }
-          } else if (scheduleType === 'Specific Time') {
-            return calculateNextSpecificTime(specificTime, specificDays);
-          }
-          throw new Error(`Invalid scheduleType: ${scheduleType}`);
-        };
-
-        const scheduleNextRun = () => {
-          const intervalMs = parseSchedule(scheduleType, schedule, specificTime, specificDays);
-          const timerId = setTimeout(() => {
-            engine.processWorkflowTrigger({
-              type: 'timer',
-              nodeId: node.id,
-              timestamp: new Date().toISOString(),
-            });
-            scheduleNextRun(); // Schedule the next run
-          }, intervalMs);
-
-          engine.timerIntervals.set(node.id, timerId);
-        };
-
-        // Stagger fire-on-start during the boot window so simultaneous
-        // restarts of many timer triggers don't race the dashboard for the
-        // event loop and SQLite lock. Workflows activated after boot fire
-        // immediately. See trigger-timer.js for the rationale.
-        if (fireOnStart === 'Yes') {
-          const BOOT_GRACE_MS = 30_000;
-          const uptimeMs = process.uptime() * 1000;
-          const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
-          setTimeout(() => {
-            engine.processWorkflowTrigger({
-              type: 'timer',
-              nodeId: node.id,
-              timestamp: new Date().toISOString(),
-            });
-          }, delay);
-        }
-
-        scheduleNextRun();
-
-        console.log(
-          `Timer trigger set up for node ${node.id} with scheduleType: ${scheduleType}, schedule: ${schedule}, fireOnStart: ${fireOnStart}`,
-        );
-      },
-      validate: (triggerData, node) => triggerData.type === 'timer' && triggerData.nodeId === node.id,
-      process: (inputData) => ({
-        timestamp: inputData.timestamp,
-      }),
-    },
     'webhook-listener': {
       setup: async (engine, node) => {
         try {

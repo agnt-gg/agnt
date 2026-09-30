@@ -23,9 +23,12 @@ const timerNode = (parameters) => ({ id: 'timer-node', type: 'trigger-timer', ca
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  // In-memory: this is about timer handles, not persistence.
+  TriggerTimer.store = { get: async () => null, upsert: async () => {} };
 });
 
 afterEach(() => {
+  TriggerTimer.store = null;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });

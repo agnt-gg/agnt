@@ -184,3 +184,25 @@ describe('nextFireTime — OR semantics for dom/dow when both restricted', () =>
     expect(next.getTime()).toBe(utc(2026, 6, 22, 0, 0).getTime());
   });
 });
+
+describe('nextFireTime — daylight-saving days', () => {
+  // The fall-back day is 25 hours long. Skipping a non-matching day by +24h
+  // landed on the same local date and spun ~2.6M iterations (a frozen
+  // scheduler tick). These must return quickly and on the right wall clock.
+  it('crosses the autumn change without spinning', () => {
+    const started = Date.now();
+    const next = nextFireTime('0 9 * * MON', utc(2026, 10, 31, 0, 0), 'America/New_York');
+    expect(next.getTime()).toBe(utc(2026, 11, 2, 14, 0).getTime()); // 09:00 EST
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('crosses the spring change on the right wall clock', () => {
+    const next = nextFireTime('0 9 * * MON', utc(2026, 3, 7, 0, 0), 'America/New_York');
+    expect(next.getTime()).toBe(utc(2026, 3, 9, 13, 0).getTime()); // 09:00 EDT
+  });
+
+  it('crosses a European change too', () => {
+    const next = nextFireTime('30 8 * * MON', utc(2026, 10, 24, 0, 0), 'Europe/Berlin');
+    expect(next.getTime()).toBe(utc(2026, 10, 26, 7, 30).getTime()); // 08:30 CET
+  });
+});

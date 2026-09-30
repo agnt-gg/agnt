@@ -386,4 +386,44 @@ describe('CustomSelect', () => {
       expect(label[1]).toContain('white-space: nowrap');
     });
   });
+
+  // Plan-locked options stay visible — hiding them hides the upgrade that
+  // unlocks them — but can never be chosen.
+  describe('locked options', () => {
+    const lockedOptions = [
+      { label: 'Every Minute', value: 'Every Minute', locked: true, lockedHint: 'Needs Pro + Always-On.' },
+      { label: 'Hourly', value: 'Hourly' },
+    ];
+
+    it('shows a locked option greyed out with an Upgrade pill', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: lockedOptions, modelValue: 'Hourly' }, attachTo: document.body });
+      await wrapper.find('.selected').trigger('click');
+      const [locked, open] = document.querySelectorAll('.option');
+      expect(locked.classList.contains('locked')).toBe(true);
+      expect(locked.getAttribute('aria-disabled')).toBe('true');
+      expect(locked.querySelector('.locked-pill')?.textContent).toContain('Upgrade');
+      expect(open.classList.contains('locked')).toBe(false);
+      wrapper.unmount();
+    });
+
+    it('never selects a locked option, and says which one was asked for', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: lockedOptions, modelValue: 'Hourly' }, attachTo: document.body });
+      await wrapper.find('.selected').trigger('click');
+      document.querySelectorAll('.option')[0].click();
+      await wrapper.vm.$nextTick();
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+      expect(wrapper.emitted('locked-option')?.[0]?.[0]).toMatchObject({ value: 'Every Minute', lockedHint: 'Needs Pro + Always-On.' });
+      wrapper.unmount();
+    });
+
+    it('still selects the options that are not locked', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: lockedOptions }, attachTo: document.body });
+      await wrapper.find('.selected').trigger('click');
+      document.querySelectorAll('.option')[1].click();
+      await wrapper.vm.$nextTick();
+      expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['Hourly']);
+      expect(wrapper.emitted('locked-option')).toBeUndefined();
+      wrapper.unmount();
+    });
+  });
 });

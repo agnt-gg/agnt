@@ -61,6 +61,9 @@ class WorkflowEngine extends EventEmitter {
     this.sheetsReceiver = null;
     this.triggerListeners = new Map();
     this.timerIntervals = new Map();
+    // How this engine was started: 'user' (switched on) or 'restore' (re-armed
+    // at boot). ProcessWorker sets it; triggers read it. See trigger-timer.js.
+    this.activation = 'user';
     this.activeEdges = new Set();
     this.nodeExecutionCounts = new Map();
     this.edgeIterations = new Map();

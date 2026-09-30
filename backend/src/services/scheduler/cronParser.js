@@ -165,11 +165,18 @@ export function nextFireTime(cronExpr, from = new Date(), timezone = 'UTC') {
     else dayMatch = domOk || dowOk;
 
     if (!dayMatch) {
-      // Advance to midnight of the NEXT day in zone (not +1 minute — that
-      // would round back to today's midnight and spin forever).
-      const tomorrow = new Date(probe.getTime() + 24 * 60 * 60_000);
-      const zt = inZone(tomorrow, timezone);
-      probe = fromZone({ year: zt.year, month: zt.month, day: zt.day, hour: 0, minute: 0 }, timezone);
+      // Advance to midnight of the NEXT CALENDAR day in zone. Calendar
+      // arithmetic, not +24h: the day clocks fall back is 25 hours long, so
+      // midnight + 24h is 23:00 the SAME day, which rounded back to the same
+      // midnight and spun until maxIterations (~2.6M Intl calls, minutes of
+      // CPU) — every schedule in a DST zone, every autumn.
+      const next = new Date(Date.UTC(z.year, z.month - 1, z.day + 1));
+      const candidate = fromZone(
+        { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, day: next.getUTCDate(), hour: 0, minute: 0 },
+        timezone
+      );
+      // Never step backwards or stand still, whatever a zone's rules do.
+      probe = candidate.getTime() > probe.getTime() ? candidate : new Date(probe.getTime() + 60 * 60_000);
       continue;
     }
 

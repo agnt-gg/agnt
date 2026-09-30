@@ -13,7 +13,7 @@ class ProcessWorker extends EventEmitter {
 
   // PUBLIC METHODS
   async handleWorkflowTrigger(job, activeWorkflows) {
-    const { workflow, userId, triggerData } = job;
+    const { workflow, userId, triggerData, activation = 'user' } = job;
     this.isBusy = true;
     this.currentWorkflow = workflow;
     this._currentUserId = userId;
@@ -26,6 +26,9 @@ class ProcessWorker extends EventEmitter {
 
       // Initialize Workflow Engine Listeners for this workflow
       engine = new WorkflowEngine(workflow, workflow.id, userId);
+      // 'restore' when the process is re-arming what was running before it
+      // stopped; triggers use it to resume rather than start over.
+      engine.activation = activation;
 
       // Set up error listener
       engine.on('workflowError', async (errors) => {

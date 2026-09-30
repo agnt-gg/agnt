@@ -1,26 +1,42 @@
 import BaseTrigger from '../BaseTrigger.js';
+import { SCHEDULE_OPTIONS, nextFireAt, resolveTimerSpec } from '../../../services/scheduler/timerSchedule.js';
+import { lockedTimerSchedules } from '../../../services/hostedPlanLimits.js';
 
-const calculateNextSpecificTime = (specificTime, specificDays) => {
-  const now = new Date();
-  const [hours, minutes] = specificTime.split(':').map(Number);
-  const targetTime = new Date(now);
-  targetTime.setHours(hours, minutes, 0, 0);
+/**
+ * Timer Trigger — fires a workflow on an interval or at a time of day.
+ *
+ * DURABLE, BECAUSE THE PROCESS IS NOT
+ * -----------------------------------
+ * The next fire time is an absolute timestamp written to trigger_wakes BEFORE
+ * each fire, not a setTimeout counted from "now". That is what lets:
+ *   - a restart resume the same schedule instead of starting a new one,
+ *   - a hosted instance that the fleet put to sleep be woken for it (the fleet
+ *     reads the row through the tenant_due_work view), and
+ *   - a fire missed while the process was down run exactly once on return.
+ *
+ * FIRE ON START MEANS "WHEN YOU SWITCH IT ON"
+ * -------------------------------------------
+ * Boot restore and user activation reach setup() through the same path; the
+ * engine's `activation` ('user' | 'restore') tells them apart. It used to fire
+ * on every boot, which on a sleeping instance meant an extra run per wake and,
+ * on desktop, a run every time the app opened.
+ */
 
-  if (targetTime <= now) {
-    targetTime.setDate(targetTime.getDate() + 1);
-  }
+// setTimeout's ceiling (~24.8 days). A Monthly timer used to be clamped to it
+// and fire early; now a long wait is chained and re-checked instead.
+const MAX_TIMEOUT_MS = 2_147_483_647;
+// Timers due at boot all wake together and race the dashboard for the event
+// loop and the SQLite lock, so a fire that lands in the first seconds of
+// process uptime is held until the stampede settles.
+const BOOT_GRACE_MS = 30_000;
+// A timeout can come back a hair before its target; do not re-arm for that.
+const EARLY_WAKE_TOLERANCE_MS = 5;
 
-  while (!specificDays.includes(getDayName(targetTime.getDay()))) {
-    targetTime.setDate(targetTime.getDate() + 1);
-  }
-
-  return targetTime.getTime() - now.getTime();
-};
-
-const getDayName = (dayIndex) => {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  return days[dayIndex];
-};
+let defaultStore = null;
+async function loadDefaultStore() {
+  defaultStore ??= (await import('../../../models/TriggerWakeModel.js')).default;
+  return defaultStore;
+}
 
 class TriggerTimer extends BaseTrigger {
   static schema = {
@@ -37,7 +53,7 @@ class TriggerTimer extends BaseTrigger {
         inputSize: 'half',
         options: ['Yes', 'No'],
         default: 'Yes',
-        description: 'Fire the trigger immediately when the workflow starts',
+        description: 'Fire once immediately when you switch the workflow on (not when the app restarts)',
       },
       scheduleType: {
         type: 'string',
@@ -51,7 +67,11 @@ class TriggerTimer extends BaseTrigger {
         type: 'string',
         inputType: 'select',
         inputSize: 'half',
-        options: ['Every Minute', 'Every 5 Minutes', 'Every 15 Minutes', 'Every 30 Minutes', 'Hourly', 'Daily', 'Weekly', 'Monthly'],
+        // Static on purpose: toolLibrary.json mirrors this byte for byte (see
+        // toolManifest.drift.test.js). Options this instance's PLAN cannot use
+        // are overlaid per request by /api/tools/workflow-tools
+        // (hostedPlanLimits.applyPlanLocks) and enforced again in setup().
+        options: [...SCHEDULE_OPTIONS],
         description: 'Select the interval for the timer',
         conditional: {
           field: 'scheduleType',
@@ -79,6 +99,21 @@ class TriggerTimer extends BaseTrigger {
           value: 'Specific Time',
         },
       },
+      timezone: {
+        type: 'string',
+        // Text, not a 400-entry select: this schema is copied into the manifest
+        // the model reads. Validated in setup() with a readable error.
+        inputType: 'text',
+        inputSize: 'half',
+        // New nodes start in the editor's own zone. A hosted instance runs in
+        // UTC, so without this "09:00" would fire at 09:00 UTC.
+        defaultFrom: 'browserTimeZone',
+        description: 'Time zone for the time above, e.g. America/New_York (also used by Monthly). Filled in with yours.',
+        conditional: {
+          field: 'scheduleType',
+          value: 'Specific Time',
+        },
+      },
     },
     outputs: {
       timestamp: {
@@ -90,8 +125,9 @@ class TriggerTimer extends BaseTrigger {
 
   constructor() {
     super('trigger-timer');
-    this.timerId = null;
-    this.nodeId = null;
+    // Where fire times are written. Null = TriggerWakeModel, loaded on first
+    // use so importing this module never opens the database. Tests inject.
+    this.store = null;
   }
 
   async setup(engine, node) {
@@ -100,57 +136,115 @@ class TriggerTimer extends BaseTrigger {
     if (!node.parameters) {
       throw new Error('Timer trigger node is missing parameters');
     }
+    const parameters = node.parameters;
 
-    const { fireOnStart, scheduleType, schedule, specificTime, specificDays } = node.parameters;
-    this.nodeId = node.id;
-
-    const scheduleNextRun = () => {
-      const intervalMs = this.parseSchedule(scheduleType, schedule, specificTime, specificDays);
-      this.timerId = setTimeout(() => {
-        engine.processWorkflowTrigger({
-          type: 'timer',
-          nodeId: node.id,
-          timestamp: new Date().toISOString(),
-        });
-        scheduleNextRun(); // Schedule the next run
-      }, intervalMs);
-
-      // Store in engine's timer intervals map for cleanup
-      engine.timerIntervals.set(node.id, this.timerId);
-    };
-
-    // Defer fire-on-start so the worker can commit the 'listening' status
-    // update before _executeWorkflow races against it.
-    //
-    // During app boot, every fire-on-start timer in the user's library wakes
-    // up at the same moment and races the dashboard for the SQLite lock and
-    // the event loop. To keep the UI responsive, we stagger any fire-on-start
-    // that lands inside the first BOOT_GRACE_MS of process uptime so it runs
-    // after the boot stampede settles. Workflows the user activates later
-    // (well after boot) fire immediately as before — `process.uptime()`
-    // distinguishes the two cases without any extra state.
-    if (fireOnStart === 'Yes') {
-      const BOOT_GRACE_MS = 30_000;
-      const uptimeMs = process.uptime() * 1000;
-      const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
-      // F1: the fire-on-start shot must be disarmable by stop. Register the
-      // handle in engine.timerIntervals (like the schedule chain) so
-      // stopWorkflowListeners() clears it; a shot that already fired is
-      // additionally rejected by the engine's stopped-workflow guard.
-      const fireOnStartTimerId = setTimeout(() => {
-        engine.timerIntervals.delete(`${node.id}:fireOnStart`);
-        engine.processWorkflowTrigger({
-          type: 'timer',
-          nodeId: node.id,
-          timestamp: new Date().toISOString(),
-        });
-      }, delay);
-      engine.timerIntervals.set(`${node.id}:fireOnStart`, fireOnStartTimerId);
+    // Enforced here, not only greyed out in the editor: a workflow imported,
+    // generated or saved before the plan changed reaches this line too.
+    const locked = lockedTimerSchedules();
+    if ((parameters.scheduleType || 'Interval') === 'Interval' && locked[parameters.schedule]) {
+      throw new Error(`"${parameters.schedule}" is not available on this plan. ${locked[parameters.schedule]}`);
     }
 
-    scheduleNextRun();
+    const spec = resolveTimerSpec(parameters);
+    const store = this.store ?? (await loadDefaultStore());
+    const workflowId = engine.workflowId;
+    const nodeId = node.id;
+    const restoring = engine.activation === 'restore';
+    const now = Date.now();
 
-    console.log(`Timer trigger set up for node ${node.id} with scheduleType: ${scheduleType}, schedule: ${schedule}, fireOnStart: ${fireOnStart}`);
+    let saved = null;
+    if (restoring) {
+      try {
+        saved = await store.get(workflowId, nodeId);
+      } catch (error) {
+        console.error(`[trigger-timer] could not read the saved schedule for ${workflowId}/${nodeId}; starting fresh:`, error.message);
+      }
+    }
+
+    // A row computed for a different configuration is not this timer's
+    // schedule. Every edit goes through stop (which deletes the row), so this
+    // only guards against rows written by some other path.
+    const usable = saved && saved.schedule_key === spec.key && Number.isFinite(Number(saved.next_fire_at));
+
+    let anchorAt;
+    let nextAt;
+    let fireNow;
+    if (usable) {
+      anchorAt = saved.anchor_at == null ? now : Number(saved.anchor_at);
+      nextAt = Number(saved.next_fire_at);
+      // Missed while the process was down: run it once, then carry on from
+      // the next slot on the original phase. Never a burst of every miss.
+      fireNow = nextAt <= now;
+      if (fireNow) nextAt = nextFireAt(spec, { anchorAt, after: now });
+    } else {
+      anchorAt = now;
+      nextAt = nextFireAt(spec, { anchorAt, after: now });
+      fireNow = !restoring && parameters.fireOnStart === 'Yes';
+    }
+
+    const persist = async (fireAt) => {
+      try {
+        await store.upsert({
+          workflowId,
+          nodeId,
+          triggerType: 'trigger-timer',
+          nextFireAt: fireAt,
+          anchorAt,
+          scheduleKey: spec.key,
+        });
+      } catch (error) {
+        // The timer keeps running in this process; what is lost is the ability
+        // to be woken for it. Loud, because that loss is otherwise silent.
+        console.error(`[trigger-timer] could not save the next fire time for ${workflowId}/${nodeId} — a sleeping instance will not wake for it:`, error.message);
+      }
+    };
+
+    const fire = () => {
+      const result = engine.processWorkflowTrigger({ type: 'timer', nodeId, timestamp: new Date().toISOString() });
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => console.error(`[trigger-timer] ${workflowId}/${nodeId} run failed to start:`, error.message));
+      }
+    };
+
+    const arm = (targetAt) => {
+      const delay = Math.min(Math.max(0, targetAt - Date.now()), MAX_TIMEOUT_MS);
+      const handle = setTimeout(async () => {
+        if (targetAt - Date.now() > EARLY_WAKE_TOLERANCE_MS) {
+          arm(targetAt);
+          return;
+        }
+        const following = nextFireAt(spec, { anchorAt, after: Math.max(Date.now(), targetAt) });
+        // Written BEFORE firing: a crash mid-run must not replay this slot.
+        await persist(following);
+        // Stopped while the write was in flight: the handle is gone from the map.
+        if (engine.timerIntervals.get(nodeId) !== handle) return;
+        fire();
+        arm(following);
+      }, delay);
+      engine.timerIntervals.set(nodeId, handle);
+    };
+
+    await persist(nextAt);
+
+    if (fireNow) {
+      const uptimeMs = process.uptime() * 1000;
+      const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
+      // Registered in engine.timerIntervals so stopWorkflowListeners() disarms
+      // it; a shot that already fired is rejected by the stopped-engine guard.
+      const shot = setTimeout(() => {
+        engine.timerIntervals.delete(`${nodeId}:fireOnStart`);
+        fire();
+      }, delay);
+      engine.timerIntervals.set(`${nodeId}:fireOnStart`, shot);
+    }
+
+    arm(nextAt);
+
+    console.log(
+      `Timer trigger armed for ${workflowId}/${nodeId}: ${spec.key}, next ${new Date(nextAt).toISOString()}` +
+        (fireNow ? (usable ? ' (catching up a missed run)' : ' (fire on start)') : '') +
+        (restoring ? ' [restored]' : '')
+    );
   }
 
   async validate(triggerData, node) {
@@ -161,45 +255,6 @@ class TriggerTimer extends BaseTrigger {
     return {
       timestamp: inputData.timestamp,
     };
-  }
-
-  async teardown() {
-    if (this.timerId) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
-    await super.teardown();
-  }
-
-  parseSchedule(scheduleType, schedule, specificTime, specificDays) {
-    const now = new Date();
-    if (scheduleType === 'Interval') {
-      switch (schedule) {
-        case 'Every Minute':
-          return 60 * 1000;
-        case 'Every 5 Minutes':
-          return 5 * 60 * 1000;
-        case 'Every 15 Minutes':
-          return 15 * 60 * 1000;
-        case 'Every 30 Minutes':
-          return 30 * 60 * 1000;
-        case 'Hourly':
-          return 60 * 60 * 1000;
-        case 'Daily':
-          return 24 * 60 * 60 * 1000;
-        case 'Weekly':
-          return 7 * 24 * 60 * 60 * 1000;
-        case 'Monthly': {
-          const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-          return Math.min(nextMonth.getTime() - now.getTime(), 2147483647);
-        }
-        default:
-          throw new Error(`Invalid schedule: ${schedule}`);
-      }
-    } else if (scheduleType === 'Specific Time') {
-      return calculateNextSpecificTime(specificTime, specificDays);
-    }
-    throw new Error(`Invalid scheduleType: ${scheduleType}`);
   }
 }
 

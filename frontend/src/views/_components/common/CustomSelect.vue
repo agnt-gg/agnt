@@ -20,16 +20,18 @@
           v-for="(option, index) in options"
           :key="index"
           class="option"
-          :class="[{ highlighted: index === selectedIndex }, { selected: isCurrent(option) }, { disabled: option.disabled }, option.class]"
+          :class="[{ highlighted: index === selectedIndex }, { selected: isCurrent(option) }, { disabled: option.disabled || option.locked }, { locked: option.locked }, option.class]"
+          :aria-disabled="option.disabled || option.locked ? 'true' : undefined"
           tabindex="0"
           role="option"
           :aria-selected="isCurrent(option)"
           @click="selectOption(option)"
           @keydown.enter="selectOption(option)"
         >
-          <div class="option-inner" v-tooltip="option.label">
+          <div class="option-inner" v-tooltip="option.locked ? option.lockedHint || 'Upgrade needed' : option.label">
             {{ option.label }}
-            <span v-if="option.disabled" class="not-connected"></span>
+            <span v-if="option.locked" class="locked-pill"><i class="fas fa-lock"></i> Upgrade</span>
+            <span v-else-if="option.disabled" class="not-connected"></span>
           </div>
         </div>
       </div>
@@ -126,7 +128,11 @@ export default {
       return this.currentOption ? this.currentOption.label : this.placeholder;
     },
   },
-  emits: ['option-selected', 'update:modelValue'],
+  // 'locked-option': a greyed-out option the user's plan cannot use was
+  // clicked. It is never selected; the consumer decides what to show (usually
+  // the upgrade modal). Locked options stay VISIBLE so the upgrade that
+  // unlocks them is discoverable.
+  emits: ['option-selected', 'update:modelValue', 'locked-option'],
   methods: {
     isCurrent(option) {
       return !!this.currentOption && this.currentOption.value === option.value;
@@ -340,6 +346,11 @@ export default {
       }
     },
     selectOption(option) {
+      if (option.locked && !this.disabled) {
+        this.$emit('locked-option', option);
+        this.toggleDropdown(false);
+        return;
+      }
       if (option.disabled || this.disabled) return;
 
       // Kept for uncontrolled consumers; ignored when v-model is bound.
@@ -571,6 +582,39 @@ select.custom-select {
 .option.disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Locked by plan: clickable (it opens the upgrade), so a pointer, and the
+   pill stays readable while the label is dimmed. */
+.option.locked {
+  opacity: 1;
+  cursor: pointer;
+  color: var(--color-text-muted, rgba(127, 127, 127, 0.9));
+}
+
+.option.locked .option-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.locked-pill {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--color-primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.45);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.locked-pill i {
+  font-size: 8px;
+  margin-right: 2px;
 }
 
 .option-inner {
