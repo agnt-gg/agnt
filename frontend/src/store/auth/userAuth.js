@@ -135,6 +135,16 @@ export { userFromJwt } from './jwt.js';
  * @param {string} featureName
  * @returns {boolean|object} false, or a license-shaped feature grant
  */
+/**
+ * A feature that is a map of named booleans rather than a `{ enabled, … }`
+ * toggle — today only `services`. It has no `enabled` key, so reading it as a
+ * toggle always yields "disabled", which is how Mail and Webhooks locked for
+ * every paid account.
+ */
+function isFlagMap(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && !('enabled' in value);
+}
+
 export function featureFromSubscription(subscription, planType, featureName) {
   if (!subscription || !planType || planType === 'free') return false;
   const f = subscription.features || {};
@@ -149,6 +159,10 @@ export function featureFromSubscription(subscription, planType, featureName) {
       return f.apiAccess ? { enabled: true, tier: planType } : false;
     case 'multiUser':
       return f.multiUser ? { enabled: true, maxSeats: f.maxUsers ?? 1 } : false;
+    case 'services':
+      // A map of per-service booleans ({ mail: true, hostedWebhooks: true, … }),
+      // not a toggle. Passed through whole; useLicense reads one key at a time.
+      return isFlagMap(f.services) ? f.services : false;
     default: {
       // Boolean passthrough for flat flags (whiteLabel, sla, coreFeatures…).
       // Absent keys — notably `plugins`, which the subscription payload does
@@ -1104,6 +1118,10 @@ export default {
 
         // Handle boolean features
         if (typeof feature === 'boolean') return feature;
+
+        // A map of per-service flags (services) is not a toggle: pass it
+        // through for the caller to read the key it needs.
+        if (isFlagMap(feature)) return feature;
 
         // Handle object features
         if (typeof feature === 'object' && feature !== null) {

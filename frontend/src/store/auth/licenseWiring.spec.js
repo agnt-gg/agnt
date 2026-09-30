@@ -185,6 +185,62 @@ describe('degraded mode — feature gates survive a missing license for paid sub
   });
 });
 
+describe('hosted services — Mail and Webhooks unlock for paid accounts', () => {
+  // `services` is a map of per-service booleans, not an { enabled } toggle.
+  // Read as a toggle it had no `enabled` key, so it came back false in BOTH
+  // modes and locked Emails and Webhooks for every paid account. Shapes below
+  // were captured live from /license/validate and /users/subscription/status
+  // for an active enterprise account on 2026-09-30.
+  const services = { models: true, search: true, scrape: true, sandbox: true, mail: true, hostedWebhooks: true };
+  const enterpriseLicense = {
+    license: {
+      userId: REAL_USER_ID, planType: 'enterprise', planStatus: 'active',
+      features: { apiAccess: { enabled: true, tier: 'enterprise' }, emailServer: { enabled: true, interval: 0 }, services },
+    },
+    signature: 's',
+  };
+  const enterpriseSub = { planType: 'enterprise', features: { apiAccess: true, emailServer: true, services } };
+
+  it('a verified license hands back the whole services map', () => {
+    const state = freshState({ signedLicense: enterpriseLicense, planType: 'enterprise', licenseStatus: 'valid' });
+    const feat = userAuth.getters.getLicenseFeature(state, { hasValidLicense: true });
+    expect(feat('services')).toEqual(services);
+    expect(feat('services').mail).toBe(true);
+    expect(feat('services').hostedWebhooks).toBe(true);
+  });
+
+  it('the subscription fallback hands it back too', () => {
+    const state = freshState({ subscription: enterpriseSub, planType: 'enterprise' });
+    const feat = userAuth.getters.getLicenseFeature(state, { hasValidLicense: false });
+    expect(feat('services')).toEqual(services);
+  });
+
+  it('a service the license turns off stays off', () => {
+    const state = freshState({
+      signedLicense: { ...enterpriseLicense, license: { ...enterpriseLicense.license, features: { services: { ...services, mail: false } } } },
+      planType: 'enterprise', licenseStatus: 'valid',
+    });
+    const feat = userAuth.getters.getLicenseFeature(state, { hasValidLicense: true });
+    expect(feat('services').mail).toBe(false);
+    expect(feat('services').hostedWebhooks).toBe(true);
+  });
+
+  it('a free plan gets no services from the fallback', () => {
+    const state = freshState({ subscription: { planType: 'free', features: { services } }, planType: 'free' });
+    const feat = userAuth.getters.getLicenseFeature(state, { hasValidLicense: false });
+    expect(feat('services')).toBe(false);
+  });
+
+  it('toggles keep their meaning: { enabled: false } is still off', () => {
+    const state = freshState({
+      signedLicense: { license: { userId: REAL_USER_ID, features: { webhooks: { enabled: false } } }, signature: 's' },
+      planType: 'enterprise', licenseStatus: 'valid',
+    });
+    const feat = userAuth.getters.getLicenseFeature(state, { hasValidLicense: true });
+    expect(feat('webhooks')).toBe(false);
+  });
+});
+
 describe('source contract — the checks are actually installed', () => {
   it('validateLicense is registered with an identity scope', () => {
     const src = stripComments(read('./userAuth.js'));
