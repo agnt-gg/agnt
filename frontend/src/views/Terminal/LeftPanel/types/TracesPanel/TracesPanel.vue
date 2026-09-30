@@ -115,6 +115,7 @@
 <script>
 import { defineComponent, ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
+import { isRunningExecution } from '@/canvas/railBadges.js';
 
 export default {
   name: 'TracesPanel',
@@ -144,11 +145,11 @@ export default {
     const totalExecutions = computed(() => executions.value.length);
 
     const activeExecutions = computed(() => {
-      return executions.value.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
+      return executions.value.filter(isRunningExecution).length;
     });
 
     const runningCount = computed(() => {
-      return executions.value.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
+      return executions.value.filter(isRunningExecution).length;
     });
 
     const completedCount = computed(() => {

@@ -269,6 +269,7 @@ import { useTracesTutorial } from './useTracesTutorial.js';
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
+import { isRunningExecution } from '@/canvas/railBadges.js';
 
 export default {
   name: 'TracesScreen',
@@ -392,7 +393,7 @@ export default {
       // Filter by status tab
       switch (activeTab.value) {
         case 'running':
-          executions = executions.filter((e) => e.status === 'running' || e.status === 'started');
+          executions = executions.filter(isRunningExecution);
           break;
         case 'completed':
           executions = executions.filter((e) => e.status === 'completed' || e.status === 'validated' || e.status === 'needs_review');
@@ -410,7 +411,7 @@ export default {
       // Filter by panel filter (if different from tab)
       if (currentFilter.value !== 'all' && currentFilter.value !== activeTab.value) {
         if (currentFilter.value === 'running') {
-          executions = executions.filter((e) => e.status === 'running' || e.status === 'started');
+          executions = executions.filter(isRunningExecution);
         } else {
           executions = executions.filter((e) => e.status === currentFilter.value);
         }
@@ -1240,7 +1241,7 @@ ${execution.log}
       // Show cached data immediately if available
       const cachedExecutions = store.getters['executionHistory/getExecutions'];
       if (cachedExecutions && cachedExecutions.length > 0) {
-        const runningCount = cachedExecutions.filter((e) => e.status === 'running' || e.status === 'started').length;
+        const runningCount = cachedExecutions.filter(isRunningExecution).length;
         addLine(`Loaded ${cachedExecutions.length} executions from cache${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
       }
 
@@ -1252,7 +1253,7 @@ ${execution.log}
             if (executions.length === 0) {
               addLine('No executions found. Run some workflows to see execution history.', 'info');
             } else {
-              const runningCount = executions.filter((e) => e.status === 'running' || e.status === 'started').length;
+              const runningCount = executions.filter(isRunningExecution).length;
               addLine(`Found ${executions.length} executions${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
             }
           }
@@ -1266,7 +1267,7 @@ ${execution.log}
         if (pollingInterval) return;
         pollingInterval = setInterval(() => {
           if (document.hidden) return;
-          const runningExecutions = store.getters['executionHistory/getExecutions'].filter((e) => e.status === 'running' || e.status === 'started');
+          const runningExecutions = store.getters['executionHistory/getExecutions'].filter(isRunningExecution);
           if (runningExecutions.length > 0) {
             store.dispatch('executionHistory/fetchExecutions');
           }

@@ -136,6 +136,9 @@ export default {
                 creditsUsed: goal.credits_used || 0,
                 nodeCount: goal.task_count || 0,
                 isGoalExecution: true,
+                // History keeps deleted goals; this stops one deleted mid-run
+                // (its status stays 'executing') from counting as running.
+                deleted: Boolean(goal.deleted_at),
                 inputTokens: goal.input_tokens || 0,
                 outputTokens: goal.output_tokens || 0,
                 totalTokens: goal.total_tokens || 0,

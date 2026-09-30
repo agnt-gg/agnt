@@ -9,14 +9,29 @@
 // Keys here MUST match the `badge` field in sections.js; sections.spec.js
 // checks that every declared badge has a reader.
 
-const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
+const RUNNING = new Set(['running', 'started', 'executing', 'in_progress', 'active']);
+
+/**
+ * Is this run happening right now? THE definition for every "running" count
+ * and filter — the header pill, the Runs tabs and the Runs panel — so the pill
+ * can never lead to a Running tab that is empty.
+ *
+ * A deleted goal is never running. Deleting a goal only stamps deleted_at; a
+ * goal deleted mid-run keeps status 'executing' forever, and the Runs history
+ * loads deleted goals. Without this, one such goal pinned "1 running" on the
+ * header permanently. Mirrors the backend's GoalModel.countExecuting.
+ */
+export function isRunningExecution(execution) {
+  if (!execution || execution.deleted || execution.deleted_at) return false;
+  return RUNNING.has(String(execution.status || '').toLowerCase());
+}
 
 export function countExecutingGoals(goals) {
-  return (goals || []).filter((g) => g && g.status === 'executing').length;
+  return (goals || []).filter((g) => g && g.status === 'executing' && !g.deleted_at).length;
 }
 
 export function countRunningExecutions(executions) {
-  return (executions || []).filter((e) => e && RUNNING.has(String(e.status || '').toLowerCase())).length;
+  return (executions || []).filter(isRunningExecution).length;
 }
 
 export function countConnectorAttention(connectorsState) {
