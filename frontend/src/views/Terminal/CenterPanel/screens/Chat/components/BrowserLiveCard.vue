@@ -12,7 +12,7 @@
     the registry and can take the stream over when a newer card unmounts. Only
     the DOM is empty.
   -->
-  <div v-if="owns" class="browser-live-card">
+  <div v-if="owns" v-show="live || showing" class="browser-live-card">
     <div class="live-header" @click="collapsed = !collapsed">
       <span class="live-caret">{{ collapsed ? '▸' : '▾' }}</span>
       <span class="live-dot on"></span>
@@ -22,13 +22,13 @@
 
     <div v-if="!collapsed" class="live-body">
       <!--
-        launch=false is the whole difference from the canvas widget. This card
-        appears BECAUSE a browser step ran, so it should show the browser that
-        step is using — never cause one to be opened. A card that launches
-        would open a browser just by being rendered, including when the user
-        scrolls back through old messages.
+        The LIVE turn opens a browser if none exists: the card is there because
+        the agent is browsing right now, and a card that waits for a browser
+        that never comes is the blank pane this used to be. An OLD message
+        never launches (scrolling back must not open browsers); it stays
+        hidden (v-show above) until it actually has pixels to show.
       -->
-      <BrowserStreamView :launch="false" @page="onPage" />
+      <BrowserStreamView :launch="live" @page="onPage" @showing="onShowing" />
     </div>
   </div>
 </template>
@@ -65,7 +65,12 @@ const props = defineProps({
   cardKey: { type: String, required: true },
   /** Monotonic within a conversation; the highest claim owns the stream. */
   order: { type: Number, default: 0 },
+  /** This card belongs to the turn happening now, not one being re-read. */
+  live: { type: Boolean, default: false },
 });
+
+const showing = ref(false);
+function onShowing(value) { showing.value = Boolean(value); }
 
 const collapsed = ref(false);
 const pageUrl = ref('');

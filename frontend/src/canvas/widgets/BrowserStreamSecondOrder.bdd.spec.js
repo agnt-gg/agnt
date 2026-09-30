@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 const env = vi.hoisted(() => ({ socket: null }));
-vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket }));
+vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket, ensureRealtimeConnected: () => { env.nudges = (env.nudges || 0) + 1; } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: '/api' } }));
 import BrowserStreamView from './BrowserStreamView.vue';
 let handlers, wrapper, images, draw, requests, fetchImpl;
@@ -40,10 +40,12 @@ describe('Given the real live-view component', () => {
     images[0].onload(); await flushPromises();
     expect(wrapper.text()).toMatch(/snapshot/i);
   });
-  it('Given a previously painted frame, When the next decode fails, Then its error remains visible', async()=>{
+  it('Given a previously painted frame, When the next decode fails, Then that frame is dropped and the page stays on screen', async()=>{
     await boot(); await authenticate(); frame(); images[0].onload(); await flushPromises();
     frame(); images[1].onerror(); await flushPromises();
-    expect(wrapper.text()).toMatch(/could not be decoded/i);
+    expect(wrapper.find('.stream-status').exists()).toBe(false);
+    // Still acked, so the shared capture keeps advancing.
+    expect(env.socket.emit.mock.calls.filter(c=>c[0]==='browser:ack').length).toBeGreaterThanOrEqual(2);
   });
   it('Given a command in flight, When disconnect precedes its response, Then the response cannot change the new view', async()=>{
     await boot(); await authenticate(); let finish;

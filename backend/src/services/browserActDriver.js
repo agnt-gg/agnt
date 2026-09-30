@@ -78,6 +78,7 @@
 
 import { CdpConnection, attachToPage } from './cdpConnection.js';
 import { BLOCK_PROBE_EXPRESSION, classifyBlockPage, blockedHint } from './browserBlockDetection.js';
+import { setActiveTarget, getActiveTarget } from './browserActiveTarget.js';
 
 /** userId -> live driver session. One per user: the ref map is the agent's working memory. */
 const drivers = new Map();
@@ -228,7 +229,9 @@ async function driverFor(userId, cdpUrl) {
   dropDriver(userId);
 
   const connection = await new CdpConnection(cdpUrl).connect({ timeoutMs: CONNECT_TIMEOUT_MS });
-  const { sessionId, targetId } = await attachToPage(connection);
+  // Resume the tab the agent was last in, if a reconnect lost the driver.
+  const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(cdpUrl));
+  setActiveTarget(cdpUrl, targetId);
   const driver = {
     userId,
     cdpUrl,
@@ -288,6 +291,7 @@ async function attachDriverTo(driver, targetId) {
   if (!sessionId) throw new Error('the browser refused a page session for that tab');
   driver.sessionId = sessionId;
   driver.targetId = targetId;
+  setActiveTarget(driver.cdpUrl, targetId);
   driver.refs.clear();
   driver.refUrl = null;
   driver.seenNodes = new Set();

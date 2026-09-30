@@ -155,9 +155,12 @@ export class CdpConnection {
  * Electron widget, so one code path serves both a launched browser and the
  * widget's bridge.
  */
-export async function attachToPage(connection) {
+export async function attachToPage(connection, preferredTargetId = null) {
   const { targetInfos = [] } = await connection.send('Target.getTargets');
-  const page = targetInfos.find((t) => t.type === 'page');
+  const pages = targetInfos.filter((t) => t.type === 'page');
+  // The tab the agent is working in, when known (browserActiveTarget.js).
+  // Otherwise the first page, as before.
+  const page = (preferredTargetId && pages.find((t) => t.targetId === preferredTargetId)) || pages[0];
   if (!page) throw new Error('that browser has no page to show');
 
   const { sessionId } = await connection.send('Target.attachToTarget', {

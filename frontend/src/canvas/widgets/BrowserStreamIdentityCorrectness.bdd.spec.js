@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 const env = vi.hoisted(() => ({ socket: null }));
-vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket }));
+vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket, ensureRealtimeConnected: () => { env.nudges = (env.nudges || 0) + 1; } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: '/api' } }));
 import BrowserStreamView from './BrowserStreamView.vue';
 let handlers, wrapper, images, draw, requests, fetchImpl;

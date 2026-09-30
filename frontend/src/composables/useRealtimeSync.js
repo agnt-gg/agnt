@@ -29,6 +29,30 @@ export function getRealtimeSocket() {
   return socket;
 }
 
+/**
+ * Bring the socket back now if it is down, instead of waiting out the backoff.
+ *
+ * Safe to call at any time: a connected socket is left alone, and socket.io's
+ * connect() on a socket that is already reconnecting joins that attempt rather
+ * than starting a second one. Features that are about to depend on the socket
+ * (the live browser view) call this; so does waking the machine or the tab.
+ */
+export function ensureRealtimeConnected() {
+  if (socket && !socket.connected) socket.connect();
+}
+
+let reconnectNudgesInstalled = false;
+function installReconnectNudges() {
+  if (reconnectNudgesInstalled || typeof window === 'undefined') return;
+  reconnectNudgesInstalled = true;
+  // After sleep or a network change the backoff timer may be minutes stale in
+  // wall-clock terms; the user is looking now, so reconnect now.
+  window.addEventListener('online', ensureRealtimeConnected);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') ensureRealtimeConnected();
+  });
+}
+
 export function emitSteer(conversationId, content) {
   return new Promise((resolve) => {
     if (!socket || !socket.connected) {
@@ -116,12 +140,20 @@ export function useRealtimeSync() {
     const socketUrl = API_CONFIG.BASE_URL.replace('/api', '');
     console.log('[Realtime] Connecting to:', socketUrl);
 
+    // NEVER GIVE UP. This socket carries everything live that is not the chat
+    // stream itself: browser frames, canvas control, page scans, entity sync.
+    // It used to stop after 5 attempts (~15s), so one sleep or network blip
+    // left the window permanently deaf until a reload — and the chat, which
+    // streams over HTTP, kept working, so nothing looked broken except the
+    // live browser. Backoff is capped so a long outage retries every 5s.
     socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
     });
+    installReconnectNudges();
 
     socket.on('connect', () => {
       console.log('[Realtime] Connected to server');
@@ -142,10 +174,14 @@ export function useRealtimeSync() {
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log('[Realtime] Disconnected from server');
+    socket.on('disconnect', (reason) => {
+      console.log('[Realtime] Disconnected from server:', reason);
       isConnected.value = false;
       isAuthenticated.value = false;
+      // A server-initiated disconnect is the one case socket.io deliberately
+      // does not retry. For this app it only ever means "the backend is
+      // restarting", so reconnect.
+      if (reason === 'io server disconnect') socket?.connect();
     });
 
     socket.on('connect_error', (error) => {

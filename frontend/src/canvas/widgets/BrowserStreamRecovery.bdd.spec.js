@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 const env = vi.hoisted(() => ({ socket: null }));
-vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket }));
+vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket, ensureRealtimeConnected: () => { env.nudges = (env.nudges || 0) + 1; } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: '/api' } }));
 import BrowserStreamView from './BrowserStreamView.vue';
 let handlers, wrapper, images, draw, requests, fetchImpl;
@@ -25,10 +25,13 @@ describe('Given the real live-view component', () => {
     await boot(); expect(fetch).not.toHaveBeenCalled();
     await authenticate(); expect(requests.filter(r=>r.opts?.method==='POST')).toHaveLength(1);
   });
-  it('When registration succeeds without frames, Then the bounded status names missing frames, not missing browser', async () => {
-    await boot(); await authenticate(); await vi.advanceTimersByTimeAsync(9000);
-    expect(wrapper.text()).toMatch(/no frame|not received|not delivering/i);
-    expect(wrapper.text()).not.toMatch(/Waiting for the browser to open/);
+  it('When registration succeeds without frames, Then the lease is released and a fresh one is taken automatically', async () => {
+    await boot(); await authenticate(); await vi.advanceTimersByTimeAsync(9000); await flushPromises();
+    expect(requests.filter(r=>r.opts?.method==='DELETE')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1100); await flushPromises();
+    expect(requests.filter(r=>r.opts?.method==='POST' && r.url.endsWith('/view'))).toHaveLength(2);
+    expect(wrapper.text()).toMatch(/Opening the browser/);
+    expect(wrapper.text()).not.toMatch(/Retry/);
   });
   it('When a frame is decoded, Then canvas paint occurs before its ACK', async () => {
     await boot(); await authenticate(); frame();

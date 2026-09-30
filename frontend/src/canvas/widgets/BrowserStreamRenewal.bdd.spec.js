@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 const env = vi.hoisted(() => ({ socket: null }));
-vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket }));
+vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket, ensureRealtimeConnected: () => { env.nudges = (env.nudges || 0) + 1; } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: '/api' } }));
 import BrowserStreamView from './BrowserStreamView.vue';
 let handlers, wrapper, images, draw, requests, fetchImpl;
@@ -21,17 +21,25 @@ const boot = async () => { wrapper = mount(BrowserStreamView, {props:{launch:fal
 const authenticate = async () => { receive('authenticated',{success:true,userId:'alice'}); await flushPromises(); };
 const frame = () => receive('browser:frame',{ instanceId:'i', streamId:'s1', frameId:9, data:'AAA' });
 describe('Given the real live-view component', () => {
-  it('Given an active view, When renewal is unanswered, Then the old picture is hidden and retry is available',async()=>{
+  it('Given an active view, When renewal is unanswered, Then the old picture is hidden and the view re-subscribes by itself',async()=>{
     await boot(); await authenticate(); frame(); images[0].onload(); await flushPromises();
     await vi.advanceTimersByTimeAsync(21000); await flushPromises();
-    expect(wrapper.text()).toMatch(/lease|renewal/i);
-    expect(wrapper.find('.stream-status').exists()).toBe(true);
-    expect(wrapper.text()).toMatch(/Retry live view/);
     expect(env.socket.emit.mock.calls.some(c=>c[0]==='browser:renew')).toBe(true);
+    expect(wrapper.find('.stream-status').exists()).toBe(true);
+    expect(wrapper.text()).not.toMatch(/Retry/);
+    await vi.advanceTimersByTimeAsync(1100); await flushPromises();
+    // A second lease was requested with no user action.
+    expect(requests.filter(r=>r.opts?.method==='POST' && r.url.endsWith('/view'))).toHaveLength(2);
   });
-  it('Given no socket ever appears, When the startup deadline passes, Then the UI offers a bounded diagnostic',async()=>{
-    env.socket=null; await boot(); await vi.advanceTimersByTimeAsync(9000);
-    expect(wrapper.text()).toMatch(/unavailable|timed out/i);
-    expect(wrapper.text()).toMatch(/Retry live view/);
+  it('Given no socket ever appears, When time passes, Then it keeps pulling the socket back and never offers a Retry button',async()=>{
+    env.socket=null; env.nudges=0; await boot(); await vi.advanceTimersByTimeAsync(16000);
+    expect(wrapper.text()).toMatch(/Opening the browser/);
+    expect(wrapper.text()).not.toMatch(/Retry|unavailable|timed out/i);
+    expect(env.nudges).toBeGreaterThanOrEqual(2);
+  });
+  it('Given the socket appears late, When it authenticates, Then the view subscribes with no user action',async()=>{
+    const late=env.socket; env.socket=null; await boot(); await vi.advanceTimersByTimeAsync(9000);
+    env.socket=late; await vi.advanceTimersByTimeAsync(600); await authenticate();
+    expect(requests.filter(r=>r.opts?.method==='POST' && r.url.endsWith('/view'))).toHaveLength(1);
   });
 });

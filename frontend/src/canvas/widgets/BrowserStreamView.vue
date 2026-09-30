@@ -34,16 +34,15 @@
       <div v-if="!hasFrame || error" class="stream-status">
         <i :class="waiting ? 'fas fa-circle-notch fa-spin' : 'fas fa-globe'"></i>
         <p role="status">{{ statusText }}</p>
-        <button v-if="error" type="button" @click="retryView">Retry live view</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { getRealtimeSocket } from '@/composables/useRealtimeSync.js';
+import { getRealtimeSocket, ensureRealtimeConnected } from '@/composables/useRealtimeSync.js';
 import { viewportToPage } from './streamGeometry.js';
 import BrowserToolbar from './BrowserToolbar.vue';
 
@@ -61,7 +60,7 @@ const props = defineProps({
   launch: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(['page', 'history']);
+const emit = defineEmits(['page', 'history', 'showing']);
 
 const canvasRef = ref(null);
 const hasFrame = ref(false);
@@ -97,7 +96,10 @@ let registrationTimer = null;
 let renewalTimer = null;
 let renewalDeadline = null;
 let channelDeadline = null;
-const phase = ref('Connecting to the live-view channel…');
+let recoverTimer = null;
+let recoverDelay = 0;
+const OPENING = 'Opening the browser…';
+const phase = ref(OPENING);
 
 /**
  * How often to re-ask for a surface while none exists.
@@ -108,6 +110,36 @@ const phase = ref('Connecting to the live-view channel…');
  * error, and the view waits for one rather than telling the user off.
  */
 const RETRY_MS = 1500;
+
+/**
+ * Every transient failure lands here, and nothing is shown for it.
+ *
+ * The view used to stop on each failure with a message and a "Retry live
+ * view" button. Every one of those failures (lost socket, lapsed lease, a
+ * frame that never arrived, a browser that changed underneath us) heals by
+ * doing exactly what the button did, so the button was only ever a way of
+ * making the user do the component's job. Now it does it itself, with a
+ * capped backoff so a persistent fault costs one attempt every few seconds.
+ */
+function recover(reason) {
+  if (disposed) return;
+  console.warn('[BrowserStreamView] recovering:', reason);
+  clearSubscription();
+  error.value = ''; phase.value = OPENING; waiting.value = true;
+  clearTimeout(recoverTimer);
+  recoverDelay = Math.min(recoverDelay ? recoverDelay * 2 : 1000, 5000);
+  recoverTimer = setTimeout(restart, recoverDelay);
+}
+
+function restart() {
+  if (disposed) return;
+  ensureRealtimeConnected();
+  if (authenticated && socket?.connected) pollForSurface();
+  else requestAuthentication();
+}
+
+// Whether real pixels are on screen, for hosts that hide an empty view.
+watch(hasFrame, (showing) => emit('showing', showing));
 
 const statusText = computed(() => {
   if (error.value) return error.value;
@@ -150,9 +182,10 @@ function paint(payload) {
   };
   decodeTimer = setTimeout(() => {
     if (disposed || epoch !== generation || serial !== decodeSerial) return;
+    // Drop this frame; the next one replaces it. One bad JPEG is not an outage.
     decodeSerial += 1;
-    error.value = 'Browser frame decoding timed out. Retry the live view.';
-    waiting.value = false; complete();
+    console.warn('[BrowserStreamView] frame decode timed out; dropped');
+    complete();
   }, 5000);
   image.onload = () => {
     if (disposed || epoch !== generation || serial !== decodeSerial) return;
@@ -169,18 +202,18 @@ function paint(payload) {
       // supersede a fallback snapshot for this subscription generation.
       if (payload.source !== 'snapshot') seenLiveFrame = true;
       socket?.emit('browser:painted', {instanceId, viewerId, streamId, ...(payload.bootstrapId ? {bootstrapId:payload.bootstrapId} : {})});
-      hasFrame.value = true; waiting.value = false; error.value = '';
+      hasFrame.value = true; waiting.value = false; error.value = ''; recoverDelay = 0;
       frameDescription.value = payload.source === 'snapshot'
         ? 'Snapshot received — continuous live updates not yet confirmed.'
         : 'Last received browser frame — unchanged pixels alone do not prove stream health.';
       clearTimeout(frameTimer);
-    } catch (err) { error.value = err.message; }
+    } catch (err) { console.warn('[BrowserStreamView] frame dropped:', err.message); }
     complete();
   };
   image.onerror = () => {
     if (disposed || epoch !== generation || serial !== decodeSerial) return;
     painting = false;
-    error.value = 'Connected, but the browser frame could not be decoded.';
+    console.warn('[BrowserStreamView] frame could not be decoded; dropped');
     complete();
   };
   image.src = `data:image/jpeg;base64,${payload.data}`;
@@ -217,7 +250,7 @@ function scheduleRenewal() {
     if (disposed || epoch !== generation || !instanceId) return;
     const failed = () => {
       if (disposed || epoch !== generation) return;
-      clearSubscription(); error.value = 'Live-view lease renewal failed. Retry the live view.'; waiting.value = false;
+      recover('lease renewal failed');
     };
     renewalDeadline = setTimeout(failed, 5000);
     if (!socket?.connected || !authenticated) { failed(); return; }
@@ -229,30 +262,33 @@ function scheduleRenewal() {
   }, 15000);
 }
 
+/**
+ * A watchdog, not a deadline: while the channel is down it keeps pulling the
+ * socket back up and re-authenticating, for as long as the view is mounted.
+ */
 function armChannelDeadline() {
   clearTimeout(channelDeadline);
   channelDeadline = setTimeout(() => {
-    if (!disposed && (!socket?.connected || !authenticated)) {
-      error.value = 'Live-view channel unavailable or connection timed out. Retry the live view.';
-      waiting.value = false;
+    if (disposed) return;
+    if (!socket?.connected || !authenticated) {
+      ensureRealtimeConnected();
+      if (socket?.connected && !authenticated) requestAuthentication();
+      armChannelDeadline();
     }
-  }, 8000);
+  }, 5000);
 }
 
 function armFrameDeadline() {
   clearTimeout(frameTimer);
   frameTimer = setTimeout(() => {
-    if (!hasFrame.value && instanceId && !disposed) {
-      waiting.value = false;
-      error.value = 'Browser connected, but no frame was received. Retry the live view.';
-    }
+    if (!hasFrame.value && instanceId && !disposed) recover('no frame arrived');
   }, 8000);
 }
 
 async function startWatching() {
   const epoch = generation;
   subscribing = true;
-  phase.value = 'Connecting to the browser stream…';
+  phase.value = OPENING;
   // A lost HTTP response can leave a pending server lease. The server expires
   // it; this client bounds the request so its UI cannot spin forever.
   const controller = new AbortController();
@@ -274,10 +310,13 @@ async function startWatching() {
       return 'stop';
     }
     if (!response.ok) {
-      if (response.status === 404) { error.value = ''; phase.value = 'No browser is open yet. Waiting for one…'; return false; }
-      error.value = body.error || 'Could not watch that browser.';
-      waiting.value = false;
-      return [401,403,426,503].includes(response.status) ? 'stop' : false;
+      // 426 is a client/backend version mismatch: only a reload fixes that.
+      if (response.status === 426) { error.value = body.error || 'Live-view protocol changed. Refresh the app.'; waiting.value = false; return 'stop'; }
+      // Anything else (no browser yet, a browser that is still starting or
+      // failed to start, a stale session) is retried quietly.
+      error.value = ''; phase.value = OPENING;
+      if (response.status !== 404) console.warn('[BrowserStreamView] /view', response.status, body.error || '');
+      return response.status === 404 ? false : 'backoff';
     }
     if (!body.instanceId || !body.viewerId || !body.streamId) {
       error.value = 'Live-view protocol mismatch. Update the backend and client together.';
@@ -285,11 +324,11 @@ async function startWatching() {
     }
     observationOnly = true;
     instanceId = body.instanceId; viewerId = body.viewerId; streamId = body.streamId;
-    error.value = ''; phase.value = 'Browser connected. Waiting for its first frame…';
+    error.value = ''; phase.value = OPENING;
     armFrameDeadline();
     const registrationFailed = () => {
       if (disposed || epoch !== generation) return;
-      clearSubscription(); error.value = 'Live-view registration failed. Retry the live view.'; waiting.value = false;
+      recover('viewer registration failed');
     };
     registrationTimer = setTimeout(registrationFailed, 5000);
     socket.emit('browser:watching', { instanceId, viewerId }, (result) => {
@@ -302,9 +341,9 @@ async function startWatching() {
     return true;
   } catch (err) {
     if (epoch !== generation || disposed) return 'stop';
-    error.value = `Could not reach the live-view server: ${err.message}`;
-    waiting.value = false;
-    return false;
+    console.warn('[BrowserStreamView] could not reach the live-view server:', err.message);
+    error.value = ''; phase.value = OPENING;
+    return 'backoff';
   } finally {
     clearTimeout(requestTimer);
     if (epoch === generation) subscribing = false;
@@ -316,14 +355,9 @@ async function pollForSurface() {
   const epoch = generation;
   const started = await startWatching();
   if (disposed || epoch !== generation || started === true || started === 'stop') return;
-  retryTimer = setTimeout(pollForSurface, RETRY_MS);
-}
-
-function retryView() {
-  clearSubscription(); error.value = '';
-  armChannelDeadline();
-  if (authenticated && socket?.connected) pollForSurface();
-  else requestAuthentication();
+  // A real failure (browser failed to launch, server unreachable) backs off so
+  // a persistent fault is one attempt every 5s, not a launch storm.
+  retryTimer = setTimeout(pollForSurface, started === 'backoff' ? 5000 : RETRY_MS);
 }
 
 // ── input ──────────────────────────────────────────────────────────────────
@@ -454,14 +488,16 @@ async function command(action, url = undefined) {
     const body = await response.json().catch(() => ({}));
     if (disposed || epoch !== generation) return false;
     if (!response.ok) {
-      error.value = body.error || 'The browser command failed.';
+      // Logged, not overlaid: the page is still live and a failed back/reload
+      // must not blank it out.
+      console.warn('[BrowserStreamView] browser command failed:', body.error || response.status);
       return false;
     }
     applyBrowserState(body);
     return true;
   } catch (err) {
     if (disposed || epoch !== generation) return false;
-    error.value = `Could not control the browser: ${err.message}`;
+    console.warn('[BrowserStreamView] could not control the browser:', err.message);
     return false;
   } finally {
     if (epoch === generation) navigating.value = false;
@@ -544,8 +580,10 @@ function onAuthenticated(data) {
   if (disposed) return;
   clearTimeout(authTimer);
   if (!data?.success || typeof data.userId !== 'string' || !data.userId.trim()) {
-    authenticated = false; authenticatedUserId = null; clearSubscription();
-    error.value = 'Live-view authentication failed.'; waiting.value = false; return;
+    // Usually a token that is mid-refresh. Try again shortly with the new one.
+    authenticated = false; authenticatedUserId = null;
+    recover(`authentication refused: ${data?.error || 'no user'}`);
+    return;
   }
   if (authenticatedUserId !== null && authenticatedUserId !== data.userId) {
     authenticated = false;
@@ -556,19 +594,19 @@ function onAuthenticated(data) {
   authenticatedUserId = data.userId;
   authenticated = true;
   clearTimeout(channelDeadline);
+  if (!instanceId) { error.value = ''; phase.value = OPENING; waiting.value = true; }
   pollForSurface();
 }
 function onDisconnect() {
   authenticated = false; clearTimeout(authTimer); clearSubscription();
-  error.value = ''; phase.value = 'Live view disconnected. Waiting to reconnect…';
+  error.value = ''; phase.value = OPENING;
   armChannelDeadline();
 }
 function requestAuthentication() {
   if (disposed || !socket?.connected) return;
-  phase.value = 'Authenticating the live-view channel…';
   clearTimeout(authTimer);
   authTimer = setTimeout(() => {
-    if (!authenticated && !disposed) { error.value = 'Live-view authentication timed out. Retry the live view.'; waiting.value = false; }
+    if (!authenticated && !disposed) requestAuthentication();
   }, 8000);
   // Authentication is idempotent. An explicit token round trip also handles
   // mounting after the shared socket already emitted its authenticated event.
@@ -576,8 +614,7 @@ function requestAuthentication() {
 }
 function onFrameUnavailable(payload) {
   if (payload.instanceId === instanceId && payload.viewerId === viewerId && !hasFrame.value) {
-    error.value = 'Browser connected, but it is not delivering frames. Retry the live view.';
-    waiting.value = false;
+    recover('the browser is not delivering frames');
   }
 }
 function attachWhenReady() {
@@ -621,7 +658,7 @@ onBeforeUnmount(() => {
   disposed = true;
   document.removeEventListener('visibilitychange', onVisibility);
   clearSubscription(); clearTimeout(socketTimer); clearTimeout(authTimer);
-  clearTimeout(channelDeadline);
+  clearTimeout(channelDeadline); clearTimeout(recoverTimer);
   detachSocket(); socket = null;
 });
 </script>

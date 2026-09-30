@@ -212,6 +212,7 @@
             v-if="hasBrowserToolCall"
             :card-key="message.id"
             :order="browserCardOrder"
+            :live="browserCardLive"
           />
 
           <ArtifactCards v-if="compactArtifacts && message.role === 'assistant'" :content="artifactContent" :tool-calls="message.toolCalls || []" :message-id="String(message.id || '')" @share="shareCard" />
@@ -2760,6 +2761,19 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       return Number.isFinite(ts) && ts > 0 ? ts : messageFirstRenderedAt;
     });
 
+    /**
+     * Is this the turn happening now? Only then may its card OPEN a browser.
+     * A browser call still running is live by definition; otherwise a message
+     * from the last few minutes counts, which covers the card mounting just
+     * after the call finished. Anything older is history being re-read.
+     */
+    const LIVE_BROWSER_CARD_MS = 10 * 60 * 1000;
+    const browserCardLive = computed(() => {
+      const calls = (props.message?.toolCalls || []).filter((tc) => BROWSER_TOOL_NAMES.has(tc?.name));
+      if (calls.some((tc) => (props.runningTools || []).includes(tc.id))) return true;
+      return messageFirstRenderedAt - browserCardOrder.value < LIVE_BROWSER_CARD_MS;
+    });
+
     const isAutonomousGoalTool = (toolCall) => {
       // Direct tool names
       const directMatch = toolCall.name === 'create_and_run_goal' || toolCall.name === 'execute_goal_autonomous';
@@ -3129,6 +3143,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isAutonomousGoalTool,
       hasBrowserToolCall,
       browserCardOrder,
+      browserCardLive,
       extractGoalId,
       extractGoalTitle,
       extractTaskCount,

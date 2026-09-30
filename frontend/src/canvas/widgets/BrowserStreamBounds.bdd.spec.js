@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 const env = vi.hoisted(() => ({ socket: null }));
-vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket }));
+vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => env.socket, ensureRealtimeConnected: () => { env.nudges = (env.nudges || 0) + 1; } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: '/api' } }));
 import BrowserStreamView from './BrowserStreamView.vue';
 let handlers, wrapper, images, draw, requests, fetchImpl;
@@ -39,9 +39,12 @@ describe('Given bounded observation recovery',()=>{
   expect(images).toHaveLength(1);images[0].onload();
   expect(images).toHaveLength(2);expect(images[1].value).toContain('NEWEST');
  });
- it('When decoding never completes, Then the image is retired within five seconds and retry is available',async()=>{
+ it('When decoding never completes, Then the image is retired within five seconds and the next frame decodes',async()=>{
   await boot();await authenticate();frame();await vi.advanceTimersByTimeAsync(5100);
-  expect(wrapper.text()).toMatch(/decod.*timed out/i);images[0].onload();expect(draw).not.toHaveBeenCalled();
+  images[0].onload();expect(draw).not.toHaveBeenCalled();
+  expect(wrapper.text()).not.toMatch(/Retry|timed out/i);
+  receive('browser:frame',{instanceId:'i',streamId:'s1',frameId:10,data:'NEXT'});
+  expect(images).toHaveLength(2);images[1].onload();expect(draw).toHaveBeenCalledTimes(1);
  });
  it('When a document hides then returns, Then its lease is released and observation resumes without launch or browser actions',async()=>{
   await boot();await authenticate();

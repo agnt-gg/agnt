@@ -50,6 +50,7 @@ import { frameViewerSockets } from './browserViewerDeliveryRegistry.js';
 import { randomUUID } from 'node:crypto';
 import { broadcastToUser } from '../utils/realtimeSync.js';
 import { CdpConnection, attachToPage } from './cdpConnection.js';
+import { getActiveTarget, onActiveTargetChange } from './browserActiveTarget.js';
 
 /** How long to wait for a client's render-ack before assuming it is gone. */
 const ACK_TIMEOUT_MS = 2000;
@@ -99,7 +100,7 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
 
   let session;
   try {
-    const { sessionId, targetId } = await attachToPage(connection);
+    const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(cdpUrl));
     session = {
       userId, instanceId, cdpUrl, connection, sessionId, targetId, streamId: randomUUID(), viewers: 1, ackTimer: null, lastFrame: null,
     };
@@ -119,12 +120,74 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
   return { ok: true, joined: false, viewers: 1, streamId: session.streamId };
 }
 
+/**
+ * Point a running stream at another tab, keeping its streamId and viewers.
+ *
+ * Two callers. The agent moved to another tab (browserActiveTarget), so the
+ * view follows it — otherwise the user watches a tab nobody is working in.
+ * Or the streamed tab closed or crashed; without this the view froze on its
+ * last frame with nothing to say why, because only a whole-connection close
+ * was ever noticed.
+ *
+ * Same streamId on purpose: the viewer's lease, registration and socket
+ * routing stay valid, so the switch is invisible apart from the new pixels.
+ */
+async function retarget(session, preferredTargetId) {
+  if (session.retargeting) { session.pendingTarget = preferredTargetId || session.pendingTarget || null; return; }
+  session.retargeting = true;
+  const previousSessionId = session.sessionId;
+  try {
+    session.connection.post('Page.stopScreencast', {}, previousSessionId);
+    const { sessionId, targetId } = await attachToPage(session.connection, preferredTargetId);
+    if (sessions.get(session.instanceId) !== session) return;
+    session.sessionId = sessionId;
+    session.targetId = targetId;
+    session.lastFrame = null;
+    clearTimeout(session.ackTimer);
+    await session.connection.send('Page.enable', {}, sessionId);
+    await session.connection.send('Page.startScreencast', FRAME_FORMAT, sessionId);
+    if (previousSessionId && previousSessionId !== sessionId) {
+      session.connection.post('Target.detachFromTarget', { sessionId: previousSessionId });
+    }
+    const info = await session.connection.send('Target.getTargetInfo', { targetId }).catch(() => null);
+    broadcastToUser(session.userId, 'browser:navigated', {
+      instanceId: session.instanceId, streamId: session.streamId, url: info?.targetInfo?.url || null,
+    });
+    console.log(`[Screencast] ${session.instanceId} now streaming tab ${targetId}`);
+  } catch (err) {
+    // No page left to show (the last tab closed) or the browser is going away.
+    // Ending with notify sends the viewer back to polling, which picks up the
+    // next browser rather than holding a dead frame.
+    stopSession(session.instanceId, `could not follow the tab: ${err.message}`, { notify: true });
+  } finally {
+    session.retargeting = false;
+    const next = session.pendingTarget;
+    session.pendingTarget = null;
+    if (next && next !== session.targetId && sessions.get(session.instanceId) === session) retarget(session, next);
+  }
+}
+
+onActiveTargetChange((cdpUrl, targetId) => {
+  for (const session of sessions.values()) {
+    if (session.cdpUrl === cdpUrl && session.targetId !== targetId) retarget(session, targetId);
+  }
+});
+
 function handleEvent(session, message) {
   if (sessions.get(session.instanceId) !== session) return;
   if (message.method === '__closed') {
     stopSession(session.instanceId, message.params?.reason || 'the browser went away', { notify: true });
     return;
   }
+
+  // The streamed tab closed or crashed, but the browser lives on.
+  if (message.method === 'Target.detachedFromTarget' && message.params?.sessionId === session.sessionId) {
+    retarget(session, getActiveTarget(session.cdpUrl));
+    return;
+  }
+
+  // A frame from a tab we have already moved away from.
+  if (message.sessionId && message.sessionId !== session.sessionId) return;
 
   if (message.method === 'Page.screencastFrame') {
     const { data, sessionId: frameId, metadata } = message.params || {};
