@@ -100,7 +100,7 @@
         </Teleport>
 
         <!-- Conversation Canvas -->
-        <div class="conversation-canvas-wrapper">
+        <div class="conversation-canvas-wrapper" :class="{ 'scroll-controls-clear-actions': scrollControlsShareActionsCorner }">
           <!-- Inspector toggle. The right panel is collapsed by default on
                Chat (screenRegistry `rightCollapsedDefault`); this is the one
                visible way back in from the thread itself. -->
@@ -1003,6 +1003,16 @@ export default {
     });
     const isLoadingSuggestions = computed(() =>
       store.getters['chat/isLoadingConversationSuggestions'](store.state.chat.activeConversationId),
+    );
+
+    // The scroll arrows sit in the canvas's bottom-right corner; the Save / New
+    // Chat bar sits in the screen's. The suggestions bar normally separates the
+    // two, but it renders nothing when there are no suggestions (mid-run, or
+    // after a turn with no follow-ups) and the canvas then reaches the bottom,
+    // stacking the arrows on the buttons. True exactly when ChatActions renders
+    // and QuickActions does not: mirror their v-if conditions.
+    const scrollControlsShareActionsCorner = computed(
+      () => !isMobile.value && hasConnectedAIProvider.value && suggestions.value.length === 0,
     );
 
     // Monitoring Panel State
@@ -2964,6 +2974,7 @@ export default {
       displayMessages,
       isProcessing,
       suggestions,
+      scrollControlsShareActionsCorner,
       isLoadingSuggestions,
       contextStatus,
       hasMonitoringData,
@@ -3336,6 +3347,12 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Lift the scroll arrows above ChatActions (36px buttons, 6px from the
+   bottom = 42px) plus a 10px gap. See scrollControlsShareActionsCorner. */
+.conversation-canvas-wrapper.scroll-controls-clear-actions :deep(.chat-scroll-controls) {
+  bottom: 52px;
 }
 
 /* Inspector toggle: small, top-right, out of the transcript's way. */
