@@ -1448,7 +1448,7 @@ class PluginInstaller {
         }
       }
 
-      console.log(`[PluginInstaller] ${pluginName}: Valid ✓`);
+      console.debug(`[PluginInstaller] ${pluginName}: Valid ✓`);
       return true;
     } catch (error) {
       console.warn(`[PluginInstaller] ${pluginName}: Invalid - ${error.message}`);

@@ -58,14 +58,24 @@ class ToolRegistry {
       const toolLibraryData = JSON.parse(rawToolLibrary);
 
       const toolCategoriesToLoad = ['actions', 'utilities', 'custom'];
+      const toolDefs = toolCategoriesToLoad.flatMap((category) =>
+        Array.isArray(toolLibraryData[category]) ? toolLibraryData[category] : []
+      );
 
-      for (const category of toolCategoriesToLoad) {
-        if (toolLibraryData[category] && Array.isArray(toolLibraryData[category])) {
-          for (const toolDef of toolLibraryData[category]) {
-            await this._loadAndRegisterTool(toolDef);
-          }
-        }
-      }
+      // Load concurrently, register in manifest order. Loading one tool at a
+      // time made boot the SUM of every probe and import, each queued on the
+      // libuv pool behind whatever SQLite was doing: 30 s for 19 tools on
+      // 2026-09-30. Registration order is what callers can observe (tool
+      // lists), so it stays sequential.
+      const loaded = await Promise.all(toolDefs.map((toolDef) => this._loadToolImplementation(toolDef)));
+      const loadedFrom = {};
+      toolDefs.forEach((toolDef, index) => {
+        if (!loaded[index]) return;
+        this._registerTool(toolDef, loaded[index].implementation);
+        loadedFrom[loaded[index].category] = (loadedFrom[loaded[index].category] || 0) + 1;
+      });
+      const byCategory = Object.entries(loadedFrom).map(([category, count]) => `${category}: ${count}`).join(', ');
+      console.log(`[Orchestrator ToolRegistry] Loaded ${this.tools.size} library tools (${byCategory}).`);
 
       // Load plugin tools
       await this._loadPluginTools();
@@ -126,7 +136,7 @@ class ToolRegistry {
         };
 
         this.pluginTools.set(toolType, preparedTool);
-        console.log(`[Orchestrator ToolRegistry] ✓ Registered plugin tool: ${toolType} from ${pluginName}`);
+        console.debug(`[Orchestrator ToolRegistry] ✓ Registered plugin tool: ${toolType} from ${pluginName}`);
       }
     } catch (error) {
       console.error('[Orchestrator ToolRegistry] Failed to load plugin tools:', error);
@@ -212,9 +222,19 @@ class ToolRegistry {
   }
 
   async _loadAndRegisterTool(toolDef) {
+    const loaded = await this._loadToolImplementation(toolDef);
+    if (loaded) this._registerTool(toolDef, loaded.implementation);
+  }
+
+  /**
+   * Find and import a library tool's module. Never throws: a tool that cannot
+   * be loaded is skipped, exactly as before.
+   * @returns {Promise<{implementation: object, category: string} | null>}
+   */
+  async _loadToolImplementation(toolDef) {
     const toolType = toolDef.type;
     if (!toolType) {
-      return;
+      return null;
     }
 
     // Define categories to search (matching NodeExecutor and WorkflowEngine pattern)
@@ -236,7 +256,6 @@ class ToolRegistry {
         if (toolModule && typeof toolModule.execute === 'function') {
           implementation = toolModule;
           loadedFrom = category;
-          console.log(`✓ Loaded ${toolType} from ${category}/`);
           break;
         }
       } catch (error) {
@@ -251,9 +270,13 @@ class ToolRegistry {
       if (lastError && lastError.code !== 'ENOENT') {
         console.warn(`Could not load tool '${toolType}':`, lastError.message);
       }
-      return;
+      return null;
     }
+    return { implementation, category: loadedFrom };
+  }
 
+  _registerTool(toolDef, implementation) {
+    const toolType = toolDef.type;
     const openApiSchema = this._createOpenApiSchema(toolDef);
 
     const preparedTool = {

@@ -266,7 +266,9 @@ class PluginManager {
       for (const tool of manifest.tools) {
         if (tool.type && tool.entryPoint) {
           this.toolToPlugin.set(tool.type, pluginName);
-          console.log(`[PluginManager] Registered tool: ${tool.type} from plugin ${pluginName}`);
+          // Per-item boot lines are debug: ~680 of them per boot, per process,
+          // each a synchronous log write. The totals are logged at INFO.
+          console.debug(`[PluginManager] Registered tool: ${tool.type} from plugin ${pluginName}`);
 
           // If this is a trigger tool, register it into ToolConfig.triggers
           if (tool.schema?.category === 'trigger') {
@@ -308,7 +310,7 @@ class PluginManager {
               owner
             );
             if (summary.noop) {
-              console.log(`[PluginManager] ${pluginName}: ecosystem assets already at v${manifest.version || '1.0.0'}`);
+              console.debug(`[PluginManager] ${pluginName}: ecosystem assets already at v${manifest.version || '1.0.0'}`);
             } else {
               const counts = {
                 agents: summary.installed.agents.length,
@@ -342,7 +344,7 @@ class PluginManager {
         if (error) console.warn(`[PluginManager] ${pluginName}: ignoring auth declaration: ${error}`);
       }
 
-      console.log(`[PluginManager] Loaded plugin: ${pluginName} (${manifest.tools.length} tools)`);
+      console.debug(`[PluginManager] Loaded plugin: ${pluginName} (${manifest.tools.length} tools)`);
     } catch (error) {
       if (error.code === 'ENOENT') {
         console.warn(`[PluginManager] Plugin ${pluginName} missing manifest.json`);

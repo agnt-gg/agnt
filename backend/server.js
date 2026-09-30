@@ -1,3 +1,5 @@
+// FIRST: libuv reads UV_THREADPOOL_SIZE once, when its pool is first used.
+import './src/config/threadpool.js';
 import 'dotenv/config';
 // MUST stay directly under dotenv, and BEFORE every other import: AuthManager
 // (`export default new AuthManager()`) and Middleware (`new Middleware()`)
@@ -125,6 +127,10 @@ import PairingRoutes from './src/routes/PairingRoutes.js';
 import RemoteAccessConfig from './src/services/RemoteAccessConfig.js';
 import RestartManager from './src/services/RestartManager.js';
 import { createGracefulShutdown } from './src/utils/gracefulShutdown.js';
+import { markBoot, logBootSummary, startBootHealthMonitor } from './src/diagnostics/bootTimeline.js';
+
+// Every static import above has been evaluated by the time this line runs.
+markBoot('modules-loaded');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -328,7 +334,23 @@ app.use('/api/pairing', PairingRoutes);
 // the first. Without it, a spend window of "last 30 days" and "last 1 day"
 // returned identical figures — the ledger only knew about calls made after it
 // shipped.
-dbReady.then(async () => {
+/**
+ * Run `task` once boot has finished (deferredInit settled) plus a short grace,
+ * so optional warm-up work — network catalogues, repricing, model lists — does
+ * not compete with getting the app usable. Nothing a request needs waits on it.
+ */
+let announceBootFinished;
+const bootFinished = new Promise((resolve) => { announceBootFinished = resolve; });
+const AFTER_BOOT_GRACE_MS = 5000;
+function afterBoot(label, task) {
+  bootFinished
+    .then(() => new Promise((resolve) => setTimeout(resolve, AFTER_BOOT_GRACE_MS).unref?.()))
+    .then(task)
+    .catch((err) => console.error(`[boot] ${label} failed (non-fatal):`, err));
+}
+
+afterBoot('ledger backfill/reprice', async () => {
+  await dbReady;
   const { backfillFromAgentExecutions, backfillFromNodeExecutions, repriceUnpricedCalls } =
     await import('./src/services/execution/LedgerRecorder.js');
   const { initModelMetadataPersistence, syncPublicModelCatalog } = await import('./src/services/ai/modelMetadataPersistence.js');
@@ -548,23 +570,28 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-async function initializePlugins() {
+/**
+ * Extract bundled plugins, validate installed ones, and register them.
+ *
+ * Both steps WRITE: installAllPlugins extracts bundled .agnt files, and
+ * PluginManager.initialize installs each plugin's ecosystem assets (agents,
+ * workflows, skills, widgets) into the database. The workflow process runs the
+ * same two steps itself, and their idempotency checks are not safe across two
+ * processes — so the child is only forked after this returns.
+ */
+async function installAndRegisterPlugins() {
   console.log('=== Plugin System Initialization ===');
-
-  // Step 1: Install plugin dependencies (npm install for each plugin that needs it)
-  // This validates all plugins and ensures node_modules exist
-  console.log('Installing plugin dependencies...');
   const installResult = await PluginInstaller.installAllPlugins();
-  console.log('Plugin installation result:', installResult);
-
-  // Step 2: Initialize plugin manager (scan and register plugins)
-  // Pass the already-validated plugin list to skip redundant filesystem checks
-  console.log('Initializing plugin manager...');
   await PluginManager.initialize(installResult?.plugins);
   console.log('Plugin manager initialized');
+}
 
-  // Step 3: Reload plugin tools in orchestrator toolRegistry
-  // This is needed because toolRegistry initializes before plugins are loaded
+/**
+ * Load the orchestrator's library tools and pick up plugin tools. Read-only as
+ * far as other processes are concerned, so the workflow process no longer
+ * waits for it — on 2026-09-30 it took 30 s.
+ */
+async function loadOrchestratorTools() {
   try {
     const { default: toolRegistry } = await import('./src/services/orchestrator/toolRegistry.js');
     await toolRegistry.reloadPluginTools();
@@ -572,158 +599,156 @@ async function initializePlugins() {
   } catch (error) {
     console.error('Failed to reload orchestrator plugin tools:', error);
   }
-
-  // Log plugin stats
-  const stats = PluginManager.getStats();
-  console.log('Plugin stats:', stats);
+  console.log('Plugin stats:', PluginManager.getStats());
   console.log('=== Plugin System Ready ===');
 }
 
+/** Run one independent, fail-soft boot step; its failure never stops boot. */
+async function bootStep(label, task) {
+  try {
+    await task();
+  } catch (error) {
+    console.warn(`[Server] ${label} failed (non-fatal):`, error?.message || error);
+  }
+}
+
+/**
+ * Everything after listen. Ordering is by DEPENDENCY, not habit: the steps
+ * that depend on nothing run concurrently, and the workflow process — which
+ * is what re-arms timer workflows — starts as soon as the plugin steps it
+ * must not race have finished, instead of after every other step.
+ */
 async function deferredInit() {
-  // Re-encrypt credentials written under the published key with this install's
-  // own key. A no-op unless a legacy key is available AND legacy rows exist,
-  // and idempotent by construction, so it costs one small SELECT per boot.
-  //
-  // Deferred rather than blocking: dual-key decrypt (utils/encryption.js) means
-  // every row is readable whether or not this ever runs, so there is no reason
-  // to hold up the listener for it, and no reason to let a failure here stop
-  // the app from starting.
-  try {
-    const { default: db } = await import('./src/models/database/index.js');
-    const { migrateEncryptedColumns } = await import('./src/utils/encryptionMigration.js');
-    const result = await migrateEncryptedColumns(db);
-    if (result.migrated > 0 || result.skipped > 0 || result.unreadable > 0) {
-      console.log(
-        `[encryption] migrated=${result.migrated} skipped=${result.skipped} ` +
-          `unreadable=${result.unreadable} sidecar=${result.sidecar || 'none'}`
-      );
-    }
-  } catch (error) {
-    console.warn('[Server] Credential re-encryption failed (non-fatal, data still readable):', error);
-  }
+  // Independent and fail-soft; none of them gates anything below.
+  const independentSteps = Promise.all([
+    // Re-encrypt credentials written under the published key with this
+    // install's own key. A no-op unless a legacy key is available AND legacy
+    // rows exist. Dual-key decrypt (utils/encryption.js) means every row is
+    // readable whether or not this ever runs.
+    bootStep('credential re-encryption', async () => {
+      const { default: db } = await import('./src/models/database/index.js');
+      const { migrateEncryptedColumns } = await import('./src/utils/encryptionMigration.js');
+      const result = await migrateEncryptedColumns(db);
+      if (result.migrated > 0 || result.skipped > 0 || result.unreadable > 0) {
+        console.log(
+          `[encryption] migrated=${result.migrated} skipped=${result.skipped} ` +
+            `unreadable=${result.unreadable} sidecar=${result.sidecar || 'none'}`
+        );
+      }
+    }),
+    // Warm Codex thread cache so conversations can resume after restarts.
+    bootStep('Codex thread cache', () => CodexCliSessionManager.init()),
+    // Builtin skills to ~/.agnt/skills/, THEN discovery, which scans them.
+    bootStep('skills', async () => {
+      const { bootstrapBuiltinSkills } = await import('./src/utils/builtinSkillBootstrap.js');
+      await bootstrapBuiltinSkills();
+      const { default: SkillDiscoveryService } = await import('./src/services/SkillDiscoveryService.js');
+      await SkillDiscoveryService.init();
+      console.log('Skill discovery initialized');
+    }),
+    // The MCP tool service loads its schema cache from disk at import; `build()`
+    // then serves it without spawning servers. Touch it here so that read
+    // happens during boot rather than on the first chat call.
+    bootStep('MCP schema cache', async () => {
+      await import('./src/services/MCPToolService.js');
+      console.log('[Server] MCP schema cache loaded from disk');
+    }),
+  ]).then(() => markBoot('services-ready'));
 
-  // Warm Codex thread cache so conversations can resume after restarts
-  try {
-    await CodexCliSessionManager.init();
-  } catch (error) {
-    console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
-  }
+  // Registered BEFORE the spawn: a start that is slow or retried must still
+  // broadcast status, and the listener costs nothing until a message arrives.
+  wireWorkflowStatusBroadcasts();
 
-  // Bootstrap builtin skills to ~/.agnt/skills/ (first run or app update)
-  try {
-    const { bootstrapBuiltinSkills } = await import('./src/utils/builtinSkillBootstrap.js');
-    await bootstrapBuiltinSkills();
-  } catch (error) {
-    console.warn('[Server] Builtin skill bootstrap failed (non-fatal):', error);
-  }
+  await bootStep('plugin install and registration', installAndRegisterPlugins);
+  markBoot('plugins-registered');
 
-  // Initialize Agent Skills discovery (agentskills.io standard)
-  try {
-    const { default: SkillDiscoveryService } = await import('./src/services/SkillDiscoveryService.js');
-    await SkillDiscoveryService.init();
-    console.log('Skill discovery initialized');
-  } catch (error) {
-    console.warn('[Server] Skill discovery initialization failed (non-fatal):', error);
-  }
-
-  // The MCP tool service loads its schema cache from disk synchronously at
-  // import. We don't need to do anything here — `build()` returns the
-  // disk-backed cache without spawning any servers, and the service kicks
-  // off its own first-run refresh in the background if the cache file is
-  // missing. Schemas are explicitly refreshed only when the user changes
-  // their MCP config (via MCPService.invalidate) or clicks Refresh on the
-  // MCP page. No more spawn-N-servers-on-every-chat.
-  //
-  // Touch the singleton here just so the lazy import + disk read happens
-  // during deferredInit rather than on the first chat call.
-  try {
-    await import('./src/services/MCPToolService.js');
-    console.log('[Server] MCP schema cache loaded from disk');
-  } catch (error) {
-    console.warn('[Server] MCP schema cache load failed (non-fatal):', error?.message);
-  }
-
-  // Initialize plugins before spawning workflow process
-  console.log('Initializing plugins before spawning workflow process...');
-  try {
-    await initializePlugins();
-    console.log('Plugin initialization complete');
-  } catch (error) {
-    console.error('Plugin initialization error (non-fatal):', error);
-  }
-
-  // Spawn workflow process AFTER plugins and database are ready.
   // PRD-084-R2 §0.2: the child is forked with AGNT_SKIP_DB_INIT=1 and trusts
-  // this process to own schema init — this await IS the ordering guarantee,
-  // not an optimization. dbReady never rejects (it catches internally).
-  const { dbReady } = await import('./src/models/database/index.js');
-  await dbReady;
-  console.log('Spawning workflow process...');
-  try {
-    await WorkflowProcessBridge.spawn();
-    console.log('Workflow process spawned successfully');
+  // this process to own schema init — awaiting dbReady IS the ordering
+  // guarantee. dbReady never rejects (it catches internally).
+  const workflowProcess = dbReady.then(startWorkflowProcess);
 
-    // Wire up real-time workflow status broadcasts to connected clients
-    WorkflowProcessBridge.onStatusUpdate((workflowId, statusData) => {
-      const event = RealtimeEvents.WORKFLOW_STATUS_CHANGED;
-      const payload = {
-        id: workflowId,
-        status: statusData.status,
-        isActive: statusData.isActive,
-        timestamp: new Date().toISOString(),
-      };
-      if (statusData.userId) {
-        broadcastToUser(statusData.userId, event, payload);
-      } else {
-        broadcast(event, payload);
-      }
+  await loadOrchestratorTools();
+  markBoot('orchestrator-tools-ready');
 
-      // Fire-and-forget: trigger insight extraction when a workflow execution finishes
-      const terminalStatuses = ['listening', 'error', 'stopped'];
-      if (terminalStatuses.includes(statusData.status) && statusData.userId) {
-        import('./src/services/evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
-          // Look up the latest execution for this workflow to get the execution ID
-          Promise.all([
-            import('./src/models/database/index.js'),
-            import('./src/models/UserModel.js'),
-          ]).then(async ([{ default: db }, { default: UserModel }]) => {
-            const row = await new Promise((resolve) => {
-              db.get(
-                'SELECT id FROM workflow_executions WHERE workflow_id = ? ORDER BY start_time DESC LIMIT 1',
-                [workflowId],
-                (err, r) => resolve(err ? null : r)
-              );
-            });
-            if (!row) return;
-            const userSettings = await UserModel.getUserSettings(statusData.userId);
-            InsightTriggers.onWorkflowExecutionCompleted(row.id, statusData.userId, {
-              workflowId,
-              provider: userSettings?.selectedProvider,
-              model: userSettings?.selectedModel,
-            }).catch(e => {
-              console.error('[InsightTriggers] Workflow insight extraction failed (non-critical):', e.message);
-            });
-          }).catch(() => {});
-        }).catch(() => {});
-      }
-    });
-
-    // Restart active workflows - workflow process waits for DB readiness
-    // before accepting messages, so no arbitrary delay needed
-    console.log('Starting workflow restart...');
-    WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
-      console.error('Error restarting active workflows:', error);
-    });
-  } catch (error) {
-    console.error('Failed to spawn workflow process:', error);
-    console.error('Server will continue running but workflows will not be available');
-  }
+  await Promise.all([independentSteps, workflowProcess]);
+  markBoot('deferred-init-done');
+  logBootSummary();
+  announceBootFinished();
 
   // If this boot is the back half of a supervisor-sanctioned restart,
   // consume its one-shot receipt and log measured recovery diagnostics.
   RestartManager.consumeRestartManifest().catch((err) =>
     console.warn('[Server] Restart manifest consumption failed (non-fatal):', err.message)
   );
+}
+
+/** Fork the workflow process and re-arm the workflows that were active. Never throws. */
+async function startWorkflowProcess() {
+  console.log('Spawning workflow process...');
+  try {
+    await WorkflowProcessBridge.spawn();
+    markBoot('workflow-process-ready');
+    console.log('Workflow process spawned successfully');
+    // Restart active workflows - workflow process waits for DB readiness
+    // before accepting messages, so no arbitrary delay needed
+    console.log('Starting workflow restart...');
+    WorkflowProcessBridge.restartActiveWorkflows()
+      .then(() => markBoot('workflows-rearmed'))
+      .catch((error) => {
+        console.error('Error restarting active workflows:', error);
+      });
+  } catch (error) {
+    // The bridge re-arms by itself if this child reports ready later.
+    console.error('Failed to spawn workflow process:', error);
+    console.error('Server will continue running but workflows will not be available');
+  }
+}
+
+/** Wire real-time workflow status broadcasts to connected clients. */
+function wireWorkflowStatusBroadcasts() {
+  WorkflowProcessBridge.onStatusUpdate((workflowId, statusData) => {
+    const event = RealtimeEvents.WORKFLOW_STATUS_CHANGED;
+    const payload = {
+      id: workflowId,
+      status: statusData.status,
+      isActive: statusData.isActive,
+      timestamp: new Date().toISOString(),
+    };
+    if (statusData.userId) {
+      broadcastToUser(statusData.userId, event, payload);
+    } else {
+      broadcast(event, payload);
+    }
+
+    // Fire-and-forget: trigger insight extraction when a workflow execution finishes
+    const terminalStatuses = ['listening', 'error', 'stopped'];
+    if (terminalStatuses.includes(statusData.status) && statusData.userId) {
+      import('./src/services/evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
+        // Look up the latest execution for this workflow to get the execution ID
+        Promise.all([
+          import('./src/models/database/index.js'),
+          import('./src/models/UserModel.js'),
+        ]).then(async ([{ default: db }, { default: UserModel }]) => {
+          const row = await new Promise((resolve) => {
+            db.get(
+              'SELECT id FROM workflow_executions WHERE workflow_id = ? ORDER BY start_time DESC LIMIT 1',
+              [workflowId],
+              (err, r) => resolve(err ? null : r)
+            );
+          });
+          if (!row) return;
+          const userSettings = await UserModel.getUserSettings(statusData.userId);
+          InsightTriggers.onWorkflowExecutionCompleted(row.id, statusData.userId, {
+            workflowId,
+            provider: userSettings?.selectedProvider,
+            model: userSettings?.selectedModel,
+          }).catch(e => {
+            console.error('[InsightTriggers] Workflow insight extraction failed (non-critical):', e.message);
+          });
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  });
 }
 
 /**
@@ -909,23 +934,30 @@ function startServer() {
       }
       console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
+      markBoot('listening');
+      // Watch the first three minutes for the two ways boot stalls: a blocked
+      // event loop, and a libuv pool with no free thread. See bootTimeline.js.
+      startBootHealthMonitor();
       // Warm the upstream CLI version cache so the first Claude Code / Codex /
       // Kimi Code call uses current values instead of stale fallbacks.
       warmupClientVersions();
 
-      // Prewarm the Codex model list on a small delay so the CLI version has
-      // a chance to refresh first (Codex gates model visibility on
+      // Prewarm the Codex model list once boot has settled (it also gives the
+      // CLI version above time to refresh; Codex gates model visibility on
       // ?client_version=X). Best-effort — silent on failure. When the user
       // opens the model dropdown, they see the current live list instead of
       // whatever localStorage had cached.
-      setTimeout(() => { prewarmCodexModels(); }, 3000);
+      afterBoot('Codex model prewarm', () => prewarmCodexModels());
 
       // Defer all heavy initialization to next tick so the listen callback
       // returns immediately and the server can respond to health checks
       setImmediate(() => {
-        deferredInit().catch((error) => {
-          console.error('Deferred initialization error:', error);
-        });
+        deferredInit()
+          .catch((error) => {
+            console.error('Deferred initialization error:', error);
+          })
+          // Warm-ups wait for boot, not for boot to SUCCEED.
+          .finally(() => announceBootFinished());
       });
     });
 
