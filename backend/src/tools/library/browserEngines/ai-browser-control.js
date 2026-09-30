@@ -8,6 +8,7 @@ import {
 } from './browserFallbackSurface.js';
 import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
+import { wrapBrowserScript } from './browserScriptPrelude.js';
 
 /**
  * Browser Control — the chat agent drives the browser itself.
@@ -137,8 +138,9 @@ class AIBrowserControl extends BaseAction {
         type: 'string',
         inputType: 'textarea',
         description: 'Python to run against the browser. Helpers are pre-imported: goto_url, wait_for_load, '
-          + 'page_info, js, click_at_xy, type_text, scroll, screenshot, ensure_real_tab, cdp. '
-          + 'Only what you print() comes back.',
+          + 'page_info, js, click_at_xy, type_text, scroll, capture_screenshot(path), ensure_real_tab, cdp; '
+          + 'plus navigate(url) (goto + wait), evaluate(expr), screenshot(path=None) (PNG bytes, or saves to path). '
+          + 'Helpers are synchronous; `await` is accepted but not needed. Only what you print() comes back.',
       },
       timeoutSeconds: {
         type: 'number',
@@ -204,7 +206,10 @@ class AIBrowserControl extends BaseAction {
         await this.verifyDaemonSurface(cli, cdpUrl);
       }
 
-      const outcome = await this.runStep(cli, python, cdpUrl, params);
+      // Wrapped: accepts `await` and the common Playwright-style helper names
+      // (browserScriptPrelude.js). Raw, either one failed the whole step.
+      // Only the model's script is wrapped; our own probes run as written.
+      const outcome = await this.runStep(cli, wrapBrowserScript(python), cdpUrl, params);
 
       if (outcome.timedOut) {
         return this.formatOutput({

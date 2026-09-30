@@ -379,6 +379,8 @@ async function replaceStartupTab(cdpUrl, url, log) {
   };
   socket.on('close', () => failAll(new Error('connection closed')));
 
+  // Set once the swap has an outcome, so a poll outliving the deadline stops.
+  let settled = false;
   const swap = (async () => {
     await new Promise((resolve, reject) => {
       socket.once('open', resolve);
@@ -392,6 +394,20 @@ async function replaceStartupTab(cdpUrl, url, log) {
       // eslint-disable-next-line no-await-in-loop -- a handful at most, in order.
       await send('Target.closeTarget', { targetId: tab.targetId });
     }
+    // closeTarget answers when the close is ACCEPTED, not when the tab is
+    // gone, and the dying tab stays first in Target.getTargets meanwhile.
+    // Returning here handed every consumer that tab: MEASURED, the driver's
+    // first Page.enable on it never answered and the session then vanished
+    // ("Session with given id not found"). Hand the browser over only once
+    // the startup tabs have actually left the list.
+    const closing = new Set(startupTabs.map((tab) => tab.targetId));
+    while (closing.size > 0 && !settled) {
+      // eslint-disable-next-line no-await-in-loop -- polling for teardown
+      const { targetInfos: now = [] } = await send('Target.getTargets');
+      if (!now.some((target) => closing.has(target.targetId))) break;
+      // eslint-disable-next-line no-await-in-loop
+      await wait(50);
+    }
   })();
   let timer;
   const deadline = new Promise((_, reject) => {
@@ -403,6 +419,7 @@ async function replaceStartupTab(cdpUrl, url, log) {
     swap.catch(() => {});
     log(`[Browser Control] kept the startup tab (could not replace it: ${err.message}).`);
   } finally {
+    settled = true;
     clearTimeout(timer);
     try { socket.close(); } catch { /* gone */ }
   }

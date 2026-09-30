@@ -129,6 +129,11 @@ function makeChild() {
 const envOf = (call) => call[2].env;
 /** The child that ran the user's program — the last one spawned. */
 const lastProgram = () => spawn.mock.results[spawn.mock.results.length - 1].value.stdin.written;
+/** The model's own script, recovered from the wrapper (browserScriptPrelude.js). */
+const lastScript = () => {
+  const encoded = /_bh_run\(_bh_base64\.b64decode\("([A-Za-z0-9+/=]*)"\)/.exec(lastProgram())?.[1];
+  return encoded === undefined ? null : Buffer.from(encoded, 'base64').toString('utf8');
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -178,7 +183,7 @@ describe('it only runs where a person is present', () => {
     expect(out.output).toBe('hello from the page');
     // Preflight, then the program.
     expect(spawn).toHaveBeenCalledTimes(2);
-    expect(lastProgram()).toBe('print(page_info())');
+    expect(lastScript()).toBe('print(page_info())');
   });
 
   it('declares itself chat-only, which is what keeps it out of the node palette', () => {
@@ -434,7 +439,9 @@ describe('the environment it hands the CLI', () => {
     await action.execute({ python: 'print(page_info())' }, {}, CHAT);
 
     for (const call of spawn.mock.calls) expect(call[1]).toEqual([]);
-    expect(lastProgram()).toBe('print(page_info())');
+    expect(lastScript()).toBe('print(page_info())');
+    // Encoded, so nothing in the script can break out of the wrapper.
+    expect(lastProgram()).not.toContain('print(page_info())');
   });
 });
 

@@ -264,9 +264,15 @@ describe('a headless launch starts on a tab that has focus', () => {
   // it 3/3 and served a CDP-created tab 3/3. So the launcher swaps it.
   let wss;
   let cdpCalls;
+  let targets;
+  /** How many getTargets polls a closed tab survives, like real Chrome's teardown. */
+  let closeLag;
 
   beforeEach(async () => {
     cdpCalls = [];
+    closeLag = 0;
+    targets = [{ targetId: 'STARTUP', type: 'page', url: 'data:...' }, { targetId: 'SW', type: 'service_worker' }];
+    const dying = new Map();
     wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((resolve) => { wss.once('listening', resolve); });
     fakePort = wss.address().port;
@@ -274,11 +280,21 @@ describe('a headless launch starts on a tab that has focus', () => {
       socket.on('message', (raw) => {
         const m = JSON.parse(raw.toString());
         cdpCalls.push({ method: m.method, params: m.params });
-        const results = {
-          'Target.getTargets': { targetInfos: [{ targetId: 'STARTUP', type: 'page', url: 'data:...' }, { targetId: 'SW', type: 'service_worker' }] },
-          'Target.createTarget': { targetId: 'FRESH' },
-        };
-        socket.send(JSON.stringify({ id: m.id, result: results[m.method] || {} }));
+        let result = {};
+        if (m.method === 'Target.createTarget') {
+          targets.push({ targetId: 'FRESH', type: 'page', url: m.params.url });
+          result = { targetId: 'FRESH' };
+        } else if (m.method === 'Target.closeTarget') {
+          // Accepted now, gone later: the ordering that exposed the race.
+          dying.set(m.params.targetId, closeLag);
+          result = { success: true };
+        } else if (m.method === 'Target.getTargets') {
+          for (const [id, polls] of dying) {
+            if (polls <= 0) { targets = targets.filter((t) => t.targetId !== id); dying.delete(id); } else dying.set(id, polls - 1);
+          }
+          result = { targetInfos: targets.map((t) => ({ ...t })) };
+        }
+        socket.send(JSON.stringify({ id: m.id, result }));
       });
     });
   });
@@ -293,11 +309,23 @@ describe('a headless launch starts on a tab that has focus', () => {
     await ensureFallbackSurface({ log: () => {}, hidden: true });
 
     const methods = cdpCalls.map((c) => c.method);
-    expect(methods).toEqual(['Target.getTargets', 'Target.createTarget', 'Target.closeTarget']);
+    expect(methods.slice(0, 3)).toEqual(['Target.getTargets', 'Target.createTarget', 'Target.closeTarget']);
     // Create before close: closing a headless browser's last tab can end it.
     expect(cdpCalls[1].params.url.startsWith('data:text/html')).toBe(true);
     // Only pages are closed — never a service worker or anything else.
     expect(cdpCalls[2].params).toEqual({ targetId: 'STARTUP' });
+  });
+
+  it('does not hand the browser over until the startup tab has actually gone', async () => {
+    // closeTarget is answered when the close is ACCEPTED. Returning then left
+    // the dying tab first in the list, every consumer attached to it, and its
+    // first command never answered (live driver test, measured).
+    closeLag = 3;
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+
+    const polls = cdpCalls.filter((c) => c.method === 'Target.getTargets');
+    expect(polls.length).toBeGreaterThanOrEqual(1 + 4);
+    expect(targets.filter((t) => t.type === 'page').map((t) => t.targetId)).toEqual(['FRESH']);
   });
 
   it('leaves a VISIBLE browser\'s tab alone — the swap is a headless fix', async () => {
