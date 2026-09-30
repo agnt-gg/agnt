@@ -4,7 +4,45 @@ import db from './database/index.js';
 // sidebar list, the save response, and the realtime broadcast must all carry
 // the same shape, or the row a client patches in place diverges from the row
 // a full fetch would have given it. Excludes the large content column.
-const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, participants, created_at, updated_at';
+//
+// Exported for contentOutputsListIndex.test.js: idx_content_outputs_list must
+// contain every one of these, or the list reads each row's content again.
+export const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, participants, created_at, updated_at';
+
+/**
+ * The conversation-list query, built in one place so its plan can be tested.
+ * @returns {{ sql: string, params: any[] }}
+ */
+export function buildListQuery(userId, { limit = null, offset = null, groupId = undefined } = {}) {
+  // channel_key IS NULL: the main chat list shows the user's OWN
+  // conversations, not the transcripts of chats embedded in a workspace,
+  // artifact, widget or workflow. Those are reachable from the surface
+  // they belong to (and still searchable), but they are not items in this
+  // list. Filtered in SQL so the exclusion also applies to the row COUNT
+  // and to pagination — a client-side filter would silently shrink pages.
+  let where = 'user_id = ? AND channel_key IS NULL';
+  const params = [userId];
+
+  // Filter by group: explicit id, or 'none' for ungrouped
+  if (groupId === 'none') {
+    where += ' AND group_id IS NULL';
+  } else if (groupId) {
+    where += ' AND group_id = ?';
+    params.push(groupId);
+  }
+
+  // A single query with a COUNT() window function avoids two round-trips.
+  let sql = `SELECT ${LIST_COLUMNS}, COUNT(*) OVER() as _total_count FROM content_outputs WHERE ${where} ORDER BY updated_at DESC`;
+  if (limit !== null) {
+    sql += ' LIMIT ?';
+    params.push(limit);
+    if (offset !== null) {
+      sql += ' OFFSET ?';
+      params.push(offset);
+    }
+  }
+  return { sql, params };
+}
 
 class ContentOutputModel {
   /**
@@ -114,36 +152,7 @@ class ContentOutputModel {
   }
   static findAllByUserId(userId, limit = null, offset = null, groupId = undefined) {
     return new Promise((resolve, reject) => {
-      // Use a single query with COUNT() window function to avoid two round-trips
-      const listColumns = LIST_COLUMNS;
-      // channel_key IS NULL: the main chat list shows the user's OWN
-      // conversations, not the transcripts of chats embedded in a workspace,
-      // artifact, widget or workflow. Those are reachable from the surface
-      // they belong to (and still searchable), but they are not items in this
-      // list. Filtered in SQL so the exclusion also applies to the row COUNT
-      // and to pagination — a client-side filter would silently shrink pages.
-      let where = 'user_id = ? AND channel_key IS NULL';
-      const params = [userId];
-
-      // Filter by group: explicit id, or 'none' for ungrouped
-      if (groupId === 'none') {
-        where += ' AND group_id IS NULL';
-      } else if (groupId) {
-        where += ' AND group_id = ?';
-        params.push(groupId);
-      }
-
-      let query = `SELECT ${listColumns}, COUNT(*) OVER() as _total_count FROM content_outputs WHERE ${where} ORDER BY updated_at DESC`;
-
-      if (limit !== null) {
-        query += ' LIMIT ?';
-        params.push(limit);
-
-        if (offset !== null) {
-          query += ' OFFSET ?';
-          params.push(offset);
-        }
-      }
+      const { sql: query, params } = buildListQuery(userId, { limit, offset, groupId });
 
       db.all(query, params, (err, outputs) => {
         if (err) {

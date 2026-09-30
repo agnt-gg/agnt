@@ -1437,6 +1437,65 @@ const ACTIVITY_INDEX = {
   bigTableRows: 500000,
 };
 
+// --- Covering index for the conversation list (2026-09-30) -------------------
+//
+// GET /content-outputs lists titles and dates, never content, yet it read
+// 1,210 MB per call on a real install (2,615 rows, 1.3 GB of content). The
+// list columns were added by ALTER TABLE, so they are stored physically AFTER
+// `content`, and SQLite can only reach a later column by walking the row's
+// whole overflow chain. The app requests this list on every load. An index
+// holding every list column answers it from a few MB of index pages.
+//
+// Its columns MUST cover ContentOutputModel's LIST_COLUMNS exactly — one column
+// missing and every row is read again — so contentOutputsListIndex.test.js
+// holds the two together.
+//
+// Building it reads each row once (the same 1.2 GB), under the write lock, so
+// it is guarded like the activity index: inline only when the table is small.
+export const CONTENT_LIST_INDEX = {
+  name: 'idx_content_outputs_list',
+  sql: `CREATE INDEX IF NOT EXISTS idx_content_outputs_list ON content_outputs(
+          user_id, channel_key, updated_at DESC,
+          id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable,
+          group_id, last_read_at, archived_at, participants, created_at)`,
+  // Rows average ~0.5 MB of content on long-lived installs, so the row count
+  // that is "small" here is far lower than for node_executions.
+  bigTableRows: 200,
+};
+
+/**
+ * Build `index` on `table` now if the table is small, otherwise in an idle
+ * window (see scheduleDeferredIndexBuild). A permanent no-op once it exists.
+ * Never throws: a missing index costs speed, not correctness.
+ */
+function ensureGuardedIndex(index, table) {
+  db.get(`SELECT name FROM sqlite_master WHERE type='index' AND name = ?`, [index.name], (idxErr, idxRow) => {
+    if (idxErr) {
+      console.error(`[migrations] ${index.name} existence check failed:`, idxErr);
+      return;
+    }
+    if (idxRow) return;
+    // MAX(rowid) is one b-tree descent; COUNT(*) would scan.
+    db.get(`SELECT MAX(rowid) AS approxRows FROM ${table}`, (cntErr, r) => {
+      if (cntErr) {
+        console.error(`[migrations] ${index.name} row estimate failed:`, cntErr);
+        return;
+      }
+      const approxRows = (r && r.approxRows) || 0;
+      if (approxRows < index.bigTableRows) {
+        db.run(index.sql, (err) => {
+          if (err) console.error(`[migrations] ${index.name} build failed (will retry next boot):`, err);
+        });
+        return;
+      }
+      console.warn(
+        `[migrations] ${table} has ~${approxRows.toLocaleString()} rows — deferring ${index.name} build to an idle window`
+      );
+      scheduleDeferredIndexBuild(index);
+    });
+  });
+}
+
 // Idle heuristic: mtime of the WAL sidecar. Every write from EVERY process
 // (main server + WorkflowProcess child) touches the WAL, so this observes
 // cross-process activity that an in-memory tracker would miss. Checkpoint
@@ -1448,7 +1507,7 @@ function isDbIdle(idleMs, cb) {
   });
 }
 
-function scheduleDeferredIndexBuild(attempt = 0) {
+function scheduleDeferredIndexBuild(index = ACTIVITY_INDEX, attempt = 0) {
   // Env overrides exist for tests only (time-compressing a 5-min/1-h schedule);
   // production installs should never set them.
   const RETRY_DELAY_MS = Number(process.env.AGNT_INDEX_GUARD_RETRY_MS) || 5 * 60 * 1000; // re-check every 5 min
@@ -1458,21 +1517,21 @@ function scheduleDeferredIndexBuild(attempt = 0) {
   const timer = setTimeout(() => {
     isDbIdle(IDLE_THRESHOLD_MS, (idle) => {
       if (!idle && attempt < MAX_GATED_ATTEMPTS) {
-        return scheduleDeferredIndexBuild(attempt + 1);
+        return scheduleDeferredIndexBuild(index, attempt + 1);
       }
       if (!idle) {
         console.warn(
-          `[migrations] DB never went idle within ~1h — building ${ACTIVITY_INDEX.name} anyway; writes may stall for a few minutes`
+          `[migrations] DB never went idle within ~1h — building ${index.name} anyway; writes may stall for a few minutes`
         );
       }
       const t0 = Date.now();
-      db.run(ACTIVITY_INDEX.sql, (err) => {
+      db.run(index.sql, (err) => {
         if (err) {
           // DDL is transactional: a failed/interrupted build rolls back and the
           // sqlite_master check re-arms this path on next boot. No torn state.
           console.error('[migrations] deferred index build failed (will retry next boot):', err);
         } else {
-          console.log(`[migrations] ${ACTIVITY_INDEX.name} built in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+          console.log(`[migrations] ${index.name} built in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
         }
       });
     });
@@ -2113,6 +2172,9 @@ function runMigrations() {
           console.log('✓ Added participants column to content_outputs table');
         }
       });
+      // After every list column exists (participants is the last). Queued on
+      // this connection, so it runs after the ALTERs above.
+      ensureGuardedIndex(CONTENT_LIST_INDEX, 'content_outputs');
 
       // Migration: Add custom_instructions column to users for orchestrator system prompt additions (2026-04-20)
       db.run(`ALTER TABLE users ADD COLUMN custom_instructions TEXT`, (err) => {
