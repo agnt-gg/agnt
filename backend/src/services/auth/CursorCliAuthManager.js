@@ -3,7 +3,8 @@
  *
  * The Cursor CLI (`cursor-agent`) owns its own login. Session lives in
  * ~/.cursor. We NEVER reimplement Cursor OAuth — we shell `cursor-agent login`
- * for device auth and `cursor-agent status` to read login state.
+ * for device auth and `cursor-agent models` to prove the session works (see
+ * checkApiUsable for why not `status`).
  */
 
 import fs from 'fs';
@@ -15,6 +16,19 @@ import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000;
+
+// What the CLI prints when its session is missing or rejected. Verified live
+// 2026-09-30: "Error: Authentication required. Run 'agent login', pass
+// --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN."
+export const CURSOR_UNAUTHENTICATED = /authentication required|not logged in|not authenticated|run '?(?:cursor-)?agent login/i;
+
+/** Model ids from `cursor-agent models` output: one `<id> - <label>` per line. */
+export function parseCursorModels(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .map((line) => line.match(/^\s*([a-z0-9][a-z0-9._-]+)\s+-\s+/i)?.[1] || null)
+    .filter(Boolean);
+}
 
 function expandUserPath(inputPath) {
   if (!inputPath) return inputPath;
@@ -192,20 +206,22 @@ class CursorCliAuthManager {
   async listModels({ timeoutMs = 20000 } = {}) {
     try {
       const probe = await this._runCursor(['models'], { timeoutMs });
-      return `${probe.stdout}`
-        .split('\n')
-        .map((line) => {
-          const m = line.match(/^\s*([a-z0-9][a-z0-9._-]+)\s+-\s+/i);
-          return m ? m[1] : null;
-        })
-        .filter(Boolean);
+      return parseCursorModels(probe.stdout);
     } catch {
       return [];
     }
   }
 
   /**
-   * Health check via `cursor-agent status`.
+   * Health check via `cursor-agent models`.
+   *
+   * NOT `cursor-agent status`: status reads the local session file, so it
+   * prints "Logged in (unable to fetch user details)" for a session Cursor's
+   * servers no longer accept. Verified 2026-09-30: status said logged in while
+   * `models` failed with "Authentication required" — AGNT showed Cursor as
+   * connected and every request failed. `models` has to authenticate against
+   * Cursor to answer, and its answer IS the live model list (`status.models`),
+   * so one spawn gives both.
    */
   async checkApiUsable({ forceRefresh = false } = {}) {
     const now = Date.now();
@@ -220,31 +236,28 @@ class CursorCliAuthManager {
     try { cliPresent = cliPresent || fs.existsSync(invocation.command); } catch { /* ignore */ }
 
     let loggedIn = false;
-    let email = null;
     let apiStatus = null;
     let probeError = null;
+    let models = [];
 
     try {
-      const result = await this._runCursor(['status'], { timeoutMs: 25000 });
+      const result = await this._runCursor(['models'], { timeoutMs: 25000 });
       const out = `${result.stdout}\n${result.stderr}`;
-      if (/not logged in/i.test(out)) {
-        loggedIn = false;
+      if (CURSOR_UNAUTHENTICATED.test(out)) {
         apiStatus = 401;
         probeError = 'Cursor CLI is not authenticated. Run: cursor-agent login';
-      } else if (/logged in/i.test(out)) {
+      } else if (result.exitCode === 0) {
         loggedIn = true;
         apiStatus = 200;
-        const m = out.match(/Logged in as\s+([^\s]+)/i);
-        email = m ? m[1] : null;
+        models = parseCursorModels(result.stdout);
       } else {
-        loggedIn = false;
         apiStatus = result.exitCode;
-        probeError = out.trim().slice(0, 300) || `cursor-agent status exited ${result.exitCode}`;
+        probeError = out.trim().slice(0, 300) || `cursor-agent models exited ${result.exitCode}`;
       }
     } catch (e) {
-      loggedIn = false;
       probeError = e.message;
     }
+    const email = loggedIn ? (readCursorAuthInfo()?.email || null) : null;
 
     const value = {
       available: loggedIn,
@@ -256,6 +269,7 @@ class CursorCliAuthManager {
       checkedAt: new Date().toISOString(),
       tokenExpiry: null,
       email,
+      models,
       error: probeError || undefined,
     };
     this.apiCheckCache = { checkedAtMs: now, value };
