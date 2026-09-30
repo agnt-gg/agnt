@@ -100,10 +100,14 @@ const store = createStore({
         // PHASE 1: Fetch critical UI data first (what user sees immediately)
         // These run in parallel for fastest initial render
         // Includes content outputs + connected apps since chat panels need them immediately
+        //
+        // Stats are NOT here. allSettled waits for the slowest member, and the
+        // stats aggregate was the slowest by far (1.8 s warm, far longer cold),
+        // so every screen gated on criticalDataReady waited on a number in a
+        // side panel. They load with the secondary batch below.
         const criticalResults = await Promise.allSettled([
           dispatch('agents/fetchAgents'),
           dispatch('workflows/fetchWorkflows'),
-          dispatch('userStats/fetchStats'),
           dispatch('contentOutputs/fetchOutputs'),
           dispatch('groups/fetchGroups'),
           dispatch('appAuth/fetchConnectedApps'),
@@ -116,7 +120,7 @@ const store = createStore({
           }
         });
 
-        // Signal that critical data is ready (agents, workflows, stats, outputs, connected apps)
+        // Signal that critical data is ready (agents, workflows, outputs, groups, connected apps)
         commit('SET_CRITICAL_DATA_READY');
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
@@ -125,6 +129,7 @@ const store = createStore({
         // fetchReferralBalance, fetchReferralTree (Settings),
         // fetchCreditsActivity (Dashboard), fetchMyPurchases/fetchMyInstalls (Marketplace)
         Promise.allSettled([
+          dispatch('userStats/fetchStats'),
           dispatch('tools/fetchTools'),
           dispatch('tools/fetchWorkflowTools'),
           dispatch('widgetLayout/fetchLayouts'),

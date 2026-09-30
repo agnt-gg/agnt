@@ -96,6 +96,7 @@ import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { loadPdfExportLibraries } from '@/utils/loadScript.js';
 
 export default {
   name: 'SharedContentActions',
@@ -461,13 +462,17 @@ export default {
       clonedResponseArea.classList.add('pdf-download');
       clonedResponseArea.style.display = 'block';
 
-      // Use html2canvas to take a snapshot of the entire content
-      html2canvas(clonedResponseArea, {
-        scale: 1.25,
-        scrollY: -window.scrollY,
-        windowWidth: clonedResponseArea.scrollWidth,
-        windowHeight: clonedResponseArea.scrollHeight,
-      })
+      // Use html2canvas to take a snapshot of the entire content. Both
+      // libraries load on first use rather than on every app start.
+      loadPdfExportLibraries()
+        .then(() =>
+          html2canvas(clonedResponseArea, {
+            scale: 1.25,
+            scrollY: -window.scrollY,
+            windowWidth: clonedResponseArea.scrollWidth,
+            windowHeight: clonedResponseArea.scrollHeight,
+          })
+        )
         .then((canvas) => {
           // Convert canvas to image
           const imgData = canvas.toDataURL('image/png');
