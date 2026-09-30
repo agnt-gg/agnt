@@ -44,11 +44,14 @@ function load() {
  * Persist a successful model fetch for a provider.
  * @param {string} providerKey - lowercase provider key (e.g. 'openai-codex')
  * @param {Array<Object>} models - mapped model objects ({ id, name, ... })
+ * @param {{replaces?: string[]}} [options] older keys this list supersedes
+ *   (a provider previously saved under its display name); they are removed.
  */
-export function persistLastModels(providerKey, models) {
+export function persistLastModels(providerKey, models, { replaces = [] } = {}) {
   if (!providerKey || !Array.isArray(models) || models.length === 0) return;
   const key = String(providerKey).toLowerCase();
   const entry = { models, timestamp: Date.now() };
+  const superseded = replaces.map((k) => String(k || '').toLowerCase()).filter((k) => k && k !== key);
 
   // Merge into what is on disk NOW, not into this process's snapshot. The file
   // is shared by the app, CLI tools and test runs; writing the snapshot back
@@ -56,6 +59,7 @@ export function persistLastModels(providerKey, models) {
   // which the running app re-added on its next successful fetch.
   const onDisk = readDisk();
   onDisk[key] = entry;
+  for (const old of superseded) delete onDisk[old];
   try {
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
     const tmp = `${CACHE_FILE}.${process.pid}.tmp`;
@@ -64,7 +68,9 @@ export function persistLastModels(providerKey, models) {
     memoryCache = onDisk;
   } catch (err) {
     // Still serve this fetch from memory for the rest of the process.
-    load()[key] = entry;
+    const memory = load();
+    memory[key] = entry;
+    for (const old of superseded) delete memory[old];
     console.warn(`[lastModelsCache] Failed to persist for ${providerKey}: ${err.message}`);
   }
 }
@@ -75,6 +81,16 @@ export function persistLastModels(providerKey, models) {
  * @returns {Array<Object>|null}
  */
 export function getLastSuccessfulModels(providerKey) {
+  return getLastSuccessfulEntry(providerKey)?.models || null;
+}
+
+/**
+ * The last successful list WITH the time the vendor produced it, so a caller
+ * serving it can say how old it is.
+ * @returns {{models: Array<Object>, timestamp: number|null}|null}
+ */
+export function getLastSuccessfulEntry(providerKey) {
   const entry = load()[String(providerKey || '').toLowerCase()];
-  return entry && Array.isArray(entry.models) && entry.models.length > 0 ? entry.models : null;
+  if (!entry || !Array.isArray(entry.models) || entry.models.length === 0) return null;
+  return { models: entry.models, timestamp: Number.isFinite(entry.timestamp) ? entry.timestamp : null };
 }

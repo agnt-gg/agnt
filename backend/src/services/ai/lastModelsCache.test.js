@@ -48,6 +48,24 @@ describe('lastModelsCache', () => {
     expect(readFile()).toEqual({ openai: expect.objectContaining({ models: models('gpt-a') }) });
   });
 
+  it('a list saved under the registry key retires the old display-name entry', () => {
+    cache.persistLastModels('together ai', models('old'));
+    cache.persistLastModels('togetherai', models('new'), { replaces: ['Together AI'] });
+    expect(Object.keys(readFile())).toEqual(['togetherai']);
+    expect(cache.getLastSuccessfulModels('together ai')).toBeNull();
+    // A key never retires itself.
+    cache.persistLastModels('groq', models('g'), { replaces: ['groq'] });
+    expect(readFile().groq.models).toEqual(models('g'));
+  });
+
+  it('exposes the vendor timestamp with the list', () => {
+    cache.persistLastModels('openai', models('gpt-a'));
+    const entry = cache.getLastSuccessfulEntry('openai');
+    expect(entry.models).toEqual(models('gpt-a'));
+    expect(Math.abs(entry.timestamp - Date.now())).toBeLessThan(5000);
+    expect(cache.getLastSuccessfulEntry('missing')).toBeNull();
+  });
+
   it('leaves no temp file behind', () => {
     cache.persistLastModels('openai', models('gpt-a'));
     const dir = fs.readdirSync(pathManager.getPath());

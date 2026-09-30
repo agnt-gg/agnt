@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { EventEmitter } from 'events';
-import { persistLastModels, getLastSuccessfulModels } from '../lastModelsCache.js';
+import { persistLastModels, getLastSuccessfulEntry } from '../lastModelsCache.js';
+import { LISTING_SOURCE, listing, redactUpstreamError } from '../modelListing.js';
 
 /**
  * Generic model-fetching service for any OpenAI-compatible provider.
@@ -13,6 +14,9 @@ class GenericProviderService extends EventEmitter {
   /**
    * @param {Object} config
    * @param {string} config.name - Provider display name (e.g., 'OpenAI')
+   * @param {string} [config.key] - Provider registry key (e.g., 'togetherai'). The
+   *   persisted last-successful list is stored under it. Defaults to the
+   *   lowercased display name, which is what older versions stored under.
    * @param {string} config.baseURL - Base API URL (e.g., 'https://api.openai.com/v1')
    * @param {string[]} config.fallbackModels - Fallback model IDs if API is unavailable
    * @param {number} [config.cacheTTL=300000] - Cache time-to-live in ms (default 5 minutes).
@@ -33,6 +37,10 @@ class GenericProviderService extends EventEmitter {
   constructor(config) {
     super();
     this.name = config.name;
+    this.key = String(config.key || config.name || '').toLowerCase();
+    // Older versions persisted under the lowercased DISPLAY name ('together ai',
+    // 'grok ai'). Still read so an upgrade keeps each user's last good list.
+    this.legacyPersistKey = String(config.name || '').toLowerCase();
     this.baseURL = config.baseURL;
     this.fallbackModels = config.fallbackModels || [];
     this.fallbackModelObjects = config.fallbackModelObjects || null;
@@ -55,6 +63,12 @@ class GenericProviderService extends EventEmitter {
     // Cache state
     this.modelsCache = null;
     this.cacheTimestamp = null;
+
+    // Where the most recently SERVED list came from. See modelListing.js.
+    this.lastListing = listing(LISTING_SOURCE.FALLBACK);
+    // Error from the most recent failed vendor call, kept while a cache that
+    // predates it is served, so the route can still say the refresh failed.
+    this._lastUpstreamError = null;
   }
 
   /**
@@ -80,16 +94,20 @@ class GenericProviderService extends EventEmitter {
         this._backgroundFetchInProgress = true;
         this._fetchAndCache(apiKey)
           .catch((err) => {
-            // Don't poison cache on background failure; just log.
-            console.warn(`[${this.name}] Background revalidate failed: ${err.message}`);
+            // Don't poison the cache on background failure, but remember it:
+            // the next serve of this (now outdated) cache reports it as stale.
+            this._lastUpstreamError = redactUpstreamError(err.message, apiKey);
+            console.warn(`[${this.name}] Background revalidate failed: ${this._lastUpstreamError}`);
           })
           .finally(() => { this._backgroundFetchInProgress = false; });
       }
+      this.lastListing = listing(LISTING_SOURCE.CACHE, { fetchedAt: this.cacheTimestamp, error: this._lastUpstreamError });
       return this.modelsCache;
     }
 
     // Cache invalid — wait for network unless a background fetch is already inflight
     if (this._backgroundFetchInProgress && this.modelsCache) {
+      this.lastListing = listing(LISTING_SOURCE.CACHE, { fetchedAt: this.cacheTimestamp, error: this._lastUpstreamError });
       return this.modelsCache;
     }
 
@@ -104,15 +122,20 @@ class GenericProviderService extends EventEmitter {
     try {
       return await this._fetchAndCache(apiKey);
     } catch (error) {
-      console.error(`Failed to fetch ${this.name} models:`, error.message);
+      const reason = redactUpstreamError(error.message, apiKey);
+      this._lastUpstreamError = reason;
+      console.error(`Failed to fetch ${this.name} models:`, reason);
 
       if (this.modelsCache) {
         console.log(`Returning expired cached ${this.name} models due to API error`);
+        this.lastListing = listing(LISTING_SOURCE.CACHE, { fetchedAt: this.cacheTimestamp, error: reason });
         return this.modelsCache;
       }
 
       console.log(`Returning fallback models for ${this.name}`);
-      return this.getFallbackModels();
+      const models = this.getFallbackModels();
+      this.lastListing = { ...this.lastListing, error: reason };
+      return models;
     }
   }
 
@@ -152,11 +175,13 @@ class GenericProviderService extends EventEmitter {
 
     this.modelsCache = models;
     this.cacheTimestamp = Date.now();
+    this._lastUpstreamError = null;
+    this.lastListing = listing(LISTING_SOURCE.LIVE, { fetchedAt: this.cacheTimestamp });
     console.log(`[${this.name}] Cached ${models.length} models from API`);
     // Persist last-successful list to disk so a later degraded state
     // (network out, upstream 5xx) falls back to real data instead of the
     // hardcoded fallback list in providerConfigs.js.
-    persistLastModels(this.name.toLowerCase(), models);
+    persistLastModels(this.key, models, { replaces: [this.legacyPersistKey] });
     return models;
   }
 
@@ -391,17 +416,25 @@ class GenericProviderService extends EventEmitter {
     this.cacheTimestamp = null;
   }
 
+  /** The persisted last-successful list, under the current key or the legacy one. */
+  _persistedEntry() {
+    return getLastSuccessfulEntry(this.key)
+      || (this.legacyPersistKey !== this.key ? getLastSuccessfulEntry(this.legacyPersistKey) : null);
+  }
+
   /**
    * Returns fallback models if API is unavailable.
    * Preference order: persisted last-successful fetch (real data from a
    * previous run) → configured fallbackModelObjects → hardcoded ID list.
    */
   getFallbackModels() {
-    const persisted = getLastSuccessfulModels(this.name.toLowerCase());
+    const persisted = this._persistedEntry();
     if (persisted) {
-      console.log(`[${this.name}] Using persisted last-successful models (${persisted.length}) instead of hardcoded fallback`);
-      return persisted;
+      console.log(`[${this.name}] Using persisted last-successful models (${persisted.models.length}) instead of hardcoded fallback`);
+      this.lastListing = listing(LISTING_SOURCE.PERSISTED, { fetchedAt: persisted.timestamp });
+      return persisted.models;
     }
+    this.lastListing = listing(LISTING_SOURCE.FALLBACK);
     if (this.fallbackModelObjects) return this.fallbackModelObjects;
     // Sort fallback models with recommended first
     const recSet = new Set(this.recommendedModels);

@@ -2,7 +2,7 @@
   <button
     type="button"
     class="refresh-models-btn"
-    :class="[`size-${size}`, { spinning: isRefreshing, success: justSucceeded, error: hasError }]"
+    :class="[`size-${size}`, { spinning: isRefreshing, success: justSucceeded, error: hasError, stale: isStale }]"
     :disabled="disabled"
     v-tooltip="buttonTitle"
     @click.stop="handleClick"
@@ -15,6 +15,7 @@
 <script>
 import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
+import { describeStaleListing } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'RefreshModelsButton',
@@ -47,9 +48,15 @@ export default {
       () => isRefreshing.value || isCustomProvider.value || !props.provider
     );
 
+    // The vendor did not answer and the picker shows a saved or built-in list.
+    // Persistent (not a 2.5s flash) because the list stays stale until the
+    // vendor answers; the button stays clickable to retry.
+    const listing = computed(() => store.getters['aiProvider/modelListingFor']?.(props.provider) || null);
+    const isStale = computed(() => Boolean(listing.value?.stale) && !isRefreshing.value);
+
     const iconClass = computed(() => {
       if (justSucceeded.value) return 'fas fa-check';
-      if (hasError.value) return 'fas fa-exclamation-triangle';
+      if (hasError.value || isStale.value) return 'fas fa-exclamation-triangle';
       return 'fas fa-sync-alt';
     });
 
@@ -57,6 +64,7 @@ export default {
       if (isRefreshing.value) return 'Refreshing...';
       if (justSucceeded.value) return 'Refreshed';
       if (hasError.value) return 'Failed';
+      if (isStale.value) return 'Not live';
       return 'Refresh';
     });
 
@@ -64,6 +72,7 @@ export default {
       if (isCustomProvider.value) return 'Refresh not supported for custom providers';
       if (!props.provider) return 'No provider selected';
       if (hasError.value && errorMessage.value) return `Refresh failed: ${errorMessage.value}`;
+      if (isStale.value) return `${describeStaleListing(props.provider, listing.value)} Click to retry.`;
       // Models auto-revalidate every ~5 min via stale-while-revalidate; this
       // button is the escape hatch for when you know upstream just shipped
       // something new and don't want to wait for the next cycle.
@@ -79,7 +88,8 @@ export default {
         await store.dispatch('aiProvider/hardRefreshProviderModels', {
           provider: props.provider,
         });
-        justSucceeded.value = true;
+        // A refresh the vendor did not answer is not a success.
+        justSucceeded.value = !listing.value?.stale;
         setTimeout(() => {
           justSucceeded.value = false;
         }, 800);
@@ -100,6 +110,7 @@ export default {
       isRefreshing,
       justSucceeded,
       hasError,
+      isStale,
       disabled,
       iconClass,
       labelText,
@@ -167,6 +178,11 @@ export default {
   opacity: 1;
   color: var(--color-red);
   border-color: rgba(215, 58, 73, 0.3);
+}
+.refresh-models-btn.stale {
+  opacity: 1;
+  color: var(--color-yellow, #d29922);
+  border-color: rgba(210, 153, 34, 0.35);
 }
 .refresh-models-btn .label {
   letter-spacing: 0.3px;

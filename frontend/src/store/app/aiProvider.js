@@ -438,6 +438,36 @@ BUILT_IN_PROVIDERS.sort(byProviderLabel);
 
 // Resolve any provider identifier (display name, key, or mixed case) to its canonical key.
 // e.g. "Z.AI" → "zai", "Z-AI" → "zai", "GrokAI" → "grokai", "openai" → "openai"
+const LISTING_SOURCES = new Set(['live', 'cache', 'persisted', 'fallback', 'static']);
+
+/**
+ * The provenance fields of a model-list response, or null for a backend that
+ * does not send them (older build, custom provider). Never invents `stale`.
+ */
+export function listingFromResponse(data) {
+  if (!data || !LISTING_SOURCES.has(data.source)) return null;
+  return {
+    source: data.source,
+    stale: data.stale === true,
+    fetchedAt: typeof data.fetchedAt === 'string' ? data.fetchedAt : null,
+    upstreamError: typeof data.upstreamError === 'string' && data.upstreamError ? data.upstreamError : null,
+  };
+}
+
+/** One sentence for a stale list: what is shown instead, and why. */
+export function describeStaleListing(providerName, listing) {
+  if (!listing?.stale) return '';
+  let shown = 'built-in defaults, which may be out of date';
+  if (listing.source === 'persisted' || listing.source === 'cache') {
+    const when = listing.fetchedAt ? new Date(listing.fetchedAt) : null;
+    shown = when && !Number.isNaN(when.getTime())
+      ? `the list it last returned (${when.toLocaleString()})`
+      : 'the list it last returned';
+  }
+  const reason = listing.upstreamError ? ` Reason: ${listing.upstreamError}` : '';
+  return `${providerName} did not return its model list, so this shows ${shown}.${reason}`;
+}
+
 export function resolveProviderKey(identifier) {
   if (!identifier) return null;
   const lower = identifier.toLowerCase();
@@ -718,6 +748,11 @@ export default {
     customProviders: [],
     allModels: { ...INITIAL_ALL_MODELS },
     modelMetadata: {},
+    // Where each provider's current list came from, as reported by the backend
+    // (services/ai/modelListing.js): { source, stale, fetchedAt, upstreamError }.
+    // `stale` means the vendor did not answer and the list is a saved or
+    // built-in one — which used to be indistinguishable from a fresh list.
+    modelListing: {},
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
     reasoningValue: INITIAL_REASONING_VALUE,
@@ -874,6 +909,9 @@ export default {
     SET_MODEL_METADATA(state, { provider, metadata }) {
       state.modelMetadata = { ...state.modelMetadata, [provider]: metadata };
     },
+    SET_MODEL_LISTING(state, { provider, listing }) {
+      state.modelListing = { ...state.modelListing, [provider]: listing };
+    },
     SET_LOADING_MODELS(state, { provider, loading }) {
       if (!state.loadingModels) {
         state.loadingModels = {};
@@ -902,6 +940,7 @@ export default {
     filteredModels(state) {
       return state.allModels[state.selectedProvider] || [];
     },
+    modelListingFor: (state) => (provider) => state.modelListing[provider] || null,
     selectedModelMetadata(state) {
       if (!state.selectedProvider || !state.selectedModel) return null;
       const providerKey = resolveProviderKey(state.selectedProvider);
@@ -1357,6 +1396,8 @@ export default {
 
         const data = await response.json();
         const models = data.models || [];
+        const listing = listingFromResponse(data);
+        if (listing) commit('SET_MODEL_LISTING', { provider, listing });
 
         // Only mutate Vuex + localStorage if the list actually changed. Prevents
         // pointless renders and lets model-selector components diff cleanly.
@@ -1421,7 +1462,7 @@ export default {
     // With SWR in fetchProviderModels this is now an emergency escape hatch,
     // not a routine action — normal use ships fresh models within one refresh
     // cycle without any manual button press.
-    async hardRefreshProviderModels({ dispatch }, { provider }) {
+    async hardRefreshProviderModels({ commit, dispatch }, { provider }) {
       if (!provider) throw new Error('provider required');
       const providerLower = resolveProviderKey(provider);
       if (!providerLower) throw new Error(`Unknown provider: ${provider}`);
@@ -1465,6 +1506,9 @@ export default {
           errBody?.error || `Backend refresh failed: HTTP ${refreshRes.status}`,
         );
       }
+      const refreshed = await refreshRes.json().catch(() => ({}));
+      const listing = listingFromResponse(refreshed);
+      if (listing) commit('SET_MODEL_LISTING', { provider, listing });
 
       // 4. Re-dispatch the per-provider fetch with forceRefresh so Vuex state
       //    picks up the fresh list (frontend cache is already cleared above).

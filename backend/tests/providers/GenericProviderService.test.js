@@ -25,10 +25,12 @@ vi.mock('node-fetch', () => ({
 vi.mock('../../src/services/ai/lastModelsCache.js', () => ({
   persistLastModels: vi.fn(),
   getLastSuccessfulModels: vi.fn(() => null),
+  getLastSuccessfulEntry: vi.fn(() => null),
 }));
 
 import fetch from 'node-fetch';
-import { getLastSuccessfulModels } from '../../src/services/ai/lastModelsCache.js';
+import { getLastSuccessfulEntry, persistLastModels } from '../../src/services/ai/lastModelsCache.js';
+import { provenanceFields } from '../../src/services/ai/modelListing.js';
 
 function createService(overrides = {}) {
   return new GenericProviderService({
@@ -51,7 +53,7 @@ function mockFetchResponse(data, ok = true, status = 200) {
 describe('GenericProviderService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getLastSuccessfulModels.mockReturnValue(null);
+    getLastSuccessfulEntry.mockReturnValue(null);
   });
 
   describe('fetchModels', () => {
@@ -338,12 +340,104 @@ describe('GenericProviderService', () => {
 
     test('prefers persisted last-successful models over configured fallbacks', () => {
       const persisted = [{ id: 'from-last-run', name: 'From Last Run' }];
-      getLastSuccessfulModels.mockReturnValue(persisted);
+      getLastSuccessfulEntry.mockReturnValue({ models: persisted, timestamp: 1 });
 
       const service = createService({ fallbackModelObjects: [{ id: 'configured' }] });
 
       expect(service.getFallbackModels()).toEqual(persisted);
-      expect(getLastSuccessfulModels).toHaveBeenCalledWith('testprovider');
+      expect(getLastSuccessfulEntry).toHaveBeenCalledWith('testprovider');
+    });
+  });
+
+  describe('persistence key', () => {
+    test('persists under the registry key, not the display name', async () => {
+      const service = createService({ key: 'togetherai', name: 'Together AI' });
+      mockFetchResponse({ data: [{ id: 'model-a' }] });
+      await service.fetchModels('k', { force: true });
+      expect(persistLastModels).toHaveBeenCalledWith('togetherai', expect.any(Array), { replaces: ['together ai'] });
+    });
+
+    test('still reads a list saved under the old display-name key', () => {
+      const legacy = [{ id: 'saved-before-upgrade' }];
+      getLastSuccessfulEntry.mockImplementation((key) => (key === 'together ai' ? { models: legacy, timestamp: 5 } : null));
+      const service = createService({ key: 'togetherai', name: 'Together AI' });
+      expect(service.getFallbackModels()).toEqual(legacy);
+      expect(getLastSuccessfulEntry.mock.calls.map(([k]) => k)).toEqual(['togetherai', 'together ai']);
+    });
+  });
+
+  describe('listing provenance', () => {
+    const failWith = (status, body) => fetch.mockResolvedValueOnce({
+      ok: false, status, statusText: 'Forbidden', text: async () => body, json: async () => ({}),
+    });
+
+    test('a vendor answer is live and not stale', async () => {
+      const service = createService();
+      mockFetchResponse({ data: [{ id: 'model-a' }] });
+      await service.fetchModels('k', { force: true });
+      expect(provenanceFields(service.lastListing)).toMatchObject({ source: 'live', stale: false, upstreamError: null });
+    });
+
+    test('a cache hit within TTL is cache and not stale', async () => {
+      const service = createService();
+      mockFetchResponse({ data: [{ id: 'model-a' }] });
+      await service.fetchModels('k', { force: true });
+      await service.fetchModels('k');
+      expect(provenanceFields(service.lastListing)).toMatchObject({ source: 'cache', stale: false });
+    });
+
+    test('REGRESSION: a vendor 403 over a saved list is persisted, stale, and carries the reason', async () => {
+      // The live Grok case: xAI 403 "used all available credits" while AGNT
+      // served a week-old list as if it were fresh.
+      getLastSuccessfulEntry.mockReturnValue({ models: [{ id: 'grok-4.3' }], timestamp: Date.parse('2026-09-23T00:00:00Z') });
+      const service = createService({ key: 'grokai', name: 'Grok AI' });
+      failWith(403, '{"error":"Your team has either used all available credits"}');
+
+      const models = await service.fetchModels('k', { force: true });
+
+      expect(models).toEqual([{ id: 'grok-4.3' }]);
+      expect(provenanceFields(service.lastListing)).toMatchObject({
+        source: 'persisted', stale: true, fetchedAt: '2026-09-23T00:00:00.000Z',
+      });
+      expect(service.lastListing.error).toMatch(/403.*used all available credits/);
+    });
+
+    test('no saved list: fallback, stale, with the reason', async () => {
+      const service = createService();
+      fetch.mockRejectedValueOnce(new Error('ECONNRESET'));
+      await service.fetchModels('k', { force: true });
+      expect(provenanceFields(service.lastListing)).toMatchObject({ source: 'fallback', stale: true, upstreamError: 'ECONNRESET' });
+    });
+
+    test('an expired cache served because the refresh failed is stale', async () => {
+      const service = createService();
+      mockFetchResponse({ data: [{ id: 'model-a' }] });
+      await service.fetchModels('k', { force: true });
+      failWith(500, 'boom');
+      await service.fetchModels('k', { force: true });
+      expect(provenanceFields(service.lastListing)).toMatchObject({ source: 'cache', stale: true });
+    });
+
+    test('recovers to live once the vendor answers again', async () => {
+      const service = createService();
+      failWith(500, 'boom');
+      await service.fetchModels('k', { force: true });
+      mockFetchResponse({ data: [{ id: 'model-a' }] });
+      await service.fetchModels('k', { force: true });
+      expect(provenanceFields(service.lastListing)).toMatchObject({ source: 'live', stale: false, upstreamError: null });
+    });
+
+    test('never exposes the API key, even when a network error embeds the request URL', async () => {
+      const key = 'AIzaSyD-this-is-a-secret-gemini-key-123';
+      const service = createService({ authScheme: 'query-param' });
+      fetch.mockRejectedValueOnce(new Error(`request to https://api.test.com/v1/models?key=${key} failed, reason: getaddrinfo ENOTFOUND`));
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await service.fetchModels(key, { force: true });
+
+      expect(service.lastListing.error).not.toContain(key);
+      expect(service.lastListing.error).toMatch(/key=\[redacted\].*ENOTFOUND/);
+      expect(JSON.stringify(errors.mock.calls)).not.toContain(key);
     });
   });
 });

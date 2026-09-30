@@ -22,7 +22,8 @@ import { listGoogleSubscriptionModels, GOOGLE_SUBSCRIPTION_PROVIDERS } from '../
 // local OAuth flow rather than a stored API key.
 import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
-import { persistLastModels, getLastSuccessfulModels } from '../services/ai/lastModelsCache.js';
+import { persistLastModels, getLastSuccessfulEntry } from '../services/ai/lastModelsCache.js';
+import { LISTING_SOURCE, listing, provenanceFields, redactUpstreamError } from '../services/ai/modelListing.js';
 import { extractToken, requireAuthHeader, verifyAuthToken } from '../utils/authGuard.js';
 
 // ───────────────────────── PERSISTENT LAST-SUCCESSFUL MODEL CACHE ──────────────────────
@@ -85,6 +86,10 @@ const CODEX_MODELS_CACHE_TTL = 5 * 60 * 1000;
 // Half-life: past this age we serve cached AND kick off background refresh.
 const CODEX_MODELS_SWR_MS = Math.floor(CODEX_MODELS_CACHE_TTL / 2);
 let codexBackgroundInflight = false;
+// Provenance of the last Codex list served (see modelListing.js), and the
+// error of the last failed upstream call while an older cache is served.
+let codexListing = listing(LISTING_SOURCE.FALLBACK);
+let codexLastError = null;
 
 async function fetchCodexModels(token, options = {}) {
   const { force = false } = options;
@@ -92,30 +97,47 @@ async function fetchCodexModels(token, options = {}) {
 
   if (!force && codexModelsCache && now - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL) {
     // Stale-while-revalidate: past half-life, kick off background refresh.
+    // A background result only updates the cache; it never rewrites the
+    // provenance of a list that is being served to someone else right now.
     const age = now - codexModelsCacheTime;
     if (age > CODEX_MODELS_SWR_MS && !codexBackgroundInflight) {
       codexBackgroundInflight = true;
       _fetchCodexModelsFromUpstream(token)
+        .then(({ listing: result }) => { codexLastError = result.error; })
         .catch((err) => console.warn(`[ModelRoutes] Codex background revalidate failed: ${err.message}`))
         .finally(() => { codexBackgroundInflight = false; });
     }
+    codexListing = listing(LISTING_SOURCE.CACHE, { fetchedAt: codexModelsCacheTime, error: codexLastError });
     return codexModelsCache;
   }
 
-  return _fetchCodexModelsFromUpstream(token);
+  const { models, listing: result } = await _fetchCodexModelsFromUpstream(token);
+  codexListing = result;
+  codexLastError = result.error;
+  return models;
 }
 
+/** @returns {Promise<{models: Object[], listing: Object}>} never rejects. */
 async function _fetchCodexModelsFromUpstream(token) {
   const now = Date.now();
   const config = getProviderConfig('openai-codex');
 
   // Fallback resolution: persisted last-successful first, then hardcoded.
-  const persisted = getLastSuccessfulModels('openai-codex');
-  const fallback = persisted && persisted.length > 0
-    ? persisted
+  const persisted = getLastSuccessfulEntry('openai-codex');
+  const fallback = persisted
+    ? persisted.models
     : (config?.fallbackModels || []).map((id) => ({
         id, name: id, description: '', createdAt: null, ownedBy: 'openai-codex',
       }));
+  const degraded = (reason) => {
+    const error = redactUpstreamError(reason, token);
+    return {
+      models: fallback,
+      listing: persisted
+        ? listing(LISTING_SOURCE.PERSISTED, { fetchedAt: persisted.timestamp, error })
+        : listing(LISTING_SOURCE.FALLBACK, { error }),
+    };
+  };
 
   try {
     const accountId = CodexAuthManager.getChatGptAccountId();
@@ -136,8 +158,9 @@ async function _fetchCodexModelsFromUpstream(token) {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.warn(`[ModelRoutes] Codex models endpoint returned ${res.status}: ${body.slice(0, 200)}`);
-      return fallback;
+      const reason = `Codex models endpoint returned ${res.status}: ${body.slice(0, 200)}`;
+      console.warn(`[ModelRoutes] ${redactUpstreamError(reason, token)}`);
+      return degraded(reason);
     }
 
     const data = await res.json();
@@ -145,7 +168,7 @@ async function _fetchCodexModelsFromUpstream(token) {
     const models = data.models;
     if (!Array.isArray(models) || models.length === 0) {
       console.warn('[ModelRoutes] Codex models response had no models array, raw keys:', Object.keys(data));
-      return fallback;
+      return degraded('Codex models response had no models');
     }
 
     const mapped = models
@@ -178,11 +201,27 @@ async function _fetchCodexModelsFromUpstream(token) {
     // Persist last-successful so a later degraded state doesn't collapse
     // to the stale hardcoded fallback list.
     persistLastModels('openai-codex', mapped);
-    return mapped;
+    return { models: mapped, listing: listing(LISTING_SOURCE.LIVE, { fetchedAt: now }) };
   } catch (error) {
-    console.warn(`[ModelRoutes] Failed to fetch Codex models: ${error.message}`);
-    return fallback;
+    console.warn(`[ModelRoutes] Failed to fetch Codex models: ${redactUpstreamError(error.message, token)}`);
+    return degraded(error.message);
   }
+}
+
+/**
+ * Response body for a provider listed by a local CLI (Grok Build, Cursor). The
+ * CLI's own answer is the live list; the config list is only for a CLI that
+ * printed nothing parsable, and says so.
+ */
+function localCliListing(providerKey, cliModels) {
+  const live = Array.isArray(cliModels) && cliModels.length > 0;
+  const models = live ? [...cliModels] : [...(getProviderConfig(providerKey)?.fallbackModels || [])];
+  return {
+    success: true, models, cached: false, count: models.length,
+    ...provenanceFields(live
+      ? listing(LISTING_SOURCE.LIVE, { fetchedAt: Date.now() })
+      : listing(LISTING_SOURCE.FALLBACK, { error: 'The local CLI returned no models' })),
+  };
 }
 
 const providerServices = {};
@@ -195,6 +234,7 @@ for (const config of getAllProviderConfigs()) {
       getModelNames: async (token, opts = {}) => (await fetchCodexModels(token, opts)).map((m) => m.id),
       isCacheValid: () => codexModelsCache && Date.now() - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL,
       clearCache: () => { codexModelsCache = null; codexModelsCacheTime = 0; },
+      get lastListing() { return codexListing; },
     };
   } else if (config.staticModels) {
     // Static model list — no API call needed
@@ -215,9 +255,11 @@ for (const config of getAllProviderConfigs()) {
       getModelNames: async () => orderedModels,
       isCacheValid: () => true,
       clearCache: () => {},
+      lastListing: listing(LISTING_SOURCE.STATIC),
     };
   } else {
     providerServices[config.key] = new GenericProviderService({
+      key: config.key,
       name: config.name,
       baseURL: config.modelsBaseURL || config.baseURL,
       fallbackModels: config.fallbackModels,
@@ -358,7 +400,10 @@ router.get('/:provider/models', async (req, res) => {
             } else {
               models = await geminiService.getModelNames(apiKey, options);
             }
-            return res.json({ success: true, models, cached: geminiService.isCacheValid(), count: models.length });
+            return res.json({
+              success: true, models, cached: geminiService.isCacheValid(), count: models.length,
+              ...provenanceFields(geminiService.lastListing),
+            });
           }
         } else {
           // OAuth → the account's live entitlement list (retrieveUserQuota),
@@ -383,13 +428,7 @@ router.get('/:provider/models', async (req, res) => {
             error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
           });
         }
-        let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
-        if (models.length === 0) {
-          const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
-          const cfg = getProviderConfig('grok-build');
-          models = [...(cfg?.fallbackModels || ['grok-4.5'])];
-        }
-        return res.json({ success: true, models, cached: false, count: models.length });
+        return res.json(localCliListing('grok-build', status.models));
       }
       // Cursor Agent CLI — local subscription; list via cursor-agent models or static fallback
       else if (providerLower === 'cursor-cli') {
@@ -401,13 +440,7 @@ router.get('/:provider/models', async (req, res) => {
             error: 'Cursor CLI is not authenticated. Run: cursor-agent login',
           });
         }
-        let models = await CursorCliAuthManager.listModels({ timeoutMs: 20000 });
-        if (models.length === 0) {
-          const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
-          const cfg = getProviderConfig('cursor-cli');
-          models = [...(cfg?.fallbackModels || ['cursor-grok-4.5-high'])];
-        }
-        return res.json({ success: true, models, cached: false, count: models.length });
+        return res.json(localCliListing('cursor-cli', status.models));
       } else {
         // Standard providers: extract user ID from auth token.
         // keyOptional providers tolerate missing auth/key — the dynamic fetch
@@ -475,6 +508,7 @@ router.get('/:provider/models', async (req, res) => {
       models,
       cached: service.isCacheValid(),
       count: models.length,
+      ...provenanceFields(service.lastListing),
     });
   } catch (error) {
     console.error(`Error fetching ${req.params.provider} models:`, error);
@@ -537,12 +571,7 @@ router.post('/:provider/models/refresh', async (req, res) => {
           error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
         });
       }
-      let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
-      if (models.length === 0) {
-        const cfg = getProviderConfig('grok-build');
-        models = [...(cfg?.fallbackModels || ['grok-4.5'])];
-      }
-      return res.json({ success: true, models, cached: false, count: models.length });
+      return res.json(localCliListing('grok-build', status.models));
     } else if (providerLower === 'cursor-cli') {
       const { default: CursorCliAuthManager } = await import('../services/auth/CursorCliAuthManager.js');
       const status = await CursorCliAuthManager.checkApiUsable({ forceRefresh: true });
@@ -552,12 +581,7 @@ router.post('/:provider/models/refresh', async (req, res) => {
           error: 'Cursor CLI is not authenticated. Run: cursor-agent login',
         });
       }
-      let models = await CursorCliAuthManager.listModels({ timeoutMs: 20000 });
-      if (models.length === 0) {
-        const cfg = getProviderConfig('cursor-cli');
-        models = [...(cfg?.fallbackModels || ['cursor-grok-4.5-high'])];
-      }
-      return res.json({ success: true, models, cached: false, count: models.length });
+      return res.json(localCliListing('cursor-cli', status.models));
     } else if (!hasHardcodedModels) {
       // keyOptional providers tolerate missing auth/key on refresh too — the
       // forced fetch fails fast upstream and the fallback ladder answers.
@@ -604,11 +628,15 @@ router.post('/:provider/models/refresh', async (req, res) => {
       registerDynamicPricingFromModels(providerLower, service.modelsCache);
     }
 
+    const provenance = provenanceFields(service.lastListing);
     res.json({
       success: true,
       models,
       count: models.length,
-      message: `${provider} models cache refreshed successfully`,
+      ...provenance,
+      message: provenance.stale
+        ? `${provider} did not return a model list; showing ${provenance.source === 'persisted' ? 'the last list it returned' : 'built-in defaults'}`
+        : `${provider} models cache refreshed successfully`,
     });
   } catch (error) {
     console.error(`Error refreshing ${req.params.provider} models:`, error);
