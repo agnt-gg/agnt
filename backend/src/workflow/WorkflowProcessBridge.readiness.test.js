@@ -88,7 +88,7 @@ describe('WorkflowProcessBridge startup readiness', () => {
     ready.catch(() => {});
 
     // Run exactly the deadline timer, as a thawing event loop would, then
-    // deliver the READY that was sitting in the pipe the whole time \u2014 before
+    // deliver the READY that was sitting in the pipe the whole time, before
     // the next check phase.
     vi.advanceTimersToNextTimer(); // 30 s warning
     vi.advanceTimersToNextTimer(); // 5 min deadline: failure is only SCHEDULED

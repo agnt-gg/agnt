@@ -1,7 +1,7 @@
 // import crypto from 'crypto';
 import CryptoJS from 'crypto-js';
-// mammoth is loaded on the first .docx, not at boot. See backend/boot.importBudget.test.js.
-import { PdfReader } from 'pdfreader';
+// mammoth and pdfreader (with pdf2json under it) are loaded on the first .docx
+// or .pdf, not at boot. See backend/boot.importBudget.test.js.
 
 // export function computeFileHash(buffer) {
 //   const hash = crypto.createHash('sha256');
@@ -27,7 +27,8 @@ export async function getRawTextFromDocxBuffer(docxBuffer) {
 }
 export async function getRawTextFromPDFBuffer(pdfBuffer) {
   try {
-    return new Promise((resolve, reject) => {
+    const { PdfReader } = await import('pdfreader');
+    return await new Promise((resolve, reject) => {
       let textContent = '';
       new PdfReader().parseBuffer(pdfBuffer, (err, item) => {
         if (err) {

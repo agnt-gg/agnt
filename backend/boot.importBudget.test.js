@@ -11,8 +11,9 @@ import { fileURLToPath } from 'url';
  * heavy and serve one feature each, so they are imported where that feature
  * runs. Measured import time in a fresh process (cold / warm cache):
  *
- *   jsdom 601/594 ms (506 files) \u00b7 cheerio 816/196 \u00b7 @google/genai 210/122
- *   @cerebras/cerebras_cloud_sdk 222/62 \u00b7 mammoth 143/139 \u00b7 mailparser 102/101
+ *   jsdom 601/594 ms (506 files), cheerio 816/196, @google/genai 210/122,
+ *   @cerebras/cerebras_cloud_sdk 222/62, mammoth 143/139, mailparser 102/101;
+ *   pdfreader (pulls in pdf2json) showed up on a boot CPU profile after these.
  *
  * jsdom came back onto the boot path unnoticed once already (commit 4dd9adc0,
  * a static import in utils/webScrape.js). This walks the real static graph so
@@ -30,6 +31,7 @@ const MUST_BE_LAZY = [
   '@cerebras/cerebras_cloud_sdk',
   'imap',
   'mailparser',
+  'pdfreader',
 ];
 
 // Static forms only; `import('x')` inside a function is exactly what we want.
