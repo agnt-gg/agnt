@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import db, { dbReady } from './database/index.js';
 import UserModel, { NODE_STATS_SQL } from './UserModel.js';
+import PathManager from '../utils/PathManager.js';
 
 /**
  * getUserStats used to aggregate every node execution a user ever ran on each
@@ -162,6 +165,60 @@ describe('incremental node-execution stats', () => {
       expect(typeof stats[key], key).toBe('number');
     }
     expect(stats.workflowStatuses).toEqual({ complete: stats.successfulExecutions, error: stats.failedExecutions, started: stats.startedExecutions });
+  });
+
+  it('survive a restart: the next boot reuses the persisted count instead of recounting everything', async () => {
+    const r = await startRun(USER);
+    for (let i = 0; i < 3; i++) { await startNode(r, `n${i}`); await finishNode(r, `n${i}`, 'completed'); }
+    await finishRun(r);
+    await expectMatchesOracle();
+    await UserModel._forgetNodeStatsInMemoryForTests(); // what a restart does to memory
+
+    const later = await startRun(USER);
+    await startNode(later, 'x');
+    await finishNode(later, 'x', 'error');
+    await finishRun(later);
+
+    const spy = vi.spyOn(db, 'get');
+    try {
+      await expectMatchesOracle();
+      const ranFullRecount = spy.mock.calls.some(([sql]) => sql === NODE_STATS_SQL.full);
+      expect(ranFullRecount, 'a warm persisted cache must not trigger the full 1.1 GB recount').toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('recount when the persisted watermark no longer describes this database', async () => {
+    const r = await startRun(USER);
+    await startNode(r, 'a');
+    await finishNode(r, 'a', 'completed');
+    await finishRun(r);
+    await expectMatchesOracle();
+    await UserModel._forgetNodeStatsInMemoryForTests();
+
+    // A restored or swapped database: the row at the watermark is a different row.
+    const file = path.join(PathManager.dataDir, 'node-stats-cache.json');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    saved[USER].anchorId = 'a-row-from-another-database';
+    saved[USER].total = 999_999;
+    fs.writeFileSync(file, JSON.stringify(saved));
+
+    await expectMatchesOracle();
+  });
+
+  it('delete the persisted count on invalidation', async () => {
+    const r = await startRun(USER);
+    await startNode(r, 'a');
+    await finishNode(r, 'a', 'completed');
+    await finishRun(r);
+    await statsFor(USER);
+    await UserModel._forgetNodeStatsInMemoryForTests();
+    const file = path.join(PathManager.dataDir, 'node-stats-cache.json');
+    expect(fs.existsSync(file)).toBe(true);
+
+    await UserModel.invalidateNodeStats();
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it('read only new rows on a warm call', async () => {

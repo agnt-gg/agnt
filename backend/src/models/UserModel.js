@@ -1,4 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import db from './database/index.js';
+import PathManager from '../utils/PathManager.js';
 import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 import {
   normalizeGlobalRoutingMode,
@@ -106,6 +109,14 @@ function serializeSubscriptionCosts(value) {
  * NODE_STATS_UNSETTLED_WINDOW ago crashed without finalizing and is treated as
  * settled — otherwise one crashed run would pin the watermark forever.
  *
+ * ACROSS RESTARTS. The first call after every boot used to be the full
+ * recount — 1.1 GB, fired by the app's own startup data load, at the moment the
+ * disk was busiest. The cache is therefore also kept in a small file in the
+ * data directory. A persisted entry is trusted only if it is younger than
+ * NODE_STATS_RECOUNT_MS AND the node row at its watermark still has the id it
+ * had when counted (`anchorId`): a restored, reset or swapped database fails
+ * that check and is recounted. It is a cache — deleting it costs one recount.
+ *
  * Deletions (Settings → Reset, retention) must call invalidateNodeStats().
  */
 const NODE_STATS_RECOUNT_MS = 6 * 60 * 60 * 1000;
@@ -132,12 +143,56 @@ export const NODE_STATS_SQL = {
     WHERE ne.rowid > ? AND ne.rowid <= ? AND e.id = ne.execution_id AND e.user_id = ?`,
 };
 
-const nodeStatsCache = new Map(); // userId -> { through, total, completed, error, countedAt }
+const nodeStatsCache = new Map(); // userId -> { through, anchorId, total, completed, error, countedAt }
 const nodeStatsInFlight = new Map(); // userId -> Promise
 let nodeStatsGeneration = 0;
 
 const dbGetRow = (sql, params) =>
   new Promise((resolve, reject) => db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row))));
+
+const nodeStatsFile = () => path.join(PathManager.dataDir, 'node-stats-cache.json');
+// Every write and delete of the file goes through this chain, in order, so an
+// invalidation can never be overtaken by a write that started before it.
+let nodeStatsFileQueue = Promise.resolve();
+const enqueueFileTask = (task) => {
+  nodeStatsFileQueue = nodeStatsFileQueue.then(task).catch((err) => {
+    console.warn('[UserModel] node stats cache file:', err.message);
+  });
+  return nodeStatsFileQueue;
+};
+
+function persistNodeStats() {
+  return enqueueFileTask(async () => {
+    // Written from the cache as it is when the write RUNS, not when it was
+    // requested: an invalidation queued meanwhile has already emptied it.
+    const file = nodeStatsFile();
+    const tmp = `${file}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, JSON.stringify(Object.fromEntries(nodeStatsCache)));
+    await fs.promises.rename(tmp, file);
+  });
+}
+
+async function anchorIdAt(rowid) {
+  if (!rowid) return null;
+  return (await dbGetRow('SELECT id FROM node_executions WHERE rowid = ?', [rowid]))?.id ?? null;
+}
+
+/** A persisted entry for `userId` that still describes THIS database, or null. */
+async function loadPersistedBase(userId) {
+  // Let queued file work land first. An invalidation deletes the file through
+  // the queue; reading past it would resurrect a count for history that is
+  // gone — and the anchor check cannot catch that when only OLDER rows went.
+  await nodeStatsFileQueue;
+  let entry;
+  try {
+    entry = JSON.parse(await fs.promises.readFile(nodeStatsFile(), 'utf8'))?.[userId];
+  } catch {
+    return null; // missing or unreadable: recount
+  }
+  if (!entry || !Number.isInteger(entry.through) || Date.now() - entry.countedAt > NODE_STATS_RECOUNT_MS) return null;
+  if (entry.through > 0 && (await anchorIdAt(entry.through)) !== entry.anchorId) return null;
+  return entry;
+}
 
 function countNodeRows(userId, afterRowid, uptoRowid) {
   return afterRowid === 0
@@ -150,9 +205,9 @@ async function computeNodeStats(userId) {
   // Bound every read by the rowid seen now, so rows appended mid-call are
   // counted by the next call instead of half-counted by this one.
   const upto = (await dbGetRow('SELECT max(rowid) AS m FROM node_executions', [])).m || 0;
-  let base = nodeStatsCache.get(userId);
+  let base = nodeStatsCache.get(userId) || (await loadPersistedBase(userId));
   if (!base || Date.now() - base.countedAt > NODE_STATS_RECOUNT_MS || upto < base.through) {
-    base = { through: 0, total: 0, completed: 0, error: 0, countedAt: Date.now() };
+    base = { through: 0, anchorId: null, total: 0, completed: 0, error: 0, countedAt: Date.now() };
   }
 
   const added = upto > base.through ? await countNodeRows(userId, base.through, upto) : null;
@@ -167,15 +222,21 @@ async function computeNodeStats(userId) {
     };
   }
 
+  const through = added?.firstUnsettled != null ? added.firstUnsettled - 1 : upto;
   const next = {
-    through: added?.firstUnsettled != null ? added.firstUnsettled - 1 : upto,
+    through,
+    anchorId: through === base.through ? base.anchorId : await anchorIdAt(through),
     total: base.total + (settled?.total || 0),
     completed: base.completed + (settled?.completed || 0),
     error: base.error + (settled?.error || 0),
     countedAt: base.countedAt,
   };
   // An invalidation that landed while this ran makes `next` stale; do not keep it.
-  if (generation === nodeStatsGeneration) nodeStatsCache.set(userId, next);
+  if (generation === nodeStatsGeneration) {
+    const moved = nodeStatsCache.get(userId)?.through !== next.through;
+    nodeStatsCache.set(userId, next);
+    if (moved) persistNodeStats();
+  }
   return {
     total: next.total + (unsettled?.total || 0),
     completed: next.completed + (unsettled?.completed || 0),
@@ -204,6 +265,14 @@ class UserModel {
   static invalidateNodeStats() {
     nodeStatsGeneration += 1;
     nodeStatsCache.clear();
+    return enqueueFileTask(() => fs.promises.rm(nodeStatsFile(), { force: true }));
+  }
+
+  /** Tests only: drop the in-memory cache as a process restart would, keeping the file. */
+  static _forgetNodeStatsInMemoryForTests() {
+    nodeStatsGeneration += 1;
+    nodeStatsCache.clear();
+    return nodeStatsFileQueue;
   }
 
   static async getUserStats(userId) {
