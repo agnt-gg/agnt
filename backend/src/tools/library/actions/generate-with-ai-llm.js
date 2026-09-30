@@ -2,7 +2,8 @@ import {currentTeamExecution} from '../../../services/authorization/TeamExecutio
 import BaseAction from '../BaseAction.js';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai/index.mjs';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// @google/generative-ai is loaded by the one path that uses it (Gemini image
+// generation), not at boot. See backend/boot.importBudget.test.js.
 import AuthManager from '../../../services/auth/AuthManager.js';
 import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
@@ -1043,6 +1044,7 @@ class GenerateWithAiLlm extends BaseAction {
         throw new Error(`Gemini only supports 'Generate' operation. Edit and Variation are not supported.`);
       }
 
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(params.apiKey);
       // Registry default, not a literal. The previous fallback was
       // 'gemini-2.0-flash-exp', which the catalog no longer lists — the same

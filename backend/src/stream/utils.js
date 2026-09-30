@@ -1,6 +1,6 @@
 // import crypto from 'crypto';
 import CryptoJS from 'crypto-js';
-import mammoth from 'mammoth';
+// mammoth is loaded on the first .docx, not at boot. See backend/boot.importBudget.test.js.
 import { PdfReader } from 'pdfreader';
 
 // export function computeFileHash(buffer) {
@@ -17,6 +17,7 @@ export function generateUniqueId() {
 }
 export async function getRawTextFromDocxBuffer(docxBuffer) {
   try {
+    const { default: mammoth } = await import('mammoth');
     const result = await mammoth.extractRawText({ buffer: docxBuffer });
     return result.value;
   } catch (error) {

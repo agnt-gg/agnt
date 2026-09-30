@@ -1,5 +1,12 @@
-import { load } from 'cheerio';
+import { createRequire } from 'module';
 import { fileURLToPreviewURL, rewritePreviewCSS, PREVIEW_MESSAGE, PREVIEW_CHANNEL_PARAM } from './artifactPreviewUrls.js';
+
+// cheerio is loaded on the first preview, not at boot (see
+// backend/boot.importBudget.test.js). preparePreviewHTML is synchronous, so
+// this uses cheerio's CommonJS build through require rather than import().
+const requireOnDemand = createRequire(import.meta.url);
+let cheerio = null;
+const load = (...args) => (cheerio ??= requireOnDemand('cheerio')).load(...args);
 
 export const MAX_PREVIEW_TEXT_BYTES = 8 * 1024 * 1024;
 

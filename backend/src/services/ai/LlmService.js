@@ -1,8 +1,6 @@
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { OpenAI } from 'openai/index.mjs';
-import { GoogleGenAI } from '@google/genai';
-import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
@@ -19,6 +17,12 @@ import { getProviderConfig } from './providerConfigs.js';
 import { createCchFetch } from './claudeBillingHeader.js';
 import { getClientIdentity, getClientVersion } from './clientVersions.js';
 import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
+
+// The Gemini and Cerebras SDKs are loaded when a client for them is first
+// created, not at boot (see backend/boot.importBudget.test.js). import() caches,
+// so every later client pays nothing.
+const loadGoogleGenAI = async () => (await import('@google/genai')).GoogleGenAI;
+const loadCerebras = async () => (await import('@cerebras/cerebras_cloud_sdk')).default;
 
 // ── Gemini OAuth Proxy ──────────────────────────────────────────────
 // Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
@@ -356,13 +360,17 @@ async function _createClientFromConfig(config, accessToken) {
       client = new Anthropic({ apiKey: accessToken, ...sdkOpts });
       break;
 
-    case 'gemini':
+    case 'gemini': {
+      const GoogleGenAI = await loadGoogleGenAI();
       client = new GoogleGenAI({ apiKey: accessToken, ...sdkOpts });
       break;
+    }
 
-    case 'cerebras':
+    case 'cerebras': {
+      const Cerebras = await loadCerebras();
       client = new Cerebras({ apiKey: accessToken, ...sdkOpts });
       break;
+    }
 
     case 'openai':
     default: {
@@ -555,6 +563,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
     if (GeminiCliAuthManager.isUsingApiKey()) {
       // API key → passed as apiKey (sent as ?key= query param)
+      const GoogleGenAI = await loadGoogleGenAI();
       return new GoogleGenAI({ apiKey: token, ...sdkOpts });
     }
 

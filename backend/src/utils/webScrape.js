@@ -1,4 +1,6 @@
-import { JSDOM } from 'jsdom';
+// jsdom is loaded on first scrape, not at boot: it is ~500 files and ~600 ms
+// to import, and nothing else on the boot path needs it. See
+// backend/boot.importBudget.test.js.
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
 import { getBestChromePath, getChromeNotFoundMessage } from './chrome-detector.js';
@@ -51,6 +53,7 @@ async function scrape(url) {
     const html = await page.content();
 
     // 5. Parse the rendered HTML using JSDOM
+    const { JSDOM } = await import('jsdom');
     const doc = new JSDOM(html, {
       url: url, // Provide the URL for resolving relative paths
     });

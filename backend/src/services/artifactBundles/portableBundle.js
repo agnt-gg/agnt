@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { load } from 'cheerio';
 import { BUNDLE_LIMITS, mimeFor, normalizeBundlePath, shouldExclude } from './manifest.js';
 
 // A bundle is the entry plus what it references, followed recursively: HTML
@@ -143,6 +142,8 @@ async function rewriteSrcset(source, resolve) {
   });
 }
 async function rewriteHTML(source, resolve, setBase, onScript = () => {}) {
+  // cheerio is loaded on first use, not at boot. See backend/boot.importBudget.test.js.
+  const { load } = await import('cheerio');
   const $ = load(source, { sourceCodeLocationInfo:true });
   const edits = [];
   const base = $('base[href]').first()[0];

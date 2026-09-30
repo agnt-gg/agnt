@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom';
+// jsdom is loaded on first scrape, not at boot. See backend/boot.importBudget.test.js.
 import puppeteer from 'puppeteer-core';
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
@@ -148,6 +148,7 @@ async function scrape(url) {
     const html = await page.content();
 
     // 5. Parse the rendered HTML using JSDOM
+    const { JSDOM } = await import('jsdom');
     const doc = new JSDOM(html, {
       url: url, // Provide the URL for resolving relative paths
     });

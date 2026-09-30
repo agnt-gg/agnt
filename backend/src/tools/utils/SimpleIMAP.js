@@ -1,6 +1,15 @@
-import Imap from 'imap';
-import { simpleParser } from 'mailparser';
+import { createRequire } from 'module';
 import { EventEmitter } from 'events';
+
+// imap and mailparser are loaded when a mailbox is first opened, not at boot
+// (see backend/boot.importBudget.test.js). The constructor is synchronous, so
+// this uses their CommonJS builds through require rather than import().
+const requireOnDemand = createRequire(import.meta.url);
+const Imap = function lazyImap(config) {
+  const ImapClient = requireOnDemand('imap');
+  return new ImapClient(config);
+};
+const simpleParser = (...args) => requireOnDemand('mailparser').simpleParser(...args);
 
 class simpleIMAP extends EventEmitter {
   constructor(config) {
