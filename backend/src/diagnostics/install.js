@@ -135,6 +135,18 @@ function attachStdioPipeGuards() {
 }
 
 /**
+ * How much console output still goes to this process's real stdout/stderr.
+ * A parent that forks us with pipes and does not echo them sets 'warn' (see
+ * consoleBridge.js for why a pipe write can freeze us); a terminal run leaves
+ * it unset and sees everything, exactly as before.
+ */
+export function consolePassthroughFromEnv(value = process.env.AGNT_CONSOLE_PASSTHROUGH) {
+  if (value === 'warn') return 'warn';
+  if (value === 'none') return false;
+  return true;
+}
+
+/**
  * @param {object}   opts
  * @param {string}   opts.proc              'main' | 'backend' | 'workflow' | 'renderer'
  * @param {string}   opts.dir               diagnostics directory
@@ -159,7 +171,9 @@ export function installDiagnostics({
   process.env.AGNT_BOOT_ID = resolvedBoot; // inherited by every child we fork
 
   const recorder = new Recorder({ dir, proc, bootId: resolvedBoot, level });
-  const uninstallBridge = bridgeConsole ? installConsoleBridge(recorder) : () => {};
+  const uninstallBridge = bridgeConsole
+    ? installConsoleBridge(recorder, { passthrough: consolePassthroughFromEnv() })
+    : () => {};
 
   attachStdioPipeGuards();
 

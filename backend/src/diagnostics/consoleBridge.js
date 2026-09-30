@@ -24,10 +24,30 @@ const METHOD_LEVELS = [
 ];
 
 /**
+ * Which console methods still reach the real console.
+ *
+ * WHY 'warn' EXISTS: on Windows a write to a stdout PIPE is synchronous — the
+ * process blocks until its parent reads (measured: 20,000 lines against a
+ * reader that paused 3 s stalled the child's event loop 3,041 ms). The backend
+ * and the workflow process both run with piped stdio under a parent that was
+ * busy at boot, so plugin chatter froze them: timers fired 7.7 s late and a
+ * READY message sat unread for 37 s. Their records are already in the
+ * diagnostics log, so a parent that is not echoing them gets warnings and
+ * errors only — which still reach its crash dialog.
+ */
+const PASS_WARN_AND_ABOVE = new Set(['warn', 'error']);
+
+function passes(passthrough, method) {
+  if (passthrough === 'warn') return PASS_WARN_AND_ABOVE.has(method);
+  return Boolean(passthrough);
+}
+
+/**
  * @param {import('./Recorder.js').Recorder} recorder
  * @param {object}  [opts]
  * @param {Console} [opts.target=console]
- * @param {boolean} [opts.passthrough=true]  keep writing to the real console
+ * @param {boolean|'warn'} [opts.passthrough=true]  keep writing to the real
+ *   console: true = everything, 'warn' = warn and error only, false = nothing
  * @returns {() => void} uninstall
  */
 export function installConsoleBridge(recorder, { target = console, passthrough = true } = {}) {
@@ -45,8 +65,9 @@ export function installConsoleBridge(recorder, { target = console, passthrough =
     if (typeof target[method] !== 'function') continue;
     native[method] = target[method];
 
+    const passThrough = passes(passthrough, method);
     target[method] = (...args) => {
-      if (passthrough) native[method].apply(target, args);
+      if (passThrough) native[method].apply(target, args);
       if (inside) return;
       inside = true;
       try {
