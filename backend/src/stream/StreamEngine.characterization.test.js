@@ -140,6 +140,19 @@ describe('StreamEngine — the model actually requested', () => {
     expect(expected).not.toBe('mixtral-8x7b-32768'); // the dead id is gone
   });
 
+  it('FIXED: with no model and a live catalogue that dropped the registry default, it sends a live model', async () => {
+    // The eighth form of the stale-default bug: recommendedModels[0] taken
+    // unverified. Live on 2026-09-30 Groq no longer listed its registry
+    // default. Real lastModelsCache, in the runner's isolated data dir.
+    const { persistLastModels } = await import('../services/ai/lastModelsCache.js');
+    persistLastModels('groq', [{ id: 'whisper-large-v3' }, { id: 'qwen/qwen3.6-27b' }]);
+    try {
+      expect(await modelSentFor('groq', undefined)).toBe('qwen/qwen3.6-27b');
+    } finally {
+      persistLastModels('groq', [{ id: '__cleared__' }]);
+    }
+  });
+
   it('FIXED: the duplicated default-model maps are gone entirely', async () => {
     // There used to be four copies of a ~20-entry map, and they had drifted:
     // 6 of 19 providers resolved differently depending on which generator was

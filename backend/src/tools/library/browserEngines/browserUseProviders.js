@@ -40,7 +40,7 @@ import {
   getProviderConfig,
   isSubscriptionProvider,
 } from '../../../services/ai/providerConfigs.js';
-import { getLastSuccessfulModels } from '../../../services/ai/lastModelsCache.js';
+import { resolveDefaultModel } from '../../../services/ai/defaultModel.js';
 
 /** @enum {string} */
 export const ROUTE = {
@@ -144,37 +144,6 @@ const DEFAULT_MODEL_OVERRIDES = {
 };
 
 /**
- * Model ids that exist in a provider's catalogue but cannot hold a
- * conversation. Every provider list is polluted with these — Groq alone ships
- * whisper, TTS and prompt-guard models in the same array as its chat models.
- */
-const NOT_A_CHAT_MODEL = /whisper|tts|embed|moderat|guard|rerank|transcrib|speech|audio|image|dall-e|orpheus|sora|veo|imagen/i;
-
-/**
- * Model ids that AGNT's live fetch has actually seen for this provider.
- *
- * NOTE ON THE KEY: lastModelsCache is written by GenericProviderService as
- * `this.name.toLowerCase()` — the DISPLAY name — so it stores 'together ai'
- * and 'grok ai' for some providers and 'groq'/'openai' for others. Reading by
- * key alone silently misses every multi-word provider, which would make this
- * function quietly fall back to the stale static list for exactly the
- * providers that need it most. Both spellings are tried until that is fixed
- * upstream.
- *
- * @returns {{ids: Set<string>, ordered: string[]}|null} null when never fetched.
- */
-function liveModelIds(config) {
-  const models = getLastSuccessfulModels(config.key)
-    || getLastSuccessfulModels(config.name)
-    || null;
-  if (!models) return null;
-
-  const ordered = models.map((m) => m?.id).filter((id) => typeof id === 'string' && id.length > 0);
-  if (ordered.length === 0) return null;
-  return { ids: new Set(ordered), ordered };
-}
-
-/**
  * The model a provider gets when the user does not name one.
  *
  * WHY THIS CONSULTS THE LIVE LIST FIRST
@@ -190,29 +159,22 @@ function liveModelIds(config) {
  *
  * So: prefer a static pick that the live catalogue confirms exists, then any
  * live chat model, and only then the unverified static list — which is still
- * the right answer when the catalogue has never been fetched.
+ * the right answer when the catalogue has never been fetched. That rule now
+ * lives in services/ai/defaultModel.js, shared with every other generator;
+ * browser automation only contributes its preference ORDER (vision first).
  */
 export function defaultModelFor(providerKey) {
   const config = getProviderConfig(providerKey);
   if (!config) return null;
 
-  const preferred = [
-    DEFAULT_MODEL_OVERRIDES[config.key],
-    ...(config.fallbackVisionModels || []),
-    ...(config.recommendedModels || []),
-    ...(config.fallbackModels || []),
-  ].filter(Boolean);
-
-  const live = liveModelIds(config);
-  if (live) {
-    const confirmed = preferred.find((model) => live.ids.has(model));
-    if (confirmed) return confirmed;
-
-    const usable = live.ordered.find((id) => !NOT_A_CHAT_MODEL.test(id));
-    if (usable) return usable;
-  }
-
-  return preferred[0] || null;
+  return resolveDefaultModel(config.key, {
+    preferred: [
+      DEFAULT_MODEL_OVERRIDES[config.key],
+      ...(config.fallbackVisionModels || []),
+      ...(config.recommendedModels || []),
+      ...(config.fallbackModels || []),
+    ].filter(Boolean),
+  });
 }
 
 /*

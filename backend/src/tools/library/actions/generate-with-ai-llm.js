@@ -11,7 +11,8 @@ import GeminiCliAuthManager from '../../../services/auth/GeminiCliAuthManager.js
 import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
-import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
+import { getProviderConfig, resolveMaxOutputTokens, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
+import { resolveDefaultModel } from '../../../services/ai/defaultModel.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 
@@ -44,10 +45,14 @@ import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
  */
 const BASE_URLS = buildBaseURLs();
 
-/** The provider's current default model, per the registry. */
+/**
+ * The provider's current default model: the registry pick the vendor's live
+ * catalogue confirms (services/ai/defaultModel.js), not `recommendedModels[0]`
+ * unverified, which named a model the vendor no longer serves for eight
+ * providers on 2026-09-30.
+ */
 function providerDefaultModel(providerKey) {
-  const cfg = getProviderConfig(providerKey);
-  return cfg?.recommendedModels?.[0] || cfg?.fallbackModels?.[0] || null;
+  return resolveDefaultModel(providerKey);
 }
 
 /** The provider's current default IMAGE model, per the registry. */
@@ -595,7 +600,8 @@ class GenerateWithAiLlm extends BaseAction {
     // mirrors the SDK surface: models.generateContent → { text, usageMetadata }.
     const provider = params.provider.toLowerCase();
     const client = await createLlmClient(provider, params.userId);
-    const model = params.model || providerDefaultModel(provider) || 'gemini-2.5-pro';
+    const model = params.model || providerDefaultModel(provider);
+    if (!model) throw new Error(`No model could be resolved for provider: ${provider}`);
 
     const parts = [{ text: params.prompt }];
     const imageData = this.processImageData(params);
@@ -765,9 +771,9 @@ class GenerateWithAiLlm extends BaseAction {
    * array is explicitly unsupported.
    * https://platform.kimi.ai/docs/guide/use-kimi-vision-model
    */
-  async generateWithManagedOpenAiLike(params, { provider, defaultModel }) {
+  async generateWithManagedOpenAiLike(params, { provider }) {
     const client = await createLlmClient(provider, params.userId);
-    const model = params.model || defaultModel || getRecommendedModels(provider)?.[0];
+    const model = params.model || providerDefaultModel(provider);
     if (!model) {
       throw new Error(`${provider} requires an explicit model in the node configuration.`);
     }
@@ -810,10 +816,7 @@ class GenerateWithAiLlm extends BaseAction {
     // Kimi Code: custom baseURL (api.kimi.com/coding/v1) + a User-Agent that
     // spoofs kimi-cli + developer->user role mapping. All four Kimi Code
     // models accept image input (verified live against the API).
-    return this.generateWithManagedOpenAiLike(params, {
-      provider: 'kimi-code',
-      defaultModel: 'kimi-for-coding',
-    });
+    return this.generateWithManagedOpenAiLike(params, { provider: 'kimi-code' });
   }
 
   async generateWithChutes(params) {

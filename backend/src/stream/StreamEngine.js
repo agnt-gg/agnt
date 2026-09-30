@@ -10,6 +10,7 @@ import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
+import { resolveDefaultModelAsync } from '../services/ai/defaultModel.js';
 
 /**
  * The model to use when a caller does not name one.
@@ -41,19 +42,20 @@ import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/provid
  * plan differs — but the fallback is now the registry, like every other
  * provider.
  *
- * `local` keeps an explicit answer because it is not in the registry: it is
- * whatever the user happens to be running.
+ * The registry pick is then checked against the vendor's live catalogue (see
+ * services/ai/defaultModel.js): taking `recommendedModels[0]` unverified was
+ * the same stale-id bug in its eighth form. `local` is asked directly — it is
+ * whatever the user happens to be running, which was a hardcoded
+ * llama-3.2-1b-instruct here.
  */
-function defaultGenerationModel(providerKey) {
+async function defaultGenerationModel(providerKey) {
   if (providerKey === 'openai-codex') {
     const override = typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string'
       ? process.env.AGNT_CODEX_DEFAULT_MODEL.trim()
       : '';
     if (override) return override;
   }
-  if (providerKey === 'local') return 'llama-3.2-1b-instruct';
-  const cfg = getProviderConfig(providerKey);
-  return cfg?.recommendedModels?.[0] || cfg?.fallbackModels?.[0] || null;
+  return resolveDefaultModelAsync(providerKey);
 }
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
@@ -668,7 +670,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
    *   for providers that emit a separate reasoning block.
    */
   async _generateViaAdapter({ client, provider, providerKey, model, systemPrompt, userPrompt }) {
-    const selectedModel = model || defaultGenerationModel(providerKey);
+    const selectedModel = model || await defaultGenerationModel(providerKey);
     if (!selectedModel) {
       throw new Error(`No model could be resolved for provider: ${provider}`);
     }
