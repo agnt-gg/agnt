@@ -10,6 +10,7 @@ import { ANTIGRAVITY_OAUTH } from '../../config/oauthClients.js';
 import { getClientVersion } from '../ai/clientVersions.js';
 import { readSecretJson, secretStoreSupported } from './secretStore.js';
 import { TIER, describeSource } from './credentialResolver.js';
+import { selectAntigravityChatModels, antigravityQuotaFractions } from '../ai/googleModelCatalog.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -801,8 +802,9 @@ class AntigravityAuthManager {
 
   // ── Dynamic Model Listing ──────────────────────────────────
   // Antigravity exposes a real models endpoint (fetchAvailableModels) that
-  // returns the live catalog plus per-model quota state. Falls back to the
-  // static curated list in providerConfigs when unavailable.
+  // returns the live catalog plus per-model quota state. Which of its entries
+  // are chat models is decided in googleModelCatalog.js. Returns [] on failure;
+  // callers fall back to the static curated list in providerConfigs.
 
   async fetchAvailableModels(oauth2Client) {
     const authClient = oauth2Client || this.getOAuth2Client();
@@ -821,47 +823,16 @@ class AntigravityAuthManager {
         headers: browserHeaders,
       });
 
-      const models = res.data?.models || {};
-      const deprecated = new Set(Object.keys(res.data?.deprecatedModelIds || {}));
-
-      // The gateway's own "Recommended" agent sort is the authoritative list of
-      // chat-usable models (the raw map also contains internal tab/autocomplete
-      // models like chat_20706 / tab_* that reject generateContent).
-      const sortedIds = [];
-      for (const sort of res.data?.agentModelSorts || []) {
-        for (const group of sort.groups || []) {
-          for (const id of group.modelIds || []) {
-            if (!sortedIds.includes(id)) sortedIds.push(id);
-          }
-        }
-      }
-
-      const ids = sortedIds.length > 0
-        ? sortedIds
-        : Object.keys(models).filter((id) => models[id]?.displayName);
+      const selected = selectAntigravityChatModels(res.data);
 
       // PRD-109: this is the live quota read point. If every usable model is at/under
       // the soft floor, trip the cooldown so we stop routing before exhaustion.
-      const fractions = ids
-        .map((id) => models[id]?.quotaInfo?.remainingFraction)
-        .filter((f) => f != null);
+      const fractions = antigravityQuotaFractions(selected);
       if (fractions.length > 0 && Math.max(...fractions) <= SOFT_QUOTA_FLOOR) {
         this.tripCooldown('quota floor');
       }
 
-      return ids
-        .filter((id) => models[id] && !deprecated.has(id))
-        .filter((id) => !models[id]?.quotaInfo?.isExhausted)
-        .map((id) => ({
-          id,
-          name: models[id]?.displayName || id,
-          maxTokens: models[id]?.maxTokens ?? null,
-          maxOutputTokens: models[id]?.maxOutputTokens ?? null,
-          supportsImages: models[id]?.supportsImages ?? false,
-          supportsThinking: models[id]?.supportsThinking ?? false,
-          quotaRemaining: models[id]?.quotaInfo?.remainingFraction ?? null,
-          quotaResetTime: models[id]?.quotaInfo?.resetTime ?? null,
-        }));
+      return selected;
     } catch (error) {
       const status = error.response?.status;
       if (status === 403 || status === 429) this.tripCooldown(`fetchAvailableModels HTTP ${status}`);

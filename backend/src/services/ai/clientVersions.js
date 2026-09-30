@@ -55,6 +55,15 @@ const SOURCES = {
     format: (v) => `KimiCLI/${v}`,
     fallback: '1.50.0',
   },
+  // Google's Gemini CLI sends `GeminiCLI/<version>/<model> (...)` on every
+  // Code Assist call (packages/core/src/core/contentGenerator.ts).
+  'gemini-cli': {
+    label: 'Gemini CLI',
+    registry: 'https://registry.npmjs.org/@google/gemini-cli/latest',
+    extract: (json) => json?.version,
+    format: (v) => v,
+    fallback: '0.62.0',
+  },
   antigravity: {
     label: 'Antigravity CLI',
     registry: 'https://api.github.com/repos/google-antigravity/antigravity-cli/releases/latest',

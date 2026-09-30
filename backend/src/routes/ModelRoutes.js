@@ -17,7 +17,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
-import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
+import { listGoogleSubscriptionModels, GOOGLE_SUBSCRIPTION_PROVIDERS } from '../services/ai/googleSubscriptionModels.js';
 // One resolver for the four subscription providers that authenticate through a
 // local OAuth flow rather than a stored API key.
 import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
@@ -361,69 +361,17 @@ router.get('/:provider/models', async (req, res) => {
             return res.json({ success: true, models, cached: geminiService.isCacheValid(), count: models.length });
           }
         } else {
-          // OAuth → Code Assist endpoint has no /models listing, use curated list
-          // Ensure onboarding has run so tier info is populated (no-ops if already done)
-          // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107).
-          // Surface a clear diagnostic instead of a cryptic downstream 403.
-          if (gcStatus.deprecated) {
-            return res.status(400).json({ success: false, error: gcStatus.hint, deprecated: true });
-          }
-          await GeminiCliAuthManager.ensureOnboarded();
-
-          const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
-          const cfg = getProviderConfig('gemini-cli');
-          const models = [...(cfg?.fallbackModels || [])];
-
-          // gemini-3.1-pro-preview is only available to paid/standard tier users
-          if (GeminiCliAuthManager.hasPaidTier() && !models.includes('gemini-3.1-pro-preview')) {
-            const idx = models.indexOf('gemini-3-pro-preview');
-            models.splice(idx >= 0 ? idx + 1 : 1, 0, 'gemini-3.1-pro-preview');
-          }
-
-          return res.json({ success: true, models, cached: false, count: models.length });
+          // OAuth → the account's live entitlement list (retrieveUserQuota),
+          // or a clear "no license" error. See googleSubscriptionModels.js.
+          const { status, body } = await listGoogleSubscriptionModels('gemini-cli');
+          return res.status(status).json(body);
         }
       }
-      // Antigravity: OAuth-only gateway (Gemini 3.x + Claude 4.6 + GPT-OSS).
-      // Tries the live fetchAvailableModels endpoint, falls back to curated list.
+      // Antigravity: OAuth-only gateway. Live fetchAvailableModels catalog,
+      // static curated list only if Google is unreachable.
       else if (providerLower === 'antigravity') {
-        const agStatus = await AntigravityAuthManager.checkApiUsable();
-        if (!agStatus.available) {
-          return res.status(400).json({
-            success: false,
-            error: 'Antigravity is not connected. Use Google OAuth to connect.',
-          });
-        }
-        // PRD-109: while cooling down after a 403/429, don't hit Google for models.
-        if (agStatus.coolingDown) {
-          return res.status(429).json({
-            success: false, coolingDown: true, retryAfterMs: agStatus.retryAfterMs,
-            error: agStatus.hint,
-          });
-        }
-        apiKey = await AntigravityAuthManager.getAccessToken();
-        if (!apiKey) {
-          return res.status(400).json({ success: false, error: 'Antigravity token not found.' });
-        }
-
-        // Try dynamic model listing via fetchAvailableModels
-        try {
-          const oauth2Client = AntigravityAuthManager.getOAuth2Client();
-          if (oauth2Client) {
-            const dynamicModels = await AntigravityAuthManager.fetchAvailableModels(oauth2Client);
-            if (dynamicModels.length > 0) {
-              const modelNames = dynamicModels.map((m) => m.id);
-              return res.json({ success: true, models: modelNames, cached: false, count: modelNames.length, dynamic: true });
-            }
-          }
-        } catch (e) {
-          console.warn('[ModelRoutes] Antigravity dynamic model fetch failed, using fallback:', e.message);
-        }
-
-        // Fallback to the static curated list
-        const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
-        const cfg = getProviderConfig('antigravity');
-        const models = [...(cfg?.fallbackModels || [])];
-        return res.json({ success: true, models, cached: false, count: models.length });
+        const { status, body } = await listGoogleSubscriptionModels('antigravity');
+        return res.status(status).json(body);
       }
       // Grok Build CLI — local subscription; list via `grok models` or static fallback
       else if (providerLower === 'grok-build') {
@@ -558,6 +506,14 @@ router.post('/:provider/models/refresh', async (req, res) => {
     const authToken = req.headers.authorization;
     let apiKey = null;
     const hasHardcodedModels = providersWithHardcodedModels.includes(providerLower);
+
+    // Google subscription gateways list from their own live catalogs; the
+    // generic service below has none and would answer with the static list.
+    if (GOOGLE_SUBSCRIPTION_PROVIDERS.includes(providerLower)) {
+      const listing = await listGoogleSubscriptionModels(providerLower, { forceRefresh: true });
+      if (listing) return res.status(listing.status).json(listing.body);
+      // null = Gemini CLI in API-key mode: the generic path below is correct.
+    }
 
     // The four OAuth providers resolve through one shared table. This was four
     // hand-written arms here and four more in the list route above — the same

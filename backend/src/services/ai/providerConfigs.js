@@ -445,6 +445,12 @@ const PROVIDER_CONFIGS = [
       'gemini-2.5-flash-image': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: true, supportsTools: true },
       'gemini-3.1-flash-image-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
       'gemini-3.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 2.1, supportsVision: true, supportsTools: true },
+      // Published rates, ai.google.dev/gemini-api/docs/pricing (2026-09-30).
+      // gemini-3.8-flash is at an INTRODUCTORY price through 2026-12-31; from
+      // 2027-01-01 it is $1.50 in / $7.50 out / $0.15 cached — update then.
+      // Context limits match Google's live catalog for the same models.
+      'gemini-3.8-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.75, outputCostPer1M: 3.75, inputCacheReadCostPer1M: 0.075, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.1-flash-lite': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0.25, outputCostPer1M: 1.5, inputCacheReadCostPer1M: 0.025, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3.6-flash-high': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
       'gemini-3.6-flash-medium': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
       'gemini-3.6-flash-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
@@ -498,9 +504,14 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['gemini-3-pro-preview', 'gemini-3-flash-preview'],
-    fallbackModels: ['gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
-    fallbackVisionModels: ['gemini-2.5-pro'],
+    // OAuth mode lists the account's live entitlement (retrieveUserQuota, see
+    // googleSubscriptionModels.js); API-key mode lists the public Gemini API.
+    // This is only the transient-failure fallback. Ids are the current set in
+    // Google's own CLI (packages/core/src/config/models.ts, 2026-09-30):
+    // LATEST/BASE flash, LATEST/BASE flash-lite, DEFAULT pro.
+    recommendedModels: ['gemini-3.8-flash', 'gemini-2.5-pro'],
+    fallbackModels: ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-pro'],
+    fallbackVisionModels: ['gemini-3.8-flash', 'gemini-2.5-pro'],
     compat: {},
     sdkOptions: {},
   },
@@ -523,11 +534,15 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    // Model IDs are the gateway's REAL ids from :fetchAvailableModels (its
-    // "Recommended" agent sort, 2026-07-03). Do NOT invent ids here — the
-    // gateway 404s unknown models. Display names differ from ids (e.g.
-    // 'gemini-pro-agent' renders as "Gemini 3.1 Pro (High)"). Dynamic listing
-    // in ModelRoutes refreshes this live; this static list is the fallback.
+    // Model IDs are the gateway's REAL ids from :fetchAvailableModels
+    // (Recommended sort + current-tier pointers, verified by generateContent
+    // 2026-09-30). Do NOT invent ids here — the gateway 404s unknown models.
+    // Display names differ from ids (e.g. 'gemini-pro-agent' renders as
+    // "Gemini 3.1 Pro (High)"). The live list comes from
+    // googleSubscriptionModels.js; this static list is only its fallback.
+    // Removed 2026-09-30: gemini-3.5-flash-low / -extra-low and
+    // gemini-3-flash-agent still appear in the raw catalog but answer every
+    // request with a canned "Gemini 3.5 Flash is no longer available" reply.
     recommendedModels: [
       'gemini-3.6-flash-high',
       'gemini-3.6-flash-medium',
@@ -537,11 +552,10 @@ const PROVIDER_CONFIGS = [
       'gemini-3.6-flash-high',
       'gemini-3.6-flash-medium',
       'gemini-3.6-flash-low',
-      'gemini-3.5-flash-low',
-      'gemini-3-flash-agent',
-      'gemini-3.5-flash-extra-low',
-      'gemini-3.1-pro-low',
+      'gemini-3.8-flash-tiered',
       'gemini-pro-agent',
+      'gemini-3.1-pro-low',
+      'gemini-3.5-flash-lite',
       'claude-sonnet-4-6',
       'claude-opus-4-6-thinking',
       'gpt-oss-120b-medium',
@@ -550,8 +564,8 @@ const PROVIDER_CONFIGS = [
       'gemini-3.6-flash-high',
       'gemini-3.6-flash-medium',
       'gemini-3.6-flash-low',
+      'gemini-3.8-flash-tiered',
       'gemini-pro-agent',
-      'gemini-3.5-flash-low',
     ],
     // Antigravity is subscription-included — no per-token cost to the user.
     // contextWindow/maxOutputTokens mirror the live endpoint's maxTokens/maxOutputTokens.
@@ -563,6 +577,8 @@ const PROVIDER_CONFIGS = [
       'gemini-3-flash-agent': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3.5-flash-extra-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3.1-pro-low': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.8-flash-tiered': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.5-flash-lite': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-pro-agent': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-sonnet-4-6': { contextWindow: 250000, maxOutputTokens: 64000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6-thinking': { contextWindow: 250000, maxOutputTokens: 64000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },

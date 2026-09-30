@@ -8,7 +8,10 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { OAuth2Client } from 'google-auth-library';
 import { GEMINI_CLI_OAUTH } from '../../config/oauthClients.js';
+import { getClientVersion } from '../ai/clientVersions.js';
+import { parseGeminiCliQuotaModels, classifyCodeAssistError } from '../ai/googleModelCatalog.js';
 
+const CODE_ASSIST_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry
@@ -585,15 +588,33 @@ class GeminiCliAuthManager {
           this._paidTier = response.data.paidTier?.id || this._paidTier;
         }
 
+        // loadCodeAssist answers 200 even for accounts with NO Code Assist
+        // entitlement (verified live 2026-09-30: consumer account, 200 here,
+        // then 403 "no valid license" on every generateContent). So it cannot
+        // be the usability signal on its own. retrieveUserQuota can: it is
+        // entitlement-gated like generation, costs no quota, and its buckets
+        // are the account's live model list.
+        const entitlement = await this._retrieveEntitlement();
         const result = {
           available: true,
-          apiUsable: response.status === 200,
-          apiStatus: response.status,
+          apiUsable: response.status === 200 && !entitlement.unlicensed,
+          apiStatus: entitlement.unlicensed ? entitlement.status : response.status,
           source: 'oauth',
           tier: this._currentTier || 'unknown',
           paidTier: this._paidTier || null,
           gcpProject: gcpProject || null,
+          entitledModels: entitlement.models,
         };
+        if (entitlement.unlicensed) {
+          const isConsumer = !gcpProject;
+          result.unlicensed = true;
+          result.deprecated = isConsumer || undefined;
+          result.hint = isConsumer
+            ? 'Google discontinued Gemini CLI for consumer accounts on June 18, 2026. '
+              + 'Switch to API key mode, connect an Enterprise GCP project, or use the new Antigravity provider.'
+            : `Google Cloud project "${gcpProject}" has no Gemini Code Assist license. `
+              + 'Assign a license to this account or switch to API key mode.';
+        }
         this._lastApiStatus = result;
         this._lastApiCheck = Date.now();
         return result;
@@ -621,6 +642,32 @@ class GeminiCliAuthManager {
       this._lastApiStatus = result;
       this._lastApiCheck = Date.now();
       return result;
+    }
+  }
+
+  // ── Entitlement / live model list ─────────────────────────
+  // Called only from checkApiUsable, so its result rides on the cached status
+  // object and is invalidated by every path that already resets _lastApiCheck.
+  // Never throws. `unlicensed` is the only outcome that marks the provider
+  // unusable; any other failure leaves models empty and callers fall back.
+
+  async _retrieveEntitlement() {
+    const client = this.getOAuth2Client();
+    if (!client) return { models: [], unlicensed: false, status: null };
+    try {
+      const project = await this.ensureOnboarded(client);
+      const version = await getClientVersion('gemini-cli');
+      const res = await client.request({
+        url: `${CODE_ASSIST_BASE}:retrieveUserQuota`,
+        method: 'POST',
+        data: project ? { project } : {},
+        headers: { 'User-Agent': `GeminiCLI/${version} (${process.platform}; ${process.arch}; terminal)` },
+      });
+      return { models: parseGeminiCliQuotaModels(res.data), unlicensed: false, status: res.status };
+    } catch (error) {
+      const failure = classifyCodeAssistError(error);
+      console.warn(`[GeminiCliAuth] retrieveUserQuota failed (HTTP ${failure.status ?? 'n/a'}${failure.unlicensed ? ', no Code Assist license' : ''})`);
+      return { models: [], unlicensed: failure.unlicensed, status: failure.status };
     }
   }
 
