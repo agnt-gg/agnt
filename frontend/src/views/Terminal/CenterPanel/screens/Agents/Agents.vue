@@ -111,10 +111,10 @@
                           :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']"
                         >
                           <img
-                            :src="agent.avatar || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
+                            :src="agentAvatarSrc(agent.avatar)"
                             :alt="agent.name"
                             class="avatar-image"
-                            @error="$event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
+                            @error="onAvatarError"
                           />
                         </div>
                         <span class="agent-name">{{ agent.name }}</span>
@@ -218,6 +218,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import AgentCreateModal from './components/AgentCreateModal.vue';
+import { agentAvatarSrc, onAvatarError } from '@/utils/agentAvatar.js';
 import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
@@ -1307,6 +1308,8 @@ export default {
     });
 
     return {
+      agentAvatarSrc,
+      onAvatarError,
       mobileView,
       simpleModal,
       baseScreenRef,

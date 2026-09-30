@@ -18,7 +18,7 @@
           v-for="message in formattedChatMessages"
           :key="message.id"
           :message="message"
-          :avatar-url="selectedAgent.avatar"
+          :avatar-url="agentAvatarSrc(selectedAgent.avatar)"
           :status="getMessageStatus(message)"
           :runningTools="getRunningToolsForMessage(message)"
           :imageCache="imageCache"
@@ -86,6 +86,7 @@
 </template>
 
 <script setup>
+import { agentAvatarSrc } from '@/utils/agentAvatar.js';
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';

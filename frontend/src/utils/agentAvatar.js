@@ -157,6 +157,36 @@ export function attachIcons(participants = [], index = null) {
 }
 
 /**
+ * THE PICTURE FOR AN AGENT'S PORTRAIT <img> (Agents page, agent detail views).
+ *
+ * Those views bind `<img :src="agent.avatar || DEFAULT">`. The store maps the
+ * backend `icon` onto `agent.avatar` (store/features/agents.js, SET_AGENTS),
+ * and for most agents that is an emoji — truthy, so `||` kept it and rendered
+ * `<img src="📧">`, a broken image. The Agents grid and Configure tab hid it
+ * behind an @error handler; Overview, the Edit panel and agent Chat did not.
+ *
+ * The rule is the ladder's own image rung (IMAGE_PREFIX): a value the image
+ * rung accepts is drawn, anything else gets the default silhouette.
+ */
+export const DEFAULT_AGENT_AVATAR =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4=';
+
+/**
+ * @param {string|null|undefined} picture  an agent's `avatar` (its `icon`)
+ * @returns {string} an <img> src: the picture when it is an image, else the default
+ */
+export function agentAvatarSrc(picture) {
+  const value = typeof picture === 'string' ? picture.trim() : '';
+  return IMAGE_PREFIX.test(value) ? value : DEFAULT_AGENT_AVATAR;
+}
+
+/** `@error` handler: an image URL that fails to load shows the default, once (never loops). */
+export function onAvatarError(event) {
+  const img = event && event.target;
+  if (img && img.src !== DEFAULT_AGENT_AVATAR) img.src = DEFAULT_AGENT_AVATAR;
+}
+
+/**
  * ANNIE. The orchestrator is in every conversation by definition and is never
  * stored in a roster, so every surface needs the same literal for her. Her
  * avatar is a real asset, not a letter.

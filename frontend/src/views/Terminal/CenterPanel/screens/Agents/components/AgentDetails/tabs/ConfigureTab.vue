@@ -15,14 +15,10 @@
           <label>Agent Avatar</label>
           <div class="avatar-preview-container">
             <img
-              :src="
-                agentConfig.avatar ||
-                selectedAgent.avatar ||
-                'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='
-              "
+              :src="agentAvatarSrc(agentConfig.avatar || selectedAgent.avatar)"
               class="avatar-preview"
               alt="Agent avatar preview"
-              @error="$event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
+              @error="onAvatarError"
             />
             <div class="avatar-controls">
               <label for="config-avatar-input" class="upload-button"> <i class="fas fa-upload"></i> Upload </label>
@@ -284,6 +280,7 @@
 </template>
 
 <script setup>
+import { agentAvatarSrc, onAvatarError } from '@/utils/agentAvatar.js';
 import { ref, watch, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';

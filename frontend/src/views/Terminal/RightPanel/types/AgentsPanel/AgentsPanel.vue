@@ -88,7 +88,7 @@
         <div class="form-field avatar-upload">
           <label>Agent Avatar</label>
           <div class="avatar-preview-container">
-            <img :src="editableAgentData.avatar || selectedAgent.avatar || defaultAvatarUrl" class="avatar-preview" alt="Agent avatar preview" />
+            <img :src="agentAvatarSrc(editableAgentData.avatar || selectedAgent.avatar)" class="avatar-preview" alt="Agent avatar preview" @error="onAvatarError" />
             <div class="avatar-controls">
               <label for="avatar-edit-input" class="upload-button"> <i class="fas fa-upload"></i> Upload </label>
               <input type="file" id="avatar-edit-input" @change="handleAvatarUpload($event, 'edit')" accept="image/*" class="file-input" />
@@ -162,6 +162,7 @@ import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModa
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import CustomCategoryDropdown from '../WorkflowsPanel/CustomCategoryDropdown.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { agentAvatarSrc, onAvatarError } from '@/utils/agentAvatar.js';
 import PanelActionBar from '@/views/Terminal/_components/panels/PanelActionBar.vue';
 import PanelCloseButton from '@/views/Terminal/_components/panels/PanelCloseButton.vue';
 import { AGENT_QUICKSTARTS } from '@/views/Terminal/CenterPanel/screens/Agents/agentQuickstarts.js';
@@ -563,6 +564,8 @@ export default {
     ]);
 
     return {
+      agentAvatarSrc,
+      onAvatarError,
       quickstarts,
       barActions,
       defaultAvatarUrl,

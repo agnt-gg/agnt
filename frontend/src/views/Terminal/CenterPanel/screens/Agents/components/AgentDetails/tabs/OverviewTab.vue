@@ -5,11 +5,9 @@
       <div class="overview-header">
         <div class="agent-profile">
           <img
-            :src="
-              selectedAgent.avatar ||
-              'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='
-            "
+            :src="agentAvatarSrc(selectedAgent.avatar)"
             alt="Agent profile"
+            @error="onAvatarError"
             :class="['agent-overview-avatar', { inactive: (selectedAgent.status || '').toLowerCase() !== 'active' }]"
           />
           <h3 class="agent-name-display">{{ selectedAgent.name }}</h3>
@@ -42,6 +40,7 @@
 </template>
 
 <script setup>
+import { agentAvatarSrc, onAvatarError } from '@/utils/agentAvatar.js';
 defineProps({
   selectedAgent: {
     type: Object,

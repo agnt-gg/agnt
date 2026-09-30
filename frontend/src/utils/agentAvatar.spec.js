@@ -9,7 +9,18 @@
  * branch is the one that silently swallows anything it cannot render.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveAvatar, buildRoster, attachIcons, initialOf, hueOf, ANNIE_ID, ANNIE_NAME } from './agentAvatar.js';
+import {
+  resolveAvatar,
+  buildRoster,
+  attachIcons,
+  initialOf,
+  hueOf,
+  agentAvatarSrc,
+  onAvatarError,
+  DEFAULT_AGENT_AVATAR,
+  ANNIE_ID,
+  ANNIE_NAME,
+} from './agentAvatar.js';
 
 describe('resolveAvatar — the four rungs', () => {
   it('resolves an inline data-URL to an image', () => {
@@ -192,5 +203,58 @@ describe('buildRoster', () => {
   it('degrades to Annie alone for a missing roster', () => {
     expect(buildRoster(undefined).shown).toHaveLength(1);
     expect(buildRoster(null).shown[0].isAnnie).toBe(true);
+  });
+});
+
+describe('agentAvatarSrc — what a portrait <img> may be given', () => {
+  it('passes real pictures through', () => {
+    for (const src of ['data:image/png;base64,AAAA', 'https://cdn.example/a.png', 'http://x/a.png', 'blob:abc', '/avatars/a.png', './a.png']) {
+      expect(agentAvatarSrc(src)).toBe(src);
+    }
+  });
+
+  it('trims a picture before using it', () => {
+    expect(agentAvatarSrc('  https://cdn.example/a.png ')).toBe('https://cdn.example/a.png');
+  });
+
+  // The bug: an emoji icon is truthy, so `avatar || DEFAULT` kept it and the
+  // browser tried to load <img src="📧">.
+  it('never hands an emoji, a FontAwesome class or a word to <img>', () => {
+    for (const icon of ['📧', '🤖', 'fas fa-robot', 'robot']) {
+      expect(agentAvatarSrc(icon)).toBe(DEFAULT_AGENT_AVATAR);
+    }
+  });
+
+  it('falls back for nothing at all', () => {
+    for (const empty of [undefined, null, '', '   ', 42, {}]) {
+      expect(agentAvatarSrc(empty)).toBe(DEFAULT_AGENT_AVATAR);
+    }
+  });
+
+  it('agrees with the resolver on what counts as an image', () => {
+    for (const icon of ['data:image/png;base64,AAAA', '📧', 'fas fa-robot', '/a.png']) {
+      const isImage = resolveAvatar({ icon }).kind === 'image';
+      expect(agentAvatarSrc(icon) !== DEFAULT_AGENT_AVATAR).toBe(isImage);
+    }
+  });
+});
+
+describe('onAvatarError', () => {
+  it('swaps a failed picture for the default', () => {
+    const img = { src: 'https://dead.example/a.png' };
+    onAvatarError({ target: img });
+    expect(img.src).toBe(DEFAULT_AGENT_AVATAR);
+  });
+
+  it('does not reassign the default, so a failing default cannot loop', () => {
+    let writes = 0;
+    const img = { get src() { return DEFAULT_AGENT_AVATAR; }, set src(v) { writes++; } };
+    onAvatarError({ target: img });
+    expect(writes).toBe(0);
+  });
+
+  it('ignores an event with no target', () => {
+    expect(() => onAvatarError(undefined)).not.toThrow();
+    expect(() => onAvatarError({})).not.toThrow();
   });
 });
