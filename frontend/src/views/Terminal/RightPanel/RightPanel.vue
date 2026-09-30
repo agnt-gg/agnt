@@ -23,6 +23,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { lazyComponent, isChunkLoadError } from '@/utils/chunkRecovery.js';
+import pageVisibility from '@/utils/pageVisibility.js';
 
 // Lazy-load panel components on demand (cached so re-navigation is instant)
 const panelCache = new Map();
@@ -143,8 +144,9 @@ export default {
     let pollingInterval;
 
     onMounted(() => {
-      // Stats are pre-loaded by initializeStore - just set up a gentle refresh
-      pollingInterval = setInterval(fetchStats, 60000);
+      // Stats are pre-loaded by initializeStore - just set up a gentle refresh.
+      // Paused while the window is hidden: nobody is looking at the numbers.
+      pollingInterval = pageVisibility.setInterval(fetchStats, 60000, { pauseWhenHidden: true });
 
       // Preload all panel chunks in background after first render
       if (typeof requestIdleCallback === 'function') {
@@ -156,7 +158,7 @@ export default {
 
     onUnmounted(() => {
       if (pollingInterval) {
-        clearInterval(pollingInterval);
+        pollingInterval.clear();
       }
     });
 

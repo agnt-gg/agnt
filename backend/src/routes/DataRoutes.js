@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import sqlite3 from 'sqlite3';
 import { authenticateToken } from './Middleware.js';
 import { dbPath } from '../models/database/index.js';
+import UserModel from '../models/UserModel.js';
 import pathManager from '../utils/PathManager.js';
 import { inspectBackup, restoreBackup } from '../services/DataImportService.js';
 import { normalizeResetRequest, summarizeReset, resetData } from '../services/DataResetService.js';
@@ -120,6 +121,8 @@ export function createDataRouter({ authenticate = authenticateToken, openDb = op
       job.error = err.status ? err.message : 'The restore stopped partway. Everything restored before that is kept; running it again adds only what is missing.';
     } finally {
       if (db) await closeDb(db);
+      // Stats keep a watermark over execution history; a restore changes that history.
+      UserModel.invalidateNodeStats();
       job.progress = { bytes: job.summary.bytes, totalBytes: job.summary.bytes };
     }
   });
@@ -162,6 +165,8 @@ export function createDataRouter({ authenticate = authenticateToken, openDb = op
       fail(res, err, 'The reset stopped partway. Anything already removed stays removed; run it again to finish.');
     } finally {
       if (db) await closeDb(db);
+      // Even a reset that stopped partway removed rows the cached stats still count.
+      UserModel.invalidateNodeStats();
     }
   });
 

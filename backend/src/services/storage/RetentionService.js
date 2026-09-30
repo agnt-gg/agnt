@@ -39,6 +39,7 @@
 import db from '../../models/database/index.js';
 import { dbRunWithRetry } from '../../models/database/index.js';
 import PayloadStore from './PayloadStore.js';
+import UserModel from '../../models/UserModel.js';
 
 const dbAll = (sql, params = []) =>
   new Promise((res, rej) => db.all(sql, params, (e, r) => (e ? rej(e) : res(r || []))));
@@ -234,6 +235,8 @@ const RetentionService = {
     }
 
     report.durationMs = Date.now() - startedAt;
+    // Deleted rows are still in the cached per-user stats until they recount.
+    if (report.deleted > 0 && !cfg.dryRun) UserModel.invalidateNodeStats();
 
     if (!cfg.dryRun) {
       console.log(

@@ -81,8 +81,145 @@ function serializeSubscriptionCosts(value) {
   return Object.keys(clean).length ? JSON.stringify(clean) : null;
 }
 
+/**
+ * Node-execution counts for getUserStats, kept incrementally per user.
+ *
+ * THE READ STORM THIS PREVENTS (2026-09-30)
+ * ─────────────────────────────────────────
+ * getUserStats joined every node execution the user ever ran to its workflow
+ * run on every call. Measured on a live install (277k runs, 1.1M node rows):
+ * 1,115 MB read and ~1.9 s per call, and the right panel polls it every 60 s.
+ *
+ * History only ever grows by appended rows (rowid increases), so the count is
+ * kept per user with a rowid watermark: rows at or below `through` are already
+ * counted, and each call reads only the rows added since. The first call after
+ * boot, and one call every NODE_STATS_RECOUNT_MS, recount from scratch, which
+ * bounds any drift from a deletion nothing told us about.
+ *
+ * SETTLED VS UNSETTLED ROWS. A node row is inserted as 'started' and updated
+ * when the node finishes, and that UPDATE matches on (execution_id, node_id),
+ * so a node re-run in a loop rewrites earlier rows of the same run too. A
+ * row's status is therefore final only once its whole run is finalized
+ * (end_time is written exactly once, by the terminal write). Rows from the
+ * oldest still-running run onward are re-counted on every call and never
+ * folded into the cache. A run with no end_time that started more than
+ * NODE_STATS_UNSETTLED_WINDOW ago crashed without finalizing and is treated as
+ * settled — otherwise one crashed run would pin the watermark forever.
+ *
+ * Deletions (Settings → Reset, retention) must call invalidateNodeStats().
+ */
+const NODE_STATS_RECOUNT_MS = 6 * 60 * 60 * 1000;
+const NODE_STATS_UNSETTLED_WINDOW = '-6 hours';
+const UNSETTLED_RUN = `e.end_time IS NULL AND julianday(e.start_time) > julianday('now', '${NODE_STATS_UNSETTLED_WINDOW}')`;
+const NODE_STATS_COLUMNS = `count(*) AS total,
+  coalesce(sum(ne.status = 'completed'), 0) AS completed,
+  coalesce(sum(ne.status = 'error'), 0) AS error,
+  min(CASE WHEN ${UNSETTLED_RUN} THEN ne.rowid END) AS firstUnsettled`;
+
+export const NODE_STATS_SQL = {
+  // Whole history: the user's runs, then the covering (execution_id, status)
+  // node index. Only on a cold or expired cache. The unary `+` keeps the rowid
+  // bound out of index selection: as a plain `ne.rowid <= ?` SQLite chose the
+  // NON-covering execution_id index for it and read every node row — measured
+  // 58 s and 2.5 GB, against 1.9 s and 1.1 GB for the covering plan.
+  full: `SELECT ${NODE_STATS_COLUMNS}
+    FROM node_executions ne JOIN workflow_executions e ON ne.execution_id = e.id
+    WHERE e.user_id = ? AND +ne.rowid <= ?`,
+  // Only rows added since the watermark. CROSS JOIN pins node-first order:
+  // left to itself SQLite starts from the user's 277k runs (measured 11 s).
+  since: `SELECT ${NODE_STATS_COLUMNS}
+    FROM node_executions ne CROSS JOIN workflow_executions e
+    WHERE ne.rowid > ? AND ne.rowid <= ? AND e.id = ne.execution_id AND e.user_id = ?`,
+};
+
+const nodeStatsCache = new Map(); // userId -> { through, total, completed, error, countedAt }
+const nodeStatsInFlight = new Map(); // userId -> Promise
+let nodeStatsGeneration = 0;
+
+const dbGetRow = (sql, params) =>
+  new Promise((resolve, reject) => db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row))));
+
+function countNodeRows(userId, afterRowid, uptoRowid) {
+  return afterRowid === 0
+    ? dbGetRow(NODE_STATS_SQL.full, [userId, uptoRowid])
+    : dbGetRow(NODE_STATS_SQL.since, [afterRowid, uptoRowid, userId]);
+}
+
+async function computeNodeStats(userId) {
+  const generation = nodeStatsGeneration;
+  // Bound every read by the rowid seen now, so rows appended mid-call are
+  // counted by the next call instead of half-counted by this one.
+  const upto = (await dbGetRow('SELECT max(rowid) AS m FROM node_executions', [])).m || 0;
+  let base = nodeStatsCache.get(userId);
+  if (!base || Date.now() - base.countedAt > NODE_STATS_RECOUNT_MS || upto < base.through) {
+    base = { through: 0, total: 0, completed: 0, error: 0, countedAt: Date.now() };
+  }
+
+  const added = upto > base.through ? await countNodeRows(userId, base.through, upto) : null;
+  let settled = added;
+  let unsettled = null;
+  if (added?.firstUnsettled != null) {
+    unsettled = await countNodeRows(userId, added.firstUnsettled - 1, upto);
+    settled = {
+      total: added.total - unsettled.total,
+      completed: added.completed - unsettled.completed,
+      error: added.error - unsettled.error,
+    };
+  }
+
+  const next = {
+    through: added?.firstUnsettled != null ? added.firstUnsettled - 1 : upto,
+    total: base.total + (settled?.total || 0),
+    completed: base.completed + (settled?.completed || 0),
+    error: base.error + (settled?.error || 0),
+    countedAt: base.countedAt,
+  };
+  // An invalidation that landed while this ran makes `next` stale; do not keep it.
+  if (generation === nodeStatsGeneration) nodeStatsCache.set(userId, next);
+  return {
+    total: next.total + (unsettled?.total || 0),
+    completed: next.completed + (unsettled?.completed || 0),
+    error: next.error + (unsettled?.error || 0),
+  };
+}
+
 class UserModel {
-  static getUserStats(userId) {
+  /**
+   * Node-execution totals for one user. Concurrent callers share one
+   * computation. Not for correctness — each computation reads the cached
+   * watermark and totals as one snapshot and writes back snapshot + delta, so
+   * interleaving cannot double-count — but for cost: the boot prefetch and the
+   * panels fire stats together, and on a cold cache each would otherwise run
+   * its own full recount (1.1 GB on a real install).
+   */
+  static getNodeExecutionStats(userId) {
+    const pending = nodeStatsInFlight.get(userId);
+    if (pending) return pending;
+    const computation = computeNodeStats(userId).finally(() => nodeStatsInFlight.delete(userId));
+    nodeStatsInFlight.set(userId, computation);
+    return computation;
+  }
+
+  /** Forget every cached count; the next call recounts. Call after deleting execution history. */
+  static invalidateNodeStats() {
+    nodeStatsGeneration += 1;
+    nodeStatsCache.clear();
+  }
+
+  static async getUserStats(userId) {
+    const [row, nodes] = await Promise.all([UserModel.getUserSummaryCounts(userId), UserModel.getNodeExecutionStats(userId)]);
+    row.totalNodeExecutions = nodes.total;
+    row.successfulNodeExecutions = nodes.completed;
+    row.failedNodeExecutions = nodes.error;
+    row.workflowStatuses = {
+      complete: row.successfulExecutions,
+      error: row.failedExecutions,
+      started: row.startedExecutions,
+    };
+    return row;
+  }
+
+  static getUserSummaryCounts(userId) {
     return new Promise((resolve, reject) => {
       db.get(
         `SELECT
@@ -92,10 +229,7 @@ class UserModel {
           COALESCE(we.totalExecutions, 0) as totalExecutions,
           COALESCE(we.successfulExecutions, 0) as successfulExecutions,
           COALESCE(we.failedExecutions, 0) as failedExecutions,
-          COALESCE(we.startedExecutions, 0) as startedExecutions,
-          COALESCE(ne.totalNodeExecutions, 0) as totalNodeExecutions,
-          COALESCE(ne.successfulNodeExecutions, 0) as successfulNodeExecutions,
-          COALESCE(ne.failedNodeExecutions, 0) as failedNodeExecutions
+          COALESCE(we.startedExecutions, 0) as startedExecutions
         FROM
           (SELECT COUNT(*) as totalWorkflows FROM workflows WHERE user_id = ?) w,
           (SELECT COUNT(*) as totalCustomTools FROM tools WHERE created_by = ?) t,
@@ -105,26 +239,12 @@ class UserModel {
             SUM(status = 'completed') as successfulExecutions,
             SUM(status = 'error') as failedExecutions,
             SUM(status = 'started') as startedExecutions
-          FROM workflow_executions WHERE user_id = ?) we,
-          (SELECT
-            COUNT(*) as totalNodeExecutions,
-            SUM(ne.status = 'completed') as successfulNodeExecutions,
-            SUM(ne.status = 'error') as failedNodeExecutions
-          FROM node_executions ne
-          JOIN workflow_executions e ON ne.execution_id = e.id
-          WHERE e.user_id = ?) ne
+          FROM workflow_executions WHERE user_id = ?) we
         `,
-        [userId, userId, userId, userId, userId],
+        [userId, userId, userId, userId],
         (err, row) => {
           if (err) reject(err);
-          else {
-            row.workflowStatuses = {
-              complete: row.successfulExecutions,
-              error: row.failedExecutions,
-              started: row.startedExecutions,
-            };
-            resolve(row);
-          }
+          else resolve(row);
         }
       );
     });
