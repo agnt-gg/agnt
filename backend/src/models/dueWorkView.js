@@ -45,12 +45,23 @@ const OPTIONAL_BRANCHES = {
 //
 // workflow_run: a run left open by a crash is swept at boot; the two-hour cap
 // keeps one that somehow survives from pinning the instance awake for ever.
+//
+// trigger_fired: a timer writes its NEXT time just before it fires, and the run
+// row appears a moment later. In that gap nothing looks due or running, and a
+// sleeper check landing there would stop the instance mid-fire. A trigger row
+// touched in the last minute therefore counts as in flight. updated_at is ms.
 const CORE_BRANCHES = `
     SELECT 'trigger' AS source, tw.workflow_id || ':' || tw.node_id AS ref, 'due' AS kind,
            CAST(tw.next_fire_at / 1000 AS INTEGER) AS due_at
       FROM trigger_wakes tw
       JOIN workflows w ON w.id = tw.workflow_id
      WHERE w.status IN ('listening', 'running', 'queued')
+    UNION ALL
+    SELECT 'trigger_fired', tw.workflow_id || ':' || tw.node_id, 'in_flight', CAST(strftime('%s', 'now') AS INTEGER)
+      FROM trigger_wakes tw
+      JOIN workflows w ON w.id = tw.workflow_id
+     WHERE w.status IN ('listening', 'running', 'queued')
+       AND tw.updated_at >= (CAST(strftime('%s', 'now') AS INTEGER) - 60) * 1000
     UNION ALL
     SELECT 'schedule', id, 'due', CAST(strftime('%s', next_run) AS INTEGER)
       FROM schedules WHERE enabled = 1 AND next_run IS NOT NULL

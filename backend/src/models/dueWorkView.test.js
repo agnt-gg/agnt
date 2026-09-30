@@ -71,9 +71,17 @@ describe('triggers', () => {
     expect(row).toMatchObject({ ref: 'wf-on:n1', kind: 'due', due_at: at / 1000 });
   });
 
+  it('counts a trigger that just fired as in flight, so a sleep cannot land mid-fire', async () => {
+    // upsert stamps updated_at = now, exactly as a fire does.
+    expect(await rowsFor('trigger_fired')).toEqual([expect.objectContaining({ ref: 'wf-on:n1', kind: 'in_flight' })]);
+    await run('UPDATE trigger_wakes SET updated_at = ? WHERE workflow_id = ?', [Date.now() - 5 * 60_000, 'wf-on']);
+    expect(await rowsFor('trigger_fired')).toEqual([]);
+  });
+
   it('ignores a stopped workflow\'s leftover row', async () => {
     await TriggerWakeModel.upsert({ workflowId: 'wf-off', nodeId: 'n1', triggerType: 'trigger-timer', nextFireAt: 1, anchorAt: 1, scheduleKey: 'k' });
     expect((await rowsFor('trigger')).map((r) => r.ref)).toEqual(['wf-on:n1']);
+    expect((await rowsFor('trigger_fired')).map((r) => r.ref)).toEqual([]);
   });
 
   it('upsert replaces, and deleteForWorkflow removes', async () => {
