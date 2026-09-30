@@ -814,7 +814,9 @@ const PROVIDER_CONFIGS = [
     sdkType: 'openai',
     authScheme: 'bearer',
     included: true,
-    staticModels: true,
+    // Listed live from models.agnt.gg/models/v1/models, which answers without a
+    // key (verified 2026-09-30), so a model added to AGNT Models appears here
+    // without an app release. Was `staticModels: true`.
     modelListingKeyOptional: true,
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
