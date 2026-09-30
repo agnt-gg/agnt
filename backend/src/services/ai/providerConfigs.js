@@ -30,6 +30,7 @@ import {
   isGroqQwenReasoningModel,
   isCerebrasGptOssReasoningModel,
   isCerebrasGlmReasoningModel,
+  isCerebrasQwenReasoningModel,
   supportsZaiThinkingToggle,
   supportsZaiReasoningEffort,
   supportsKimiReasoningToggle,
@@ -55,6 +56,7 @@ export {
   isGroqQwenReasoningModel,
   isCerebrasGptOssReasoningModel,
   isCerebrasGlmReasoningModel,
+  isCerebrasQwenReasoningModel,
   supportsZaiThinkingToggle,
   supportsZaiReasoningEffort,
   supportsKimiReasoningToggle,
@@ -109,8 +111,8 @@ const PROVIDER_CONFIGS = [
         supportsStyle: false,
       },
     },
-    recommendedModels: ['gpt-6-astra', 'gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
-    fallbackModels: ['gpt-6-astra', 'gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
+    recommendedModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
+    fallbackModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
     fallbackVisionModels: ['gpt-6-astra', 'gpt-5.2', 'gpt-4.1'],    modelMetadata: {
       // gpt-6-astra: the true window is 1,050,000, but this entry is capped at
       // the 272k pricing cliff for the SAME reason as gpt-5.6-sol below —
@@ -188,8 +190,8 @@ const PROVIDER_CONFIGS = [
     // last-successful cache on disk (see codex-last-models.json / persistent
     // fallback in ModelRoutes). Bumped 2026-07 to include gpt-5.6 variants so
     // a degraded state doesn't hide the currently-shipping models.
-    fallbackModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.2-codex'],
-    fallbackVisionModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5.2-codex'],
+    fallbackModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
+    fallbackVisionModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5'],
     // Codex normally inherits OpenAI's table via PROVIDER_METADATA_FALLBACK,
     // and for every model before Astra that is correct. Astra is the first
     // model whose billing DIFFERS between the two surfaces:
@@ -261,8 +263,9 @@ const PROVIDER_CONFIGS = [
       'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
-      'claude-sonnet-4-20250514',
-      'claude-opus-4-20250514',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-fable-5-1',
     ],
     fallbackVisionModels: ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
@@ -381,8 +384,9 @@ const PROVIDER_CONFIGS = [
       'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
-      'claude-sonnet-4-20250514',
-      'claude-opus-4-20250514',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-fable-5-1',
     ],
     fallbackVisionModels: ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
@@ -609,10 +613,14 @@ const PROVIDER_CONFIGS = [
         supportsRevisedPrompt: true,
       },
     },
-    recommendedModels: ['grok-4-0709', 'grok-4-1-fast-reasoning'],
-    fallbackModels: ['grok-4-0709', 'grok-4-1-fast-reasoning', 'grok-code-fast-1', 'grok-3', 'grok-3-mini'],
-    fallbackVisionModels: ['grok-4-0709'],
+    recommendedModels: ['grok-4.7', 'grok-4.3'],
+    fallbackModels: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'],
+    fallbackVisionModels: ['grok-4.3'],
     modelMetadata: {
+      // Prices from xAI's own GET /v1/models (2026-09-23); limits, tools,
+      // reasoning and image input from OpenRouter's xAI endpoint (2026-09-30).
+      'grok-4.7': { contextWindow: 500000, maxOutputTokens: 450000, inputCostPer1M: 2.0, outputCostPer1M: 6.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true, reasoning: true },
+      'grok-4.6': { contextWindow: 500000, maxOutputTokens: 450000, inputCostPer1M: 2.0, outputCostPer1M: 6.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true, reasoning: true },
       'grok-4-0709': { contextWindow: 256000, maxOutputTokens: 131072, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
       'grok-4-1-fast-reasoning': { contextWindow: 2000000, maxOutputTokens: 131072, inputCostPer1M: 0.2, outputCostPer1M: 0.5, supportsVision: false, supportsTools: true, reasoning: true },
       'grok-code-fast-1': { contextWindow: 256000, maxOutputTokens: 131072, inputCostPer1M: 0.2, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: true },
@@ -650,9 +658,20 @@ const PROVIDER_CONFIGS = [
       // reports prompt_tokens_details.cached_tokens. Full AGNT tool registry.
       text: { supportsStreaming: true, supportsTools: true },
     },
-    recommendedModels: ['grok-4.5'],
-    fallbackModels: ['grok-4.5'],
+    // The CLI's own model list, live 2026-09-30, offered only grok-4.7.
+    recommendedModels: ['grok-4.7', 'grok-4.5'],
+    fallbackModels: ['grok-4.7', 'grok-4.5'],
     modelMetadata: {
+      // Subscription-included ($0). Context window from xAI's GET /v1/models.
+      'grok-4.7': {
+        contextWindow: 500000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true, // HTTP proxy transport — see capabilities.text above
+        reasoning: true,
+      },
       'grok-4.5': {
         contextWindow: 512000,
         maxOutputTokens: 65536,
@@ -759,14 +778,17 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
-      // Llama-4 (Scout & Maverick) on Groq are natively multimodal and accept
-      // image_url in chat completions. https://console.groq.com/docs/vision
+      // Image input on the shared tier: qwen/qwen3.8-27b (console.groq.com/docs/
+      // models, 2026-09-30). The Llama-4 models this named are no longer served;
+      // Llama 3.x moved to Enterprise-only.
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
-    fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'qwen/qwen3-32b', 'meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
-    fallbackVisionModels: ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
+    recommendedModels: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'],
+    fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
+    fallbackVisionModels: ['qwen/qwen3.8-27b'],
     modelMetadata: {
+      // console.groq.com/docs/models, 2026-09-30.
+      'qwen/qwen3.8-27b': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.80, outputCostPer1M: 4.00, supportsVision: true, supportsTools: true, reasoning: true },
       'openai/gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: false, supportsTools: true, reasoning: false },
       'openai/gpt-oss-20b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.075, outputCostPer1M: 0.3, supportsVision: false, supportsTools: true, reasoning: false },
       'llama-3.3-70b-versatile': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true, reasoning: false },
@@ -842,9 +864,15 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    recommendedModels: ['deepseek-chat', 'deepseek-reasoner'],
-    fallbackModels: ['deepseek-chat', 'deepseek-reasoner'],
+    // The two models DeepSeek's API serves (api-docs.deepseek.com, 2026-09-30).
+    // deepseek-chat / deepseek-reasoner are retired names.
+    recommendedModels: ['deepseek-flash', 'deepseek-v4-pro'],
+    fallbackModels: ['deepseek-flash', 'deepseek-v4-pro'],
     modelMetadata: {
+      // Peak-hour rates (off-peak is half): over-reporting cost is the safer
+      // error. Both default to thinking mode. Flash accepts images; Pro does not.
+      'deepseek-flash': { contextWindow: 1048576, maxOutputTokens: 384000, inputCostPer1M: 0.3, outputCostPer1M: 1.2, inputCacheReadCostPer1M: 0.006, supportsVision: true, supportsTools: true, reasoning: true },
+      'deepseek-v4-pro': { contextWindow: 1048576, maxOutputTokens: 384000, inputCostPer1M: 1.32, outputCostPer1M: 3.96, inputCacheReadCostPer1M: 0.044, supportsVision: false, supportsTools: true, reasoning: true },
       'deepseek-chat': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: false },
       'deepseek-reasoner': { contextWindow: 128000, maxOutputTokens: 64000, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: true },
       'deepseek-v4-flash': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.14, outputCostPer1M: 0.28, inputCacheReadCostPer1M: 0.014, supportsVision: false, supportsTools: true },
@@ -888,23 +916,23 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['openai/gpt-5.2', 'anthropic/claude-sonnet-4-6', 'google/gemini-2.5-pro'],
+    recommendedModels: ['openai/gpt-5.2', 'anthropic/claude-sonnet-4.6', 'google/gemini-2.5-pro'],
     fallbackModels: [
       'openai/gpt-5.2',
       'openai/gpt-4.1',
       'openai/o4-mini',
-      'anthropic/claude-sonnet-4-6',
-      'anthropic/claude-haiku-4-5-20251001',
+      'anthropic/claude-sonnet-4.6',
+      'anthropic/claude-haiku-4.5',
       'google/gemini-2.5-pro',
       'google/gemini-2.5-flash',
-      'x-ai/grok-4-1-fast-reasoning',
+      'x-ai/grok-4.7',
       'deepseek/deepseek-chat',
       'meta-llama/llama-3.3-70b-instruct',
     ],
     fallbackVisionModels: [
       'openai/gpt-5.2',
       'openai/gpt-4.1',
-      'anthropic/claude-sonnet-4-6',
+      'anthropic/claude-sonnet-4.6',
       'google/gemini-2.5-pro',
     ],
     modelMetadata: {
@@ -952,6 +980,16 @@ const PROVIDER_CONFIGS = [
       // Measured 2026-08-23: 141 live models publish an effort list and the
       // prefixes matched 81 of them.
       reasoning: raw.reasoning,
+      // Tool and image support, PER MODEL, from the same response. Measured
+      // 2026-09-30: 67 of 464 live models do not accept `tools`, and nothing
+      // told AGNT which. Emitted only when OpenRouter sent the array — a
+      // missing array is unknown, and unknown must not read as "no tools".
+      ...(Array.isArray(raw.supported_parameters)
+        ? { supportsTools: raw.supported_parameters.includes('tools') }
+        : {}),
+      ...(Array.isArray(raw.architecture?.input_modalities)
+        ? { supportsVision: raw.architecture.input_modalities.includes('image') }
+        : {}),
     }),
     modelFilter: (m) => m.id && m.name,
     compat: {},
@@ -971,21 +1009,27 @@ const PROVIDER_CONFIGS = [
       // https://docs.together.ai/docs/llama4-quickstart
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['deepseek-ai/DeepSeek-V3', 'moonshotai/Kimi-K2.5'],
+    // Live-confirmed 2026-09-30. Llama-4-Scout is listed but answers 400
+    // "non-serverless", so it is not offered.
+    recommendedModels: ['deepseek-ai/DeepSeek-V4.1-Flash', 'moonshotai/Kimi-K2.6'],
     fallbackModels: [
-      'deepseek-ai/DeepSeek-V3',
-      'moonshotai/Kimi-K2.5',
-      'MiniMaxAI/MiniMax-M2.5',
-      'Qwen/Qwen3-235B-A22B-Thinking-2507',
+      'deepseek-ai/DeepSeek-V4.1-Flash',
+      'moonshotai/Kimi-K2.6',
+      'moonshotai/Kimi-K3',
+      'zai-org/GLM-5.2',
+      'MiniMaxAI/MiniMax-M2.7',
+      'openai/gpt-oss-120b',
       'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-      'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
-      'meta-llama/Llama-4-Scout-17B-16E-Instruct',
     ],
     fallbackVisionModels: [
-      'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
-      'meta-llama/Llama-4-Scout-17B-16E-Instruct',
+      'moonshotai/Kimi-K2.6',
+      'moonshotai/Kimi-K3',
     ],
     modelMetadata: {
+      // Price from Together's own GET /v1/models; max output, tools and
+      // reasoning from OpenRouter's Together endpoint (2026-09-30). Vision left
+      // false: the model takes images, but Together's hosting of it is unverified.
+      'deepseek-ai/DeepSeek-V4.1-Flash': { contextWindow: 1048576, maxOutputTokens: 943718, inputCostPer1M: 0.3, outputCostPer1M: 1.2, inputCacheReadCostPer1M: 0.006, supportsVision: false, supportsTools: true, reasoning: true },
       'deepseek-ai/DeepSeek-V3': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.30, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: false },
       'deepseek-ai/DeepSeek-R1': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.75, outputCostPer1M: 2.19, supportsVision: false, supportsTools: true, reasoning: true },
       'moonshotai/Kimi-K2.5': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.20, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: true },
@@ -1011,13 +1055,9 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
-      // Cerebras vision is available on the shared tier ONLY with gemma-4-31b
-      // (plus image-capable models on Dedicated Endpoints). The previous
-      // fallbackVisionModels entry for llama-4-scout-17b-16e-instruct was stale:
-      // that model is not served on the shared Cerebras Inference API and a
-      // live /v1/models probe against the shared tier returns only
-      // gemma-4-31b, zai-glm-4.7 and gpt-oss-120b.
-      // https://inference-docs.cerebras.ai/capabilities/image-inputs
+      // Image input on the shared tier: qwen-3.8-27b
+      // (inference-docs.cerebras.ai/models/qwen-3.8-27b, 2026-09-30). The
+      // shared tier then served exactly gpt-oss-120b and qwen-3.8-27b.
       vision: { supportsStreaming: true },
     },
     // Verified live against GET https://api.cerebras.ai/v1/models: the shared
@@ -1028,10 +1068,12 @@ const PROVIDER_CONFIGS = [
     // for anyone on a Dedicated Endpoint that still serves them, but they are no
     // longer advertised. These lists are only a FALLBACK: ModelRoutes fetches
     // /v1/models live and prefers that result.
-    recommendedModels: ['gemma-4-31b', 'gpt-oss-120b', 'zai-glm-4.7'],
-    fallbackModels: ['gemma-4-31b', 'gpt-oss-120b', 'zai-glm-4.7'],
-    fallbackVisionModels: ['gemma-4-31b'],
+    recommendedModels: ['gpt-oss-120b', 'qwen-3.8-27b'],
+    fallbackModels: ['gpt-oss-120b', 'qwen-3.8-27b'],
+    fallbackVisionModels: ['qwen-3.8-27b'],
     modelMetadata: {
+      // Paid-tier limits and rates, inference-docs.cerebras.ai, 2026-09-30.
+      'qwen-3.8-27b': { contextWindow: 131072, maxOutputTokens: 40000, inputCostPer1M: 0.99, outputCostPer1M: 1.49, supportsVision: true, supportsTools: true, reasoning: true },
       'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
       // NOT served on the shared tier (404 as of 2026-07-25); kept for Dedicated Endpoints.
       'llama3.1-8b': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.1, outputCostPer1M: 0.1, supportsVision: false, supportsTools: true, reasoning: false },
@@ -1273,30 +1315,37 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    // Live-confirmed 2026-09-30. Ids without a chuteId below resolve it at run
+    // time through ChutesDiscoveryManager.
     recommendedModels: [
-      'moonshotai/Kimi-K2.5-TEE',
       'moonshotai/Kimi-K2.6-TEE',
-      'zai-org/GLM-5-TEE',
+      'moonshotai/Kimi-K3-TEE',
+      'zai-org/GLM-5.2-TEE',
       'zai-org/GLM-5.1-TEE',
     ],
     fallbackModels: [
-      'moonshotai/Kimi-K2.5-TEE',
       'moonshotai/Kimi-K2.6-TEE',
-      'zai-org/GLM-5-TEE',
+      'moonshotai/Kimi-K3-TEE',
+      'zai-org/GLM-5.2-TEE',
       'zai-org/GLM-5.1-TEE',
+      'deepseek-ai/DeepSeek-V4-Flash-0731-TEE',
+      'Qwen/Qwen3.8-27B-TEE',
       'Qwen/Qwen3-32B-TEE',
       'Qwen/Qwen3.5-397B-A17B-TEE',
       'Qwen/Qwen3.6-27B-TEE',
-      'MiniMaxAI/MiniMax-M2.5-TEE',
     ],
     fallbackVisionModels: [
-      'moonshotai/Kimi-K2.5-TEE',
       'moonshotai/Kimi-K2.6-TEE',
       'Qwen/Qwen3.5-397B-A17B-TEE',
       'Qwen/Qwen3.6-27B-TEE',
     ],
     modelMetadata: {
       'moonshotai/Kimi-K2.6-TEE': { contextWindow: 262144, maxOutputTokens: 65535, inputCostPer1M: 0.95, outputCostPer1M: 4.0, inputCacheReadCostPer1M: 0.475, supportsVision: true, supportsTools: true, reasoning: true, root: 'moonshotai/Kimi-K2.6', chuteId: 'aac09863-35b4-5d9b-9b67-6e6a9d54273a', ownedBy: 'vllm', quantization: 'int4', confidentialCompute: true },
+      // From Chutes' own model catalogue (pricing, limits, chuteId), 2026-09-30.
+      'deepseek-ai/DeepSeek-V4-Flash-0731-TEE': { contextWindow: 1048576, maxOutputTokens: 131072, inputCostPer1M: 0.44, outputCostPer1M: 1.32, inputCacheReadCostPer1M: 0.044, supportsVision: false, supportsTools: true, reasoning: true, root: 'AtlasCloud/DeepSeek-V4-Flash-0731-FP8-DSpark', chuteId: 'b4d58772-e72b-55d1-9d73-d30dff6d2ed8', ownedBy: 'sglang', confidentialCompute: true },
+      'moonshotai/Kimi-K3-TEE': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 3, outputCostPer1M: 15, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true, reasoning: true, root: 'moonshotai/Kimi-K3', chuteId: '0bb5d4c2-b5da-587d-b88e-62b4839028ec', ownedBy: 'sglang', confidentialCompute: true },
+      'Qwen/Qwen3.8-27B-TEE': { contextWindow: 262144, maxOutputTokens: 65536, inputCostPer1M: 0.24, outputCostPer1M: 2.2, inputCacheReadCostPer1M: 0.024, supportsVision: true, supportsTools: true, reasoning: true, root: 'Qwen/Qwen3.8-27B-FP8', chuteId: '9ecb73cc-909b-5334-9cd8-74985945cff5', ownedBy: 'vllm', confidentialCompute: true },
+      'zai-org/GLM-5.2-TEE': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 1.25, outputCostPer1M: 3.95, inputCacheReadCostPer1M: 0.125, supportsVision: false, supportsTools: true, reasoning: true, root: 'nvidia/GLM-5.2-NVFP4', chuteId: '08901219-159f-55a7-87cf-9d0d02744668', ownedBy: 'sglang', confidentialCompute: true },
       'moonshotai/Kimi-K2.5-TEE': { contextWindow: 262144, maxOutputTokens: 65535, inputCostPer1M: 0.44, outputCostPer1M: 2.0, inputCacheReadCostPer1M: 0.22, supportsVision: true, supportsTools: true, reasoning: true, root: 'moonshotai/Kimi-K2.5', chuteId: '2ff25e81-4586-5ec8-b892-3a6f342693d7', ownedBy: 'vllm', quantization: 'int4', confidentialCompute: true },
       'zai-org/GLM-5.1-TEE': { contextWindow: 202752, maxOutputTokens: 65535, inputCostPer1M: 1.05, outputCostPer1M: 3.5, inputCacheReadCostPer1M: 0.525, supportsVision: false, supportsTools: true, reasoning: true, root: 'zai-org/GLM-5.1-FP8', chuteId: 'b048fe26-0352-5c46-acf7-335e527e7f3d', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
       'zai-org/GLM-5-TEE': { contextWindow: 202752, maxOutputTokens: 65535, inputCostPer1M: 0.95, outputCostPer1M: 2.55, inputCacheReadCostPer1M: 0.475, supportsVision: false, supportsTools: true, reasoning: true, root: 'zai-org/GLM-5-FP8', chuteId: 'e51e818e-fa63-570d-9f68-49d7d1b4d12f', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
@@ -2904,7 +2953,7 @@ export function getReasoningControl(providerKey, modelId) {
       ]);
     }
 
-    if (isCerebrasGlmReasoningModel(modelId)) {
+    if (isCerebrasGlmReasoningModel(modelId) || isCerebrasQwenReasoningModel(modelId)) {
       return buildReasoningControl('toggle', [
         { value: 'default', label: 'Default' },
         { value: 'off', label: 'Off' },

@@ -33,6 +33,7 @@ import {
   isGroqQwenReasoningModel,
   isCerebrasGptOssReasoningModel,
   isCerebrasGlmReasoningModel,
+  isCerebrasQwenReasoningModel,
   isTogetherGptOssReasoningModel,
   isChutesKimiReasoningModel,
   isChutesGlmReasoningModel,
@@ -801,7 +802,7 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
       return { reasoning_effort: effort };
     }
 
-    if (isCerebrasGlmReasoningModel(model)) {
+    if (isCerebrasGlmReasoningModel(model) || isCerebrasQwenReasoningModel(model)) {
       if (normalizedValue === 'off') {
         return { reasoning_effort: 'none' };
       }

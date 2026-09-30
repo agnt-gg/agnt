@@ -19,6 +19,7 @@ import CustomOpenAIProviderService from '../../ai/CustomOpenAIProviderService.js
 import {
   getModelMetadata,
   getProviderConfig,
+  providerSupportsTools,
   getReasoningControl,
   supportsZaiReasoningEffort,
   // Reasoning predicates are defined ONCE, in providerConfigs, and consumed
@@ -147,17 +148,24 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * so the slice is a guard against a future id format, not a live concern.
    */
   /**
-   * Apply provider-specific tool schema fixes. Currently only Kimi/Kimi Code
-   * (Moonshot) requires sanitization — every other OpenAI-compatible provider
-   * passes tools through unchanged.
+   * Drop tools for a model its catalogue says cannot take them, then apply
+   * provider-specific schema fixes (only Kimi/Kimi Code need sanitising).
+   *
+   * The drop used to apply to Chutes alone. Catalogues that publish tool
+   * support per model (Chutes, and OpenRouter — 67 of 464 live models reject
+   * `tools`, measured 2026-09-30) make it knowable for any provider, and the
+   * vendor otherwise fails the whole request. Only an explicit false drops
+   * tools; unknown sends them as before.
+   *
+   * A PER-MODEL rule for providers that take tools. Providers that take none
+   * at all (the print-CLI connectors) are gated upstream by
+   * providerSupportsTools and their requests are left exactly as they were.
    */
   _prepareTools(tools) {
-    if (this.provider === 'chutes') {
-      const metadata = getModelMetadata('chutes', this.model);
-      if (metadata?.supportsTools === false) {
-        console.warn(`[Chutes] Model '${this.model}' does not support tool calling; sending request without tools.`);
-        return [];
-      }
+    const metadata = providerSupportsTools(this.provider) ? getModelMetadata(this.provider, this.model) : null;
+    if (metadata?.supportsTools === false) {
+      console.warn(`[${this.provider}] Model '${this.model}' does not support tool calling; sending request without tools.`);
+      return [];
     }
 
     if (this.provider === 'kimi' || this.provider === 'kimi-code') {
@@ -1045,14 +1053,19 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
   }
 }
 
+// Cerebras's documented exception to streaming + tool calling.
+const CEREBRAS_NO_STREAMING_TOOLS = /llama/i;
+
 class CerebrasAdapter extends OpenAiLikeAdapter {
   constructor(client, model, options = {}) {
     super(client, model, options);
 
-    // Models that support streaming + tool calling
-    // Per Cerebras docs: "Streaming is supported for gpt-oss-120b, zai-glm-4.7, and non-reasoning models with these features"
-    // However, llama models do NOT support streaming + tools
-    this.streamingToolModels = new Set(['gpt-oss-120b', 'zai-glm-4.7']);
+    // Streaming + tool calling. An allow-list of ids here went stale with
+    // Cerebras's catalogue: on 2026-09-30 it served gpt-oss-120b and
+    // qwen-3.8-27b, both documented with Streaming AND Tool Calling
+    // (inference-docs.cerebras.ai/models/*), while the list still named the
+    // retired zai-glm-4.7 and left Qwen on the non-streaming path. The one
+    // documented exception is the Llama family, so that is what is excluded.
 
     // Add 422 to retryable status codes for Cerebras (tool schema issues)
     this.retryableStatusCodes.add(422);
@@ -1138,7 +1151,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
    * Check if the current model supports streaming with tool calling
    */
   supportsStreamingWithTools() {
-    return this.streamingToolModels.has(this.model);
+    return !CEREBRAS_NO_STREAMING_TOOLS.test(String(this.model || ''));
   }
 
   /**

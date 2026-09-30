@@ -696,7 +696,8 @@ export default {
 
     // Tool support warning for selected provider/model
     const toolSupportWarning = computed(() => {
-      return getToolSupportWarning(selectedProvider.value, selectedModel.value);
+      const meta = store.state.aiProvider.modelMetadata?.[selectedProvider.value]?.[selectedModel.value] || null;
+      return getToolSupportWarning(selectedProvider.value, selectedModel.value, meta);
     });
 
     // Edit current custom provider

@@ -109,9 +109,15 @@ export function isGemini25ReasoningModel(modelId) {
 }
 
 // ── DeepSeek ────────────────────────────────────────────────────────────────
+// Family-wide, deliberately. Every model DeepSeek's API serves takes the same
+// `thinking` toggle and `reasoning_effort` (api-docs.deepseek.com/guides/
+// thinking_mode, 2026-09-30). The exact-id list this replaced named
+// deepseek-chat / deepseek-reasoner / deepseek-v4-*, so deepseek-flash — the
+// model DeepSeek now leads with — got no reasoning control at all.
 export function supportsDeepSeekThinkingToggle(modelId) {
-  const m = lc(modelId);
-  return m === 'deepseek-chat' || m === 'deepseek-reasoner' || m.startsWith('deepseek-v4-');
+  // DeepSeek's own ids only: other hosts' 'deepseek-ai/...' slugs are not
+  // DeepSeek's API and do not take its thinking parameter.
+  return /^deepseek-[^/]+$/.test(lc(modelId));
 }
 
 // ── Groq ────────────────────────────────────────────────────────────────────
@@ -122,17 +128,28 @@ export function isGroqGptOssReasoningModel(modelId) {
   return lc(modelId).startsWith('openai/gpt-oss-');
 }
 
+// Matches qwen3-* and qwen3.x-*: Groq's current Qwen is qwen/qwen3.8-27b, which
+// takes reasoning_effort none/default (console.groq.com/docs/reasoning), and
+// the old 'qwen/qwen3-' prefix gave it no control at all.
 export function isGroqQwenReasoningModel(modelId) {
-  return lc(modelId).startsWith('qwen/qwen3-');
+  return /^qwen\/qwen3[-.]/.test(lc(modelId));
 }
 
 // ── Cerebras ────────────────────────────────────────────────────────────────
+// Family prefixes, like Groq above: Cerebras's list is live and turns over
+// (2026-09-30 it serves gpt-oss-120b and qwen-3.8-27b; zai-glm-4.7 is gone).
 export function isCerebrasGptOssReasoningModel(modelId) {
-  return lc(modelId) === 'gpt-oss-120b';
+  return lc(modelId).startsWith('gpt-oss-');
 }
 
 export function isCerebrasGlmReasoningModel(modelId) {
-  return lc(modelId) === 'zai-glm-4.7';
+  return lc(modelId).startsWith('zai-glm-');
+}
+
+// Reasoning on by default; `reasoning_effort: 'none'` turns it off
+// (inference-docs.cerebras.ai/models/qwen-3.8-27b). Same control as GLM.
+export function isCerebrasQwenReasoningModel(modelId) {
+  return lc(modelId).startsWith('qwen-3');
 }
 
 // ── Z.AI ────────────────────────────────────────────────────────────────────

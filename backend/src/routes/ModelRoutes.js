@@ -216,6 +216,9 @@ async function _fetchCodexModelsFromUpstream(token) {
 function localCliListing(providerKey, cliModels) {
   const live = Array.isArray(cliModels) && cliModels.length > 0;
   const models = live ? [...cliModels] : [...(getProviderConfig(providerKey)?.fallbackModels || [])];
+  // Saved like every other live list, so the default-model resolver checks the
+  // registry pick against what the CLI actually offers (services/ai/defaultModel.js).
+  if (live) persistLastModels(providerKey, models.map((id) => ({ id, name: id })));
   return {
     success: true, models, cached: false, count: models.length,
     ...provenanceFields(live

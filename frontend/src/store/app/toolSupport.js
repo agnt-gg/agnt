@@ -1,16 +1,23 @@
 /**
  * Tool Support Information
  *
- * This file contains information about which providers/models support
- * function calling (tool use). This is used to display warnings in the UI
- * when a user selects a model that may not support tools.
+ * Whether the selected model can call tools, shown as a warning in the model
+ * pickers. Runtime detection via 'tools_skipped' events provides additional
+ * coverage.
  *
- * Note: This is a frontend-only solution for immediate warnings.
- * Runtime detection via 'tools_skipped' events provides additional coverage.
+ * PER-MODEL FACTS COME FROM THE BACKEND, NOT FROM HERE. The model metadata the
+ * store loads for each provider's live list carries `supportsTools` wherever
+ * the vendor publishes it (OpenRouter per model via `supported_parameters`,
+ * Chutes via `supported_features`, curated entries otherwise). This file used
+ * to hardcode Cerebras model lists instead; every id in them had been retired
+ * by 2026-09-30 (Cerebras serves gpt-oss-120b and qwen-3.8-27b), so the lists
+ * could only ever be wrong. What remains here is provider-level policy for
+ * models the metadata says nothing about.
  */
 
 /**
- * Provider-level warnings for providers where tool support varies or is unknown
+ * Provider-level warnings, used only when the model's own metadata does not
+ * say whether it supports tools.
  */
 export const PROVIDER_TOOL_WARNINGS = {
   Local: 'Local models may not support function calling. Tool usage depends on the model loaded locally.',
@@ -18,107 +25,50 @@ export const PROVIDER_TOOL_WARNINGS = {
   TogetherAI: 'Tool support varies by model. Check model documentation for function calling support.',
 };
 
-/**
- * Models that are KNOWN to NOT support function calling
- * Format: { providerName: [modelId1, modelId2, ...] }
- */
-export const MODELS_WITHOUT_TOOL_SUPPORT = {
-  Cerebras: ['llama3.1-8b', 'llama-3.3-70b', 'qwen-3-32b', 'qwen-3-235b-a22b-instruct-2507'],
-};
-
-/**
- * Models that ARE KNOWN to support function calling (for providers with mixed support)
- * Format: { providerName: [modelId1, modelId2, ...] }
- */
-export const MODELS_WITH_TOOL_SUPPORT = {
-  Cerebras: ['gpt-oss-120b', 'zai-glm-4.6'],
-};
-
-/**
- * Providers that fully support function calling on all models
- */
+/** Providers that support function calling on every model they serve. */
 export const PROVIDERS_WITH_FULL_TOOL_SUPPORT = ['Anthropic', 'OpenAI', 'Gemini', 'GrokAI', 'Groq', 'DeepSeek'];
 
+const CUSTOM_PROVIDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Get tool support warning for a provider/model combination
+ * Get tool support warning for a provider/model combination.
  * @param {string} provider - Provider name
- * @param {string} model - Model name (optional)
+ * @param {string} [model] - Model id
+ * @param {Object} [modelMeta] - The model's metadata from the store
+ *   (aiProvider.modelMetadata[provider][model]); its `supportsTools` wins.
  * @returns {string|null} Warning message or null if no warning needed
  */
-export function getToolSupportWarning(provider, model = null) {
+export function getToolSupportWarning(provider, model = null, modelMeta = null) {
   if (!provider) return null;
 
-  // Providers with full tool support - no warning needed
-  if (PROVIDERS_WITH_FULL_TOOL_SUPPORT.includes(provider)) {
-    return null;
-  }
-
-  // Check if this specific model is known to NOT support tools
-  const noToolModels = MODELS_WITHOUT_TOOL_SUPPORT[provider];
-  if (model && noToolModels?.includes(model)) {
+  if (model && modelMeta?.supportsTools === false) {
     return `"${model}" does not support function calling. AI tools and agents will not work with this model.`;
   }
+  if (model && modelMeta?.supportsTools === true) return null;
 
-  // Check if this specific model is known to support tools (for mixed providers)
-  const toolModels = MODELS_WITH_TOOL_SUPPORT[provider];
-  if (model && toolModels?.includes(model)) {
-    return null; // This model supports tools
-  }
-
-  // Check for provider-level warnings (unknown/varies)
-  if (PROVIDER_TOOL_WARNINGS[provider]) {
-    return PROVIDER_TOOL_WARNINGS[provider];
-  }
-
-  // For custom providers, show a generic warning
-  // Custom providers are identified by UUID format
-  const isCustomProvider = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(provider);
-  if (isCustomProvider) {
+  if (PROVIDERS_WITH_FULL_TOOL_SUPPORT.includes(provider)) return null;
+  if (PROVIDER_TOOL_WARNINGS[provider]) return PROVIDER_TOOL_WARNINGS[provider];
+  if (CUSTOM_PROVIDER_ID.test(provider)) {
     return 'Custom providers may have limited function calling support. Tool usage depends on the underlying API.';
   }
-
   return null;
 }
 
-/**
- * Check if a model definitely does NOT support tools
- * @param {string} provider - Provider name
- * @param {string} model - Model name
- * @returns {boolean} True if model definitely doesn't support tools
- */
-export function modelDefinitelyNoTools(provider, model) {
-  if (!provider || !model) return false;
-  const noToolModels = MODELS_WITHOUT_TOOL_SUPPORT[provider];
-  return noToolModels?.includes(model) || false;
+/** True only when the model's metadata says it cannot call tools. */
+export function modelDefinitelyNoTools(provider, model, modelMeta = null) {
+  return Boolean(provider && model && modelMeta?.supportsTools === false);
 }
 
-/**
- * Check if a model definitely supports tools
- * @param {string} provider - Provider name
- * @param {string} model - Model name
- * @returns {boolean} True if model definitely supports tools
- */
-export function modelDefinitelyHasTools(provider, model) {
+/** True when the model's metadata, or its provider's policy, says it can. */
+export function modelDefinitelyHasTools(provider, model = null, modelMeta = null) {
   if (!provider) return false;
-
-  // Full support providers
-  if (PROVIDERS_WITH_FULL_TOOL_SUPPORT.includes(provider)) {
-    return true;
-  }
-
-  // Check specific model support
-  if (model) {
-    const toolModels = MODELS_WITH_TOOL_SUPPORT[provider];
-    return toolModels?.includes(model) || false;
-  }
-
-  return false;
+  if (modelMeta?.supportsTools === false) return false;
+  if (modelMeta?.supportsTools === true) return true;
+  return PROVIDERS_WITH_FULL_TOOL_SUPPORT.includes(provider);
 }
 
 export default {
   PROVIDER_TOOL_WARNINGS,
-  MODELS_WITHOUT_TOOL_SUPPORT,
-  MODELS_WITH_TOOL_SUPPORT,
   PROVIDERS_WITH_FULL_TOOL_SUPPORT,
   getToolSupportWarning,
   modelDefinitelyNoTools,

@@ -284,6 +284,7 @@ import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
 import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
+import { contextWindowFromMetadata } from '@/utils/modelContextWindow.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
 import ChatActions from './components/ChatActions.vue';
@@ -890,73 +891,16 @@ export default {
       rounds: turnRounds.value,
     }));
 
-    // Known context windows for common models (static data, no API call needed)
-    const MODEL_CONTEXT_WINDOWS = {
-      // OpenAI
-      'gpt-5.2': 400000,
-      'gpt-5.1': 400000,
-      'gpt-5': 400000,
-      'gpt-5-mini': 400000,
-      'gpt-5-nano': 400000,
-      'o4-mini': 200000,
-      o3: 200000,
-      'o3-mini': 200000,
-      'gpt-4.1': 1000000,
-      'gpt-4.1-mini': 1000000,
-      'gpt-4.1-nano': 1000000,
-      'gpt-4o': 128000,
-      'gpt-4o-mini': 128000,      // Anthropic — Claude 5 generation and Opus 4.7+ are 1M-context.
-      // Keep in sync with backend modelMetadata (providerConfigs.js); this map
-      // is only the pre-first-event seed, but a missing entry falls through to
-      // 0 and the meter renders with no ceiling.
-      'claude-opus-5': 1000000,
-      'claude-sonnet-5': 1000000,
-      'claude-fable-5': 1000000,
-      'claude-opus-4-8': 1000000,
-      'claude-opus-4-7': 1000000,
-      'claude-opus-4-6': 200000,
-      'claude-sonnet-4-6': 200000,
-      'claude-opus-4-5-20251101': 200000,
-      'claude-sonnet-4-5-20250929': 200000,
-      'claude-haiku-4-5-20251001': 200000,
-      'claude-sonnet-4-20250514': 200000,
-      'claude-opus-4-20250514': 200000,
-      'claude-3-5-sonnet-20241022': 200000,
-      'claude-3-5-haiku-20241022': 200000,
-      // Google
-      'gemini-3.1-pro-preview': 1048576,
-      'gemini-3-flash-preview': 1048576,
-      'gemini-2.5-pro': 1048576,
-      'gemini-2.5-flash': 1048576,
-      'gemini-2.5-flash-lite': 1048576,
-      // Grok
-      'grok-4-0709': 256000,
-      'grok-3': 131072,
-      'grok-3-mini': 131072,
-      // Groq
-      'llama-3.3-70b-versatile': 131072,
-      'llama-3.1-8b-instant': 131072,
-      // DeepSeek
-      'deepseek-chat': 128000,
-      'deepseek-reasoner': 128000,
-      // Cerebras
-      'llama3.1-8b': 131072,
-      // Kimi Code (highspeed listed before its prefix 'kimi-for-coding')
-      'kimi-for-coding-highspeed': 256000,
-      'kimi-for-coding': 256000,
-      k3: 1048576,
-    };
-
-    const getContextWindowForModel = (model) => {
-      if (!model) return 0;
-      // Exact match first
-      if (MODEL_CONTEXT_WINDOWS[model]) return MODEL_CONTEXT_WINDOWS[model];
-      // Prefix match for versioned model IDs (e.g. claude-sonnet-4-6-20250101)
-      for (const [key, val] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-        if (model.startsWith(key)) return val;
-      }
-      return 0;
-    };
+    // The pre-first-event seed for the context meter, from the live per-model
+    // metadata the backend publishes for the selected provider (see
+    // utils/modelContextWindow.js). Was a 40-entry hand-copied map that knew no
+    // current model on several providers. Once a stream starts, the backend's
+    // own context_status event supersedes this value.
+    const getContextWindowForModel = (model) => contextWindowFromMetadata(
+      store.state.aiProvider?.modelMetadata,
+      store.state.aiProvider?.selectedProvider,
+      model,
+    );
 
     // Seed the tokenLimit/model on the ACTIVE conversation's monitoring slot
     // when the user changes provider/model. Other conversations keep whatever
@@ -979,6 +923,21 @@ export default {
 
     // Update immediately and whenever model changes
     updateContextWindow();
+
+    // The provider's metadata can land after the model is chosen (first load,
+    // provider switch). Fill a limit that was still unknown; never overwrite a
+    // known one, which may already come from the backend's context_status.
+    watch(
+      () => store.state.aiProvider?.modelMetadata?.[store.state.aiProvider?.selectedProvider],
+      () => {
+        const convId = store.state.chat.activeConversationId;
+        if (!convId) return;
+        const ms = getMonitoringState(convId);
+        if (ms && !ms.contextStatus.tokenLimit) {
+          ms.contextStatus.tokenLimit = getContextWindowForModel(store.state.aiProvider?.selectedModel);
+        }
+      },
+    );
 
     // Quick Actions
     // First-run starters are jobs, not questions about the system. Each one is

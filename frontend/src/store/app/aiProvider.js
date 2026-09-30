@@ -25,7 +25,9 @@ import {
   supportsDeepSeekThinkingToggle as supportsDeepSeekThinking,
   isGroqGptOssReasoningModel,
   isGroqQwenReasoningModel,
+  isCerebrasGptOssReasoningModel,
   isCerebrasGlmReasoningModel,
+  isCerebrasQwenReasoningModel,
   supportsZaiThinkingToggle,
   supportsZaiReasoningEffort,
   supportsKimiReasoningToggle as supportsKimiToggle,
@@ -638,7 +640,10 @@ export function inferReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'cerebras') {
-    if (isGroqGptOssReasoningModel(modelId)) {
+    // Cerebras ids carry no vendor prefix ('gpt-oss-120b'), so the Groq
+    // predicate ('openai/gpt-oss-') never matched and the UI showed no effort
+    // control for a model the backend does send one for.
+    if (isCerebrasGptOssReasoningModel(modelId)) {
       return buildReasoningControl('effort', [
         { value: 'default', label: 'Default' },
         { value: 'low', label: 'Low' },
@@ -646,7 +651,7 @@ export function inferReasoningControl(providerKey, modelId) {
         { value: 'high', label: 'High' },
       ]);
     }
-    if (isCerebrasGlmReasoningModel(modelId)) {
+    if (isCerebrasGlmReasoningModel(modelId) || isCerebrasQwenReasoningModel(modelId)) {
       return buildReasoningControl('toggle', [
         { value: 'default', label: 'Default' },
         { value: 'off', label: 'Off' },
