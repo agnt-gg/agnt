@@ -151,6 +151,10 @@ let behaviourAttachedTo = null;
 
 /** Parsed intent waiting for a window to exist. See takePendingIntent(). */
 let pendingIntent = null;
+// True while the main window shows the status page instead of the app. Set
+// wherever either is loaded; read by deliverToRenderer. Declared up here with
+// pendingIntent because a cold-start deep link is handled at module scope.
+let windowShowsStatus = false;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -192,10 +196,11 @@ function handleDeepLink(raw, source) {
     focusMainWindow();
     return;
   }
-  // No window yet — this is a cold start. createWindow() consumes it so the
-  // app comes up already on the right page rather than flashing the dashboard
-  // and then navigating.
+  // No app in the window yet (a cold start, or the startup status page) —
+  // whatever loads the app consumes it, so it comes up already on the right
+  // page rather than flashing the dashboard and then navigating.
   pendingIntent = intent;
+  focusMainWindow();
 }
 
 /**
@@ -209,6 +214,9 @@ function handleDeepLink(raw, source) {
  */
 function deliverToRenderer(intent) {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
+  // The status page has no deep-link listener; sending there would drop the
+  // intent. Leave it pending: loadActiveTarget() consumes it with the app.
+  if (windowShowsStatus) return false;
   const wc = mainWindow.webContents;
   const send = () => wc.send('deep-link', intent);
   if (wc.isLoading()) wc.once('did-finish-load', send);
@@ -330,6 +338,18 @@ let occupant = null;
 
 const isRemoteActive = () => activeMode === 'remote' && Boolean(connection.url);
 const statusPagePath = () => path.join(__dirname, 'electron', 'connection-error.html');
+// libuv's default pool is 4 threads, shared by every SQLite query, file read,
+// gzip and dynamic import(). One slow query per thread starved module loading
+// at boot (measured: 26-37 s stalls). Must be set in the child's environment:
+// libuv reads it once, when the pool is first used.
+const BACKEND_THREADPOOL_SIZE = '16';
+// Every backend line used to be re-logged here, so it was written to the
+// diagnostics log twice and pushed through a stdout pipe that BLOCKS the
+// backend on Windows whenever this process is slow to read (see
+// backend/src/diagnostics/consoleBridge.js). The backend's own records are
+// complete, so by default we only keep a tail for crash reports. Set
+// AGNT_ECHO_BACKEND_LOGS=1 to see backend output in this terminal again.
+const ECHO_BACKEND_LOGS = process.env.AGNT_ECHO_BACKEND_LOGS === '1';
 const localPort = () => Number(process.env.PORT || 3333);
 
 /**
@@ -407,17 +427,31 @@ async function ensureLocalBackend() {
  * and silently attach the user to a backend they never agreed to share.
  */
 async function startLocalBoot() {
-  if ((await ensureLocalBackend()) === 'occupied') return;
+  connectPhase = 'starting';
+  const outcome = await ensureLocalBackend();
+  // A window from t≈0. It used to be created only once the backend answered,
+  // so every second of backend startup (measured p90 24 s, worst 154 s) was a
+  // process with no window at all. The occupied path has already opened one.
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow({ initial: 'status' });
+  attachWindowBehaviour();
+  if (outcome === 'occupied') return;
+  let lastPushedSecond = -1;
   healthPoll = pollBackendHealth({
     port: localPort(),
     log: (m) => console.log('[backend]', m),
+    onAttempt: ({ elapsedMs }) => {
+      // Attempts run every 250 ms; the page only shows whole seconds.
+      const second = Math.floor(elapsedMs / 1000);
+      if (second === lastPushedSecond) return;
+      lastPushedSecond = second;
+      pushConnectionState({ phase: 'starting', elapsedMs });
+    },
     onReady: () => {
       healthPoll = null;
       supervisor.state = 'running';
       connectPhase = 'ready';
-      console.log('Backend is ready. Creating main window...');
-      createWindow();
-      attachWindowBehaviour();
+      console.log('Backend is ready. Loading the app...');
+      loadActiveTarget();
     },
   });
 }
@@ -476,8 +510,8 @@ async function replaceLocalBackend() {
   if (!(await gone())) return { ok: false, error: 'It is still holding the port.' };
 
   occupant = null;
-  connectPhase = 'connecting';
-  pushConnectionState({ phase: 'connecting', detail: 'Starting AGNT on this computer…' });
+  connectPhase = 'starting';
+  pushConnectionState({ phase: 'starting', detail: 'Starting AGNT on this computer…' });
   localBackendSpawned = true;
   startBackend();
   healthPoll = pollBackendHealth({
@@ -526,6 +560,7 @@ function showStatusPage(patch = {}) {
       return;
     }
 
+    windowShowsStatus = true;
     mainWindow.loadFile(statusPagePath());
     mainWindow.webContents.once('did-finish-load', () => pushConnectionState(patch));
   } catch (err) {
@@ -533,11 +568,21 @@ function showStatusPage(patch = {}) {
   }
 }
 
-/** Point the existing window at whatever backend is currently active. */
+/**
+ * Point the window at whatever backend is currently active, creating it if the
+ * user closed it meanwhile. Consumes a deep link that arrived while the status
+ * page was showing, exactly as createWindow() does on a cold start.
+ */
 function loadActiveTarget() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    attachWindowBehaviour();
+    return;
+  }
   const target = isRemoteActive() ? connection.url : localBackendUrl();
-  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-  else mainWindow.loadURL(target);
+  const intent = takePendingIntent();
+  windowShowsStatus = false;
+  mainWindow.loadURL(intent ? intentToUrl(target, intent) : target);
 }
 
 /**
@@ -593,8 +638,8 @@ async function startLocalSessionFallback(why) {
   healthPoll = null;
   activeMode = 'local';
   fellBack = true;
-  connectPhase = 'connecting';
-  pushConnectionState({ phase: 'connecting', detail: 'Starting AGNT on this computer…' });
+  connectPhase = 'starting';
+  pushConnectionState({ phase: 'starting', detail: 'Starting AGNT on this computer…' });
   // 'occupied' means the status page is now asking which backend to use, and
   // the poll below must not run: it would succeed instantly against the
   // occupant and answer the question on the user's behalf.
@@ -1373,6 +1418,9 @@ function startBackend() {
     AGNT_CONTROL_TOKEN: CONTROL_TOKEN, // update handoff; see getBusyReport()
     NODE_ENV: app.isPackaged ? 'production' : 'development',
     NODE_PATH: nodePathValue,
+    UV_THREADPOOL_SIZE: fileEnv.UV_THREADPOOL_SIZE || process.env.UV_THREADPOOL_SIZE || BACKEND_THREADPOOL_SIZE,
+    // The backend records its own output to diagnostics; see ECHO_BACKEND_LOGS.
+    AGNT_CONSOLE_PASSTHROUGH: ECHO_BACKEND_LOGS ? 'all' : 'warn',
     PUPPETEER_SKIP_DOWNLOAD: 'true',
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
   };
@@ -1398,7 +1446,7 @@ function startBackend() {
       if (backendStdout.length > MAX_BUFFER_SIZE) {
         backendStdout = backendStdout.slice(-MAX_BUFFER_SIZE);
       }
-      console.log('Backend stdout:', output);
+      if (ECHO_BACKEND_LOGS) console.log('Backend stdout:', output);
     });
 
     backendProcess.stderr.on('data', (data) => {
@@ -1407,7 +1455,7 @@ function startBackend() {
       if (backendStderr.length > MAX_BUFFER_SIZE) {
         backendStderr = backendStderr.slice(-MAX_BUFFER_SIZE);
       }
-      console.error('Backend stderr:', output);
+      if (ECHO_BACKEND_LOGS) console.error('Backend stderr:', output);
     });
 
     backendProcess.on('spawn', () => {
@@ -1442,7 +1490,7 @@ function startBackend() {
       if (backendStdout.length > MAX_BUFFER_SIZE) {
         backendStdout = backendStdout.slice(-MAX_BUFFER_SIZE);
       }
-      console.log('Backend stdout:', output);
+      if (ECHO_BACKEND_LOGS) console.log('Backend stdout:', output);
     });
 
     backendProcess.stderr.on('data', (data) => {
@@ -1451,7 +1499,7 @@ function startBackend() {
       if (backendStderr.length > MAX_BUFFER_SIZE) {
         backendStderr = backendStderr.slice(-MAX_BUFFER_SIZE);
       }
-      console.error('Backend stderr:', output);
+      if (ECHO_BACKEND_LOGS) console.error('Backend stderr:', output);
     });
 
     backendProcess.on('error', (error) => {
@@ -1695,11 +1743,13 @@ function createWindow(opts = {}) {
   // auth, sockets and OAuth behave exactly as they do in a browser.
   const port = process.env.PORT || 3333;
   if (opts.initial === 'status') {
-    // Remote mode shows a live status page FIRST so the app always has a window.
-    // Loading the remote origin here instead left a blank frame for as long as
-    // the server took to answer — which, for an unresponsive host, was forever.
+    // Every boot shows a live status page FIRST so the app always has a window.
+    // Loading the origin here instead left a blank frame for as long as the
+    // server took to answer — which, for an unresponsive host, was forever.
+    windowShowsStatus = true;
     mainWindow.loadFile(statusPagePath());
   } else {
+    windowShowsStatus = false;
     const origin = isRemoteActive() ? connection.url : `http://localhost:${port}`;
     // A cold start from a deep link lands ON the linked page rather than
     // painting the dashboard and navigating away from it a moment later. The

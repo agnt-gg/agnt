@@ -60,6 +60,28 @@ export function isWorkflowProcessUnavailable(error) {
   return Boolean(error) && error.code === 'WORKFLOW_PROCESS_UNAVAILABLE';
 }
 
+/**
+ * STARTUP READINESS — a slow start is not a failed start.
+ *
+ * The child reports READY about a second after fork. The old code armed a
+ * 30 s timer that REJECTED, and on 2026-09-30 it fired while READY was already
+ * waiting unread: this process's event loop had been frozen for 37 s, and when
+ * it thawed, Node runs due timers before it reads I/O. So the timer won, the
+ * boot logged "failed to start within 30 seconds", restartActiveWorkflows()
+ * never ran, and every timer workflow stayed disarmed until the next restart.
+ *
+ * Now: the start fails only when the child EXITS or ERRORS before READY, or
+ * after a deadline long enough that it means "hung", and even then the
+ * rejection waits one I/O turn (setImmediate) so a READY already in the pipe is
+ * read first. A READY that still arrives after that re-arms the workflows
+ * itself, so no ordering can leave them dead.
+ */
+const READY_SLOW_WARN_MS = 30_000;
+const READY_DEADLINE_MS = 5 * 60_000;
+// Enough of the child's stderr to explain a crash; everything else is already
+// in the diagnostics log, which the child writes itself.
+const STDERR_TAIL_BYTES = 8 * 1024;
+
 class WorkflowProcessBridge {
   constructor() {
     this.workflowProcess = null;
@@ -152,11 +174,16 @@ class WorkflowProcessBridge {
         if (this.workflowProcess === child) {
           this.isReady = false;
         }
+        failStartup(error);
       });
 
       // Handle process exit
       child.on('exit', (code, signal) => {
         console.log(`Workflow process exited with code ${code} and signal ${signal}`);
+        if (stderrTail && (code !== 0 || signal !== null)) {
+          console.error(`[Workflow Process] last stderr before exit:\n${stderrTail}`);
+        }
+        failStartup(new Error(`Workflow process exited before it was ready (code=${code}, signal=${signal})`));
 
         // A superseded process dying must never clobber the state of the
         // healthy replacement that took its place.
@@ -191,39 +218,72 @@ class WorkflowProcessBridge {
         }, 5000);
       });
 
-      // Handle stdout/stderr
-      child.stdout.on('data', (data) => {
-        console.log(`[Workflow Process]: ${data.toString().trim()}`);
-      });
-
+      // DRAIN, don't relay. Both pipes must be read or the child blocks when
+      // they fill (on Windows a pipe write is synchronous). Re-logging every
+      // line here wrote it to the diagnostics log a second time and pushed it
+      // through OUR stdout pipe as well; the child records its own output.
+      let stderrTail = '';
+      child.stdout.on('data', () => {});
       child.stderr.on('data', (data) => {
-        console.error(`[Workflow Process Error]: ${data.toString().trim()}`);
+        stderrTail = (stderrTail + data.toString()).slice(-STDERR_TAIL_BYTES);
       });
 
-      // Wait for ready message
-      const readyTimeout = setTimeout(() => {
-        reject(new Error('Workflow process failed to start within 30 seconds'));
-      }, 30000);
+      let settled = false;
+      const startedAt = Date.now();
+      const settle = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(slowTimer);
+        clearTimeout(deadlineTimer);
+        fn(value);
+      };
+      // Hoisted for the exit/error handlers above. Deferred one turn: a READY
+      // already in the pipe must be read before a failure is declared.
+      function failStartup(error) {
+        if (settled) return;
+        setImmediate(() => settle(reject, error));
+      }
+
+      const slowTimer = setTimeout(() => {
+        console.warn(
+          `Workflow process has not reported ready after ${READY_SLOW_WARN_MS / 1000}s; still waiting (gives up after ${READY_DEADLINE_MS / 60_000} min).`
+        );
+      }, READY_SLOW_WARN_MS);
+      const deadlineTimer = setTimeout(() => {
+        failStartup(new Error(`Workflow process did not report ready within ${READY_DEADLINE_MS / 60_000} minutes`));
+      }, READY_DEADLINE_MS);
 
       const readyHandler = (message) => {
-        if (message.type === 'READY') {
-          clearTimeout(readyTimeout);
-          this.isReady = true;
-          console.log('Workflow process is ready');
+        if (message?.type !== 'READY') return;
+        child.off('message', readyHandler);
+        // A superseded child reporting in late must not mark its replacement ready.
+        if (this.workflowProcess !== child) return;
+        this.isReady = true;
+        console.log(`Workflow process is ready (${Date.now() - startedAt} ms after spawn)`);
 
-          // A respawned child starts with an empty cache. Without this, a crash
-          // at 3am would silently drop every background call back to anonymous
-          // until the user next touched the UI — and the token is 30-day, so
-          // "next touched the UI" can be a very long time.
-          if (this.pushSessionToken(child)) {
-            console.log('[WorkflowProcessBridge] session token forwarded to workflow process');
-          }
-
-          resolve();
+        // A respawned child starts with an empty cache. Without this, a crash
+        // at 3am would silently drop every background call back to anonymous
+        // until the user next touched the UI — and the token is 30-day, so
+        // "next touched the UI" can be a very long time.
+        if (this.pushSessionToken(child)) {
+          console.log('[WorkflowProcessBridge] session token forwarded to workflow process');
         }
+
+        if (settled) {
+          // Startup was already declared failed, so whoever awaited spawn() did
+          // not re-arm anything. Do it here, once, for this child.
+          console.warn('Workflow process became ready after startup was given up on; re-arming active workflows.');
+          this.readyPromise = Promise.resolve();
+          this.restartActiveWorkflows().catch((error) => {
+            console.error('Re-arming workflows after a late ready failed:', error);
+          });
+          return;
+        }
+        settle(resolve);
       };
 
-      child.once('message', readyHandler);
+      // on, not once: the first message is not guaranteed to be READY.
+      child.on('message', readyHandler);
     });
 
     return this.readyPromise;

@@ -154,6 +154,25 @@
         if (state.url) el('url').textContent = state.url;
         phase = state.phase || phase;
 
+        // Local boot: this computer's own backend is starting. Nothing has
+        // failed and there is nothing to choose, so no buttons — only progress.
+        const starting = phase === 'starting';
+        el('url').hidden = starting;
+        hint.hidden = starting;
+        if (starting) {
+          remoteRow.hidden = true;
+          occupiedRow.hidden = true;
+          linkRow.hidden = true;
+          mark.className = 'mark wait';
+          mark.innerHTML = '<div class="spinner"></div>';
+          title.textContent = 'Starting AGNT…';
+          blurb.textContent = state.detail || 'Loading your agents, tools and plugins.';
+          const secs = Math.round((state.elapsedMs || 0) / 1000);
+          meta.textContent = secs >= 3 ? `${secs}s` : '';
+          document.title = 'AGNT — starting';
+          return;
+        }
+
         if (phase === 'occupied') {
           const port = state.port || state.localPort || 3333;
           const isAgnt = state.occupiedBy !== 'unknown';

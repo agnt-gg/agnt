@@ -836,6 +836,53 @@ describe('the prompt distinguishes embedding from linking', () => {
   });
 });
 
+describe('local boot: a window from t≈0, and a backend that cannot be frozen by its own logs', () => {
+  const boot = () => blockAfter(code, 'async function startLocalBoot');
+  const html = fs.readFileSync(path.join(ROOT, 'electron', 'connection-error.html'), 'utf8');
+  const script = html.slice(html.indexOf('<script>'));
+
+  it('opens the status window before waiting on the backend', () => {
+    // Measured before this change: no window for p90 24 s, worst 154 s.
+    const body = boot();
+    const windowAt = body.indexOf("createWindow({ initial: 'status' })");
+    const pollAt = body.indexOf('pollBackendHealth(');
+    expect(windowAt, 'local boot never opens a window before the poll').toBeGreaterThan(-1);
+    expect(windowAt).toBeLessThan(pollAt);
+    // ...and never a second window when the occupied path already opened one.
+    expect(body).toMatch(/if \(!mainWindow \|\| mainWindow\.isDestroyed\(\)\) createWindow\(\{ initial: 'status' \}\);/);
+  });
+
+  it('loads the app INTO that window when the backend is ready', () => {
+    const ready = blockAfter(boot(), 'onReady: () =>');
+    expect(ready).toMatch(/loadActiveTarget\(\);/);
+    expect(ready, 'a second window would be created over the status page').not.toMatch(/createWindow\(/);
+  });
+
+  it('holds a deep link that arrives during boot and applies it with the app', () => {
+    expect(blockAfter(code, 'function deliverToRenderer')).toMatch(/if \(windowShowsStatus\) return false;/);
+    expect(blockAfter(code, 'function loadActiveTarget')).toMatch(/takePendingIntent\(\)/);
+  });
+
+  it('renders a local starting phase with no remote controls', () => {
+    expect(script).toMatch(/phase === 'starting'/);
+    const starting = blockAfter(script, 'if (starting)');
+    expect(starting).toMatch(/remoteRow\.hidden = true/);
+    expect(starting).toMatch(/occupiedRow\.hidden = true/);
+  });
+
+  it('gives the backend a larger libuv pool and keeps its chatter out of the pipe', () => {
+    const env = blockAfter(code, 'const env =');
+    expect(env).toMatch(/UV_THREADPOOL_SIZE:/);
+    expect(env).toMatch(/AGNT_CONSOLE_PASSTHROUGH: ECHO_BACKEND_LOGS \? 'all' : 'warn'/);
+    // Every stdout/stderr relay is gated; an unconditional one re-couples the
+    // backend's event loop to this process's read speed.
+    const relays = code.match(/console\.(log|error)\('Backend std(out|err):'/g) || [];
+    const gated = code.match(/if \(ECHO_BACKEND_LOGS\) console\.(log|error)\('Backend std(out|err):'/g) || [];
+    expect(relays.length).toBeGreaterThan(0);
+    expect(gated.length).toBe(relays.length);
+  });
+});
+
 describe('electron-builder packaging', () => {
   // main.js imports ./electron/connectionConfig.js and loadFile() for connection-error.html.
   // electron-builder uses an explicit allowlist (build.files) — if electron/ is missing,
