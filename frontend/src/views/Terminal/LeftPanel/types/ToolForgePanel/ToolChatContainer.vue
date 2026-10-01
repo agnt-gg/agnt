@@ -70,6 +70,7 @@ import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/Q
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
+import { useStickToBottom } from '@/composables/useStickToBottom.js';
 
 const initialSuggestions = [
   { id: 'tool-1', text: 'Create new tool', icon: '🔧' },
@@ -143,19 +144,17 @@ export default {
     const isLoadingSuggestions = computed(() => store.getters['toolChat/isLoadingSuggestions']);
     const currentConversationId = computed(() => store.getters['toolChat/getConversationId'](props.toolId));
 
+    // Follow the live stream until the user scrolls away (see
+    // services/stickToBottom.js). Any explicit scroll-to-bottom resumes it.
+    const { follow: followStream } = useStickToBottom({ getEl: () => chatMessagesRef.value });
+
     const scrollToBottom = () => {
+      followStream();
       nextTick(() => {
         if (chatMessagesRef.value) {
           chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
         }
       });
-    };
-
-    const stickToBottomIfNearBottom = () => {
-      if (!chatMessagesRef.value) return;
-      const el = chatMessagesRef.value;
-      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-      if (isNearBottom) scrollToBottom();
     };
 
     const sendChatMessage = async () => {
@@ -419,8 +418,6 @@ export default {
           focusInput();
           break;
       }
-
-      stickToBottomIfNearBottom();
     };
 
     const handleFrontendEvent = (eventType, eventData) => {
@@ -640,9 +637,6 @@ export default {
         }
       }
     );
-
-    // Auto-scroll on new messages / streamed content if user is near bottom.
-    watch(formattedChatMessages, () => stickToBottomIfNearBottom(), { deep: true });
 
     // Watch for conversation being cleared and reset suggestions
     watch(

@@ -417,12 +417,21 @@ describe('main chat screen — source guards', () => {
     expect(body).toMatch(/teardownScrollRestore\(\);/);
   });
 
-  it('the near-bottom autoscroll stands down while a restore settles', () => {
-    const at = src.indexOf('const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;');
-    const before = src.slice(Math.max(0, at - 500), at);
-    // The guard must precede the measurement: early in the settle loop the
-    // transcript is short and scrollTop is 0, which reads as "near bottom".
-    expect(before).toMatch(/if \(isRestoringScroll\.value\) return;/);
+  it('stream following stands down while a restore settles', () => {
+    // Early in the settle loop the transcript is short and scrollTop is 0,
+    // which reads as "at the bottom" — following must not act on it.
+    expect(src).toMatch(
+      /useStickToBottom\(\{\s*getEl: \(\) => conversationSpace\.value,\s*isSuspended: \(\) => isRestoringScroll\.value,\s*\}\)/,
+    );
+  });
+
+  it('no distance-based autoscroll survives (it fought upward scrolling)', () => {
+    expect(src).not.toMatch(/isNearBottom/);
+    expect(src).not.toMatch(/clientHeight < 150/);
+  });
+
+  it('the scroll-to-bottom control resumes following', () => {
+    expect(src).toMatch(/<ChatScrollControls[^>]*@scroll-to-bottom="followFromScrollControl"/);
   });
 
   it('the saved-output loader restores AFTER the spinner clears, not before', () => {
@@ -435,11 +444,13 @@ describe('main chat screen — source guards', () => {
 describe('panel container — source guards', () => {
   const UNIFIED = path.join(HERE, 'UnifiedChatContainer.vue');
 
-  it('the autoscroll stands down while a restore settles', () => {
+  it('stream following stands down while a restore settles', () => {
     const src = fs.readFileSync(UNIFIED, 'utf8');
-    const at = src.indexOf('const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;');
-    const before = src.slice(Math.max(0, at - 400), at);
-    expect(before).toMatch(/if \(isRestoringScroll\.value\) return;/);
+    expect(src).toMatch(
+      /useStickToBottom\(\{\s*getEl: \(\) => chatMessagesRef\.value,\s*isSuspended: \(\) => isRestoringScroll\.value,\s*\}\)/,
+    );
+    expect(src).not.toMatch(/isNearBottom/);
+    expect(src).toMatch(/<ChatScrollControls[^>]*@scroll-to-bottom="followFromScrollControl"/);
   });
 
   it('mount restores rather than jumping to the bottom', () => {

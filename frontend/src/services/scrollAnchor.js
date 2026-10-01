@@ -35,16 +35,19 @@
  * nothing but measure and apply.
  */
 
+import { FOLLOW_THRESHOLD } from './stickToBottom.js';
+
 /** Attribute the transcript stamps on each message wrapper. */
 export const ANCHOR_ATTR = 'data-message-id';
 
 /**
- * Distance from the bottom, in px, still considered "at the bottom". Matches
- * the autoscroll threshold in Chat.vue / UnifiedChatContainer: if we called a
- * position "not bottom" that autoscroll considers "bottom", restoring it would
- * immediately be overridden by the next streamed chunk.
+ * Distance from the bottom, in px, still considered "at the bottom". The same
+ * number as stream-following's re-engage distance (services/stickToBottom.js):
+ * a position saved as "bottom" restores as following, and one saved as "not
+ * bottom" restores as released. If they differed, reopening a chat would
+ * silently flip a reader who had scrolled away back into following.
  */
-export const BOTTOM_THRESHOLD = 150;
+export const BOTTOM_THRESHOLD = FOLLOW_THRESHOLD;
 
 /**
  * Is this scroll position at the bottom of its container?

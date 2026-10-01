@@ -254,7 +254,7 @@
               </div>
             </div>
           </div>
-          <ChatScrollControls :target-getter="getConversationEl" />
+          <ChatScrollControls :target-getter="getConversationEl" @scroll-to-bottom="followFromScrollControl" />
         </div>
 
         <!-- Quick Actions -->
@@ -319,6 +319,7 @@ import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 import { useChatScrollRestore } from '@/composables/useChatScrollRestore.js';
+import { useStickToBottom } from '@/composables/useStickToBottom.js';
 
 export default {
   name: 'ChatScreen',
@@ -477,6 +478,15 @@ export default {
         visibleWindow.value = Math.max(MESSAGE_WINDOW_INITIAL, n);
       },
     });
+
+    // Follow the live stream until the user scrolls away — any upward
+    // intent releases it, returning to the bottom re-engages it. Suspended
+    // while a restore settles: an unsettled transcript reads as "bottom".
+    const { follow: followStream, release: releaseFollow } = useStickToBottom({
+      getEl: () => conversationSpace.value,
+      isSuspended: () => isRestoringScroll.value,
+    });
+    const followFromScrollControl = () => followStream({ pin: false });
 
     const isProcessing = ref(false);
     let localMessageIdCounter = 0;
@@ -1941,6 +1951,9 @@ export default {
     };
 
     const scrollToBottom = () => {
+      // Every caller is an explicit "go to the end" (send, edit, load), so it
+      // also resumes following the stream.
+      followStream();
       if (conversationSpace.value) {
         conversationSpace.value.scrollTop = conversationSpace.value.scrollHeight;
       }
@@ -1981,6 +1994,7 @@ export default {
 
       if (event.key === 'PageUp') {
         event.preventDefault();
+        releaseFollow();
         try {
           el.scrollBy({ top: -page, behavior: 'smooth' });
         } catch (e) {
@@ -1995,6 +2009,7 @@ export default {
         }
       } else if (event.key === 'Home') {
         event.preventDefault();
+        releaseFollow();
         try {
           el.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
@@ -2002,6 +2017,7 @@ export default {
         }
       } else if (event.key === 'End') {
         event.preventDefault();
+        followStream({ pin: false });
         try {
           el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         } catch (e) {
@@ -2925,27 +2941,6 @@ export default {
       },
     );
 
-    // Auto-scroll to bottom when new messages arrive (if user is already near bottom)
-    watch(
-      displayMessages,
-      () => {
-        if (!conversationSpace.value) return;
-        // Stand down while a restore is settling. Early in the loop the
-        // transcript is short and scrollTop is still 0, which reads as
-        // "near the bottom" — acting on that would yank the user to the end
-        // of a conversation they asked to reopen in the middle.
-        if (isRestoringScroll.value) return;
-
-        const el = conversationSpace.value;
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-
-        if (isNearBottom) {
-          nextTick(() => scrollToBottom());
-        }
-      },
-      { deep: true },
-    );
-
     return {
       ...tutorialWithCallback,
       baseScreenRef,
@@ -3006,6 +3001,7 @@ export default {
       confirmClearConversation,
       confirmModal,
       getConversationEl,
+      followFromScrollControl,
       saveConversation,
       activeAgentName,
       chatParticipants,

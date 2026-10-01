@@ -27,7 +27,10 @@ export default {
     targetGetter: { type: Function, required: true },
     threshold: { type: Number, default: 60 },
   },
-  setup(props) {
+  // Hosts resume following the live stream on this — the button is the
+  // user saying "take me back to the end and keep me there".
+  emits: ['scroll-to-bottom'],
+  setup(props, { emit }) {
     const canScrollUp = ref(false);
     const canScrollDown = ref(false);
     let observedEl = null;
@@ -61,6 +64,7 @@ export default {
     const scrollToBottom = () => {
       const el = props.targetGetter();
       if (!el) return;
+      emit('scroll-to-bottom');
       scrollTo(el.scrollHeight);
     };
 

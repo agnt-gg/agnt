@@ -41,7 +41,7 @@
         <ProcessingState v-if="isProcessing" text="Annie is working..." />
       </div>
 
-      <ChatScrollControls :target-getter="getMessagesEl" />
+      <ChatScrollControls :target-getter="getMessagesEl" @scroll-to-bottom="followFromScrollControl" />
     </div>
 
     <div class="quick-actions-wrapper" v-if="showSuggestions && suggestions.length > 0 && !isProcessing">
@@ -189,6 +189,7 @@
 <script>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useChatScrollRestore } from '@/composables/useChatScrollRestore.js';
+import { useStickToBottom } from '@/composables/useStickToBottom.js';
 import { useStore } from 'vuex';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
@@ -371,6 +372,9 @@ export default {
     });
 
     const scrollToBottom = () => {
+      // Every caller is an explicit "go to the end" (send, steer, hydrate),
+      // so it also resumes following the stream.
+      followStream();
       nextTick(() => {
         if (chatMessagesRef.value) {
           chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
@@ -397,6 +401,14 @@ export default {
       getEl: () => chatMessagesRef.value,
       getKey: () => props.channelKey,
     });
+
+    // Follow the live stream until the user scrolls away — same composable as
+    // the main chat. Suspended while a restore settles.
+    const { follow: followStream, release: releaseFollow } = useStickToBottom({
+      getEl: () => chatMessagesRef.value,
+      isSuspended: () => isRestoringScroll.value,
+    });
+    const followFromScrollControl = () => followStream({ pin: false });
 
     // Keyboard scroll for the messages pane. PageUp/PageDown route to the
     // chat (the textarea is ~150px tall so paging it is useless). Home/End
@@ -433,6 +445,7 @@ export default {
 
       if (event.key === 'PageUp') {
         event.preventDefault();
+        releaseFollow();
         try { el.scrollBy({ top: -page, behavior: 'smooth' }); }
         catch (e) { el.scrollTop = Math.max(0, el.scrollTop - page); }
       } else if (event.key === 'PageDown') {
@@ -441,10 +454,12 @@ export default {
         catch (e) { el.scrollTop = el.scrollTop + page; }
       } else if (event.key === 'Home') {
         event.preventDefault();
+        releaseFollow();
         try { el.scrollTo({ top: 0, behavior: 'smooth' }); }
         catch (e) { el.scrollTop = 0; }
       } else if (event.key === 'End') {
         event.preventDefault();
+        followStream({ pin: false });
         try { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
         catch (e) { el.scrollTop = el.scrollHeight; }
       }
@@ -774,25 +789,6 @@ export default {
       restoreScroll(next);
     });
 
-    // Sticky-bottom only when the user is already near the bottom — same
-    // pattern as the main chat (Chat.vue). Without this, every streaming
-    // token AND every tool-call expand/collapse click yanks the user back
-    // to the bottom, even if they scrolled up to read history.
-    watch(
-      formattedMessages,
-      () => {
-        const el = chatMessagesRef.value;
-        if (!el) return;
-        // Stand down while a restore is settling — an unsettled transcript
-        // reads as "near the bottom" and would override the position the
-        // user is being returned to.
-        if (isRestoringScroll.value) return;
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-        if (isNearBottom) scrollToBottom();
-      },
-      { flush: 'post', deep: true },
-    );
-
     return {
       chatMessagesRef,
       scheduleScrollCapture,
@@ -815,6 +811,7 @@ export default {
       onAttachFiles,
       onRemoveFile,
       getMessagesEl,
+      followFromScrollControl,
       isDragOver,
       onDragEnter,
       onDragOver,
