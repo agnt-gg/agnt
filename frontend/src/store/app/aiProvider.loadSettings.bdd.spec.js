@@ -164,6 +164,59 @@ it('uses the dedicated Local fetcher for a lowercase saved Local provider', asyn
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
+describe('Given a signed-in account and the first-run fill', () => {
+  // A signed-in account is eligible for the AGNT default, so these tests are
+  // not vacuous: the fill WOULD run if the gate let it.
+  function signedInStore(settingsResponse) {
+    const writes = [];
+    fetchMock = vi.fn(async (url, options = {}) => {
+      if (url.endsWith('/users/settings')) {
+        if (options.method === 'PUT') {
+          writes.push(JSON.parse(options.body));
+          return { ok: true, json: async () => ({}) };
+        }
+        return settingsResponse;
+      }
+      if (url.endsWith('/models/agnt/models')) return { ok: true, json: async () => ({ models: ['agnt-flash'] }) };
+      if (url.endsWith('/metadata')) return { ok: true, json: async () => ({ success: true, metadata: {} }) };
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createStore({
+      modules: {
+        userAuth: { namespaced: true, getters: { isAuthenticated: () => true, isPremium: () => true } },
+        aiProvider: {
+          ...aiProvider,
+          state: () => ({
+            ...aiProvider.state,
+            providers: [...aiProvider.state.providers],
+            customProviders: [],
+            allModels: {},
+            loadingModels: {},
+            modelMetadata: {},
+            selectedProvider: null,
+            selectedModel: null,
+          }),
+        },
+      },
+    });
+    return { store, writes };
+  }
+
+  it('when the settings read FAILS, then nothing is written over the unseen default', async () => {
+    const { store, writes } = signedInStore({ ok: false, status: 503 });
+    await store.dispatch('aiProvider/loadUserSettings');
+    expect(writes).toEqual([]);
+    expect(store.state.aiProvider.selectedProvider).toBeNull();
+  });
+
+  it('when the server confirms there is no default, then the AGNT default is saved as one complete pair', async () => {
+    const { store, writes } = signedInStore({ ok: true, json: async () => ({ selectedProvider: null, selectedModel: null }) });
+    await store.dispatch('aiProvider/loadUserSettings');
+    expect(writes).toEqual([{ selectedProvider: 'AGNT', selectedModel: 'agnt-flash', changeSource: 'included-default' }]);
+  });
+});
+
 it('preserves current preferences when the settings service is unavailable', async () => {
   const store = makeStore({}, { selectedProvider: 'OpenAI-Codex', selectedModel: models[1] });
   fetchMock.mockResolvedValue({ ok: false, status: 503 });

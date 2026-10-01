@@ -50,6 +50,15 @@ class UserService {
       res.status(500).json({ error: 'Error fetching user settings' });
     }
   }
+  async getDefaultAiHistory(req, res) {
+    try {
+      const changes = await UserModel.getDefaultAiHistory(req.user.id, req.query.limit);
+      res.json({ changes });
+    } catch (error) {
+      console.error('Error fetching default AI history:', error);
+      res.status(500).json({ error: 'Error fetching default AI history' });
+    }
+  }
   async getSecurityPolicy(req, res) {
     try {
       const userId = req.user.userId || req.user.id;
@@ -194,6 +203,9 @@ class UserService {
         subscriptionCosts,
         routingMode,
         routingPolicy,
+        // Not a setting: names the client action behind a default-AI write so
+        // the change log can attribute it. Validated by the model.
+        changeSource: req.body.changeSource,
       });
 
       res.json({

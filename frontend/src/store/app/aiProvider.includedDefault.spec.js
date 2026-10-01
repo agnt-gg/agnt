@@ -12,7 +12,9 @@ import aiProviderStore from './aiProvider.js';
 const { applyIncludedModelDefault } = aiProviderStore.actions;
 
 function harness({ selectedProvider = null, isPremium = false, isAuthenticated = false, models = ['agnt-flash'] } = {}) {
-  const state = { selectedProvider, providers: ['agnt', 'openai'], allModels: { agnt: models } };
+  // Display names, exactly as the real store holds them. A lowercase fixture
+  // here is what hid the default never applying in the app.
+  const state = { selectedProvider, providers: ['AGNT', 'OpenAI'], allModels: { AGNT: models } };
   const dispatch = vi.fn().mockResolvedValue(undefined);
   const rootGetters = { 'userAuth/isPremium': isPremium, 'userAuth/isAuthenticated': isAuthenticated };
   return { state, dispatch, context: { commit: vi.fn(), dispatch, state, rootGetters } };
@@ -21,16 +23,29 @@ function harness({ selectedProvider = null, isPremium = false, isAuthenticated =
 const chose = (dispatch) => dispatch.mock.calls.filter(([action]) => action === 'setProvider' || action === 'setModel');
 
 describe('applyIncludedModelDefault', () => {
+  // The provider is staged locally and the model save carries the complete
+  // pair: one write, never a provider saved without its model.
+  const AGNT_FLASH = [
+    ['setProvider', { provider: 'AGNT', persist: false }],
+    ['setModel', { model: 'agnt-flash', source: 'included-default' }],
+  ];
+
   it('starts a signed-in free account on AGNT Flash for its trial', async () => {
     const h = harness({ isAuthenticated: true });
     await applyIncludedModelDefault(h.context);
-    expect(chose(h.dispatch)).toEqual([['setProvider', 'agnt'], ['setModel', 'agnt-flash']]);
+    expect(chose(h.dispatch)).toEqual(AGNT_FLASH);
   });
 
   it('starts a paid account on AGNT Flash', async () => {
     const h = harness({ isPremium: true, isAuthenticated: true });
     await applyIncludedModelDefault(h.context);
-    expect(chose(h.dispatch)).toEqual([['setProvider', 'agnt'], ['setModel', 'agnt-flash']]);
+    expect(chose(h.dispatch)).toEqual(AGNT_FLASH);
+  });
+
+  it('chooses nothing when AGNT has no model to offer', async () => {
+    const h = harness({ isAuthenticated: true, models: [] });
+    await applyIncludedModelDefault(h.context);
+    expect(chose(h.dispatch)).toEqual([]);
   });
 
   it('chooses nothing for a signed-out install', async () => {

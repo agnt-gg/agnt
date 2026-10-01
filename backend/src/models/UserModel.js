@@ -143,6 +143,72 @@ export const NODE_STATS_SQL = {
     WHERE ne.rowid > ? AND ne.rowid <= ? AND e.id = ne.execution_id AND e.user_id = ?`,
 };
 
+/**
+ * The pair every install's `users` table was created with as COLUMN DEFAULTS.
+ *
+ * SQLite cannot drop a column default without rebuilding the table, so any row
+ * inserted without naming these columns (auth sync, fixtures) still receives
+ * this pair on existing installs. Nobody chose it, and the model is retired at
+ * Anthropic, so a turn that runs on it always fails. It reads back as "no
+ * default", which hands the turn to the user's fallback chain instead.
+ */
+export const SCHEMA_DEFAULT_AI = Object.freeze({ provider: 'Anthropic', model: 'claude-3-5-sonnet-20240620' });
+
+const nonEmpty = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
+
+/** The stored default pair, or nulls. Never a substituted vendor default. */
+export function readStoredDefaultAi(storedProvider, storedModel) {
+  const provider = nonEmpty(storedProvider);
+  const model = nonEmpty(storedModel);
+  if (!provider) return { provider: null, model: null };
+  if (provider.toLowerCase() === SCHEMA_DEFAULT_AI.provider.toLowerCase() && model === SCHEMA_DEFAULT_AI.model) {
+    return { provider: null, model: null };
+  }
+  return { provider, model };
+}
+
+// Bounded per user: this is a diagnostic trail, not an audit archive.
+const DEFAULT_AI_HISTORY_LIMIT = 200;
+const CHANGE_SOURCE_PATTERN = /^[a-z0-9][a-z0-9:._-]{0,63}$/i;
+
+/** A caller-supplied change source, or 'unknown'. Untrusted input: never stored raw. */
+export function normalizeChangeSource(source) {
+  return typeof source === 'string' && CHANGE_SOURCE_PATTERN.test(source) ? source : 'unknown';
+}
+
+const dbRunStatement = (sql, params) =>
+  new Promise((resolve, reject) => db.run(sql, params, function (err) { return err ? reject(err) : resolve(this); }));
+
+/**
+ * Record a change to the account default provider/model.
+ *
+ * Exists because the default has been rewritten by code paths nobody could
+ * name afterwards; a row per real change, with the writer that made it, is
+ * what turns the next "it switched to Anthropic again" into a lookup. Logging
+ * failures are reported and swallowed: a diagnostic must never fail the write.
+ */
+async function recordDefaultAiChange(userId, previous, next, source) {
+  if (previous.provider === next.provider && previous.model === next.model) return;
+  console.info(
+    `[UserModel] default AI ${previous.provider || '(none)'}/${previous.model || '(none)'} -> ` +
+      `${next.provider || '(none)'}/${next.model || '(none)'} (source: ${source})`
+  );
+  try {
+    await dbRunStatement(
+      `INSERT INTO default_ai_changes (user_id, previous_provider, previous_model, provider, model, source)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, previous.provider, previous.model, next.provider, next.model, source]
+    );
+    await dbRunStatement(
+      `DELETE FROM default_ai_changes WHERE user_id = ? AND id NOT IN (
+         SELECT id FROM default_ai_changes WHERE user_id = ? ORDER BY id DESC LIMIT ?)`,
+      [userId, userId, DEFAULT_AI_HISTORY_LIMIT]
+    );
+  } catch (err) {
+    console.warn('[UserModel] Could not record default AI change:', err.message);
+  }
+}
+
 const nodeStatsCache = new Map(); // userId -> { through, anchorId, total, completed, error, countedAt }
 const nodeStatsInFlight = new Map(); // userId -> Promise
 let nodeStatsGeneration = 0;
@@ -329,9 +395,13 @@ class UserModel {
           if (err) {
             reject(err);
           } else if (row) {
+            // No substitution: a missing default is reported as missing, so the
+            // orchestrator falls through to the user's own fallback chain rather
+            // than to a vendor this account may not have.
+            const storedDefault = readStoredDefaultAi(row.selectedProvider, row.selectedModel);
             resolve({
-              selectedProvider: row.selectedProvider || 'Anthropic',
-              selectedModel: row.selectedModel || 'claude-3-5-sonnet-20240620',
+              selectedProvider: storedDefault.provider,
+              selectedModel: storedDefault.model,
               customInstructions: row.customInstructions || '',
               // Stored as INTEGER (0/1) in SQLite. Coerce to boolean for the
               // API layer. NULL (legacy rows that pre-date the column) is
@@ -364,10 +434,10 @@ class UserModel {
               routingPolicy: parseRoutingPolicy(row.routingPolicy).mode,
             });
           } else {
-            // User not found, return defaults
+            // User not found: no default provider, documented defaults elsewhere.
             resolve({
-              selectedProvider: 'Anthropic',
-              selectedModel: 'claude-3-5-sonnet-20240620',
+              selectedProvider: null,
+              selectedModel: null,
               customInstructions: '',
               asyncToolsEnabled: false,
               toolOutputCap: 100000,
@@ -406,18 +476,31 @@ class UserModel {
       //
       // Fall through to the model-only branch instead, so the model still
       // lands and the provider the user chose survives.
-      const providerIsWritable = typeof selectedProvider === 'string' && selectedProvider.trim() !== '';
+      //
+      // The mirror rule: a provider WITHOUT a model is refused outright. That
+      // write is what a client sends when it switches provider before the
+      // provider's models have loaded, and storing it left a default that
+      // could not run (a provider with no model). Keeping the previous pair is
+      // strictly better than storing half of a new one.
+      const providerToWrite = nonEmpty(selectedProvider);
+      const modelToWrite = nonEmpty(selectedModel);
+      const changeSource = normalizeChangeSource(settings.changeSource);
+      let defaultWrite = null;
 
-      if (providerIsWritable) {
-        // If provider is being changed, always update model too (even to null)
-        // to prevent stale model from a different provider lingering in the DB.
+      if (providerToWrite && modelToWrite) {
         fields.push('default_provider = ?');
-        params.push(selectedProvider);
+        params.push(providerToWrite);
         fields.push('default_model = ?');
-        params.push(selectedModel ?? null);
-      } else if (selectedModel !== undefined) {
-        fields.push('default_model = COALESCE(?, default_model)');
-        params.push(selectedModel);
+        params.push(modelToWrite);
+        defaultWrite = { provider: providerToWrite, model: modelToWrite };
+      } else if (providerToWrite) {
+        console.warn(
+          `[UserModel] Refused default provider '${providerToWrite}' without a model (source: ${changeSource}); keeping the stored default.`
+        );
+      } else if (modelToWrite) {
+        fields.push('default_model = ?');
+        params.push(modelToWrite);
+        defaultWrite = { provider: undefined, model: modelToWrite };
       }
 
       if (customInstructions !== undefined) {
@@ -478,19 +561,29 @@ class UserModel {
 
       const query = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
 
-      db.run(query, params,
+      // Read the previous pair only when the default is being written, so the
+      // change log can say what it changed FROM. Diagnostic only: a concurrent
+      // writer between this read and the UPDATE can make one log row's
+      // "previous" stale, never the stored setting.
+      const previousDefault = defaultWrite
+        ? dbGetRow('SELECT default_provider AS provider, default_model AS model FROM users WHERE id = ?', [userId]).catch(() => null)
+        : Promise.resolve(null);
+
+      previousDefault.then((previousRow) => db.run(query, params,
         function (err) {
           if (err) {
             reject(err);
           } else if (this.changes === 0) {
-            // User doesn't exist, create with settings
+            // User doesn't exist, create with settings. No default AI is
+            // invented here: the columns are named explicitly so the legacy
+            // column defaults (SCHEMA_DEFAULT_AI) never apply.
             db.run(
               `INSERT INTO users (id, default_provider, default_model, custom_instructions, async_tools_enabled, tool_output_cap, max_tool_rounds, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
               [
                 userId,
-                selectedProvider || 'Anthropic',
-                selectedModel || 'claude-3-5-sonnet-20240620',
+                defaultWrite?.provider || null,
+                defaultWrite?.provider ? defaultWrite.model : null,
                 customInstructions ? String(customInstructions).trim() : null,
                 // New rows default to async OFF (experimental opt-in).
                 asyncToolsEnabled === undefined ? 0 : (asyncToolsEnabled ? 1 : 0),
@@ -506,9 +599,29 @@ class UserModel {
               }
             );
           } else {
-            resolve({ changes: this.changes, updated: true });
+            const result = { changes: this.changes, updated: true };
+            if (!defaultWrite || !previousRow) return resolve(result);
+            const previous = { provider: previousRow.provider ?? null, model: previousRow.model ?? null };
+            const next = {
+              provider: defaultWrite.provider === undefined ? previous.provider : defaultWrite.provider,
+              model: defaultWrite.model,
+            };
+            recordDefaultAiChange(userId, previous, next, changeSource).then(() => resolve(result));
           }
         }
+      ));
+    });
+  }
+
+  /** Most recent changes to the account default AI, newest first. */
+  static getDefaultAiHistory(userId, limit = 50) {
+    const boundedLimit = Math.max(1, Math.min(DEFAULT_AI_HISTORY_LIMIT, Number.parseInt(limit, 10) || 50));
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT previous_provider AS previousProvider, previous_model AS previousModel, provider, model, source, created_at AS createdAt
+         FROM default_ai_changes WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
+        [userId, boundedLimit],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
       );
     });
   }

@@ -741,6 +741,44 @@ export function inferReasoningControl(providerKey, modelId) {
   return null;
 }
 
+/**
+ * The ONE write path for the account default provider/model.
+ *
+ * Rules, each of which a past bug violated:
+ *   - Never an empty model. { provider, null } read back server-side as a
+ *     hardcoded retired model, so every turn failed before falling over.
+ *   - Never a null provider. The server used to take that as an erasure; a
+ *     model-only write is sent instead and keeps the stored provider.
+ *   - Always say who wrote it (`source`), so the server's change log can
+ *     attribute the next unexpected switch.
+ *
+ * Returns true when a write was sent.
+ */
+export async function persistDefaultAi({ provider, model, source }) {
+  if (typeof model !== 'string' || !model.trim()) {
+    console.warn(`[aiProvider] Not saving default AI without a model (provider: ${provider || 'none'}, source: ${source}).`);
+    return false;
+  }
+  const token = localStorage.getItem('token');
+  if (!token) return false;
+  const body = provider
+    ? { selectedProvider: provider, selectedModel: model, changeSource: source }
+    : { selectedModel: model, changeSource: source };
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      console.error('Failed to save default AI:', response.status, await response.text());
+    }
+  } catch (error) {
+    console.error('Failed to save default AI:', error);
+  }
+  return true;
+}
+
 const STORED_REASONING_VALUE = normalizeReasoningValue(localStorage.getItem('reasoningValue'));
 const INITIAL_REASONING_VALUE = STORED_REASONING_VALUE !== 'default'
   ? STORED_REASONING_VALUE
@@ -989,35 +1027,31 @@ export default {
     // default — persisting a transient choice is the documented cause of
     // provider drift in this codebase (see OrchestratorService's
     // write-back guard).
-    async setProvider({ commit, state }, payload) {
-      const newProvider = typeof payload === 'object' && payload !== null ? payload.provider : payload;
-      const persist = !(typeof payload === 'object' && payload !== null && payload.persist === false);
+    //
+    // A provider is never persisted without a model. Switching to a provider
+    // whose models have not loaded used to save { provider, null }; the server
+    // then read the missing model back as a hardcoded, retired default and
+    // every turn failed over. So the models are loaded first, and the pair is
+    // saved only once it is complete.
+    async setProvider({ commit, dispatch, state }, payload) {
+      const isObjectPayload = typeof payload === 'object' && payload !== null;
+      const newProvider = isObjectPayload ? payload.provider : payload;
+      const persist = !(isObjectPayload && payload.persist === false);
+      const source = (isObjectPayload && payload.source) || 'set-provider';
       commit('SET_SELECTED_PROVIDER', newProvider);
-      if (!persist) return;
+      if (!persist || !newProvider) return;
 
-      try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
-            method: 'PUT',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              selectedProvider: newProvider,
-              selectedModel: state.selectedModel,
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Backend sync failed:', response.status, errorText);
-          }
+      if ((state.allModels[newProvider] || []).length === 0) {
+        try {
+          await dispatch('fetchProviderModels', { provider: newProvider });
+        } catch (error) {
+          console.warn(`Could not load ${newProvider} models before saving the default:`, error);
         }
-      } catch (error) {
-        console.error('Failed to sync provider with backend:', error);
       }
+      // A later selection made while the models loaded owns the save.
+      if (state.selectedProvider !== newProvider) return;
+      commit('ENSURE_VALID_MODEL');
+      await persistDefaultAi({ provider: newProvider, model: state.selectedModel, source });
     },
 
     async setCustomInstructions({ commit }, newInstructions) {
@@ -1190,43 +1224,20 @@ export default {
     // Same transient contract as setProvider: a string persists,
     // { model, persist: false } updates local state only.
     async setModel({ commit, state }, payload) {
-      const newModel = typeof payload === 'object' && payload !== null ? payload.model : payload;
-      const persist = !(typeof payload === 'object' && payload !== null && payload.persist === false);
+      const isObjectPayload = typeof payload === 'object' && payload !== null;
+      const newModel = isObjectPayload ? payload.model : payload;
+      const persist = !(isObjectPayload && payload.persist === false);
+      const source = (isObjectPayload && payload.source) || 'set-model';
       commit('SET_SELECTED_MODEL', newModel);
       if (!persist) return;
-
-      try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
-            method: 'PUT',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            // Send the provider ONLY when we actually have one. Sending null
-            // is not "leave it alone" to the server — it is an explicit write
-            // that nulls default_provider AND default_model, and a nulled
-            // provider reads back as 'Anthropic'. A model write must never be
-            // able to erase the user's chosen provider.
-            body: JSON.stringify(
-              state.selectedProvider
-                ? { selectedProvider: state.selectedProvider, selectedModel: newModel }
-                : { selectedModel: newModel }
-            ),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Backend sync failed:', response.status, errorText);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to sync model with backend:', error);
-      }
+      await persistDefaultAi({ provider: state.selectedProvider, model: newModel, source });
     },
 
     async loadUserSettings({ commit, dispatch, state }) {
+      // True only when the server ANSWERED and holds no default. A failed read
+      // says nothing about the stored default, so it must never trigger the
+      // first-run fill — that would overwrite a real default the read missed.
+      let serverHasNoDefault = false;
       try {
         const token = localStorage.getItem('token');
         if (token) {
@@ -1248,6 +1259,7 @@ export default {
               ? savedProvider
               : canonicalizeProviderCase(state.providers, savedProvider) || savedProvider;
             const model = settings.selectedModel;
+            serverHasNoDefault = !provider;
 
             if (settings.customInstructions !== undefined) {
               commit('SET_CUSTOM_INSTRUCTIONS', settings.customInstructions || '');
@@ -1299,7 +1311,7 @@ export default {
       } catch (error) {
         console.warn('Failed to load user settings from backend:', error);
       }
-      await dispatch('applyIncludedModelDefault');
+      if (serverHasNoDefault) await dispatch('applyIncludedModelDefault');
     },
 
     /**
@@ -1313,13 +1325,19 @@ export default {
     async applyIncludedModelDefault({ commit, dispatch, state, rootGetters }) {
       if (state.selectedProvider) return;
       if (!rootGetters['userAuth/isPremium'] && !rootGetters['userAuth/isAuthenticated']) return;
-      if (!state.providers.includes('agnt')) return;
+      // The provider list holds display names ('AGNT'). A literal 'agnt'
+      // lookup never matched it, so this default silently never applied.
+      const agntProvider = canonicalizeProviderCase(state.providers, 'agnt');
+      if (!agntProvider) return;
       try {
-        await dispatch('fetchProviderModels', { provider: 'agnt' });
-        const models = state.allModels.agnt || [];
+        await dispatch('fetchProviderModels', { provider: agntProvider });
+        const models = state.allModels[agntProvider] || [];
         const model = models.includes('agnt-flash') ? 'agnt-flash' : models[0];
-        await dispatch('setProvider', 'agnt');
-        if (model) await dispatch('setModel', model);
+        if (!model) return;
+        // One write of the complete pair: the provider is staged locally, then
+        // the model save carries both halves.
+        await dispatch('setProvider', { provider: agntProvider, persist: false });
+        await dispatch('setModel', { model, source: 'included-default' });
       } catch (error) {
         console.warn('Included model default not applied:', error?.message || error);
       }
@@ -1684,24 +1702,7 @@ export default {
       commit('ENSURE_VALID_MODEL');
       // If model changed, sync the corrected pair to the backend DB
       if (state.selectedModel !== oldModel) {
-        try {
-          const token = localStorage.getItem('token');
-          if (token) {
-            await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
-              method: 'PUT',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              // Same rule as setModel: never let a model correction carry a
-              // null provider, which the server would write as an erasure.
-              body: JSON.stringify(
-                state.selectedProvider
-                  ? { selectedProvider: state.selectedProvider, selectedModel: state.selectedModel }
-                  : { selectedModel: state.selectedModel }
-              ),
-            });
-          }
-        } catch (e) {
-          console.error('Failed to sync corrected model to backend:', e);
-        }
+        await persistDefaultAi({ provider: state.selectedProvider, model: state.selectedModel, source: 'ensure-valid-model' });
       }
     },
 

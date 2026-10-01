@@ -144,6 +144,28 @@ describe('subscription costs round-trip over HTTP', () => {
   });
 });
 
+describe('default AI change history over HTTP', () => {
+  it('a settings write carries its changeSource through the route into the log', async () => {
+    await req('PUT', '/users/settings', { selectedProvider: 'Claude-Code', selectedModel: 'claude-opus-5-5', changeSource: 'settings-picker' });
+    const { status, body } = await req('GET', '/users/settings/default-ai-history');
+    expect(status).toBe(200);
+    expect(body.changes[0]).toMatchObject({ provider: 'Claude-Code', model: 'claude-opus-5-5', source: 'settings-picker' });
+  });
+
+  it('a provider sent without a model is refused: GET still shows the previous pair', async () => {
+    const { status } = await req('PUT', '/users/settings', { selectedProvider: 'Anthropic', selectedModel: null });
+    expect(status).toBe(200);
+    const { body } = await req('GET', '/users/settings');
+    expect(body.selectedProvider).toBe('Claude-Code');
+    expect(body.selectedModel).toBe('claude-opus-5-5');
+  });
+
+  it('changeSource alone is not a setting', async () => {
+    const { status } = await req('PUT', '/users/settings', { changeSource: 'settings-picker' });
+    expect(status).toBe(400);
+  });
+});
+
 describe('the service allow-list cannot fall behind the model', () => {
   // The systemic half. UserModel.updateUserSettings decides what CAN be
   // persisted; UserService decides what is ALLOWED THROUGH. When the two lists

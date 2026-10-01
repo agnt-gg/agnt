@@ -13,8 +13,9 @@
  * both put `state.selectedProvider` on the wire verbatim, and that value is
  * null during the boot race and after any path that clears the selection.
  *
- * The erasure was invisible because `getUserSettings` masks a NULL provider as
- * 'Anthropic' and a NULL model as 'claude-3-5-sonnet-20240620'. A wiped row is
+ * The erasure was invisible because `getUserSettings` USED TO mask a NULL
+ * provider as 'Anthropic' and a NULL model as 'claude-3-5-sonnet-20240620' (it
+ * now reports them as null; see the suite below). A wiped row was
  * therefore indistinguishable from a deliberate switch to Anthropic — which is
  * precisely how it was reported ("it keeps changing my default to Anthropic"),
  * and precisely the pair a live settings watcher recorded on the flip.
@@ -45,7 +46,7 @@ const dbRun = (sql, params = []) =>
 const dbGet = (sql, params = []) =>
   new Promise((resolve, reject) => db.get(sql, params, (e, r) => (e ? reject(e) : resolve(r))));
 
-/** Read the RAW columns. getUserSettings masks NULL, so it cannot prove this. */
+/** Read the RAW columns, independent of how getUserSettings presents them. */
 const rawRow = () =>
   dbGet('SELECT default_provider, default_model FROM users WHERE id = ?', [USER]);
 
@@ -146,13 +147,112 @@ describe('updateUserSettings — a model write cannot erase the provider', () =>
     expect(row.default_model).toBe('gpt-5.6');
   });
 
-  it('a real provider change with no model still clears the stale model', async () => {
-    // The original invariant this branch protected: a model from the PREVIOUS
-    // provider must not linger once the provider moves.
-    await UserModel.updateUserSettings(USER, { selectedProvider: 'OpenAI' });
+  it('a provider with no model is refused and the stored pair survives whole', async () => {
+    // The write a client sent when it switched provider before that
+    // provider's models loaded. Storing it left a default that could not run
+    // (provider + NULL model), which read back as the retired Anthropic pair.
+    // Keeping the previous complete pair is strictly better than half a new one.
+    for (const selectedModel of [undefined, null, '', '   ']) {
+      await UserModel.updateUserSettings(USER, { selectedProvider: 'Anthropic', selectedModel });
+      const row = await rawRow();
+      expect(row.default_provider, String(selectedModel)).toBe('Claude-Code');
+      expect(row.default_model, String(selectedModel)).toBe('claude-opus-5');
+    }
+  });
+});
 
-    const row = await rawRow();
-    expect(row.default_provider).toBe('OpenAI');
+describe('getUserSettings never invents a default', () => {
+  const OTHER = 'user-erasure-blank';
+
+  it('a row with no default reads back as null, not Anthropic', async () => {
+    await dbRun('INSERT OR IGNORE INTO users (id, email, default_provider, default_model) VALUES (?, ?, NULL, NULL)', [OTHER, 'blank@test.local']);
+    const settings = await UserModel.getUserSettings(OTHER);
+    expect(settings.selectedProvider).toBeNull();
+    expect(settings.selectedModel).toBeNull();
+  });
+
+  it('the legacy column-default pair reads back as no default', async () => {
+    // Existing installs still stamp this pair on any row inserted without
+    // naming the columns. Nobody chose it and the model is retired.
+    await dbRun('UPDATE users SET default_provider = ?, default_model = ? WHERE id = ?', ['Anthropic', 'claude-3-5-sonnet-20240620', OTHER]);
+    const settings = await UserModel.getUserSettings(OTHER);
+    expect(settings.selectedProvider).toBeNull();
+    expect(settings.selectedModel).toBeNull();
+  });
+
+  it('a deliberate Anthropic choice with a current model is kept', async () => {
+    await UserModel.updateUserSettings(OTHER, { selectedProvider: 'Anthropic', selectedModel: 'claude-opus-5' });
+    const settings = await UserModel.getUserSettings(OTHER);
+    expect(settings.selectedProvider).toBe('Anthropic');
+    expect(settings.selectedModel).toBe('claude-opus-5');
+  });
+
+  it('an unknown user has no default', async () => {
+    const settings = await UserModel.getUserSettings('no-such-user');
+    expect(settings.selectedProvider).toBeNull();
+    expect(settings.selectedModel).toBeNull();
+  });
+
+  it('a settings write that creates the user row stores no vendor default', async () => {
+    const NEW_USER = 'user-erasure-created';
+    await UserModel.updateUserSettings(NEW_USER, { customInstructions: 'hello' });
+    const row = await dbGet('SELECT default_provider, default_model FROM users WHERE id = ?', [NEW_USER]);
+    expect(row.default_provider).toBeNull();
     expect(row.default_model).toBeNull();
   });
+});
+
+describe('every real change to the default is logged with its source', () => {
+  const LOGGED = 'user-erasure-logged';
+  const history = () => UserModel.getDefaultAiHistory(LOGGED, 200);
+
+  beforeAll(async () => {
+    await dbRun('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', [LOGGED, 'logged@test.local']);
+    await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'Claude-Code', selectedModel: 'claude-opus-5', changeSource: 'fixture' });
+  });
+
+  it('records from, to and the writer', async () => {
+    await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'OpenAI-Codex', selectedModel: 'gpt-6', changeSource: 'settings-picker' });
+    const [latest] = await history();
+    expect(latest).toMatchObject({
+      previousProvider: 'Claude-Code',
+      previousModel: 'claude-opus-5',
+      provider: 'OpenAI-Codex',
+      model: 'gpt-6',
+      source: 'settings-picker',
+    });
+  });
+
+  it('a write that changes nothing is not logged', async () => {
+    const before = (await history()).length;
+    await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'OpenAI-Codex', selectedModel: 'gpt-6', changeSource: 'chat-turn-pin' });
+    expect((await history()).length).toBe(before);
+  });
+
+  it('a model-only write keeps the provider in the log entry', async () => {
+    await UserModel.updateUserSettings(LOGGED, { selectedModel: 'gpt-6-mini', changeSource: 'set-model' });
+    const [latest] = await history();
+    expect(latest).toMatchObject({ provider: 'OpenAI-Codex', model: 'gpt-6-mini', previousModel: 'gpt-6' });
+  });
+
+  it('a refused write is not logged', async () => {
+    const before = (await history()).length;
+    await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'Anthropic', selectedModel: null, changeSource: 'set-provider' });
+    expect((await history()).length).toBe(before);
+  });
+
+  it('an unrecognised source is stored as unknown, never raw', async () => {
+    await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'Claude-Code', selectedModel: 'claude-opus-5', changeSource: "x'); DROP TABLE users; --" });
+    const [latest] = await history();
+    expect(latest.source).toBe('unknown');
+  });
+
+  it('keeps at most the newest 200 entries per user', async () => {
+    for (let i = 0; i < 205; i += 1) {
+      await UserModel.updateUserSettings(LOGGED, { selectedProvider: 'Claude-Code', selectedModel: `m-${i}`, changeSource: 'bulk' });
+    }
+    const rows = await history();
+    expect(rows.length).toBe(200);
+    expect(rows[0].model).toBe('m-204');
+  }, 60000);
 });

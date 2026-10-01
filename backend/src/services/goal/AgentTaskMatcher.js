@@ -141,12 +141,13 @@ class AgentTaskMatcher {
     // Use user's configured provider/model — no hardcoded defaults
     let provider = null;
     let model = null;
+    let userSettings = null;
 
     // Try to get user's default provider/model settings
     if (userId) {
       try {
         const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
+        userSettings = await UserModel.getUserSettings(userId);
 
         if (userSettings?.selectedProvider) {
           provider = userSettings.selectedProvider;
@@ -163,10 +164,18 @@ class AgentTaskMatcher {
     }
 
     if (!provider || !model) {
-      // Fallback to hardcoded defaults matching UserModel.getUserSettings() behavior
-      console.warn('[AgentTaskMatcher] No provider/model from user settings, using hardcoded defaults');
-      if (!provider) provider = 'Anthropic';
-      if (!model) model = 'claude-3-5-sonnet-20240620';
+      // No usable default: run on the user's own fallback chain, the same rule
+      // chat turns follow. Never a hardcoded vendor — the account may not have
+      // it, and the old pair was a retired model that always failed.
+      const { firstFallbackTier } = await import('../orchestrator/resolveTurnProvider.js');
+      const tier = firstFallbackTier(userSettings);
+      provider = tier?.provider || null;
+      model = tier?.model || null;
+      console.warn(
+        tier
+          ? `[AgentTaskMatcher] No default provider/model; using fallback tier ${provider}/${model}`
+          : '[AgentTaskMatcher] No default provider/model and no fallback tier configured'
+      );
     }
 
     return {

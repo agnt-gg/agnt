@@ -29,6 +29,7 @@ UserRoutes.post('/activation-sync', requireAuth(), activationMilestoneHandler({ 
 // User settings routes
 UserRoutes.get('/settings', authenticateToken, UserService.getUserSettings);
 UserRoutes.put('/settings', authenticateToken, UserService.updateUserSettings);
+UserRoutes.get('/settings/default-ai-history', authenticateToken, UserService.getDefaultAiHistory);
 
 // Cross-device UI preferences (theme, font, panel geometry). Separate from
 // /settings because the write semantics differ: partial merge, last-write-wins

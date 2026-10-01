@@ -15,11 +15,121 @@
  * canonicalizeProviderCase rescues the case variant instead of clearing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createStore } from 'vuex';
 import aiProviderStore, { canonicalizeProviderCase } from './aiProvider.js';
+import { invalidateAllFreshness } from '../_utils/withFreshness.js';
 
-const { setProvider, setModel } = aiProviderStore.actions;
+const { setModel } = aiProviderStore.actions;
 
-describe('setProvider / setModel transient mode', () => {
+const settingsWrites = (fetchMock) =>
+  fetchMock.mock.calls
+    .filter(([url, opts = {}]) => url.endsWith('/users/settings') && opts.method === 'PUT')
+    .map(([, opts]) => JSON.parse(opts.body));
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+/**
+ * A real store, so setProvider's commit -> fetch -> save sequence runs for
+ * real. A mocked commit cannot show the bug this guards: the save happening
+ * before the provider's models exist.
+ */
+function makeStore({ selectedProvider = 'Claude-Code', selectedModel = 'claude-opus-5', allModels = {}, modelsFor = () => [] } = {}) {
+  const fetchMock = vi.fn(async (url, options = {}) => {
+    if (url.endsWith('/users/settings')) return { ok: true, json: async () => ({}), text: async () => '' };
+    const match = /\/models\/([^/]+)\/models$/.exec(url);
+    if (match) {
+      const models = await modelsFor(match[1]);
+      return { ok: true, json: async () => ({ models }) };
+    }
+    if (url.endsWith('/metadata')) return { ok: true, json: async () => ({ success: true, metadata: {} }) };
+    throw new Error(`Unexpected request: ${options.method || 'GET'} ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const store = createStore({
+    modules: {
+      aiProvider: {
+        ...aiProviderStore,
+        state: () => ({
+          ...aiProviderStore.state,
+          providers: [...aiProviderStore.state.providers],
+          customProviders: [],
+          allModels: { ...allModels },
+          loadingModels: {},
+          modelMetadata: {},
+          selectedProvider,
+          selectedModel,
+        }),
+      },
+    },
+  });
+  return { store, fetchMock };
+}
+
+describe('setProvider never saves a provider without a model', () => {
+  beforeEach(() => {
+    invalidateAllFreshness();
+    localStorage.clear();
+    localStorage.setItem('token', 'test-token');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it('THE REPORTED BUG: switching to a provider whose models are not loaded saves the complete pair', async () => {
+    const { store, fetchMock } = makeStore({ modelsFor: () => ['claude-opus-5', 'claude-sonnet-5'] });
+    await store.dispatch('aiProvider/setProvider', 'Anthropic');
+    expect(settingsWrites(fetchMock)).toEqual([
+      { selectedProvider: 'Anthropic', selectedModel: 'claude-opus-5', changeSource: 'set-provider' },
+    ]);
+  });
+
+  it('a provider with no models at all is applied locally but never saved', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { store, fetchMock } = makeStore({ modelsFor: () => [] });
+    await store.dispatch('aiProvider/setProvider', 'Anthropic');
+    expect(store.state.aiProvider.selectedProvider).toBe('Anthropic');
+    expect(settingsWrites(fetchMock)).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('a selection made while the models load owns the save; the earlier one is dropped', async () => {
+    const slow = deferred();
+    const { store, fetchMock } = makeStore({
+      modelsFor: (key) => (key === 'anthropic' ? slow.promise : ['gpt-6']),
+    });
+    const first = store.dispatch('aiProvider/setProvider', 'Anthropic');
+    await store.dispatch('aiProvider/setProvider', 'OpenAI');
+    slow.resolve(['claude-opus-5']);
+    await first;
+    expect(settingsWrites(fetchMock)).toEqual([
+      { selectedProvider: 'OpenAI', selectedModel: 'gpt-6', changeSource: 'set-provider' },
+    ]);
+  });
+
+  it('loaded models are not refetched and the caller-named source is recorded', async () => {
+    const { store, fetchMock } = makeStore({ allModels: { OpenAI: ['gpt-6'] } });
+    await store.dispatch('aiProvider/setProvider', { provider: 'OpenAI', source: 'chat-picker' });
+    expect(fetchMock.mock.calls.some(([url]) => /\/models\//.test(url))).toBe(false);
+    expect(settingsWrites(fetchMock)).toEqual([
+      { selectedProvider: 'OpenAI', selectedModel: 'gpt-6', changeSource: 'chat-picker' },
+    ]);
+  });
+
+  it('{ persist: false } changes local state and never touches the network', async () => {
+    const { store, fetchMock } = makeStore();
+    await store.dispatch('aiProvider/setProvider', { provider: 'Anthropic', persist: false });
+    expect(store.state.aiProvider.selectedProvider).toBe('Anthropic');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('setModel transient mode', () => {
   let fetchMock;
   let commit;
   const state = { selectedProvider: 'Claude-Code', selectedModel: 'claude-opus-5' };
@@ -37,25 +147,13 @@ describe('setProvider / setModel transient mode', () => {
     vi.unstubAllGlobals();
   });
 
-  it('a string payload commits AND persists (legacy contract unchanged)', async () => {
-    await setProvider({ commit, state }, 'OpenAI');
-    expect(commit).toHaveBeenCalledWith('SET_SELECTED_PROVIDER', 'OpenAI');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(url).toContain('/users/settings');
-    expect(opts.method).toBe('PUT');
-  });
-
-  it('{ persist: false } commits but NEVER touches the network', async () => {
-    await setProvider({ commit, state }, { provider: 'Anthropic', persist: false });
-    expect(commit).toHaveBeenCalledWith('SET_SELECTED_PROVIDER', 'Anthropic');
+  it('an empty model is never saved', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const empty of [null, '', '  ']) {
+      await setModel({ commit, state }, empty);
+    }
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('an object payload WITHOUT persist:false still persists (default is true)', async () => {
-    await setProvider({ commit, state }, { provider: 'OpenAI' });
-    expect(commit).toHaveBeenCalledWith('SET_SELECTED_PROVIDER', 'OpenAI');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it('setModel honors the same contract', async () => {

@@ -192,8 +192,8 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         credits INTEGER DEFAULT 0,
-        default_provider TEXT DEFAULT 'Anthropic',
-        default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620',
+        default_provider TEXT,
+        default_model TEXT,
         custom_instructions TEXT,
         async_tools_enabled INTEGER DEFAULT 0,
         tool_output_cap INTEGER DEFAULT 100000,
@@ -574,6 +574,25 @@ function createTables() {
       );
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
+
+      // Every real change to the account default provider/model, with the
+      // writer that made it. The default has been rewritten by code paths
+      // nobody could name afterwards; this makes the next one a lookup.
+      // Bounded per user by UserModel (newest 200 kept).
+      db.run(
+        `CREATE TABLE IF NOT EXISTS default_ai_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        previous_provider TEXT,
+        previous_model TEXT,
+        provider TEXT,
+        model TEXT,
+        source TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+      );
+
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_default_ai_changes_user ON default_ai_changes(user_id, id)`);
 
       // Routing decision log — the router's own audit trail (2026-08-14).
       //

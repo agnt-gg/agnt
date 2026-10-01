@@ -72,6 +72,7 @@ import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollow
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
 import ConversationSettingsModel from '../models/ConversationSettingsModel.js';
+import { resolveTurnProvider } from './orchestrator/resolveTurnProvider.js';
 import SkillModel from '../models/SkillModel.js';
 import { buildSkillsContext } from './SkillService.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled, deriveProjectSlug as deriveUnfirehoseProjectSlug } from './unfirehose/UnfirehoseLogger.js';
@@ -873,59 +874,44 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     ? rawReasoningValue.trim().toLowerCase()
     : (reasoningEnabled ? 'on' : 'default');
 
-  // Resolve provider/model: request body → agent config → user defaults
-  let resolvedProvider = provider;
-  let resolvedModel = inputModel;
+  // Loaded once: it feeds both the provider ladder (the conversation's saved
+  // pair) and routing-mode resolution below.
+  const storedConvSettings = inputConversationId
+    ? await ConversationSettingsModel.get(inputConversationId).catch(() => null)
+    : null;
+  // The id arrives in the request body: honour only this user's own row.
+  const convSettings = storedConvSettings && (!storedConvSettings.user_id || storedConvSettings.user_id === userId)
+    ? storedConvSettings
+    : null;
 
-  if (!resolvedProvider || !resolvedModel) {
-    // Try agent's own config (when chatting with a specific agent)
-    if (agentId && agentId !== 'agent-chat') {
-      try {
-        const agent = await AgentModel.findOne(agentId);
-        if (agent) {
-          resolvedProvider = resolvedProvider || agent.provider;
-          resolvedModel = resolvedModel || agent.model;
-        }
-      } catch (e) {
-        console.warn(`[Chat] Could not load agent ${agentId} for provider/model fallback:`, e.message);
-      }
-    }
-
-    // Fall back to user's default settings
-    if (!resolvedProvider || !resolvedModel) {
-      try {
-        const userSettings = await UserModel.getUserSettings(userId);
-        resolvedProvider = resolvedProvider || userSettings.selectedProvider;
-        resolvedModel = resolvedModel || userSettings.selectedModel;
-      } catch (e) {
-        console.warn('[Chat] Could not load user settings for provider/model fallback:', e.message);
-      }
-    }
-  }
-
-  // Last resort: fallback to first provider with valid credentials
-  if (!resolvedProvider || !resolvedModel) {
-    try {
-      const providerKeys = Object.keys(ProviderRegistry.PROVIDER_CAPABILITIES);
-      for (const providerKey of providerKeys) {
+  // Resolve provider/model. Order and rationale live in resolveTurnProvider.
+  const resolvedTurn = await resolveTurnProvider({
+    requestProvider: provider,
+    requestModel: inputModel,
+    conversationSettings: convSettings,
+    loadAgent: () => (agentId && agentId !== 'agent-chat' ? AgentModel.findOne(agentId) : null),
+    loadUserSettings: () => UserModel.getUserSettings(userId),
+    scanCredentials: async () => {
+      for (const providerKey of Object.keys(ProviderRegistry.PROVIDER_CAPABILITIES)) {
         try {
-          const apiKey = await AuthManager._getApiKey(userId, providerKey);
-          if (apiKey) {
-            const textModels = ProviderRegistry.getTextModels(providerKey);
-            if (textModels.length > 0) {
-              resolvedProvider = resolvedProvider || providerKey;
-              resolvedModel = resolvedModel || textModels[0];
-              console.log(`[Chat] Auto-fallback to provider: ${resolvedProvider}, model: ${resolvedModel}`);
-              break;
-            }
-          }
-        } catch (e) {
+          if (!(await AuthManager._getApiKey(userId, providerKey))) continue;
+          const textModels = ProviderRegistry.getTextModels(providerKey);
+          if (textModels.length > 0) return { provider: providerKey, model: textModels[0] };
+        } catch {
           // Skip this provider, try next
         }
       }
-    } catch (e) {
-      console.warn('[Chat] Could not auto-detect provider fallback:', e.message);
-    }
+      return null;
+    },
+  });
+  const resolvedProvider = resolvedTurn.provider;
+  const resolvedModel = resolvedTurn.model;
+  if (resolvedTurn.source === 'fallback' || resolvedTurn.source === 'credentials') {
+    console.warn(
+      `[Chat] No usable default provider/model; running on ${resolvedProvider}/${resolvedModel} from the '${resolvedTurn.source}' rung.`
+    );
+  } else if (resolvedTurn.source && resolvedTurn.source !== 'request') {
+    console.log(`[Chat] Turn provider ${resolvedProvider}/${resolvedModel} (from ${resolvedTurn.source})`);
   }
 
   if (!resolvedProvider || !resolvedModel) {
@@ -955,10 +941,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   let __routing = { mode: 'static', source: 'request', pinned: requestHasPin };
   let __routingSettings = null;
   try {
-    const [convSettings, userSettingsForRouting, agentForRouting] = await Promise.all([
-      inputConversationId
-        ? ConversationSettingsModel.get(inputConversationId).catch(() => null)
-        : Promise.resolve(null),
+    const [userSettingsForRouting, agentForRouting] = await Promise.all([
       UserModel.getUserSettings(userId).catch(() => null),
       agentId && agentId !== 'agent-chat' && agentId !== 'orchestrator'
         ? AgentModel.findOne(agentId).catch(() => null)
@@ -968,7 +951,9 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     __routing = resolveRoutingMode({
       requestMode: requestRoutingMode,
       requestHasPin,
-      conversationMode: convSettings?.routing_mode,
+      // A saved pair IS a pin, exactly as the client treats it; the client
+      // simply may not have loaded it yet when this turn was sent.
+      conversationMode: convSettings?.provider && convSettings?.model ? 'pinned' : convSettings?.routing_mode,
       agentMode: agentForRouting?.routingMode,
       globalMode: userSettingsForRouting?.routingMode,
     });
@@ -1004,6 +989,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     UserModel.updateUserSettings(userId, {
       selectedProvider: resolvedProvider,
       selectedModel: model,
+      changeSource: 'chat-turn-pin',
     }).catch(e => {
       console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
     });

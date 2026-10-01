@@ -372,82 +372,21 @@ export default {
       updateCustomSelects();
     });
 
-    // Update the selected provider based on connected providers.
-    // Only auto-switch if NO provider is selected OR the current provider is not connected
+    // This picker NEVER chooses a provider on the user's behalf.
+    //
+    // It used to: whenever the connected list did not contain the selected
+    // provider, it walked a fixed vendor ladder (Anthropic first) and saved the
+    // result as the account default. The connected list is assembled from
+    // separate probes and is routinely partial for a moment (a CLI status probe
+    // that answers late), so a provider that was connected the whole time got
+    // replaced by whatever the ladder found first. A chosen provider is the
+    // user's to change; disconnecting one has its own explicit flow.
+    //
+    // A first-run account with nothing chosen is filled by the store
+    // (loadUserSettings -> applyIncludedModelDefault), which only acts once the
+    // server has confirmed there is no saved default.
     const updateSelectedProvider = async () => {
-      const connectedAIProviders = connectedProvidersLower.value.filter((p) => AI_PROVIDERS_WITH_API.includes(p));
-
-      // If there's already a selected provider, check if we should keep it
-      if (selectedProvider.value) {
-        const currentProvider = selectedProvider.value.toLowerCase();
-
-        // A provider the user has chosen is kept even when this pass does not
-        // see it in the connected list. /auth/connected has been observed
-        // flapping between the full set and a partial one every few minutes,
-        // and each flap re-fires the watcher below. Without this, one partial
-        // answer walks the ladder underneath and rewrites the account default
-        // — the ladder's first rung is Anthropic. Disconnecting a provider is
-        // handled by its own explicit flow, not by inference from one poll.
-        const isKnownBuiltIn = store.state.aiProvider.providers.some(
-          (p) => String(p).toLowerCase() === currentProvider
-        );
-        if (isKnownBuiltIn && connectedAIProviders.length === 0) {
-          await store.dispatch('aiProvider/ensureValidModel');
-          return;
-        }
-
-        // Don't auto-switch if Local is selected - let the user keep their choice
-        if (currentProvider === 'local') {
-          // Just ensure valid model, don't change provider
-          await store.dispatch('aiProvider/ensureValidModel');
-          return;
-        }
-
-        // Don't auto-switch if it's a custom provider - let the user keep their choice
-        const isCustomProvider = customProviders.value.some((p) => p.id === selectedProvider.value);
-        if (isCustomProvider) {
-          // Just ensure valid model, don't change provider
-          await store.dispatch('aiProvider/ensureValidModel');
-          return;
-        }
-
-        // Don't auto-switch if the current provider is still connected
-        if (connectedAIProviders.includes(currentProvider)) {
-          // Just ensure valid model, don't change provider
-          await store.dispatch('aiProvider/ensureValidModel');
-          return;
-        }
-      }
-
-      // Only auto-switch if:
-      // 1. No provider is selected (null), OR
-      // 2. Current provider is not connected
-      // AND there are connected providers available
-      if (connectedAIProviders.length > 0) {
-        if (connectedAIProviders.includes('anthropic')) {
-          selectedProvider.value = 'Anthropic';
-        } else if (connectedAIProviders.includes('claude-code')) {
-          selectedProvider.value = 'Claude-Code';
-        } else if (connectedAIProviders.includes('openai-codex')) {
-          selectedProvider.value = 'OpenAI-Codex';
-        } else if (connectedAIProviders.includes('openai')) {
-          selectedProvider.value = 'OpenAI';
-        } else if (connectedAIProviders.includes('gemini')) {
-          selectedProvider.value = 'Gemini';
-        } else if (connectedAIProviders.includes('gemini-cli')) {
-          selectedProvider.value = 'Gemini-CLI';
-        } else if (connectedAIProviders.includes('grokai')) {
-          selectedProvider.value = 'GrokAI';
-        } else if (connectedAIProviders.includes('groq')) {
-          selectedProvider.value = 'Groq';
-        } else if (connectedAIProviders.includes('openrouter')) {
-          selectedProvider.value = 'OpenRouter';
-        } else if (connectedAIProviders.includes('togetherai')) {
-          selectedProvider.value = 'TogetherAI';
-        }
-      }
-
-      // Ensure a valid model is selected for the current provider
+      if (!selectedProvider.value) return;
       await store.dispatch('aiProvider/ensureValidModel');
     };
 
