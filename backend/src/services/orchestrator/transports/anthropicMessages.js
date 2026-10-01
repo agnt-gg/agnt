@@ -390,10 +390,10 @@ class AnthropicAdapter extends BaseAdapter {
     let lastError;
     // PRD-083 (CTO follow-up): mirror callStream's one-shot refusal fallback
     // here too so the suggestions feature (and other non-streaming consumers)
-    // also benefits from auto-fallback to Opus 4.8 on Fable/Mythos refusals.
+    // also benefits from auto-fallback to Opus 5.5 on Fable/Mythos refusals.
     let currentMessages = appendComputerImages(messages, context.computerImages, 'anthropic', ProviderRegistry.supportsVision(context.provider || 'anthropic', this.model));
     let fallbackAttempted = false;
-    const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
+    const REFUSAL_FALLBACK_MODEL = 'claude-opus-5-5';
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -528,7 +528,7 @@ class AnthropicAdapter extends BaseAdapter {
             `output_tokens=${response.usage?.output_tokens || 0}`,
           );
 
-          // Auto-fallback to Opus 4.8 on Fable/Mythos refusal (same as
+          // Auto-fallback to Opus 5.5 on Fable/Mythos refusal (same as
           // callStream). One-shot per call — if Opus also refuses, fall
           // through to the user-facing refusal message.
           const canFallback =
@@ -751,13 +751,13 @@ Please carefully check the tool schema and ensure all parameters match the expec
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
     let currentMessages = messages;
-    // PRD-083 (CTO follow-up): one-shot refusal fallback to Opus 4.8. Declared
+    // PRD-083 (CTO follow-up): one-shot refusal fallback to Opus 5.5. Declared
     // outside streamingAttemptLoop so it persists across attempt iterations.
     // When Fable/Mythos refuses, we swap this.model, strip thinking blocks
-    // from history, and `continue streamingAttemptLoop` to retry on Opus 4.8.
+    // from history, and `continue streamingAttemptLoop` to retry on Opus 5.5.
     let fallbackAttempted = false;
     let shrinkAttempts = 0;
-    const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
+    const REFUSAL_FALLBACK_MODEL = 'claude-opus-5-5';
 
     // Handle vision images - inject into the last user message if model supports vision
     if (context.imageData && context.imageData.length > 0) {
@@ -1613,7 +1613,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         // response whose text happens to be a refusal explanation.
         //
         // Recommended next step per Anthropic: on stop_reason:refusal, fall
-        // back to a different model (e.g. Opus 4.8) with thinking blocks
+        // back to a different model (e.g. Opus 5.5) with thinking blocks
         // stripped from the history — never retry the same model. Left as
         // a follow-up.
         if (wasRefusal) {
@@ -1629,7 +1629,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
             `output_tokens=${anthropicUsage.output_tokens || 0}`,
           );
 
-          // Auto-fallback to Opus 4.8 on Fable/Mythos refusal. Per Anthropic
+          // Auto-fallback to Opus 5.5 on Fable/Mythos refusal. Per Anthropic
           // docs: "Re-sending a refused request to the same model usually
           // earns another refusal" — fall back to a different model with
           // thinking blocks stripped from history first. One-shot per call
