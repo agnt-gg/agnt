@@ -370,6 +370,20 @@ describe('the registry writes the journal itself', () => {
     expect(await runJournal.listJournals()).toHaveLength(0);
   });
 
+  it('records the id the client gave the question, so recovery reuses it', async () => {
+    const run = activeRuns.startRun({
+      conversationId: 'conv-id', userId: USER, userMessage: 'hello', userMessageId: 'msg-1700000000000-9',
+    });
+    activeRuns.publish(run, 'assistant_message', { id: 'a1', role: 'assistant', content: '' });
+
+    expect(runJournal.flushAllSync(activeRuns.liveRuns())).toBe(1);
+    const [journal] = await runJournal.listJournals();
+    expect(journal.userMessageId).toBe('msg-1700000000000-9');
+
+    activeRuns.endRun('conv-id', 'completed');
+    await new Promise((r) => setTimeout(r, 50));
+  });
+
   it('liveRuns excludes runs that have ended', () => {
     activeRuns.startRun({ conversationId: 'conv-live-a', userId: USER });
     const b = activeRuns.startRun({ conversationId: 'conv-live-b', userId: USER });

@@ -56,7 +56,7 @@ import StreamEngine from '../stream/StreamEngine.js';
 import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
-import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
+import { startRun, publish as publishToRun, endRun, normalizeClientMessageId } from './orchestrator/activeRuns.js';
 import { resolveRuntimeOptions, createLineFramer, MINIMAL_STREAM_EVENTS } from './orchestrator/runtimeOptions.js';
 import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrator/openToolCalls.js';
 import { mapOrderedComputerCalls } from './computerUse/operationQueue.js';
@@ -818,6 +818,10 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   const {
     messages: originalMessages,
     message,
+    // The id the client gave this turn's user bubble. Never part of the prompt:
+    // it only names the bubble to reattaching clients and other tabs, so they
+    // rebuild THAT message instead of inventing a second one.
+    userMessageId: rawUserMessageId,
     history = [],
     conversationId: inputConversationId = null,
     provider,
@@ -1228,11 +1232,13 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   // A registered run is listed by GET /orchestrator/runs and adopted by booting
   // clients (runResume.js), which then autosave it as a conversation. A
   // non-broadcast caller owns its stream and has nothing to reattach to.
+  const userMessageId = normalizeClientMessageId(rawUserMessageId);
   if (runtime.broadcast) activeRun = startRun({
     conversationId,
     userId,
     chatType,
     abortController: streamAbortController,
+    userMessageId,
     userMessage: (() => {
       if (typeof message === 'string' && message) return message;
       if (Array.isArray(originalMessages)) {
@@ -1781,6 +1787,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
           conversationId,
           chatType,
           message: lastUserMessage,
+          userMessageId,
           originClientId,
           timestamp: Date.now(),
         });

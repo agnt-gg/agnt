@@ -288,6 +288,63 @@ describe('the structural guard, for a journal that anchors into a moved-on conve
   });
 });
 
+describe('a journal that knows the id the client gave the question', () => {
+  // runJournal now records the id the sending client gave the user bubble, so
+  // the recovered turn is the SAME message as the one already saved rather
+  // than a copy matched up by its wording.
+  const journalWithId = (userMessageId, userMessage, answer) => ({
+    ...journalFor(userMessage, answer),
+    userMessageId,
+  });
+
+  it('recovers the question under that id', () => {
+    const turn = messagesFromJournal(journalWithId('msg-1700000000000-3', 'q', 'an answer'));
+    expect(turn[0]).toMatchObject({ id: 'msg-1700000000000-3', role: 'user', content: 'q' });
+  });
+
+  it('mints one, as before, when the recorded id is not a message id', () => {
+    const turn = messagesFromJournal(journalWithId('not a <message> id', 'q', 'an answer'));
+    expect(turn[0].id).toMatch(/^msg-user-recovered-\d+$/);
+  });
+
+  it('appends a repeated question the row never saw, instead of anchoring on the earlier one', async () => {
+    // "yes" twice. Matched on wording, the journal anchored on the FIRST yes,
+    // and the structural guard then refused the whole recovery to save the
+    // turns after it — the interrupted answer was lost.
+    const prior = [
+      { id: 'u-1', role: 'user', content: 'yes' },
+      { id: 'a-1', role: 'assistant', content: 'Done, the first step is in.' },
+      { id: 'u-2', role: 'user', content: 'now the second step' },
+      { id: 'a-2', role: 'assistant', content: 'Second step is in. Shall I carry on?' },
+    ];
+    await seedRow('out-yes', 'conv-yes', prior);
+
+    const turn = messagesFromJournal(journalWithId('u-3', 'yes', BIG_ANSWER));
+    const result = await writeTranscript({
+      conversationId: 'conv-yes', userId: USER, messages: turn, mode: 'appendTurn',
+    });
+
+    expect(result.written).toBe(true);
+    const after = await savedMessages('out-yes');
+    expect(after.map((m) => m.id)).toEqual(['u-1', 'a-1', 'u-2', 'a-2', 'u-3', 'a1']);
+  });
+
+  it('replaces its own saved stub by id, leaving one copy of the question', async () => {
+    const prior = [
+      { id: 'u-1', role: 'user', content: 'write the migration runner' },
+      { id: 'a-1', role: 'assistant', content: 'Sure, starting now.' },
+    ];
+    await seedRow('out-own', 'conv-own', prior);
+
+    const turn = messagesFromJournal(journalWithId('u-1', 'write the migration runner', BIG_ANSWER));
+    await writeTranscript({ conversationId: 'conv-own', userId: USER, messages: turn, mode: 'appendTurn' });
+
+    const after = await savedMessages('out-own');
+    expect(after.filter((m) => m.role === 'user').map((m) => m.id)).toEqual(['u-1']);
+    expect(after.at(-1).content).toContain('runMigrations');
+  });
+});
+
 describe('the turn-end path is unchanged', () => {
   it('still replaces the row when the whole conversation is handed over', async () => {
     const prior = priorConversation();

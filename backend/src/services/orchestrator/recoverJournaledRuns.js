@@ -38,6 +38,7 @@
 import { applyStreamEvent, createAssistantMessage } from './chatStreamReducer.mirror.js';
 import { writeTranscript } from './persistTurnTranscript.js';
 import { listJournals, removeJournalFile, MAX_JOURNAL_AGE_MS } from './runJournal.js';
+import { normalizeClientMessageId } from './activeRuns.js';
 
 /** Shown on the recovered turn so a truncated answer is never mistaken for the whole one. */
 export const INTERRUPTED_NOTE = 'Interrupted — the backend restarted while this was generating';
@@ -51,12 +52,14 @@ export const INTERRUPTED_NOTE = 'Interrupted — the backend restarted while thi
  *
  * Exported for tests, and because this is the interesting half.
  */
-export function messagesFromJournal({ userMessage, events = [] }) {
+export function messagesFromJournal({ userMessage, userMessageId = null, events = [] }) {
   const messages = [];
 
   if (typeof userMessage === 'string' && userMessage.trim()) {
     messages.push({
-      id: `msg-user-recovered-${Date.now()}`,
+      // The client's own id when the journal has it, so the recovered turn is
+      // the SAME message as the bubble already saved, not a second one.
+      id: normalizeClientMessageId(userMessageId) || `msg-user-recovered-${Date.now()}`,
       role: 'user',
       content: userMessage,
       timestamp: Date.now(),

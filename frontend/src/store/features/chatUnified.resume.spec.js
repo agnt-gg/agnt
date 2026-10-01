@@ -175,6 +175,47 @@ describe('replaying a turn the client partially holds', () => {
     expect(state.conversations[CH].messages.map((m) => m.id)).toEqual(['u1', 'a1', expect.any(String)]);
     expect(state.conversations[CH].messages.at(-1).content).toBe('new question');
   });
+
+  it('rebuilds the question under the id the sender gave it', () => {
+    const commit = makeCommit();
+    commit('INITIALIZE_CHANNEL', { channelKey: CH });
+    handleStreamEvent({
+      commit,
+      channelKey: CH,
+      eventName: 'run_resumed',
+      data: { userMessage: 'q', userMessageId: 'agent-test-msg-1-0', replayedMessageIds: [] },
+    });
+    expect(state.conversations[CH].messages.map((m) => m.id)).toEqual(['agent-test-msg-1-0']);
+  });
+
+  it('restores a question that repeats the previous one word for word', () => {
+    // The same text under another id is the EARLIER turn; matching on text
+    // took it for this one and left the answer without its question.
+    const commit = makeCommit();
+    commit('INITIALIZE_CHANNEL', { channelKey: CH });
+    commit('ADD_MESSAGE', { channelKey: CH, message: { id: 'u1', role: 'user', content: 'yes' } });
+    commit('ADD_MESSAGE', { channelKey: CH, message: { id: 'a1', role: 'assistant', content: 'done' } });
+
+    handleStreamEvent({
+      commit,
+      channelKey: CH,
+      eventName: 'run_resumed',
+      data: { userMessage: 'yes', userMessageId: 'u2', replayedMessageIds: ['a2'] },
+    });
+
+    expect(state.conversations[CH].messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2']);
+  });
+
+  it('leaves the question alone when this tab holds it under that id', () => {
+    const commit = seedPartialTurn();
+    handleStreamEvent({
+      commit,
+      channelKey: CH,
+      eventName: 'run_resumed',
+      data: { userMessage: 'question', userMessageId: 'u1', replayedMessageIds: ['a1'] },
+    });
+    expect(state.conversations[CH].messages.map((m) => m.id)).toEqual(['u1']);
+  });
 });
 
 describe('reattachChannel', () => {

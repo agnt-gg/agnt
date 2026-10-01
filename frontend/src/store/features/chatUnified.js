@@ -480,10 +480,20 @@ export default {
      * reattaching to a turn whose user bubble may or may not exist locally,
      * depending on how much of the snapshot survived.
      */
-    ENSURE_USER_MESSAGE(state, { channelKey, content, message }) {
+    ENSURE_USER_MESSAGE(state, { channelKey, content, message, matchById = false }) {
       if (!content) return;
       ensureChannel(state, channelKey);
       const messages = state.conversations[channelKey].messages;
+      // matchById: the server named the bubble, so the id alone decides — the
+      // same text under another id is an EARLIER turn, not this one. Without
+      // it (a server that predates the id) the newest user text is compared.
+      if (matchById) {
+        if (messages.some((m) => m.id === message.id)) return;
+        messages.push(message);
+        state.conversations[channelKey].lastUpdate = Date.now();
+        persistConversations(state.conversations);
+        return;
+      }
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].role === 'user') {
           if (messages[i].content === content) return;
@@ -1021,6 +1031,9 @@ export default {
         await streamChat({
           chatType,
           messages: history,
+          // Names this bubble to a reattaching client, so it is rebuilt under
+          // the same id rather than as a second copy.
+          userMessageId: userMessage.id,
           provider: resolvedProvider,
           model: resolvedModel,
           routingMode: resolvedRoutingMode,
@@ -1344,16 +1357,21 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
     // that started this run (the snapshot on disk can be older than the send),
     // so restore the bubble if it's missing rather than replaying an answer to
     // a question that isn't visible.
-    case 'run_resumed':
+    case 'run_resumed': {
       // Order matters: clear this turn's partial output first, then make sure
       // the question is present, then let the replay rebuild the answer.
       commit('TRUNCATE_FROM_REPLAYED_IDS', { channelKey, ids: data?.replayedMessageIds });
+      // The id the sending client gave the bubble, when the server has it.
+      const serverNamedId = typeof data?.userMessageId === 'string' && data.userMessageId
+        ? data.userMessageId
+        : null;
       if (data?.userMessage) {
         commit('ENSURE_USER_MESSAGE', {
           channelKey,
           content: data.userMessage,
+          matchById: !!serverNamedId,
           message: {
-            id: generateMessageId(channelKey),
+            id: serverNamedId || generateMessageId(channelKey),
             role: 'user',
             content: data.userMessage,
             timestamp: data.startedAt || Date.now(),
@@ -1361,6 +1379,7 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
         });
       }
       break;
+    }
 
     // Terminator for a reattached stream that ended without a normal 'done'
     // (cancelled, superseded, or the server finished while we were replaying).

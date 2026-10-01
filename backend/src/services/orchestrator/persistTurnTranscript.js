@@ -155,11 +155,17 @@ export function mergeRecoveredTurn(stored, turn) {
   // Answer-only journal — nothing to anchor on, so it can only be appended.
   if (!turnUser) return [...stored, ...turn];
 
-  // Match on what the user said. The journal's own message id is minted during
-  // recovery (`msg-user-recovered-<now>`) and so can never match a stored one.
+  // When the journal carries the client's own id for the bubble, the id alone
+  // decides: found means this turn, absent means the row never saw it. Text
+  // must not be consulted then — the same words in an EARLIER turn ("yes"
+  // twice) would anchor the merge there and overwrite every turn after it.
+  // Journals written before that id existed mint one during recovery
+  // (`msg-user-recovered-<now>`) that can never match, so they fall back to
+  // matching on what the user said.
+  const hasClientId = typeof turnUser.id === 'string' && !turnUser.id.startsWith('msg-user-recovered-');
+  let at = hasClientId ? stored.findIndex((m) => m && m.role === 'user' && m.id === turnUser.id) : -1;
   const key = turnUser.content.trim();
-  let at = -1;
-  for (let i = stored.length - 1; i >= 0; i--) {
+  for (let i = stored.length - 1; !hasClientId && i >= 0; i--) {
     const m = stored[i];
     if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim() === key) {
       at = i;

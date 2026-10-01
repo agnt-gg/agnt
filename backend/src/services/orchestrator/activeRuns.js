@@ -86,6 +86,20 @@ const NEVER_DROP = new Set([
   'done',
 ]);
 
+/**
+ * The id the sending client gave the user bubble that started this turn, or
+ * null when it sent none or sent something that is not a message id.
+ *
+ * It is client-supplied and echoed back to clients, so it is held to the shape
+ * every client generator produces (`msg-<ts>-<n>`, `workspace-<id>-msg-...`)
+ * rather than trusted: anything else is dropped and the caller falls back to
+ * the pre-existing behaviour.
+ */
+const CLIENT_MESSAGE_ID = /^[A-Za-z0-9_.:-]{1,200}$/;
+export function normalizeClientMessageId(value) {
+  return typeof value === 'string' && CLIENT_MESSAGE_ID.test(value) ? value : null;
+}
+
 const byteLen = (value) => {
   try {
     return JSON.stringify(value)?.length || 0;
@@ -103,7 +117,7 @@ const byteLen = (value) => {
  * concurrently. This matters more now that runs outlive their sockets — without
  * it, a refresh-and-resend loop would stack generations.
  */
-export function startRun({ conversationId, userId, chatType, abortController, userMessage = null }) {
+export function startRun({ conversationId, userId, chatType, abortController, userMessage = null, userMessageId = null }) {
   if (!conversationId) return null;
 
   const existing = runs.get(conversationId);
@@ -137,6 +151,13 @@ export function startRun({ conversationId, userId, chatType, abortController, us
     subscribers: new Set(),
     /** The user turn that started this run, so a reattaching client can rebuild the bubble. */
     userMessage: typeof userMessage === 'string' ? userMessage.slice(0, 20_000) : null,
+    /**
+     * The id the client already gave that bubble. Rebuilding the bubble under
+     * THIS id rather than a minted one is what lets every id-keyed merge (the
+     * client's stored-transcript reconcile, journal recovery) recognise it as
+     * the same message instead of appending a second copy.
+     */
+    userMessageId: normalizeClientMessageId(userMessageId),
     gcTimer: null,
   };
 
@@ -248,6 +269,7 @@ export function attachSubscriber(conversationId, res, userId) {
     chatType: run.chatType,
     startedAt: run.startedAt,
     userMessage: run.userMessage,
+    userMessageId: run.userMessageId,
     truncated: run.truncated,
     ended: run.ended,
     replayedMessageIds: collectReplayedMessageIds(run),

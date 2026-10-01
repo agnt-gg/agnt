@@ -65,6 +65,19 @@ describe('identifying the sending client', () => {
     expect((await send()).headers[HEADER]).toBe(getClientId());
   });
 
+  it('names the turn\'s user bubble, on both encodings, and only when given one', async () => {
+    // The server echoes this id back on a reattach so the bubble is rebuilt
+    // as itself rather than as a second copy below the answer.
+    expect(JSON.parse((await send({ userMessageId: 'msg-1-0' })).body).userMessageId).toBe('msg-1-0');
+
+    global.fetch = failFast();
+    const file = new File(['x'], 'a.txt', { type: 'text/plain' });
+    expect((await send({ userMessageId: 'msg-1-0', files: [file] })).body.get('userMessageId')).toBe('msg-1-0');
+
+    global.fetch = failFast();
+    expect(JSON.parse((await send()).body)).not.toHaveProperty('userMessageId');
+  });
+
   it('sends the same id on every request from this client', async () => {
     const first = await send();
     global.fetch = failFast();

@@ -1973,6 +1973,18 @@ export default {
         ? chatHistory.slice(0, -1)
         : chatHistory;
 
+      // This turn's own bubble, when the caller put one in the transcript: the
+      // newest user message, provided it is the text being sent. Its id rides
+      // to the server so a reattach or another tab rebuilds THIS message rather
+      // than minting a second one that no id-keyed merge can recognise. Turns
+      // with no bubble (floor passes) send none and keep the text fallback.
+      let userMessageId;
+      for (let i = conv.messages.length - 1; i >= 0; i--) {
+        if (conv.messages[i].role !== 'user') continue;
+        if (conv.messages[i].content === userInput) userMessageId = conv.messages[i].id || undefined;
+        break;
+      }
+
       // Create abort controller for this stream
       const abortController = new AbortController();
       commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: convId, controller: abortController });
@@ -2047,6 +2059,7 @@ export default {
         if (files && files.length > 0) {
           const formData = new FormData();
           formData.append('message', userInput);
+          if (userMessageId) formData.append('userMessageId', userMessageId);
           if (isVoiceTurn) formData.append('voiceMode', 'true');
           formData.append('history', JSON.stringify(deduped));
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
@@ -2117,6 +2130,7 @@ export default {
           const channelToolsForJson = resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY);
           body = JSON.stringify({
             message: userInput,
+            userMessageId,
             history: deduped,
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
             provider: wireProvider,
@@ -3744,11 +3758,21 @@ export default {
         case 'user_message': {
           const userMsg = eventData.message;
           const convMessages = state.conversations[targetConvId].messages;
-          if (userMsg && !convMessages.find((m) => m.content === userMsg.content && m.role === 'user')) {
+          // The sender's own id for the bubble, when its server forwards one:
+          // present under that id means present, and the copy made here keeps
+          // it, so this tab's autosave and the sender's describe ONE message.
+          // Older senders send none and keep the text match.
+          const mirroredId = typeof eventData.userMessageId === 'string' && eventData.userMessageId
+            ? eventData.userMessageId
+            : null;
+          const alreadyHere = mirroredId
+            ? convMessages.some((m) => m.id === mirroredId)
+            : convMessages.some((m) => m.content === userMsg?.content && m.role === 'user');
+          if (userMsg && !alreadyHere) {
             commit('SCOPED_ADD_MESSAGE', {
               conversationId: targetConvId,
               message: {
-                id: `msg-user-${Date.now()}`,
+                id: mirroredId || `msg-user-${Date.now()}`,
                 role: 'user',
                 content: userMsg.content,
                 timestamp: eventData.timestamp || Date.now(),
@@ -4531,8 +4555,18 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       if (!data?.userMessage) break;
       const conv = state?.conversations?.[conversationId];
       const messages = conv?.messages || [];
-      let alreadyPresent = false;
-      for (let i = messages.length - 1; i >= 0; i--) {
+      // The id the sending client gave the bubble. Rebuilding under it is what
+      // stops the stored-transcript reconcile (reconcileTruncatedConversation)
+      // from keeping this bubble as "unsaved" and appending it AFTER the
+      // answer: the merge is keyed by id, and a minted id never matches.
+      const userMessageId = typeof data.userMessageId === 'string' && data.userMessageId
+        ? data.userMessageId
+        : null;
+      // When the server names the bubble, the id alone decides: the same text
+      // under another id is an EARLIER turn ("yes" twice), not this one. Only a
+      // server that predates the id falls back to comparing text.
+      let alreadyPresent = !!userMessageId && messages.some((m) => m.id === userMessageId);
+      for (let i = messages.length - 1; !userMessageId && i >= 0; i--) {
         if (messages[i].role === 'user') {
           alreadyPresent = messages[i].content === data.userMessage;
           break;
@@ -4542,7 +4576,7 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         commit('SCOPED_ADD_MESSAGE', {
           conversationId,
           message: {
-            id: `msg-${data.startedAt || Date.now()}-resumed-user`,
+            id: userMessageId || `msg-${data.startedAt || Date.now()}-resumed-user`,
             role: 'user',
             content: data.userMessage,
             timestamp: data.startedAt || Date.now(),

@@ -44,6 +44,9 @@ const ENDPOINTS = {
 export async function streamChat({
   chatType,
   messages,
+  // Id of this turn's user bubble. Never part of the prompt — it lets a client
+  // that reattaches after a refresh rebuild that bubble instead of a copy.
+  userMessageId,
   provider,
   model,
   // 'pinned' | 'default' | 'dynamic'. Absent means the caller is expressing no
@@ -98,6 +101,7 @@ export async function streamChat({
   if (reasoningEnabled !== undefined) bodyFields.reasoningEnabled = reasoningEnabled;
   if (routingMode !== undefined) bodyFields.routingMode = routingMode;
   if (persistDefault !== undefined) bodyFields.persistDefault = persistDefault;
+  if (userMessageId) bodyFields.userMessageId = userMessageId;
 
   let requestBody;
   const hasFiles = Array.isArray(files) && files.length > 0;

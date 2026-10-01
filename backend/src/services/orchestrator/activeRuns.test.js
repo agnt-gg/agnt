@@ -16,6 +16,7 @@ import {
   getRunStatus,
   _runCount,
   _resetForTests,
+  normalizeClientMessageId,
 } from './activeRuns.js';
 
 /** Minimal express-response stand-in that records every frame written to it. */
@@ -118,6 +119,32 @@ describe('reattaching does not duplicate what the client already has', () => {
     const res = makeRes();
     attachSubscriber(CONV, res, 'u1');
     expect(res.events()[0].data.userMessage).toBe('what is 2+2?');
+  });
+
+  it('names the user bubble by the id the sending client gave it', () => {
+    // A client rebuilding the question under a minted id produced a bubble no
+    // id-keyed merge could recognise, so a refresh mid-answer showed the
+    // question twice. The client's own id makes the rebuild the SAME message.
+    startRun({ conversationId: CONV, userId: 'u1', userMessage: 'q', userMessageId: 'msg-1700000000000-4' });
+    const res = makeRes();
+    attachSubscriber(CONV, res, 'u1');
+    expect(res.events()[0].data.userMessageId).toBe('msg-1700000000000-4');
+  });
+
+  it('accepts every id shape the clients generate', () => {
+    for (const id of ['msg-1-0', 'agent-msg-1-0', 'workspace-a1b2-msg-1-0', 'workspace-x:y-msg-1-0']) {
+      expect(normalizeClientMessageId(id)).toBe(id);
+    }
+  });
+
+  it('drops anything that is not a message id rather than echoing it back', () => {
+    for (const bad of ['', '<img src=x onerror=alert(1)>', 'has space', 'x'.repeat(201), 42, { id: 'x' }, null, undefined]) {
+      expect(normalizeClientMessageId(bad)).toBeNull();
+    }
+    startRun({ conversationId: CONV, userId: 'u1', userMessage: 'q', userMessageId: '<b>' });
+    const res = makeRes();
+    attachSubscriber(CONV, res, 'u1');
+    expect(res.events()[0].data.userMessageId).toBeNull();
   });
 });
 

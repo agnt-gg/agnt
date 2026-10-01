@@ -126,6 +126,7 @@ function snapshot(run) {
     chatType: run.chatType || 'orchestrator',
     startedAt: run.startedAt,
     userMessage: run.userMessage ?? null,
+    userMessageId: run.userMessageId ?? null,
     truncated: !!run.truncated,
     events: run.events,
     latest: [...run.latest.entries()],
