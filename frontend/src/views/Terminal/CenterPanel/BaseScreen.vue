@@ -307,6 +307,7 @@ import RightPanel from '../RightPanel/RightPanel.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ChatProviderSelector from './screens/Chat/components/ChatProviderSelector.vue';
 import { useCornerAnchor, findVisibleAnchor } from '@/utils/cornerAnchor.js';
+import { clickKeepsFocus } from '@/utils/chatFocusClaim.js';
 import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
 import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
@@ -828,11 +829,10 @@ export default {
         return;
       }
 
-      if (event.target.closest('button, a, [role="button"], [role="dialog"]')) return;
-      const isFormElement = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT';
-      if (!isFormElement) {
-        focusInput();
-      }
+      // A click on something with its own keyboard (the live browser, an
+      // editor, a control) keeps the focus it just took. See chatFocusClaim.
+      if (clickKeepsFocus(event.target)) return;
+      focusInput();
     };
 
     const triggerSubmit = () => {

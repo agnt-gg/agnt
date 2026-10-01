@@ -12,15 +12,41 @@
     the registry and can take the stream over when a newer card unmounts. Only
     the DOM is empty.
   -->
-  <div v-if="owns" v-show="live || showing" class="browser-live-card">
-    <div class="live-header" @click="collapsed = !collapsed">
-      <span class="live-caret">{{ collapsed ? '▸' : '▾' }}</span>
+  <!--
+    Fullscreen MOVES this card to <body> rather than opening a second viewer.
+    A disabled Teleport keeps the same component instance, so the stream lease,
+    the page and anything half-typed survive the toggle; a modal holding a
+    fresh BrowserStreamView would re-subscribe and flash "Opening…".
+  -->
+  <Teleport to="body" :disabled="!fullscreen">
+  <div
+    v-if="owns"
+    v-show="live || showing"
+    class="browser-live-card"
+    :class="{ 'is-fullscreen': fullscreen }"
+    :role="fullscreen ? 'dialog' : undefined"
+    :aria-modal="fullscreen ? 'true' : undefined"
+    aria-label="Live browser"
+  >
+    <div class="live-header" @click="!fullscreen && (collapsed = !collapsed)">
+      <span v-if="!fullscreen" class="live-caret">{{ collapsed ? '▸' : '▾' }}</span>
       <span class="live-dot on"></span>
       <span class="live-title">Live browser</span>
       <span v-if="pageUrl" class="live-url">{{ pageUrl }}</span>
+      <button
+        type="button"
+        class="live-fullscreen"
+        :aria-label="fullscreen ? 'Exit fullscreen' : 'Fullscreen'"
+        :aria-pressed="fullscreen"
+        v-tooltip="fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'"
+        @click.stop="toggleFullscreen"
+      >
+        <i :class="fullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+      </button>
     </div>
 
-    <div v-if="!collapsed" class="live-body">
+    <!-- data-keeps-focus: clicks in here belong to the page, not the chat input. -->
+    <div v-if="!collapsed || fullscreen" class="live-body" data-keeps-focus>
       <!--
         The LIVE turn opens a browser if none exists: the card is there because
         the agent is browsing right now, and a card that waits for a browser
@@ -31,10 +57,11 @@
       <BrowserStreamView :launch="live" @page="onPage" @showing="onShowing" />
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { claimLiveView, releaseLiveView, activeLiveKey } from './browserLiveRegistry.js';
 
@@ -81,8 +108,31 @@ function onPage({ url }) {
   pageUrl.value = url || '';
 }
 
+const fullscreen = ref(false);
+function toggleFullscreen() { fullscreen.value = !fullscreen.value; }
+
+// Escape leaves fullscreen. Keys typed INTO the page never get here: the
+// stream canvas stops their propagation, so Escape inside a site's dialog
+// still reaches the site.
+function onWindowKeydown(event) {
+  if (event.key === 'Escape' && fullscreen.value) {
+    event.preventDefault();
+    fullscreen.value = false;
+  }
+}
+watch(fullscreen, (on) => {
+  if (on) window.addEventListener('keydown', onWindowKeydown);
+  else window.removeEventListener('keydown', onWindowKeydown);
+});
+// A newer turn taking the stream over unrenders this card; leave no
+// listener and no fullscreen state behind for when it comes back.
+watch(owns, (isOwner) => { if (!isOwner) fullscreen.value = false; });
+
 onMounted(() => claimLiveView(props.cardKey, props.order));
-onBeforeUnmount(() => releaseLiveView(props.cardKey));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown);
+  releaseLiveView(props.cardKey);
+});
 </script>
 
 <style scoped>
@@ -134,6 +184,35 @@ onBeforeUnmount(() => releaseLiveView(props.cardKey));
   font-weight: 600;
 }
 
+.live-fullscreen {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted, #556);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.live-fullscreen:hover,
+.live-fullscreen:focus-visible {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
+  outline: none;
+}
+
+/* With a URL, its auto margin already pushes the button right; without one,
+   the button takes the slack itself. */
+.live-header .live-title + .live-fullscreen {
+  margin-left: auto;
+}
+
 .live-url {
   margin-left: auto;
   overflow: hidden;
@@ -151,6 +230,31 @@ onBeforeUnmount(() => releaseLiveView(props.cardKey));
 .live-body {
   height: 420px;
   position: relative;
+}
+
+/* Same full-window treatment as the HTML/visualization preview modal. */
+.browser-live-card.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-darkest, #0b0b14);
+}
+
+.browser-live-card.is-fullscreen .live-header {
+  cursor: default;
+  padding: 10px 16px;
+  font-size: 12px;
+}
+
+.browser-live-card.is-fullscreen .live-body {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
 }
 
 </style>

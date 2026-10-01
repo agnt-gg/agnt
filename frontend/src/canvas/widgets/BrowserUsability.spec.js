@@ -21,7 +21,10 @@ describe('Browser surface usability contract', () => {
   it('does not hide typing behind a watching-mode gate', () => {
     expect(stream).not.toContain('canInteract');
     expect(stream).not.toContain('interact-toggle');
-    expect(stream).toContain("@keydown.prevent=\"onKey\"");
+    // .stop: keys typed into the page must not reach host shortcuts (the
+    // chat's PageUp/PageDown scroller, fullscreen's Escape).
+    expect(stream).toContain("@keydown.prevent.stop=\"onKey\"");
+    expect(stream).toContain("@keyup.prevent.stop=\"onKey\"");
     expect(stream).toContain("text: event.key");
   });
 

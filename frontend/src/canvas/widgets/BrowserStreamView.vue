@@ -27,8 +27,8 @@
       @mouseup="onMouse"
       @mousemove="onMouseMove"
       @wheel.prevent="onWheel"
-      @keydown.prevent="onKey"
-      @keyup.prevent="onKey"
+      @keydown.prevent.stop="onKey"
+      @keyup.prevent.stop="onKey"
     ></canvas>
 
       <div v-if="!hasFrame || error" class="stream-status">
