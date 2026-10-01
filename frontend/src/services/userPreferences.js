@@ -316,6 +316,62 @@ let epoch = 0;
 const RETRY_BASE_MS = 2000;
 const RETRY_MAX_MS = 60000;
 
+// ---------------------------------------------------------------------------
+// Values the server refused
+// ---------------------------------------------------------------------------
+//
+// A PUT can succeed (HTTP 200) and still REJECT a key: the server validates
+// every value against its allowlist and reports `result.<scope>.rejected`.
+// Treating the 200 as "saved" lost the choice twice over: the server kept its
+// old value, and on the next boot hydration painted that old value over the
+// local one. That is how choosing Focused against a backend that did not yet
+// know 'focused' came back as Studio after a restart.
+//
+// So a refused key is remembered here, per browser, across restarts, until
+// the server accepts it. While it is listed, hydration does not overwrite the
+// local value and re-sends it instead (a newer backend may accept it now).
+export const UNSYNCED_STORAGE_KEY = 'agnt:prefs-unsynced';
+
+/** { key: 'global' | 'device' } — keys whose local value the server refused. */
+function readUnsynced() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(UNSYNCED_STORAGE_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, s]) => s === 'global' || s === 'device'));
+  } catch {
+    return {};
+  }
+}
+
+function writeUnsynced(map) {
+  try {
+    if (Object.keys(map).length) localStorage.setItem(UNSYNCED_STORAGE_KEY, JSON.stringify(map));
+    else localStorage.removeItem(UNSYNCED_STORAGE_KEY);
+  } catch {
+    /* storage disabled: the value still applies for this session */
+  }
+}
+
+/** Record what the server did with a push: accepted keys clear, refused keys stay. */
+function recordOutcome(result) {
+  if (!result || typeof result !== 'object') return;
+  const unsynced = readUnsynced();
+  const refused = [];
+  for (const scope of ['global', 'device']) {
+    const r = result[scope];
+    if (!r) continue;
+    for (const key of r.applied || []) delete unsynced[key];
+    for (const item of r.rejected || []) {
+      if (!item?.key || item.key === '*') continue;
+      unsynced[item.key] = scope;
+      refused.push(`${item.key} (${item.reason || 'rejected'})`);
+    }
+  }
+  writeUnsynced(unsynced);
+  // Loud, because a refused preference looks exactly like a saved one.
+  if (refused.length) console.warn('[userPreferences] server refused, kept locally:', refused.join(', '));
+}
+
 function resetState() {
   pending = { global: {}, device: {} };
   pendingAt = 0;
@@ -382,8 +438,11 @@ async function flush() {
   const sentEpoch = epoch;
 
   try {
-    await apiFetch('', { method: 'PUT', body: JSON.stringify(body) });
-    if (epoch === sentEpoch) retryDelay = 0;
+    const response = await apiFetch('', { method: 'PUT', body: JSON.stringify(body) });
+    if (epoch === sentEpoch) {
+      retryDelay = 0;
+      recordOutcome(response?.result);
+    }
   } catch (e) {
     console.warn('[userPreferences] push failed:', e.message);
 
@@ -452,6 +511,15 @@ export async function hydrateFromServer(store) {
     return { skipped: 'offline' };
   }
 
+  // Values the server refused last time stay as they are here, and go back up:
+  // the backend may have been updated to accept them since.
+  const unsynced = readUnsynced();
+  for (const [key, scope] of Object.entries(unsynced)) {
+    const read = READ_MAP[key];
+    const value = read ? read(store.state.theme) : undefined;
+    if (value !== undefined) enqueue(scope, { [key]: value });
+  }
+
   const prefs = remote?.preferences;
   if (!prefs) return { skipped: 'empty' };
 
@@ -471,9 +539,10 @@ export async function hydrateFromServer(store) {
     for (const [key, value] of Object.entries(source)) {
       const apply = APPLY_MAP[key];
       if (!apply) continue;
-      // The user changed this since boot; their action is newer than anything
-      // the server could have returned.
-      if (touchedKeys.has(key)) {
+      // The user changed this since boot (their action is newer than anything
+      // the server could have returned), or the server refused this browser's
+      // value and is holding an older one.
+      if (touchedKeys.has(key) || unsynced[key]) {
         skipped.push(key);
         continue;
       }

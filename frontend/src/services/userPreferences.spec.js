@@ -660,3 +660,85 @@ describe('localStorage stays the first-paint source', () => {
     expect(localStorage.getItem('currentTheme')).toBe('nord');
   });
 });
+
+
+// ───────────────────────────────────────────────────────────────────────────
+describe('a value the server refuses is kept, not lost on restart', () => {
+  // The bug: Focused chosen against a backend whose allowlist did not have
+  // 'focused' yet. The PUT came back 200 with result.global.rejected, the
+  // client called it saved, and the next boot hydrated the server's 'studio'
+  // over it.
+  const refused = { success: true, result: { global: { applied: [], deleted: [], rejected: [{ key: 'uiMode', reason: 'not one of simple|studio' }], staleIgnored: false } } };
+  const accepted = { success: true, result: { global: { applied: ['uiMode'], deleted: [], rejected: [], staleIgnored: false } } };
+  const serverHas = (uiMode) => ({ success: true, preferences: { global: { uiMode }, device: {} } });
+  const respond = ({ get, put }) => (url, opts = {}) => Promise.resolve(okJson(opts.method === 'PUT' ? put : get));
+
+  it('★ regression: Focused survives a restart when the server refused it', async () => {
+    // Session 1: choose Focused; the server refuses it.
+    const store = makeStore();
+    fetchMock.mockImplementation(respond({ get: { success: true, preferences: null }, put: refused }));
+    startPreferenceSync(store);
+    await vi.advanceTimersByTimeAsync(0);
+    store.commit('theme/SET_UI_MODE', 'focused');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(putBodies().at(-1).global).toEqual({ uiMode: 'focused' });
+    expect(JSON.parse(localStorage.getItem('agnt:prefs-unsynced'))).toEqual({ uiMode: 'global' });
+
+    // Restart: the browser still says Focused; the server still says Studio.
+    _resetForTests();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(respond({ get: serverHas('studio'), put: accepted }));
+    const restarted = makeStore();
+    restarted.commit('theme/SET_UI_MODE', 'focused'); // what theme.js reads from localStorage at boot
+
+    const outcome = await hydrateFromServer(restarted);
+    expect(restarted.state.theme.uiMode).toBe('focused');
+    expect(outcome.skipped).toContain('uiMode');
+  });
+
+  it('re-sends the refused value on the next start, and clears the record once accepted', async () => {
+    localStorage.setItem('agnt:prefs-unsynced', JSON.stringify({ uiMode: 'global' }));
+    const store = makeStore();
+    store.commit('theme/SET_UI_MODE', 'focused');
+    fetchMock.mockImplementation(respond({ get: serverHas('studio'), put: accepted }));
+
+    await hydrateFromServer(store);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(putBodies().at(-1).global).toEqual({ uiMode: 'focused' });
+    expect(localStorage.getItem('agnt:prefs-unsynced')).toBeNull();
+  });
+
+  it('an accepted push never marks anything, so another device\'s change still arrives', async () => {
+    const store = makeStore();
+    fetchMock.mockImplementation(respond({ get: { success: true, preferences: null }, put: accepted }));
+    startPreferenceSync(store);
+    await vi.advanceTimersByTimeAsync(0);
+    store.commit('theme/SET_UI_MODE', 'focused');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(localStorage.getItem('agnt:prefs-unsynced')).toBeNull();
+
+    _resetForTests();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(respond({ get: serverHas('studio'), put: accepted }));
+    const restarted = makeStore();
+    restarted.commit('theme/SET_UI_MODE', 'focused');
+    await hydrateFromServer(restarted);
+    expect(restarted.state.theme.uiMode).toBe('studio'); // the server's newer choice wins, as before
+  });
+
+  it('ignores a malformed record and the whole-scope "*" rejection', async () => {
+    localStorage.setItem('agnt:prefs-unsynced', '{not json');
+    const store = makeStore();
+    fetchMock.mockImplementation(respond({ get: serverHas('studio'), put: accepted }));
+    await hydrateFromServer(store);
+    expect(store.state.theme.uiMode).toBe('studio');
+
+    fetchMock.mockImplementation(respond({ get: { success: true, preferences: null }, put: { success: true, result: { device: { applied: [], rejected: [{ key: '*', reason: 'missing deviceId' }] } } } }));
+    startPreferenceSync(store);
+    await vi.advanceTimersByTimeAsync(0);
+    store.commit('theme/SET_UI_SCALE', 1.1);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(localStorage.getItem('agnt:prefs-unsynced')).toBeNull();
+  });
+});
