@@ -63,6 +63,9 @@ export const DEFAULT_TOOLS = new Set([
   // Group chat: pass the floor to another agent in the same conversation.
   // Terminal — ends the caller's turn; the mentioned agent responds next.
   'mention_agent',
+  // Main chat delegation: hand a task to a new linked chat that reports back.
+  // Always on, because the Main chat's whole job is to route work.
+  'start_chat',
   'get_agnt_api',
   'activate_skill',
   'execute_javascript',

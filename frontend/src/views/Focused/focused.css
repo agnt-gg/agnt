@@ -170,6 +170,52 @@
   font-weight: 600;
 }
 
+/* The pinned Main chat: a nav row with a clear button that shows on hover. */
+.ui-focused .focused-main-chat {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ui-focused .focused-main-chat .focused-nav-row {
+  padding-right: 40px;
+}
+.ui-focused .focused-main-chat .focused-nav-row i {
+  color: var(--fill-brand);
+}
+.ui-focused .focused-main-chat .focused-nav-row.unread::after {
+  content: '';
+  position: absolute;
+  right: 40px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--fill-brand);
+}
+.ui-focused .focused-main-clear {
+  position: absolute;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.ui-focused .focused-main-chat:hover .focused-main-clear,
+.ui-focused .focused-main-clear:focus-visible {
+  opacity: 1;
+}
+.ui-focused .focused-main-clear:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ui-focused .focused-sub-mark {
+  margin-right: 6px;
+  font-size: 0.75em;
+  color: var(--fill-brand);
+  opacity: 0.8;
+}
+
 .ui-focused .focused-search {
   display: flex;
   align-items: center;

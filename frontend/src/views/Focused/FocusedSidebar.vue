@@ -13,6 +13,28 @@
     </div>
 
     <nav class="focused-nav">
+      <!-- The Main chat: pinned first, the one place to stay in. -->
+      <div class="focused-main-chat" :class="{ active: onChat && isMainOpen }">
+        <button
+          type="button"
+          class="focused-nav-row"
+          :class="{ active: onChat && isMainOpen, unread: isMainUnread }"
+          data-testid="focused-main-chat"
+          @click="$emit('open-main')"
+        >
+          <i class="fas fa-thumbtack" aria-hidden="true"></i><span>{{ MAIN_CHAT_LABEL }}</span>
+        </button>
+        <button
+          type="button"
+          class="focused-icon-btn focused-main-clear"
+          :disabled="isMainStreaming"
+          aria-label="Clear main chat"
+          v-tooltip="isMainStreaming ? 'Wait for the reply to finish' : 'Clear main chat'"
+          @click="$emit('clear-main')"
+        >
+          <i class="fas fa-eraser" aria-hidden="true"></i>
+        </button>
+      </div>
       <button type="button" class="focused-nav-row" :class="{ active: onChat && !activeConversationId }" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i><span>New chat</span>
       </button>
@@ -71,7 +93,7 @@
           v-tooltip="c.title"
           @click="$emit('open-conversation', c.id)"
         >
-          {{ c.title }}
+          <i v-if="c.sub" class="fas fa-level-up-alt fa-rotate-90 focused-sub-mark" aria-label="Task from the Main chat"></i>{{ c.title }}
         </button>
       </li>
       <li v-if="!recents.length" class="focused-recents-empty">{{ query ? 'No chats match.' : 'Your chats show up here.' }}</li>
@@ -104,13 +126,14 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import { FOCUSED_PAGES, recentConversations, initialOf } from './focusedModel.js';
+import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
 
 defineProps({
   open: { type: Boolean, default: true },
   activePage: { type: String, default: null },
   onChat: { type: Boolean, default: false },
 });
-defineEmits(['close', 'new-chat', 'open-page', 'open-conversation']);
+defineEmits(['close', 'new-chat', 'open-page', 'open-conversation', 'open-main', 'clear-main']);
 
 const store = useStore();
 const route = useRoute();
@@ -149,7 +172,10 @@ function closeSearch() {
   searchOpen.value = false;
 }
 
-const recents = computed(() => recentConversations(store.getters['contentOutputs/visibleOutputs'], query.value));
+const { mainChatId, isMainOpen, isMainUnread, isMainStreaming } = useMainChat();
+const recents = computed(() =>
+  recentConversations(store.getters['contentOutputs/visibleOutputs'], query.value, 60, store.getters['contentOutputs/subChatIdSet']),
+);
 // Same precedence as Studio's list (OutputList.activeOutputId).
 const activeConversationId = computed(() => route.query['content-id'] || store.state.chat?.savedOutputId || null);
 
@@ -180,6 +206,7 @@ onMounted(() => {
   // The list is normally loaded at boot (initializeStore); this only covers a
   // cold mount that beat it.
   if (!store.getters['contentOutputs/outputs']?.length) store.dispatch('contentOutputs/fetchOutputs').catch(() => {});
+  if (!mainChatId.value) store.dispatch('contentOutputs/fetchMainChat');
 });
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
 </script>

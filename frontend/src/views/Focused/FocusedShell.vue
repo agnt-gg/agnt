@@ -8,6 +8,8 @@
       @new-chat="newChat"
       @open-page="openPage"
       @open-conversation="openConversation"
+      @open-main="openMain"
+      @clear-main="clearMain"
     />
     <button v-if="isMobile && sidebarOpen" type="button" class="focused-scrim" aria-label="Close sidebar" @click="setSidebar(false)"></button>
 
@@ -85,6 +87,7 @@ import FocusedSettings from './FocusedSettings.vue';
 import { screenTitle } from './focusedModel.js';
 import { focusedLocation, routeFor } from './focusedRoutes.js';
 import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
+import { useMainChat } from '@/composables/useMainChat.js';
 import { graduationUnlock, GRADUATION_COPY, GRADUATION_ASKED_KEY, readFlag, writeFlag } from '@/services/uiModeDefault.js';
 
 const props = defineProps({
@@ -170,9 +173,30 @@ async function newChat() {
   await nextTick();
   window.dispatchEvent(new CustomEvent('trigger-new-chat'));
 }
-/** A new chat with the request typed in. Nothing is sent until Enter. */
+// ── The Main chat: the one conversation the user stays in ──────────────────
+const mainChat = useMainChat();
+async function openMain() {
+  closeDrawer();
+  await mainChat.openMainChat();
+}
+async function clearMain() {
+  const cleared = await mainChat.clearMainChat(() =>
+    confirm({
+      title: 'Clear main chat?',
+      message: 'This empties the Main chat. Chats it started stay in Recents, still linked to it.',
+      confirmText: 'Clear',
+      danger: true,
+    }),
+  );
+  if (cleared) toast('Main chat cleared');
+}
+/**
+ * Ask in the Main chat, with the request typed in. Nothing is sent until
+ * Enter. The Main chat routes real work to its own chats, so asking never
+ * needs a new conversation.
+ */
 async function ask(text) {
-  await newChat();
+  await openMain();
   await nextTick();
   window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } }));
 }

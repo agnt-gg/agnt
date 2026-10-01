@@ -35,6 +35,35 @@
           </div>
         </div>
 
+        <!-- The Main chat: pinned first, the one place to stay in. Never an
+             item in the lists below (contentOutputs/visibleOutputs). -->
+        <div
+          class="output-item main-chat-item"
+          :class="{ active: isMainOpen, streaming: isMainStreaming }"
+          data-testid="main-chat-row"
+        >
+          <div class="output-content" @click="openMainChat">
+            <div class="output-preview">
+              <i v-if="isMainStreaming" class="fas fa-circle streaming-indicator"></i>
+              <span v-else-if="isMainUnread" class="unread-dot" v-tooltip="'Unread changes'"></span>
+              <i v-else class="fas fa-thumbtack main-chat-pin" aria-hidden="true"></i>
+              {{ MAIN_CHAT_LABEL }}
+            </div>
+            <div class="main-chat-sub">Tasks run in their own chats and report back here</div>
+          </div>
+          <div class="output-actions">
+            <button
+              class="action-menu-btn"
+              :disabled="isMainStreaming"
+              v-tooltip="isMainStreaming ? 'Wait for the reply to finish' : 'Clear main chat'"
+              aria-label="Clear main chat"
+              @click.stop="confirmClearMainChat"
+            >
+              <i class="fas fa-eraser"></i>
+            </button>
+          </div>
+        </div>
+
         <div class="list-header">
           <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />
         </div>
@@ -118,6 +147,7 @@
                       <div class="output-preview">
                         <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
                         <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
+                        <i v-if="subChatIds.has(output.id)" class="fas fa-level-up-alt fa-rotate-90 sub-chat-mark" v-tooltip="'A task started from the Main chat'"></i>
                         {{ getPreviewText(output.content, output) }}
                       </div>
                       <ConversationMetaLine
@@ -167,7 +197,8 @@
                     <div class="output-preview">
                       <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
                       <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
-                      {{ getPreviewText(output.content, output) }}
+                      <i v-if="subChatIds.has(output.id)" class="fas fa-level-up-alt fa-rotate-90 sub-chat-mark" v-tooltip="'A task started from the Main chat'"></i>
+                        {{ getPreviewText(output.content, output) }}
                     </div>
                     <ConversationMetaLine
                       :participants="participantsFor(output)"
@@ -216,7 +247,8 @@
                   <div class="output-preview">
                     <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
                     <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
-                    {{ getPreviewText(output.content, output) }}
+                    <i v-if="subChatIds.has(output.id)" class="fas fa-level-up-alt fa-rotate-90 sub-chat-mark" v-tooltip="'A task started from the Main chat'"></i>
+                        {{ getPreviewText(output.content, output) }}
                   </div>
                   <ConversationMetaLine
                     :participants="participantsFor(output)"
@@ -375,6 +407,7 @@ import { sortOutputs } from './outputSort.js';
 import { groupUnreadCount, notifiableUnreadIds, formatListDate } from '@/utils/conversationAttention.js';
 import ConversationMetaLine from './ConversationMetaLine.vue';
 import { openShare } from '@/composables/useShare.js';
+import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
 
 export default {
   name: 'OutputList',
@@ -390,6 +423,20 @@ export default {
     const playSound = inject('playSound', () => {});
     const simpleModal = ref(null);
     const searchQuery = ref('');
+
+    // The pinned Main chat, and which rows are tasks it started.
+    const { mainChatId, isMainOpen, isMainUnread, isMainStreaming, openMainChat, clearMainChat } = useMainChat();
+    const subChatIds = computed(() => store.getters['contentOutputs/subChatIdSet'] || new Set());
+    async function confirmClearMainChat() {
+      playSound('buttonClick');
+      await clearMainChat(() => simpleModal.value.showModal({
+        title: 'Clear main chat?',
+        message: 'This empties the Main chat. Chats it started stay in your list, still linked to it.',
+        confirmText: 'Clear',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      }));
+    }
 
     // Sort preference. Persisted because "how my conversation list is
     // ordered" is a preference, not session state — re-picking it on every
@@ -1553,6 +1600,7 @@ export default {
 
     // Setup lifecycle hooks
     onMounted(async () => {
+      if (!mainChatId.value) store.dispatch('contentOutputs/fetchMainChat');
       if (!hasLoadedAll.value) {
         await fetchSavedOutputs();
       }
@@ -1570,6 +1618,13 @@ export default {
     return {
       isMobile, mobileSelection,
       simpleModal,
+      MAIN_CHAT_LABEL,
+      isMainOpen,
+      isMainUnread,
+      isMainStreaming,
+      openMainChat,
+      confirmClearMainChat,
+      subChatIds,
       outputs,
       totalCount,
       hasMore,
@@ -2343,6 +2398,36 @@ body.dark .create-output-btn {
   animation: pulse-streaming 1.5s ease-in-out infinite;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+/* The pinned Main chat row: an ordinary row, set apart above the search. */
+.main-chat-item {
+  margin: 0 0 10px;
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--terminal-border-color));
+}
+.main-chat-item .output-preview {
+  font-weight: 600;
+}
+.main-chat-pin {
+  color: var(--color-primary);
+  font-size: 0.8em;
+  margin-right: 6px;
+}
+.main-chat-sub {
+  margin-top: 4px;
+  font-size: 0.78em;
+  opacity: 0.6;
+}
+.main-chat-item .action-menu-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+/* A task the Main chat handed off. */
+.sub-chat-mark {
+  color: var(--color-primary);
+  font-size: 0.75em;
+  margin-right: 6px;
+  opacity: 0.8;
 }
 
 .unread-dot {

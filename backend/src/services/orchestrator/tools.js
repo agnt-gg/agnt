@@ -1933,6 +1933,50 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       }
     },
   },
+  start_chat: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'start_chat',
+        description:
+          'Hand a task to a NEW chat that works on it in the background, linked to this conversation. Returns immediately; when the new chat finishes, its outcome is reported back HERE automatically as a message. Use it for any substantial or multi-step task so this conversation stays free; call it once per task to run independent tasks in parallel. The new chat CANNOT see this conversation: the prompt must be a complete, self-contained brief (goal, inputs, constraints, what "done" looks like). Do not poll or wait for the result.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Short name for the new chat as it appears in the sidebar, e.g. "Competitor pricing research".',
+            },
+            prompt: {
+              type: 'string',
+              description: 'The full, self-contained task for the new chat. It is sent as that chat\'s first message.',
+            },
+          },
+          required: ['title', 'prompt'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { startSubChat } = await import('./subChats.js');
+        const result = await startSubChat({
+          userId: context?.userId,
+          authToken,
+          parentConversationId: context?.conversationId || null,
+          title: args?.title,
+          prompt: args?.prompt,
+        });
+        if (!result.success) return JSON.stringify(result);
+        const { finished: _backgroundRun, ...started } = result;
+        return JSON.stringify({
+          ...started,
+          message: `Started "${started.title}" in a new chat. It works in the background and reports back here when done — tell the user it has started and move on.`,
+        });
+      } catch (error) {
+        return JSON.stringify({ success: false, error: `Could not start the chat: ${error.message}` });
+      }
+    },
+  },
   file_operations: {
     schema: {
       type: 'function',

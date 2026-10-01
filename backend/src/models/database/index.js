@@ -365,6 +365,30 @@ function createTables() {
       // that share the conversation.
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_conversation ON content_outputs(user_id, conversation_id)`);
 
+      // The Main chat and the sub-chats it delegates to (2026-10-01).
+      //
+      // A side table, NOT columns on content_outputs: every list column must
+      // also live in idx_content_outputs_list (see CONTENT_LIST_INDEX), and an
+      // existing install never rebuilds that index — CREATE INDEX IF NOT EXISTS
+      // is a no-op on the old shape — so a new list column would silently send
+      // the sidebar back to reading every transcript blob.
+      //
+      // role 'main': the one conversation a user always lands in. The partial
+      //   unique index makes "one per user" a database invariant.
+      // role 'sub':  a conversation started by start_chat; parent_output_id is
+      //   the row that started it (a stable row id, so clearing the Main chat —
+      //   which mints a new conversation_id — keeps its sub-chats linked).
+      db.run(`CREATE TABLE IF NOT EXISTS conversation_roles (
+        output_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('main', 'sub')),
+        parent_output_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (output_id) REFERENCES content_outputs(id) ON DELETE CASCADE
+      )`);
+      createIndex(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_roles_one_main ON conversation_roles(user_id) WHERE role = 'main'`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_roles_user ON conversation_roles(user_id, role)`);
+
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (
         id TEXT PRIMARY KEY,

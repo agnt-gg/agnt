@@ -3375,6 +3375,26 @@ export default {
     },
 
     /**
+     * Forget every in-memory copy of a saved conversation, so the next open
+     * reloads it from the server.
+     *
+     * For when the server REPLACED a row's transcript (clearing the Main
+     * chat). Opening a conversation reuses a cached slot whenever one holds
+     * its savedOutputId, so a stale slot would be reopened as-is — and its
+     * next autosave, naming the row by id, would write the old transcript
+     * straight back over the cleared one. An emptied, detached slot can do
+     * neither: autosave skips a slot with no messages.
+     */
+    detachSavedOutput({ commit, state }, outputId) {
+      if (!outputId) return;
+      for (const [convId, conv] of Object.entries(state.conversations)) {
+        if (conv?.savedOutputId !== outputId) continue;
+        commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: null });
+        commit('SCOPED_SET_MESSAGES', { conversationId: convId, messages: [] });
+      }
+    },
+
+    /**
      * Clear an agent's conversation
      */
     clearAgentConversation({ commit, state, dispatch }, { agentId, agentName }) {

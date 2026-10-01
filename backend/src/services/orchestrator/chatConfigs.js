@@ -13,6 +13,7 @@ import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
+import { loadConversationRoleSection } from './system-prompts/conversationRole.js';
 import { buildDeferredCatalog } from './deferredTools.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
@@ -959,7 +960,16 @@ const unifiedConfig = {
      * entire stable prefix ahead of it byte-identical between a spoken turn
      * and a typed one.
      */
-    if (!context.voiceMode) return withCallerContract(prompt, promptOptions, context);
+    // Main chat / sub-chat role: fixed for the conversation's life, so it sits
+    // after the shared prefix and before the per-turn voice section.
+    const roleSection = promptOptions?.platform === 'lean' ? '' : await loadConversationRoleSection(context);
+    let assembled = prompt;
+    if (roleSection) {
+      context._promptSections.push({ id: 'conversation-role', label: 'Conversation role', tokens: estimateTokens(roleSection), frozen: true });
+      assembled = `${assembled}\n\n${roleSection}`;
+    }
+
+    if (!context.voiceMode) return withCallerContract(assembled, promptOptions, context);
 
     const voiceSection = buildVoiceRegisterSection();
     context._promptSections.push({
@@ -968,7 +978,7 @@ const unifiedConfig = {
       tokens: estimateTokens(voiceSection),
       frozen: false,
     });
-    return withCallerContract(`${prompt}\n\n${voiceSection}`, promptOptions, context);
+    return withCallerContract(`${assembled}\n\n${voiceSection}`, promptOptions, context);
   },
   maxToolRounds: 100,
   responseType: 'stream',

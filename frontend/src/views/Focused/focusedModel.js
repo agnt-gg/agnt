@@ -142,9 +142,10 @@ function timeOf(value) {
 
 /**
  * The conversation list: newest activity first, titled, filtered by title.
- * Input is contentOutputs/visibleOutputs (archived rows already excluded).
+ * Input is contentOutputs/visibleOutputs (archived rows and the pinned Main
+ * chat already excluded). `subChatIds` marks tasks the Main chat handed off.
  */
-export function recentConversations(outputs, query = '', limit = 60) {
+export function recentConversations(outputs, query = '', limit = 60, subChatIds = null) {
   const rows = (Array.isArray(outputs) ? outputs : [])
     .filter((o) => o && o.id)
     .map((o) => ({
@@ -152,6 +153,7 @@ export function recentConversations(outputs, query = '', limit = 60) {
       title: String(o.title || '').trim() || 'Untitled chat',
       at: timeOf(o.updated_at || o.created_at),
       unread: !!o.last_read_at && timeOf(o.updated_at) > timeOf(o.last_read_at),
+      sub: !!subChatIds?.has?.(o.id),
     }))
     .filter((r) => matches(query, r.title))
     .sort((a, b) => b.at - a.at);

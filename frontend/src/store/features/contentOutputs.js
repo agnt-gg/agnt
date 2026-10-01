@@ -74,6 +74,13 @@ export default {
     // of in-flight PATCHes / id -> ms timestamp of the last settle.
     attentionInFlight: {},
     attentionSettledAt: {},
+    // The Main chat: the one conversation every user always has, pinned above
+    // the list in both shells (see backend MainChatService). Its row lives in
+    // `outputs` like any other; this only names which one it is.
+    mainChatId: null,
+    // Conversations started from another one by start_chat: id -> parent id
+    // (null when the parent was not saved yet). Drives the sub-chat marker.
+    subChatParents: {},
   }),
   mutations: {
     SET_OUTPUTS(state, { outputs, totalCount, append = false, fetchStartedAt = 0 }) {
@@ -174,6 +181,16 @@ export default {
     INVALIDATE_CACHE(state) {
       state.lastFetched = null;
     },
+    SET_MAIN_CHAT(state, { main, subChats }) {
+      state.mainChatId = main?.id || null;
+      if (Array.isArray(subChats)) {
+        state.subChatParents = Object.fromEntries(subChats.map((link) => [link.id, link.parentId || null]));
+      }
+    },
+    ADD_SUB_CHAT(state, { id, parentId = null }) {
+      if (!id) return;
+      state.subChatParents = { ...state.subChatParents, [id]: parentId };
+    },
   },
   getters: {
     outputs: (state) => state.outputs,
@@ -182,7 +199,12 @@ export default {
     // client-side unread bookkeeping to drift out of sync.
     unreadOutputIdSet: (state) => unreadIdSet(state.outputs),
     triageRail: (state) => triageRail(state.outputs),
-    visibleOutputs: (state) => state.outputs.filter((o) => !o.archived_at),
+    // The Main chat is pinned above every list, so it is not also an item in
+    // one. Unread state still derives from `outputs`, which keeps it.
+    visibleOutputs: (state) => state.outputs.filter((o) => !o.archived_at && o.id !== state.mainChatId),
+    mainChatId: (state) => state.mainChatId,
+    mainChatOutput: (state) => (state.mainChatId ? state.outputs.find((o) => o.id === state.mainChatId) || null : null),
+    subChatIdSet: (state) => new Set(Object.keys(state.subChatParents)),
     archivedOutputs: (state) => state.outputs.filter((o) => !!o.archived_at),
     totalCount: (state) => state.totalCount,
     isFetching: (state) => state.isFetching,
@@ -495,6 +517,45 @@ export default {
     invalidateCache({ commit }) {
       commit('INVALIDATE_CACHE');
       commit('SET_HAS_LOADED_ALL', false);
+    },
+
+    /**
+     * Which row is the Main chat (the server creates it on first ask), plus
+     * every sub-chat link. Returns the Main chat's row metadata, or null when
+     * the server could not be reached — callers fall back to a fresh chat.
+     */
+    async fetchMainChat({ commit }) {
+      const token = localStorage.getItem('token');
+      if (!token) return null;
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/main-chat`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        commit('SET_MAIN_CHAT', data);
+        if (data.main) commit('UPSERT_OUTPUT_META', { output: data.main });
+        return data.main || null;
+      } catch (error) {
+        console.error('Error loading the main chat:', error);
+        return null;
+      }
+    },
+
+    /** Empty the Main chat on the server. Resolves to its new row metadata. */
+    async clearMainChat({ commit }) {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/main-chat/clear`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const { main } = await response.json();
+      commit('SET_MAIN_CHAT', { main });
+      commit('UPSERT_OUTPUT_META', { output: main });
+      return main;
     },
 
     refreshOutputs({ dispatch, commit }) {

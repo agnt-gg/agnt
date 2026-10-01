@@ -82,6 +82,8 @@ const REGISTRY = {
   activate_skill: { capabilities: [], sink: [] },
   get_agnt_api: { capabilities: [], sink: [] },
   mention_agent: { capabilities: [], sink: [] },
+  // Starts a chat turn; every tool THAT turn calls is policed on its own.
+  start_chat: { capabilities: [], sink: [] },
   analyze_image: { capabilities: [], sink: [] },
   generate_image: { capabilities: [], sink: [] },
 

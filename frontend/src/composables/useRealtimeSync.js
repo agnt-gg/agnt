@@ -448,6 +448,8 @@ export function useRealtimeSync() {
 
     socket.on('content:created', (data) => {
       console.log('[Realtime] Content output created:', data?.id);
+      // A chat started by start_chat carries its parent (null if unsaved).
+      if (data && 'subChatOf' in data) store.commit('contentOutputs/ADD_SUB_CHAT', { id: data.id, parentId: data.subChatOf });
       applyContentEvent(data);
     });
 

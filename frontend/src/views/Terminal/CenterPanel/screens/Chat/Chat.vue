@@ -2284,7 +2284,14 @@ export default {
       store.dispatch('chat/registerStreamEventCallback', handleStreamEvent);
 
       // PRIORITY: If loading a saved output, start immediately — don't wait on provider checks
-      const contentId = route.query['content-id'];
+      let contentId = route.query['content-id'];
+      // A cold start with nothing asked for lands in the Main chat — the one
+      // conversation the user always comes back to. Unreachable server: the
+      // fresh-chat path below, exactly as before.
+      if (!contentId && !store.state.chat.activeConversationId) {
+        const main = await store.dispatch('contentOutputs/fetchMainChat');
+        if (main?.id) contentId = main.id;
+      }
       let contentLoadPromise = null;
       if (contentId) {
         terminalLines.value = ['Loading saved output...'];
@@ -2315,11 +2322,14 @@ export default {
         store.commit('chat/SET_ACTIVE_CONVERSATION', initConvId);
       }
 
-      // Wait for content load if it was started early
-      if (contentLoadPromise) {
-        await contentLoadPromise;
-      } else if (store.state.chat.messages.length === 0) {
-        store.commit('chat/RESET_CHAT');
+      // Wait for content load if it was started early. A loaded conversation
+      // can be empty (a new or just-cleared Main chat): it greets like a new chat.
+      if (contentLoadPromise) await contentLoadPromise;
+      if (store.state.chat.messages.length === 0) {
+        // NOT after a load: RESET_CHAT drops the slot's savedOutputId, which
+        // would detach the conversation just opened and fork a new row on the
+        // first send.
+        if (!contentLoadPromise) store.commit('chat/RESET_CHAT');
 
         // Ensure version is available before building welcome message
         await versionPromise;
@@ -2669,6 +2679,18 @@ export default {
           // conversation's own position once the transcript has rendered.
           terminalLines.value = ['Loading saved output...'];
           await loadSavedOutput(newContentId);
+          // An empty saved conversation (a just-cleared Main chat) greets like
+          // a new chat. Shown only; it is saved, like any greeting, once the
+          // user sends something.
+          if (store.state.chat.messages.length === 0 && hasConnectedAIProvider.value) {
+            store.commit('chat/ADD_MESSAGE', {
+              id: generateMessageId(),
+              role: 'assistant',
+              content: "Hi! I'm Annie, your personal AI assistant. What can I help you build today?",
+              timestamp: Date.now(),
+              metadata: ['AGNT Status: Online', `Version: ${appVersion.value || '...'}`],
+            });
+          }
         }
       },
     );
