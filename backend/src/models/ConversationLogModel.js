@@ -57,6 +57,35 @@ class ConversationLogModel {
   }
 
   /**
+   * Rewrite the transcript of a conversation that was just read, but only if
+   * nothing else wrote it in between: the WHERE pins `updated_at` to the value
+   * the caller read. A turn that finishes in that window wins, and the caller
+   * learns it (`updated: false`) instead of silently overwriting the turn.
+   *
+   * The caller must already have proven ownership via getByConversationId.
+   *
+   * @returns {Promise<{ conversationId: string, updated: boolean }>}
+   */
+  static async replaceHistory({ conversationId, full_history, final_response, expectedUpdatedAt }) {
+    const updateQuery = `
+      UPDATE conversation_logs
+      SET full_history = ?, final_response = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE conversation_id = ? AND updated_at IS ?
+    `;
+    const params = [full_history, final_response, conversationId, expectedUpdatedAt ?? null];
+
+    return new Promise((resolve, reject) => {
+      db.run(updateQuery, params, function (err) {
+        if (err) {
+          console.error('Error replacing conversation history:', err);
+          return reject(err);
+        }
+        resolve({ conversationId, updated: this.changes > 0 });
+      });
+    });
+  }
+
+  /**
    * Read a conversation back.
    *
    * This model was WRITE-ONLY until now: `create` and `update` persisted the

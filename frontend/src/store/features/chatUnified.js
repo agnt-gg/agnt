@@ -3,7 +3,8 @@
 // 'tool:<id>', 'widget:<id>'). The orchestrator's rich Chat.vue continues to use
 // the legacy `chat` module; this module powers all five per-page panels.
 
-import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
+import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
+import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
@@ -422,6 +423,18 @@ export default {
         message.content = content;
         persistConversations(state.conversations);
       }
+    },
+    /**
+     * Silently replace the closing text of the latest assistant reply
+     * (assistantReplyEdit.js). Re-checks editability so a reply that has
+     * since stopped being the latest can never be edited.
+     */
+    EDIT_LAST_REPLY(state, { channelKey, messageId, content }) {
+      const conv = state.conversations[channelKey];
+      if (!conv || editableReplyId(conv.messages) !== messageId) return;
+      applyReplyEdit(conv.messages.find((m) => m.id === messageId), content);
+      conv.lastUpdate = Date.now();
+      persistConversations(state.conversations);
     },
     APPEND_MESSAGE_CONTENT(state, { channelKey, messageId, delta }) {
       const conv = state.conversations[channelKey];
@@ -1122,6 +1135,39 @@ export default {
         // Fire-and-forget — backend cleanup is best-effort.
         emitClearSteer(conversationId).catch(() => {});
       }
+    },
+
+    /**
+     * Edit the latest assistant reply in place — no resend, no branch. See
+     * assistantReplyEdit.js for why this cannot disturb the prompt cache.
+     *
+     * The saved transcript is written immediately: hydration adopts whichever
+     * copy says MORE, so a shortening edit left unsaved would lose to the old
+     * words on the next load. The provider log is mirrored too, for the
+     * fallback hydration path.
+     *
+     * @returns {Promise<{ ok: boolean, reason?: string, serverSynced?: boolean }>}
+     */
+    async editLastReply({ commit, dispatch, state }, { channelKey, messageId, content } = {}) {
+      const conv = channelKey ? state.conversations[channelKey] : null;
+      if (!conv) return { ok: false, reason: 'no-conversation' };
+      if (state.streamingChannels[channelKey]) return { ok: false, reason: 'streaming' };
+      const newText = typeof content === 'string' ? content.trim() : '';
+      if (!newText) return { ok: false, reason: 'empty' };
+      if (!messageId || editableReplyId(conv.messages) !== messageId) return { ok: false, reason: 'not-latest-reply' };
+
+      const previousText = closingText(conv.messages.find((m) => m.id === messageId));
+      if (previousText.trim() === newText) return { ok: true, unchanged: true };
+
+      commit('EDIT_LAST_REPLY', { channelKey, messageId, content: newText });
+      dispatch('saveChannelTranscript', { channelKey }).catch(() => { /* logged by saveTranscript */ });
+
+      if (!conv.conversationId) return { ok: true, serverSynced: false };
+      const synced = await saveReplyEdit(conv.conversationId, { previousText, content: newText });
+      if (!synced.ok) {
+        console.warn(`[chatUnified] Reply edit kept locally; server transcript not updated (${synced.status}: ${synced.error})`);
+      }
+      return { ok: true, serverSynced: synced.ok };
     },
 
     /**

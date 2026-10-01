@@ -133,6 +133,7 @@ function makeStore(messages = MESSAGES) {
         state: () => ({}),
         getters: {
           getFormattedMessages: () => () => messages,
+          getMessages: () => () => messages,
           isStreaming: () => () => false,
           isLoadingSuggestions: () => () => false,
           getSuggestions: () => () => [],

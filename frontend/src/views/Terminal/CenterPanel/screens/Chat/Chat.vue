@@ -236,7 +236,9 @@
                     "
                     @toggle-tool="toggleToolCallExpansion"
                     @provider-connected="handleProviderConnected"
+                    :can-edit-reply="message.id === editableReplyMessageId"
                     @edit-message="handleEditMessage"
+                    @edit-reply="handleEditReply"
                   />
                 </template>
               </TransitionGroup>
@@ -311,6 +313,7 @@ import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { serializeTranscript } from '@/services/conversationTranscript.js';
+import { editableReplyId } from '@/services/assistantReplyEdit.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -1473,6 +1476,26 @@ export default {
           conversationId: sendConvId,
         });
       }
+    };
+
+    // The one assistant reply that may be edited in place (the latest), read
+    // from the active conversation's transcript rather than the display list.
+    // Null while that conversation streams: the latest reply is still being written.
+    const editableReplyMessageId = computed(() => {
+      const convId = store.state.chat.activeConversationId;
+      const conv = convId ? store.state.chat.conversations[convId] : null;
+      if (!conv || conv.isStreaming || (conv._activeStreams || 0) > 0) return null;
+      return editableReplyId(conv.messages);
+    });
+
+    // Edit the latest reply in place: no truncation, no resend.
+    const handleEditReply = async ({ messageId, newContent }) => {
+      const result = await store.dispatch('chat/editLastReply', {
+        conversationId: store.state.chat.activeConversationId,
+        messageId,
+        content: newContent,
+      });
+      if (!result?.ok) console.warn('[Chat] Reply edit refused:', result?.reason);
     };
 
     // Edit & resend: truncate from edited message, re-add with new content, resend
@@ -2969,6 +2992,8 @@ export default {
       clearActivities,
       handleUserInputSubmit,
       handleEditMessage,
+      handleEditReply,
+      editableReplyMessageId,
       handlePanelAction,
       inspectorProps,
       handleScreenChange,

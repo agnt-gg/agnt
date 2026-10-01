@@ -15,7 +15,7 @@
     <div class="message-content">
       <div v-if="message.role === 'assistant'" class="compact-speaker"><span>a</span>{{ message.agentName || 'Annie' }}</div>
       <div class="message-card">
-        <!-- Edit mode for user messages -->
+        <!-- Edit mode: user messages (edit & resend) and the latest reply (edit in place) -->
         <div v-if="isEditing" class="message-edit-container">
           <textarea
             ref="editTextarea"
@@ -27,13 +27,18 @@
           ></textarea>
           <div class="message-edit-actions">
             <button class="edit-cancel-btn" @click="cancelEditing">Cancel</button>
-            <button class="edit-send-btn" @click="submitEdit" :disabled="!editText.trim()">Send</button>
+            <button class="edit-send-btn" @click="submitEdit" :disabled="!editText.trim()">{{ isReplyEdit ? 'Save' : 'Send' }}</button>
           </div>
         </div>
 
         <template v-else>
-          <!-- Edit button for user messages -->
-          <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" v-tooltip="'Edit & resend'">
+          <!-- Edit button: user messages, and the latest assistant reply when the parent allows it -->
+          <button
+            v-if="(message.role === 'user' || isReplyEdit) && !status"
+            class="message-edit-btn"
+            @click="startEditing"
+            v-tooltip="isReplyEdit ? 'Edit reply' : 'Edit & resend'"
+          >
             <i class="fas fa-pen"></i>
           </button>
 
@@ -422,6 +427,7 @@
 
 <script>
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, inject } from 'vue';
+import { closingText } from '@/services/assistantReplyEdit.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
 import DOMPurify from 'dompurify';
@@ -646,8 +652,15 @@ export default {
       type: Object,
       default: null,
     },
+    // The parent's verdict that THIS message is the latest assistant reply
+    // and may be edited in place (assistantReplyEdit.js#editableReplyId).
+    // Off by default so surfaces that do not wire 'edit-reply' never show it.
+    canEditReply: {
+      type: Boolean,
+      default: false,
+    },
   },
-  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message'],
+  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message', 'edit-reply'],
   setup(props, { emit }) {
     // A workspace already has a canvas dedicated to live surfaces. Browser
     // calls render there as a Browser widget; standalone chat has no canvas
@@ -720,8 +733,12 @@ export default {
     const editText = ref('');
     const editTextarea = ref(null);
 
+    const isReplyEdit = computed(() => props.canEditReply && props.message.role === 'assistant');
+
     const startEditing = () => {
-      editText.value = props.message.content || '';
+      // A reply edits only its closing text: earlier rounds sit inside a cached
+      // prefix and are not offered (see assistantReplyEdit.js).
+      editText.value = isReplyEdit.value ? closingText(props.message) || '' : props.message.content || '';
       isEditing.value = true;
       nextTick(() => {
         if (editTextarea.value) {
@@ -741,11 +758,17 @@ export default {
     const submitEdit = () => {
       if (!editText.value.trim()) return;
       isEditing.value = false;
-      emit('edit-message', { messageId: props.message.id, newContent: editText.value.trim() });
+      const payload = { messageId: props.message.id, newContent: editText.value.trim() };
+      emit(isReplyEdit.value ? 'edit-reply' : 'edit-message', payload);
     };
 
     const handleEditKeydown = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // A reply is multi-paragraph markdown, so plain Enter must insert a
+      // newline there; Ctrl/Cmd+Enter saves. User messages keep Enter-to-send.
+      const submits = isReplyEdit.value
+        ? e.key === 'Enter' && (e.ctrlKey || e.metaKey)
+        : e.key === 'Enter' && !e.shiftKey;
+      if (submits) {
         e.preventDefault();
         submitEdit();
       } else if (e.key === 'Escape') {
@@ -3120,6 +3143,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       renderedParts,
       // Edit message
       isEditing,
+      isReplyEdit,
       editText,
       editTextarea,
       startEditing,
@@ -5309,6 +5333,17 @@ span.nodeLabel p {
 .message-wrapper.user.editing .message-card {
   width: 100%;
   margin-left: 0;
+}
+
+/* A reply can be long: edit it at full width and scroll inside the field
+   rather than pushing the composer off screen. */
+.message-wrapper.assistant.editing .message-card {
+  width: 100%;
+}
+
+.message-wrapper.assistant.editing .message-edit-textarea {
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .message-edit-container {

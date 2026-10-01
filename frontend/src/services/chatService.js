@@ -306,6 +306,37 @@ export async function fetchConversation(conversationId) {
 }
 
 /**
+ * Mirror an edit of the latest assistant reply into the server transcript
+ * (conversation_logs). Without this, cross-device hydration and stream-death
+ * recovery would restore the pre-edit words.
+ *
+ * The server matches on `previousText` rather than a message id — its rows
+ * are provider-shaped and carry no UI ids — and refuses (409) when its last
+ * row is not that text or a run is active. A refusal never undoes the local
+ * edit: the local transcript is what the next turn sends to the model.
+ *
+ * @returns {Promise<{ ok: boolean, status: number, error?: string }>}
+ */
+export async function saveReplyEdit(conversationId, { previousText, content }) {
+  if (!conversationId) return { ok: false, status: 0, error: 'no-conversation-id' };
+  try {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}/orchestrator/conversations/${encodeURIComponent(conversationId)}/last-reply`,
+      {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ previousText, content }),
+      },
+    );
+    if (response.ok) return { ok: true, status: response.status };
+    const json = await response.json().catch(() => null);
+    return { ok: false, status: response.status, error: json?.error || response.statusText };
+  } catch (e) {
+    return { ok: false, status: 0, error: e?.message || String(e) };
+  }
+}
+
+/**
  * Parse a single `event: <name>\ndata: <json>` SSE block.
  * Returns null when the block is empty / malformed.
  */

@@ -4,7 +4,8 @@ import { reconcileCompactedTranscript } from '../../../../backend/src/utils/comp
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
-import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
+import { reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
+import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
 import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
@@ -1371,6 +1372,18 @@ export default {
       if (!conv) return;
       const message = conv.messages.find((m) => m.id === messageId);
       if (message) message.content = typeof content === 'string' ? content : '';
+    },
+
+    /**
+     * Silently replace the closing text of the latest assistant reply
+     * (assistantReplyEdit.js). Re-checks editability here so no caller can
+     * edit a reply that has since stopped being the latest.
+     */
+    SCOPED_EDIT_LAST_REPLY(state, { conversationId, messageId, content }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || editableReplyId(conv.messages) !== messageId) return;
+      const message = conv.messages.find((m) => m.id === messageId);
+      applyReplyEdit(message, content);
     },
 
     SCOPED_SET_COMPACTING(state, { conversationId, value, error = null }) {
@@ -2887,6 +2900,40 @@ export default {
       commit('SCOPED_SET_MESSAGE_CONTENT', { conversationId: convId, messageId, content });
       dispatch('autosaveConversation', { debounce: true, conversationId: convId });
       return true;
+    },
+
+    /**
+     * Edit the latest assistant reply in place — no resend, no branch. See
+     * assistantReplyEdit.js for why this cannot disturb the prompt cache.
+     *
+     * Saved locally first (that copy feeds the next turn's history), then
+     * mirrored to the server transcript so other devices and stream recovery
+     * do not resurrect the old words.
+     *
+     * @returns {Promise<{ ok: boolean, reason?: string, serverSynced?: boolean }>}
+     */
+    async editLastReply({ commit, state, dispatch }, { conversationId, messageId, content } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv) return { ok: false, reason: 'no-conversation' };
+      if (conv.isStreaming || (conv._activeStreams || 0) > 0) return { ok: false, reason: 'streaming' };
+      const newText = typeof content === 'string' ? content.trim() : '';
+      if (!newText) return { ok: false, reason: 'empty' };
+      if (!messageId || editableReplyId(conv.messages) !== messageId) return { ok: false, reason: 'not-latest-reply' };
+
+      const previousText = closingText(conv.messages.find((m) => m.id === messageId));
+      if (previousText.trim() === newText) return { ok: true, unchanged: true };
+
+      commit('SCOPED_EDIT_LAST_REPLY', { conversationId: convId, messageId, content: newText });
+      dispatch('autosaveConversation', { debounce: false, conversationId: convId });
+
+      const serverConvId = conv.conversationId && !String(conv.conversationId).startsWith('temp-') ? conv.conversationId : null;
+      if (!serverConvId) return { ok: true, serverSynced: false };
+      const synced = await saveReplyEdit(serverConvId, { previousText, content: newText });
+      if (!synced.ok) {
+        console.warn(`[Chat] Reply edit kept locally; server transcript not updated (${synced.status}: ${synced.error})`);
+      }
+      return { ok: true, serverSynced: synced.ok };
     },
 
     /**

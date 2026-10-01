@@ -31,8 +31,10 @@
             :compact="messageItemMode === 'compact'"
             :image-cache="imageCache"
             :data-cache="dataCache"
+            :can-edit-reply="!isProcessing && message.id === editableReplyMessageId"
             @toggle-tool="onToggleTool"
             @edit-message="onEditMessage"
+            @edit-reply="onEditReply"
           />
         </TransitionGroup>
 
@@ -201,6 +203,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
+import { editableReplyId } from '@/services/assistantReplyEdit.js';
 
 export default {
   name: 'UnifiedChatContainer',
@@ -348,6 +351,11 @@ export default {
 
     const formattedMessages = computed(() => store.getters['chatUnified/getFormattedMessages'](props.channelKey));
     const isProcessing = computed(() => store.getters['chatUnified/isStreaming'](props.channelKey));
+    // Read from the raw channel messages: the rule is about the transcript,
+    // not about what formatting chose to display.
+    const editableReplyMessageId = computed(() =>
+      editableReplyId(store.getters['chatUnified/getMessages'](props.channelKey)),
+    );
     const isLoadingSuggestions = computed(() => store.getters['chatUnified/isLoadingSuggestions'](props.channelKey));
     const storedSuggestions = computed(() => store.getters['chatUnified/getSuggestions'](props.channelKey));
     const pendingSteer = computed(() => store.getters['chatUnified/pendingSteer'](props.channelKey));
@@ -622,6 +630,15 @@ export default {
       focusInput();
     };
 
+    const onEditReply = async ({ messageId, newContent }) => {
+      const result = await store.dispatch('chatUnified/editLastReply', {
+        channelKey: props.channelKey,
+        messageId,
+        content: newContent,
+      });
+      if (!result?.ok) console.warn('[UnifiedChatContainer] Reply edit refused:', result?.reason);
+    };
+
     const getStatusFor = (message) => {
       if (!message || message.role !== 'assistant') return null;
       return store.getters['chatUnified/getMessageStatus'](props.channelKey, message.id);
@@ -805,6 +822,8 @@ export default {
       onDrop,
       onToggleTool,
       onEditMessage,
+      onEditReply,
+      editableReplyMessageId,
       executeSuggestion,
       getStatusFor,
       getRunningToolsFor,

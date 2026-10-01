@@ -10,6 +10,7 @@ import universalChatHandler, { getAvailableTools } from '../services/Orchestrato
 import { handleCompaction } from '../services/orchestrator/compactionHandler.js';
 import { attachSubscriber, cancelRun, getRunStatus, listRunsForUser } from '../services/orchestrator/activeRuns.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
+import { replaceLastReplyText, replaceFinalResponse } from '../services/orchestrator/lastReplyEdit.js';
 import ContentOutputModel from '../models/ContentOutputModel.js';
 
 const router = express.Router();
@@ -163,6 +164,45 @@ router.get('/conversations/:conversationId', authenticateToken, async (req, res)
   } catch (error) {
     console.error('[OrchestratorRoutes] Failed to read conversation log:', error);
     res.status(500).json({ success: false, error: 'Failed to read conversation' });
+  }
+});
+
+// Mirror an in-place edit of the latest assistant reply into the persisted
+// transcript (the client has already applied it locally). Every refusal is a
+// 409 with a machine-readable reason: the client keeps its local edit either
+// way, so a refusal must be explicit, never a silent no-op.
+router.patch('/conversations/:conversationId/last-reply', authenticateToken, async (req, res) => {
+  const { conversationId } = req.params;
+  const userId = req.user?.id;
+  const { previousText, content } = req.body || {};
+  if (typeof previousText !== 'string' || typeof content !== 'string' || !content.trim()) {
+    return res.status(400).json({ success: false, error: 'previousText and a non-empty content are required' });
+  }
+
+  // A live run will write the transcript when it ends; editing under it would
+  // be overwritten, or would rewrite the reply it is still producing.
+  if (getRunStatus(conversationId, userId).active) {
+    return res.status(409).json({ success: false, error: 'run-active' });
+  }
+
+  try {
+    const log = await ConversationLogModel.getByConversationId(conversationId, userId);
+    if (!log) return res.status(404).json({ success: false, error: 'Conversation not found' });
+
+    const edit = replaceLastReplyText(log.messages, { previousText, content });
+    if (!edit.ok) return res.status(409).json({ success: false, error: edit.reason });
+
+    const saved = await ConversationLogModel.replaceHistory({
+      conversationId,
+      full_history: JSON.stringify(edit.messages),
+      final_response: replaceFinalResponse(log.finalResponse, { previousText, content }),
+      expectedUpdatedAt: log.updatedAt,
+    });
+    if (!saved.updated) return res.status(409).json({ success: false, error: 'concurrent-write' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[OrchestratorRoutes] Failed to edit last reply:', error);
+    res.status(500).json({ success: false, error: 'Failed to edit reply' });
   }
 });
 
