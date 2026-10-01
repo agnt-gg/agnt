@@ -1,14 +1,14 @@
 /**
- * Simple shell — the pure half.
+ * Focused shell — the pure half.
  *
  * Everything here is a function of store data, so it is tested without a DOM
- * (simpleModel.spec.js). The components in this folder only render what these
+ * (focusedModel.spec.js). The components in this folder only render what these
  * return and dispatch what they are told to.
  *
- * THE ONE RULE: Simple is a FRAME, not a second client. It reads the shared
+ * THE ONE RULE: Focused is a FRAME, not a second client. It reads the shared
  * Vuex stores and opens things through the same executor the Jump palette
  * uses (canvas/jumpActions.js). It never calls the API itself; the drift
- * guard in simpleDrift.spec.js fails the build if that changes.
+ * guard in focusedDrift.spec.js fails the build if that changes.
  */
 import { buildJumpCatalog } from '@/canvas/jumpCatalog.js';
 import { matches } from '@/canvas/jumpIndex.js';
@@ -17,13 +17,13 @@ import { ALL_SECTIONS } from '@/canvas/sections.js';
 // ── Screens ────────────────────────────────────────────────────────────────
 
 /**
- * Screens Simple renders bare, as its own. Everything else is "borrowed
+ * Screens Focused renders bare, as its own. Everything else is "borrowed
  * Studio": rendered in full, untouched, under a bar that leads back.
  */
-export const SIMPLE_NATIVE_SCREENS = Object.freeze(['ChatScreen']);
+export const FOCUSED_NATIVE_SCREENS = Object.freeze(['ChatScreen']);
 
 export function isBorrowedScreen(screen) {
-  return !!screen && !SIMPLE_NATIVE_SCREENS.includes(screen);
+  return !!screen && !FOCUSED_NATIVE_SCREENS.includes(screen);
 }
 
 /** The name Studio's own rail uses for a screen, so the two never disagree. */
@@ -38,9 +38,9 @@ export function screenTitle(screen) {
   return String(screen || '').replace(/Screen$/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-// ── Pages Simple owns (no Studio equivalent of their LOOK) ────────────────
+// ── Pages Focused owns (no Studio equivalent of their LOOK) ────────────────
 
-export const SIMPLE_PAGES = Object.freeze({
+export const FOCUSED_PAGES = Object.freeze({
   library: {
     title: 'Library',
     sub: 'Everything you\u2019ve made with AGNT. Ask in chat to create or change anything.',
@@ -58,8 +58,8 @@ export const SIMPLE_PAGES = Object.freeze({
   },
 });
 
-export function isSimplePage(page) {
-  return Object.prototype.hasOwnProperty.call(SIMPLE_PAGES, page);
+export function isFocusedPage(page) {
+  return Object.prototype.hasOwnProperty.call(FOCUSED_PAGES, page);
 }
 
 // ── Library ────────────────────────────────────────────────────────────────

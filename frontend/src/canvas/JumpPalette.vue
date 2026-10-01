@@ -204,7 +204,7 @@ function close() {
 function run(item) {
   if (!item) return;
   close();
-  // One executor shared with Simple's library pages — see jumpActions.js.
+  // One executor shared with Focused's library pages — see jumpActions.js.
   runJumpAction(item.action, {
     store,
     router,

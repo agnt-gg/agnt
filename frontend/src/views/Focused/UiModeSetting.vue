@@ -35,7 +35,7 @@ const store = useStore();
 const mode = computed(() => store.getters['theme/uiMode']);
 
 const choices = [
-  { id: 'simple', label: UI_MODE_LABELS.simple, icon: 'fas fa-comment', sub: 'One input, your chats and your library.' },
+  { id: 'focused', label: UI_MODE_LABELS.focused, icon: 'fas fa-comment', sub: 'One input, your chats and your library.' },
   { id: 'studio', label: UI_MODE_LABELS.studio, icon: 'fas fa-th-large', sub: 'Everything: canvas, forges, runs and panels.' },
 ];
 

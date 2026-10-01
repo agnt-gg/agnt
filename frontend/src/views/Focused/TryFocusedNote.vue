@@ -2,33 +2,33 @@
   <!-- Teleported to <body>, like SimpleModal: inside the canvas a fixed box
        is clipped by its ancestors (it rendered with its top cut off). -->
   <Teleport to="body">
-    <div class="try-simple-scrim" @click.self="dismiss">
+    <div class="try-focused-scrim" @click.self="dismiss">
       <section
         ref="dialogEl"
-        class="try-simple"
+        class="try-focused"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="try-simple-title"
-        aria-describedby="try-simple-body"
+        aria-labelledby="try-focused-title"
+        aria-describedby="try-focused-body"
         tabindex="-1"
       >
-        <img class="try-simple-logo" src="/images/agnt-logo-mark.svg" alt="" />
-        <span class="try-simple-badge">New</span>
-        <h2 id="try-simple-title">Meet <em>Simple</em></h2>
-        <p id="try-simple-body">
+        <img class="try-focused-logo" src="/images/agnt-logo-mark.svg" alt="" />
+        <span class="try-focused-badge">New</span>
+        <h2 id="try-focused-title">Meet <em>Focused</em></h2>
+        <p id="try-focused-body">
           A calmer way to use AGNT: one input, your chats and your library. Same app, same data, and everything
           you use now is still one click away.
         </p>
 
-        <ul class="try-simple-points">
+        <ul class="try-focused-points">
           <li><i class="fas fa-comment" aria-hidden="true"></i>Just ask. Steps fold into one line.</li>
           <li><i class="fas fa-book" aria-hidden="true"></i>Agents, workflows, tools and plugins in one library.</li>
           <li><i class="fas fa-th-large" aria-hidden="true"></i>Open any Studio screen in full when you need it.</li>
         </ul>
 
-        <div class="try-simple-actions">
-          <button ref="primaryEl" type="button" class="try-simple-primary" @click="trySimple">Try Simple</button>
-          <button type="button" class="try-simple-quiet" @click="dismiss">Not now</button>
+        <div class="try-focused-actions">
+          <button ref="primaryEl" type="button" class="try-focused-primary" @click="tryFocused">Try Focused</button>
+          <button type="button" class="try-focused-quiet" @click="dismiss">Not now</button>
         </div>
         <small>Switch any time with Ctrl+Shift+S, or in Settings → Navigation.</small>
       </section>
@@ -49,8 +49,8 @@ function dismiss() {
   emit('dismiss');
 }
 
-function trySimple() {
-  store.dispatch('theme/setUiMode', 'simple');
+function tryFocused() {
+  store.dispatch('theme/setUiMode', 'focused');
   emit('dismiss');
 }
 
@@ -78,7 +78,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.try-simple-scrim {
+.try-focused-scrim {
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -88,9 +88,9 @@ onBeforeUnmount(() => {
   padding: 24px;
   background: var(--scrim);
   backdrop-filter: blur(6px);
-  animation: try-simple-fade 160ms ease-out;
+  animation: try-focused-fade 160ms ease-out;
 }
-.try-simple {
+.try-focused {
   width: min(460px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
@@ -110,14 +110,14 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
   box-shadow: var(--shadow-overlay);
   outline: none;
-  animation: try-simple-rise 200ms ease-out;
+  animation: try-focused-rise 200ms ease-out;
 }
-.try-simple-logo {
+.try-focused-logo {
   height: 44px;
   width: auto;
   margin-bottom: 6px;
 }
-.try-simple-badge {
+.try-focused-badge {
   padding: 3px 10px;
   border-radius: 999px;
   background: var(--fill-brand);
@@ -143,7 +143,7 @@ p {
   color: var(--text-secondary);
   text-wrap: balance;
 }
-.try-simple-points {
+.try-focused-points {
   list-style: none;
   margin: 6px 0 4px;
   padding: 0;
@@ -153,7 +153,7 @@ p {
   gap: 8px;
   text-align: left;
 }
-.try-simple-points li {
+.try-focused-points li {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -162,19 +162,19 @@ p {
   background: var(--surface-active);
   font-size: 13px;
 }
-.try-simple-points i {
+.try-focused-points i {
   width: 16px;
   text-align: center;
   color: var(--fill-brand);
 }
-.try-simple-actions {
+.try-focused-actions {
   display: flex;
   gap: 10px;
   width: 100%;
   margin-top: 6px;
 }
-.try-simple-primary,
-.try-simple-quiet {
+.try-focused-primary,
+.try-focused-quiet {
   flex: 1;
   min-height: 42px;
   padding: 0 16px;
@@ -183,22 +183,22 @@ p {
   font-size: 14px;
   cursor: pointer;
 }
-.try-simple-primary {
+.try-focused-primary {
   border: none;
   background: var(--fill-brand);
   color: var(--on-fill-brand);
   font-weight: 700;
 }
-.try-simple-quiet {
+.try-focused-quiet {
   border: 1px solid var(--terminal-border-color);
   background: transparent;
   color: var(--text-primary);
 }
-.try-simple-quiet:hover {
+.try-focused-quiet:hover {
   background: var(--surface-hover);
 }
-.try-simple-primary:focus-visible,
-.try-simple-quiet:focus-visible {
+.try-focused-primary:focus-visible,
+.try-focused-quiet:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -206,20 +206,20 @@ small {
   font-size: 12px;
   color: var(--text-secondary);
 }
-@keyframes try-simple-fade {
+@keyframes try-focused-fade {
   from {
     opacity: 0;
   }
 }
-@keyframes try-simple-rise {
+@keyframes try-focused-rise {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.98);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .try-simple-scrim,
-  .try-simple {
+  .try-focused-scrim,
+  .try-focused {
     animation: none;
   }
 }

@@ -17,8 +17,8 @@ describe('classifyAccount', () => {
   });
 });
 
-it('new starts in Simple, everything else in Studio', () => {
-  expect(defaultModeFor('new')).toBe('simple');
+it('new starts in Focused, everything else in Studio', () => {
+  expect(defaultModeFor('new')).toBe('focused');
   expect(defaultModeFor('existing')).toBe('studio');
   expect(defaultModeFor(null)).toBe('studio');
 });

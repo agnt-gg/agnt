@@ -40,24 +40,24 @@ function run(store) {
 describe('useUiModeDefault', () => {
   beforeEach(() => localStorage.clear());
 
-  it('a brand-new account starts in Simple, and the choice is saved', async () => {
+  it('a brand-new account starts in Focused, and the choice is saved', async () => {
     const store = fakeStore();
     const { stop } = run(store);
     await nextTick();
-    expect(store.dispatched).toEqual([['theme/setUiMode', 'simple']]);
-    expect(localStorage.getItem('uiMode')).toBe('simple');
+    expect(store.dispatched).toEqual([['theme/setUiMode', 'focused']]);
+    expect(localStorage.getItem('uiMode')).toBe('focused');
     stop();
   });
 
-  it('an existing account stays in Studio and is offered Simple once', async () => {
+  it('an existing account stays in Studio and is offered Focused once', async () => {
     const store = fakeStore({ chats: 12, agents: 3 });
     const { api, stop } = run(store);
     await nextTick();
     expect(store.dispatched).toEqual([['theme/setUiMode', 'studio']]);
-    expect(api.showTrySimple.value).toBe(true);
-    api.dismissTrySimple();
-    expect(api.showTrySimple.value).toBe(false);
-    expect(localStorage.getItem('agnt:simple-intro-seen')).toBe('true');
+    expect(api.showTryFocused.value).toBe(true);
+    api.dismissTryFocused();
+    expect(api.showTryFocused.value).toBe(false);
+    expect(localStorage.getItem('agnt:focused-intro-seen')).toBe('true');
     stop();
   });
 
@@ -93,16 +93,16 @@ describe('useUiModeDefault', () => {
     stop();
   });
 
-  it('seeing Simple at all retires the Try-Simple note', async () => {
+  it('seeing Focused at all retires the Try-Focused note', async () => {
     localStorage.setItem('uiMode', 'studio');
     const store = fakeStore({ chats: 4 });
     const { api, stop } = run(store);
-    expect(api.showTrySimple.value).toBe(true);
-    store.state.mode = 'simple';
+    expect(api.showTryFocused.value).toBe(true);
+    store.state.mode = 'focused';
     await nextTick();
     store.state.mode = 'studio';
     await nextTick();
-    expect(api.showTrySimple.value).toBe(false);
+    expect(api.showTryFocused.value).toBe(false);
     stop();
   });
 });

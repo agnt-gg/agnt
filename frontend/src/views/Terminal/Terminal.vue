@@ -4,7 +4,7 @@
     <!-- The update banner is mounted once, in App.vue, so it also shows on the
          sign-in page. -->
 
-    <!-- The frame: Studio's canvas (rail, toolbar, panels) or Simple's
+    <!-- The frame: Studio's canvas (rail, toolbar, panels) or Focused's
          (one input, recents, library). Same screens, same stores, same slot —
          the mode decides only what is around them. See services/uiMode.js. -->
     <component
@@ -37,8 +37,8 @@
       @exit="changeScreen('SettingsScreen')"
     />
 
-    <!-- Studio users hear about Simple once (composables/useUiModeDefault.js). -->
-    <TrySimpleNote v-if="showTrySimple && !shouldShowOnboarding" @dismiss="dismissTrySimple" />
+    <!-- Studio users hear about Focused once (composables/useUiModeDefault.js). -->
+    <TryFocusedNote v-if="showTryFocused && !shouldShowOnboarding" @dismiss="dismissTryFocused" />
 
     <!-- Onboarding Modal -->
     <OnboardingModal v-if="shouldShowOnboarding" :show="shouldShowOnboarding" @complete="handleOnboardingComplete" @skip="handleOnboardingSkip" />
@@ -56,8 +56,8 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
-import SimpleShell from '@/views/Simple/SimpleShell.vue';
-import TrySimpleNote from '@/views/Simple/TrySimpleNote.vue';
+import FocusedShell from '@/views/Focused/FocusedShell.vue';
+import TryFocusedNote from '@/views/Focused/TryFocusedNote.vue';
 import { isUiModeToggleKey } from '@/services/uiMode.js';
 import { useUiModeDefault } from '@/composables/useUiModeDefault.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
@@ -125,7 +125,7 @@ export default {
     TerminalLayout,
     CanvasScreen,
     OnboardingModal,
-    TrySimpleNote,
+    TryFocusedNote,
   },
   setup() {
     const route = useRoute();
@@ -135,10 +135,10 @@ export default {
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
     // markRaw: component definitions must not be made reactive.
-    const frames = { simple: markRaw(SimpleShell), studio: markRaw(CanvasScreen) };
+    const frames = { focused: markRaw(FocusedShell), studio: markRaw(CanvasScreen) };
     const frameComponent = computed(() => frames[store.getters['theme/uiMode']] || frames.studio);
 
-    const { showTrySimple, dismissTrySimple } = useUiModeDefault(store);
+    const { showTryFocused, dismissTryFocused } = useUiModeDefault(store);
 
     const onModeKey = (e) => {
       if (!isUiModeToggleKey(e)) return;
@@ -319,8 +319,8 @@ export default {
 
     return {
       frameComponent,
-      showTrySimple,
-      dismissTrySimple,
+      showTryFocused,
+      dismissTryFocused,
       activeScreen,
       activeScreenComponent,
       isScreenReady,

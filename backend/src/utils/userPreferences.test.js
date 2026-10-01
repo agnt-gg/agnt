@@ -102,7 +102,7 @@ describe('validation and coercion', () => {
   });
 
   it('accepts the two uiMode values and rejects anything else', () => {
-    for (const mode of ['simple', 'studio']) {
+    for (const mode of ['focused', 'studio']) {
       const { next, result } = mergePreferences(null, { global: { uiMode: mode } }, 100);
       expect(result.global.applied).toEqual(['uiMode']);
       expect(next.global.uiMode).toBe(mode);
@@ -113,7 +113,7 @@ describe('validation and coercion', () => {
   });
 
   it('uiMode is global only — a device bucket cannot carry it', () => {
-    const { result } = mergePreferences(null, { device: { uiMode: 'simple' }, deviceId: 'dev-a' }, 100);
+    const { result } = mergePreferences(null, { device: { uiMode: 'focused' }, deviceId: 'dev-a' }, 100);
     expect(result.device.rejected.map((r) => r.key)).toContain('uiMode');
   });
 

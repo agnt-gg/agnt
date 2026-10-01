@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isBorrowedScreen,
   screenTitle,
-  isSimplePage,
+  isFocusedPage,
   LIBRARY_TABS,
   libraryTab,
   libraryRows,
@@ -12,11 +12,11 @@ import {
   cronLabel,
   scheduleRows,
   initialOf,
-} from './simpleModel.js';
+} from './focusedModel.js';
 import { SECTION_ROUTES } from '@/canvas/sections.js';
 
 describe('screens', () => {
-  it('Chat is Simple\u2019s own; every other screen is borrowed Studio', () => {
+  it('Chat is Focused\u2019s own; every other screen is borrowed Studio', () => {
     expect(isBorrowedScreen('ChatScreen')).toBe(false);
     expect(isBorrowedScreen('WorkflowForgeScreen')).toBe(true);
     expect(isBorrowedScreen('SettingsScreen')).toBe(true);
@@ -36,10 +36,10 @@ describe('screens', () => {
   });
 
   it('knows its own pages', () => {
-    expect(isSimplePage('library')).toBe(true);
-    expect(isSimplePage('plugins')).toBe(true);
-    expect(isSimplePage('scheduled')).toBe(true);
-    expect(isSimplePage('constructor')).toBe(false);
+    expect(isFocusedPage('library')).toBe(true);
+    expect(isFocusedPage('plugins')).toBe(true);
+    expect(isFocusedPage('scheduled')).toBe(true);
+    expect(isFocusedPage('constructor')).toBe(false);
   });
 });
 

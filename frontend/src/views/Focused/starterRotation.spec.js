@@ -1,7 +1,7 @@
-// The pure chooser in simpleStarters.js. (Named apart from SimpleStarters.spec.js,
+// The pure chooser in focusedStarters.js. (Named apart from FocusedStarters.spec.js,
 // the component's test: on a case-insensitive filesystem the two would be one file.)
 import { describe, it, expect } from 'vitest';
-import { LANES, STARTERS, STARTER_SLOTS, starterAt, createStarterRotation } from './simpleStarters.js';
+import { LANES, STARTERS, STARTER_SLOTS, starterAt, createStarterRotation } from './focusedStarters.js';
 
 // Deterministic PRNG so a failure reproduces.
 function seeded(seed) {

@@ -1,7 +1,7 @@
 <template>
   <BaseScreen
     class="chat-screen-wrapper"
-    :class="{ 'simple-home': showSimpleHome }"
+    :class="{ 'focused-home': showFocusedHome }"
     ref="baseScreenRef"
     screenId="ChatScreen"
     channel-key="orchestrator:default"
@@ -127,11 +127,11 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
-              <!-- Simple's start screen. Shown instead of the greeting until
+              <!-- Focused's start screen. Shown instead of the greeting until
                    the first message; the input below is the real composer,
-                   centred by CSS (views/Simple/simple.css), never a copy. -->
-              <div v-if="showSimpleHome" class="simple-home-hero">
-                <img class="simple-home-logo" src="/images/agnt-logo-mark.svg" alt="" />
+                   centred by CSS (views/Focused/focused.css), never a copy. -->
+              <div v-if="showFocusedHome" class="focused-home-hero">
+                <img class="focused-home-logo" src="/images/agnt-logo-mark.svg" alt="" />
                 <h1>What would you like to <em>do</em>?</h1>
                 <p>Save money, make money, or get time back.</p>
               </div>
@@ -154,7 +154,7 @@
                   Show earlier messages ({{ hiddenMessageCount }})
                 </button>
               </div>
-              <TransitionGroup v-show="!showSimpleHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
+              <TransitionGroup v-show="!showFocusedHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
                 <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
                   <div v-if="message.kind === 'skill-pill'" class="inline-pill-row" :data-message-id="message.id">
@@ -266,12 +266,12 @@
           <ChatScrollControls :target-getter="getConversationEl" @scroll-to-bottom="followFromScrollControl" />
         </div>
 
-        <!-- Simple's start screen: the AGNT One rotating ideas, under the
-             composer (ordered by views/Simple/simple.css). A card sends. -->
-        <SimpleStarters v-if="showSimpleHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
+        <!-- Focused's start screen: the AGNT One rotating ideas, under the
+             composer (ordered by views/Focused/focused.css). A card sends. -->
+        <FocusedStarters v-if="showFocusedHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
 
-        <!-- Quick Actions (Studio's follow-up chips; Simple hides them in
-             simple.css and shows its own ideas above) -->
+        <!-- Quick Actions (Studio's follow-up chips; Focused hides them in
+             focused.css and shows its own ideas above) -->
         <QuickActions
           v-if="!isMobile && hasConnectedAIProvider"
           :suggestions="suggestions"
@@ -304,7 +304,7 @@ import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
 import { contextWindowFromMetadata } from '@/utils/modelContextWindow.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
-import SimpleStarters from '@/views/Simple/SimpleStarters.vue';
+import FocusedStarters from '@/views/Focused/FocusedStarters.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
@@ -345,7 +345,7 @@ export default {
     ProcessingState,
     AgentAvatar,
     QuickActions,
-    SimpleStarters,
+    FocusedStarters,
     ChatActions,
     ContextMonitor,
     CompactionCard,
@@ -369,7 +369,7 @@ export default {
     const setContextHost = element => { contextHost.value = element; };
     const conversationSpace = ref(null);
     const isMobile = inject('isMobile', ref(false));
-    // 'simple' inside views/Simple's frame; Studio provides nothing.
+    // 'focused' inside views/Focused's frame; Studio provides nothing.
     const uiPresentation = inject('uiPresentation', 'studio');
 
     // App Version (dynamic)
@@ -401,12 +401,12 @@ export default {
     // Suppress TransitionGroup animations during bulk message loads (e.g. loading saved outputs)
     const bulkLoading = ref(false);
 
-    // Simple's home: a conversation nobody has spoken in yet. The greeting
+    // Focused's home: a conversation nobody has spoken in yet. The greeting
     // bubble is the only message then, and the home replaces it. Never while
     // provider setup is pending: that card is the one thing a new user must
     // see, and hiding it would leave an input that cannot answer.
-    const showSimpleHome = computed(() => {
-      if (uiPresentation !== 'simple' || bulkLoading.value) return false;
+    const showFocusedHome = computed(() => {
+      if (uiPresentation !== 'focused' || bulkLoading.value) return false;
       const messages = store.state.chat.messages || [];
       if (messages.some((m) => m.showProviderSetup)) return false;
       return !messages.some((m) => m.role === 'user');
@@ -2976,7 +2976,7 @@ export default {
 
     return {
       ...tutorialWithCallback,
-      showSimpleHome,
+      showFocusedHome,
       baseScreenRef,
       contextHost,
       conversationSpace,

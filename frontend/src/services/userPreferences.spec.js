@@ -143,14 +143,14 @@ describe('routing: taste syncs globally, pixels stay per-device', () => {
     });
   });
 
-  it('sends the Simple/Studio mode in the global scope — it follows the account', async () => {
+  it('sends the Focused/Studio mode in the global scope — it follows the account', async () => {
     const store = makeStore();
     startPreferenceSync(store);
-    store.commit('theme/SET_UI_MODE', 'simple');
+    store.commit('theme/SET_UI_MODE', 'focused');
     await vi.advanceTimersByTimeAsync(500);
 
     const [body] = putBodies();
-    expect(body.global).toEqual({ uiMode: 'simple' });
+    expect(body.global).toEqual({ uiMode: 'focused' });
     expect(body.device).toBeUndefined();
   });
 
@@ -199,7 +199,7 @@ describe('routing: taste syncs globally, pixels stay per-device', () => {
       greyscaleMode: true,
       panelPosition: 'left',
       assetPanelFullWidth: true,
-      uiMode: 'simple',
+      uiMode: 'focused',
       bgOpacity: 75,
       bgBlur: 6,
       uiScale: 125,

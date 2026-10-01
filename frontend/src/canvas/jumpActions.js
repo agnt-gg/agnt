@@ -4,7 +4,7 @@ import { searchRequest } from './searchSources.js';
  * Execute a jump-catalog action (see jumpCatalog.js for the shapes).
  *
  * ONE executor for every surface that opens "a thing": the Jump palette, and
- * Simple's Library / Plugins / Scheduled pages. Before this lived inline in
+ * Focused's Library / Plugins / Scheduled pages. Before this lived inline in
  * JumpPalette.run, so a second surface would have needed a second copy of the
  * same switch — and the two would drift the first time a kind was added.
  *

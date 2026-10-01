@@ -73,8 +73,8 @@
               class="tool-execution-details"
               :class="{ 'steps-folded': foldSteps && !stepsOpen(partIdx) }"
             >
-              <!-- Simple folds a step group to one line. Folding hides only the
-                   row chrome (simple.css): Connect/Share cards stay visible,
+              <!-- Focused folds a step group to one line. Folding hides only the
+                   row chrome (focused.css): Connect/Share cards stay visible,
                    because they are things the user must act on. -->
               <button
                 v-if="foldSteps"
@@ -696,9 +696,9 @@ export default {
     // calls render there as a Browser widget; standalone chat has no canvas
     // and owns the inline live card instead.
     const insideWidgetCanvas = inject('isInsideWidgetCanvas', false);
-    // Simple folds each tool-step group behind one summary line; Studio
+    // Focused folds each tool-step group behind one summary line; Studio
     // (no provider) shows every row, as before.
-    const foldSteps = inject('uiPresentation', 'studio') === 'simple';
+    const foldSteps = inject('uiPresentation', 'studio') === 'focused';
     const openStepGroups = ref(new Set());
     const stepsOpen = (partIdx) => openStepGroups.value.has(partIdx);
     const toggleSteps = (partIdx) => {

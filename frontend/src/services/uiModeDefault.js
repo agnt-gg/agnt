@@ -1,18 +1,18 @@
 /**
- * Which shell an account starts in, and when Simple offers Studio.
+ * Which shell an account starts in, and when Focused offers Studio.
  *
  * DEFAULTS (decided once, then saved as the account's choice):
- *   new account      → Simple. Nothing built yet, so nothing to lose.
- *   existing account → Studio. It is the app they already know; Simple is
- *                      offered once (TrySimpleNote), never imposed.
+ *   new account      → Focused. Nothing built yet, so nothing to lose.
+ *   existing account → Studio. It is the app they already know; Focused is
+ *                      offered once (TryFocusedNote), never imposed.
  *
  * "New" means no conversations, agents or workflows. Connections are NOT a
  * signal: connecting an AI provider is the first thing onboarding asks for,
  * so counting them would classify every new account as existing.
  *
- * GRADUATION: Simple suggests Studio once, the first time the person builds a
+ * GRADUATION: Focused suggests Studio once, the first time the person builds a
  * workflow or an agent (a navigation-onion unlock). The app may suggest moving
- * up; it never moves anyone back down to Simple on its own.
+ * up; it never moves anyone back down to Focused on its own.
  */
 
 /** 'new' | 'existing' | null when the facts have not loaded yet. */
@@ -23,7 +23,7 @@ export function classifyAccount({ chats, agents, workflows } = {}) {
 }
 
 export function defaultModeFor(kind) {
-  return kind === 'new' ? 'simple' : 'studio';
+  return kind === 'new' ? 'focused' : 'studio';
 }
 
 /** Onion unlocks that mean "you are building now". */
@@ -42,8 +42,8 @@ export const GRADUATION_COPY = Object.freeze({
 });
 
 // Per-browser flags. Not synced: they are about what THIS screen has shown.
-export const INTRO_SEEN_KEY = 'agnt:simple-intro-seen';
-export const GRADUATION_ASKED_KEY = 'agnt:simple-graduation-asked';
+export const INTRO_SEEN_KEY = 'agnt:focused-intro-seen';
+export const GRADUATION_ASKED_KEY = 'agnt:focused-graduation-asked';
 
 export function readFlag(key, storage = globalThis.localStorage) {
   try {

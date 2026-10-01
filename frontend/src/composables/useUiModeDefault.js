@@ -1,6 +1,6 @@
 // useUiModeDefault — give an account its starting shell, once.
 //
-// Runs in Terminal.vue. If this browser has no Simple/Studio choice yet, it
+// Runs in Terminal.vue. If this browser has no Focused/Studio choice yet, it
 // waits for the account's first data to load, classifies the account
 // (services/uiModeDefault.js) and commits the default through the normal
 // mutation, so the choice is saved and synced like any other. After that the
@@ -48,12 +48,12 @@ export function useUiModeDefault(store) {
   );
   if (decided.value) stop();
 
-  // Studio users are told about Simple once. Seeing Simple at all counts.
-  const showTrySimple = computed(() => decided.value && !introSeen.value && store.getters['theme/uiMode'] === 'studio');
+  // Studio users are told about Focused once. Seeing Focused at all counts.
+  const showTryFocused = computed(() => decided.value && !introSeen.value && store.getters['theme/uiMode'] === 'studio');
   watch(
     () => store.getters['theme/uiMode'],
     (mode) => {
-      if (mode === 'simple' && !introSeen.value) markIntroSeen();
+      if (mode === 'focused' && !introSeen.value) markIntroSeen();
     },
     { immediate: true },
   );
@@ -63,5 +63,5 @@ export function useUiModeDefault(store) {
     writeFlag(INTRO_SEEN_KEY);
   }
 
-  return { showTrySimple, dismissTrySimple: markIntroSeen };
+  return { showTryFocused, dismissTryFocused: markIntroSeen };
 }

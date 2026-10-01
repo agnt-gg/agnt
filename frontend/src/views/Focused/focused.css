@@ -1,6 +1,6 @@
-/* Simple shell.
+/* Focused shell.
  *
- * EVERY rule here is scoped under .ui-simple, so nothing can leak into Studio.
+ * EVERY rule here is scoped under .ui-focused, so nothing can leak into Studio.
  * Colours come only from the semantic tokens (styles/themes/_semantic.css) and
  * the two existing structural tokens (--terminal-border-color, --color-darker-0),
  * so all nine themes render without a per-theme block.
@@ -11,7 +11,7 @@
 /* Doubled class on purpose. TerminalLayout's `:slotted(*)` forces every frame
    root to `flex-direction: column` at specificity (0,1,0); a single class here
    would tie and the winner would depend on stylesheet load order. */
-.ui-simple.ui-simple {
+.ui-focused.ui-focused {
   display: flex;
   flex-direction: row;
   width: 100%;
@@ -22,7 +22,7 @@
   color: var(--text-primary);
 }
 
-.ui-simple .simple-main {
+.ui-focused .focused-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -31,18 +31,18 @@
   position: relative;
 }
 
-.ui-simple .simple-screen {
+.ui-focused .focused-screen {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.ui-simple .simple-screen > * {
+.ui-focused .focused-screen > * {
   flex: 1;
   min-height: 0;
 }
 
-.ui-simple .simple-icon-btn {
+.ui-focused .focused-icon-btn {
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -55,12 +55,12 @@
   cursor: pointer;
   font-size: 14px;
 }
-.ui-simple .simple-icon-btn:hover {
+.ui-focused .focused-icon-btn:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-.ui-simple button:focus-visible,
-.ui-simple input:focus-visible {
+.ui-focused button:focus-visible,
+.ui-focused input:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
@@ -68,13 +68,13 @@
 /* Both are <header> elements, and _dark.css paints a bare `body.dark header`
    with a background and a bottom border. Declared explicitly so the theme's
    element rule cannot draw a stray panel here. */
-.ui-simple .simple-topbar,
-.ui-simple .simple-page-head {
+.ui-focused .focused-topbar,
+.ui-focused .focused-page-head {
   background: transparent;
   border: 0;
 }
 
-.ui-simple .simple-topbar {
+.ui-focused .focused-topbar {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -82,13 +82,13 @@
   flex: 0 0 auto;
 }
 /* With a conversation open it is the demo's slim title bar. */
-.ui-simple .simple-topbar.has-title {
+.ui-focused .focused-topbar.has-title {
   min-height: 48px;
   padding: 0 16px 0 12px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--terminal-border-color);
 }
-.ui-simple .simple-chat-title {
+.ui-focused .focused-chat-title {
   margin: 0 0 0 8px;
   min-width: 0;
   font-size: 14px;
@@ -101,7 +101,7 @@
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
 
-.ui-simple .simple-sidebar {
+.ui-focused .focused-sidebar {
   width: 260px;
   flex: 0 0 260px;
   display: flex;
@@ -110,36 +110,36 @@
   background: var(--surface-raised);
   border-right: 1px solid var(--terminal-border-color);
 }
-.ui-simple.is-sidebar-closed .simple-sidebar {
+.ui-focused.is-sidebar-closed .focused-sidebar {
   display: none;
 }
 
-.ui-simple .simple-side-head {
+.ui-focused .focused-side-head {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px 10px 8px 14px;
 }
-.ui-simple .simple-logo {
+.ui-focused .focused-logo {
   height: 18px;
   width: auto;
 }
-.ui-simple .simple-wordmark {
+.ui-focused .focused-wordmark {
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.01em;
 }
-.ui-simple .simple-flex {
+.ui-focused .focused-flex {
   flex: 1;
 }
 
-.ui-simple .simple-nav {
+.ui-focused .focused-nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding: 4px 8px;
 }
-.ui-simple .simple-nav-row {
+.ui-focused .focused-nav-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -155,20 +155,20 @@
   text-align: left;
   cursor: pointer;
 }
-.ui-simple .simple-nav-row i {
+.ui-focused .focused-nav-row i {
   width: 16px;
   text-align: center;
   color: var(--text-secondary);
 }
-.ui-simple .simple-nav-row:hover {
+.ui-focused .focused-nav-row:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-nav-row.active {
+.ui-focused .focused-nav-row.active {
   background: var(--surface-active);
   font-weight: 600;
 }
 
-.ui-simple .simple-search {
+.ui-focused .focused-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -180,7 +180,7 @@
   background: var(--color-darker-0);
   color: var(--text-tertiary);
 }
-.ui-simple .simple-search input {
+.ui-focused .focused-search input {
   flex: 1;
   min-width: 0;
   border: none;
@@ -191,12 +191,12 @@
   outline: none;
 }
 
-.ui-simple .simple-recents-label {
+.ui-focused .focused-recents-label {
   padding: 14px 18px 4px;
   font-size: 12px;
   color: var(--text-tertiary);
 }
-.ui-simple .simple-recents {
+.ui-focused .focused-recents {
   list-style: none;
   margin: 0;
   padding: 0 8px 8px;
@@ -204,7 +204,7 @@
   min-height: 0;
   overflow-y: auto;
 }
-.ui-simple .simple-recent {
+.ui-focused .focused-recent {
   display: block;
   width: 100%;
   min-height: 34px;
@@ -221,18 +221,35 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.ui-simple .simple-recent:hover {
+.ui-focused .focused-recent:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-recent.active {
+/* The open chat. Measured: a 9% white wash on the raised sidebar was
+   technically there and practically invisible. A solid step, the text at full
+   weight and a brand bar on the edge read at a glance in every theme. */
+.ui-focused .focused-recent.active {
+  position: relative;
   background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--terminal-border-color);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.ui-focused .focused-recent.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--fill-brand);
 }
 /* Unread is a dot, not bold: a list that is mostly unread read as a wall. */
-.ui-simple .simple-recent.unread {
+.ui-focused .focused-recent.unread {
   position: relative;
   padding-right: 22px;
 }
-.ui-simple .simple-recent.unread::after {
+.ui-focused .focused-recent.unread::after {
   content: '';
   position: absolute;
   right: 10px;
@@ -243,17 +260,17 @@
   border-radius: 50%;
   background: var(--fill-brand);
 }
-.ui-simple .simple-recents-empty {
+.ui-focused .focused-recents-empty {
   padding: 8px 10px;
   font-size: 13px;
   color: var(--text-tertiary);
 }
 
-.ui-simple .simple-account-anchor {
+.ui-focused .focused-account-anchor {
   border-top: 1px solid var(--terminal-border-color);
   padding: 8px;
 }
-.ui-simple .simple-account {
+.ui-focused .focused-account {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -267,10 +284,10 @@
   text-align: left;
   cursor: pointer;
 }
-.ui-simple .simple-account:hover {
+.ui-focused .focused-account:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-avatar {
+.ui-focused .focused-avatar {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
@@ -283,28 +300,28 @@
   font-weight: 700;
   font-size: 13px;
 }
-.ui-simple .simple-account-text {
+.ui-focused .focused-account-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
-.ui-simple .simple-account-text strong {
+.ui-focused .focused-account-text strong {
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ui-simple .simple-account-text small {
+.ui-focused .focused-account-text small {
   font-size: 11px;
   color: var(--text-tertiary);
 }
 
 /* ── Menus ────────────────────────────────────────────────────────────────── */
 
-.ui-simple .simple-menu-anchor {
+.ui-focused .focused-menu-anchor {
   position: relative;
 }
-.ui-simple .simple-menu {
+.ui-focused .focused-menu {
   position: absolute;
   z-index: 40;
   left: 0;
@@ -317,13 +334,13 @@
   background: var(--color-popup);
   box-shadow: var(--shadow-overlay);
 }
-.ui-simple .simple-menu-up {
+.ui-focused .focused-menu-up {
   top: auto;
   bottom: calc(100% + 4px);
   left: 8px;
   right: 8px;
 }
-.ui-simple .simple-menu-item {
+.ui-focused .focused-menu-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -339,26 +356,26 @@
   text-align: left;
   cursor: pointer;
 }
-.ui-simple .simple-menu-item i {
+.ui-focused .focused-menu-item i {
   width: 16px;
   text-align: center;
   color: var(--text-secondary);
 }
-.ui-simple .simple-menu-item:hover {
+.ui-focused .focused-menu-item:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-menu-item kbd {
+.ui-focused .focused-menu-item kbd {
   margin-left: auto;
   font: inherit;
   font-size: 11px;
   color: var(--text-tertiary);
 }
-.ui-simple .simple-menu-sep {
+.ui-focused .focused-menu-sep {
   height: 1px;
   margin: 6px 4px;
   background: var(--terminal-border-color);
 }
-.ui-simple .simple-menu-note {
+.ui-focused .focused-menu-note {
   padding: 6px 10px;
   font-size: 12px;
   color: var(--text-tertiary);
@@ -368,7 +385,7 @@
 
 /* ── Borrowed Studio bar ──────────────────────────────────────────────────── */
 
-.ui-simple .simple-borrowed-bar {
+.ui-focused .focused-borrowed-bar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -379,8 +396,8 @@
   background: var(--surface-raised);
   font-size: 13px;
 }
-.ui-simple .simple-back,
-.ui-simple .simple-link {
+.ui-focused .focused-back,
+.ui-focused .focused-link {
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -389,22 +406,22 @@
   padding: 6px 8px;
   border-radius: 6px;
 }
-.ui-simple .simple-back:hover,
-.ui-simple .simple-link:hover {
+.ui-focused .focused-back:hover,
+.ui-focused .focused-link:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-.ui-simple .simple-back i {
+.ui-focused .focused-back i {
   margin-right: 6px;
 }
-.ui-simple .simple-borrowed-title {
+.ui-focused .focused-borrowed-title {
   flex: 1;
   font-weight: 600;
 }
 
 /* ── Pages: Library, Plugins, Scheduled ──────────────────────────────────── */
 
-.ui-simple .simple-page {
+.ui-focused .focused-page {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -414,24 +431,24 @@
   padding: 36px 32px 48px;
   box-sizing: border-box;
 }
-.ui-simple .simple-page-head {
+.ui-focused .focused-page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
 }
-.ui-simple .simple-page-head h1 {
+.ui-focused .focused-page-head h1 {
   margin: 0 0 4px;
   font-size: 26px;
   font-weight: 700;
 }
-.ui-simple .simple-page-head p {
+.ui-focused .focused-page-head p {
   margin: 0;
   font-size: 13px;
   color: var(--text-secondary);
 }
-.ui-simple .simple-primary {
+.ui-focused .focused-primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -447,7 +464,7 @@
   font-weight: 600;
   cursor: pointer;
 }
-.ui-simple .simple-tabs {
+.ui-focused .focused-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -455,7 +472,7 @@
   margin-bottom: 14px;
   border-bottom: 1px solid var(--terminal-border-color);
 }
-.ui-simple .simple-tab {
+.ui-focused .focused-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -469,23 +486,23 @@
   font-size: 13px;
   cursor: pointer;
 }
-.ui-simple .simple-tab:hover {
+.ui-focused .focused-tab:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-tab.active {
+.ui-focused .focused-tab.active {
   background: var(--text-primary);
   color: var(--surface-canvas);
 }
-.ui-simple .simple-tab.active i,
-.ui-simple .simple-tab.active .simple-count {
+.ui-focused .focused-tab.active i,
+.ui-focused .focused-tab.active .focused-count {
   color: inherit;
   opacity: 0.75;
 }
-.ui-simple .simple-count {
+.ui-focused .focused-count {
   color: var(--text-tertiary);
   font-size: 12px;
 }
-.ui-simple .simple-page-search {
+.ui-focused .focused-page-search {
   /* Measured: content-box made it 30px wider than the column it sits in. */
   box-sizing: border-box;
   width: 100%;
@@ -500,7 +517,7 @@
   background: var(--color-darker-0);
   color: var(--text-tertiary);
 }
-.ui-simple .simple-page-search input {
+.ui-focused .focused-page-search input {
   flex: 1;
   min-width: 0;
   border: none;
@@ -510,13 +527,13 @@
   font-size: 14px;
   outline: none;
 }
-.ui-simple .simple-empty {
+.ui-focused .focused-empty {
   padding: 28px 4px;
   color: var(--text-secondary);
   font-size: 14px;
 }
 
-.ui-simple .simple-list {
+.ui-focused .focused-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -524,10 +541,10 @@
   border-radius: 12px;
   overflow: hidden;
 }
-.ui-simple .simple-list li + li {
+.ui-focused .focused-list li + li {
   border-top: 1px solid var(--terminal-border-color);
 }
-.ui-simple .simple-row {
+.ui-focused .focused-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -540,14 +557,14 @@
   text-align: left;
   cursor: pointer;
 }
-.ui-simple .simple-row:hover {
+.ui-focused .focused-row:hover {
   background: var(--surface-hover);
 }
-.ui-simple .simple-row.paused {
+.ui-focused .focused-row.paused {
   opacity: 0.7;
 }
-.ui-simple .simple-row-icon,
-.ui-simple .simple-card-icon {
+.ui-focused .focused-row-icon,
+.ui-focused .focused-card-icon {
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
@@ -560,39 +577,39 @@
   font-size: 16px;
   overflow: hidden;
 }
-.ui-simple .simple-card-icon svg {
+.ui-focused .focused-card-icon svg {
   width: 22px;
   height: 22px;
 }
-.ui-simple .simple-row-text {
+.ui-focused .focused-row-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.ui-simple .simple-row-text strong {
+.ui-focused .focused-row-text strong {
   font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ui-simple .simple-row-text small {
+.ui-focused .focused-row-text small {
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ui-simple .simple-row-text small.ok {
+.ui-focused .focused-row-text small.ok {
   color: var(--status-green-text);
 }
-.ui-simple .simple-row-go {
+.ui-focused .focused-row-go {
   color: var(--text-tertiary);
   font-size: 12px;
 }
 
-.ui-simple .simple-section-head {
+.ui-focused .focused-section-head {
   display: flex;
   justify-content: space-between;
   margin: 18px 2px 8px;
@@ -604,12 +621,12 @@
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
-.ui-simple .simple-grid {
+.ui-focused .focused-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
 }
-.ui-simple .simple-card {
+.ui-focused .focused-card {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -623,20 +640,20 @@
   text-align: left;
   cursor: pointer;
 }
-.ui-simple .simple-card:hover {
+.ui-focused .focused-card:hover {
   background: var(--surface-hover);
 }
 
-/* ── Chat, in Simple ──────────────────────────────────────────────────────── *
+/* ── Chat, in Focused ──────────────────────────────────────────────────────── *
  * The real Chat screen (same component, same store, same composer). These
  * rules only change its SIZE and PLACE — never which elements exist — so
  * nothing a Studio chat can do is lost here.                                 */
 
 /* One readable column, centred, like the demo. */
-.ui-simple .chat-screen-wrapper .conversation-container,
-.ui-simple .chat-screen-wrapper .input-container,
-.ui-simple .chat-screen-wrapper .simple-starters,
-.ui-simple .chat-screen-wrapper .chat-actions-bar {
+.ui-focused .chat-screen-wrapper .conversation-container,
+.ui-focused .chat-screen-wrapper .input-container,
+.ui-focused .chat-screen-wrapper .focused-starters,
+.ui-focused .chat-screen-wrapper .chat-actions-bar {
   width: 100%;
   /* The demo's --column. */
   max-width: 768px;
@@ -644,21 +661,21 @@
   margin-right: auto;
   box-sizing: border-box;
 }
-.ui-simple .chat-screen-wrapper .input-container {
+.ui-focused .chat-screen-wrapper .input-container {
   border-top: none;
 }
 /* The scrollbar takes width only from the thread, not from the composer, so
    the message column centred half a scrollbar left of it (measured: 5px).
    The demo's fix: reserve the gutter on both sides. */
-.ui-simple .chat-screen-wrapper:not(.simple-home) .conversation-canvas {
+.ui-focused .chat-screen-wrapper:not(.focused-home) .conversation-canvas {
   scrollbar-gutter: stable both-edges;
 }
 /* The composer reads as a box you type into, not a terminal line.
    Desktop only: on a phone BaseScreen already draws its own two-row composer
    card, and a second box around it doubled every border. */
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line {
   /* Measured: Studio's input-line is 16px wider than its container, which is
-     invisible there and a visible overhang against Simple's centred column. */
+     invisible there and a visible overhang against Focused's centred column. */
   width: 100%;
   box-sizing: border-box;
   margin-left: 0;
@@ -676,25 +693,25 @@
   box-shadow: var(--shadow-sm), 0 6px 20px rgba(0, 0, 0, 0.12);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
   border-color: var(--fill-brand);
   box-shadow: 0 0 0 3px rgba(var(--pink-rgb), 0.28), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .input-highlight-container {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .input-highlight-container {
   flex: 1;
   min-width: 0;
   align-self: center;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line textarea {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line textarea {
   font-size: 15px;
   line-height: 24px;
 }
 /* Attach sits on the left, before the text, as in the demo. */
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line > .tooltip-container:has(.chat-attach-button) {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line > .tooltip-container:has(.chat-attach-button) {
   order: -1;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button,
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button,
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button {
   width: 32px;
   height: 32px;
   min-width: 32px;
@@ -705,16 +722,16 @@
   color: var(--text-secondary);
   box-shadow: none;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button:hover,
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button:hover {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button:hover,
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
   transform: none;
 }
 /* Send: a pink square with an up arrow; grey until there is something to
    send. Stop (while a reply streams): the same square in ink. */
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button,
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button,
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
   width: 32px;
   height: 32px;
   min-width: 32px;
@@ -726,26 +743,26 @@
   box-shadow: none;
   transform: none;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:hover:not(:disabled) {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:hover:not(:disabled) {
   background: var(--fill-brand);
   filter: brightness(0.92);
   transform: none;
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:disabled {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:disabled {
   background: var(--surface-active);
   color: var(--text-tertiary);
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button .fa-paper-plane::before {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button .fa-paper-plane::before {
   content: '\f062'; /* fa-arrow-up */
 }
 /* Voice reads as a mic, like the demo's (same hands-free voice feature). */
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button .fa-comment-dots::before {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button .fa-comment-dots::before {
   /* fa-microphone is solid-only in FA5 Free; the button's icon is regular. */
   font-family: 'Font Awesome 5 Free';
   font-weight: 900;
   content: '\f130'; /* fa-microphone */
 }
-.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
+.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
   background: var(--text-primary);
   color: var(--surface-canvas);
 }
@@ -753,27 +770,27 @@
 /* Studio-only controls. Chats autosave and "New chat" lives in the sidebar,
    so Clear/Save is redundant here; the inspector toggle only means something
    while a preview is open (BaseScreen shows the right panel then). */
-.ui-simple .chat-screen-wrapper .chat-actions-bar,
-.ui-simple .chat-screen-wrapper .suggestions-bar,
-.ui-simple .chat-screen-wrapper:not(.artifact-active) .inspector-toggle {
+.ui-focused .chat-screen-wrapper .chat-actions-bar,
+.ui-focused .chat-screen-wrapper .suggestions-bar,
+.ui-focused .chat-screen-wrapper:not(.artifact-active) .inspector-toggle {
   display: none;
 }
 
-/* Scroll arrows: neutral, like every other Simple control (Studio's are green). */
-.ui-simple .chat-screen-wrapper .chat-scroll-controls .scroll-btn {
+/* Scroll arrows: neutral, like every other Focused control (Studio's are green). */
+.ui-focused .chat-screen-wrapper .chat-scroll-controls .scroll-btn {
   background: var(--surface-raised);
   color: var(--text-secondary);
   border: 1px solid var(--terminal-border-color);
   box-shadow: var(--shadow-sm);
 }
-.ui-simple .chat-screen-wrapper .chat-scroll-controls .scroll-btn:hover {
+.ui-focused .chat-screen-wrapper .chat-scroll-controls .scroll-btn:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
 
 /* Turns: the assistant speaks in plain text, the user in an ink bubble; no
    timestamps, as in the demo (they stay in Studio). */
-.ui-simple .chat-screen-wrapper .message-wrapper.assistant .message-card {
+.ui-focused .chat-screen-wrapper .message-wrapper.assistant .message-card {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -782,15 +799,15 @@
   font-size: 15px;
   line-height: 1.7;
 }
-.ui-simple .chat-screen-wrapper .message-time {
+.ui-focused .chat-screen-wrapper .message-time {
   display: none;
 }
-.ui-simple .chat-screen-wrapper .message-wrapper.user .message-content {
+.ui-focused .chat-screen-wrapper .message-wrapper.user .message-content {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
-.ui-simple .chat-screen-wrapper .message-wrapper.user .message-card {
+.ui-focused .chat-screen-wrapper .message-wrapper.user .message-card {
   width: fit-content;
   max-width: 78%;
   padding: 9px 14px;
@@ -803,31 +820,31 @@
   line-height: 1.55;
 }
 /* Light themes: the demo's ink bubble, near-black with white text. */
-.ui-simple:not(:where(.dark *)) .chat-screen-wrapper .message-wrapper.user .message-card {
+.ui-focused:not(:where(.dark *)) .chat-screen-wrapper .message-wrapper.user .message-card {
   background: var(--text-primary);
   color: var(--surface-canvas);
 }
 /* No avatar column: the reply text, the user bubble and the composer share
    one left edge, as in the demo. Group-chat speakers are still named by the
    roster above the thread. */
-.ui-simple .chat-screen-wrapper .message-wrapper .message-avatar {
+.ui-focused .chat-screen-wrapper .message-wrapper .message-avatar {
   display: none;
 }
-.ui-simple .chat-screen-wrapper .message-wrapper.user {
+.ui-focused .chat-screen-wrapper .message-wrapper.user {
   width: 100%;
   margin-left: 0;
 }
 
 /* The composer carries what the demo's did: attach, voice, send. The model
    lives in Settings, tools in the chat's own choices; both remain in Studio. */
-.ui-simple .chat-screen-wrapper .chat-provider-button,
-.ui-simple .chat-screen-wrapper .chat-tools-button {
+.ui-focused .chat-screen-wrapper .chat-provider-button,
+.ui-focused .chat-screen-wrapper .chat-tools-button {
   display: none;
 }
 
 /* Steps, folded (MessageItem `.steps-folded`): one line per group. Only the
    row chrome folds; Connect/Share cards inside a row stay visible. */
-.ui-simple .steps-summary {
+.ui-focused .steps-summary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -841,25 +858,25 @@
   font-size: 13px;
   cursor: pointer;
 }
-.ui-simple .steps-summary:hover {
+.ui-focused .steps-summary:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-.ui-simple .steps-summary i {
+.ui-focused .steps-summary i {
   font-size: 10px;
   color: var(--text-tertiary);
 }
 /* The demo's marks: ✓ done, ✕ failed or stopped, a pink spinner while working. */
-.ui-simple .steps-summary .steps-summary-mark {
+.ui-focused .steps-summary .steps-summary-mark {
   font-size: 12px;
 }
-.ui-simple .steps-summary.steps-done .steps-summary-mark {
+.ui-focused .steps-summary.steps-done .steps-summary-mark {
   color: var(--status-green-text);
 }
-.ui-simple .steps-summary.steps-error .steps-summary-mark {
+.ui-focused .steps-summary.steps-error .steps-summary-mark {
   color: var(--fill-danger);
 }
-.ui-simple .steps-summary-spin {
+.ui-focused .steps-summary-spin {
   width: 12px;
   height: 12px;
   flex: none;
@@ -867,24 +884,24 @@
   border: 1.5px solid var(--border-strong);
   border-top-color: var(--fill-brand);
   border-radius: 50%;
-  animation: ui-simple-spin 0.7s linear infinite;
+  animation: ui-focused-spin 0.7s linear infinite;
 }
-/* Keyframe names are global; the ui-simple- prefix is the namespace. */
-@keyframes ui-simple-spin {
+/* Keyframe names are global; the ui-focused- prefix is the namespace. */
+@keyframes ui-focused-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.ui-simple .steps-folded.tool-execution-details {
+.ui-focused .steps-folded.tool-execution-details {
   background: transparent;
   border: none;
   padding: 0;
 }
-.ui-simple .steps-folded .top-tool-bar,
-.ui-simple .steps-folded .tool-call-content {
+.ui-focused .steps-folded .top-tool-bar,
+.ui-focused .steps-folded .tool-call-content {
   display: none;
 }
-.ui-simple .steps-folded .tool-call-item {
+.ui-focused .steps-folded .tool-call-item {
   border: none;
   background: transparent;
   padding: 0;
@@ -896,14 +913,14 @@
    `display: contents` lifts the canvas, the suggestions and the composer into
    one flex column so `order` can place them; it is applied ONLY while there
    is nothing to scroll, and dropped the moment the first message is sent. */
-.ui-simple .chat-screen-wrapper.simple-home .main-panel {
+.ui-focused .chat-screen-wrapper.focused-home .main-panel {
   justify-content: center;
 }
-.ui-simple .chat-screen-wrapper.simple-home .scrollable-content,
-.ui-simple .chat-screen-wrapper.simple-home .automation-interface {
+.ui-focused .chat-screen-wrapper.focused-home .scrollable-content,
+.ui-focused .chat-screen-wrapper.focused-home .automation-interface {
   display: contents;
 }
-.ui-simple .chat-screen-wrapper.simple-home .conversation-canvas-wrapper {
+.ui-focused .chat-screen-wrapper.focused-home .conversation-canvas-wrapper {
   order: 1;
   flex: 0 0 auto;
 }
@@ -911,7 +928,7 @@
    its arrow buttons showed as two stray dots, its width pushed the hero 5px
    off the column, and Studio's 48/32px padding doubled the hero-to-input gap
    (the demo's is 36px, set on the hero). Nothing scrolls here, so none of it. */
-.ui-simple .chat-screen-wrapper.simple-home .conversation-canvas {
+.ui-focused .chat-screen-wrapper.focused-home .conversation-canvas {
   /* !important only because Chat.vue sets `overflow-y: scroll !important`
      and `scrollbar-width: thin !important` on .conversation-canvas; nothing
      weaker can override those. Home only: a conversation still scrolls. */
@@ -920,20 +937,20 @@
   padding-top: 0;
   padding-bottom: 0;
 }
-.ui-simple .chat-screen-wrapper.simple-home .input-container {
+.ui-focused .chat-screen-wrapper.focused-home .input-container {
   order: 2;
   position: static;
   margin-top: 0;
 }
-.ui-simple .chat-screen-wrapper.simple-home .simple-starters {
+.ui-focused .chat-screen-wrapper.focused-home .focused-starters {
   order: 3;
 }
-.ui-simple .chat-screen-wrapper.simple-home .inspector-toggle,
-.ui-simple .chat-screen-wrapper.simple-home .chat-scroll-controls {
+.ui-focused .chat-screen-wrapper.focused-home .inspector-toggle,
+.ui-focused .chat-screen-wrapper.focused-home .chat-scroll-controls {
   display: none;
 }
 
-.ui-simple .simple-home-hero {
+.ui-focused .focused-home-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -942,22 +959,22 @@
   /* The demo: the heading hangs 36px above the input. */
   padding: 0 16px 36px;
 }
-.ui-simple .simple-home-logo {
+.ui-focused .focused-home-logo {
   height: 43px;
   width: auto;
   margin-bottom: 10px;
 }
-.ui-simple .simple-home-hero h1 {
+.ui-focused .focused-home-hero h1 {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
   color: var(--text-primary);
 }
-.ui-simple .simple-home-hero h1 em {
+.ui-focused .focused-home-hero h1 em {
   font-style: normal;
   color: var(--fill-brand);
 }
-.ui-simple .simple-home-hero p {
+.ui-focused .focused-home-hero p {
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
@@ -965,7 +982,7 @@
 
 /* ── Graduation offer ─────────────────────────────────────────────────────────────── */
 
-.ui-simple .simple-graduation {
+.ui-focused .focused-graduation {
   position: absolute;
   right: 20px;
   bottom: 20px;
@@ -981,15 +998,15 @@
   box-shadow: var(--shadow-overlay);
   font-size: 13px;
 }
-.ui-simple .simple-graduation > div:first-child {
+.ui-focused .focused-graduation > div:first-child {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.ui-simple .simple-graduation span {
+.ui-focused .focused-graduation span {
   color: var(--text-secondary);
 }
-.ui-simple .simple-graduation-actions {
+.ui-focused .focused-graduation-actions {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -997,7 +1014,7 @@
 
 /* ── Phones ───────────────────────────────────────────────────────────────── */
 
-.ui-simple.is-compact .simple-sidebar {
+.ui-focused.is-compact .focused-sidebar {
   position: absolute;
   z-index: 60;
   top: 0;
@@ -1006,44 +1023,44 @@
   width: min(300px, 86vw);
   box-shadow: var(--shadow-overlay);
 }
-.ui-simple .simple-scrim {
+.ui-focused .focused-scrim {
   position: absolute;
   inset: 0;
   z-index: 55;
   border: none;
   background: var(--scrim);
 }
-.ui-simple.is-compact .simple-page {
+.ui-focused.is-compact .focused-page {
   padding: 20px 16px 32px;
 }
-.ui-simple.is-compact .simple-home-hero h1 {
+.ui-focused.is-compact .focused-home-hero h1 {
   font-size: 22px;
 }
 /* Phone home: the hero fills the space, the composer docks at the bottom
-   where the thumb is, suggestions sit just above it. Simple's top bar is the
+   where the thumb is, suggestions sit just above it. Focused's top bar is the
    header, so Chat's own phone heading would be a second one. */
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .main-panel {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .main-panel {
   justify-content: flex-end;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .conversation-canvas-wrapper {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .conversation-canvas-wrapper {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .conversation-canvas {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .conversation-canvas {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .simple-starters {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .focused-starters {
   order: 2;
   padding: 0 12px 8px;
   box-sizing: border-box;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .input-container {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .input-container {
   order: 3;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .mobile-conversation-heading {
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .mobile-conversation-heading {
   display: none;
 }

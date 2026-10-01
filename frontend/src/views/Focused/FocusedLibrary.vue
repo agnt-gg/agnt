@@ -1,5 +1,5 @@
 <template>
-  <SimplePage
+  <FocusedPage
     :title="page.title"
     :sub="page.sub"
     :action-label="'New ' + current.noun"
@@ -8,57 +8,57 @@
     @action="$emit('ask', current.ask)"
   >
     <template #tabs>
-      <div class="simple-tabs" role="tablist">
+      <div class="focused-tabs" role="tablist">
         <button
           v-for="t in tabs"
           :key="t.id"
           type="button"
           role="tab"
-          class="simple-tab"
+          class="focused-tab"
           :class="{ active: t.id === current.id }"
           :aria-selected="t.id === current.id ? 'true' : 'false'"
           @click="selectTab(t.id)"
         >
-          <i :class="t.icon" aria-hidden="true"></i>{{ t.label }}<span class="simple-count">{{ counts[t.id] ?? '' }}</span>
+          <i :class="t.icon" aria-hidden="true"></i>{{ t.label }}<span class="focused-count">{{ counts[t.id] ?? '' }}</span>
         </button>
-        <button type="button" role="tab" class="simple-tab" aria-selected="false" @click="$emit('run', filesAction)">
+        <button type="button" role="tab" class="focused-tab" aria-selected="false" @click="$emit('run', filesAction)">
           <i class="fas fa-folder" aria-hidden="true"></i>Files
         </button>
       </div>
     </template>
 
-    <p v-if="loading && !rows.length" class="simple-empty">Loading…</p>
-    <p v-else-if="!rows.length" class="simple-empty">
+    <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
+    <p v-else-if="!rows.length" class="focused-empty">
       {{ query ? `No ${current.label.toLowerCase()} match “${query}”.` : `Nothing here yet. Ask in chat to make your first ${current.noun}.` }}
     </p>
-    <ul v-else class="simple-list">
+    <ul v-else class="focused-list">
       <li v-for="r in rows" :key="r.id">
-        <button type="button" class="simple-row" @click="$emit('run', r.action)">
-          <span class="simple-row-icon" aria-hidden="true">
+        <button type="button" class="focused-row" @click="$emit('run', r.action)">
+          <span class="focused-row-icon" aria-hidden="true">
             <i v-if="isIconClass(r.icon)" :class="r.icon"></i><template v-else>{{ r.icon }}</template>
           </span>
-          <span class="simple-row-text">
+          <span class="focused-row-text">
             <strong>{{ r.label }}</strong>
             <small v-if="r.description">{{ r.description }}</small>
           </span>
-          <i class="fas fa-chevron-right simple-row-go" aria-hidden="true"></i>
+          <i class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
         </button>
       </li>
     </ul>
-  </SimplePage>
+  </FocusedPage>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import SimplePage from './SimplePage.vue';
-import { SIMPLE_PAGES, LIBRARY_TABS, LIBRARY_FILES_ACTION, libraryTab, libraryRows, isIconClass } from './simpleModel.js';
+import FocusedPage from './FocusedPage.vue';
+import { FOCUSED_PAGES, LIBRARY_TABS, LIBRARY_FILES_ACTION, libraryTab, libraryRows, isIconClass } from './focusedModel.js';
 
 const props = defineProps({ tab: { type: String, default: 'agents' } });
 const emit = defineEmits(['run', 'ask', 'update:tab']);
 
 const store = useStore();
-const page = SIMPLE_PAGES.library;
+const page = FOCUSED_PAGES.library;
 const tabs = LIBRARY_TABS;
 const filesAction = LIBRARY_FILES_ACTION;
 const query = ref('');
@@ -82,7 +82,7 @@ async function ensureLoaded(t) {
   try {
     await store.dispatch(t.fetch);
   } catch (e) {
-    console.warn(`[Simple] could not load ${t.id}:`, e?.message || e);
+    console.warn(`[Focused] could not load ${t.id}:`, e?.message || e);
   } finally {
     loading.value = false;
   }

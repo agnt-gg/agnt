@@ -1,5 +1,5 @@
 /**
- * Simple's start-screen ideas, ported from the AGNT One demo (projects/agnt-one-demo).
+ * Focused's start-screen ideas, ported from the AGNT One demo (projects/agnt-one-demo).
  *
  * Three cards under the input, each one lane ("Build", "Save money"…) and one
  * short label. The label fits one line; `prompt` is what is actually sent.
@@ -23,12 +23,12 @@ export const LANES = Object.freeze({
 /** [lane, label, prompt] — verbatim from the demo. */
 export const STARTERS = Object.freeze([
   ['build', 'Make me an agent', 'Help me create an AGNT agent for a job I do often. Ask me what the job is, then create the agent for me.'],
-  ['build', 'Build a budget tracker app', 'Build me a simple, good-looking budget tracker web app: add expenses, see categories as a chart, and track a monthly budget. Make it work in the browser.'],
+  ['build', 'Build a budget tracker app', 'Build me a focused, good-looking budget tracker web app: add expenses, see categories as a chart, and track a monthly budget. Make it work in the browser.'],
   ['build', 'Make a landing page', 'Make a modern one-page landing page for a small business. Ask me what the business is first, then build it.'],
   ['build', 'Build a habit tracker', 'Build a habit tracker web app with daily check-ins, streaks and a weekly view.'],
   ['build', 'Make a booking page', 'Make a booking page where clients can pick a service and request a time slot.'],
   ['build', 'Build a quote calculator', 'Build a quote calculator my customers can use on a website: pick options, see a live price, and email the quote.'],
-  ['build', 'Turn a spreadsheet into an app', 'Turn a spreadsheet into a simple web app with search and filters. I\u2019ll attach or paste the spreadsheet.'],
+  ['build', 'Turn a spreadsheet into an app', 'Turn a spreadsheet into a focused web app with search and filters. I\u2019ll attach or paste the spreadsheet.'],
   ['create', 'Make a 30-second promo video', 'Make a 30-second promo video for my business with captions and music. Ask me about the business first.'],
   ['create', 'Design a logo', 'Design a clean, modern logo. Ask me the name and the feel I want, then show me three options.'],
   ['create', 'Write a week of social posts', 'Write a week of social media posts for my business, one a day, with a suggested image for each.'],
@@ -38,7 +38,7 @@ export const STARTERS = Object.freeze([
   ['grow', 'Find 20 local business leads', 'Find 20 local businesses that could use my services, with their website, phone and why they\u2019re a fit. Ask me what I sell and where first.'],
   ['grow', 'Write a cold email that works', 'Write a short cold email that gets replies, plus two follow-ups. Ask me what I sell and to whom.'],
   ['grow', 'Research my top competitors', 'Research my top five competitors: pricing, strengths, weaknesses and where I can win. Ask me my business first.'],
-  ['grow', 'Get more Google reviews', 'Help me get more Google reviews: write the ask message and a simple plan to send it to past customers.'],
+  ['grow', 'Get more Google reviews', 'Help me get more Google reviews: write the ask message and a focused plan to send it to past customers.'],
   ['grow', 'Price my services', 'Help me price my services by comparing what others charge near me. Ask me what I offer and where.'],
   ['grow', 'Plan a launch week', 'Plan a launch week for a new product: what to post, email and announce each day.'],
   ['save', 'Cut my subscriptions', 'Find subscriptions I\u2019m paying for and help me cut the ones I don\u2019t use.'],
@@ -55,7 +55,7 @@ export const STARTERS = Object.freeze([
   ['clean', 'Summarize a long document', 'Summarize a long document on one page, with the decisions and dates that matter. I\u2019ll attach it.'],
   ['learn', 'Tailor my r\u00e9sum\u00e9 to a job', 'Tailor my r\u00e9sum\u00e9 to a job posting without inventing anything. I\u2019ll paste both.'],
   ['learn', 'Prep me for an interview', 'Prep me for a job interview with likely questions and strong answers. Ask me the role first.'],
-  ['learn', 'Explain a topic in 5 minutes', 'Explain a topic I pick in five minutes, with a simple diagram. Ask me the topic.'],
+  ['learn', 'Explain a topic in 5 minutes', 'Explain a topic I pick in five minutes, with a focused diagram. Ask me the topic.'],
   ['learn', 'Plan a weekend trip', 'Plan a weekend trip on a budget, with a day-by-day plan and a map. Ask me where from and how much I want to spend.'],
   ['learn', 'Make a workout plan', 'Make a four-week workout plan I can do at home with no equipment.'],
   ['learn', 'Learn a skill in 30 days', 'Make a 30-day plan to learn a new skill, 20 minutes a day. Ask me what skill.'],

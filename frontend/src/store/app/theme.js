@@ -171,7 +171,7 @@ export default {
     // Panel position setting
     panelPosition: localStorage.getItem('panelPosition') !== null ? localStorage.getItem('panelPosition') : 'right',
 
-    // Simple vs Studio shell (services/uiMode.js). Read synchronously so the
+    // Focused vs Studio shell (services/uiMode.js). Read synchronously so the
     // first paint already has the right frame; the preference sync reconciles
     // it with the account after mount, like every other setting here.
     uiMode: resolveUiMode({ explicit: readStoredUiMode() }),

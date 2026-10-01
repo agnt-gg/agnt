@@ -1,7 +1,7 @@
 /**
- * One line for a group of tool steps — Simple's "Done · 12 steps".
+ * One line for a group of tool steps — Focused's "Done · 12 steps".
  *
- * Studio shows every tool call as its own row. Simple shows this line and
+ * Studio shows every tool call as its own row. Focused shows this line and
  * opens the same rows on click, so nothing is hidden, only folded. The line
  * must never claim more than the rows say: a group with a failure is not
  * "Done", and a group still running is not finished.

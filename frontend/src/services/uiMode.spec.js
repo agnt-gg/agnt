@@ -11,16 +11,19 @@ import {
 
 describe('uiMode', () => {
   it('has exactly two modes and a valid default', () => {
-    expect(UI_MODES).toEqual(['simple', 'studio']);
+    expect(UI_MODES).toEqual(['focused', 'studio']);
     expect(UI_MODES).toContain(DEFAULT_UI_MODE);
   });
 
   describe('normalizeUiMode', () => {
     it.each([
-      ['simple', 'simple'],
+      ['focused', 'focused'],
       ['studio', 'studio'],
       [' Studio ', 'studio'],
-      ['SIMPLE', 'simple'],
+      ['FOCUSED', 'focused'],
+      // Built as "Simple": a saved legacy value keeps the person's choice.
+      ['simple', 'focused'],
+      [' Simple ', 'focused'],
       ['pro', null],
       ['', null],
       [null, null],
@@ -34,11 +37,11 @@ describe('uiMode', () => {
 
   describe('resolveUiMode', () => {
     it('an explicit choice wins', () => {
-      expect(resolveUiMode({ explicit: 'simple', fallback: 'studio' })).toBe('simple');
-      expect(resolveUiMode({ explicit: 'studio', fallback: 'simple' })).toBe('studio');
+      expect(resolveUiMode({ explicit: 'focused', fallback: 'studio' })).toBe('focused');
+      expect(resolveUiMode({ explicit: 'studio', fallback: 'focused' })).toBe('studio');
     });
     it('no choice falls back, then to the default', () => {
-      expect(resolveUiMode({ fallback: 'simple' })).toBe('simple');
+      expect(resolveUiMode({ fallback: 'focused' })).toBe('focused');
       expect(resolveUiMode({})).toBe(DEFAULT_UI_MODE);
       expect(resolveUiMode()).toBe(DEFAULT_UI_MODE);
     });
@@ -48,14 +51,15 @@ describe('uiMode', () => {
   });
 
   it('otherUiMode flips, and treats garbage as the default', () => {
-    expect(otherUiMode('simple')).toBe('studio');
-    expect(otherUiMode('studio')).toBe('simple');
+    expect(otherUiMode('focused')).toBe('studio');
+    expect(otherUiMode('studio')).toBe('focused');
     expect(otherUiMode('garbage')).toBe(otherUiMode(DEFAULT_UI_MODE));
   });
 
   describe('readStoredUiMode', () => {
     it('reads a valid value', () => {
-      expect(readStoredUiMode({ getItem: () => 'simple' })).toBe('simple');
+      expect(readStoredUiMode({ getItem: () => 'focused' })).toBe('focused');
+      expect(readStoredUiMode({ getItem: () => 'simple' })).toBe('focused');
     });
     it('rejects an invalid value', () => {
       expect(readStoredUiMode({ getItem: () => 'pro' })).toBeNull();

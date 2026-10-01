@@ -69,7 +69,7 @@
 import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import UiModeSetting from '@/views/Simple/UiModeSetting.vue';
+import UiModeSetting from '@/views/Focused/UiModeSetting.vue';
 import {
   addNavigationGroup,
   customNavigationPages,

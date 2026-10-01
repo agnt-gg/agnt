@@ -115,7 +115,7 @@
 
           <!-- Input line with textarea and buttons on same row -->
           <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
-            <span v-if="showPrompt && !isSimpleFrame" class="prompt">> </span>
+            <span v-if="showPrompt && !isFocusedFrame" class="prompt">> </span>
             <div class="input-highlight-container">
               <div class="input-backdrop" ref="inputBackdropRef">
                 <div class="input-highlights" v-html="inputHighlightsHtml"></div>
@@ -124,7 +124,7 @@
                 ref="textareaRef"
                 class="chat-input-textarea"
                 v-model="currentUserInput"
-                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : isSimpleFrame ? 'Ask anything' : 'Type a message or command...'"
+                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : isFocusedFrame ? 'Ask anything' : 'Type a message or command...'"
                 rows="1"
                 :disabled="isInputDisabled"
                 @input="handleTextareaInput"
@@ -433,18 +433,18 @@ export default {
 
     // --- Mobile & Panel State ---
     const isMobile = inject('isMobile', ref(false));
-    // Which shell frames this screen (views/Simple provides 'simple'; Studio
-    // provides nothing). On Chat in Simple:
-    //   left  — always hidden: Simple's sidebar already IS the chat list.
+    // Which shell frames this screen (views/Focused provides 'focused'; Studio
+    // provides nothing). On Chat in Focused:
+    //   left  — always hidden: Focused's sidebar already IS the chat list.
     //   right — hidden until something is opened from the thread (a file
-    //           card, an agent, a run). Then it is Simple's preview pane;
+    //           card, an agent, a run). Then it is Focused's preview pane;
     //           hiding it there would make those cards do nothing.
-    // Every other screen keeps its panels: in Simple it is borrowed Studio.
+    // Every other screen keeps its panels: in Focused it is borrowed Studio.
     const uiPresentation = inject('uiPresentation', 'studio');
-    const isSimpleFrame = uiPresentation === 'simple';
-    const simpleChat = computed(() => isSimpleFrame && props.screenId === 'ChatScreen');
-    const leftHidden = computed(() => props.hidePanels || simpleChat.value);
-    const rightHidden = computed(() => props.hidePanels || (simpleChat.value && !artifactTarget.value));
+    const isFocusedFrame = uiPresentation === 'focused';
+    const focusedChat = computed(() => isFocusedFrame && props.screenId === 'ChatScreen');
+    const leftHidden = computed(() => props.hidePanels || focusedChat.value);
+    const rightHidden = computed(() => props.hidePanels || (focusedChat.value && !artifactTarget.value));
     const panelsHidden = computed(() => leftHidden.value && rightHidden.value);
 
     // --- Panel geometry scope ---
@@ -1251,11 +1251,11 @@ export default {
     };
 
     // --- Tutorial ---
-    // Simple's own Chat runs no screen tutorial: Chat's tour walks Studio's
+    // Focused's own Chat runs no screen tutorial: Chat's tour walks Studio's
     // composer (model picker, tools, Save/Clear, monitoring panel), most of
-    // which Simple does not show, so it would point at nothing. Borrowed
+    // which Focused does not show, so it would point at nothing. Borrowed
     // Studio screens keep their tours: their targets are on screen.
-    const tutorial = useTutorialHook?.value && !simpleChat.value
+    const tutorial = useTutorialHook?.value && !focusedChat.value
       ? useTutorialHook.value()
       : {
           tutorialConfig: ref(null),
@@ -1807,7 +1807,7 @@ export default {
     });
 
     return {
-      isSimpleFrame,
+      isFocusedFrame,
       panelsHidden,
       leftHidden,
       rightHidden,
