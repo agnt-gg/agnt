@@ -1,6 +1,7 @@
 import { createStore } from 'vuex';
 import { withUserScopedReset, RESET_MUTATION } from './_utils/userScopedReset.js';
 import { invalidateAllFreshness } from './_utils/withFreshness.js';
+import { reportBootMark } from '@/utils/bootMark.js';
 import chat from './features/chat';
 import chatUnified from './features/chatUnified';
 import pluginBuilder from './features/pluginBuilder';
@@ -105,12 +106,22 @@ const store = createStore({
         // stats aggregate was the slowest by far (1.8 s warm, far longer cold),
         // so every screen gated on criticalDataReady waited on a number in a
         // side panel. They load with the secondary batch below.
+        //
+        // Connected apps starts here too but is not AWAITED: its full answer
+        // includes agnt.gg (5 s timeout) and the CLI probes, while it paints
+        // this computer's own connections the moment the local lane answers
+        // (see appAuth.fetchConnectedApps). Only the Dashboard skeleton and the
+        // Agents empty state wait on criticalDataReady, and neither reads
+        // connected apps.
+        reportBootMark('data-load-started');
+        Promise.resolve(dispatch('appAuth/fetchConnectedApps')).catch((err) => {
+          console.warn('Connected apps fetch failed:', err?.message || err);
+        });
         const criticalResults = await Promise.allSettled([
           dispatch('agents/fetchAgents'),
           dispatch('workflows/fetchWorkflows'),
           dispatch('contentOutputs/fetchOutputs'),
           dispatch('groups/fetchGroups'),
-          dispatch('appAuth/fetchConnectedApps'),
         ]);
 
         // Log critical failures
@@ -120,8 +131,9 @@ const store = createStore({
           }
         });
 
-        // Signal that critical data is ready (agents, workflows, outputs, groups, connected apps)
+        // Signal that critical data is ready (agents, workflows, outputs, groups)
         commit('SET_CRITICAL_DATA_READY');
+        reportBootMark('data-ready');
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
         // Deferred to respective screens: goals/fetchGoals (Goals/Dashboard),

@@ -870,6 +870,15 @@ describe('local boot: a window from t≈0, and a backend that cannot be frozen b
     expect(starting).toMatch(/occupiedRow\.hidden = true/);
   });
 
+  it('logs renderer boot marks on the same clock, accepting only a short slug', () => {
+    expect(preload).toMatch(/reportBootMark: \(name\) => ipcRenderer\.send\('diagnostics:boot-mark', name\)/);
+    const handler = blockAfter(code, "ipcMain.on('diagnostics:boot-mark'");
+    // Renderer-supplied text goes straight into a log line: validate first.
+    expect(handler.indexOf('BOOT_MARK_NAME.test(name)')).toBeGreaterThan(-1);
+    expect(handler.indexOf('BOOT_MARK_NAME.test(name)')).toBeLessThan(handler.indexOf('console.log'));
+    expect(handler).toMatch(/process\.uptime\(\)/);
+  });
+
   it('gives the backend a larger libuv pool and keeps its chatter out of the pipe', () => {
     const env = blockAfter(code, 'const env =');
     expect(env).toMatch(/UV_THREADPOOL_SIZE:/);

@@ -60,10 +60,10 @@ import { startPreferenceSync, stopPreferenceSync } from '@/services/userPreferen
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
 
 /**
- * Ceiling on the two identity fetches that gate first paint.
+ * Ceiling on the identity fetches before the deferred session steps run.
  *
- * Preserved from the original boot path: a slow or hung agnt.gg must not pin
- * `initializeStore`, which gates the dashboard skeleton via `criticalDataReady`.
+ * A slow or hung agnt.gg must not pin polling, settings or run reattachment.
+ * `initializeStore` no longer waits on it at all; see runStartSession.
  */
 const AUTH_WAIT_CEILING_MS = 1500;
 
@@ -119,16 +119,33 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
   // It also breaks the invariant this function is documented to hold —
   // startSession never rejects — and is a real hazard for any store whose
   // modules are not all registered at boot.
-  await Promise.resolve(store.dispatch('userAuth/syncTokenWithBackend')).catch((err) => {
+  const tokenSynced = Promise.resolve(store.dispatch('userAuth/syncTokenWithBackend')).catch((err) => {
     console.warn('[session] token sync failed:', err?.message || err);
   });
 
   const needsLicenseValidation = hydrateCachedLicense(store);
 
+  // ── LOCAL DATA ── started at once, not after the steps below. It used to
+  // wait for the token sync, then up to AUTH_WAIT_CEILING_MS on agnt.gg, then
+  // an idle callback, so after the window opened the panels stayed empty for
+  // seconds while nothing local was even requested. None of that was needed:
+  // every route it reads authenticates from the bearer header itself
+  // (Middleware.authenticateToken). The server-side session the sync fills is
+  // read by exactly one route, GET /users/token-status, a diagnostic the app
+  // never calls.
+  // The local data fan-out: agents, workflows, tools, outputs, groups,
+  // stats, skills, widgets, connected apps. THE line whose absence from both
+  // Google sign-in paths meant they loaded nothing at all.
+  Promise.resolve(store.dispatch('initializeStore')).catch((err) => {
+    console.error('[session] initializeStore failed:', err?.message || err);
+  });
+
+  await tokenSynced;
+
   // ── CRITICAL ── the two fetches that decide WHICH UI renders first.
   // fetchSubscription drives plan-tier gating; fetchUserData drives
   // identity-aware screens. Raced against a ceiling so a slow remote cannot
-  // hold up the local data fan-out below.
+  // hold up the deferred steps below.
   await Promise.race([
     Promise.allSettled([
       store.dispatch('userAuth/fetchUserData'),
@@ -148,13 +165,6 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
   // low-priority assets get connection slots first. Chromium caps at 6
   // concurrent connections per origin and schedules <img> below fetch/XHR.
   idle(() => {
-    // The local data fan-out: agents, workflows, tools, outputs, groups,
-    // stats, skills, widgets, connected apps. THE line whose absence from both
-    // Google sign-in paths meant they loaded nothing at all.
-    Promise.resolve(store.dispatch('initializeStore')).catch((err) => {
-      console.error('[session] initializeStore failed:', err?.message || err);
-    });
-
     store.dispatch('appAuth/startPolling');
 
     Promise.resolve(store.dispatch('aiProvider/fetchCustomProviders')).catch((err) => {

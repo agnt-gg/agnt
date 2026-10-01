@@ -219,11 +219,29 @@ const actions = {
           timeout: 5000,
         }).catch(() => null);
 
-        // LANE 3 — local CLI providers via per-provider status probes (<100ms each).
-        const statusResults = await Promise.allSettled(
+        // LANE 3 — local CLI providers via per-provider status probes. Started
+        // now, awaited after the local lane: warm they take ~10 ms, but cold
+        // they took 923 ms (gemini-cli 887 ms) on 2026-09-30, and nothing about
+        // the local lane's answer depends on them.
+        const statusPromise = Promise.allSettled(
           CLI_PROVIDER_IDS.map((id) => providerAuthService.getStatus(id)),
         );
 
+        // Local backend usually resolves first — merge it in before anything
+        // slower, so the UI lights up env-sourced and locally stored providers
+        // without waiting on CLI probes or the remote round-trip.
+        const localBackendResult = await localBackendPromise;
+        if (localBackendResult && Array.isArray(localBackendResult.data)) {
+          localLaneAnswered = true;
+          connectedApps = [...new Set(localBackendResult.data.map(normalizeProviderId).filter(Boolean))];
+          // Cold start only: paint the local set now. On refresh polls we
+          // never commit a partial set — see the comment above isColdStart.
+          if (isColdStart) {
+            commit('SET_CONNECTED_APPS', connectedApps);
+          }
+        }
+
+        const statusResults = await statusPromise;
         CLI_PROVIDER_IDS.forEach((id, index) => {
           const result = statusResults[index];
           if (result.status === 'fulfilled') {
@@ -238,18 +256,12 @@ const actions = {
           }
         });
 
-        // Local backend usually resolves before remote — merge it in next so the
-        // UI lights up env-sourced providers without waiting on the remote round-trip.
-        const localBackendResult = await localBackendPromise;
-        if (localBackendResult && Array.isArray(localBackendResult.data)) {
-          localLaneAnswered = true;
-          const localBackendApps = localBackendResult.data.map(normalizeProviderId).filter(Boolean);
-          connectedApps = [...new Set([...localBackendApps, ...connectedApps])];
-        }
-
-        // Cold start only: commit the local-only set early so the UI can paint
-        // before remote resolves. On refresh polls we skip this — see comment
-        // above for why (avoids dropping remote-only providers mid-flight).
+        // Cold start only: commit local + CLI before remote resolves. A cold
+        // start must commit here even if nothing changed since the local
+        // commit: when the remote lane then fails, the branch below is
+        // refresh-only, so this is the last chance the CLI providers have to
+        // reach the list in this run. A union with the local commit, so it
+        // only ever grows.
         if (isColdStart) {
           commit('SET_CONNECTED_APPS', Array.from(new Set(connectedApps)));
         }

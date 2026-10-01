@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('electron', {
   // errors reach disk through main. Fire-and-forget by design: a failing error
   // reporter must never itself throw inside an error handler.
   reportError: (payload) => ipcRenderer.send('diagnostics:client-error', payload),
+  // Named startup milestones (e.g. 'data-ready'), logged by main as
+  // "[boot] <name> at <s>" beside its own window/backend/app marks.
+  reportBootMark: (name) => ipcRenderer.send('diagnostics:boot-mark', name),
 
   // Connection (desktop only): choose between this machine's backend and a
   // remote one. Renderer code MUST feature-detect `window.electron?.connection`

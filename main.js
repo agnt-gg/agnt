@@ -1152,6 +1152,15 @@ ipcMain.on('diagnostics:client-error', (_event, payload = {}) => {
   }
 });
 
+// Renderer startup milestones, timed on the same clock as the [boot] lines
+// above (seconds since this process started). The name is renderer-supplied,
+// so only a short slug is accepted: it goes straight into a log line.
+const BOOT_MARK_NAME = /^[a-z][a-z0-9-]{0,40}$/;
+ipcMain.on('diagnostics:boot-mark', (_event, name) => {
+  if (typeof name !== 'string' || !BOOT_MARK_NAME.test(name)) return;
+  console.log(`[boot] ${name} at ${process.uptime().toFixed(1)}s`);
+});
+
 ipcMain.on('open-download-page', () => {
   shell.openExternal('https://agnt.gg/downloads');
 });

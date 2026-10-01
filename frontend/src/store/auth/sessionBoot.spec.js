@@ -138,16 +138,39 @@ describe('startSession — one definition of "what being signed in loads"', () =
     expect(resumeInflightRuns).toHaveBeenCalledWith(store);
   });
 
-  it('syncs the token to the local backend BEFORE loading anything', async () => {
-    // Some backend routes read the server-side session rather than the bearer
-    // header. Loading first would race them.
+  it('hands the token to the local backend first', async () => {
     const store = makeStore();
     await startSession(store, { reason: 'test', resumeInflightRuns: vi.fn().mockResolvedValue() });
     await settle();
 
-    const calls = dispatched(store);
-    expect(calls.indexOf('userAuth/syncTokenWithBackend')).toBe(0);
-    expect(calls.indexOf('userAuth/syncTokenWithBackend')).toBeLessThan(calls.indexOf('initializeStore'));
+    expect(dispatched(store).indexOf('userAuth/syncTokenWithBackend')).toBe(0);
+  });
+
+  it('starts loading local data without waiting on the token sync, agnt.gg or idle', async () => {
+    // After the window opened, the panels sat empty for seconds: the data load
+    // waited for the sync, then up to 1.5 s on agnt.gg identity calls, then an
+    // idle callback. Every route it reads authenticates from the bearer header
+    // itself, so none of that ordering bought anything.
+    const store = makeStore();
+    const never = new Promise(() => {});
+    store.dispatch.mockImplementation((action) =>
+      ['userAuth/syncTokenWithBackend', 'userAuth/fetchUserData', 'userAuth/fetchSubscription', 'userAuth/fetchPseudonym'].includes(action)
+        ? never
+        : Promise.resolve()
+    );
+    const idleSpy = vi.fn();
+    vi.stubGlobal('requestIdleCallback', idleSpy);
+    try {
+      startSession(store, { reason: 'test', resumeInflightRuns: vi.fn().mockResolvedValue() });
+      await Promise.resolve();
+
+      expect(dispatched(store)).toContain('initializeStore');
+      // ...while the steps that do belong after identity have not run yet.
+      expect(dispatched(store)).not.toContain('appAuth/startPolling');
+      expect(idleSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('concurrent starts share ONE run', async () => {
