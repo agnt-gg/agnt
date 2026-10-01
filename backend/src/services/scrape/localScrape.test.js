@@ -13,7 +13,7 @@ import { scrapeUrl, normalizeScrapeInput, closeScrapeBrowser, scrapeBrowserIsOpe
  */
 describe('normalizeScrapeInput', () => {
   it('defaults to markdown only, like the hosted API', () => {
-    expect(normalizeScrapeInput({ url: 'example.com' })).toEqual({ url: 'https://example.com/', formats: ['markdown'], mainContentOnly: true, waitForMs: 0 });
+    expect(normalizeScrapeInput({ url: 'example.com' })).toEqual({ url: 'https://example.com/', formats: ['markdown'], mainContentOnly: true, waitForMs: 0, allowLocal: false });
   });
 
   it('accepts formats as an array, a comma list or an object, in the hosted order', () => {
@@ -27,8 +27,17 @@ describe('normalizeScrapeInput', () => {
       .toMatchObject({ formats: ['markdown'], mainContentOnly: false, waitForMs: 250, pageRange: '5' });
   });
 
-  it('allows any port and localhost: it runs as the user, not as a shared cloud worker', () => {
-    expect(normalizeScrapeInput({ url: 'http://localhost:5173/app' }).url).toBe('http://localhost:5173/app');
+  it('allows any port: it runs as the user, not as a shared cloud worker', () => {
+    expect(normalizeScrapeInput({ url: 'https://example.com:8443/app' }).url).toBe('https://example.com:8443/app');
+  });
+
+  it('reads allowLocal as editors and models send it; anything else is not a yes', () => {
+    expect(normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: true }).allowLocal).toBe(true);
+    expect(normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: 'true' }).allowLocal).toBe(true);
+    expect(normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: 'false' }).allowLocal).toBe(false);
+    expect(normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: null }).allowLocal).toBe(false);
+    expect(() => normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: 'yes' })).toThrow('invalid_request');
+    expect(() => normalizeScrapeInput({ url: 'http://localhost:5173/', allowLocal: 1 })).toThrow('invalid_request');
   });
 
   it.each([
@@ -43,7 +52,7 @@ describe('normalizeScrapeInput', () => {
   });
 
   it('has a sentence for every error it can return', () => {
-    for (const code of ['invalid_url', 'invalid_formats', 'invalid_request', 'invalid_page_range']) expect(SCRAPE_ERROR_MESSAGES[code]).toBeTruthy();
+    for (const code of ['invalid_url', 'invalid_formats', 'invalid_request', 'invalid_page_range', 'destination_not_allowed']) expect(SCRAPE_ERROR_MESSAGES[code]).toBeTruthy();
   });
 });
 
@@ -97,9 +106,11 @@ const chrome = getBestChromePath();
 describe.skipIf(!chrome)('scrapeUrl in real Chrome', () => {
   let server;
   let base;
+  const hits = [];
 
   beforeAll(async () => {
     server = http.createServer((request, response) => {
+      hits.push(new URL(request.url, 'http://x').pathname);
       const route = ROUTES[new URL(request.url, 'http://x').pathname];
       if (!route) { response.writeHead(500).end(); return; }
       const [status, type, body, headers = {}] = route;
@@ -115,8 +126,16 @@ describe.skipIf(!chrome)('scrapeUrl in real Chrome', () => {
     await new Promise((resolve) => server.close(resolve));
   });
 
+  it('refuses this computer by default, before a single request reaches it', async () => {
+    hits.length = 0;
+    for (const url of [`${base}/article`, `${base}/report.pdf`, base.replace('127.0.0.1', 'localhost') + '/article']) {
+      expect(await scrapeUrl({ url })).toEqual({ success: false, error: 'destination_not_allowed', message: SCRAPE_ERROR_MESSAGES.destination_not_allowed, url });
+    }
+    expect(hits).toEqual([]);
+  });
+
   it('a page: markdown with its table, code and shadow-DOM code; navigation and footer dropped', async () => {
-    const result = await scrapeUrl({ url: `${base}/article` });
+    const result = await scrapeUrl({ allowLocal: true, url: `${base}/article` });
     expect(result).toMatchObject({ success: true, statusCode: 200, title: 'Guide', isPartial: false });
     expect(Object.keys(result.formats)).toEqual(['markdown']);
     const markdown = result.formats.markdown.data;
@@ -129,7 +148,7 @@ describe.skipIf(!chrome)('scrapeUrl in real Chrome', () => {
   }, 60000);
 
   it('returns exactly the formats asked for, from one visit', async () => {
-    const result = await scrapeUrl({ url: `${base}/article`, formats: ['links', 'code', 'screenshot', 'bytes'] });
+    const result = await scrapeUrl({ allowLocal: true, url: `${base}/article`, formats: ['links', 'code', 'screenshot', 'bytes'] });
     expect(Object.keys(result.formats).sort()).toEqual(['bytes', 'code', 'links', 'screenshot']);
     expect(result.formats.links.data).toEqual([`${base}/home`, `${base}/docs/next`]);
     expect(result.formats.screenshot.data).toMatch(/^data:image\/jpeg;base64,/);
@@ -142,41 +161,41 @@ describe.skipIf(!chrome)('scrapeUrl in real Chrome', () => {
     ['/challenge', 'page_blocked'],
     ['/empty', 'extraction_failed'],
   ])('%s is a typed failure, never content', async (path, code) => {
-    const result = await scrapeUrl({ url: base + path });
+    const result = await scrapeUrl({ allowLocal: true, url: base + path });
     expect(result).toEqual({ success: false, error: code, message: SCRAPE_ERROR_MESSAGES[code], url: base + path });
   }, 60000);
 
   it('an unreachable site is destination_unavailable', async () => {
-    const result = await scrapeUrl({ url: 'http://127.0.0.1:1/' });
+    const result = await scrapeUrl({ allowLocal: true, url: 'http://127.0.0.1:1/' });
     expect(result.error).toBe('destination_unavailable');
   }, 60000);
 
   it('a PDF Chrome would show in its viewer comes back as per-page markdown', async () => {
-    const result = await scrapeUrl({ url: `${base}/report.pdf` });
+    const result = await scrapeUrl({ allowLocal: true, url: `${base}/report.pdf` });
     expect(result).toMatchObject({ success: true, document: { type: 'pdf', pages: 1 } });
     expect(result.formats.markdown.data).toContain('## Page 1');
     expect(result.formats.markdown.data).toContain('Attention is all you need');
   }, 60000);
 
   it('a Word file Chrome would only download is fetched and converted', async () => {
-    const result = await scrapeUrl({ url: `${base}/report.docx` });
+    const result = await scrapeUrl({ allowLocal: true, url: `${base}/report.docx` });
     expect(result).toMatchObject({ success: true, document: { type: 'docx' } });
     expect(result.formats.markdown.data).toMatch(/# Quarterly report\n\nRevenue grew\./);
   }, 60000);
 
   it('data files: CSV becomes a table, JSON a fenced block', async () => {
-    const [csv, json] = await Promise.all([scrapeUrl({ url: `${base}/data.csv` }), scrapeUrl({ url: `${base}/data.json` })]);
+    const [csv, json] = await Promise.all([scrapeUrl({ allowLocal: true, url: `${base}/data.csv` }), scrapeUrl({ allowLocal: true, url: `${base}/data.json` })]);
     expect(csv.formats.markdown.data).toContain('| Pro, yearly | 150 |');
     expect(json.formats.markdown.data).toBe('```json\n{\n  "name": "agnt",\n  "tags": [\n    "a",\n    "b"\n  ]\n}\n```');
   }, 60000);
 
   it('runs in parallel on one shared browser, and closes it on request', async () => {
-    const results = await Promise.all(Array.from({ length: 6 }, () => scrapeUrl({ url: `${base}/article`, formats: ['text'] })));
+    const results = await Promise.all(Array.from({ length: 6 }, () => scrapeUrl({ allowLocal: true, url: `${base}/article`, formats: ['text'] })));
     expect(results.every((r) => r.success && r.formats.text.data.includes('Install'))).toBe(true);
     expect(scrapeBrowserIsOpen()).toBe(true);
     await closeScrapeBrowser();
     expect(scrapeBrowserIsOpen()).toBe(false);
     // ...and relaunches on demand.
-    expect((await scrapeUrl({ url: `${base}/article` })).success).toBe(true);
+    expect((await scrapeUrl({ allowLocal: true, url: `${base}/article` })).success).toBe(true);
   }, 90000);
 });

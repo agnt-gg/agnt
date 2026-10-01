@@ -11,6 +11,8 @@
  * scripts/sync-scrape-upstream.mjs. This file is only the part that has to differ on a
  * desktop: no egress proxy (it runs as the user, from the user's own IP, which is why
  * scraping is local at all), and one Chrome shared by every call instead of one per call.
+ * Without the proxy, its address rule is enforced here instead (destinationGuard.js): this
+ * computer and private networks are refused unless the caller passes allowLocal.
  * The flow mirrors upstream scrape-worker.mjs handleScrape step for step; keep it that way.
  *
  * Heavy modules (puppeteer-core, jsdom, turndown, unpdf, mammoth) load on the first scrape,
@@ -18,6 +20,8 @@
  */
 import { SCRAPE_FORMATS, SCRAPE_LIMITS, normalizeOperation } from './upstream/src/services/ScrapePolicy.js';
 import { getBestChromePath, getChromeNotFoundMessage } from '../../utils/chrome-detector.js';
+import { sandboxFlags } from '../browserRuntime.js';
+import { createDestinationGuard } from './destinationGuard.js';
 
 export { SCRAPE_FORMATS };
 
@@ -25,7 +29,9 @@ export { SCRAPE_FORMATS };
 export const SCRAPE_ERROR_MESSAGES = Object.freeze({
   invalid_url: 'The URL is not a valid http(s) address.',
   invalid_formats: `formats must be one or more of: ${SCRAPE_FORMATS.join(', ')}.`,
-  invalid_request: `mainContentOnly must be true or false, and waitForMs a whole number from 0 to ${SCRAPE_LIMITS.maxWaitForMs}.`,
+  invalid_request: `mainContentOnly and allowLocal must be true or false, and waitForMs a whole number from 0 to ${SCRAPE_LIMITS.maxWaitForMs}.`,
+  destination_not_allowed:
+    'The URL (or a redirect from it) points at this computer or a private network: localhost, 127.x, 10.x, 172.16-31.x, 192.168.x, 169.254.x and the like. Pass allowLocal: true to scrape it on purpose.',
   invalid_page_range: 'pageRange must be a page number or a range such as "2-9" that starts inside the document.',
   page_blocked: 'The site refused automated access (401, 403, 429 or a bot check).',
   page_not_found: 'The page does not exist (404 or 410).',
@@ -57,10 +63,11 @@ const asInteger = (value) => (typeof value === 'string' && /^\s*\d+\s*$/.test(va
 const asPageRange = (value) => (typeof value === 'number' ? String(value) : absentIfNull(value));
 
 /**
- * Validates a scrape request and returns { url, formats, mainContentOnly, waitForMs, pageRange? }.
+ * Validates a scrape request and returns
+ * { url, formats, mainContentOnly, waitForMs, pageRange?, allowLocal }.
  * Throws Error(<hosted error code>).
  */
-export function normalizeScrapeInput({ url, formats, mainContentOnly, waitForMs, pageRange } = {}) {
+export function normalizeScrapeInput({ url, formats, mainContentOnly, waitForMs, pageRange, allowLocal } = {}) {
   if (typeof url !== 'string' || !url.trim() || url.length > 4096) throw new Error('invalid_url');
   const trimmed = url.trim();
   let parsed;
@@ -81,7 +88,10 @@ export function normalizeScrapeInput({ url, formats, mainContentOnly, waitForMs,
     waitForMs: asInteger(waitForMs),
     pageRange: asPageRange(pageRange),
   });
-  return { ...options, url: parsed.href };
+  // Desktop only: the hosted API has no such option because its proxy never reaches inside.
+  const local = asBoolean(allowLocal);
+  if (local !== undefined && typeof local !== 'boolean') throw new Error('invalid_request');
+  return { ...options, url: parsed.href, allowLocal: local === true };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -105,7 +115,9 @@ async function launchBrowser() {
     // so the shared browser can never outlive the app.
     pipe: true,
     timeout: 15000,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-position=-32000,-32000', '--window-size=1,1', '--lang=en-US'],
+    // The sandbox stays ON except where Chrome cannot run with it (a container, or root on
+    // Linux): this browser opens pages an agent chose, which is what the sandbox is for.
+    args: [...sandboxFlags(), '--window-position=-32000,-32000', '--window-size=1,1', '--lang=en-US'],
   });
 }
 
@@ -235,19 +247,42 @@ async function renderedHTML(page) {
   return page.content();
 }
 
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 10;
+
 // Upstream scrape-worker.mjs download(), minus the egress proxy: a file Chrome will not display
 // (Word, Excel...) or whose body it did not keep, fetched once more, bounded in bytes and time.
-async function download(url, userAgent, remainingMs) {
+// Redirects are followed by hand so the destination guard sees every hop: an automatic follow
+// would let a public URL bounce the request onto this computer.
+async function download(url, userAgent, remainingMs, guard) {
+  const signal = AbortSignal.timeout(Math.max(1000, remainingMs));
+  let current = url;
   let response;
-  try {
-    response = await fetch(url, {
-      headers: { 'User-Agent': userAgent, Accept: '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(Math.max(1000, remainingMs)),
-    });
-  } catch (error) {
-    const text = String(error?.cause?.message || error?.message || '');
-    throw new Error(error?.name === 'TimeoutError' || /timeout|aborted/i.test(text) ? 'scrape_timeout' : 'destination_unavailable');
+  for (let hop = 0; ; hop++) {
+    if (guard) {
+      const verdict = await guard.verdict(current);
+      if (verdict === 'deny') throw new Error('destination_not_allowed');
+      if (verdict === 'unresolved') throw new Error('destination_unavailable');
+    }
+    try {
+      response = await fetch(current, {
+        headers: { 'User-Agent': userAgent, Accept: '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+        redirect: 'manual',
+        signal,
+      });
+    } catch (error) {
+      const text = String(error?.cause?.message || error?.message || '');
+      throw new Error(error?.name === 'TimeoutError' || /timeout|aborted/i.test(text) ? 'scrape_timeout' : 'destination_unavailable');
+    }
+    const location = REDIRECTS.has(response.status) ? response.headers.get('location') : null;
+    if (!location) break;
+    await response.body?.cancel().catch(() => {});
+    if (hop >= MAX_REDIRECTS) throw new Error('destination_unavailable');
+    try {
+      current = new URL(location, current).href;
+    } catch {
+      throw new Error('destination_unavailable');
+    }
   }
   const failure = failureFor(response.status);
   if (failure || Number(response.headers.get('content-length') || 0) > SCRAPE_LIMITS.fileBytes) {
@@ -263,7 +298,7 @@ async function download(url, userAgent, remainingMs) {
       chunks.push(chunk);
     }
   }
-  return { bytes: Buffer.concat(chunks), contentType: response.headers.get('content-type') || '', finalUrl: response.url || url, status: response.status };
+  return { bytes: Buffer.concat(chunks), contentType: response.headers.get('content-type') || '', finalUrl: current, status: response.status };
 }
 
 function codeFor(error, deadline) {
@@ -288,7 +323,7 @@ function failure(code, url, started, error) {
 /**
  * Scrapes one URL. Never throws: every failure is a { success: false, error, message } body.
  * @param {{url: string, formats?: string[]|string|object, mainContentOnly?: boolean,
- *          waitForMs?: number, pageRange?: string}} request
+ *          waitForMs?: number, pageRange?: string, allowLocal?: boolean}} request
  */
 export async function scrapeUrl(request = {}) {
   const started = Date.now();
@@ -299,9 +334,20 @@ export async function scrapeUrl(request = {}) {
   } catch (error) {
     return failure(KNOWN.has(error.message) ? error.message : 'invalid_request', request?.url, started, error);
   }
-  const { url, formats, mainContentOnly, waitForMs, pageRange } = input;
+  const { url, formats, mainContentOnly, waitForMs, pageRange, allowLocal } = input;
+
+  // Refused before Chrome is even involved, so a refused URL costs no browser and no request.
+  const guard = allowLocal ? null : createDestinationGuard();
+  if (guard) {
+    const verdict = await guard.verdict(url);
+    if (verdict === 'deny') return failure('destination_not_allowed', url, started);
+    if (verdict === 'unresolved') return failure('destination_unavailable', url, started);
+  }
 
   scrapeStarted();
+  // Set when the guard stops the page itself from going inside (a redirect, or a script
+  // navigating the top frame), which Chrome reports only as a generic blocked load.
+  let navigationRefused = false;
   let context = null;
   let deadline = false;
   // Closing the context aborts whatever it is doing; the shared browser carries on.
@@ -322,6 +368,21 @@ export async function scrapeUrl(request = {}) {
     const userAgent = (await opened.browser.userAgent()).replace('HeadlessChrome', 'Chrome');
     await page.setUserAgent(userAgent);
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    if (guard) {
+      // Every request the page makes, not only the first: redirects, frames, images, scripts
+      // and fetches. Held until the guard has an answer, so nothing reaches inside first.
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        guard.verdict(request.url()).then(
+          (verdict) => {
+            if (verdict === 'allow') return request.continue();
+            if (verdict === 'deny' && request.isNavigationRequest() && request.frame() === page.mainFrame()) navigationRefused = true;
+            return request.abort(verdict === 'deny' ? 'blockedbyclient' : 'namenotresolved');
+          },
+          () => request.abort('failed'),
+        ).catch(() => {}); // the context closed while the answer was pending
+      });
+    }
 
     // DOM first, then a bounded settle: waiting for total network silence times out on pages
     // with analytics or long-polling.
@@ -354,7 +415,7 @@ export async function scrapeUrl(request = {}) {
           /* fetched below */
         }
       }
-      file ??= await download(navigation?.url() || url, userAgent, remaining());
+      file ??= await download(navigation?.url() || url, userAgent, remaining(), guard);
       // The conversion may need the memory more than this page needs the context.
       await context.close().catch(() => {});
       context = null;
@@ -405,7 +466,7 @@ export async function scrapeUrl(request = {}) {
     if (!Object.values(outputs).some((entry) => entry.success)) throw new Error('extraction_failed');
     return logged({ success: true, url, finalUrl: page.url(), statusCode: status, title: output.title || title, formats: outputs, isPartial: Object.values(outputs).some((entry) => !entry.success) }, started);
   } catch (error) {
-    return failure(codeFor(error, deadline), url, started, error);
+    return failure(navigationRefused ? 'destination_not_allowed' : codeFor(error, deadline), url, started, error);
   } finally {
     clearTimeout(timer);
     await context?.close().catch(() => {});

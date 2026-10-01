@@ -18,6 +18,7 @@ export default {
     mainContentOnly: { type: 'boolean', description: 'Drop navigation, headers, footers and sidebars (default true).' },
     waitForMs: { type: 'integer', description: 'Extra wait after load, 0-10000 ms (default 0).' },
     pageRange: { type: 'string', description: 'PDF pages to convert, e.g. "5" or "2-9".' },
+    allowLocal: { type: 'boolean', description: 'Allow this computer and private networks (default false).' },
   },
   /** @returns {Promise<object>} the hosted body; never throws. */
   execute: (request) => scrapeUrl(request),

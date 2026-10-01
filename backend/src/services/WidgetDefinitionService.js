@@ -1,6 +1,7 @@
 import db from '../models/database/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getBestChromePath } from '../utils/chrome-detector.js';
+import { sandboxFlags } from './browserRuntime.js';
 import { notifyWidgetChanged } from '../utils/widgetChangeNotifier.js';
 
 // --- Persistent Puppeteer browser for thumbnail captures ---
@@ -109,8 +110,11 @@ async function getThumbnailBrowser() {
     executablePath: chromePath,
     protocolTimeout: 60000,
     args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
+      // The sandbox stays ON except where Chrome cannot run with it (a container,
+      // or root on Linux): browserRuntime.js. Widgets are HTML from libraries and
+      // marketplaces, rendered with web security off below; the sandbox is what
+      // contains a renderer exploit in one of them.
+      ...sandboxFlags(),
       '--disable-web-security',
       '--disable-features=IsolateOrigins,site-per-process',
       '--use-fake-device-for-media-stream',

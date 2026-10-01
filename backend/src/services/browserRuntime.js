@@ -39,9 +39,13 @@
  * CAP_SYS_ADMIN and Docker's default seccomp profile blocks the namespace
  * calls the sandbox is built from. On a headless VPS running as a normal user
  * none of that applies, the sandbox works, and passing the flag anyway would be
- * a silent security downgrade bought for nothing.
+ * a silent security downgrade bought for nothing. Chrome also refuses to
+ * start as root with the sandbox on, so root (any Linux, container or not)
+ * pays the same price.
  *
- * Hence: headless follows the display, --no-sandbox follows the container.
+ * Hence: headless follows the display, --no-sandbox follows the container or
+ * root. Launchers that pick their own headless mode take sandboxFlags() alone;
+ * nothing in this app hard-codes --no-sandbox.
  *
  * ---------------------------------------------------------------------------
  * MEASURED, SO THE LAUNCHER DOES NOT NEED TO CHANGE
@@ -105,6 +109,37 @@ export function hasDisplay() {
 }
 
 /**
+ * Is this process root on Linux?
+ *
+ * Chrome refuses to start as root unless its sandbox is off ("Running as root
+ * without --no-sandbox is not supported"), container or not: a root user on a
+ * plain VPS is the case the container check alone missed.
+ */
+export function isRunningAsRoot() {
+  return process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() === 0;
+}
+
+/**
+ * The flags the SANDBOX decision alone requires.
+ *
+ * For launchers that choose their own headless mode (the web scraper and the
+ * widget renderer run headless:'shell' everywhere) and so must not take the
+ * display flags in requiredChromeFlags(). [] on a desktop and on a VPS running
+ * as a normal user, where the sandbox works and turning it off buys nothing.
+ */
+export function sandboxFlags() {
+  const flags = [];
+  const container = isContainerRuntime();
+  // See the header: this is the container's price (or root's), not headless's.
+  if (container || isRunningAsRoot()) flags.push('--no-sandbox');
+  // Docker's default /dev/shm is 64MB. Chromium maps its renderer heaps there
+  // and dies partway through a page load when it runs out — as a renderer
+  // crash, several layers from the cause.
+  if (container) flags.push('--disable-dev-shm-usage');
+  return flags;
+}
+
+/**
  * Must a browser launched here be headless?
  *
  * The env override exists for the case detection cannot see: an X server that
@@ -136,14 +171,7 @@ export function requiredChromeFlags() {
     flags.push('--disable-gpu');
   }
 
-  if (isContainerRuntime()) {
-    // See the header: this is the container's price, not headless's.
-    flags.push('--no-sandbox');
-    // Docker's default /dev/shm is 64MB. Chromium maps its renderer heaps there
-    // and dies partway through a page load when it runs out — as a renderer
-    // crash, several layers from the cause.
-    flags.push('--disable-dev-shm-usage');
-  }
+  flags.push(...sandboxFlags());
 
   return flags;
 }
@@ -158,6 +186,7 @@ export function describeRuntime() {
   const parts = [];
   parts.push(shouldRunHeadless() ? 'headless' : 'visible');
   if (isContainerRuntime()) parts.push('containerised');
+  if (isRunningAsRoot()) parts.push('root');
   if (process.platform === 'linux' && !hasDisplay()) parts.push('no DISPLAY');
   return parts.join(', ');
 }

@@ -19,20 +19,30 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import {
   isContainerRuntime,
+  isRunningAsRoot,
   hasDisplay,
   shouldRunHeadless,
   requiredChromeFlags,
+  sandboxFlags,
   describeRuntime,
 } from './browserRuntime.js';
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_PLATFORM = process.platform;
+const ORIGINAL_GETUID = Object.getOwnPropertyDescriptor(process, 'getuid');
 
 function setPlatform(value) {
   Object.defineProperty(process, 'platform', { value, configurable: true });
 }
 
+// Pinned, so a Linux CI runner that happens to run as root cannot change what
+// the non-root cases mean. Windows has no getuid at all; this supplies one.
+function setUid(uid) {
+  Object.defineProperty(process, 'getuid', { value: () => uid, configurable: true, writable: true });
+}
+
 beforeEach(() => {
+  setUid(1000);
   delete process.env.AGNT_BROWSER_HEADLESS;
   delete process.env.AGNT_CONTAINER;
   delete process.env.DISPLAY;
@@ -42,6 +52,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   setPlatform(ORIGINAL_PLATFORM);
+  if (ORIGINAL_GETUID) Object.defineProperty(process, 'getuid', ORIGINAL_GETUID);
+  else delete process.getuid;
   process.env = { ...ORIGINAL_ENV };
 });
 
@@ -129,6 +141,46 @@ describe('no display means headless, container or not', () => {
     const flags = requiredChromeFlags();
     expect(flags).not.toContain('--headless=new');
     expect(flags).toContain('--no-sandbox');
+  });
+});
+
+describe('root pays the sandbox price too; nobody else does', () => {
+  // Chrome will not start as root with its sandbox on, container or not. The
+  // container check alone left a root user on a plain VPS with a browser that
+  // refuses to launch.
+  it('gives a root user on a plain Linux box --no-sandbox, and nothing else', () => {
+    setPlatform('linux');
+    setUid(0);
+    process.env.DISPLAY = ':0';
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('0::/init.scope');
+
+    expect(isRunningAsRoot()).toBe(true);
+    expect(sandboxFlags()).toEqual(['--no-sandbox']);
+    expect(requiredChromeFlags()).toEqual(['--no-sandbox']);
+    expect(describeRuntime()).toBe('visible, root');
+  });
+
+  it('never treats Windows or macOS as root', () => {
+    for (const platform of ['win32', 'darwin']) {
+      setPlatform(platform);
+      setUid(0);
+      expect(isRunningAsRoot()).toBe(false);
+      expect(sandboxFlags()).toEqual([]);
+    }
+  });
+
+  it('keeps the sandbox for a normal user on Linux, display or not', () => {
+    setPlatform('linux');
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('0::/init.scope');
+    expect(sandboxFlags()).toEqual([]);
+  });
+
+  it('gives a container both container flags, and never the display flags', () => {
+    setPlatform('linux');
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === '/.dockerenv');
+    expect(sandboxFlags()).toEqual(['--no-sandbox', '--disable-dev-shm-usage']);
   });
 });
 

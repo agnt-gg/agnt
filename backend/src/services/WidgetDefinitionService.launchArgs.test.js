@@ -41,6 +41,14 @@ describe('WidgetDefinitionService thumbnail browser launch args', () => {
     expect(source).toMatch(/headless:\s*'shell'/);
   });
 
+  it('never hard-codes --no-sandbox: the sandbox decision is browserRuntime.sandboxFlags()', () => {
+    // It was hard-coded on every platform, disabling the boundary that contains a
+    // renderer exploit in widget HTML on desktops where the sandbox works fine.
+    expect(source).not.toMatch(/['"`]--no-sandbox/);
+    expect(source).not.toMatch(/['"`]--disable-setuid-sandbox/);
+    expect(source).toMatch(/\.\.\.sandboxFlags\(\)/);
+  });
+
   it('keeps the swiftshader WebGL stack for Three.js/canvas widgets', () => {
     expect(source).toMatch(/--use-angle=swiftshader/);
     expect(source).toMatch(/--enable-webgl/);
