@@ -37,7 +37,7 @@ function trySimple() {
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--terminal-border-color);
-  background: var(--surface-raised);
+  background: var(--color-popup);
   color: var(--text-primary);
   box-shadow: var(--shadow-overlay);
 }

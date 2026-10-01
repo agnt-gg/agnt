@@ -295,7 +295,8 @@
   padding: 6px;
   border-radius: 10px;
   border: 1px solid var(--terminal-border-color);
-  background: var(--surface-raised);
+  /* A floating layer must occlude what it covers (themeSurfaces.spec.js). */
+  background: var(--color-popup);
   box-shadow: var(--shadow-overlay);
 }
 .ui-simple .simple-menu-up {
@@ -853,7 +854,7 @@
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--terminal-border-color);
-  background: var(--surface-raised);
+  background: var(--color-popup);
   box-shadow: var(--shadow-overlay);
   font-size: 13px;
 }

@@ -54,7 +54,7 @@
           type="button"
           class="simple-recent"
           :class="{ active: onChat && c.id === activeConversationId, unread: c.unread }"
-          :title="c.title"
+          v-tooltip="c.title"
           @click="$emit('open-conversation', c.id)"
         >
           {{ c.title }}
