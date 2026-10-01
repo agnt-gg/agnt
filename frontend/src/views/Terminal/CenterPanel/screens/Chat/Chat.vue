@@ -1,6 +1,7 @@
 <template>
   <BaseScreen
     class="chat-screen-wrapper"
+    :class="{ 'simple-home': showSimpleHome }"
     ref="baseScreenRef"
     screenId="ChatScreen"
     channel-key="orchestrator:default"
@@ -126,6 +127,14 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
+              <!-- Simple's start screen. Shown instead of the greeting until
+                   the first message; the input below is the real composer,
+                   centred by CSS (views/Simple/simple.css), never a copy. -->
+              <div v-if="showSimpleHome" class="simple-home-hero">
+                <img class="simple-home-logo" src="/images/agnt-logo-mark.svg" alt="" />
+                <h1>What would you like to <em>do</em>?</h1>
+                <p>Save money, make money, or get time back.</p>
+              </div>
               <div v-if="isMobile" class="mobile-conversation-heading"><strong>{{ $store.state.chat.savedOutputTitle || 'New conversation' }}</strong><small>{{ $store.state.chat.savedOutputTitle ? 'Saved' : 'New chat' }}</small></div>
               <!-- Group-chat roster: who's in this room (Annie is implicit) -->
               <div v-if="chatParticipants.length > 0" class="chat-roster">
@@ -145,7 +154,7 @@
                   Show earlier messages ({{ hiddenMessageCount }})
                 </button>
               </div>
-              <TransitionGroup :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
+              <TransitionGroup v-show="!showSimpleHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
                 <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
                   <div v-if="message.kind === 'skill-pill'" class="inline-pill-row" :data-message-id="message.id">
@@ -353,6 +362,8 @@ export default {
     const setContextHost = element => { contextHost.value = element; };
     const conversationSpace = ref(null);
     const isMobile = inject('isMobile', ref(false));
+    // 'simple' inside views/Simple's frame; Studio provides nothing.
+    const uiPresentation = inject('uiPresentation', 'studio');
 
     // App Version (dynamic)
     const { appVersion, fetchVersion } = useAppVersion();
@@ -382,6 +393,17 @@ export default {
 
     // Suppress TransitionGroup animations during bulk message loads (e.g. loading saved outputs)
     const bulkLoading = ref(false);
+
+    // Simple's home: a conversation nobody has spoken in yet. The greeting
+    // bubble is the only message then, and the home replaces it. Never while
+    // provider setup is pending: that card is the one thing a new user must
+    // see, and hiding it would leave an input that cannot answer.
+    const showSimpleHome = computed(() => {
+      if (uiPresentation !== 'simple' || bulkLoading.value) return false;
+      const messages = store.state.chat.messages || [];
+      if (messages.some((m) => m.showProviderSetup)) return false;
+      return !messages.some((m) => m.role === 'user');
+    });
 
     // Image cache from Vuex store
     const imageCache = computed(() => store.state.chat.imageCache);
@@ -2947,6 +2969,7 @@ export default {
 
     return {
       ...tutorialWithCallback,
+      showSimpleHome,
       baseScreenRef,
       contextHost,
       conversationSpace,

@@ -4,8 +4,11 @@
     <!-- The update banner is mounted once, in App.vue, so it also shows on the
          sign-in page. -->
 
-    <!-- Canvas navigation shell with direct screen rendering -->
-    <CanvasScreen
+    <!-- The frame: Studio's canvas (rail, toolbar, panels) or Simple's
+         (one input, recents, library). Same screens, same stores, same slot —
+         the mode decides only what is around them. See services/uiMode.js. -->
+    <component
+      :is="frameComponent"
       v-if="activeScreen !== 'BallJumperScreen'"
       :screenName="activeScreen"
       @screen-change="changeScreen"
@@ -24,7 +27,7 @@
            the three panel surfaces, so a flat block here would itself be a
            flash (one opaque rectangle where the panels are about to be). -->
       <div v-if="!isScreenReady" style="flex:1;width:100%;height:100%;pointer-events:none"></div>
-    </CanvasScreen>
+    </component>
 
     <!-- BallJumper uses legacy direct rendering (no nav shell) -->
     <component
@@ -33,6 +36,9 @@
       @screen-change="changeScreen"
       @exit="changeScreen('SettingsScreen')"
     />
+
+    <!-- Studio users hear about Simple once (composables/useUiModeDefault.js). -->
+    <TrySimpleNote v-if="showTrySimple && !shouldShowOnboarding" @dismiss="dismissTrySimple" />
 
     <!-- Onboarding Modal -->
     <OnboardingModal v-if="shouldShowOnboarding" :show="shouldShowOnboarding" @complete="handleOnboardingComplete" @skip="handleOnboardingSkip" />
@@ -50,6 +56,10 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
+import SimpleShell from '@/views/Simple/SimpleShell.vue';
+import TrySimpleNote from '@/views/Simple/TrySimpleNote.vue';
+import { isUiModeToggleKey } from '@/services/uiMode.js';
+import { useUiModeDefault } from '@/composables/useUiModeDefault.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 
 // Chat is the only eager screen (it is the default). Everything else —
@@ -115,6 +125,7 @@ export default {
     TerminalLayout,
     CanvasScreen,
     OnboardingModal,
+    TrySimpleNote,
   },
   setup() {
     const route = useRoute();
@@ -122,6 +133,20 @@ export default {
     const store = useStore();
 
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
+
+    // markRaw: component definitions must not be made reactive.
+    const frames = { simple: markRaw(SimpleShell), studio: markRaw(CanvasScreen) };
+    const frameComponent = computed(() => frames[store.getters['theme/uiMode']] || frames.studio);
+
+    const { showTrySimple, dismissTrySimple } = useUiModeDefault(store);
+
+    const onModeKey = (e) => {
+      if (!isUiModeToggleKey(e)) return;
+      e.preventDefault();
+      store.dispatch('theme/toggleUiMode');
+    };
+    window.addEventListener('keydown', onModeKey);
+    onBeforeUnmount(() => window.removeEventListener('keydown', onModeKey));
 
     const getDefaultScreen = () => 'ChatScreen';
 
@@ -293,6 +318,9 @@ export default {
     );
 
     return {
+      frameComponent,
+      showTrySimple,
+      dismissTrySimple,
       activeScreen,
       activeScreenComponent,
       isScreenReady,

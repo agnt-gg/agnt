@@ -1,0 +1,923 @@
+/* Simple shell.
+ *
+ * EVERY rule here is scoped under .ui-simple, so nothing can leak into Studio.
+ * Colours come only from the semantic tokens (styles/themes/_semantic.css) and
+ * the two existing structural tokens (--terminal-border-color, --color-darker-0),
+ * so all nine themes render without a per-theme block.
+ */
+
+/* ── Frame ────────────────────────────────────────────────────────────────── */
+
+/* Doubled class on purpose. TerminalLayout's `:slotted(*)` forces every frame
+   root to `flex-direction: column` at specificity (0,1,0); a single class here
+   would tie and the winner would depend on stylesheet load order. */
+.ui-simple.ui-simple {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+}
+
+.ui-simple .simple-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.ui-simple .simple-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ui-simple .simple-screen > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.ui-simple .simple-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+}
+.ui-simple .simple-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.ui-simple button:focus-visible,
+.ui-simple input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Both are <header> elements, and _dark.css paints a bare `body.dark header`
+   with a background and a bottom border. Declared explicitly so the theme's
+   element rule cannot draw a stray panel here. */
+.ui-simple .simple-topbar,
+.ui-simple .simple-page-head {
+  background: transparent;
+  border: 0;
+}
+
+.ui-simple .simple-topbar {
+  display: flex;
+  gap: 4px;
+  padding: 10px 12px 0;
+  flex: 0 0 auto;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+
+.ui-simple .simple-sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--terminal-border-color);
+}
+.ui-simple.is-sidebar-closed .simple-sidebar {
+  display: none;
+}
+
+.ui-simple .simple-side-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px 8px 14px;
+}
+.ui-simple .simple-logo {
+  height: 18px;
+  width: auto;
+}
+.ui-simple .simple-wordmark {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+}
+.ui-simple .simple-flex {
+  flex: 1;
+}
+
+.ui-simple .simple-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+}
+.ui-simple .simple-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-simple .simple-nav-row i {
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.ui-simple .simple-nav-row:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-nav-row.active {
+  background: var(--surface-active);
+  font-weight: 600;
+}
+
+.ui-simple .simple-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 12px 0;
+  padding: 0 10px;
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-0);
+  color: var(--text-tertiary);
+}
+.ui-simple .simple-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.ui-simple .simple-recents-label {
+  padding: 14px 18px 4px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ui-simple .simple-recents {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ui-simple .simple-recent {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ui-simple .simple-recent:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-recent.active {
+  background: var(--surface-active);
+}
+/* Unread is a dot, not bold: a list that is mostly unread read as a wall. */
+.ui-simple .simple-recent.unread {
+  position: relative;
+  padding-right: 22px;
+}
+.ui-simple .simple-recent.unread::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--fill-brand);
+}
+.ui-simple .simple-recents-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.ui-simple .simple-account-anchor {
+  border-top: 1px solid var(--terminal-border-color);
+  padding: 8px;
+}
+.ui-simple .simple-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-simple .simple-account:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill-brand);
+  color: var(--on-fill-brand);
+  font-weight: 700;
+  font-size: 13px;
+}
+.ui-simple .simple-account-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ui-simple .simple-account-text strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-simple .simple-account-text small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ── Menus ────────────────────────────────────────────────────────────────── */
+
+.ui-simple .simple-menu-anchor {
+  position: relative;
+}
+.ui-simple .simple-menu {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  top: calc(100% + 4px);
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-overlay);
+}
+.ui-simple .simple-menu-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+}
+.ui-simple .simple-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-simple .simple-menu-item i {
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.ui-simple .simple-menu-item:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-menu-item kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.ui-simple .simple-menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--terminal-border-color);
+}
+.ui-simple .simple-menu-note {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Borrowed Studio bar ──────────────────────────────────────────────────── */
+
+.ui-simple .simple-borrowed-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  background: var(--surface-raised);
+  font-size: 13px;
+}
+.ui-simple .simple-back,
+.ui-simple .simple-link {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.ui-simple .simple-back:hover,
+.ui-simple .simple-link:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.ui-simple .simple-back i {
+  margin-right: 6px;
+}
+.ui-simple .simple-borrowed-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+/* ── Pages: Library, Plugins, Scheduled ──────────────────────────────────── */
+
+.ui-simple .simple-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 36px 32px 48px;
+  box-sizing: border-box;
+}
+.ui-simple .simple-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.ui-simple .simple-page-head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 700;
+}
+.ui-simple .simple-page-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ui-simple .simple-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--fill-brand);
+  color: var(--on-fill-brand);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ui-simple .simple-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.ui-simple .simple-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ui-simple .simple-tab:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-tab.active {
+  background: var(--text-primary);
+  color: var(--surface-canvas);
+}
+.ui-simple .simple-tab.active i,
+.ui-simple .simple-tab.active .simple-count {
+  color: inherit;
+  opacity: 0.75;
+}
+.ui-simple .simple-count {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.ui-simple .simple-page-search {
+  /* Measured: content-box made it 30px wider than the column it sits in. */
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-0);
+  color: var(--text-tertiary);
+}
+.ui-simple .simple-page-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.ui-simple .simple-empty {
+  padding: 28px 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.ui-simple .simple-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ui-simple .simple-list li + li {
+  border-top: 1px solid var(--terminal-border-color);
+}
+.ui-simple .simple-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-simple .simple-row:hover {
+  background: var(--surface-hover);
+}
+.ui-simple .simple-row.paused {
+  opacity: 0.7;
+}
+.ui-simple .simple-row-icon,
+.ui-simple .simple-card-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 16px;
+  overflow: hidden;
+}
+.ui-simple .simple-card-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.ui-simple .simple-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ui-simple .simple-row-text strong {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-simple .simple-row-text small {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-simple .simple-row-text small.ok {
+  color: var(--status-green-text);
+}
+.ui-simple .simple-row-go {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ui-simple .simple-section-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 2px 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ui-simple .simple-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.ui-simple .simple-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-simple .simple-card:hover {
+  background: var(--surface-hover);
+}
+
+/* ── Chat, in Simple ──────────────────────────────────────────────────────── *
+ * The real Chat screen (same component, same store, same composer). These
+ * rules only change its SIZE and PLACE — never which elements exist — so
+ * nothing a Studio chat can do is lost here.                                 */
+
+/* One readable column, centred, like the demo. */
+.ui-simple .chat-screen-wrapper .conversation-container,
+.ui-simple .chat-screen-wrapper .input-container,
+.ui-simple .chat-screen-wrapper .suggestions-bar,
+.ui-simple .chat-screen-wrapper .chat-actions-bar {
+  width: 100%;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+.ui-simple .chat-screen-wrapper .input-container {
+  border-top: none;
+}
+/* The composer reads as a box you type into, not a terminal line.
+   Desktop only: on a phone BaseScreen already draws its own two-row composer
+   card, and a second box around it doubled every border. */
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line {
+  /* Measured: Studio's input-line is 16px wider than its container, which is
+     invisible there and a visible overhang against Simple's centred column. */
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  padding-left: 12px;
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
+  border-color: var(--border-strong);
+}
+/* Buttons do not inherit the app font by default; cards here should. */
+.ui-simple .chat-screen-wrapper .suggestion-card {
+  font: inherit;
+}
+.ui-simple .chat-screen-wrapper .suggestions-bar {
+  border-top: none;
+  padding-right: 8px;
+}
+
+/* Studio-only controls. Chats autosave and "New chat" lives in the sidebar,
+   so Clear/Save is redundant here; the inspector toggle only means something
+   while a preview is open (BaseScreen shows the right panel then). */
+.ui-simple .chat-screen-wrapper .chat-actions-bar,
+.ui-simple .chat-screen-wrapper:not(.artifact-active) .inspector-toggle {
+  display: none;
+}
+
+/* Turns: the assistant speaks in plain text, the user in a soft bubble. */
+.ui-simple .chat-screen-wrapper .message-wrapper.assistant .message-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+.ui-simple .chat-screen-wrapper .message-wrapper.user .message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.ui-simple .chat-screen-wrapper .message-wrapper.user .message-card {
+  width: fit-content;
+  max-width: 85%;
+  background: var(--surface-active);
+  border: none;
+  box-shadow: none;
+  border-radius: 18px;
+}
+/* No avatar column: the reply text, the user bubble and the composer share
+   one left edge, as in the demo. Group-chat speakers are still named by the
+   roster above the thread. */
+.ui-simple .chat-screen-wrapper .message-wrapper .message-avatar {
+  display: none;
+}
+.ui-simple .chat-screen-wrapper .message-wrapper.user {
+  width: 100%;
+  margin-left: 0;
+}
+
+/* The composer carries what the demo's did: attach, voice, send. The model
+   lives in Settings, tools in the chat's own choices; both remain in Studio. */
+.ui-simple .chat-screen-wrapper .chat-provider-button,
+.ui-simple .chat-screen-wrapper .chat-tools-button {
+  display: none;
+}
+
+/* Suggestions wrap instead of scrolling sideways in a clipped strip. */
+.ui-simple .chat-screen-wrapper .suggestions-grid {
+  flex-wrap: wrap;
+  overflow: visible;
+  justify-content: flex-start;
+}
+
+/* Steps, folded (MessageItem `.steps-folded`): one line per group. Only the
+   row chrome folds; Connect/Share cards inside a row stay visible. */
+.ui-simple .steps-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 4px 8px 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ui-simple .steps-summary:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.ui-simple .steps-summary i {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+.ui-simple .steps-summary-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+.ui-simple .steps-summary.steps-done .steps-summary-dot {
+  background: var(--fill-success);
+}
+.ui-simple .steps-summary.steps-error .steps-summary-dot {
+  background: var(--fill-danger);
+}
+.ui-simple .steps-summary.steps-running .steps-summary-dot {
+  background: var(--fill-accent);
+  animation: ui-simple-pulse 1.4s ease-in-out infinite;
+}
+/* Keyframe names are global; the ui-simple- prefix is the namespace. */
+@keyframes ui-simple-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.ui-simple .steps-folded.tool-execution-details {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.ui-simple .steps-folded .top-tool-bar,
+.ui-simple .steps-folded .tool-call-content {
+  display: none;
+}
+.ui-simple .steps-folded .tool-call-item {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+}
+
+/* Home: hero, then the composer, then suggestions — centred as one group.
+   `display: contents` lifts the canvas, the suggestions and the composer into
+   one flex column so `order` can place them; it is applied ONLY while there
+   is nothing to scroll, and dropped the moment the first message is sent. */
+.ui-simple .chat-screen-wrapper.simple-home .main-panel {
+  justify-content: center;
+}
+.ui-simple .chat-screen-wrapper.simple-home .scrollable-content,
+.ui-simple .chat-screen-wrapper.simple-home .automation-interface {
+  display: contents;
+}
+.ui-simple .chat-screen-wrapper.simple-home .conversation-canvas-wrapper {
+  order: 1;
+  flex: 0 0 auto;
+}
+.ui-simple .chat-screen-wrapper.simple-home .conversation-canvas {
+  overflow: visible;
+}
+.ui-simple .chat-screen-wrapper.simple-home .input-container {
+  order: 2;
+  position: static;
+  margin-top: 0;
+}
+.ui-simple .chat-screen-wrapper.simple-home .suggestions-bar {
+  order: 3;
+}
+/* On the home the suggestions are the menu, so they wrap and centre under
+   the input instead of scrolling sideways in a strip. */
+.ui-simple .chat-screen-wrapper.simple-home .suggestions-grid {
+  flex-wrap: wrap;
+  overflow: visible;
+  justify-content: center;
+}
+.ui-simple .chat-screen-wrapper.simple-home .inspector-toggle,
+.ui-simple .chat-screen-wrapper.simple-home .chat-scroll-controls {
+  display: none;
+}
+
+.ui-simple .simple-home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 0 16px 18px;
+}
+.ui-simple .simple-home-logo {
+  height: 40px;
+  width: auto;
+  margin-bottom: 10px;
+}
+.ui-simple .simple-home-hero h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ui-simple .simple-home-hero h1 em {
+  font-style: normal;
+  color: var(--fill-brand);
+}
+.ui-simple .simple-home-hero p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ── Graduation offer ─────────────────────────────────────────────────────────────── */
+
+.ui-simple .simple-graduation {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-overlay);
+  font-size: 13px;
+}
+.ui-simple .simple-graduation > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ui-simple .simple-graduation span {
+  color: var(--text-secondary);
+}
+.ui-simple .simple-graduation-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Phones ───────────────────────────────────────────────────────────────── */
+
+.ui-simple.is-compact .simple-sidebar {
+  position: absolute;
+  z-index: 60;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(300px, 86vw);
+  box-shadow: var(--shadow-overlay);
+}
+.ui-simple .simple-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  border: none;
+  background: var(--scrim);
+}
+.ui-simple.is-compact .simple-page {
+  padding: 20px 16px 32px;
+}
+.ui-simple.is-compact .simple-home-hero h1 {
+  font-size: 22px;
+}
+/* Phone home: the hero fills the space, the composer docks at the bottom
+   where the thumb is, suggestions sit just above it. Simple's top bar is the
+   header, so Chat's own phone heading would be a second one. */
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .main-panel {
+  justify-content: flex-end;
+}
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .conversation-canvas-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .conversation-canvas {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .suggestions-bar {
+  order: 2;
+}
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .input-container {
+  order: 3;
+}
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .mobile-conversation-heading {
+  display: none;
+}

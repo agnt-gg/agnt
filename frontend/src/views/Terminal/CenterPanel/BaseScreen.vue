@@ -13,7 +13,7 @@
       <button v-if="isMobile && mobilePanel" class="mobile-panel-scrim" aria-label="Close panel" @click="closeMobilePanel()"></button>
       <!-- Left Panel -->
       <LeftPanel
-        v-if="!hidePanels && leftPanelEnabled && (showLeftPanel || hasUsedMobilePanels)"
+        v-if="!leftHidden && leftPanelEnabled && (showLeftPanel || hasUsedMobilePanels)"
         v-show="showLeftPanel"
         class="left-panel-component"
         :class="{ collapsed: !isMobile && leftPanelCollapsed, 'mobile-panel-visible': isMobile && mobilePanel === 'left' }"
@@ -31,7 +31,7 @@
 
       <!-- Left Resize Handle -->
       <div
-        v-if="!isMobile && !hidePanels && showLeftPanel"
+        v-if="!isMobile && !leftHidden && showLeftPanel"
         class="resize-handle left-resize-handle"
         :class="{ 'switch-mode': isLeftSwitchMode }"
         @mousedown="startLeftResize"
@@ -45,8 +45,8 @@
         class="main-panel"
         ref="mainPanelRef"
         :inert="isMobile && mobilePanel ? true : undefined"
-        :class="{ 'centered-content': hidePanels, 'is-drag-over': isDragOver }"
-        :style="!isMobile && !hidePanels ? { width: `${mainContentWidth}px` } : {}"
+        :class="{ 'centered-content': panelsHidden, 'is-drag-over': isDragOver }"
+        :style="!isMobile && !panelsHidden ? { width: `${mainContentWidth}px` } : {}"
         @dragenter.prevent="onDragEnter"
         @dragover.prevent="onDragOver"
         @dragleave="onDragLeave"
@@ -115,7 +115,7 @@
 
           <!-- Input line with textarea and buttons on same row -->
           <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
-            <span v-if="showPrompt" class="prompt">> </span>
+            <span v-if="showPrompt && !isSimpleFrame" class="prompt">> </span>
             <div class="input-highlight-container">
               <div class="input-backdrop" ref="inputBackdropRef">
                 <div class="input-highlights" v-html="inputHighlightsHtml"></div>
@@ -124,7 +124,7 @@
                 ref="textareaRef"
                 class="chat-input-textarea"
                 v-model="currentUserInput"
-                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : 'Type a message or command...'"
+                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : isSimpleFrame ? 'Ask anything' : 'Type a message or command...'"
                 rows="1"
                 :disabled="isInputDisabled"
                 @input="handleTextareaInput"
@@ -219,7 +219,7 @@
 
       <!-- Right Resize Handle -->
       <div
-        v-if="!isMobile && !hidePanels && showRightPanel"
+        v-if="!isMobile && !rightHidden && showRightPanel"
         class="resize-handle right-resize-handle"
         :class="{ 'switch-mode': isRightSwitchMode }"
         @mousedown="startRightResize"
@@ -230,7 +230,7 @@
 
       <!-- Right Panel -->
       <RightPanel
-        v-if="!hidePanels && rightPanelEnabled && (showRightPanel || hasUsedMobilePanels)"
+        v-if="!rightHidden && rightPanelEnabled && (showRightPanel || hasUsedMobilePanels)"
         v-show="showRightPanel"
         class="right-panel-component"
         :class="{ collapsed: !isMobile && rightPanelCollapsed, 'mobile-panel-visible': isMobile && mobilePanel === 'right' }"
@@ -433,6 +433,19 @@ export default {
 
     // --- Mobile & Panel State ---
     const isMobile = inject('isMobile', ref(false));
+    // Which shell frames this screen (views/Simple provides 'simple'; Studio
+    // provides nothing). On Chat in Simple:
+    //   left  — always hidden: Simple's sidebar already IS the chat list.
+    //   right — hidden until something is opened from the thread (a file
+    //           card, an agent, a run). Then it is Simple's preview pane;
+    //           hiding it there would make those cards do nothing.
+    // Every other screen keeps its panels: in Simple it is borrowed Studio.
+    const uiPresentation = inject('uiPresentation', 'studio');
+    const isSimpleFrame = uiPresentation === 'simple';
+    const simpleChat = computed(() => isSimpleFrame && props.screenId === 'ChatScreen');
+    const leftHidden = computed(() => props.hidePanels || simpleChat.value);
+    const rightHidden = computed(() => props.hidePanels || (simpleChat.value && !artifactTarget.value));
+    const panelsHidden = computed(() => leftHidden.value && rightHidden.value);
 
     // --- Panel geometry scope ---
     // Standalone, panel widths are app-global state (vuex theme) and that is
@@ -1238,7 +1251,11 @@ export default {
     };
 
     // --- Tutorial ---
-    const tutorial = useTutorialHook?.value
+    // Simple's own Chat runs no screen tutorial: Chat's tour walks Studio's
+    // composer (model picker, tools, Save/Clear, monitoring panel), most of
+    // which Simple does not show, so it would point at nothing. Borrowed
+    // Studio screens keep their tours: their targets are on screen.
+    const tutorial = useTutorialHook?.value && !simpleChat.value
       ? useTutorialHook.value()
       : {
           tutorialConfig: ref(null),
@@ -1607,11 +1624,11 @@ export default {
       if (!screenActive || insideWidgetCanvas) return;
       store.commit('shell/SET_SCREEN_PANELS', {
         screenId: props.screenId,
-        left: !props.hidePanels && leftPanelEnabled.value,
-        right: !props.hidePanels && rightPanelEnabled.value,
+        left: !leftHidden.value && leftPanelEnabled.value,
+        right: !rightHidden.value && rightPanelEnabled.value,
       });
     };
-    watch(() => [props.screenId, props.hidePanels, leftPanelEnabled.value, rightPanelEnabled.value], publishScreenPanels);
+    watch(() => [props.screenId, leftHidden.value, rightHidden.value, leftPanelEnabled.value, rightPanelEnabled.value], publishScreenPanels);
 
     // --- Lifecycle ---
     onMounted(async () => {
@@ -1790,6 +1807,10 @@ export default {
     });
 
     return {
+      isSimpleFrame,
+      panelsHidden,
+      leftHidden,
+      rightHidden,
       artifactTarget,
       artifactExpanded,
       mobilePanel, openMobilePanel, closeMobilePanel, mobileNewChat, rightPanelEnabled, hasUsedMobilePanels, mobileProviderPicker, mobileToolPicker,

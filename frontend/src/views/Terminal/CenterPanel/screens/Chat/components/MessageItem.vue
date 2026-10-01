@@ -68,7 +68,26 @@
           <!-- Interleaved content: text and tool calls rendered in order -->
           <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
             <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
-            <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
+            <div
+              v-else-if="part.type === 'tool_calls'"
+              class="tool-execution-details"
+              :class="{ 'steps-folded': foldSteps && !stepsOpen(partIdx) }"
+            >
+              <!-- Simple folds a step group to one line. Folding hides only the
+                   row chrome (simple.css): Connect/Share cards stay visible,
+                   because they are things the user must act on. -->
+              <button
+                v-if="foldSteps"
+                type="button"
+                class="steps-summary"
+                :class="'steps-' + stepsSummaryFor(part.items).state"
+                :aria-expanded="stepsOpen(partIdx) ? 'true' : 'false'"
+                @click="toggleSteps(partIdx)"
+              >
+                <span class="steps-summary-dot" aria-hidden="true"></span>
+                <span>{{ stepsSummaryFor(part.items).text }}</span>
+                <i class="fas" :class="stepsOpen(partIdx) ? 'fa-chevron-down' : 'fa-chevron-right'" aria-hidden="true"></i>
+              </button>
               <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
                 <div class="top-tool-bar">
                   <div class="tool-header" @click="toggleToolCall(tc.index)">
@@ -434,6 +453,7 @@
 
 <script>
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, inject } from 'vue';
+import { summarizeSteps } from '@/services/stepsSummary.js';
 import { closingText } from '@/services/assistantReplyEdit.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
@@ -674,6 +694,17 @@ export default {
     // calls render there as a Browser widget; standalone chat has no canvas
     // and owns the inline live card instead.
     const insideWidgetCanvas = inject('isInsideWidgetCanvas', false);
+    // Simple folds each tool-step group behind one summary line; Studio
+    // (no provider) shows every row, as before.
+    const foldSteps = inject('uiPresentation', 'studio') === 'simple';
+    const openStepGroups = ref(new Set());
+    const stepsOpen = (partIdx) => openStepGroups.value.has(partIdx);
+    const toggleSteps = (partIdx) => {
+      const next = new Set(openStepGroups.value);
+      if (next.has(partIdx)) next.delete(partIdx);
+      else next.add(partIdx);
+      openStepGroups.value = next;
+    };
 
     // Get Vuex store for auth token
     const store = useStore();
@@ -2712,6 +2743,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       if (tc.toolCall.result !== undefined && tc.toolCall.result !== null) return 'completed';
       return 'pending';
     };
+    // Built from the same toolCallStatus the rows show, so the folded line
+    // and the unfolded rows can never disagree.
+    const stepsSummaryFor = (items) =>
+      summarizeSteps((items || []).map((tc) => ({ status: toolCallStatus(tc), name: tc.toolCall?.name })));
 
     // Helper functions for GoalProgressWidget detection
     const _parseToolResult = (toolCall) => {
@@ -3145,6 +3180,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     return {
+      foldSteps,
+      stepsOpen,
+      toggleSteps,
+      stepsSummaryFor,
       messageRef,
       artifactContent,
       shareCard,
