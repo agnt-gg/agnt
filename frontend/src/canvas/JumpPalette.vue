@@ -63,6 +63,7 @@ import {
   API_CONFIG
 } from '@/tt.config.js';
 import { loadSearchSources, searchRequest, historySearchItems, marketplaceSearch, marketplaceStoreItems } from './searchSources.js';
+import { runJumpAction } from './jumpActions.js';
 const emit = defineEmits(['navigate']);
 const store = useStore(),
   router = useRouter();
@@ -202,44 +203,17 @@ function close() {
 
 function run(item) {
   if (!item) return;
-  const a = item.action;
   close();
-  if (a.type === 'inspect') {
-    store.dispatch('shell/inspect', {
-      kind: a.kind,
-      id: a.id,
-      screen: a.screen
-    });
-    emit('navigate', a.screen, {
-      select: {
-        kind: a.kind,
-        id: a.id
-      }
-    })
-  } else if (a.type === 'screen') emit('navigate', a.screen, a.opts || {});
-  else if (a.type === 'chat') router.push({
-    path: '/chat',
-    query: {
-      'content-id': a.id
-    }
+  // One executor shared with Simple's library pages — see jumpActions.js.
+  runJumpAction(item.action, {
+    store,
+    router,
+    navigate: (screen, opts) => emit('navigate', screen, opts),
+    onError: (message) => {
+      store.dispatch('shell/openJump');
+      catalogErrors.value = [message];
+    },
   });
-  else if (a.type === 'conversation') {
-    searchRequest('/content-outputs/by-conversation/'+encodeURIComponent(a.id),{token:localStorage.getItem('token')||''}).then(body=>{const output=body.output||body.contentOutput||body;if(!output.id)throw Error('Conversation not available');router.push({path:'/chat',query:{'content-id':output.id}})}).catch(error=>{store.dispatch('shell/openJump');catalogErrors.value=[error.message]});
-  } else if(a.type==='output') {router.push({path:'/chat',query:{'content-id':a.id}});}
-  else if (a.type === 'store') {
-    // ?item=<asset_id> is the catalogue's existing deep link: Marketplace.vue
-    // resolves it on cold mount AND from a route watcher when warm, and the
-    // asset id is stable across republishes where the listing UUID is not.
-    router.push({ path: '/marketplace', query: { item: a.assetId } });
-  }
-  else if (a.type === 'teams') { window.dispatchEvent(new CustomEvent('agnt:open-team-workspace')); }
-  else if (a.type === 'page') {
-    window.dispatchEvent(new CustomEvent('agnt:open-page', {
-      detail: {
-        pageId: a.id
-      }
-    }))
-  }
 }
 
 function ask() {
