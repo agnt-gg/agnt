@@ -68,7 +68,9 @@ function runScript(source, { extraStubs = '' } = {}) {
   };
 }
 
-describe.skipIf(!python)('scripts written the way models write them', () => {
+// Each test starts a real Python, which runScript allows 30s; a cold interpreter
+// under full-suite load took longer than vitest's 5s default. Same budget here.
+describe.skipIf(!python)('scripts written the way models write them', { timeout: 60000 }, () => {
   it('runs the exact script that failed with "await outside function"', () => {
     const shotA = path.join(tmp, 'page.png').replace(/\\/g, '/');
     const shotB = path.join(tmp, 'grid.png').replace(/\\/g, '/');

@@ -10,7 +10,7 @@
  * These tests pin the two halves of that: the instruction says the right
  * things, and it reaches the prompt ONLY on a voice turn.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
 vi.mock('./tools.js', () => ({ getAvailableToolSchemas: vi.fn(async () => []) }));
 vi.mock('./system-prompts/buildUnifiedPrompt.js', () => ({
@@ -62,6 +62,11 @@ describe('buildVoiceRegisterSection — presenter, not screen reader', () => {
 });
 
 describe('the voice section reaches the prompt only on a voice turn', () => {
+  // The first prompt build lazy-imports the skill services and models and opens
+  // the test database: ~0.6s alone, past the 5s test default under full-suite
+  // load. Paid once here, with its own budget, so no test is timed on it.
+  beforeAll(() => buildPrompt({ latestUserMessage: 'warm-up' }), 60000);
+
   it('a normal turn gets the base prompt, untouched', async () => {
     const prompt = await buildPrompt({ latestUserMessage: 'hello' });
     expect(prompt).toBe('BASE_PROMPT');

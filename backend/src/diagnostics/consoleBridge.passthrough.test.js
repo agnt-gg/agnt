@@ -67,7 +67,17 @@ describe("consoleBridge passthrough: 'warn'", () => {
   });
 
   it('reads the mode from AGNT_CONSOLE_PASSTHROUGH, defaulting to everything', () => {
-    expect(consolePassthroughFromEnv(undefined)).toBe(true);
+    // `undefined` falls through to the parameter default, which READS the env.
+    // A suite started from inside AGNT inherits AGNT_CONSOLE_PASSTHROUGH=warn,
+    // so the unset case must be made unset, not assumed.
+    const inherited = process.env.AGNT_CONSOLE_PASSTHROUGH;
+    delete process.env.AGNT_CONSOLE_PASSTHROUGH;
+    try {
+      expect(consolePassthroughFromEnv(undefined)).toBe(true);
+      expect(consolePassthroughFromEnv()).toBe(true);
+    } finally {
+      if (inherited !== undefined) process.env.AGNT_CONSOLE_PASSTHROUGH = inherited;
+    }
     expect(consolePassthroughFromEnv('all')).toBe(true);
     expect(consolePassthroughFromEnv('warn')).toBe('warn');
     expect(consolePassthroughFromEnv('none')).toBe(false);

@@ -33,6 +33,12 @@ let DIR;
 let blockedDirBackup = null;
 const savedEnv = {};
 
+// Windows holds a just-written file for a moment (Defender, the search indexer),
+// and deleting its directory then fails with EBUSY: seen in a full-suite run,
+// after every assertion had passed. rm retries EBUSY/EPERM/ENOTEMPTY itself
+// when asked to; without retries a passing test fails in its cleanup.
+const RM = { recursive: true, force: true, maxRetries: 10, retryDelay: 50 };
+
 /** Poll until `probe` is truthy — never a bare sleep, which makes flaky gates. */
 async function until(probe, { timeout = 5000, interval = 25, what = 'condition' } = {}) {
   const deadline = Date.now() + timeout;
@@ -75,7 +81,7 @@ const journalFor = async (id) => (await journal.listJournals()).find((j) => j.co
  */
 async function blockJournalWrites() {
   blockedDirBackup = `${DIR}.write-blocked`;
-  await fsp.rm(blockedDirBackup, { recursive: true, force: true });
+  await fsp.rm(blockedDirBackup, RM);
   try {
     await fsp.rename(DIR, blockedDirBackup);
   } catch (err) {
@@ -86,7 +92,7 @@ async function blockJournalWrites() {
 }
 
 async function restoreJournalWrites() {
-  await fsp.rm(DIR, { recursive: true, force: true });
+  await fsp.rm(DIR, RM);
   if (blockedDirBackup) {
     await fsp.rename(blockedDirBackup, DIR);
     blockedDirBackup = null;
@@ -120,13 +126,13 @@ afterAll(async () => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
-  await fsp.rm(TMP, { recursive: true, force: true }).catch(() => {});
+  await fsp.rm(TMP, RM).catch(() => {});
 });
 
 beforeEach(async () => {
   journal._resetForTests();
   await restoreJournalWrites();
-  await fsp.rm(DIR, { recursive: true, force: true }).catch(() => {});
+  await fsp.rm(DIR, RM).catch(() => {});
 });
 
 afterEach(async () => {

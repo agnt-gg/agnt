@@ -16,6 +16,7 @@ import os from 'os';
 import path from 'path';
 import { resolveLocalFile, clearResolveCache } from './localFileResolve.js';
 
+let sandbox;
 let tmp;
 const prevRoots = process.env.AGNT_LOCAL_FILE_ROOTS;
 
@@ -31,7 +32,15 @@ beforeEach(() => {
   delete process.env.AGNT_LOCAL_FILE_ROOTS;
   // realpath the tmp dir: macOS hands back /var/… which is a symlink to
   // /private/var, and assertWithinRoots compares real paths.
-  tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'lfr-'));
+  sandbox = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'lfr-'));
+  // Tier 3 widens its search up to ANCHOR_LIFT_LEVELS (3) parents above the
+  // deepest surviving folder. Directly under os.tmpdir() that walked the
+  // machine's real temp folder (30k directories here) on every miss: up to
+  // 2,500 readdirs per test, which timed out under full-suite load, and a
+  // stray same-named file anywhere in temp could change the answer. Three
+  // levels of nesting keep every anchor inside this test's own sandbox.
+  tmp = path.join(sandbox, 'l1', 'l2', 'l3');
+  fs.mkdirSync(tmp, { recursive: true });
   clearResolveCache();
 });
 
@@ -40,7 +49,7 @@ afterEach(() => {
   if (prevRoots === undefined) delete process.env.AGNT_LOCAL_FILE_ROOTS;
   else process.env.AGNT_LOCAL_FILE_ROOTS = prevRoots;
   try {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(sandbox, { recursive: true, force: true });
   } catch {
     /* best effort */
   }
