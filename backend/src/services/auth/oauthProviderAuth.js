@@ -1,7 +1,8 @@
-import ClaudeCodeAuthManager from './ClaudeCodeAuthManager.js';
-import GeminiCliAuthManager from './GeminiCliAuthManager.js';
-import AntigravityAuthManager from './AntigravityAuthManager.js';
-import CodexAuthManager from './CodexAuthManager.js';
+import { getConnection } from '../ai/connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
+const responseConnection = getConnection('openai-codex');
+const projectConnection = getConnection('gemini-cli');
+const catalogConnection = getConnection('antigravity');
 
 /**
  * Resolving a subscription provider's access token, in one place.
@@ -22,19 +23,19 @@ import CodexAuthManager from './CodexAuthManager.js';
  */
 const OAUTH_PROVIDERS = {
   'claude-code': {
-    manager: ClaudeCodeAuthManager,
+    manager: messageConnection,
     notConnected: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
   },
   'gemini-cli': {
-    manager: GeminiCliAuthManager,
+    manager: projectConnection,
     notConnected: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
   },
   antigravity: {
-    manager: AntigravityAuthManager,
+    manager: catalogConnection,
     notConnected: 'Antigravity is not connected. Use Google OAuth to connect.',
   },
   'openai-codex': {
-    manager: CodexAuthManager,
+    manager: responseConnection,
     notConnected: 'OpenAI Codex is not connected. Start device login from the provider setup.',
     /**
      * Codex needs the OAuth token SPECIFICALLY, not getAccessToken().

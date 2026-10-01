@@ -1,10 +1,11 @@
+import { getConnection } from './connectionRuntime.js';
+const responseConnection = getConnection('openai-codex');
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
-import CodexAuthManager from '../auth/CodexAuthManager.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,8 +35,8 @@ function ensureDirectory(dirPath) {
 ensureDirectory(DEFAULT_CODEX_WORKDIR);
 
 function resolveCodexBin() {
-  // First try CodexAuthManager which has comprehensive platform detection
-  const managerBin = CodexAuthManager?.codexBin;
+  // First try responseConnection which has comprehensive platform detection
+  const managerBin = responseConnection?.codexBin;
   if (typeof managerBin === 'string' && managerBin.trim()) {
     return managerBin.trim();
   }

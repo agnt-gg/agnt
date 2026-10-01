@@ -1,8 +1,9 @@
+import { getResponsePolicy } from '../../ai/connectionRuntime.js';
 import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The OpenAI Responses transport — openai (gpt-5.x / o-series) and openai-codex.
  *
- * CodexResponsesAdapter subclasses it because the ChatGPT backend is a
+ * ConnectionResponsesAdapter subclasses it because the ChatGPT backend is a
  * different service wearing the same API: it requires streaming, rejects the
  * public cache-retention controls with 400, needs its own error guidance, and
  * keys cache affinity on a private session_id header.
@@ -61,8 +62,8 @@ function parseApiErrorMessage(error) {
 import { BaseAdapter } from './BaseAdapter.js';
 import { responsesSupportsDeferredTools, TOOL_LOAD_FIELD } from '../deferredTools.js';
 import {
-  describeCodexError,
-  buildCodexErrorGuidance,
+  describeConnectionError,
+  buildConnectionErrorGuidance,
   buildResponsesReasoningConfig,
 } from './_shared.js';
 
@@ -120,7 +121,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       return true;
     }
     // Transient network / SDK-wrapped connection errors — shared BaseAdapter
-    // helper (also covers CodexResponsesAdapter via its super call).
+    // helper (also covers ConnectionResponsesAdapter via its super call).
     if (this._isTransientNetworkError(error)) {
       return true;
     }
@@ -993,16 +994,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
   }
 }
 
-class CodexResponsesAdapter extends OpenAIResponsesAdapter {
-  _codexToolShape(tools) {
+class ConnectionResponsesAdapter extends OpenAIResponsesAdapter {
+  _connectionToolShape(tools) {
     return (tools || []).map((tool) => ({
       ...tool,
-      strict: null, // Codex uses null instead of false
+      strict: this.connectionPolicy.strict,
     }));
   }
 
   _loadedToolDefinitions(schemas) {
-    return this._codexToolShape(this._transformToolsToResponses(schemas));
+    return this._connectionToolShape(this._transformToolsToResponses(schemas));
   }
 
   constructor(client, model, options = {}) {
@@ -1013,26 +1014,27 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // (Re-verified 2026-08-10, along with prompt_cache_breakpoint → 400 and
     // store:true → 400. The affinity hint this provider CAN use is the
     // session_id header — see BaseAdapter._cacheAffinity.)
-    this.promptCachePolicy = null;
+    this.connectionPolicy = getResponsePolicy('openai-codex');
+    this.promptCachePolicy = this.connectionPolicy.promptCachePolicy;
     // The factory passes options through without a provider key, and this
     // class serves exactly one provider.
-    this.provider = 'openai-codex';
+    this.provider = this.connectionPolicy.provider;
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
     // The ChatGPT backend hiccups (transient 5xx with the generic
     // "An error occurred while processing your request" envelope) more often
     // than api.openai.com. Give Codex more retry budget so a brief upstream
     // blip doesn't surface to the user as a hard error.
-    this.maxRetries = 5;
+    this.maxRetries = this.connectionPolicy.maxRetries;
     // Bounded shrink budget for context-window recovery. Each shrink drops
     // one whole oldest turn (assistant + paired tool results, together with
     // its replayable _responsesOutputItems blob). 8 turns is enough to
     // recover from the deepest realistic overrun while preventing runaway
     // loops on a misclassified error.
-    this.maxContextShrinkRetries = 8;
+    this.maxContextShrinkRetries = this.connectionPolicy.maxContextShrinkRetries;
   }
 
-  _getCodexContextWindow() {
+  _getConnectionContextWindow() {
     const meta = getModelMetadata('openai-codex', this.model);
     if (meta?.contextWindow) return meta.contextWindow;
     // Fallback for a model Codex lists before we enumerate it in metadata.
@@ -1046,18 +1048,18 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     return 128_000;
   }
 
-  _getCodexPreflightInputBudget() {
+  _getConnectionPreflightInputBudget() {
     // Reserve a quarter of the window for the response, because Codex reasoning
     // models routinely spend tens of thousands of output tokens on hidden
     // chain-of-thought before emitting any visible content.
     //
     // The extra serialized-payload margin is 0.95, not the previous 0.86. That
     // 14% pad existed to compensate for a blunt global chars/1.6 estimator; now
-    // that _estimateCodexRequestTokens() measures each component against its
+    // that _estimateConnectionRequestTokens() measures each component against its
     // own measured ratio — and each of those already carries 12-19% headroom —
     // stacking another 14% on top was double-counting, and it stole ~28k tokens
     // of usable conversation window for nothing.
-    const contextWindow = this._getCodexContextWindow();
+    const contextWindow = this._getConnectionContextWindow();
     const outputReserve = Math.min(96_000, Math.floor(contextWindow * 0.25));
     return Math.max(16_000, Math.floor((contextWindow - outputReserve) * 0.95));
   }
@@ -1102,9 +1104,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   /**
    * Cost of the parts of the request that shedding conversation CANNOT reduce.
    */
-  _estimateCodexFixedOverhead(params) {
+  _estimateConnectionFixedOverhead(params) {
     if (!params) return 0;
-    const C = CodexResponsesAdapter;
+    const C = ConnectionResponsesAdapter;
     let total = 0;
     try {
       total += Math.ceil(JSON.stringify(params.tools || []).length / C.CODEX_CPT_SCHEMA);
@@ -1113,10 +1115,10 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     return total;
   }
 
-  _estimateCodexRequestTokens(params) {
+  _estimateConnectionRequestTokens(params) {
     if (!params) return 0;
-    const C = CodexResponsesAdapter;
-    let total = this._estimateCodexFixedOverhead(params);
+    const C = ConnectionResponsesAdapter;
+    let total = this._estimateConnectionFixedOverhead(params);
 
     const input = Array.isArray(params.input) ? params.input : [];
     for (const item of input) {
@@ -1148,11 +1150,11 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     return total;
   }
 
-  _buildCodexParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses', computerImages = null) {
+  _buildConnectionParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses', computerImages = null) {
     let workingMessages = messages;
-    let params = this._buildCodexParams(workingMessages, tools, imageData, computerImages);
-    const budget = this._getCodexPreflightInputBudget();
-    let estimatedTokens = this._estimateCodexRequestTokens(params);
+    let params = this._buildConnectionParams(workingMessages, tools, imageData, computerImages);
+    const budget = this._getConnectionPreflightInputBudget();
+    let estimatedTokens = this._estimateConnectionRequestTokens(params);
     let shrinkAttempts = 0;
 
     // Shedding can only remove INPUT items. If the fixed overhead — tool
@@ -1167,7 +1169,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // orphaned sentence. Refuse to start, and let the provider's own token
     // accounting (via the reactive shed handlers in call/callStream) decide
     // whether a genuine overflow exists.
-    const fixedOverhead = this._estimateCodexFixedOverhead(params);
+    const fixedOverhead = this._estimateConnectionFixedOverhead(params);
     if (estimatedTokens > budget && fixedOverhead >= budget) {
       console.warn(
         `[${logPrefix} Preflight] Fixed overhead (tools + instructions) is ${fixedOverhead} tokens ` +
@@ -1188,8 +1190,8 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       );
 
       workingMessages = shrunk;
-      params = this._buildCodexParams(workingMessages, tools, imageData, computerImages);
-      estimatedTokens = this._estimateCodexRequestTokens(params);
+      params = this._buildConnectionParams(workingMessages, tools, imageData, computerImages);
+      estimatedTokens = this._estimateConnectionRequestTokens(params);
       shrinkAttempts++;
     }
 
@@ -1338,7 +1340,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    * imageData (when provided) is forwarded into the parent transform so vision
    * models like gpt-5.2-codex see uploaded images via input_image blocks.
    */
-  _buildCodexParams(messages, tools, imageData = null, computerImages = null) {
+  _buildConnectionParams(messages, tools, imageData = null, computerImages = null) {
     // Codex models (gpt-5.x-codex, gpt-5.5, etc.) inherit OpenAI's vision
     // capability via getModelMetadata's variant fallback chain. Use
     // supportsVision() so we don't have to manually enumerate every Codex
@@ -1377,7 +1379,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     // Add tools if present
     if (responsesTools && responsesTools.length > 0) {
-      params.tools = this._codexToolShape(responsesTools);
+      params.tools = this._connectionToolShape(responsesTools);
       params.tool_choice = 'auto';
       params.parallel_tool_calls = true;
     }
@@ -1480,7 +1482,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         // Forward context.imageData exactly as callStream() does. This argument
         // was hardcoded to null, so the streaming path could see uploaded images
         // but the non-streaming path (used by the analyze_image tool) could not.
-        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData || null, 'Codex Responses', context.computerImages);
+        const preflight = this._buildConnectionParamsWithinBudget(workingMessages, tools, context.imageData || null, 'Codex Responses', context.computerImages);
         const params = preflight.params;
         workingMessages = preflight.workingMessages;
 
@@ -1553,7 +1555,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(
             `Codex Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
-            describeCodexError(error),
+            describeConnectionError(error),
           );
 
           const userFriendlyError = parseApiErrorMessage(error);
@@ -1561,7 +1563,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildCodexErrorGuidance(error, this.model)}`,
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildConnectionErrorGuidance(error, this.model)}`,
               tool_calls: [],
             },
             toolCalls: [],
@@ -1601,7 +1603,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData, 'Codex Responses Stream', context.computerImages);
+        const preflight = this._buildConnectionParamsWithinBudget(workingMessages, tools, context.imageData, 'Codex Responses Stream', context.computerImages);
         const params = preflight.params;
         workingMessages = preflight.workingMessages;
 
@@ -1673,7 +1675,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(
             `Codex Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
-            describeCodexError(error),
+            describeConnectionError(error),
           );
 
           const userFriendlyError = parseApiErrorMessage(error);
@@ -1681,7 +1683,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildCodexErrorGuidance(error, this.model)}`,
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildConnectionErrorGuidance(error, this.model)}`,
               tool_calls: [],
             },
             toolCalls: [],
@@ -1708,4 +1710,4 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   }
 }
 
-export { OpenAIResponsesAdapter, CodexResponsesAdapter };
+export { OpenAIResponsesAdapter, ConnectionResponsesAdapter };

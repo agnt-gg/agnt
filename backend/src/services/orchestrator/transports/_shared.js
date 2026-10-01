@@ -1,3 +1,4 @@
+import { describeConnectionError, buildConnectionErrorGuidance } from '../../ai/connectionRuntime.js';
 /**
  * Shared helpers for every transport.
  *
@@ -72,55 +73,6 @@ function parseApiErrorMessage(error) {
  * useless "400 status code (no body)" — this helper hands the catch site
  * something it can actually log.
  */
-function describeCodexError(error) {
-  if (!error || typeof error !== 'object') return { summary: String(error) };
-  const out = {
-    status: error.status ?? error.response?.status ?? null,
-    code: error.code ?? null,
-    message: error.message ?? null,
-  };
-  if (error.error !== undefined) out.error = error.error;
-  if (error.body !== undefined) out.body = error.body;
-  if (error.response?.data !== undefined) out.responseData = error.response.data;
-  if (error.headers) {
-    const interesting = ['x-request-id', 'x-codex-request-id', 'cf-ray', 'content-type', 'retry-after'];
-    out.headers = {};
-    for (const h of interesting) {
-      const v = typeof error.headers.get === 'function' ? error.headers.get(h) : error.headers[h];
-      if (v) out.headers[h] = v;
-    }
-    if (Object.keys(out.headers).length === 0) delete out.headers;
-  }
-  return out;
-}
-
-function buildCodexErrorGuidance(error, model) {
-  const status = Number(error?.status || error?.response?.status || 0);
-  const message = String(error?.message || '').toLowerCase();
-
-  if (status === 401 || status === 403 || message.includes('unauthorized') || message.includes('forbidden')) {
-    return `This model (${model}) uses the Codex Responses API. The Codex OAuth authorization was rejected; reconnect your OAuth account or try a different model.`;
-  }
-
-  if (
-    status === 429 ||
-    status === 500 ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
-    status === 529 ||
-    message.includes('overloaded') ||
-    message.includes('temporarily unavailable')
-  ) {
-    return `This model (${model}) uses the Codex Responses API. The upstream Codex service is rate-limited, overloaded, or temporarily unavailable; retry later or try a different model.`;
-  }
-
-  if (status === 400) {
-    return `This model (${model}) uses the Codex Responses API. The request could not be accepted; try a different model or reduce the active tool/context surface.`;
-  }
-
-  return `This model (${model}) uses the Codex Responses API. Try again or switch models; reconnect OAuth only if provider status shows the Codex connection is expired.`;
-}
 
 /**
  * Returns true if a message is a user-role carrier of tool_result blocks.
@@ -851,8 +803,8 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
  */
 
 export {
-  describeCodexError,
-  buildCodexErrorGuidance,
+  describeConnectionError,
+  buildConnectionErrorGuidance,
   isToolResultCarrier,
   findLastInjectableUserIndex,
   sanitizeKimiToolSchemas,

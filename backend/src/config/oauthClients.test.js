@@ -149,39 +149,14 @@ describe('SHIP GATE: OAuth clients are present', () => {
   });
 });
 
-describe('wiring', () => {
-  /** Both managers must read the client from here, not from process.env. */
-  const MANAGERS = [
-    ['GeminiCliAuthManager.js', 'GEMINI_CLI_OAUTH'],
-    ['AntigravityAuthManager.js', 'ANTIGRAVITY_OAUTH'],
-  ];
-
-  for (const [file, symbol] of MANAGERS) {
-    it(`${file} sources its client from config/oauthClients.js`, () => {
-      const source = fs.readFileSync(path.join(SRC, 'services', 'auth', file), 'utf8');
-
-      expect(source).toMatch(new RegExp(`import \\{ ${symbol} \\} from '\\.\\./\\.\\./config/oauthClients\\.js'`));
-      expect(source).toMatch(new RegExp(`CLIENT_ID: ${symbol}\\.CLIENT_ID`));
-      expect(source).toMatch(new RegExp(`CLIENT_SECRET: ${symbol}\\.CLIENT_SECRET`));
-    });
-
-    it(`${file} no longer reads the deleted .env variables directly`, () => {
-      const source = fs.readFileSync(path.join(SRC, 'services', 'auth', file), 'utf8');
-      const code = source.split(/\r?\n/).filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line));
-
-      const offenders = code.filter((line) => /process\.env\.(GEMINI_CLI|ANTIGRAVITY)_CLIENT_(ID|SECRET)/.test(line));
-      expect(offenders, `${file} still reads the client from process.env`).toEqual([]);
-    });
-  }
-
-  it('the refresh path falls back to the constant, which is why empty breaks live users', () => {
-    // Pins the mechanism this whole gate exists for. If a future refactor stops
-    // falling back here, the blast radius of an empty client shrinks to new
-    // sign-ins only — and this test should be revisited rather than deleted.
-    for (const file of ['GeminiCliAuthManager.js', 'AntigravityAuthManager.js']) {
-      const source = fs.readFileSync(path.join(SRC, 'services', 'auth', file), 'utf8');
-      expect(source, `${file} refresh path`).toMatch(/data\.client_id \|\| OAUTH_CONFIG\.CLIENT_ID/);
-      expect(source, `${file} refresh path`).toMatch(/data\.client_secret \|\| OAUTH_CONFIG\.CLIENT_SECRET/);
-    }
+describe('shared runtime wiring', () => {
+  const runtime = fs.readFileSync(path.join(SRC, 'services/ai/connectionRuntime.js'), 'utf8');
+  it.each(['GEMINI_CLI_OAUTH', 'ANTIGRAVITY_OAUTH'])('keeps %s in the explicit profiles', symbol => {
+    expect(runtime).toContain('client: ' + symbol);
+    expect(runtime).toContain("from '../../config/oauthClients.js'");
+  });
+  it('retains stored-client precedence and the configured refresh fallback', () => {
+    expect(runtime).toContain('record?.raw?.client_id || profile.client?.CLIENT_ID || profile.clientId');
+    expect(runtime).toContain('record?.raw?.client_secret || profile.client.CLIENT_SECRET');
   });
 });

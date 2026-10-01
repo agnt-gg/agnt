@@ -1,3 +1,5 @@
+import { getConnection } from '../ai/connectionRuntime.js';
+const responseConnection = getConnection('openai-codex');
 import { skillIdentity, isDefaultSkill } from '../../utils/skillTrust.js';
 import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from 'child_process';
@@ -25,7 +27,6 @@ import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasT
 import AuthManager from '../auth/AuthManager.js';
 import { authHeader } from '../auth/sessionTokenCache.js';
 import { readPlanDenialBody, planDenialMessage } from '../auth/planDenial.js';
-import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import GrokBuildCliService from '../ai/GrokBuildCliService.js';
 import GrokBuildCliSessionManager from '../ai/GrokBuildCliSessionManager.js';
@@ -647,7 +648,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       context
     ) => {
       try {
-        const codexToken = CodexAuthManager.getAccessToken();
+        const codexToken = responseConnection.getAccessToken();
         if (!codexToken) {
           return JSON.stringify({
             success: false,

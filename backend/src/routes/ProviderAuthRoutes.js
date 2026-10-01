@@ -251,7 +251,7 @@ router.get('/:providerId/auth/oauth/start', requireAuthHeader, async (req, res) 
   }
 
   try {
-    // Both ClaudeCodeAuthManager and GeminiCliAuthManager have startOAuth()
+    // The shared runtime preserves each connection’s sign-in contract.
     const result = await providerEntry.manager.startOAuth();
     res.json({ success: true, ...result });
   } catch (error) {

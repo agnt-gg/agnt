@@ -1,3 +1,4 @@
+import { getConnectionAffinity } from '../../ai/connectionRuntime.js';
 /**
  * The behaviour every transport shares, regardless of wire protocol.
  *
@@ -190,7 +191,7 @@ class BaseAdapter {
       case 'grokai':
         return { body: { prompt_cache_key: id }, headers: { 'x-grok-conv-id': id } };
       case 'openai-codex':
-        return { body: { prompt_cache_key: id }, headers: { session_id: id } };
+        return getConnectionAffinity(this.provider, this.conversationId);
       default:
         return null;
     }

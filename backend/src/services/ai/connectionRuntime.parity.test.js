@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLlmAdapter } from './llmAdapters.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 
 function streamFrom(events) {
   return {
@@ -11,10 +11,10 @@ function streamFrom(events) {
   };
 }
 
-describe('CodexResponsesAdapter', () => {
+describe('ConnectionResponsesAdapter', () => {
   it('never sends public OpenAI retention controls to the ChatGPT backend', async () => {
     const adapter = await createLlmAdapter('openai-codex', {}, 'gpt-5.6-sol');
-    const params = adapter._buildCodexParams([{ role: 'user', content: 'hi' }], []);
+    const params = adapter._buildConnectionParams([{ role: 'user', content: 'hi' }], []);
 
     expect(params).not.toHaveProperty('prompt_cache_options');
     expect(params).not.toHaveProperty('prompt_cache_retention');
@@ -78,7 +78,7 @@ describe('CodexResponsesAdapter', () => {
       },
     ]);
 
-    const followUpParams = adapter._buildCodexParams(
+    const followUpParams = adapter._buildConnectionParams(
       [
         { role: 'system', content: 'System prompt' },
         { role: 'user', content: 'Check auth providers' },

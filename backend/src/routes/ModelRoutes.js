@@ -1,3 +1,7 @@
+import { getConnection } from '../services/ai/connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
+const responseConnection = getConnection('openai-codex');
+const projectConnection = getConnection('gemini-cli');
 import express from 'express';
 import crypto from 'crypto';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
@@ -14,10 +18,7 @@ import {
 } from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
-import CodexAuthManager from '../services/auth/CodexAuthManager.js';
-import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
-import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
-import { listGoogleSubscriptionModels, GOOGLE_SUBSCRIPTION_PROVIDERS } from '../services/ai/googleSubscriptionModels.js';
+import { listConnectionModels, CATALOG_CONNECTIONS } from '../services/ai/connectionRuntime.js';
 // One resolver for the four subscription providers that authenticate through a
 // local OAuth flow rather than a stored API key.
 import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
@@ -140,7 +141,7 @@ async function _fetchCodexModelsFromUpstream(token) {
   };
 
   try {
-    const accountId = CodexAuthManager.getChatGptAccountId();
+    const accountId = responseConnection.getChatGptAccountId();
     const headers = {
       'Authorization': `Bearer ${token}`,
       'originator': 'codex_cli_rs',
@@ -339,7 +340,7 @@ router.get('/:provider/models', async (req, res) => {
       // the env-level OPENAI_API_KEY override and would send a sk-* key to an
       // endpoint that rejects it, collapsing the model list to the fallback.
       if (providerLower === 'openai-codex') {
-        apiKey = CodexAuthManager.getOAuthToken();
+        apiKey = responseConnection.getOAuthToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
@@ -349,23 +350,23 @@ router.get('/:provider/models', async (req, res) => {
         // Refresh if the OAuth token is expiring soon (ensureValidToken does this
         // but also pulls in the API-key path we just rejected; re-do the refresh
         // step inline so we keep the OAuth-only guarantee).
-        if (CodexAuthManager.isTokenExpiringSoon()) {
-          const refresh = await CodexAuthManager.refreshAccessToken();
+        if (responseConnection.isTokenExpiringSoon()) {
+          const refresh = await responseConnection.refreshAccessToken();
           if (refresh?.success) {
-            apiKey = CodexAuthManager.getOAuthToken() || apiKey;
+            apiKey = responseConnection.getOAuthToken() || apiKey;
           }
         }
       }
       // Claude Code: use local Claude Code OAuth auth.
       else if (providerLower === 'claude-code') {
-        const ccStatus = await ClaudeCodeAuthManager.checkApiUsable();
+        const ccStatus = await messageConnection.checkApiUsable();
         if (!ccStatus.available) {
           return res.status(400).json({
             success: false,
             error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
           });
         }
-        apiKey = await ClaudeCodeAuthManager.getAccessToken();
+        apiKey = await messageConnection.getAccessToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
@@ -373,17 +374,17 @@ router.get('/:provider/models', async (req, res) => {
           });
         }
       }
-      // Gemini CLI: uses GeminiCliAuthManager (OAuth or manual API key)
+      // Gemini CLI: uses projectConnection (OAuth or manual API key)
       // Only triggered for 'gemini-cli' — regular 'gemini' uses standard API key flow below
       else if (providerLower === 'gemini-cli') {
-        const gcStatus = await GeminiCliAuthManager.checkApiUsable();
+        const gcStatus = await projectConnection.checkApiUsable();
         if (!gcStatus.available) {
           return res.status(400).json({
             success: false,
             error: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
           });
         }
-        apiKey = await GeminiCliAuthManager.getAccessToken();
+        apiKey = await projectConnection.getAccessToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
@@ -391,7 +392,7 @@ router.get('/:provider/models', async (req, res) => {
           });
         }
 
-        if (GeminiCliAuthManager.isUsingApiKey()) {
+        if (projectConnection.isUsingApiKey()) {
           // API key → fetch models dynamically via the standard gemini provider service
           const geminiService = providerServices['gemini'];
           if (geminiService) {
@@ -410,15 +411,15 @@ router.get('/:provider/models', async (req, res) => {
           }
         } else {
           // OAuth → the account's live entitlement list (retrieveUserQuota),
-          // or a clear "no license" error. See googleSubscriptionModels.js.
-          const { status, body } = await listGoogleSubscriptionModels('gemini-cli');
+          // or a clear "no license" error. See connectionRuntime.js.
+          const { status, body } = await listConnectionModels('gemini-cli');
           return res.status(status).json(body);
         }
       }
       // Antigravity: OAuth-only gateway. Live fetchAvailableModels catalog,
       // static curated list only if Google is unreachable.
       else if (providerLower === 'antigravity') {
-        const { status, body } = await listGoogleSubscriptionModels('antigravity');
+        const { status, body } = await listConnectionModels('antigravity');
         return res.status(status).json(body);
       }
       // Grok Build CLI — local subscription; list via `grok models` or static fallback
@@ -546,8 +547,8 @@ router.post('/:provider/models/refresh', async (req, res) => {
 
     // Google subscription gateways list from their own live catalogs; the
     // generic service below has none and would answer with the static list.
-    if (GOOGLE_SUBSCRIPTION_PROVIDERS.includes(providerLower)) {
-      const listing = await listGoogleSubscriptionModels(providerLower, { forceRefresh: true });
+    if (CATALOG_CONNECTIONS.includes(providerLower)) {
+      const listing = await listConnectionModels(providerLower, { forceRefresh: true });
       if (listing) return res.status(listing.status).json(listing.body);
       // null = Gemini CLI in API-key mode: the generic path below is correct.
     }
@@ -683,7 +684,7 @@ router.get('/schema-version', (req, res) => {
 // user isn't signed in or the network is unavailable.
 export async function prewarmCodexModels() {
   try {
-    const token = CodexAuthManager.getOAuthToken?.();
+    const token = responseConnection.getOAuthToken?.();
     if (!token) {
       console.log('[ModelRoutes] Skipping Codex prewarm — not connected');
       return;

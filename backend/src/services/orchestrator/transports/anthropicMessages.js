@@ -38,7 +38,7 @@ import {
   supportsDeepSeekThinkingToggle as supportsDeepSeekToggle,
 } from '../../ai/providerConfigs.js';
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../../ai/reasoningModels.js';
-import { buildSigningBlock, extractFirstUserMessage } from '../../ai/requestSigning.js';
+import { buildSigningBlock, extractFirstUserMessage } from '../../ai/connectionRuntime.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from '../messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../../utils/promptCacheTtl.js';
 import { normalizeGeminiUsage } from '../../../utils/usageCacheFields.js';
@@ -77,7 +77,7 @@ class AnthropicAdapter extends BaseAdapter {
     this.provider = provider.toLowerCase();
     this.reasoningValue = options.reasoningValue || 'default';
     this.maxRetries = 3;
-    // Prompt-overflow shrink budget (mirrors CodexResponsesAdapter's
+    // Prompt-overflow shrink budget (mirrors ConnectionResponsesAdapter's
     // maxContextShrinkRetries). Each shrink drops oldest message units and
     // retries without consuming the transient-error retry budget.
     this.maxContextShrinkRetries = 4;

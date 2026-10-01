@@ -105,7 +105,7 @@ class GrokBuildAuthManager {
    * Sync provenance for sessionDiscovery.js and the status endpoint.
    * Mirrors getAccessToken()'s precedence so the two cannot disagree.
    *
-   * OWNERSHIP: see the note in CodexAuthManager.describeCredential — file-backed
+   * OWNERSHIP: see the note in connectionRuntime.describeCredential — file-backed
    * credentials stay ownedByAgnt: true to preserve current refresh behaviour.
    */
   describeCredential() {
@@ -455,7 +455,7 @@ class GrokBuildAuthManager {
    * The CLI owns the refresh: `grok models` performs the OIDC refresh and
    * rewrites ~/.grok/auth.json as a side effect, so re-reading the file after
    * a successful probe yields the new token. Mirrors
-   * CodexAuthManager.ensureValidToken()'s contract so LlmService can treat
+   * connectionRuntime.ensureValidToken()'s contract so LlmService can treat
    * both providers identically.
    */
   async ensureValidToken() {

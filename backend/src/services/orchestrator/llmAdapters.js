@@ -12,7 +12,7 @@ import { BaseAdapter } from './transports/BaseAdapter.js';
 import { OpenAiLikeAdapter, CerebrasAdapter } from './transports/chatCompletions.js';
 import { AnthropicAdapter } from './transports/anthropicMessages.js';
 import { GeminiAdapter } from './transports/gemini.js';
-import { OpenAIResponsesAdapter, CodexResponsesAdapter } from './transports/openaiResponses.js';
+import { OpenAIResponsesAdapter, ConnectionResponsesAdapter } from './transports/openaiResponses.js';
 import {
   requiresResponsesApi,
   buildOpenAiLikeReasoningExtraBody,
@@ -67,8 +67,8 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
           `Pick a Codex-supported model in settings or switch providers.`
         );
       }
-      console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
-      return new CodexResponsesAdapter(client, model, options);
+      console.log(`[LLM Adapter] Using ConnectionResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
+      return new ConnectionResponsesAdapter(client, model, options);
 
     case 'deepseek':
     case 'grokai':
@@ -120,6 +120,6 @@ export {
   OpenAiLikeAdapter,
   AnthropicAdapter,
   OpenAIResponsesAdapter,
-  CodexResponsesAdapter,
+  ConnectionResponsesAdapter,
   requiresResponsesApi,
 };

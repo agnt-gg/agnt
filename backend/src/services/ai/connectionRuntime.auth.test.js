@@ -272,3 +272,202 @@ describe('refresh rotation and serialization', () => {
     expect(error).toBeInstanceOf(ConnectionError); expect(error.message).toBe('connection_unavailable'); expect(JSON.stringify(error)).not.toContain('old-refresh');
   });
 });
+
+// Production-profile contract tests. Every file is confined to a temporary HOME;
+// HTTP, keychain and AGNT persistence are injected and never reach real users.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach } from 'vitest';
+import { createManagedConnection } from './connectionRuntime.js';
+import * as defaultModels from './defaultModel.js';
+
+const temporaryHomes = [];
+function managedFixture(id, overrides = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'connection-contract-')); temporaryHomes.push(home);
+  const stored = new Map(), env = {}, time = { value: 2000000000000 };
+  const httpClient = { post: vi.fn(), get: vi.fn() };
+  const credentialStore = { readCredential: key => stored.get(key), writeCredential: vi.fn((key, value) => stored.set(key, value)), clearCredential: key => stored.delete(key), getCredentialPath: key => path.join(home, key + '.json') };
+  const secretReader = vi.fn(() => null);
+  const connection = createManagedConnection(id, { homedir: () => home, env, now: () => time.value, httpClient, credentialStore, readSecretJson: secretReader, ...overrides });
+  const write = (relative, value) => { const filename = path.join(home, relative); fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, typeof value === 'string' ? value : JSON.stringify(value)); return filename; };
+  return { connection, home, stored, env, time, httpClient, credentialStore, secretReader, write };
+}
+const tokenFor = (expiry, claims = {}) => 'e30.' + Buffer.from(JSON.stringify({ exp: expiry, ...claims })).toString('base64url') + '.signature';
+afterEach(() => { for (const home of temporaryHomes.splice(0)) fs.rmSync(home, { recursive: true, force: true }); });
+
+describe('managed storage contracts', () => {
+  it.each(['manual-token', 'health'])('%s probe follows the current catalog model', async operation => {
+    const f = managedFixture('claude-code');
+    const resolver = vi.spyOn(defaultModels, 'resolveDefaultModel').mockReturnValue('catalog-test-model');
+    f.httpClient.post.mockResolvedValue({ status: 200, data: {} });
+    try {
+      if (operation === 'manual-token') await f.connection.saveManualToken('sk-ant-test');
+      else {
+        f.stored.set('claude-code', { claudeAiOauth: { accessToken: 'sk-ant-test' } });
+        await f.connection.checkApiUsable({ forceRefresh: true });
+      }
+      expect(resolver).toHaveBeenCalledWith('claude-code');
+      expect(f.httpClient.post).toHaveBeenCalledWith(
+        'https://api.anthropic.com/v1/messages',
+        expect.objectContaining({ model: 'catalog-test-model' }),
+        expect.any(Object),
+      );
+    } finally { resolver.mockRestore(); }
+  });
+  it.each(['subscriptionType','rateLimitTier','refreshTokenExpiresAt'])('preserves a CLI-shaped block carrying %s', async marker => {
+    const f = managedFixture('claude-code');
+    const contents = { unrelated: true, claudeAiOauth: { accessToken: 'sk-ant-oat-cli', refreshToken: 'cli-refresh', expiresAt: 1, [marker]: 'present' } };
+    const filename = f.write('.claude/.credentials.json', contents);
+    expect(f.connection.describeCredential()).toMatchObject({ connected: true, ownedByAgnt: false, source: 'claude-credentials' });
+    expect(await f.connection.getAccessToken()).toBe('sk-ant-oat-cli');
+    expect(await f.connection.refreshAccessToken()).toMatchObject({ success: false, revoked: false });
+    expect(await f.connection.logout()).toMatchObject({ success: true, stillDetected: true });
+    expect(JSON.parse(fs.readFileSync(filename))).toEqual(contents); expect(f.httpClient.post).not.toHaveBeenCalled();
+  });
+  it('refreshes the legacy AGNT block into its own store without clobbering the vendor file', async () => {
+    const f = managedFixture('claude-code');
+    const old = { unrelated: true, claudeAiOauth: { accessToken: 'sk-ant-oat-old', refreshToken: 'old-refresh', expiresAt: 1, scopes: ['user:inference'] } };
+    const filename = f.write('.claude/.credentials.json', old);
+    f.httpClient.post.mockResolvedValue({ data: { access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600 } });
+    expect(await f.connection.getAccessToken()).toBe('new-access');
+    expect(JSON.parse(fs.readFileSync(filename))).toEqual(old);
+    expect(f.stored.get('claude-code')).toEqual({ claudeAiOauth: { accessToken: 'new-access', refreshToken: 'new-refresh', expiresAt: f.time.value + 3300000, scopes: ['user:inference'] } });
+    expect(f.httpClient.post.mock.calls[0][0]).toBe('https://console.anthropic.com/v1/oauth/token');
+    expect(JSON.parse(f.httpClient.post.mock.calls[0][1])).toMatchObject({ grant_type: 'refresh_token', refresh_token: 'old-refresh' });
+    await f.connection.logout(); expect(JSON.parse(fs.readFileSync(filename))).toEqual({ unrelated: true });
+  });
+  it('own store outranks vendor and keychain, while keychain is never rotated', async () => {
+    const f = managedFixture('claude-code'); f.secretReader.mockReturnValue({ claudeAiOauth: { accessToken: 'sk-ant-keychain', refreshToken: 'borrowed', expiresAt: 1 } });
+    expect(await f.connection.getAccessToken()).toBe('sk-ant-keychain'); expect(f.httpClient.post).not.toHaveBeenCalled();
+    f.write('.claude/.credentials.json', { token: 'sk-ant-flat' }); expect(f.connection.getAccessTokenSync()).toBe('sk-ant-flat');
+    f.stored.set('claude-code', { claudeAiOauth: { accessToken: 'sk-ant-owned' } }); expect(f.connection.getAccessTokenSync()).toBe('sk-ant-owned');
+  });
+  it('keeps response OAuth visible even with both environment and file API keys', async () => {
+    const f = managedFixture('openai-codex'); const token = tokenFor(f.time.value / 1000 + 3600, { 'https://api.openai.com/auth': { chatgpt_account_id: 'account-1' } });
+    f.env.OPENAI_API_KEY = ' sk-environment ';
+    f.write('.codex/auth.json', { OPENAI_API_KEY: 'sk-file', tokens: { access_token: token, refresh_token: 'refresh' }, unrelated: 1 });
+    expect(f.connection.getAccessToken()).toBe('sk-environment'); expect(await f.connection.ensureValidOAuthToken()).toBe(token);
+    expect(f.connection.getChatGptAccountId()).toBe('account-1');
+    delete f.env.OPENAI_API_KEY; expect(f.connection.getAccessToken()).toBe('sk-file');
+    await f.connection.logout(); expect(JSON.parse(fs.readFileSync(path.join(f.home,'.codex/auth.json')))).toEqual({ unrelated: 1 });
+  });
+  it.each(['gemini-cli','antigravity'])('retains the flat credential format and stored OAuth client for %s', async id => {
+    const f = managedFixture(id), directory = id === 'gemini-cli' ? '.gemini' : '.antigravity';
+    const filename = f.write(directory+'/oauth_creds.json', { access_token: 'old', refresh_token: 'old-refresh', expiry_date: 1, client_id: 'stored-client', client_secret: 'stored-public-secret', custom: true });
+    f.httpClient.post.mockResolvedValue({ data: { access_token: 'new', refresh_token: 'rotated', expires_in: 123 } });
+    expect(await f.connection.getAccessToken()).toBe('new');
+    const fields = Object.fromEntries(new URLSearchParams(f.httpClient.post.mock.calls[0][1]));
+    expect(fields).toEqual({ client_id: 'stored-client', client_secret: 'stored-public-secret', grant_type: 'refresh_token', refresh_token: 'old-refresh' });
+    expect(JSON.parse(fs.readFileSync(filename))).toMatchObject({ access_token: 'new', refresh_token: 'rotated', expiry_date: f.time.value + 123000, custom: true });
+  });
+  it('preserves CRLF when changing the stored project or API key', () => {
+    const f = managedFixture('gemini-cli'); const filename = f.write('.gemini/.env', 'OTHER=keep\r\nGEMINI_API_KEY=old\r\n');
+    f.connection.saveManualApiKey('new-key'); f.connection.saveGcpProject('new-project');
+    const result = fs.readFileSync(filename, 'utf8');
+    expect(result).toBe('OTHER=keep\r\nGEMINI_API_KEY=new-key\r\nGOOGLE_CLOUD_PROJECT=new-project\r\n');
+  });
+  it('keeps API-key precedence and preserves unrelated environment lines', async () => {
+    const f = managedFixture('gemini-cli'); f.write('.gemini/.env','OTHER=keep\nGEMINI_API_KEY=file-key\n');
+    f.write('.gemini/oauth_creds.json',{ access_token: 'oauth', expiry_date: f.time.value + 3600000 });
+    expect(await f.connection.getAccessToken()).toBe('file-key'); f.env.GEMINI_API_KEY='environment-key'; expect(await f.connection.getAccessToken()).toBe('environment-key');
+    delete f.env.GEMINI_API_KEY; f.connection.saveManualApiKey('new-key'); expect(await f.connection.getAccessToken()).toBe('new-key');
+    expect(f.connection.saveGcpProject('project\nINJECT=true').success).toBe(false);
+    await f.connection.logout(); expect(fs.readFileSync(path.join(f.home,'.gemini/.env'),'utf8')).toBe('OTHER=keep\n');
+  });
+  it('deduplicates refresh and prevents refresh from resurrecting a disconnected account', async () => {
+    const f = managedFixture('antigravity'); f.write('.antigravity/oauth_creds.json',{ access_token:'old',refresh_token:'old-refresh',expiry_date:1 });
+    let finish; f.httpClient.post.mockReturnValue(new Promise(resolve => { finish=resolve; }));
+    const first=f.connection.refreshAccessToken(), second=f.connection.refreshAccessToken();
+    expect(f.httpClient.post).toHaveBeenCalledTimes(1); await f.connection.logout(); finish({data:{access_token:'new',expires_in:3600}});
+    expect(await first).toMatchObject({success:false}); expect(await second).toMatchObject({success:false});
+    expect(fs.existsSync(path.join(f.home,'.antigravity/oauth_creds.json'))).toBe(false);
+  });
+  it('preserves transient-refresh fallback but clears revoked owned message credentials', async () => {
+    const f=managedFixture('claude-code'); const record={claudeAiOauth:{accessToken:'old',refreshToken:'refresh',expiresAt:1}}; f.stored.set('claude-code',record);
+    f.httpClient.post.mockRejectedValueOnce(Error('offline')); expect(await f.connection.getAccessToken()).toBe('old'); expect(f.stored.get('claude-code')).toEqual(record);
+    f.httpClient.post.mockRejectedValueOnce({response:{status:400,data:{error:'invalid_grant'}}}); expect(await f.connection.getAccessToken()).toBeNull(); expect(f.stored.has('claude-code')).toBe(false);
+  });
+  it('does not give a borrowed keychain refresh token to the SDK', () => {
+    const clients=[]; class FakeClient { constructor(){this.handlers={};clients.push(this);}setCredentials(value){this.credentials=value;}on(name,handler){this.handlers[name]=handler;} }
+    const f=managedFixture('antigravity',{OAuth2Client:FakeClient}); f.secretReader.mockReturnValue({access_token:'borrowed',refresh_token:'never-rotate',expiry_date:1});
+    const client=f.connection.getOAuth2Client(); expect(client.credentials).toMatchObject({access_token:'borrowed'}); expect(client.credentials).not.toHaveProperty('refresh_token');expect(client.handlers).not.toHaveProperty('tokens');
+  });
+});
+
+describe('managed sign-in contracts', () => {
+  it('preserves paste-PKCE fields and consumes successful state exactly once', async () => {
+    const f=managedFixture('claude-code'), session=f.connection.startOAuth(), url=new URL(session.authUrl), state=url.searchParams.get('state');
+    expect(url.origin).toBe('https://claude.ai'); expect(url.searchParams.get('code')).toBe('true');
+    expect(url.searchParams.get('code_challenge')).toBe(createHash('sha256').update(state).digest('base64url'));
+    expect(f.connection.parseCodeState('`code#'+state+'`')).toEqual({code:'code',state});
+    await expect(f.connection.exchangeCode(session.sessionId,'code','wrong')).rejects.toThrow('state mismatch'); expect(f.httpClient.post).not.toHaveBeenCalled();
+    f.httpClient.post.mockResolvedValue({data:{access_token:'issued',expires_in:3600}}); await f.connection.exchangeCode(session.sessionId,'code',state);
+    expect(JSON.parse(f.httpClient.post.mock.calls[0][1])).toMatchObject({state,code_verifier:state,redirect_uri:'https://console.anthropic.com/oauth/code/callback'});
+    await expect(f.connection.exchangeCode(session.sessionId,'code',state)).rejects.toThrow('expired');
+  });
+  it('runs a real loopback callback on port zero and saves the expected credential shape', async () => {
+    const f=managedFixture('gemini-cli'); f.httpClient.post.mockResolvedValue({data:{access_token:'loopback-token',refresh_token:'refresh',expires_in:3600}});
+    const session=await f.connection.startOAuth(), url=new URL(session.authUrl), redirect=url.searchParams.get('redirect_uri');
+    try {
+      expect(new URL(redirect).hostname).toBe('127.0.0.1');expect(new URL(redirect).port).not.toBe('0');
+      const response=await fetch(redirect+'?code=approved&state='+url.searchParams.get('state'),{redirect:'manual'});
+      expect(response.status).toBe(302);expect(response.headers.get('location')).toContain('auth_success_gemini');await response.body?.cancel();
+      expect(f.connection.getSessionStatus(session.sessionId)).toEqual({status:'success',error:null});
+      expect(JSON.parse(fs.readFileSync(path.join(f.home,'.gemini/oauth_creds.json')))).toMatchObject({access_token:'loopback-token',refresh_token:'refresh',expiry_date:f.time.value+3600000});
+    } finally { await f.connection.logout(); }
+  });
+  it('rejects a mismatched loopback state without token exchange', async () => {
+    const f=managedFixture('gemini-cli'),session=await f.connection.startOAuth(),url=new URL(session.authUrl);
+    try {const response=await fetch(url.searchParams.get('redirect_uri')+'?code=code&state=wrong',{redirect:'manual'});await response.body?.cancel();expect(response.status).toBe(302);expect(f.httpClient.post).not.toHaveBeenCalled();expect(f.connection.getSessionStatus(session.sessionId).status).toBe('error');}
+    finally {await f.connection.logout();}
+  });
+  it('preserves custom device-code exchange and pending status without spawning a CLI', async () => {
+    const f=managedFixture('openai-codex'); f.httpClient.post.mockResolvedValueOnce({data:{device_auth_id:'device-id',user_code:'USER-CODE'}});
+    const started=await f.connection.startDeviceAuth(); expect(await f.connection.startDeviceAuth()).toEqual(started);expect(f.httpClient.post).toHaveBeenCalledTimes(1);
+    f.httpClient.post.mockRejectedValueOnce({response:{status:403}});expect(await f.connection.getDeviceSessionStatus(started.sessionId)).toMatchObject({state:'pending',deviceCode:'USER-CODE'});
+    const token=tokenFor(f.time.value/1000+3600);f.httpClient.post.mockResolvedValueOnce({data:{authorization_code:'approved-code',code_verifier:'verifier'}}).mockResolvedValueOnce({data:{access_token:token,refresh_token:'new-refresh',id_token:'id-token'}});
+    f.httpClient.get.mockResolvedValue({status:200,data:{models:[]}});
+    expect(await f.connection.getDeviceSessionStatus(started.sessionId)).toMatchObject({success:true,state:'success'});
+    expect(Object.fromEntries(new URLSearchParams(f.httpClient.post.mock.calls.at(-1)[1]))).toMatchObject({grant_type:'authorization_code',code:'approved-code',code_verifier:'verifier',redirect_uri:'https://auth.openai.com/deviceauth/callback'});
+    expect(JSON.parse(fs.readFileSync(path.join(f.home,'.codex/auth.json'))).tokens).toEqual({access_token:token,refresh_token:'new-refresh',id_token:'id-token'});
+  });
+});
+
+describe('managed cross-operation races', () => {
+  it('persists successive SDK refresh-token rotations on one client', () => {
+    class Client { setCredentials() {} on(name, handler) { this[name] = handler; } }
+    const f = managedFixture('antigravity', { OAuth2Client: Client });
+    const filename = f.write('.antigravity/oauth_creds.json', { access_token: 'old', refresh_token: 'refresh-0', expiry_date: f.time.value + 3600000 });
+    const client = f.connection.getOAuth2Client();
+    client.tokens({ access_token: 'first', refresh_token: 'refresh-1', expiry_date: f.time.value + 3600000 });
+    client.tokens({ access_token: 'second', refresh_token: 'refresh-2', expiry_date: f.time.value + 3600000 });
+    expect(JSON.parse(fs.readFileSync(filename))).toMatchObject({ access_token: 'second', refresh_token: 'refresh-2' });
+  });
+  it('deduplicates concurrent device sign-in starts', async () => {
+    const f = managedFixture('openai-codex'); let finish;
+    f.httpClient.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const first = f.connection.startDeviceAuth(), second = f.connection.startDeviceAuth();
+    finish({ data: { device_auth_id: 'device', user_code: 'USER-CODE' } });
+    const [one, two] = await Promise.all([first, second]);
+    expect(f.httpClient.post).toHaveBeenCalledTimes(1); expect(one.sessionId).toBe(two.sessionId);
+  });
+  it('a device sign-in start cannot survive disconnect while its HTTP call is pending', async () => {
+    const f = managedFixture('openai-codex'); let finish;
+    f.httpClient.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const pending = f.connection.startDeviceAuth(); await f.connection.logout();
+    finish({ data: { device_auth_id: 'device', user_code: 'USER-CODE' } });
+    expect(await pending).toMatchObject({ success: false });
+  });
+  it('a manually connected token wins over an older pending refresh', async () => {
+    const f = managedFixture('claude-code');
+    f.stored.set('claude-code', { claudeAiOauth: { accessToken: 'old', refreshToken: 'refresh-old', expiresAt: 1 } });
+    let finish;
+    f.httpClient.post.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValueOnce({ status: 200 });
+    const refreshing = f.connection.refreshAccessToken();
+    expect(await f.connection.saveManualToken('sk-ant-new')).toMatchObject({ success: true });
+    finish({ data: { access_token: 'late', refresh_token: 'late-refresh', expires_in: 3600 } });
+    expect(await refreshing).toMatchObject({ success: false });
+    expect(f.connection.getAccessTokenSync()).toBe('sk-ant-new');
+  });
+});

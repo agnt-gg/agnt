@@ -10,10 +10,8 @@ const geminiCli = { checkApiUsable: vi.fn(), getAccessToken: vi.fn() };
 const antigravity = { checkApiUsable: vi.fn(), getAccessToken: vi.fn() };
 const codex = { checkApiUsable: vi.fn(), getAccessToken: vi.fn(), getOAuthToken: vi.fn() };
 
-vi.mock('./ClaudeCodeAuthManager.js', () => ({ default: claude }));
-vi.mock('./GeminiCliAuthManager.js', () => ({ default: geminiCli }));
-vi.mock('./AntigravityAuthManager.js', () => ({ default: antigravity }));
-vi.mock('./CodexAuthManager.js', () => ({ default: codex }));
+
+vi.mock('../ai/connectionRuntime.js', () => ({ getConnection: id => ({ 'claude-code': claude, 'gemini-cli': geminiCli, antigravity, 'openai-codex': codex })[id] }));
 
 const { resolveOAuthApiKey, isOAuthProvider, oauthProviderKeys } = await import('./oauthProviderAuth.js');
 
@@ -120,8 +118,8 @@ describe('ModelRoutes uses the shared resolver', () => {
     // The list route still has its own arms (it also does CLI model listing);
     // what must not survive is the second COPY of the pure auth ladder.
     const refresh = SRC.slice(SRC.indexOf('forceRefresh: true'));
-    expect(refresh).not.toMatch(/ClaudeCodeAuthManager\.checkApiUsable\(\{ forceRefresh: true \}\)/);
-    expect(refresh).not.toMatch(/GeminiCliAuthManager\.checkApiUsable\(\{ forceRefresh: true \}\)/);
-    expect(refresh).not.toMatch(/AntigravityAuthManager\.checkApiUsable\(\{ forceRefresh: true \}\)/);
+    expect(refresh).not.toMatch(/messageConnection\.checkApiUsable\(\{ forceRefresh: true \}\)/);
+    expect(refresh).not.toMatch(/projectConnection\.checkApiUsable\(\{ forceRefresh: true \}\)/);
+    expect(refresh).not.toMatch(/catalogConnection\.checkApiUsable\(\{ forceRefresh: true \}\)/);
   });
 });

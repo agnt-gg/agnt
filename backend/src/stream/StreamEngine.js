@@ -1,3 +1,5 @@
+import { getConnection } from '../services/ai/connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
 import { Anthropic } from '@anthropic-ai/sdk';
 import { OpenAI } from 'openai/index.mjs';
 import axios from 'axios';
@@ -6,7 +8,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import PathManager from '../utils/PathManager.js';
 import AuthManager from '../services/auth/AuthManager.js';
-import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
@@ -281,7 +282,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       if (isClaudeCode && is401) {
         console.log('[StreamEngine] Claude Code 401 — attempting token refresh and retry');
         try {
-          const refreshResult = await ClaudeCodeAuthManager.refreshAccessToken();
+          const refreshResult = await messageConnection.refreshAccessToken();
           if (refreshResult.success) {
             const retryClient = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
             const retryStreamId = generateUniqueId();

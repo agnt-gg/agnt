@@ -4,7 +4,7 @@ import { createLlmAdapter } from './llmAdapters.js';
 /**
  * Regression suite for the "Codex is blind to the conversation" defect.
  *
- * Root cause: CodexResponsesAdapter._buildCodexParamsWithinBudget() estimated
+ * Root cause: ConnectionResponsesAdapter._buildConnectionParamsWithinBudget() estimated
  * the whole serialized request with a single chars/1.6 divisor. Measured against
  * o200k_base the components differ by 3.3x — tool schemas tokenize at 4.75
  * chars/token, prose at 3.91, escaped code at 2.58, random base64 at 1.46 — so
@@ -42,14 +42,14 @@ const shortConversation = () => ([
   { role: 'user', content: 'What is my favourite colour?' },
 ]);
 
-describe('CodexResponsesAdapter — preflight budget', () => {
+describe('ConnectionResponsesAdapter — preflight budget', () => {
   it('keeps every conversation turn when a large tool surface still fits the window', async () => {
     const tools = makeToolSchemas(295);
     // Sanity: this is the real-world scale that triggered the defect.
     expect(JSON.stringify(tools).length).toBeGreaterThan(500_000);
 
     const adapter = await createLlmAdapter('openai-codex', {}, 'gpt-5.6-sol');
-    const result = adapter._buildCodexParamsWithinBudget(shortConversation(), tools, null, 'test');
+    const result = adapter._buildConnectionParamsWithinBudget(shortConversation(), tools, null, 'test');
 
     // NEGATIVE CONTROL: with the old chars/1.6 estimator this surface scored
     // ~375k against a 175k budget, shrinkAttempts hit its cap of 8, and exactly
@@ -65,7 +65,7 @@ describe('CodexResponsesAdapter — preflight budget', () => {
     // the request under budget. Shedding here is pure damage for zero benefit.
     const tools = makeToolSchemas(1200);
     const adapter = await createLlmAdapter('openai-codex', {}, 'gpt-5.6-sol');
-    const result = adapter._buildCodexParamsWithinBudget(shortConversation(), tools, null, 'test');
+    const result = adapter._buildConnectionParamsWithinBudget(shortConversation(), tools, null, 'test');
 
     expect(result.estimatedTokens).toBeGreaterThan(result.budget);
     expect(result.shrinkAttempts).toBe(0);
@@ -89,7 +89,7 @@ describe('CodexResponsesAdapter — preflight budget', () => {
       { role: 'user', content: 'Current request' },
     ];
 
-    const result = adapter._buildCodexParamsWithinBudget(messages, tools, null, 'test');
+    const result = adapter._buildConnectionParamsWithinBudget(messages, tools, null, 'test');
     expect(result.shrinkAttempts).toBeGreaterThan(0);
     expect(result.params.input.length).toBeLessThan(4);
   });
@@ -98,12 +98,12 @@ describe('CodexResponsesAdapter — preflight budget', () => {
     const adapter = await createLlmAdapter('openai-codex', {}, 'gpt-5.6-sol');
     const blob = 'A'.repeat(40_000);
 
-    const asSchema = adapter._estimateCodexRequestTokens({ tools: [{ x: blob }], instructions: '', input: [] });
-    const asProse = adapter._estimateCodexRequestTokens({ tools: [], instructions: blob, input: [] });
-    const asOpaque = adapter._estimateCodexRequestTokens({
+    const asSchema = adapter._estimateConnectionRequestTokens({ tools: [{ x: blob }], instructions: '', input: [] });
+    const asProse = adapter._estimateConnectionRequestTokens({ tools: [], instructions: blob, input: [] });
+    const asOpaque = adapter._estimateConnectionRequestTokens({
       tools: [], instructions: '', input: [{ type: 'reasoning', encrypted_content: blob }],
     });
-    const asMessage = adapter._estimateCodexRequestTokens({
+    const asMessage = adapter._estimateConnectionRequestTokens({
       tools: [], instructions: '', input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: blob }] }],
     });
 

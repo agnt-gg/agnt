@@ -509,7 +509,7 @@ const PROVIDER_CONFIGS = [
       vision: { supportsStreaming: true },
     },
     // OAuth mode lists the account's live entitlement (retrieveUserQuota, see
-    // googleSubscriptionModels.js); API-key mode lists the public Gemini API.
+    // connectionRuntime.js); API-key mode lists the public Gemini API.
     // This is only the transient-failure fallback. Ids are the current set in
     // Google's own CLI (packages/core/src/config/models.ts, 2026-09-30):
     // LATEST/BASE flash, LATEST/BASE flash-lite, DEFAULT pro.
@@ -543,7 +543,7 @@ const PROVIDER_CONFIGS = [
     // 2026-09-30). Do NOT invent ids here — the gateway 404s unknown models.
     // Display names differ from ids (e.g. 'gemini-pro-agent' renders as
     // "Gemini 3.1 Pro (High)"). The live list comes from
-    // googleSubscriptionModels.js; this static list is only its fallback.
+    // connectionRuntime.js; this static list is only its fallback.
     // Removed 2026-09-30: gemini-3.5-flash-low / -extra-low and
     // gemini-3-flash-agent still appear in the raw catalog but answer every
     // request with a canned "Gemini 3.5 Flash is no longer available" reply.

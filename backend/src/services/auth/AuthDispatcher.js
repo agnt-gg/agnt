@@ -1,3 +1,8 @@
+import { getConnection } from '../ai/connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
+const responseConnection = getConnection('openai-codex');
+const projectConnection = getConnection('gemini-cli');
+const catalogConnection = getConnection('antigravity');
 /**
  * AuthDispatcher — thin mapping layer from authScheme → auth manager + capabilities.
  *
@@ -6,10 +11,6 @@
  */
 
 import { getProviderConfig, getAllProviderConfigs } from '../ai/providerConfigs.js';
-import ClaudeCodeAuthManager from './ClaudeCodeAuthManager.js';
-import CodexAuthManager from './CodexAuthManager.js';
-import GeminiCliAuthManager from './GeminiCliAuthManager.js';
-import AntigravityAuthManager from './AntigravityAuthManager.js';
 import GrokBuildAuthManager from './GrokBuildAuthManager.js';
 import CursorCliAuthManager from './CursorCliAuthManager.js';
 import { getPluginAuthProvider } from '../../plugins/pluginAuth.js';
@@ -19,22 +20,22 @@ import { getPluginAuthProvider } from '../../plugins/pluginAuth.js';
 const AUTH_SCHEME_MAP = {
   // LOCAL — handled entirely on localhost, filesystem credentials, NO remote calls
   'claude-code': {
-    manager: ClaudeCodeAuthManager,
+    manager: messageConnection,
     local: true,
     caps: ['status', 'connect-token', 'disconnect', 'refresh', 'oauth-pkce'],
   },
   'codex': {
-    manager: CodexAuthManager,
+    manager: responseConnection,
     local: true,
     caps: ['status', 'disconnect', 'device-auth', 'refresh'],
   },
   'gemini-cli': {
-    manager: GeminiCliAuthManager,
+    manager: projectConnection,
     local: true,
     caps: ['status', 'connect-apikey', 'disconnect', 'refresh', 'oauth-loopback', 'set-auth-method', 'gcp-project'],
   },
   'antigravity': {
-    manager: AntigravityAuthManager,
+    manager: catalogConnection,
     local: true,
     caps: ['status', 'disconnect', 'refresh', 'oauth-loopback', 'gcp-project'],
   },

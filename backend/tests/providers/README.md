@@ -61,9 +61,10 @@ These run automatically when the matching provider is tested:
 
 | Suite | Provider | Tests |
 |---|---|---|
-| `claude-code-specific` | `claude-code` | OAuth Bearer auth, beta headers, Anthropic tool format, system identity |
-| `codex-cli-specific` | `openai-codex-cli` | OpenAI SDK client, CodexResponsesAdapter, ChatGPT backend auth, Responses API routing |
-| `codex-api-specific` | `openai-codex` | CodexAuthManager, Responses API routing for GPT-5/o-series |
+| `claude-code-connection` | `claude-code` | OAuth Bearer auth, beta headers, Anthropic tool format |
+| `openai-codex-connection` | `openai-codex` | OpenAI SDK, connection runtime, Responses routing and unsupported-model rejection |
+| `gemini-cli-connection` | `gemini-cli` | Connection health and gateway generation/streaming |
+| `antigravity-connection` | `antigravity` | Connection health and gateway generation/streaming |
 | `kimi-code-specific` | Custom (Kimi Code) | KimiCLI headers, developer role mapping, reasoning_content |
 
 ## Provider Categories
@@ -79,11 +80,11 @@ Local-auth or subprocess-based providers:
 | Provider | Auth | Execution |
 |---|---|---|
 | `claude-code` | OAuth token from `~/.claude/.credentials.json` | Anthropic API with Bearer auth |
-| `openai-codex` | OAuth token from `~/.codex/auth.json` | OpenAI Chat Completions API |
-| `openai-codex-cli` | OAuth token from `~/.codex/auth.json` | ChatGPT backend Codex Responses API (`chatgpt.com/backend-api/codex/responses`) |
+| `openai-codex` | OAuth token from `~/.codex/auth.json` | ChatGPT backend Responses API |
+| `codex_exec` tool | Existing Codex CLI authentication | Real Codex subprocess; not a direct-API provider suite |
 | Kimi Code | Custom provider in DB | OpenAI-compatible API with `KimiCLI` header |
 
-**Note on `openai-codex-cli`:** This provider uses the ChatGPT backend Responses API (not the standard OpenAI API). The Codex OAuth token authorizes against `chatgpt.com`, not `api.openai.com`. The `CodexResponsesAdapter` always streams internally (the endpoint requires `stream: true`) and adds Codex-specific headers (`chatgpt-account-id`, `OpenAI-Beta: responses=experimental`).
+**Note on `openai-codex-cli`:** This provider uses the ChatGPT backend Responses API (not the standard OpenAI API). The Codex OAuth token authorizes against `chatgpt.com`, not `api.openai.com`. The `ConnectionResponsesAdapter` always streams internally (the endpoint requires `stream: true`) and adds Codex-specific headers (`chatgpt-account-id`, `OpenAI-Beta: responses=experimental`).
 
 ## Capability-Gated Tests
 

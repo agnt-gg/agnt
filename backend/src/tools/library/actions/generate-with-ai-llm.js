@@ -1,3 +1,8 @@
+import { getConnection } from '../../../services/ai/connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
+const responseConnection = getConnection('openai-codex');
+const projectConnection = getConnection('gemini-cli');
+const catalogConnection = getConnection('antigravity');
 import {currentTeamExecution} from '../../../services/authorization/TeamExecutionContext.js';
 import BaseAction from '../BaseAction.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -5,10 +10,6 @@ import OpenAI from 'openai/index.mjs';
 // @google/generative-ai is loaded by the one path that uses it (Gemini image
 // generation), not at boot. See backend/boot.importBudget.test.js.
 import AuthManager from '../../../services/auth/AuthManager.js';
-import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
-import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
-import GeminiCliAuthManager from '../../../services/auth/GeminiCliAuthManager.js';
-import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
@@ -362,31 +363,31 @@ class GenerateWithAiLlm extends BaseAction {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
-            accessTokenOrApiKey = await ClaudeCodeAuthManager.getAccessToken();
+            accessTokenOrApiKey = await messageConnection.getAccessToken();
             if (!accessTokenOrApiKey) {
               throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
             }
           } else if (normalizedProvider === 'openai-codex') {
-            const codexStatus = await CodexAuthManager.checkApiUsable();
+            const codexStatus = await responseConnection.checkApiUsable();
             if (!codexStatus.available) {
               throw new Error('OpenAI Codex is not connected. Use device login to connect.');
             }
-            accessTokenOrApiKey = CodexAuthManager.getAccessToken();
+            accessTokenOrApiKey = responseConnection.getAccessToken();
             if (!accessTokenOrApiKey) {
               throw new Error('OpenAI Codex token not found after login.');
             }
           } else if (normalizedProvider === 'gemini-cli') {
-            const gcStatus = await GeminiCliAuthManager.checkApiUsable();
+            const gcStatus = await projectConnection.checkApiUsable();
             if (gcStatus?.deprecated) {
               // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107)
               throw new Error(gcStatus.hint);
             }
-            accessTokenOrApiKey = await GeminiCliAuthManager.getAccessToken();
+            accessTokenOrApiKey = await projectConnection.getAccessToken();
             if (!accessTokenOrApiKey) {
               throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
             }
           } else if (normalizedProvider === 'antigravity') {
-            accessTokenOrApiKey = await AntigravityAuthManager.getAccessToken();
+            accessTokenOrApiKey = await catalogConnection.getAccessToken();
             if (!accessTokenOrApiKey) {
               throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
             }

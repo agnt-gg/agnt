@@ -1,20 +1,21 @@
+import { getConnection } from './connectionRuntime.js';
+const messageConnection = getConnection('claude-code');
+const responseConnection = getConnection('openai-codex');
+const projectConnection = getConnection('gemini-cli');
+const catalogConnection = getConnection('antigravity');
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { OpenAI } from 'openai/index.mjs';
 import AuthManager from '../auth/AuthManager.js';
-import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import { createGrokBuildCliClient } from './GrokBuildCliClient.js';
 import GrokBuildCliService from './GrokBuildCliService.js';
 import CursorCliAuthManager from '../auth/CursorCliAuthManager.js';
 import { createCursorCliClient } from './CursorCliClient.js';
 import CursorCliService from './CursorCliService.js';
-import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
-import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
-import AntigravityAuthManager from '../auth/AntigravityAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
-import { createSigningFetch } from './requestSigning.js';
+import { createConnectionFetch, createGatewayClient, buildRequestHeaders } from './connectionRuntime.js';
 import { getClientIdentity, getClientVersion } from './clientVersions.js';
 import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
 
@@ -23,253 +24,6 @@ import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
 // so every later client pays nothing.
 const loadGoogleGenAI = async () => (await import('@google/genai')).GoogleGenAI;
 const loadCerebras = async () => (await import('@cerebras/cerebras_cloud_sdk')).default;
-
-// ── Gemini OAuth Proxy ──────────────────────────────────────────────
-// Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
-// but uses google-auth-library OAuth2Client for authentication.
-// The Gemini CLI's OAuth credentials (cloud-platform scope) only work
-// with the Code Assist endpoint, not the consumer generativelanguage API.
-
-const GEMINI_OAUTH_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
-const ANTIGRAVITY_OAUTH_BASE = process.env.ANTIGRAVITY_MODEL_GATEWAY
-  || 'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal';
-
-class GeminiOAuthProxy {
-  constructor(oauth2Client, projectId) {
-    this._auth = oauth2Client;
-    this._project = projectId;
-    this.models = {
-      generateContent: (params) => this._generateContent(params),
-      generateContentStream: (params) => this._generateContentStream(params),
-    };
-  }
-
-  _buildRequest(params) {
-    // Code Assist endpoint wrapper format (matches Gemini CLI's converter.ts):
-    // { model, project, user_prompt_id, request: { contents, systemInstruction, ... } }
-    const inner = { contents: params.contents };
-    if (params.config) {
-      if (params.config.systemInstruction) inner.systemInstruction = params.config.systemInstruction;
-      if (params.config.temperature != null) inner.generationConfig = { ...inner.generationConfig, temperature: params.config.temperature };
-      if (params.config.maxOutputTokens != null) inner.generationConfig = { ...inner.generationConfig, maxOutputTokens: params.config.maxOutputTokens };
-      if (params.config.topP != null) inner.generationConfig = { ...inner.generationConfig, topP: params.config.topP };
-      if (params.config.topK != null) inner.generationConfig = { ...inner.generationConfig, topK: params.config.topK };
-      if (params.config.thinkingConfig) inner.generationConfig = { ...inner.generationConfig, thinkingConfig: params.config.thinkingConfig };
-      if (params.config.responseMimeType) inner.generationConfig = { ...inner.generationConfig, responseMimeType: params.config.responseMimeType };
-      if (params.config.tools) inner.tools = params.config.tools;
-      if (params.config.toolConfig) inner.toolConfig = params.config.toolConfig;
-    }
-    // Model name WITHOUT 'models/' prefix for Code Assist endpoint
-    const model = params.model.replace(/^models\//, '');
-    return { model, project: this._project, request: inner };
-  }
-
-  _extractResponse(data) {
-    // Code Assist wraps response in a 'response' field
-    const resp = data?.response || data;
-    resp.text = resp.candidates?.[0]?.content?.parts
-      ?.filter(p => p.text != null)
-      .map(p => p.text)
-      .join('') || '';
-    resp.functionCalls = resp.candidates?.[0]?.content?.parts
-      ?.filter(p => p.functionCall)
-      .map(p => p.functionCall) || undefined;
-    return resp;
-  }
-
-  async _generateContent(params) {
-    const url = `${GEMINI_OAUTH_BASE}:generateContent`;
-    const body = this._buildRequest(params);
-
-    const res = await this._auth.request({ url, method: 'POST', data: body });
-    return this._extractResponse(res.data);
-  }
-
-  async _generateContentStream(params) {
-    const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
-    const body = this._buildRequest(params);
-
-    const res = await this._auth.request({
-      url, method: 'POST', data: body, responseType: 'stream',
-    });
-
-    return this._parseSSEStream(res.data);
-  }
-
-  async *_parseSSEStream(stream) {
-    // Matches the real Gemini CLI's SSE parsing (server.ts):
-    // Buffer data: lines until a blank line, then parse the accumulated JSON.
-    const decoder = new TextDecoder();
-    let rawBuffer = '';
-    let dataBuffer = '';
-
-    for await (const rawChunk of stream) {
-      rawBuffer += decoder.decode(rawChunk instanceof Buffer ? rawChunk : new Uint8Array(rawChunk), { stream: true });
-      const lines = rawBuffer.split('\n');
-      rawBuffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.replace(/\r$/, '');
-
-        if (trimmed.startsWith('data: ')) {
-          dataBuffer += trimmed.slice(6);
-        } else if (trimmed === '' && dataBuffer) {
-          // Blank line = end of SSE event, parse accumulated data
-          const jsonStr = dataBuffer.trim();
-          dataBuffer = '';
-          if (!jsonStr || jsonStr === '[DONE]') continue;
-
-          try {
-            const data = JSON.parse(jsonStr);
-            const resp = data?.response || data;
-            resp.text = resp.candidates?.[0]?.content?.parts
-              ?.filter(p => p.text != null)
-              .map(p => p.text)
-              .join('') || '';
-            resp.functionCalls = resp.candidates?.[0]?.content?.parts
-              ?.filter(p => p.functionCall)
-              .map(p => p.functionCall) || undefined;
-            if (resp.functionCalls?.length === 0) resp.functionCalls = undefined;
-            yield resp;
-          } catch (e) {
-            console.warn('[GeminiOAuthProxy] SSE parse error, skipping chunk:', e.message);
-          }
-        }
-      }
-    }
-
-    // Flush any remaining buffered data (stream ended without trailing blank line)
-    if (dataBuffer.trim()) {
-      try {
-        const data = JSON.parse(dataBuffer.trim());
-        const resp = data?.response || data;
-        resp.text = resp.candidates?.[0]?.content?.parts
-          ?.filter(p => p.text != null)
-          .map(p => p.text)
-          .join('') || '';
-        resp.functionCalls = resp.candidates?.[0]?.content?.parts
-          ?.filter(p => p.functionCall)
-          .map(p => p.functionCall) || undefined;
-        if (resp.functionCalls?.length === 0) resp.functionCalls = undefined;
-        yield resp;
-      } catch (e) {
-        console.warn('[GeminiOAuthProxy] SSE flush parse error:', e.message);
-      }
-    }
-  }
-}
-
-// ── Antigravity OAuth Proxy ─────────────────────────────────────────
-// Uses Antigravity's model gateway while preserving Gemini CLI on its stable
-// production gateway. The proxy also adds the Antigravity
-// client identity: `antigravity` User-Agent + X-Goog-Api-Client headers, and
-// the top-level `requestType: 'agent'` / `userAgent: 'antigravity'` fields the
-// gateway keys off to route to the Antigravity quota pool and multi-vendor
-// model set (Gemini 3.x + Claude 4.6 + GPT-OSS). See PRD-107.// generateContent / streamGenerateContent carry the full Antigravity browser UA.
-// The version is resolved LIVE from the GitHub releases API via clientVersions.js
-// (same pattern as Claude Code / Codex). Auth-path calls (loadCodeAssist/onboardUser
-// in AntigravityAuthManager) deliberately use the google-api-nodejs-client UA,
-// which has no version to gate.
-const ANTIGRAVITY_META_PLATFORM = process.platform === 'win32' ? 'WINDOWS' : 'MACOS';
-const ANTIGRAVITY_STATIC_META = JSON.stringify({ ideType: 'ANTIGRAVITY', platform: ANTIGRAVITY_META_PLATFORM, pluginType: 'GEMINI' });
-async function getAntigravityClientHeaders() {
-  const ver = await getClientVersion('antigravity');
-  return {
-    'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ver} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
-    'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
-    'Client-Metadata': ANTIGRAVITY_STATIC_META,
-  };
-}class AntigravityOAuthProxy extends GeminiOAuthProxy {
-  _buildRequest(params) {
-    const base = super._buildRequest(params);
-    // Antigravity gateway expects two extra top-level fields alongside
-    // { model, project, request }.
-    return { ...base, requestType: 'agent', userAgent: 'antigravity' };
-  }
-
-  // Turn Google's structured error into ONE human sentence so the raw JSON
-  // envelope never gets serialized into chat. Returns null for unrecognized
-  // shapes (caller then rethrows the original error).
-  _formatAntigravityError(e) {
-    const status = e.response?.status;
-    const gerr = e.response?.data?.error || e.response?.data?.[0]?.error;
-    const reason = gerr?.status || gerr?.details?.find?.((d) => d.reason)?.reason;
-    const model = gerr?.details?.find?.((d) => d.metadata?.model)?.metadata?.model;
-
-    if (status === 429 || reason === 'QUOTA_EXHAUSTED' || reason === 'RESOURCE_EXHAUSTED') {
-      const delay = gerr?.details?.find?.((d) => d.metadata?.quotaResetDelay)?.metadata?.quotaResetDelay
-        || gerr?.details?.find?.((d) => d.retryDelay)?.retryDelay;
-      let when = '';
-      if (delay) {
-        // Google sends two formats: compound ("150h8m40.6s") on quotaResetDelay,
-        // or plain seconds ("540520.6s") on retryDelay. Parse both to total secs.
-        const str = String(delay);
-        let secs = 0;
-        const compound = str.match(/(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/);
-        if (compound && (compound[1] || compound[2] || compound[3]) && /[hm]/.test(str)) {
-          secs = (parseInt(compound[1] || 0, 10) * 3600) + (parseInt(compound[2] || 0, 10) * 60) + Math.floor(parseFloat(compound[3] || 0));
-        } else {
-          secs = Math.round(parseFloat(str.replace(/s$/, '')));
-        }
-        if (Number.isFinite(secs) && secs > 0) {
-          const h = Math.floor(secs / 3600);
-          const m = Math.floor((secs % 3600) / 60);
-          const d = Math.floor(h / 24);
-          when = d > 0 ? ` Resets in ${d}d ${h % 24}h.` : h > 0 ? ` Resets in ${h}h ${m}m.` : ` Resets in ${m}m.`;
-        }
-      }
-      const which = model ? ` for ${model}` : '';
-      return `Antigravity quota reached${which}.${when} Try another model or your API-key provider meanwhile.`;
-    }
-    if (status === 403 || reason === 'PERMISSION_DENIED') {
-      return 'Antigravity access was denied. Your Google account may not have access, or usage was restricted.';
-    }
-    if (status === 401) {
-      return 'Antigravity authentication expired. Please reconnect your Google account.';
-    }
-    if (status === 400) {
-      return `Antigravity rejected the request (400). This model may not be available on your plan.`;
-    }
-    if (gerr?.message) return `Antigravity: ${gerr.message}`;
-    return null;
-  }
-
-  async _generateContent(params) {
-    const url = `${ANTIGRAVITY_OAUTH_BASE}:generateContent`;
-    const body = this._buildRequest(params);
-    const headers = await getAntigravityClientHeaders();
-    try {
-      const res = await this._auth.request({
-        url, method: 'POST', data: body, headers,
-      });
-      return this._extractResponse(res.data);
-    } catch (e) {
-      const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
-      if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`generateContent HTTP ${s}`);
-      const clean = this._formatAntigravityError(e);
-      if (clean) throw new Error(clean);
-      throw e;
-    }
-  }
-
-  async _generateContentStream(params) {
-    const url = `${ANTIGRAVITY_OAUTH_BASE}:streamGenerateContent?alt=sse`;
-    const body = this._buildRequest(params);
-    const headers = await getAntigravityClientHeaders();
-    try {
-      const res = await this._auth.request({
-        url, method: 'POST', data: body, responseType: 'stream', headers,
-      });
-      return this._parseSSEStream(res.data);
-    } catch (e) {
-      const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
-      if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`streamGenerateContent HTTP ${s}`);
-      const clean = this._formatAntigravityError(e);
-      if (clean) throw new Error(clean);
-      throw e;
-    }
-  }
-}
 
 /**
  * Creates and initializes an LLM client for a given provider.
@@ -419,72 +173,48 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
   // Claude Code — uses Anthropic API with OAuth Bearer auth.
   // The custom fetch does two things on every outgoing request:
   //   1. Apply the request signature hash to the outgoing body.
-  //   2. Re-read the current OAuth token from ClaudeCodeAuthManager and
+  //   2. Re-read the current OAuth token from messageConnection and
   //      overwrite the Authorization header. The SDK bakes `authToken` into
   //      the client at construction, so without this a mid-session refresh
   //      would leave a long tool loop sending the old Bearer token and 401.
   if (lowerCaseProvider === 'claude-code') {
-    const initialToken = await ClaudeCodeAuthManager.getAccessToken();
+    const initialToken = await messageConnection.getAccessToken();
     if (!initialToken) {
       throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
     }
     const config = getProviderConfig('claude-code');
     const sdkOptions = await _resolveDynamicSdkOptions('claude-code', config?.sdkOptions);
-    const signingFetch = createSigningFetch();
-    const claudeCodeFetch = async (url, init) => {
-      const token = await ClaudeCodeAuthManager.getAccessToken();
-      if (token) {
-        const headers = new Headers(init?.headers || {});
-        headers.set('Authorization', `Bearer ${token}`);
-        init = { ...init, headers };
-      }
-      return signingFetch(url, init);
-    };
+    const connectionFetch = await createConnectionFetch('claude-code');
     return new Anthropic({
       apiKey: null,
       authToken: initialToken,
       ...sdkOptions,
-      fetch: claudeCodeFetch,
+      fetch: connectionFetch,
     });
   }
 
   // OpenAI Codex — uses Codex OAuth token with ChatGPT backend
   if (lowerCaseProvider === 'openai-codex') {
     // Auto-refresh expired tokens before creating the client
-    const oauthToken = await CodexAuthManager.ensureValidToken();
+    const oauthToken = await responseConnection.ensureValidToken();
     if (!oauthToken || oauthToken.startsWith('sk-')) {
       // ensureValidToken returns API keys too — but Codex Responses API needs OAuth
-      const rawOAuth = CodexAuthManager.getOAuthToken();
+      const rawOAuth = responseConnection.getOAuthToken();
       if (!rawOAuth) {
         throw new Error(
           'OpenAI Codex requires OAuth authentication. Use device login to connect.'
         );
       }
     }
-    const effectiveToken = CodexAuthManager.getOAuthToken() || oauthToken;
-    const accountId = CodexAuthManager.getChatGptAccountId();
-    const codexVersion = await getClientVersion('openai-codex');
-    const headers = {
-      'OpenAI-Beta': 'responses=experimental',
-      'originator': 'codex_cli_rs',
-    };
-    if (accountId) {
-      headers['chatgpt-account-id'] = accountId;
-    }
-    // Append ?client_version=X to every outgoing request so the ChatGPT backend
-    // returns the newer-model list on chat calls too, not just /models.
-    const codexFetch = (url, init) => {
-      const u = new URL(url);
-      if (!u.searchParams.has('client_version')) {
-        u.searchParams.set('client_version', codexVersion);
-      }
-      return fetch(u.toString(), init);
-    };
+    const effectiveToken = responseConnection.getOAuthToken() || oauthToken;
+    const accountId = responseConnection.getChatGptAccountId();
+    const headers = buildRequestHeaders('openai-codex', { accountId });
+    const connectionFetch = await createConnectionFetch('openai-codex');
     return new OpenAI({
       apiKey: effectiveToken,
       baseURL: 'https://chatgpt.com/backend-api/codex',
       defaultHeaders: headers,
-      fetch: codexFetch,
+      fetch: connectionFetch,
     });
   }
 
@@ -554,14 +284,14 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
   // Gemini CLI — uses Google OAuth or locally stored API key
   if (lowerCaseProvider === 'gemini-cli') {
-    const token = await GeminiCliAuthManager.getAccessToken();
+    const token = await projectConnection.getAccessToken();
     if (!token) {
       throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
     }
     const config = getProviderConfig('gemini');
     const sdkOpts = { ...(config?.sdkOptions || {}) };
 
-    if (GeminiCliAuthManager.isUsingApiKey()) {
+    if (projectConnection.isUsingApiKey()) {
       // API key → passed as apiKey (sent as ?key= query param)
       const GoogleGenAI = await loadGoogleGenAI();
       return new GoogleGenAI({ apiKey: token, ...sdkOpts });
@@ -569,35 +299,35 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
     // OAuth → use GeminiOAuthProxy with the Code Assist endpoint,
     // matching the real Gemini CLI (cloud-platform scope).
-    const oauth2Client = GeminiCliAuthManager.getOAuth2Client();
+    const oauth2Client = projectConnection.getOAuth2Client();
     if (!oauth2Client) {
       throw new Error('Gemini CLI OAuth credentials not found.');
     }
     // Ensure user is onboarded and get the Code Assist project ID
-    const projectId = await GeminiCliAuthManager.ensureOnboarded(oauth2Client);
-    return new GeminiOAuthProxy(oauth2Client, projectId);
+    const projectId = await projectConnection.ensureOnboarded(oauth2Client);
+    return createGatewayClient('gemini-cli', oauth2Client, projectId);
   }
 
   // Antigravity — Google's unified gateway (OAuth only, multi-vendor models).
   // Same cloudcode-pa endpoint as gemini-cli OAuth, but Antigravity client
   // identity + extra scopes unlock Gemini 3.x + Claude 4.6 + GPT-OSS.
   if (lowerCaseProvider === 'antigravity') {
-    if (AntigravityAuthManager.isCoolingDown()) {
+    if (catalogConnection.isCoolingDown()) {
       throw Object.assign(
         new Error('Antigravity is cooling down to protect your Google account. Use an API-key provider.'),
-        { code: 'ANTIGRAVITY_COOLDOWN', retryAfterMs: AntigravityAuthManager.cooldownMsLeft() },
+        { code: 'ANTIGRAVITY_COOLDOWN', retryAfterMs: catalogConnection.cooldownMsLeft() },
       );
     }
-    const token = await AntigravityAuthManager.getAccessToken();
+    const token = await catalogConnection.getAccessToken();
     if (!token) {
       throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
     }
-    const oauth2Client = AntigravityAuthManager.getOAuth2Client();
+    const oauth2Client = catalogConnection.getOAuth2Client();
     if (!oauth2Client) {
       throw new Error('Antigravity OAuth credentials not found.');
     }
-    const projectId = await AntigravityAuthManager.ensureOnboarded(oauth2Client);
-    return new AntigravityOAuthProxy(oauth2Client, projectId);
+    const projectId = await catalogConnection.ensureOnboarded(oauth2Client);
+    return createGatewayClient('antigravity', oauth2Client, projectId);
   }
 
   return null;

@@ -50,9 +50,9 @@
  */
 
 import {
-  resolveOpenAiVoiceCredentialChain,
+  resolveVoiceCredentials,
   isBorrowedCredential,
-} from './auth/openAiVoiceCredential.js';
+} from './ai/connectionRuntime.js';
 import { appendVoiceConnectLine } from './voiceConnectLog.js';
 
 /**
@@ -465,7 +465,7 @@ export async function createRealtimeCall({
   // "resolves" and "works" are different facts: an API key with no credit left
   // resolves perfectly and then 429s. Failing over here is what keeps a dead
   // key from shadowing a live subscription.
-  const chain = await resolveOpenAiVoiceCredentialChain(userId);
+  const chain = await resolveVoiceCredentials(userId);
   if (chain.length === 0) return { ok: false, status: 200, reason: 'no-credentials' };
 
   const session = buildSessionConfig({ voice, assistantName, surface });

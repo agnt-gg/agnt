@@ -42,10 +42,8 @@ import contextSuite from './suites/10-context.test.js';
 import errorHandlingSuite from './suites/11-error-handling.test.js';
 
 // Provider-specific suites
-import claudeCodeSuite from './providers/claude-code.test.js';
-import codexCliSuite from './providers/codex-cli.test.js';
+import subscriptionSuites from './providers/subscription-connections.test.js';
 import kimiCodeSuite from './providers/kimi-code.test.js';
-import codexApiSuite from './providers/codex-api.test.js';
 
 const ALL_SUITES = {
   'connection':     connectionSuite,
@@ -62,10 +60,8 @@ const ALL_SUITES = {
 };
 
 const PROVIDER_SUITES = [
-  claudeCodeSuite,
-  codexCliSuite,
+  ...subscriptionSuites,
   kimiCodeSuite,
-  codexApiSuite,
 ];
 
 const __filename = fileURLToPath(import.meta.url);

@@ -54,7 +54,7 @@ function sortDeep(value) {
  * names, cc_entrypoint, the cch=00000 placeholder, ordering, its position as
  * the first system block — is still compared byte-for-byte. The suffix
  * ALGORITHM, which the oracle can no longer see, is guarded directly by
- * requestSigning.version.test.js.
+ * connectionRuntime.signing.test.js.
  */
 const CC_VERSION_RE = /cc_version=\d+(?:\.\d+)*\.[0-9a-f]{3}/g;
 const maskCcVersion = (s) => s.replace(CC_VERSION_RE, 'cc_version=<cli-version>.<fp>');

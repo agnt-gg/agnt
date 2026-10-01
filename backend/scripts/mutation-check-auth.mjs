@@ -14,13 +14,13 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const CLAUDE = path.join(ROOT, 'backend/src/services/auth/ClaudeCodeAuthManager.js');
+const RUNTIME = path.join(ROOT, 'backend/src/services/ai/connectionRuntime.js');
 const RESOLVER = path.join(ROOT, 'backend/src/services/auth/credentialResolver.js');
 const SECRET = path.join(ROOT, 'backend/src/services/auth/secretStore.js');
 const AUTHMGR = path.join(ROOT, 'backend/src/services/auth/AuthManager.js');
 
 const SUITES = [
-  'backend/src/services/auth/ClaudeCodeAuthManager.test.js',
+  'backend/src/services/ai/connectionRuntime.auth.test.js',
   'backend/src/services/auth/credentialResolver.test.js',
   'backend/src/services/auth/secretStore.test.js',
   'backend/src/services/auth/agntCredentialStore.test.js',
@@ -30,51 +30,18 @@ const SUITES = [
 
 const MUTATIONS = [
   {
-    name: 'issue #82: remove the keychain discovery tier',
-    file: CLAUDE,
-    find: '    {\n      tier: TIER.SECRET_STORE,\n      source: \'claude-keychain\',',
-    replace: '    {\n      tier: TIER.SECRET_STORE,\n      source: \'claude-keychain\',\n      __disabled: true,',
-    extra: (src) => src.replace(
-      'function claudeCandidates() {\n  return [',
-      'function claudeCandidates() {\n  return [].concat([',
-    ).replace(
-      '  ];\n}\n\nfunction resolveClaudeCredential()',
-      '  ].filter((c) => !c.__disabled));\n}\n\nfunction resolveClaudeCredential()',
-    ),
+    name: 'remove read-only keychain discovery', file: RUNTIME,
+    find: 'for (const service of services) {', replace: 'for (const service of []) {',
   },
   {
-    name: 'clobber bug: write AGNT tokens back into ~/.claude by assignment',
-    file: CLAUDE,
-    find: 'function writeClaudeCredentials(oauthData) {\n  agntStore.writeCredential(PROVIDER_ID, { claudeAiOauth: oauthData });\n  clearSecretCache();\n}',
-    replace: `function writeClaudeCredentials(oauthData) {
-  const credDir = path.join(os.homedir(), '.claude');
-  const credPath = resolveClaudeCredentialsPath();
-  if (!fs.existsSync(credDir)) fs.mkdirSync(credDir, { recursive: true });
-  let existing = {};
-  try { existing = JSON.parse(fs.readFileSync(credPath, 'utf8')); } catch { /* none */ }
-  existing.claudeAiOauth = oauthData;
-  fs.writeFileSync(credPath, JSON.stringify(existing, null, 2), 'utf8');
-  agntStore.writeCredential(PROVIDER_ID, { claudeAiOauth: oauthData });
-  clearSecretCache();
-}`,
+    name: 'remove credential ownership classification', file: RUNTIME,
+    find: "const ownedByAgnt = profile.format !== 'nested-camel' || !['subscriptionType', 'rateLimitTier', 'refreshTokenExpiresAt'].some(key => found.block?.[key] !== undefined);",
+    replace: 'const ownedByAgnt = true;',
   },
   {
-    name: 'remove the refresh ownership guard (rotate the CLI\'s refresh token)',
-    file: CLAUDE,
-    find: '    if (resolved && !resolved.ownedByAgnt) {\n      return {\n        success: false,\n        revoked: false,\n        error: \'Credential belongs to the Claude Code CLI; AGNT does not refresh it.\',\n      };\n    }',
-    replace: '    // guard removed by mutation',
-  },
-  {
-    name: 'remove the getAccessToken ownership short-circuit',
-    file: CLAUDE,
-    find: '    if (autoRefresh && !resolved.ownedByAgnt) return token;',
-    replace: '    // short-circuit removed by mutation',
-  },
-  {
-    name: 'ownership discriminator always says "not the CLI"',
-    file: CLAUDE,
-    find: '  return CLI_ONLY_KEYS.some((key) => oauth[key] !== undefined);',
-    replace: '  return false;',
+    name: 'allow disconnected credentials to be restored by refresh', file: RUNTIME,
+    find: "if (generation !== state.generation || latest?.refreshToken !== before.refreshToken || !latest?.ownedByAgnt) return { success: false, revoked: false, error: 'Credential changed during refresh' };",
+    replace: '// generation guard removed by mutation',
   },
   {
     name: 'resolver ignores ownership declared by read()',

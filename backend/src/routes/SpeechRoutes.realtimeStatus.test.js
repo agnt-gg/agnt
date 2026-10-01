@@ -19,10 +19,10 @@ import express from 'express';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 
-const hasOpenAiVoiceCredential = vi.fn();
+const hasVoiceCredential = vi.fn();
 const resolveOpenAiVoiceCredential = vi.fn();
-vi.mock('../services/auth/openAiVoiceCredential.js', () => ({
-  hasOpenAiVoiceCredential: (...a) => hasOpenAiVoiceCredential(...a),
+vi.mock('../services/ai/connectionRuntime.js', () => ({
+  hasVoiceCredential: (...a) => hasVoiceCredential(...a),
   resolveOpenAiVoiceCredential: (...a) => resolveOpenAiVoiceCredential(...a),
   isBorrowedCredential: (s) => s === 'openai-codex',
   VOICE_CREDENTIAL_SOURCE: { PLATFORM: 'openai', CHATGPT: 'openai-codex' },
@@ -71,7 +71,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  hasOpenAiVoiceCredential.mockReset();
+  hasVoiceCredential.mockReset();
   availableEngines.mockClear();
   availableEngines.mockResolvedValue([]);
 });
@@ -80,18 +80,18 @@ describe('GET /api/speech/realtime/status', () => {
   it('offers voice to a user whose only OpenAI credential is a ChatGPT sign-in', async () => {
     // THE REGRESSION. No TTS engine is available (no platform key anywhere),
     // yet realtime is reachable — which is exactly the ChatGPT-only user.
-    hasOpenAiVoiceCredential.mockResolvedValue(true);
+    hasVoiceCredential.mockResolvedValue(true);
 
     const res = await status();
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.available).toBe(true);
-    expect(hasOpenAiVoiceCredential).toHaveBeenCalledWith('u1');
+    expect(hasVoiceCredential).toHaveBeenCalledWith('u1');
   });
 
   it('does not offer voice when there is no OpenAI credential at all', async () => {
-    hasOpenAiVoiceCredential.mockResolvedValue(false);
+    hasVoiceCredential.mockResolvedValue(false);
     const body = await (await status()).json();
     expect(body.available).toBe(false);
   });
@@ -99,13 +99,13 @@ describe('GET /api/speech/realtime/status', () => {
   it('does not consult TTS engine availability', async () => {
     // The old implementation was `(await availableEngines(user)).includes('openai')`.
     // If that ever comes back, this fails.
-    hasOpenAiVoiceCredential.mockResolvedValue(true);
+    hasVoiceCredential.mockResolvedValue(true);
     await status();
     expect(availableEngines).not.toHaveBeenCalled();
   });
 
   it('still reports the model and voice list the client needs', async () => {
-    hasOpenAiVoiceCredential.mockResolvedValue(true);
+    hasVoiceCredential.mockResolvedValue(true);
     const body = await (await status()).json();
 
     expect(body.success).toBe(true);
@@ -117,15 +117,15 @@ describe('GET /api/speech/realtime/status', () => {
   it('a resolver failure is a 500, not a false "unavailable"', async () => {
     // Silently reporting "no voice" on an infrastructure error would send the
     // user hunting for a credential problem they do not have.
-    hasOpenAiVoiceCredential.mockRejectedValue(new Error('vault exploded'));
+    hasVoiceCredential.mockRejectedValue(new Error('vault exploded'));
     const res = await status();
     expect(res.status).toBe(500);
   });
 
   it('stays behind auth', async () => {
-    hasOpenAiVoiceCredential.mockResolvedValue(true);
+    hasVoiceCredential.mockResolvedValue(true);
     const res = await status(false);
     expect(res.status).toBe(401);
-    expect(hasOpenAiVoiceCredential).not.toHaveBeenCalled();
+    expect(hasVoiceCredential).not.toHaveBeenCalled();
   });
 });

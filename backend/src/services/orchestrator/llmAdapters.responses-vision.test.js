@@ -95,8 +95,8 @@ describe('OpenAIResponsesAdapter image injection', { timeout: 30000 }, () => {
   });
 });
 
-describe('CodexResponsesAdapter image injection', { timeout: 30000 }, () => {
-  it('forwards imageData through _buildCodexParams to the Responses input', async () => {
+describe('ConnectionResponsesAdapter image injection', { timeout: 30000 }, () => {
+  it('forwards imageData through _buildConnectionParams to the Responses input', async () => {
     const seen = [];
     const adapter = await createLlmAdapter('openai-codex', capturingClient(seen), 'gpt-5.2-codex');
 

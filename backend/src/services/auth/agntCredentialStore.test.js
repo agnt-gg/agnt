@@ -17,7 +17,7 @@ import {
 /**
  * A provider id no real manager uses.
  *
- * This suite originally used 'claude-code' — the same slot ClaudeCodeAuthManager
+ * This suite originally used 'claude-code' — the same slot connectionRuntime
  * .test.js writes. When vitest puts both files in one worker process they share
  * a PathManager root (the isolation setup redirects once PER PROCESS, not per
  * file), so this suite's beforeEach cleanup deleted a credential the Claude

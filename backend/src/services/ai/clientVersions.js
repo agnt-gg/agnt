@@ -189,7 +189,7 @@ export async function getClientVersion(key) {
 
 /**
  * Synchronous read of the resolved version, for call sites that build a
- * request body inline and cannot await (see requestSigning.js).
+ * request body inline and cannot await (see connectionRuntime.js).
  *
  * Never touches the network on the calling path: it serves the in-memory or
  * on-disk value, falls back to SOURCES[key].fallback, and schedules a

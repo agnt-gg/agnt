@@ -15,7 +15,7 @@ const iterable=(events)=>({async *[Symbol.asyncIterator](){yield* events;}});
 describe('actual next-model request carries computer pixels', {timeout:30000},()=>{
  it('Codex preflight does not tokenize base64 pixels as prose',async()=>{
   const adapter=await createLlmAdapter('openai-codex',{responses:{}},'gpt-5.2-codex');
-  const estimate=data=>adapter._estimateCodexRequestTokens({input:[{type:'message',role:'user',content:[{type:'input_image',image_url:'data:image/png;base64,'+data}]}]});
+  const estimate=data=>adapter._estimateConnectionRequestTokens({input:[{type:'message',role:'user',content:[{type:'input_image',image_url:'data:image/png;base64,'+data}]}]});
   expect(estimate('A'.repeat(2_000_000))).toBe(estimate('AAAA'));
   expect(estimate('AAAA')).toBeGreaterThan(16000);
  });

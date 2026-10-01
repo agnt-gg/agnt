@@ -8,7 +8,7 @@
  *
  * AJV validation DID exist (toolValidator.js) but was wired into exactly one
  * adapter — `OpenAiLikeAdapter`. `AnthropicAdapter`, `GeminiAdapter`,
- * `OpenAIResponsesAdapter` and `CodexResponsesAdapter` never called it and
+ * `OpenAIResponsesAdapter` and `ConnectionResponsesAdapter` never called it and
  * never returned `invalidToolCalls`, so the orchestrator's whole
  * validation-feedback recovery pipeline was dead code for those providers.
  *

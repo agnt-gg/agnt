@@ -7,7 +7,7 @@ import { whisperService } from '../services/whisperService.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
 import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
-import { hasOpenAiVoiceCredential } from '../services/auth/openAiVoiceCredential.js';
+import { hasVoiceCredential } from '../services/ai/connectionRuntime.js';
 import { appendVoiceConnectLine } from '../services/voiceConnectLog.js';
 
 const router = express.Router();
@@ -266,7 +266,7 @@ router.post(
  */
 router.get('/realtime/status', requireAuthHeader, async (req, res) => {
   try {
-    const available = await hasOpenAiVoiceCredential(req.user?.id);
+    const available = await hasVoiceCredential(req.user?.id);
     res.json({
       success: true,
       available,

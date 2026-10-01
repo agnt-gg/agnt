@@ -5,22 +5,18 @@ vi.mock('./auth/AuthManager.js', () => ({
   default: { getValidAccessToken: (...a) => getValidAccessToken(...a) },
 }));
 
-// CodexAuthManager reads ~/.codex/auth.json from the REAL home directory, so
+// The connection runtime reads ~/.codex/auth.json from the REAL home directory, so
 // leaving it unmocked would make "this user has no credential" depend on
 // whether the machine running the suite happens to be signed in to ChatGPT.
 const ensureValidToken = vi.fn();
 const getChatGptAccountId = vi.fn();
-vi.mock('./auth/CodexAuthManager.js', () => ({
-  default: {
-    ensureValidToken: (...a) => ensureValidToken(...a),
-    // Both accessors answer from the same stub here: which of the two the
-    // resolver is right to ask is pinned in openAiVoiceCredential.test.js, and
-    // duplicating that decision in this file would only give it somewhere to
-    // drift to.
-    ensureValidOAuthToken: (...a) => ensureValidToken(...a),
-    getChatGptAccountId: (...a) => getChatGptAccountId(...a),
-  },
-}));
+vi.mock('./ai/connectionRuntime.js', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, resolveVoiceCredentials: userId => actual.resolveVoiceCredentials(userId, {
+    connection: { ensureValidOAuthToken: (...args) => ensureValidToken(...args), getChatGptAccountId: (...args) => getChatGptAccountId(...args) },
+    authManager: { getValidAccessToken: (...args) => getValidAccessToken(...args) },
+  }) };
+});
 
 // The connect log is pinned on its own (voiceConnectLog.test.js). Here it is a
 // spy, so these tests can assert WHAT a connect records without touching disk.
