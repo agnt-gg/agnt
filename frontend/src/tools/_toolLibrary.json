@@ -2780,6 +2780,13 @@
           "default": "",
           "required": false,
           "description": "PDF pages to convert, e.g. \"5\" or \"2-9\". Empty converts every page (up to 500)."
+        },
+        "allowLocal": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "default": false,
+          "required": false,
+          "description": "Allow addresses on this computer or a private network (localhost, 192.168.x...). Off by default."
         }
       },
       "outputs": {
@@ -2833,7 +2840,7 @@
         },
         "errorCode": {
           "type": "string",
-          "description": "Why the scrape failed, as a code (e.g. page_blocked)"
+          "description": "Why the scrape failed, as a code (e.g. page_blocked, destination_not_allowed)"
         },
         "error": {
           "type": "string",

@@ -40,8 +40,8 @@ describe('web_scrape uses the local scraper', () => {
 
   it('passes the caller\'s formats and options through, and nothing else', async () => {
     const { TOOLS } = await import('./tools.js');
-    await TOOLS.web_scrape.execute({ url: 'https://x.test/a.pdf', formats: ['markdown', 'links'], mainContentOnly: false, waitForMs: 500, pageRange: '2-3', extra: 'ignored' });
-    expect(scrape).toHaveBeenCalledWith({ url: 'https://x.test/a.pdf', formats: ['markdown', 'links'], mainContentOnly: false, waitForMs: 500, pageRange: '2-3' });
+    await TOOLS.web_scrape.execute({ url: 'https://x.test/a.pdf', formats: ['markdown', 'links'], mainContentOnly: false, waitForMs: 500, pageRange: '2-3', allowLocal: true, extra: 'ignored' });
+    expect(scrape.mock.calls[0][0]).toStrictEqual({ url: 'https://x.test/a.pdf', formats: ['markdown', 'links'], mainContentOnly: false, waitForMs: 500, pageRange: '2-3', allowLocal: true });
   });
 
   it('reports a failed scrape as a failure, with its code and sentence', async () => {
@@ -55,7 +55,8 @@ describe('web_scrape uses the local scraper', () => {
     const { TOOLS } = await import('./tools.js');
     const { parameters } = TOOLS.web_scrape.schema.function;
     expect(parameters.required).toEqual(['url']);
-    expect(Object.keys(parameters.properties).sort()).toEqual(['formats', 'mainContentOnly', 'pageRange', 'url', 'waitForMs']);
+    expect(Object.keys(parameters.properties).sort()).toEqual(['allowLocal', 'formats', 'mainContentOnly', 'pageRange', 'url', 'waitForMs']);
+    expect(parameters.properties.allowLocal.type).toBe('boolean');
     expect(parameters.properties.formats.items.enum).toEqual(['markdown', 'html', 'text', 'links', 'code', 'screenshot', 'bytes']);
   });
 

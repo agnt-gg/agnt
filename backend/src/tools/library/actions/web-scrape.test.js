@@ -46,8 +46,9 @@ describe('Web Scrape node', () => {
 
   it('passes the options through; an untouched pageRange field is no page range', async () => {
     scrape.mockResolvedValue(body({ markdown: 'm' }));
-    await node.execute({ url: 'https://x.test/', formats: 'markdown', mainContentOnly: false, waitForMs: 250, pageRange: '' });
-    expect(scrape).toHaveBeenCalledWith({ url: 'https://x.test/', formats: 'markdown', mainContentOnly: false, waitForMs: 250, pageRange: undefined });
+    await node.execute({ url: 'https://x.test/', formats: 'markdown', mainContentOnly: false, waitForMs: 250, pageRange: '', allowLocal: true });
+    expect(scrape).toHaveBeenCalledWith({ url: 'https://x.test/', formats: 'markdown', mainContentOnly: false, waitForMs: 250, pageRange: undefined, allowLocal: true });
+    expect(node.constructor.schema.parameters.allowLocal).toMatchObject({ type: 'boolean', default: false, required: false });
   });
 
   it('reports a failure as success:false with a sentence and a code', async () => {

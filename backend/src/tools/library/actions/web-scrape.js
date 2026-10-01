@@ -71,6 +71,13 @@ class WebScrape extends BaseAction {
         required: false,
         description: 'PDF pages to convert, e.g. "5" or "2-9". Empty converts every page (up to 500).',
       },
+      allowLocal: {
+        type: 'boolean',
+        inputType: 'checkbox',
+        default: false,
+        required: false,
+        description: 'Allow addresses on this computer or a private network (localhost, 192.168.x...). Off by default.',
+      },
     },
     outputs: {
       markdown: { type: 'string', description: 'The content as markdown (format: markdown)' },
@@ -85,7 +92,7 @@ class WebScrape extends BaseAction {
       statusCode: { type: 'number', description: 'The HTTP status of the page or file' },
       document: { type: 'object', description: 'Files only: type, content type, size and pages, sheets or slides' },
       isPartial: { type: 'boolean', description: 'True when some requested format could not be produced' },
-      errorCode: { type: 'string', description: 'Why the scrape failed, as a code (e.g. page_blocked)' },
+      errorCode: { type: 'string', description: 'Why the scrape failed, as a code (e.g. page_blocked, destination_not_allowed)' },
       error: { type: 'string', description: 'Why the scrape failed, in a sentence' },
     },
   };
@@ -103,6 +110,7 @@ class WebScrape extends BaseAction {
       waitForMs: params.waitForMs,
       // The editor stores an untouched optional field as ''.
       pageRange: params.pageRange === '' ? undefined : params.pageRange,
+      allowLocal: params.allowLocal,
     });
     if (!result.success) {
       return this.formatOutput({ success: false, error: result.message, errorCode: result.error });
