@@ -1,5 +1,6 @@
 import { mediaStorage } from '../../utils/mediaStorage.js';
 import { maxBytesFor, formatMb } from '../../services/backgroundLimits.js';
+import { readStoredUiMode, resolveUiMode, normalizeUiMode, otherUiMode, UI_MODE_STORAGE_KEY } from '../../services/uiMode.js';
 
 const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest'];
 
@@ -170,6 +171,11 @@ export default {
     // Panel position setting
     panelPosition: localStorage.getItem('panelPosition') !== null ? localStorage.getItem('panelPosition') : 'right',
 
+    // Simple vs Studio shell (services/uiMode.js). Read synchronously so the
+    // first paint already has the right frame; the preference sync reconciles
+    // it with the account after mount, like every other setting here.
+    uiMode: resolveUiMode({ explicit: readStoredUiMode() }),
+
     // Panel width settings
     leftPanelWidth: localStorage.getItem('leftPanelWidth') !== null ? parseInt(localStorage.getItem('leftPanelWidth')) : 0,
     rightPanelWidth: localStorage.getItem('rightPanelWidth') !== null ? parseInt(localStorage.getItem('rightPanelWidth')) : 384,
@@ -280,6 +286,19 @@ export default {
     SET_PANEL_POSITION(state, position) {
       state.panelPosition = position;
       localStorage.setItem('panelPosition', position);
+    },
+    SET_UI_MODE(state, mode) {
+      // Validated here, not only in the action: hydration commits this
+      // mutation directly, and an unknown value must never reach the shell
+      // switch in Terminal.vue (it would render neither frame).
+      const valid = normalizeUiMode(mode);
+      if (!valid) return;
+      state.uiMode = valid;
+      try {
+        localStorage.setItem(UI_MODE_STORAGE_KEY, valid);
+      } catch {
+        /* storage disabled: the mode still applies for this session */
+      }
     },
     SET_PANEL_WIDTHS(state, { leftWidth, rightWidth }) {
       state.leftPanelWidth = leftWidth;
@@ -457,6 +476,12 @@ export default {
     },
     setPanelPosition({ commit }, position) {
       commit('SET_PANEL_POSITION', position);
+    },
+    setUiMode({ commit }, mode) {
+      commit('SET_UI_MODE', mode);
+    },
+    toggleUiMode({ commit, state }) {
+      commit('SET_UI_MODE', otherUiMode(state.uiMode));
     },
     setPanelWidths({ commit }, { leftWidth, rightWidth }) {
       commit('SET_PANEL_WIDTHS', { leftWidth, rightWidth });
@@ -696,6 +721,7 @@ export default {
     isGreyscaleMode: (state) => state.isGreyscaleMode,
     isAssetPanelFullWidth: (state) => state.isAssetPanelFullWidth,
     panelPosition: (state) => state.panelPosition,
+    uiMode: (state) => state.uiMode,
     leftPanelWidth: (state) => state.leftPanelWidth,
     rightPanelWidth: (state) => state.rightPanelWidth,
     // 3-Panel system getters

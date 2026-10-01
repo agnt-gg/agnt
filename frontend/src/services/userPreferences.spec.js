@@ -143,6 +143,29 @@ describe('routing: taste syncs globally, pixels stay per-device', () => {
     });
   });
 
+  it('sends the Simple/Studio mode in the global scope — it follows the account', async () => {
+    const store = makeStore();
+    startPreferenceSync(store);
+    store.commit('theme/SET_UI_MODE', 'simple');
+    await vi.advanceTimersByTimeAsync(500);
+
+    const [body] = putBodies();
+    expect(body.global).toEqual({ uiMode: 'simple' });
+    expect(body.device).toBeUndefined();
+  });
+
+  it('an invalid mode never reaches state, so it is never pushed', async () => {
+    const store = makeStore();
+    const before = store.state.theme.uiMode;
+    startPreferenceSync(store);
+    store.commit('theme/SET_UI_MODE', 'classic');
+    expect(store.state.theme.uiMode).toBe(before);
+    await vi.advanceTimersByTimeAsync(500);
+    // The subscriber sees the mutation; it must push nothing, because nothing
+    // was applied. (The server allowlist rejects it too — backend test.)
+    expect(putBodies()).toHaveLength(0);
+  });
+
   it('ignores mutations that are not synced settings', async () => {
     const store = makeStore();
     startPreferenceSync(store);
@@ -176,6 +199,7 @@ describe('routing: taste syncs globally, pixels stay per-device', () => {
       greyscaleMode: true,
       panelPosition: 'left',
       assetPanelFullWidth: true,
+      uiMode: 'simple',
       bgOpacity: 75,
       bgBlur: 6,
       uiScale: 125,

@@ -41,6 +41,7 @@
  */
 
 import { API_CONFIG } from '@/tt.config.js';
+import { normalizeUiMode } from '@/services/uiMode.js';
 
 const DEVICE_ID_KEY = 'agnt:deviceId';
 const DEVICE_LABEL_KEY = 'agnt:deviceLabel';
@@ -82,6 +83,10 @@ const MUTATION_MAP = {
   'theme/SET_BG_BLUR': { scope: 'global', pick: (v) => ({ bgBlur: v }) },
   'theme/SET_PANEL_POSITION': { scope: 'global', pick: (v) => ({ panelPosition: v }) },
   'theme/SET_ASSET_PANEL_FULL_WIDTH': { scope: 'global', pick: (v) => ({ assetPanelFullWidth: v }) },
+  // Normalised, not raw: the mutation ignores an invalid mode, so pushing the
+  // raw payload would send a value this browser never applied. enqueue()
+  // skips undefined, so an invalid mode sends nothing at all.
+  'theme/SET_UI_MODE': { scope: 'global', pick: (v) => ({ uiMode: normalizeUiMode(v) ?? undefined }) },
 
   'theme/SET_UI_SCALE': { scope: 'device', pick: (v) => ({ uiScale: v }) },
   'theme/SET_ACTUAL_LEFT_PANEL_WIDTH': { scope: 'device', pick: (v) => ({ actualLeftPanelWidth: v }) },
@@ -126,6 +131,7 @@ const READ_MAP = {
   bgBlur: (s) => s.bgBlur,
   panelPosition: (s) => s.panelPosition,
   assetPanelFullWidth: (s) => s.isAssetPanelFullWidth,
+  uiMode: (s) => s.uiMode,
 
   uiScale: (s) => s.uiScale,
   actualLeftPanelWidth: (s) => s.actualLeftPanelWidth,
@@ -148,6 +154,7 @@ const APPLY_MAP = {
   bgBlur: (store, v) => store.commit('theme/SET_BG_BLUR', v),
   panelPosition: (store, v) => store.commit('theme/SET_PANEL_POSITION', v),
   assetPanelFullWidth: (store, v) => store.commit('theme/SET_ASSET_PANEL_FULL_WIDTH', v),
+  uiMode: (store, v) => store.commit('theme/SET_UI_MODE', v),
 
   uiScale: (store, v) => store.dispatch('theme/setUiScale', v),
   actualLeftPanelWidth: (store, v) => store.commit('theme/SET_ACTUAL_LEFT_PANEL_WIDTH', v),

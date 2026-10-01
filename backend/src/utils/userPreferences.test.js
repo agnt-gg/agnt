@@ -101,6 +101,22 @@ describe('validation and coercion', () => {
     expect(result.device.rejected).toEqual([{ key: 'currentTheme', reason: 'unknown key' }]);
   });
 
+  it('accepts the two uiMode values and rejects anything else', () => {
+    for (const mode of ['simple', 'studio']) {
+      const { next, result } = mergePreferences(null, { global: { uiMode: mode } }, 100);
+      expect(result.global.applied).toEqual(['uiMode']);
+      expect(next.global.uiMode).toBe(mode);
+    }
+    const { next, result } = mergePreferences(null, { global: { uiMode: 'classic' } }, 100);
+    expect(result.global.rejected[0].key).toBe('uiMode');
+    expect(next.global.uiMode).toBeUndefined();
+  });
+
+  it('uiMode is global only — a device bucket cannot carry it', () => {
+    const { result } = mergePreferences(null, { device: { uiMode: 'simple' }, deviceId: 'dev-a' }, 100);
+    expect(result.device.rejected.map((r) => r.key)).toContain('uiMode');
+  });
+
   it('enforces the panelPosition enum', () => {
     const { result } = mergePreferences(null, { global: { panelPosition: 'diagonal' } }, 100);
     expect(result.global.rejected[0].key).toBe('panelPosition');

@@ -120,6 +120,9 @@ export const GLOBAL_PREFS = Object.freeze({
   bgBlur: int(0, 20),
   panelPosition: str(8, ['left', 'right']),
   assetPanelFullWidth: bool(),
+  // Simple vs Studio shell (frontend/src/services/uiMode.js). Global: it is a
+  // way of working, not a fit to a screen, so it follows the account.
+  uiMode: str(8, ['simple', 'studio']),
 });
 
 export const DEVICE_PREFS = Object.freeze({
