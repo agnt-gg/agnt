@@ -38,7 +38,6 @@ import {
   supportsDeepSeekThinkingToggle as supportsDeepSeekToggle,
 } from '../../ai/providerConfigs.js';
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../../ai/reasoningModels.js';
-import { buildBillingHeaderBlock, extractFirstUserMessage } from '../../ai/claudeBillingHeader.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from '../messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../../utils/promptCacheTtl.js';
 import { normalizeGeminiUsage } from '../../../utils/usageCacheFields.js';

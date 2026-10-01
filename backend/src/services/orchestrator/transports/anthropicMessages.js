@@ -38,7 +38,7 @@ import {
   supportsDeepSeekThinkingToggle as supportsDeepSeekToggle,
 } from '../../ai/providerConfigs.js';
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../../ai/reasoningModels.js';
-import { buildBillingHeaderBlock, extractFirstUserMessage } from '../../ai/claudeBillingHeader.js';
+import { buildSigningBlock, extractFirstUserMessage } from '../../ai/requestSigning.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from '../messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../../utils/promptCacheTtl.js';
 import { normalizeGeminiUsage } from '../../../utils/usageCacheFields.js';
@@ -409,14 +409,14 @@ class AnthropicAdapter extends BaseAdapter {
         let systemParam;
         let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
-          // claude-code: billing header + identity + system prompt
-          // The billing header with cch placeholder goes FIRST — the custom fetch
-          // in LlmService computes the real hash over the serialized body and
-          // replaces cch=00000 before the request is sent.
+          // claude-code: signing block + identity + system prompt
+          // The signing block goes FIRST — the custom fetch in LlmService
+          // computes the hash over the serialized body and applies it before
+          // the request is sent.
           const firstUserMsg = extractFirstUserMessage(conversationMessages);
-          const billingBlock = buildBillingHeaderBlock(firstUserMsg);
+          const signingBlock = buildSigningBlock(firstUserMsg);
           const systemBlocks = [
-            billingBlock,
+            signingBlock,
             { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {
@@ -951,14 +951,14 @@ Please carefully check the tool schema and ensure all parameters match the expec
         let systemParam;
         let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
-          // claude-code: billing header + identity + system prompt
-          // The billing header with cch placeholder goes FIRST — the custom fetch
-          // in LlmService computes the real hash over the serialized body and
-          // replaces cch=00000 before the request is sent.
+          // claude-code: signing block + identity + system prompt
+          // The signing block goes FIRST — the custom fetch in LlmService
+          // computes the hash over the serialized body and applies it before
+          // the request is sent.
           const firstUserMsg = extractFirstUserMessage(conversationMessages);
-          const billingBlock = buildBillingHeaderBlock(firstUserMsg);
+          const signingBlock = buildSigningBlock(firstUserMsg);
           const systemBlocks = [
-            billingBlock,
+            signingBlock,
             { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {

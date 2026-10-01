@@ -8,7 +8,7 @@
  *      with it — so a fallback left to rot is a scheduled outage, not a
  *      cosmetic nit.
  *   2. getCachedClientVersion is read from a synchronous request-build path
- *      (claudeBillingHeader.js). It must answer immediately, whatever the
+ *      (requestSigning.js). It must answer immediately, whatever the
  *      network is doing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

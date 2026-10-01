@@ -14,7 +14,7 @@ import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import AntigravityAuthManager from '../auth/AntigravityAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
-import { createCchFetch } from './claudeBillingHeader.js';
+import { createSigningFetch } from './requestSigning.js';
 import { getClientIdentity, getClientVersion } from './clientVersions.js';
 import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
 
@@ -418,7 +418,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
   // Claude Code — uses Anthropic API with OAuth Bearer auth.
   // The custom fetch does two things on every outgoing request:
-  //   1. Replace the cch=00000 placeholder with the real xxHash64 hash.
+  //   1. Apply the request signature hash to the outgoing body.
   //   2. Re-read the current OAuth token from ClaudeCodeAuthManager and
   //      overwrite the Authorization header. The SDK bakes `authToken` into
   //      the client at construction, so without this a mid-session refresh
@@ -430,7 +430,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     }
     const config = getProviderConfig('claude-code');
     const sdkOptions = await _resolveDynamicSdkOptions('claude-code', config?.sdkOptions);
-    const cchFetch = createCchFetch();
+    const signingFetch = createSigningFetch();
     const claudeCodeFetch = async (url, init) => {
       const token = await ClaudeCodeAuthManager.getAccessToken();
       if (token) {
@@ -438,7 +438,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
         headers.set('Authorization', `Bearer ${token}`);
         init = { ...init, headers };
       }
-      return cchFetch(url, init);
+      return signingFetch(url, init);
     };
     return new Anthropic({
       apiKey: null,
