@@ -40,6 +40,18 @@ vi.mock('../../../services/browserActDriver.js', () => ({
   ],
 }));
 
+const ensureLane = vi.fn();
+const bindConversation = vi.fn();
+vi.mock('../../../services/browserLanes.js', () => ({
+  // The real rule: a server conversation id gets a lane; a temp- id does not.
+  laneFor: (engine) => {
+    const id = engine?.conversationId;
+    return typeof id === 'string' && id && !id.startsWith('temp-') ? `conv:${id}` : null;
+  },
+  ensureLane: (...a) => ensureLane(...a),
+  bindConversation: (...a) => bindConversation(...a),
+}));
+
 const { default: action } = await import('./ai-browser-act.js');
 
 const WIDGET_CDP = 'ws://127.0.0.1:51234/tok3n';
@@ -56,6 +68,9 @@ beforeEach(() => {
   ensureFallbackSurface.mockResolvedValue(LAUNCHED_CDP);
   performBrowserAction.mockResolvedValue({ url: 'https://x/', title: 'X' });
   isCanvasTurn.mockReturnValue(false);
+  ensureLane.mockImplementation(async (userId, lane, { cdpUrl, workspaceId }) => ({
+    instanceId: `host:${userId}:${lane}`, cdpUrl, transport: 'host-cdp', lane, workspaceId,
+  }));
 });
 
 describe('which browser it drives', () => {
@@ -66,7 +81,7 @@ describe('which browser it drives', () => {
 
     expect(out.success).toBe(true);
     expect(out.surface).toBe('widget');
-    expect(performBrowserAction).toHaveBeenCalledWith('u1', WIDGET_CDP, 'read', expect.anything());
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', WIDGET_CDP, 'read', expect.anything(), expect.anything());
     expect(ensureFallbackSurface).not.toHaveBeenCalled();
   });
 
@@ -122,14 +137,14 @@ describe('one driver, every surface', () => {
     expect(waitForSurface).toHaveBeenCalledWith('u1', { workspaceId: null, instanceId: null }, 0);
     expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
     expect(out.surface).toBe('Chrome');
-    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'navigate', expect.objectContaining({ url: 'agnt.gg' }));
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'navigate', expect.objectContaining({ url: 'agnt.gg' }), expect.anything());
   });
 
   it('agent chat: identical to main chat — an agent is a chat with a different author', async () => {
     const out = await action.execute({ action: 'read' }, {}, AGENT_CHAT);
     expect(waitForSurface.mock.calls[0][2]).toBe(0);
     expect(out.surface).toBe('Chrome');
-    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'read', expect.anything());
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'read', expect.anything(), expect.anything());
   });
 
   it('workspace: a canvas turn waits for THIS workspace\'s widget instance and drives it', async () => {
@@ -138,7 +153,7 @@ describe('one driver, every surface', () => {
     const out = await action.execute({ action: 'snapshot' }, {}, WORKSPACE);
     expect(waitForSurface).toHaveBeenCalledWith('u1', { workspaceId: 'ws_9', instanceId: 'inst_3' }, 8000);
     expect(out.surface).toBe('widget');
-    expect(performBrowserAction).toHaveBeenCalledWith('u1', WIDGET_CDP, 'snapshot', expect.anything());
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', WIDGET_CDP, 'snapshot', expect.anything(), expect.anything());
     expect(ensureFallbackSurface).not.toHaveBeenCalled();
   });
 
@@ -163,7 +178,7 @@ describe('one driver, every surface', () => {
         // eslint-disable-next-line no-await-in-loop
         const out = await action.execute({ action: verb, ...params }, {}, engine);
         expect(out.success, `${verb} on ${JSON.stringify(engine)}`).toBe(true);
-        expect(performBrowserAction).toHaveBeenCalledWith('u1', expect.any(String), verb, expect.objectContaining(params));
+        expect(performBrowserAction).toHaveBeenCalledWith('u1', expect.any(String), verb, expect.objectContaining(params), expect.anything());
       }
     }
   });
@@ -214,5 +229,70 @@ describe('how it fails', () => {
     expect(out.success).toBe(false);
     expect(out.error).toContain('@e9');
     expect(forgetSurfaceByUrl).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ONE TAB PER CONVERSATION. Every conversation used to drive the same page of
+ * the one launched browser, so two chats browsing at once took each other's
+ * agent, refs and live view with them.
+ */
+describe('a conversation drives its own tab', () => {
+  const CONVO = (id, extra = {}) => ({ userId: 'u1', provider: 'openai', conversationId: id, ...extra });
+
+  it('goes straight to its lane: no other browser is ever a candidate', async () => {
+    await action.execute({ action: 'navigate', url: 'x.com' }, {}, CONVO('c1'));
+    // Probing for "the newest unbound browser" is exactly how one chat used
+    // to land in another chat's page.
+    expect(waitForSurface).not.toHaveBeenCalled();
+    expect(ensureLane).toHaveBeenCalledWith('u1', 'conv:c1', { cdpUrl: LAUNCHED_CDP, workspaceId: null });
+    expect(performBrowserAction).toHaveBeenCalledWith(
+      'u1', LAUNCHED_CDP, 'navigate', expect.anything(), { instanceId: 'host:u1:conv:c1' },
+    );
+    expect(announceHostSurface).not.toHaveBeenCalled();
+  });
+
+  it('two conversations reach two different tabs', async () => {
+    await action.execute({ action: 'read' }, {}, CONVO('c1'));
+    await action.execute({ action: 'read' }, {}, CONVO('c2'));
+    const instances = performBrowserAction.mock.calls.map((call) => call[4].instanceId);
+    expect(instances).toEqual(['host:u1:conv:c1', 'host:u1:conv:c2']);
+  });
+
+  it('a workspace turn still drives its widget, and the card is told so', async () => {
+    isCanvasTurn.mockReturnValue(true);
+    waitForSurface.mockResolvedValue({ instanceId: 'inst_3', cdpUrl: WIDGET_CDP, transport: 'electron-bridge' });
+    const out = await action.execute({ action: 'read' }, {}, CONVO('c1', { workspaceState: { id: 'ws_9', browserInstanceId: 'inst_3' } }));
+    expect(out.surface).toBe('widget');
+    expect(ensureLane).not.toHaveBeenCalled();
+    expect(bindConversation).toHaveBeenCalledWith('u1', 'conv:c1', 'inst_3');
+    expect(performBrowserAction.mock.calls[0][4]).toEqual({ instanceId: 'inst_3' });
+  });
+
+  it('a workspace turn with no widget gets its own lane, recorded against the workspace', async () => {
+    isCanvasTurn.mockReturnValue(true);
+    await action.execute({ action: 'read' }, {}, CONVO('c1', { workspaceState: { id: 'ws_9' } }));
+    expect(ensureLane).toHaveBeenCalledWith('u1', 'conv:c1', { cdpUrl: LAUNCHED_CDP, workspaceId: 'ws_9' });
+  });
+
+  it('a temp- id or a workflow keeps the shared default tab', async () => {
+    await action.execute({ action: 'read' }, {}, CONVO('temp-123'));
+    await action.execute({ action: 'read' }, {}, WORKFLOW);
+    expect(ensureLane).not.toHaveBeenCalled();
+    expect(announceHostSurface).toHaveBeenCalledTimes(2);
+  });
+
+  it('losing its own tab does not make every other conversation forget the browser', async () => {
+    performBrowserAction.mockRejectedValue(new Error('that browser has no page to show'));
+    const out = await action.execute({ action: 'read' }, {}, CONVO('c1'));
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/run the action again/i);
+    expect(forgetSurfaceByUrl).not.toHaveBeenCalled();
+  });
+
+  it('a dead browser is still forgotten, lane or not', async () => {
+    performBrowserAction.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:9333'));
+    await action.execute({ action: 'read' }, {}, CONVO('c1'));
+    expect(forgetSurfaceByUrl).toHaveBeenCalledWith('u1', LAUNCHED_CDP);
   });
 });

@@ -151,6 +151,7 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
+import { provideBrowserConversation } from '@/views/Terminal/CenterPanel/screens/Chat/components/browserConversation.js';
 import { createAssistantMessage, applyStreamEvent, hydrateMessage } from '@/services/chatStreamReducer.js';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { canUseMediaCapture } from '@/services/mobileLiteNative.js';
@@ -174,6 +175,8 @@ const conversations = ref([]);
 const listLoading = ref(false);
 const outputId = ref(null);
 const conversationId = ref(newConversationId());
+// Browser cards show this conversation's browser, not the account's newest.
+provideBrowserConversation(conversationId);
 const title = ref('');
 const listEl = ref(null);
 const inputEl = ref(null);

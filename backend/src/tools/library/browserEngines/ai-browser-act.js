@@ -7,6 +7,7 @@ import {
 } from './browserFallbackSurface.js';
 import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { performBrowserAction, BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
+import { laneFor, ensureLane, bindConversation } from '../../../services/browserLanes.js';
 
 /**
  * Browser Actions — the agent drives the browser with deterministic verbs.
@@ -200,11 +201,12 @@ class AIBrowserAct extends BaseAction {
     }
 
     let cdpUrl = null;
+    let surface = null;
     try {
-      const surface = await this.resolveSurface(workflowEngine, userId);
+      surface = await this.resolveSurface(workflowEngine, userId);
       cdpUrl = surface.cdpUrl;
 
-      const result = await performBrowserAction(userId, cdpUrl, action, params);
+      const result = await performBrowserAction(userId, cdpUrl, action, params, { instanceId: surface.instanceId });
 
       return this.formatOutput({
         success: true,
@@ -217,8 +219,12 @@ class AIBrowserAct extends BaseAction {
       // probe and our verb. Forget every record of it — the surface entry AND
       // the driver — so the obvious next move ("try again") starts clean
       // instead of replaying the same refused socket.
+      // A conversation's tab vanishing ("no page to show") is not the browser
+      // vanishing: the next call opens the conversation a fresh tab, and
+      // forgetting the endpoint would drop every other conversation's entry.
+      const laneTabGone = /no page to show/i.test(err?.message || '') && /^host:.+:conv:/.test(surface?.instanceId || '');
       if (cdpUrl && /not open|connection closed|connection errored|ECONNREFUSED|refused|no page to show/i.test(err?.message || '')) {
-        forgetSurfaceByUrl(userId, cdpUrl);
+        if (!laneTabGone) forgetSurfaceByUrl(userId, cdpUrl);
         // The DRIVER is not dropped from here. It already drops itself inside
         // performBrowserAction, under the per-user lock — and dropping from
         // out here happens AFTER this turn's verb settled, by which time the
@@ -253,14 +259,24 @@ class AIBrowserAct extends BaseAction {
     const workspaceId = workflowEngine?.workspaceState?.id || null;
     const instanceId = workflowEngine?.workspaceState?.browserInstanceId || null;
     const isChat = Boolean(workflowEngine?.provider || workflowEngine?.normalizedProvider);
+    const lane = laneFor(workflowEngine);
 
-    const appearWait = isChat && isCanvasTurn(workflowEngine) ? 8000 : 0;
-    const surface = await waitForSurface(userId, { workspaceId, instanceId }, appearWait);
-    // Not every registry surface is a widget. A launched browser announces
-    // itself so a streamed client can watch it, so calling every entry
-    // "widget" told the user their canvas widget was driving while the work
-    // happened in a browser AGNT had opened.
-    if (surface) return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface) };
+    // A conversation that is not bound to a workspace has no widget to find:
+    // the only candidates would be other turns' browsers, and handing it one
+    // is the cross-conversation bleed lanes exist to stop. It goes straight
+    // to its own tab.
+    if (!(lane && !workspaceId && !instanceId)) {
+      const appearWait = isChat && isCanvasTurn(workflowEngine) ? 8000 : 0;
+      const surface = await waitForSurface(userId, { workspaceId, instanceId }, appearWait);
+      // Not every registry surface is a widget. A launched browser announces
+      // itself so a streamed client can watch it, so calling every entry
+      // "widget" told the user their canvas widget was driving while the work
+      // happened in a browser AGNT had opened.
+      if (surface) {
+        bindConversation(userId, lane, surface.instanceId);
+        return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface), instanceId: surface.instanceId };
+      }
+    }
 
     // ALWAYS hidden. The first version made an exception for plain desktop
     // chat ("an OS window is the only way to see anything there") and the very
@@ -272,8 +288,14 @@ class AIBrowserAct extends BaseAction {
     if (!isLoopbackWebSocket(cdpUrl)) {
       throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }
+    // A conversation gets its own tab in the launched browser. A run with no
+    // conversation (a workflow) keeps the shared default tab, as before.
+    if (lane) {
+      const laneSurface = await ensureLane(userId, lane, { cdpUrl, workspaceId });
+      return { cdpUrl, kind: 'launched', instanceId: laneSurface.instanceId };
+    }
     announceHostSurface(userId, cdpUrl, { workspaceId });
-    return { cdpUrl, kind: 'launched' };
+    return { cdpUrl, kind: 'launched', instanceId: null };
   }
 }
 

@@ -313,3 +313,29 @@ describe('forgetting a surface by its endpoint', () => {
     expect(await getLiveSurface('u1', { workspaceId: 'ws_a' }, dead)).toBeNull();
   });
 });
+
+describe('conversation lanes share one launched browser', () => {
+  const HOST = 'ws://127.0.0.1:9333/devtools/browser/abc';
+
+  it('a dead endpoint is forgotten for EVERY lane on it, not just the first', () => {
+    registerSurface('u1', 'host:u1', { cdpUrl: HOST, transport: 'host-cdp' });
+    registerSurface('u1', 'host:u1:conv:a', { cdpUrl: HOST, transport: 'host-cdp', lane: 'conv:a' });
+    registerSurface('u1', 'host:u1:conv:b', { cdpUrl: HOST, transport: 'host-cdp', lane: 'conv:b' });
+    registerSurface('u1', 'w1', { cdpUrl: CDP });
+
+    expect(forgetSurfaceByUrl('u1', HOST)).toBe(true);
+    for (const id of ['host:u1', 'host:u1:conv:a', 'host:u1:conv:b']) {
+      expect(getActiveSurface('u1', { instanceId: id })).toBeNull();
+    }
+    // A different browser is untouched.
+    expect(getActiveSurface('u1', { instanceId: 'w1' })).not.toBeNull();
+  });
+
+  it('a lane is reachable by its exact id and invisible to every other lookup', async () => {
+    registerSurface('u1', 'host:u1:conv:a', { cdpUrl: HOST, transport: 'host-cdp', lane: 'conv:a', workspaceId: 'ws1' });
+    expect(getActiveSurface('u1', {})).toBeNull();
+    expect(getActiveSurface('u1', { workspaceId: 'ws1' })).toBeNull();
+    expect(await getLiveSurface('u1', {}, alive)).toBeNull();
+    expect(getActiveSurface('u1', { instanceId: 'host:u1:conv:a' })?.lane).toBe('conv:a');
+  });
+});

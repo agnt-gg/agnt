@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 /**
  * Which browser tool-call card owns the live stream.
@@ -28,60 +28,76 @@ import { ref } from 'vue';
  * take over, and switching conversations left a stale mark that refused every
  * card in the next one. Deriving it makes both cases fall out for free — a
  * card leaving simply means the next-highest mounted card is now the newest.
+ *
+ * ONE OWNER PER CONVERSATION, NOT PER APP
+ * ---------------------------------------
+ * Each conversation drives its own browser tab (backend browserLanes.js), so
+ * the "one card" rule is per conversation: two chats on screen at once (a
+ * workspace with two chat windows, a split view) each stream their OWN tab.
+ * A single app-wide owner would leave one of them blank, or worse, let one
+ * conversation's card take the stream the other is watching.
  */
 
-/** key -> order, for every card currently mounted. */
+/** key -> { order, group }, for every card currently mounted. */
 const mounted = new Map();
 
-/** The key entitled to stream right now, or null. */
-const activeKey = ref(null);
+/** group (conversation) -> the key entitled to stream it right now. */
+const owners = ref({});
 
-function recomputeOwner() {
-  let bestKey = null;
-  let bestOrder = -Infinity;
-  for (const [key, order] of mounted) {
-    if (order > bestOrder) {
-      bestOrder = order;
-      bestKey = key;
-    }
+function recomputeOwners() {
+  const best = {};
+  for (const [key, { order, group }] of mounted) {
+    if (!(group in best) || order > best[group].order) best[group] = { key, order };
   }
-  activeKey.value = bestKey;
+  const next = {};
+  for (const [group, { key }] of Object.entries(best)) next[group] = key;
+  owners.value = next;
 }
 
 /**
  * Register a mounted card.
  *
- * @param {string} key   Stable identity for the card.
- * @param {number} order Monotonic within a conversation; higher is newer.
- * @returns {boolean} Whether this card now owns the stream.
+ * @param {string} key    Stable identity for the card.
+ * @param {number} order  Monotonic within a conversation; higher is newer.
+ * @param {string} [group] The conversation the card belongs to. Cards with
+ *   no conversation share one default group, as before.
+ * @returns {boolean} Whether this card now owns its conversation's stream.
  */
-export function claimLiveView(key, order) {
+export function claimLiveView(key, order, group = '') {
   if (!key) return false;
-  mounted.set(key, Number.isFinite(order) ? order : 0);
-  recomputeOwner();
-  return activeKey.value === key;
+  mounted.set(key, { order: Number.isFinite(order) ? order : 0, group: group || '' });
+  recomputeOwners();
+  return ownsLiveView(key);
 }
 
 /**
  * Deregister a card as it unmounts.
  *
- * If it was the owner, the next-highest mounted card takes over — which is
- * what makes the live view survive a virtualised transcript reclaiming rows.
+ * If it was the owner, the next-highest mounted card of the same
+ * conversation takes over — which is what makes the live view survive a
+ * virtualised transcript reclaiming rows.
  */
 export function releaseLiveView(key) {
   if (!mounted.delete(key)) return;
-  recomputeOwner();
+  recomputeOwners();
 }
 
-/** Reactive: does this card own the stream right now? */
+/** Reactive: does this card own its conversation's stream right now? */
 export function ownsLiveView(key) {
-  return activeKey.value !== null && activeKey.value === key;
+  // Read the reactive owners FIRST, unconditionally. A card's computed runs
+  // before its own onMounted claim; returning early on "not mounted yet"
+  // without touching owners.value left that computed with no dependency, so
+  // it never re-ran and the card stayed invisible after claiming.
+  const current = owners.value;
+  if (!key) return false;
+  return Object.values(current).includes(key);
 }
 
-export { activeKey as activeLiveKey };
+/** The owner of the default (no-conversation) group. Kept for callers that predate groups. */
+export const activeLiveKey = computed(() => owners.value[''] ?? null);
 
 /** Test seam. */
 export function _resetLiveRegistry() {
   mounted.clear();
-  activeKey.value = null;
+  owners.value = {};
 }

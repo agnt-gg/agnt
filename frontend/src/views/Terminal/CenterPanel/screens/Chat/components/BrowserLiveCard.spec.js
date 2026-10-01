@@ -14,7 +14,7 @@ const seen = vi.hoisted(() => ({ props: null, emit: null, setups: 0 }));
 
 vi.mock('@/utils/chunkRecovery.js', () => ({
   lazyComponent: () => defineComponent({
-    props: { launch: Boolean, highQuality: Boolean },
+    props: { launch: Boolean, highQuality: Boolean, conversationId: String },
     emits: ['page', 'showing'],
     setup(props, { emit }) {
       seen.props = props; seen.emit = emit; seen.setups += 1;
@@ -33,9 +33,9 @@ afterEach(() => { wrapper?.unmount(); wrapper = null; _resetLiveRegistry(); docu
 // the element being attached to a document, which a mounted wrapper is not).
 const hidden = () => /display:\s*none/.test(wrapper.find('.browser-live-card').attributes('style') || '');
 
-const mountCard = async (live) => {
+const mountCard = async (live, extra = {}) => {
   wrapper = mount(BrowserLiveCard, {
-    props: { cardKey: `m-${Math.random()}`, order: Date.now(), live },
+    props: { cardKey: `m-${Math.random()}`, order: Date.now(), live, ...extra },
     global: { directives: { tooltip: {} } },
     // Attached, so a teleported card is still findable in the real DOM.
     attachTo: document.body.appendChild(document.createElement('div')),
@@ -132,5 +132,21 @@ describe('focus', () => {
   it('marks the page area as keeping focus, so the chat input cannot steal typing', async () => {
     await mountCard(true);
     expect(wrapper.find('.live-body').attributes()).toHaveProperty('data-keeps-focus');
+  });
+});
+
+describe('its own conversation', () => {
+  it('asks for its conversation\'s browser', async () => {
+    await mountCard(true, { conversationId: 'conv-7' });
+    expect(seen.props.conversationId).toBe('conv-7');
+  });
+
+  it('two conversations\' cards both stream, each its own', async () => {
+    const { claimLiveView, ownsLiveView } = await import('./browserLiveRegistry.js');
+    // Another conversation's newer card is already on screen.
+    claimLiveView('other', Date.now() + 100000, 'conv-other');
+    await mountCard(true, { conversationId: 'conv-7' });
+    expect(wrapper.find('.browser-live-card').exists()).toBe(true);
+    expect(ownsLiveView('other')).toBe(true);
   });
 });

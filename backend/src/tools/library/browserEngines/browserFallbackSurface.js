@@ -433,7 +433,7 @@ async function replaceStartupTab(cdpUrl, url, log) {
  * from the bug they were checking for. A page that names itself proves the
  * pixels are flowing.
  */
-const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
+export const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
   '<!doctype html><title>AGNT Browser</title>'
   + '<body style="margin:0;height:100vh;display:grid;place-items:center;'
   + 'background:#0d0d16;color:#8b8ba3;font:15px system-ui">'

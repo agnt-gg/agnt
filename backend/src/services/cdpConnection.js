@@ -13,6 +13,7 @@
  */
 
 import { WebSocket } from 'ws';
+import { visiblePages } from './browserActiveTarget.js';
 
 /**
  * How long a CDP command may take before we stop waiting for it.
@@ -155,11 +156,13 @@ export class CdpConnection {
  * Electron widget, so one code path serves both a launched browser and the
  * widget's bridge.
  */
-export async function attachToPage(connection, preferredTargetId = null) {
+export async function attachToPage(connection, preferredTargetId = null, { scope = null } = {}) {
   const { targetInfos = [] } = await connection.send('Target.getTargets');
-  const pages = targetInfos.filter((t) => t.type === 'page');
-  // The tab the agent is working in, when known (browserActiveTarget.js).
-  // Otherwise the first page, as before.
+  // Only the tabs this scope may see: a conversation's lane never attaches to
+  // another conversation's tab, and the shared default never attaches to a
+  // lane's (browserActiveTarget.js).
+  const pages = visiblePages(scope, targetInfos);
+  // The tab the agent is working in, when known. Otherwise the first page.
   const page = (preferredTargetId && pages.find((t) => t.targetId === preferredTargetId)) || pages[0];
   if (!page) throw new Error('that browser has no page to show');
 

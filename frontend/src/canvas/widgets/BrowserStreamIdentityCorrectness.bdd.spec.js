@@ -91,3 +91,20 @@ describe('Given a shared socket changes authenticated identity',()=>{
   expect(requests.filter(r=>r.opts?.method==='POST')).toHaveLength(0);
  });
 });
+
+describe('Given each conversation has its own browser', () => {
+ const viewBodies = () => requests.filter((r) => r.opts?.method === 'POST' && /\/view$/.test(r.url)).map((r) => JSON.parse(r.opts.body));
+ it('When a conversation id is given, Then the viewer asks for THAT conversation\'s browser', async () => {
+  wrapper = mount(BrowserStreamView, { props: { launch: true, conversationId: 'conv-42' } }); await flushPromises();
+  await authenticate();
+  await vi.advanceTimersByTimeAsync(10); await flushPromises();
+  expect(viewBodies().length).toBeGreaterThan(0);
+  expect(viewBodies().every((body) => body.conversationId === 'conv-42')).toBe(true);
+ });
+ it('When none is given, Then the request is unchanged (no conversationId key)', async () => {
+  await boot(); await authenticate();
+  await vi.advanceTimersByTimeAsync(10); await flushPromises();
+  expect(viewBodies().length).toBeGreaterThan(0);
+  expect(viewBodies().some((body) => 'conversationId' in body)).toBe(false);
+ });
+});

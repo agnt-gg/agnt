@@ -213,11 +213,18 @@
             rather than to a call, it mounts once and survives every tool call
             in the turn.
           -->
+          <!--
+            Keyed by conversation: each conversation has its own browser tab,
+            so a card whose conversation id changes is a different card.
+            Not rendered while the id is still a client-side temp- id (null).
+          -->
           <BrowserLiveCard
-            v-if="hasBrowserToolCall"
+            v-if="hasBrowserToolCall && browserConversationId !== null"
+            :key="`browser-live:${browserConversationId}`"
             :card-key="message.id"
             :order="browserCardOrder"
             :live="browserCardLive"
+            :conversation-id="browserConversationId"
           />
 
           <ArtifactCards v-if="compactArtifacts && message.role === 'assistant'" :content="artifactContent" :tool-calls="message.toolCalls || []" :message-id="String(message.id || '')" @share="shareCard" />
@@ -440,6 +447,7 @@ const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name:
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import { connectTarget } from './connectCards.js';
 import { shareTarget } from './shareCards.js';
+import { useBrowserConversation } from './browserConversation.js';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { compactArtifactText } from '@/utils/chatArtifacts.js';
 import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
@@ -2791,6 +2799,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
      * after the call finished. Anything older is history being re-read.
      */
     const LIVE_BROWSER_CARD_MS = 10 * 60 * 1000;
+    // Which conversation this transcript is (provided by the chat surface), so
+    // the browser card shows this conversation's browser and no other.
+    const browserConversationId = useBrowserConversation();
+
     const browserCardLive = computed(() => {
       const calls = (props.message?.toolCalls || []).filter((tc) => BROWSER_TOOL_NAMES.has(tc?.name));
       if (calls.some((tc) => (props.runningTools || []).includes(tc.id))) return true;
@@ -3168,6 +3180,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       hasBrowserToolCall,
       browserCardOrder,
       browserCardLive,
+      browserConversationId,
       extractGoalId,
       extractGoalTitle,
       extractTaskCount,

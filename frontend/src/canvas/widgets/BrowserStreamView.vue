@@ -65,6 +65,13 @@ const props = defineProps({
    * it when this viewer leaves.
    */
   highQuality: { type: Boolean, default: false },
+  /**
+   * Watch the browser THIS conversation drives. The backend keeps one tab per
+   * conversation and remembers which browser each one last used; without
+   * this, a viewer is handed the account's newest browser, which is how one
+   * chat's card ended up showing another chat's page.
+   */
+  conversationId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['page', 'history', 'showing']);
@@ -316,7 +323,12 @@ async function startWatching() {
     }
     const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/view`, {
       method: 'POST', credentials: 'include', headers: authHeaders(), signal: controller.signal,
-      body: JSON.stringify({ workspaceId: props.workspaceId, launch: props.launch && !observationOnly, protocolVersion: 2 }),
+      body: JSON.stringify({
+        workspaceId: props.workspaceId,
+        ...(props.conversationId ? { conversationId: props.conversationId } : {}),
+        launch: props.launch && !observationOnly,
+        protocolVersion: 2,
+      }),
     });
     const body = await response.json().catch(() => ({}));
     if (disposed || epoch !== generation || !authenticated || !socket?.connected) {

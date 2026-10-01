@@ -276,6 +276,7 @@
 
 <script>
 import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, nextTick, computed, watch, inject } from 'vue';
+import { provideBrowserConversation } from './components/browserConversation.js';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
@@ -359,6 +360,9 @@ export default {
     // Core State
     const terminalLines = ref([]);
     const currentConversationId = ref(null);
+    // The browser cards in this transcript show the browser of the
+    // conversation on screen, not whichever browser is newest.
+    provideBrowserConversation(() => store.state.chat.activeConversationId);
     const messagesFromStore = computed(() => {
       // Never show agent conversation messages in the main chat.
       // Check both the mirror flag (currentAgentId) and the conversation slot's

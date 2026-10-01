@@ -55,7 +55,13 @@
         never launches (scrolling back must not open browsers); it stays
         hidden (v-show above) until it actually has pixels to show.
       -->
-      <BrowserStreamView :launch="live" :high-quality="fullscreen" @page="onPage" @showing="onShowing" />
+      <BrowserStreamView
+        :launch="live"
+        :high-quality="fullscreen"
+        :conversation-id="conversationId"
+        @page="onPage"
+        @showing="onShowing"
+      />
     </div>
   </div>
   </Teleport>
@@ -64,7 +70,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
-import { claimLiveView, releaseLiveView, activeLiveKey } from './browserLiveRegistry.js';
+import { claimLiveView, releaseLiveView, ownsLiveView } from './browserLiveRegistry.js';
 
 /**
  * The live browser, inline in the chat transcript.
@@ -95,6 +101,13 @@ const props = defineProps({
   order: { type: Number, default: 0 },
   /** This card belongs to the turn happening now, not one being re-read. */
   live: { type: Boolean, default: false },
+  /**
+   * The conversation this card belongs to. Each conversation has its own
+   * browser tab, so the card shows THIS conversation's browser and competes
+   * for the stream only with cards of the same conversation. Empty for
+   * surfaces that have no conversation id; those share the default browser.
+   */
+  conversationId: { type: String, default: '' },
 });
 
 const showing = ref(false);
@@ -103,7 +116,7 @@ function onShowing(value) { showing.value = Boolean(value); }
 const collapsed = ref(false);
 const pageUrl = ref('');
 
-const owns = computed(() => activeLiveKey.value === props.cardKey);
+const owns = computed(() => ownsLiveView(props.cardKey));
 
 function onPage({ url }) {
   pageUrl.value = url || '';
@@ -150,7 +163,7 @@ watch(fullscreen, (on) => {
 // listener and no fullscreen state behind for when it comes back.
 watch(owns, (isOwner) => { if (!isOwner) fullscreen.value = false; });
 
-onMounted(() => claimLiveView(props.cardKey, props.order));
+onMounted(() => claimLiveView(props.cardKey, props.order, props.conversationId));
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown);
   window.removeEventListener('resize', measureChrome);

@@ -1,8 +1,9 @@
 import BaseAction from '../BaseAction.js';
 import { spawn } from 'child_process';
 import {
-  waitForSurface, forgetSurfaceByUrl, getActiveSurface, announceHostSurface, surfaceKind,
+  waitForSurface, forgetSurfaceByUrl, getActiveSurface, announceHostSurface, surfaceKind, hostInstanceId,
 } from '../../../services/browserSurfaces.js';
+import { laneFor, bindConversation } from '../../../services/browserLanes.js';
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
 } from './browserFallbackSurface.js';
@@ -307,6 +308,7 @@ class AIBrowserControl extends BaseAction {
       // display there IS no window, and a client that cannot see one still
       // needs a way to watch. Announcing costs nothing when nobody subscribes.
       announceHostSurface(userId, named, { workspaceId });
+      bindConversation(userId, laneFor(workflowEngine), hostInstanceId(userId));
       return { cdpUrl: named, kind: 'launched' };
     }
 
@@ -362,6 +364,10 @@ class AIBrowserControl extends BaseAction {
       if (!isLoopbackWebSocket(surface.cdpUrl)) {
         throw new Error(`Refusing to drive a non-local browser endpoint: ${surface.cdpUrl}`);
       }
+      // The script daemon drives a whole browser, not a conversation's tab, so
+      // it cannot use a lane. Recording what it used keeps the live card on
+      // the work instead of on an idle lane.
+      bindConversation(userId, laneFor(workflowEngine), surface.instanceId);
       return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface) };
     }
 
@@ -377,6 +383,7 @@ class AIBrowserControl extends BaseAction {
     // widget, so a launched browser — and the work happened on the host with no
     // way to see it. The registry entry is what a viewer subscribes to.
     announceHostSurface(userId, cdpUrl, { workspaceId });
+    bindConversation(userId, laneFor(workflowEngine), hostInstanceId(userId));
     return { cdpUrl, kind: 'launched' };
   }
 

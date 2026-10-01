@@ -8,7 +8,10 @@ import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
 import { resolveAccountAi } from '../../../services/ai/accountAi.js';
 import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
-import { waitForSurface, forgetSurfaceByUrl, announceHostSurface } from '../../../services/browserSurfaces.js';
+import {
+  waitForSurface, forgetSurfaceByUrl, announceHostSurface, hostInstanceId,
+} from '../../../services/browserSurfaces.js';
+import { laneFor, bindConversation } from '../../../services/browserLanes.js';
 import { ensureFallbackSurface, isLoopbackWebSocket } from './browserFallbackSurface.js';
 import {
   ROUTE,
@@ -338,7 +341,14 @@ class AIBrowserUse extends BaseAction {
     const surface = probe
       ? await waitForSurface(userId, { workspaceId, instanceId }, waitMs, 200, probe)
       : await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
-    if (surface) return surface.cdpUrl;
+    // browser-use is handed the whole browser and picks its own tab, so it
+    // cannot be confined to a conversation's lane. What CAN be kept honest is
+    // the live card: record which browser this conversation is using, so its
+    // card shows the work rather than an idle lane.
+    if (surface) {
+      bindConversation(userId, laneFor(workflowEngine), surface.instanceId);
+      return surface.cdpUrl;
+    }
 
     // No widget to drive. Returning '' here used to let browser-use launch its
     // OWN chromium — a surprise OS window over the user's desktop, reported as
@@ -354,6 +364,7 @@ class AIBrowserUse extends BaseAction {
       throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }
     announceHostSurface(userId, cdpUrl, { workspaceId });
+    bindConversation(userId, laneFor(workflowEngine), hostInstanceId(userId));
     return cdpUrl;
   }
 

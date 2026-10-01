@@ -23,6 +23,9 @@ import {
 import { isStreaming, ownsStream } from '../services/BrowserScreencastService.js';
 import { acquireViewer, releaseViewer } from '../services/BrowserViewerLeaseService.js';
 import { ensureFallbackSurface } from '../tools/library/browserEngines/browserFallbackSurface.js';
+import {
+  laneForConversation, ensureLane, boundSurface, touchLane,
+} from '../services/browserLanes.js';
 
 const router = express.Router();
 
@@ -36,6 +39,12 @@ router.post('/surface', authenticateToken, (req, res) => {
 
   const { instanceId, workspaceId, cdpUrl, url, title } = req.body || {};
   if (!instanceId) return res.status(400).json({ success: false, error: 'instanceId is required.' });
+  // `host:` ids name browsers the BACKEND launched, including each
+  // conversation's lane. A widget announcing itself under one would replace a
+  // conversation's browser with a different window.
+  if (String(instanceId).startsWith('host:')) {
+    return res.status(400).json({ success: false, error: 'That instance id is reserved.' });
+  }
 
   // WHY THE CLIENT'S ADDRESS IS PART OF THE ANSWER.
   //
@@ -112,7 +121,15 @@ router.post('/view', authenticateToken, async (req, res) => {
 
   const userId = req.user.id;
   const workspaceId = req.body?.workspaceId || null;
-  const selector = { instanceId: req.body?.instanceId || null, workspaceId };
+  // A conversation's card watches what THAT conversation drove — its own tab,
+  // or the widget or shared browser it last used — and nothing else. It never
+  // falls through to "the newest browser": that fallthrough is how one
+  // conversation's card used to stream another conversation's page.
+  const lane = laneForConversation(req.body?.conversationId);
+  const watched = lane ? (boundSurface(userId, lane) || hostInstanceId(userId, lane)) : null;
+  const selector = lane
+    ? { instanceId: watched, workspaceId: null }
+    : { instanceId: req.body?.instanceId || null, workspaceId };
 
   // getLiveSurface, NEVER getActiveSurface.
   //
@@ -146,10 +163,16 @@ router.post('/view', authenticateToken, async (req, res) => {
       // second, redundant Chrome window on the host desktop — the first thing
       // reported when this endpoint shipped.
       const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
-      announceHostSurface(userId, cdpUrl, { workspaceId });
-      surface = {
-        instanceId: hostInstanceId(userId), cdpUrl, transport: 'host-cdp', url: 'about:blank',
-      };
+      if (lane) {
+        // The conversation's own tab, opened now so the card has something
+        // true to show; the agent's next verb drives this same tab.
+        surface = await ensureLane(userId, lane, { cdpUrl, workspaceId });
+      } else {
+        announceHostSurface(userId, cdpUrl, { workspaceId });
+        surface = {
+          instanceId: hostInstanceId(userId), cdpUrl, transport: 'host-cdp', url: 'about:blank',
+        };
+      }
     } catch (err) {
       // No browser installed, or it would not start. That is a real answer, and
       // the message names it rather than leaving the widget spinning.
@@ -161,6 +184,7 @@ router.post('/view', authenticateToken, async (req, res) => {
 
   try {
     const result = await acquireViewer({ userId, instanceId: surface.instanceId, cdpUrl: surface.cdpUrl });
+    touchLane(surface.instanceId);
     return res.json({
       success: true,
       instanceId: surface.instanceId,

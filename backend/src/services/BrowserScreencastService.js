@@ -50,7 +50,7 @@ import { frameViewerSockets } from './browserViewerDeliveryRegistry.js';
 import { randomUUID } from 'node:crypto';
 import { broadcastToUser } from '../utils/realtimeSync.js';
 import { CdpConnection, attachToPage } from './cdpConnection.js';
-import { getActiveTarget, onActiveTargetChange } from './browserActiveTarget.js';
+import { getActiveTarget, onActiveTargetChange, scopeFor } from './browserActiveTarget.js';
 
 /** How long to wait for a client's render-ack before assuming it is gone. */
 const ACK_TIMEOUT_MS = 2000;
@@ -116,11 +116,14 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
 
   const connection = await new CdpConnection(cdpUrl).connect();
 
+  // The tabs this stream may show: a conversation's lane streams only its own
+  // tab, never whichever tab another conversation's agent moved to.
+  const scope = scopeFor(instanceId, cdpUrl);
   let session;
   try {
-    const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(cdpUrl));
+    const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(scope), { scope });
     session = {
-      userId, instanceId, cdpUrl, connection, sessionId, targetId, streamId: randomUUID(), viewers: 1, ackTimer: null, lastFrame: null,
+      userId, instanceId, cdpUrl, scope, connection, sessionId, targetId, streamId: randomUUID(), viewers: 1, ackTimer: null, lastFrame: null,
       highViewers: new Set(),
     };
     sessions.set(instanceId, session);
@@ -157,7 +160,7 @@ async function retarget(session, preferredTargetId) {
   const previousSessionId = session.sessionId;
   try {
     session.connection.post('Page.stopScreencast', {}, previousSessionId);
-    const { sessionId, targetId } = await attachToPage(session.connection, preferredTargetId);
+    const { sessionId, targetId } = await attachToPage(session.connection, preferredTargetId, { scope: session.scope });
     if (sessions.get(session.instanceId) !== session) return;
     session.sessionId = sessionId;
     session.targetId = targetId;
@@ -186,9 +189,9 @@ async function retarget(session, preferredTargetId) {
   }
 }
 
-onActiveTargetChange((cdpUrl, targetId) => {
+onActiveTargetChange((scope, targetId) => {
   for (const session of sessions.values()) {
-    if (session.cdpUrl === cdpUrl && session.targetId !== targetId) retarget(session, targetId);
+    if (session.scope === scope && session.targetId !== targetId) retarget(session, targetId);
   }
 });
 
@@ -201,7 +204,7 @@ function handleEvent(session, message) {
 
   // The streamed tab closed or crashed, but the browser lives on.
   if (message.method === 'Target.detachedFromTarget' && message.params?.sessionId === session.sessionId) {
-    retarget(session, getActiveTarget(session.cdpUrl));
+    retarget(session, getActiveTarget(session.scope));
     return;
   }
 

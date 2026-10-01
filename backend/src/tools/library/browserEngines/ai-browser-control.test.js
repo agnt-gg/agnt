@@ -47,8 +47,15 @@ vi.mock('../../../services/browserSurfaces.js', () => ({
   getActiveSurface: (...a) => getActiveSurface(...a),
   announceHostSurface: (...a) => announceHostSurface(...a),
   surfaceKind: (s) => (s?.transport === 'host-cdp' ? 'launched' : 'widget'),
+  hostInstanceId: (userId) => `host:${userId}`,
   // The real predicate: only ws://127.0.0.1:<port>/<token> is a local bridge.
   isLocalBridgeUrl: (url) => /^ws:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+$/.test(url || ''),
+}));
+
+const bindConversation = vi.fn();
+vi.mock('../../../services/browserLanes.js', () => ({
+  laneFor: (engine) => (engine?.conversationId ? `conv:${engine.conversationId}` : null),
+  bindConversation: (...a) => bindConversation(...a),
 }));
 
 vi.mock('./browserUseEnvironment.js', () => ({
@@ -217,6 +224,15 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     // the host with no registry entry for a viewer to subscribe to, which is
     // the invisible-agent bug wearing a different hat.
     expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
+  });
+
+  it('records which browser a conversation used, so its live card shows the work', async () => {
+    // The script daemon drives the whole browser, not a conversation's tab, so
+    // it cannot use a lane. The card must still follow it rather than show an
+    // idle lane while the script works somewhere else.
+    waitForSurface.mockResolvedValue(null);
+    await action.execute({ python: 'print(1)' }, {}, { ...CHAT, conversationId: 'c1' });
+    expect(bindConversation).toHaveBeenCalledWith('u1', 'conv:c1', 'host:u1');
   });
 
   it('announces a NAMED browser too, because a headless host has no window either', async () => {

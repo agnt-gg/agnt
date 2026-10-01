@@ -91,6 +91,7 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '../../../../Chat/components/MessageItem.vue';
+import { provideBrowserConversation } from '../../../../Chat/components/browserConversation.js';
 import ProcessingState from '../../../../Chat/components/ProcessingState.vue';
 import QuickActions from '../../../../Chat/components/QuickActions.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
@@ -150,6 +151,9 @@ const agentChannelKey = computed(() =>
  */
 const agentConversationId = computed(() =>
   store.getters['chat/agentConversationId'](props.selectedAgent?.id) || null);
+
+// Browser cards here show THIS agent conversation's browser.
+provideBrowserConversation(() => agentConversationId.value || '');
 
 const agentConversation = computed(() => {
   const id = agentConversationId.value;

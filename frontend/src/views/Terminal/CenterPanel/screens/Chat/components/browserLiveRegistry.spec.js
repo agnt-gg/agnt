@@ -107,3 +107,38 @@ describe('giving it up', () => {
     expect(ownsLiveView('new')).toBe(true);
   });
 });
+
+describe('one owner PER CONVERSATION', () => {
+  // Each conversation has its own browser tab. Two chats on screen at once
+  // must each stream their own; one app-wide owner left one of them blank.
+  it('the newest card of EACH conversation owns that conversation\'s stream', () => {
+    claimLiveView('a-old', 100, 'conv-a');
+    claimLiveView('a-new', 200, 'conv-a');
+    claimLiveView('b-only', 50, 'conv-b');
+    expect(ownsLiveView('a-new')).toBe(true);
+    expect(ownsLiveView('a-old')).toBe(false);
+    expect(ownsLiveView('b-only')).toBe(true);
+  });
+
+  it('a newer card in one conversation never takes another conversation\'s stream', () => {
+    claimLiveView('b', 50, 'conv-b');
+    claimLiveView('a', 9999, 'conv-a');
+    expect(ownsLiveView('b')).toBe(true);
+  });
+
+  it('hands over within its own conversation only', () => {
+    claimLiveView('a1', 100, 'conv-a');
+    claimLiveView('a2', 200, 'conv-a');
+    claimLiveView('b1', 300, 'conv-b');
+    releaseLiveView('a2');
+    expect(ownsLiveView('a1')).toBe(true);
+    expect(ownsLiveView('b1')).toBe(true);
+  });
+
+  it('cards with no conversation keep the old single default group', () => {
+    claimLiveView('x', 1);
+    expect(activeLiveKey.value).toBe('x');
+    claimLiveView('y', 2, 'conv-a');
+    expect(activeLiveKey.value).toBe('x');
+  });
+});

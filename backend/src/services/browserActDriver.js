@@ -78,22 +78,57 @@
 
 import { CdpConnection, attachToPage } from './cdpConnection.js';
 import { BLOCK_PROBE_EXPRESSION, classifyBlockPage, blockedHint } from './browserBlockDetection.js';
-import { setActiveTarget, getActiveTarget } from './browserActiveTarget.js';
+import {
+  setActiveTarget, getActiveTarget, scopeFor, visiblePages, claimTab,
+} from './browserActiveTarget.js';
 
-/** userId -> live driver session. One per user: the ref map is the agent's working memory. */
+/**
+ * (user, scope) -> live driver session. The ref map is the agent's working
+ * memory, so it belongs to ONE conversation's tab: keyed by user alone, a
+ * second conversation's snapshot replaced the first's refs mid-task and both
+ * drove whichever tab was attached last. The scope is the conversation's lane
+ * for the launched browser, or the endpoint for anything else
+ * (browserActiveTarget.scopeFor), which is exactly the old behaviour there.
+ */
 const drivers = new Map();
+const driverKey = (userId, scope) => `${userId}\u0000${scope}`;
 
-/** Forget a user's driver; the next verb reconnects from scratch. */
-export function dropDriver(userId) {
-  const driver = drivers.get(userId);
+function closeDriver(key) {
+  const driver = drivers.get(key);
   if (!driver) return;
-  drivers.delete(userId);
+  drivers.delete(key);
   try { driver.connection.close(); } catch { /* already gone */ }
+}
+
+/**
+ * Forget a user's driver(s); the next verb reconnects from scratch.
+ * With a scope, only that one; without, every driver the user holds.
+ */
+export function dropDriver(userId, scope = undefined) {
+  if (scope !== undefined) { closeDriver(driverKey(userId, scope)); return; }
+  for (const [key, driver] of [...drivers]) {
+    if (driver.userId === userId) closeDriver(key);
+  }
+}
+
+/** A conversation's lane closed: drop whatever driver was working in it. */
+export function dropDriversForScope(scope) {
+  for (const [key, driver] of [...drivers]) {
+    if (driver.scope === scope) closeDriver(key);
+  }
+}
+
+/** Is a verb running or queued in this scope? A lane is never closed under one. */
+export function isScopeBusy(scope) {
+  for (const key of queues.keys()) {
+    if (key.endsWith(`\u0000${scope}`)) return true;
+  }
+  return false;
 }
 
 /** Test seam, and the shutdown path. */
 export function _resetDrivers() {
-  for (const userId of [...drivers.keys()]) dropDriver(userId);
+  for (const key of [...drivers.keys()]) closeDriver(key);
   queues.clear();
 }
 
@@ -223,17 +258,20 @@ async function ensureRuntimeObservers(driver) {
   driver.runtimeEnabled = true;
 }
 
-async function driverFor(userId, cdpUrl) {
-  const existing = drivers.get(userId);
+async function driverFor(userId, cdpUrl, scope) {
+  const key = driverKey(userId, scope);
+  const existing = drivers.get(key);
   if (existing && existing.cdpUrl === cdpUrl && !existing.connection.closed) return existing;
-  dropDriver(userId);
+  closeDriver(key);
 
   const connection = await new CdpConnection(cdpUrl).connect({ timeoutMs: CONNECT_TIMEOUT_MS });
-  // Resume the tab the agent was last in, if a reconnect lost the driver.
-  const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(cdpUrl));
-  setActiveTarget(cdpUrl, targetId);
+  // Resume the tab the agent was last in, if a reconnect lost the driver —
+  // and only ever a tab this scope may see.
+  const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(scope), { scope });
+  setActiveTarget(scope, targetId);
   const driver = {
     userId,
+    scope,
     cdpUrl,
     connection,
     sessionId,
@@ -258,9 +296,9 @@ async function driverFor(userId, cdpUrl) {
     pointer: null,
   };
   connection.onEvent((message) => {
-    if (message.method === '__closed') drivers.delete(userId);
+    if (message.method === '__closed' && drivers.get(key) === driver) drivers.delete(key);
   });
-  drivers.set(userId, driver);
+  drivers.set(key, driver);
 
   await connection.send('Page.enable', {}, sessionId);
   await clearOrphanDialog(driver);
@@ -291,7 +329,7 @@ async function attachDriverTo(driver, targetId) {
   if (!sessionId) throw new Error('the browser refused a page session for that tab');
   driver.sessionId = sessionId;
   driver.targetId = targetId;
-  setActiveTarget(driver.cdpUrl, targetId);
+  setActiveTarget(driver.scope, targetId);
   driver.refs.clear();
   driver.refUrl = null;
   driver.seenNodes = new Set();
@@ -657,8 +695,9 @@ async function elementCentre(driver, backendNodeId) {
 /** Page targets right now — the tab list. */
 async function listTabs(driver) {
   const { targetInfos = [] } = await driver.connection.send('Target.getTargets');
-  return targetInfos
-    .filter((t) => t.type === 'page')
+  // Only this scope's tabs: another conversation's tabs are not the agent's to
+  // see, focus or close.
+  return visiblePages(driver.scope, targetInfos)
     .map((t) => ({ id: t.targetId, url: t.url, title: t.title, active: t.targetId === driver.targetId }));
 }
 
@@ -1071,6 +1110,8 @@ async function openTab(driver, url) {
   } catch (err) {
     throw new Error(`This browser surface cannot open a second tab (${err.message}). Navigate the current tab instead.`);
   }
+  // A tab the agent opens belongs to its conversation (a no-op outside a lane).
+  claimTab(driver.scope, created.targetId);
   await attachDriverTo(driver, created.targetId);
   await waitForLoad(driver);
   const snap = await takeSnapshot(driver, { maxChars: INLINE_SNAPSHOT_CHARS }).catch(() => null);
@@ -1189,12 +1230,13 @@ const PARAM_KEYS = ['url', 'ref', 'selector', 'text', 'submit', 'key', 'deltaY',
  * Transport-shaped failures drop the cached driver, so the next call
  * reconnects from scratch instead of replaying the same dead socket.
  */
-async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried = false } = {}) {
+async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried = false, scope = cdpUrl } = {}) {
+  const key = driverKey(userId, scope);
   let driver;
   let fresh = false;
   try {
-    fresh = !drivers.has(userId);
-    driver = await driverFor(userId, cdpUrl);
+    fresh = !drivers.has(key);
+    driver = await driverFor(userId, cdpUrl, scope);
     let result;
     switch (action) {
       case 'navigate': result = await navigateTo(driver, params.url); break;
@@ -1233,10 +1275,10 @@ async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried =
       // Drop the driver that FAILED, not whatever is in the map now. They are
       // the same object in the normal case; they are not after a reconnect,
       // and closing the live one would take down a verb that is working.
-      if (driver && drivers.get(userId) !== driver) {
+      if (driver && drivers.get(key) !== driver) {
         try { driver.connection.close(); } catch { /* already gone */ }
       } else {
-        dropDriver(userId);
+        closeDriver(key);
       }
     }
     // A crashed profile can hang the first page read after reconnect. Retry
@@ -1246,16 +1288,18 @@ async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried =
     if (transport && fresh && !retried && safeToRetry.has(action) && /timed out/i.test(err.message)) {
       // Inner call on purpose: the wrapper below holds this user's lock, and
       // re-entering it here would deadlock behind itself.
-      return runBrowserAction(userId, cdpUrl, action, params, { retried: true });
+      return runBrowserAction(userId, cdpUrl, action, params, { retried: true, scope });
     }
     throw err;
   }
 }
 
 /**
- * userId -> tail of that user's in-flight chain.
+ * (user, scope) -> tail of that scope's in-flight chain.
  *
- * ONE BROWSER, ONE VERB AT A TIME. The driver is shared mutable state — the
+ * ONE TAB, ONE VERB AT A TIME. (Per scope, not per user: two conversations
+ * each have their own tab and their own connection, so they no longer need
+ * to wait for each other — and must not share the state described below.) The driver is shared mutable state — the
  * page session, the ref map, the dialog flag, the buffers — and a user can
  * have two turns in flight at once (a chat message while an agent runs, two
  * workspace tabs, a workflow firing mid-conversation). Interleaved, `focus`
@@ -1270,15 +1314,23 @@ async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried =
  */
 const queues = new Map();
 
-export function performBrowserAction(userId, cdpUrl, action, params = {}) {
-  const tail = queues.get(userId) || Promise.resolve();
-  const start = () => runBrowserAction(userId, cdpUrl, action, params);
+/**
+ * @param {object} [options]
+ * @param {string} [options.instanceId] The surface being driven. A
+ *   conversation's lane confines the verb to that conversation's tabs;
+ *   anything else is scoped by endpoint, as before lanes existed.
+ */
+export function performBrowserAction(userId, cdpUrl, action, params = {}, { instanceId = null } = {}) {
+  const scope = scopeFor(instanceId, cdpUrl);
+  const key = driverKey(userId, scope);
+  const tail = queues.get(key) || Promise.resolve();
+  const start = () => runBrowserAction(userId, cdpUrl, action, params, { scope });
   // Run next whether the previous verb resolved or threw — a failed verb must
   // not poison every later one.
   const run = tail.then(start, start);
 
   const settled = run.then(() => {}, () => {});
-  queues.set(userId, settled);
-  settled.then(() => { if (queues.get(userId) === settled) queues.delete(userId); });
+  queues.set(key, settled);
+  settled.then(() => { if (queues.get(key) === settled) queues.delete(key); });
   return run;
 }

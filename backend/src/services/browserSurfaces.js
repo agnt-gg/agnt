@@ -81,8 +81,10 @@ export function surfaceKind(surface) {
   return surface?.transport === 'host-cdp' ? 'launched' : 'widget';
 }
 
-export function hostInstanceId(userId) {
-  return `host:${userId}`;
+export function hostInstanceId(userId, lane = null) {
+  // A lane (one conversation's tab in the shared launched browser) is its own
+  // surface, so it is watched, driven and forgotten independently.
+  return lane ? `host:${userId}:${lane}` : `host:${userId}`;
 }
 
 /**
@@ -149,7 +151,7 @@ export function canBackendReachBridge(cdpUrl, clientAddress) {
  */
 export function registerSurface(userId, instanceId, {
   workspaceId = null, cdpUrl, url = null, title = null,
-  transport = 'electron-bridge', clientAddress = null,
+  transport = 'electron-bridge', clientAddress = null, lane = null,
 } = {}) {
   if (!userId || !instanceId) return { ok: false, reason: 'invalid' };
   if (!endpointIsValidFor(transport, cdpUrl)) return { ok: false, reason: 'not-a-bridge' };
@@ -161,7 +163,7 @@ export function registerSurface(userId, instanceId, {
 
   if (!byUser.has(userId)) byUser.set(userId, new Map());
   byUser.get(userId).set(instanceId, {
-    workspaceId, cdpUrl, transport, url, title, updatedAt: Date.now(),
+    workspaceId, cdpUrl, transport, url, title, lane, updatedAt: Date.now(),
   });
   return { ok: true };
 }
@@ -179,14 +181,19 @@ export function unregisterSurface(userId, instanceId) {
  *
  * Used when a run fails to connect: the entry is provably dead, and leaving it
  * would hand the same refused socket to every later turn.
+ *
+ * EVERY entry on that endpoint, not the first: conversation lanes share one
+ * launched browser, so a dead endpoint is dead for all of them, and stopping
+ * at the first match left the rest advertising it.
  */
 export function forgetSurfaceByUrl(userId, cdpUrl) {
   const surfaces = byUser.get(userId);
   if (!surfaces || !cdpUrl) return false;
-  for (const [instanceId, entry] of surfaces) {
-    if (entry.cdpUrl === cdpUrl) return unregisterSurface(userId, instanceId);
+  let removed = false;
+  for (const [instanceId, entry] of [...surfaces]) {
+    if (entry.cdpUrl === cdpUrl) removed = unregisterSurface(userId, instanceId) || removed;
   }
-  return false;
+  return removed;
 }
 
 /**
@@ -211,6 +218,10 @@ export function forgetSurfaceByUrl(userId, cdpUrl) {
  *
  * An EXACT request resolves to one candidate or none. If the browser a turn
  * named is gone, driving a different window would be worse than not running.
+ *
+ * A LANE is never a fallback for anyone. It belongs to one conversation and is
+ * reached only by its exact id; offering it as "the newest unbound browser"
+ * is precisely how one conversation used to end up driving another's page.
  */
 function candidatesFor(surfaces, { instanceId = null, workspaceId = null } = {}) {
   if (instanceId) {
@@ -221,6 +232,7 @@ function candidatesFor(surfaces, { instanceId = null, workspaceId = null } = {})
   }
 
   return [...surfaces.entries()]
+    .filter(([, entry]) => !entry.lane)
     .filter(([, entry]) => (workspaceId ? entry.workspaceId === workspaceId : !entry.workspaceId))
     .map(([candidateId, entry]) => ({ instanceId: candidateId, ...entry }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
