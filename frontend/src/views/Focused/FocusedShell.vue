@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-focused" :class="{ 'is-sidebar-closed': !sidebarOpen, 'is-compact': isMobile, 'is-borrowed': borrowed && !page }">
+  <div class="ui-focused" :class="{ 'is-sidebar-closed': !sidebarOpen, 'is-compact': isMobile, 'is-borrowed': borrowed }">
     <FocusedSidebar
       :open="sidebarOpen"
       :active-page="page"
@@ -8,7 +8,6 @@
       @new-chat="newChat"
       @open-page="openPage"
       @open-conversation="openConversation"
-      @navigate="navigate"
     />
     <button v-if="isMobile && sidebarOpen" type="button" class="focused-scrim" aria-label="Close sidebar" @click="setSidebar(false)"></button>
 
@@ -27,9 +26,10 @@
         <h1 v-if="chatTitle" class="focused-chat-title">{{ chatTitle }}</h1>
       </header>
 
-      <!-- Borrowed Studio: the full screen, untouched, with one way back. -->
-      <div v-if="borrowed && !page" class="focused-borrowed-bar" role="navigation" aria-label="Studio screen">
-        <button type="button" class="focused-back" @click="backToFocused">
+      <!-- A Studio-only screen (a forge's blank canvas, run traces…): shown in
+           full, untouched, with one way back. Everything else is a Focused page. -->
+      <div v-if="borrowed" class="focused-borrowed-bar" role="navigation" aria-label="Studio screen">
+        <button type="button" class="focused-back" @click="backToChat">
           <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Focused
         </button>
         <span class="focused-borrowed-title">{{ borrowedTitle }}</span>
@@ -38,12 +38,14 @@
         </button>
       </div>
 
-      <FocusedLibrary v-if="page === 'library'" :tab="libraryTabId" @update:tab="libraryTabId = $event" @run="run" @ask="ask" />
-      <FocusedPlugins v-else-if="page === 'plugins'" @run="run" @ask="ask" />
-      <FocusedScheduled v-else-if="page === 'scheduled'" @run="run" @ask="ask" />
+      <FocusedLibrary v-if="page === 'library'" :location="location" />
+      <FocusedPlugins v-else-if="page === 'plugins'" :item="location.item" />
+      <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
+      <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
+      <FocusedSettings v-else-if="page === 'settings'" />
 
-      <!-- The screens themselves, exactly as Studio renders them. v-show, not
-           v-if, so opening a page never tears down a streaming chat. -->
+      <!-- The screen Terminal mounted. On a Focused page that is Chat, kept
+           alive underneath (v-show) so a reply keeps streaming. -->
       <div v-show="!page" class="focused-screen">
         <slot />
       </div>
@@ -61,31 +63,38 @@
       </div>
     </aside>
 
-    <JumpPalette @navigate="navigate" />
+    <div v-if="toastText" class="focused-toast" role="status" aria-live="polite">{{ toastText }}</div>
+    <SimpleModal ref="modalRef" />
+    <JumpPalette @navigate="pushScreen" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, inject, provide, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import JumpPalette from '@/canvas/JumpPalette.vue';
-import { runJumpAction } from '@/canvas/jumpActions.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import FocusedSidebar from './FocusedSidebar.vue';
 import FocusedLibrary from './FocusedLibrary.vue';
 import FocusedPlugins from './FocusedPlugins.vue';
 import FocusedScheduled from './FocusedScheduled.vue';
-import { isBorrowedScreen, isFocusedPage, screenTitle } from './focusedModel.js';
+import FocusedMemory from './FocusedMemory.vue';
+import FocusedSettings from './FocusedSettings.vue';
+import { screenTitle } from './focusedModel.js';
+import { focusedLocation, routeFor } from './focusedRoutes.js';
 import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 import { graduationUnlock, GRADUATION_COPY, GRADUATION_ASKED_KEY, readFlag, writeFlag } from '@/services/uiModeDefault.js';
 
 const props = defineProps({
   screenName: { type: String, required: true },
 });
-const emit = defineEmits(['screen-change']);
+defineEmits(['screen-change']);
 
 const store = useStore();
 const router = useRouter();
+const route = useRoute();
 const isMobile = inject('isMobile', ref(false));
 
 // Every screen rendered inside this frame can ask which shell it is in.
@@ -114,72 +123,111 @@ function setSidebar(open) {
 watch(isMobile, (mobile) => {
   sidebarOpen.value = mobile ? false : readSidebarPref();
 });
-
-const page = ref(null);
-const libraryTabId = ref('agents');
-const borrowed = computed(() => isBorrowedScreen(props.screenName));
-// The open conversation's title. Empty on a new chat, so the home has no bar.
-const chatTitle = computed(() =>
-  !page.value && props.screenName === 'ChatScreen' ? String(store.state.chat?.savedOutputTitle || '').trim() : '',
-);
-const borrowedTitle = computed(() => screenTitle(props.screenName));
-
 function closeDrawer() {
   if (isMobile.value) sidebarOpen.value = false;
 }
 
-function navigate(screen, opts = {}) {
-  page.value = null;
-  closeDrawer();
-  emit('screen-change', screen, opts);
-}
+// ── Where we are: read from the route, never kept here ─────────────────────
+const location = computed(() => focusedLocation(props.screenName, route.query));
+const page = computed(() => location.value?.page || null);
+const borrowed = computed(() => !page.value && props.screenName !== 'ChatScreen');
+const borrowedTitle = computed(() => screenTitle(props.screenName));
+// The open conversation's title. Empty on a new chat, so the home has no bar.
+const chatTitle = computed(() =>
+  !page.value && props.screenName === 'ChatScreen' ? String(store.state.chat?.savedOutputTitle || '').trim() : '',
+);
 
+// ── Going places: every move is a route push (Back works, links work) ─────
+function pushScreen(screen, opts = {}) {
+  const target = screenRoute(screen, opts);
+  if (!target) return;
+  closeDrawer();
+  router.push({ path: target.path, query: target.query }).catch(() => {});
+}
+function go(loc) {
+  const [screen, opts] = routeFor(loc);
+  pushScreen(screen, opts);
+}
 function openPage(id) {
-  if (!isFocusedPage(id)) return;
-  page.value = id;
-  closeDrawer();
+  if (id === 'library') go({ page: 'library', tab: 'agents' });
+  else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
+  else if (['plugins', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
 }
-
-function run(action) {
-  runJumpAction(action, {
-    store,
-    router,
-    navigate,
-    onError: (message) => console.warn('[Focused] could not open:', message),
-  });
-  // chat/output actions route without going through navigate()
-  page.value = null;
+function backToChat() {
+  // Plain /chat: the conversation Chat is holding stays open (no reload).
   closeDrawer();
+  router.push('/chat').catch(() => {});
 }
-
 async function openConversation(outputId) {
-  page.value = null;
   closeDrawer();
-  await router.push({ path: '/chat', query: { 'content-id': outputId } });
+  await router.push({ path: '/chat', query: { 'content-id': outputId } }).catch(() => {});
 }
-
 async function newChat() {
-  page.value = null;
   closeDrawer();
   // Same two steps as Studio's sidebar (OutputList.handleNewChat), minus the
   // confirm: the current chat autosaves and stays one click away in Recents.
-  await router.push('/chat');
+  await router.push('/chat').catch(() => {});
   await nextTick();
   window.dispatchEvent(new CustomEvent('trigger-new-chat'));
 }
-
-/** Seed the real chat input. Nothing is sent until the user presses Enter. */
+/** A new chat with the request typed in. Nothing is sent until Enter. */
 async function ask(text) {
-  page.value = null;
-  closeDrawer();
-  if (props.screenName !== 'ChatScreen') {
-    emit('screen-change', 'ChatScreen', {});
-    await nextTick();
-  }
+  await newChat();
   await nextTick();
   window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } }));
 }
+function switchToStudio() {
+  store.dispatch('theme/setUiMode', 'studio');
+}
 
+// ── Dialogs, through the app's own modal ───────────────────────────────────
+const modalRef = ref(null);
+function confirm({ title, message, confirmText = 'OK', danger = false }) {
+  return modalRef.value?.showModal({
+    title,
+    message,
+    confirmText,
+    cancelText: 'Cancel',
+    showCancel: true,
+    confirmClass: danger ? 'btn-danger' : 'btn-primary',
+  });
+}
+async function prompt({ title, message, placeholder = '', secret = false, confirmText = 'Save' }) {
+  const value = await modalRef.value?.showModal({
+    title,
+    message,
+    isPrompt: true,
+    inputType: secret ? 'password' : 'text',
+    placeholder,
+    defaultValue: '',
+    confirmText,
+    cancelText: 'Cancel',
+    confirmClass: 'btn-primary',
+    showCancel: true,
+  });
+  return typeof value === 'string' ? value : null;
+}
+const toastText = ref('');
+let toastTimer = null;
+function toast(text) {
+  toastText.value = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastText.value = ''), 2600);
+}
+
+// One service for every page: where to go and how to ask. Pages never import
+// the router or Terminal; they only say what they want.
+provide('focusedNav', {
+  go,
+  ask,
+  chat: backToChat,
+  studio: (screen, opts = {}) => pushScreen(screen, { ...opts, studio: true }),
+  confirm,
+  prompt,
+  toast,
+});
+
+// ── Graduation ─────────────────────────────────────────────────────────────
 // The onion keeps recording what this account has built while it is in
 // Focused, so Studio's rail is right the day they switch. It announces nothing
 // here (canAnnounce: false) — its popups point at rail rows Focused does not
@@ -202,14 +250,6 @@ function acceptGraduation() {
   switchToStudio();
 }
 
-function backToFocused() {
-  navigate('ChatScreen');
-}
-
-function switchToStudio() {
-  store.dispatch('theme/setUiMode', 'studio');
-}
-
 // Ctrl/⌘+K opens the same Jump palette Studio has: every screen stays one
 // search away, which is what makes a smaller frame safe.
 function onKeydown(e) {
@@ -221,9 +261,12 @@ function onKeydown(e) {
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  clearTimeout(toastTimer);
+});
 
-defineExpose({ openPage, newChat, ask });
+defineExpose({ openPage, newChat, ask, go });
 </script>
 
 <style src="./focused.css"></style>

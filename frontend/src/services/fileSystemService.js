@@ -26,6 +26,15 @@ export async function searchTree(query, dir = '') {
   return res.json();
 }
 
+/**
+ * The URL the browser loads a workspace file's bytes from (<img>, <video>,
+ * <iframe>). It cannot carry an Authorization header; the media cookie
+ * (services/mediaAuth.js) authenticates it.
+ */
+export function rawFileUrl(path) {
+  return `${API_CONFIG.BASE_URL}/filesystem/raw?path=${encodeURIComponent(path)}`;
+}
+
 export async function getFile(path) {
   const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/file?path=${encodeURIComponent(path)}`, { headers: getHeaders() });
   if (!res.ok) throw new Error(`Failed to read file: ${res.statusText}`);

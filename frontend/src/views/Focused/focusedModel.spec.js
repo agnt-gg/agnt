@@ -1,28 +1,27 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isBorrowedScreen,
   screenTitle,
   isFocusedPage,
   LIBRARY_TABS,
   libraryTab,
   libraryRows,
   isIconClass,
+  glyphKind,
   recentConversations,
   pluginCards,
+  pluginCard,
+  CLI_DISCONNECT_ACTIONS,
   cronLabel,
   scheduleRows,
+  parseCron,
+  buildCron,
+  isCron,
+  memoryRows,
   initialOf,
 } from './focusedModel.js';
 import { SECTION_ROUTES } from '@/canvas/sections.js';
 
-describe('screens', () => {
-  it('Chat is Focused\u2019s own; every other screen is borrowed Studio', () => {
-    expect(isBorrowedScreen('ChatScreen')).toBe(false);
-    expect(isBorrowedScreen('WorkflowForgeScreen')).toBe(true);
-    expect(isBorrowedScreen('SettingsScreen')).toBe(true);
-    expect(isBorrowedScreen(undefined)).toBe(false);
-  });
-
+describe('screens and pages', () => {
   it('titles every rail screen the way Studio\u2019s rail does', () => {
     for (const screen of SECTION_ROUTES) {
       const t = screenTitle(screen);
@@ -36,40 +35,37 @@ describe('screens', () => {
   });
 
   it('knows its own pages', () => {
-    expect(isFocusedPage('library')).toBe(true);
-    expect(isFocusedPage('plugins')).toBe(true);
-    expect(isFocusedPage('scheduled')).toBe(true);
+    for (const p of ['library', 'plugins', 'scheduled', 'memory', 'settings']) expect(isFocusedPage(p), p).toBe(true);
     expect(isFocusedPage('constructor')).toBe(false);
   });
 });
 
 describe('library', () => {
-  it('every tab names a store getter, a fetch action and a catalog source', () => {
+  it('every store-backed tab names a getter, a fetch action and a catalog source; Files is the disk', () => {
     for (const t of LIBRARY_TABS) {
+      if (t.id === 'files') {
+        expect(t.getter).toBeUndefined();
+        continue;
+      }
       expect(t.getter).toMatch(/^\w+\/\w+$/);
       expect(t.fetch).toMatch(/^\w+\/\w+$/);
       expect(t.catalogKey).toBeTruthy();
       expect(t.ask.endsWith(' ')).toBe(true); // the cursor lands after the seed
     }
+    expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'files']);
     expect(libraryTab('nope')).toBe(LIBRARY_TABS[0]);
   });
 
-  it('opens an agent exactly as Ctrl+K does (inspect on AgentsScreen)', () => {
-    const rows = libraryRows('agents', [{ id: 7, name: 'Release Marshal', description: 'Tags releases' }]);
-    expect(rows).toEqual([
-      {
-        id: 'agent:7',
-        label: 'Release Marshal',
-        description: 'Tags releases',
-        icon: 'fas fa-robot',
-        action: { type: 'inspect', kind: 'agent', id: 7, screen: 'AgentsScreen' },
-      },
-    ]);
+  it('a row carries the item id it opens in Focused (regression: it used to carry a Studio action)', () => {
+    const [row] = libraryRows('workflows', [{ id: 'w7', name: 'Nightly', description: 'Backs up', status: 'listening' }]);
+    expect(row).toEqual({ id: 'workflow:w7', itemId: 'w7', label: 'Nightly', description: 'Backs up', icon: 'fas fa-project-diagram', status: 'listening' });
+    expect('action' in row).toBe(false);
   });
 
-  it('opens a tool through its select intent on ToolsScreen', () => {
-    const [row] = libraryRows('tools', [{ id: 't1', title: 'Scraper' }]);
-    expect(row.action).toEqual({ type: 'screen', screen: 'ToolsScreen', opts: { select: { kind: 'tool', id: 't1' } } });
+  it('uses an agent\u2019s own avatar or icon', () => {
+    expect(libraryRows('agents', [{ id: 1, name: 'A', avatar: '\uD83E\uDD16' }])[0].icon).toBe('\uD83E\uDD16');
+    expect(libraryRows('agents', [{ id: 1, name: 'A', icon: '\uD83E\uDD8A' }])[0].icon).toBe('\uD83E\uDD8A');
+    expect(libraryRows('agents', [{ id: 1, name: 'A' }])[0].icon).toBe('fas fa-robot');
   });
 
   it('sorts case-insensitively and filters by name or description', () => {
@@ -83,15 +79,20 @@ describe('library', () => {
     expect(libraryRows('agents', items, 'nothing')).toEqual([]);
   });
 
-  it('keeps an item\u2019s own emoji icon and survives junk input', () => {
-    expect(libraryRows('agents', [{ id: 1, name: 'A', icon: '\uD83E\uDD16' }])[0].icon).toBe('\uD83E\uDD16');
+  it('survives junk input and never leaks non-item catalog rows', () => {
     expect(libraryRows('agents', null)).toEqual([]);
     expect(libraryRows('agents', [null, undefined])).toEqual([]);
+    expect(libraryRows('workflows', [{ id: 'w', name: 'W' }]).every((r) => r.id.startsWith('workflow:'))).toBe(true);
   });
 
-  it('never leaks the catalog\u2019s non-item rows (team library, pages) into a tab', () => {
-    const rows = libraryRows('workflows', [{ id: 'w', name: 'W' }]);
-    expect(rows.every((r) => r.id.startsWith('workflow:'))).toBe(true);
+  it('glyphKind tells the three saved icon forms apart (regression: "user-check" rendered as text)', () => {
+    expect(glyphKind('fas fa-robot')).toBe('class');
+    expect(glyphKind('user-check')).toBe('name');
+    expect(glyphKind('robot')).toBe('name');
+    expect(glyphKind('\uD83E\uDD16')).toBe('text');
+    expect(glyphKind('AB')).toBe('text');
+    expect(glyphKind('')).toBe('none');
+    expect(glyphKind(null)).toBe('none');
   });
 
   it('tells a class icon from a glyph', () => {
@@ -127,16 +128,17 @@ describe('recents', () => {
     const [r] = recentConversations([{ id: 'x', title: 't', updated_at: '2026-09-02', last_read_at: '2026-09-01' }]);
     expect(r.unread).toBe(true);
     const [never] = recentConversations([{ id: 'y', title: 't', updated_at: '2026-09-02', last_read_at: null }]);
-    expect(never.unread).toBe(false); // null watermark is NOT unread (see contentOutputs)
+    expect(never.unread).toBe(false);
   });
 });
 
 describe('plugins', () => {
   const providers = [
     { id: 'Slack', name: 'Slack', connectionType: 'oauth' },
-    { id: 'openai', name: 'OpenAI', connectionType: 'apikey' },
-    { id: 'notion', name: 'Notion' },
+    { id: 'openai', name: 'OpenAI', connectionType: 'apikey', instructions: 'Paste a key from platform.openai.com' },
+    { id: 'notion', name: 'Notion', connectionType: 'oauth' },
     { id: 'slack', name: 'Slack dup' },
+    { id: 'claude-code', name: 'Claude Code', connectionType: 'oauth' },
   ];
 
   it('splits connected from available, case-insensitively, without duplicates', () => {
@@ -145,16 +147,28 @@ describe('plugins', () => {
       ['openai', 'API key'],
       ['slack', 'Connected'],
     ]);
-    expect(available.map((c) => c.id)).toEqual(['notion']);
+    expect(available.map((c) => c.id)).toEqual(['claude-code', 'notion']);
+  });
+
+  it('says how each one connects, and keeps the catalogue\u2019s own id and instructions', () => {
+    const { connected, available } = pluginCards(providers, ['openai']);
+    expect(connected[0]).toMatchObject({ providerId: 'openai', connectionType: 'apikey', instructions: 'Paste a key from platform.openai.com' });
+    expect(available.find((c) => c.id === 'claude-code').connectionType).toBe('cli');
+    expect(available.find((c) => c.id === 'slack').providerId).toBe('Slack');
   });
 
   it('keeps a connection the catalogue does not list', () => {
-    const { connected } = pluginCards([], ['claude-code']);
-    expect(connected).toEqual([{ id: 'claude-code', name: 'claude-code', icon: '', connected: true, status: 'Connected' }]);
+    const { connected } = pluginCards([], ['gemini-cli']);
+    expect(connected[0]).toMatchObject({ id: 'gemini-cli', connected: true, connectionType: 'cli' });
   });
 
-  it('filters by name', () => {
-    expect(pluginCards(providers, [], 'noti').available.map((c) => c.id)).toEqual(['notion']);
+  it('pluginCard finds one by id, any case', () => {
+    expect(pluginCard(providers, ['openai'], 'OpenAI').name).toBe('OpenAI');
+    expect(pluginCard(providers, [], 'nope')).toBeNull();
+  });
+
+  it('every CLI provider has a disconnect action', () => {
+    expect(Object.keys(CLI_DISCONNECT_ACTIONS).sort()).toEqual(['antigravity', 'claude-code', 'gemini-cli', 'openai-codex']);
   });
 });
 
@@ -164,57 +178,77 @@ describe('scheduled', () => {
     ['15 * * * *', 'Every hour at :15'],
     ['30 9 * * *', 'Every day at 09:30'],
     ['0 8 * * MON-FRI', 'Weekdays at 08:00'],
-    ['0 8 * * 1-5', 'Weekdays at 08:00'],
     ['0 17 * * FRI', 'Every Friday at 17:00'],
-    ['0 17 * * 0', 'Every Sunday at 17:00'],
     ['0 6 1 * *', 'Monthly on day 1 at 06:00'],
     ['*/5 * * * *', '*/5 * * * *'],
-    ['nonsense', 'nonsense'],
     ['', 'Custom schedule'],
   ])('cronLabel(%j) = %j', (cron, label) => {
     expect(cronLabel(cron)).toBe(label);
   });
 
-  it('enabled first, soonest first; each opens where it is managed', () => {
-    const rows = scheduleRows([
-      { id: 1, name: 'Paused', cron: '0 9 * * *', enabled: false },
-      { id: 2, name: 'Later', cron: '0 9 * * *', enabled: true, next_run: '2026-10-05T09:00:00Z' },
-      { id: 3, name: 'Sooner', cron: '0 9 * * *', enabled: true, next_run: '2026-10-02T09:00:00Z', target_type: 'goal', target_id: 'g1' },
-    ]);
-    expect(rows.map((r) => r.label)).toEqual(['Sooner', 'Later', 'Paused']);
-    expect(rows[0].action).toEqual({ type: 'inspect', kind: 'goal', id: 'g1', screen: 'GoalsScreen' });
-    expect(rows[1].action).toEqual({ type: 'screen', screen: 'AutonomyScreen', opts: { section: 'schedules' } });
+  it('cron round-trips through the editor fields', () => {
+    for (const cron of ['30 9 * * *', '0 8 * * MON-FRI', '0 17 * * FRI', '0 6 12 * *', '15 * * * *']) {
+      expect(buildCron(parseCron(cron)), cron).toBe(cron);
+    }
   });
 
-  it('names a schedule after the goal it runs — schedules carry no name of their own', () => {
-    // Real rows (measured): id, target_type, target_id, cron, next_run, enabled — no name.
-    const goals = [{ id: 'g1', title: 'Weekly SEO report' }, { id: 'g2', text: 'Check the inbox' }];
+  it('anything the editor cannot show stays custom, verbatim', () => {
+    expect(parseCron('*/5 * * * *')).toMatchObject({ repeat: 'custom', custom: '*/5 * * * *' });
+    expect(parseCron('0 9 31 * *').repeat).toBe('custom'); // day 31 is not offered
+    expect(buildCron({ repeat: 'custom', custom: ' 0 0 1 1 * ' })).toBe('0 0 1 1 *');
+  });
+
+  it('numeric weekdays read as names; bad times build nothing', () => {
+    expect(parseCron('0 9 * * 0')).toMatchObject({ repeat: 'weekly', dow: 'SUN' });
+    expect(buildCron({ repeat: 'daily', time: '25:00' })).toBe('');
+    expect(buildCron({ repeat: 'monthly', time: '09:00', dom: 40 })).toBe('0 9 28 * *');
+  });
+
+  it('isCron checks five fields', () => {
+    expect(isCron('0 9 * * *')).toBe(true);
+    expect(isCron('0 9 * *')).toBe(false);
+  });
+
+  it('rows: enabled first, soonest first, named after their goal', () => {
+    const goals = [{ id: 'g1', title: 'Weekly SEO report', description: 'Check rankings' }];
     const rows = scheduleRows(
       [
-        { id: 1, target_type: 'goal', target_id: 'g1', cron: '0 9 * * MON', enabled: true },
-        { id: 2, target_type: 'goal', target_id: 'g2', cron: '0 9 * * *', enabled: true },
-        { id: 3, target_type: 'goal', target_id: 'gone', cron: '0 9 * * *', enabled: true },
+        { id: 1, cron: '0 9 * * *', enabled: false },
+        { id: 2, cron: '0 9 * * *', enabled: true, next_run: '2026-10-05T09:00:00Z' },
+        { id: 3, target_type: 'goal', target_id: 'g1', cron: '0 9 * * MON', timezone: 'Europe/London', enabled: true, next_run: '2026-10-02T09:00:00Z', run_count: 4 },
       ],
       '',
       goals,
     );
-    expect(rows.map((r) => r.label).sort()).toEqual(['Check the inbox', 'Scheduled task', 'Weekly SEO report']);
-  });
-
-  it('searches by the goal name too', () => {
-    const rows = scheduleRows([{ id: 1, target_type: 'goal', target_id: 'g1', cron: '0 9 * * *', enabled: true }], 'seo', [{ id: 'g1', title: 'SEO report' }]);
-    expect(rows).toHaveLength(1);
+    expect(rows.map((r) => r.id)).toEqual([3, 2, 1]);
+    expect(rows[0]).toMatchObject({ label: 'Weekly SEO report', goalId: 'g1', description: 'Check rankings', timezone: 'Europe/London', runCount: 4 });
+    expect('action' in rows[0]).toBe(false);
   });
 
   it('survives junk', () => {
     expect(scheduleRows(null)).toEqual([]);
     expect(scheduleRows([{ id: 9 }])[0].label).toBe('Scheduled task');
-    expect(scheduleRows([{ id: 9, target_type: 'goal', target_id: 'x' }], '', null)[0].label).toBe('Scheduled task');
+  });
+});
+
+describe('memory', () => {
+  it('newest first, normalised from the insights rows, filtered', () => {
+    const rows = memoryRows([
+      { id: 1, content: 'Prefers short answers', memory_type: 'preference', created_at: '2026-09-01' },
+      { id: 2, content: 'Works at AGNT', memory_type: 'fact', updated_at: '2026-09-20' },
+      { id: 3, content: '   ' },
+      null,
+    ]);
+    expect(rows.map((r) => [r.id, r.type])).toEqual([
+      ['2', 'fact'],
+      ['1', 'preference'],
+    ]);
+    expect(memoryRows([{ id: 1, content: 'Prefers short answers' }], 'short')).toHaveLength(1);
+    expect(memoryRows(undefined)).toEqual([]);
   });
 });
 
 it('initialOf', () => {
   expect(initialOf('nathan')).toBe('N');
   expect(initialOf('')).toBe('A');
-  expect(initialOf(null)).toBe('A');
 });

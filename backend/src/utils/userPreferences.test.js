@@ -101,8 +101,8 @@ describe('validation and coercion', () => {
     expect(result.device.rejected).toEqual([{ key: 'currentTheme', reason: 'unknown key' }]);
   });
 
-  it('accepts the two uiMode values and rejects anything else', () => {
-    for (const mode of ['focused', 'studio']) {
+  it('accepts the uiMode values (and the legacy "simple") and rejects anything else', () => {
+    for (const mode of ['focused', 'studio', 'simple']) {
       const { next, result } = mergePreferences(null, { global: { uiMode: mode } }, 100);
       expect(result.global.applied).toEqual(['uiMode']);
       expect(next.global.uiMode).toBe(mode);

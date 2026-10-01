@@ -2,7 +2,7 @@ import { mediaStorage } from '../../utils/mediaStorage.js';
 import { maxBytesFor, formatMb } from '../../services/backgroundLimits.js';
 import { readStoredUiMode, resolveUiMode, normalizeUiMode, otherUiMode, UI_MODE_STORAGE_KEY } from '../../services/uiMode.js';
 
-const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest'];
+export const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest'];
 
 /* Themes that carry their own light and dark face and follow the desktop's colour scheme. */
 const SYSTEM_FOLLOWING_THEMES = ['everforest'];

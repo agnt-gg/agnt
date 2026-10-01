@@ -122,7 +122,9 @@ export const GLOBAL_PREFS = Object.freeze({
   assetPanelFullWidth: bool(),
   // Focused vs Studio shell (frontend/src/services/uiMode.js). Global: it is a
   // way of working, not a fit to a screen, so it follows the account.
-  uiMode: str(8, ['focused', 'studio']),
+  // 'simple' is the shell's name while it was built; still accepted so a
+  // client from then keeps syncing (the frontend reads it as 'focused').
+  uiMode: str(8, ['focused', 'studio', 'simple']),
 });
 
 export const DEVICE_PREFS = Object.freeze({

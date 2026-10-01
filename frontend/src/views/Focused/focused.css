@@ -69,7 +69,9 @@
    with a background and a bottom border. Declared explicitly so the theme's
    element rule cannot draw a stray panel here. */
 .ui-focused .focused-topbar,
-.ui-focused .focused-page-head {
+.ui-focused .focused-page-head,
+.ui-focused .focused-edit-head,
+.ui-focused .focused-form-foot {
   background: transparent;
   border: 0;
 }
@@ -978,6 +980,672 @@
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+/* ── Editors: the demo's item pages (agent, workflow, tool, skill, widget,
+   file, connection, routine, memory) ── */
+
+.ui-focused .focused-editor {
+  padding-bottom: 96px; /* room for the save bar */
+}
+.ui-focused .focused-page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px -8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ui-focused .focused-page-back:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.ui-focused .focused-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 0;
+}
+.ui-focused .focused-edit-head .focused-edit-names {
+  align-self: flex-start;
+}
+.ui-focused .focused-inline-title::placeholder,
+.ui-focused .focused-inline-sub::placeholder,
+.ui-focused .focused-input::placeholder,
+.ui-focused .focused-doc-edit::placeholder,
+.ui-focused .focused-code-edit::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+.ui-focused .focused-edit-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 22px;
+  overflow: hidden;
+}
+.ui-focused .focused-edit-icon svg,
+.ui-focused .focused-row-icon svg {
+  width: 60%;
+  height: 60%;
+}
+.ui-focused .focused-edit-icon.editable {
+  cursor: pointer;
+}
+.ui-focused .focused-edit-icon.editable:hover {
+  box-shadow: 0 0 0 2px var(--fill-brand);
+}
+.ui-focused .focused-edit-names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ui-focused .focused-inline-title,
+.ui-focused .focused-plain-title {
+  width: 100%;
+  margin: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+.ui-focused .focused-inline-sub {
+  width: 100%;
+  margin-left: -6px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.ui-focused .focused-inline-title:not([readonly]):hover,
+.ui-focused .focused-inline-sub:not([readonly]):hover {
+  border-color: var(--terminal-border-color);
+}
+.ui-focused .focused-inline-title:focus,
+.ui-focused .focused-inline-sub:focus {
+  outline: none;
+  border-color: var(--fill-brand);
+  background: var(--color-darker-0);
+}
+.ui-focused .focused-edit-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ui-focused .focused-edit-meta.ok,
+.ui-focused .focused-edit-hint.ok {
+  color: var(--status-green-text);
+}
+.ui-focused .focused-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-focused .focused-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.ui-focused .focused-btn.danger {
+  color: var(--fill-danger);
+  border-color: transparent;
+}
+/* A footer's leading Delete aligns with the content edge above it. */
+.ui-focused .focused-form-foot > .focused-btn.danger:first-child {
+  margin-left: -12px;
+}
+.ui-focused .focused-btn.danger:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--fill-danger);
+}
+.ui-focused .focused-btn:disabled,
+.ui-focused .focused-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ui-focused .focused-edit-note {
+  margin: -6px 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.ui-focused .focused-edit-note.warn {
+  color: var(--status-amber-text);
+}
+.ui-focused .focused-instructions {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.ui-focused .focused-edit-block {
+  margin-bottom: 22px;
+}
+.ui-focused .focused-edit-block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ui-focused .focused-edit-block-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ui-focused .focused-edit-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ui-focused .focused-edit-card {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ui-focused .focused-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+.ui-focused .focused-edit-row.column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ui-focused .focused-edit-row + .focused-edit-row {
+  border-top: 1px solid var(--terminal-border-color);
+}
+.ui-focused .focused-edit-label {
+  flex: 0 0 120px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.ui-focused .focused-edit-pair {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+}
+.ui-focused .focused-edit-pair > * {
+  flex: 1;
+  min-width: 0;
+}
+.ui-focused .focused-edit-pair > button {
+  flex: 0 0 auto;
+}
+.ui-focused .focused-input {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: var(--color-darker-0);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.ui-focused textarea.focused-input {
+  width: 100%;
+  line-height: 1.5;
+  resize: vertical;
+}
+.ui-focused .focused-input:focus {
+  outline: none;
+  border-color: var(--fill-brand);
+}
+.ui-focused .focused-input.mono,
+.ui-focused .focused-code-edit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.ui-focused .focused-input.bad {
+  border-color: var(--fill-danger);
+}
+.ui-focused .focused-doc-edit,
+.ui-focused .focused-code-edit {
+  width: 100%;
+  min-height: 160px;
+  padding: 14px 16px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  background: var(--color-darker-0);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+/* After the shared `font: inherit` above, so the monospace face wins. */
+.ui-focused .focused-code-edit {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+.ui-focused .focused-doc-edit:focus,
+.ui-focused .focused-code-edit:focus {
+  outline: none;
+  border-color: var(--fill-brand);
+}
+
+/* A switch, as in the demo: a pill with a knob, brand when on. */
+.ui-focused .focused-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  margin-left: auto;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--terminal-border-color);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ui-focused .focused-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform 0.15s, background 0.15s;
+}
+.ui-focused .focused-switch[aria-checked='true'] {
+  background: var(--fill-brand);
+  box-shadow: none;
+}
+.ui-focused .focused-switch[aria-checked='true']::after {
+  transform: translateX(16px);
+  background: var(--on-fill-brand);
+}
+.ui-focused .focused-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ui-focused .focused-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ui-focused .focused-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  font-size: 12px;
+}
+.ui-focused .focused-chip button {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.ui-focused .focused-chip button:hover {
+  color: var(--text-primary);
+}
+
+/* Workflow steps */
+.ui-focused .focused-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ui-focused .focused-step-card {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ui-focused .focused-step-sum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.ui-focused .focused-step-sum::-webkit-details-marker {
+  display: none;
+}
+.ui-focused .focused-step-num {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ui-focused .focused-step-title {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ui-focused .focused-step-title:focus {
+  outline: none;
+  border-color: var(--fill-brand);
+}
+.ui-focused .focused-step-type {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.ui-focused .focused-step-params {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 14px 14px 46px;
+}
+.ui-focused .focused-param-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ui-focused .focused-param-label {
+  flex: 0 0 140px;
+  padding-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-param-row > .focused-input {
+  flex: 1;
+  min-width: 0;
+}
+.ui-focused .focused-param-row > .focused-switch {
+  margin: 6px 0 0;
+}
+
+/* Tool inputs */
+.ui-focused .focused-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 130px auto 32px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ui-focused .focused-req {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Tall enough for a dashboard widget; drag the corner for a bigger one. */
+.ui-focused .focused-widget-preview {
+  height: 520px;
+  min-height: 240px;
+  resize: vertical;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+/* Files */
+.ui-focused .focused-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.ui-focused .focused-crumbs i {
+  font-size: 9px;
+}
+.ui-focused .focused-crumb {
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.ui-focused .focused-crumb:hover {
+  background: var(--surface-hover);
+}
+.ui-focused .focused-crumb.current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.ui-focused .focused-file-media {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.ui-focused .focused-file-media img {
+  max-width: 100%;
+  max-height: 70vh;
+}
+.ui-focused .focused-file-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+
+/* Lists: a status pill, a row with its own control, a cap note */
+.ui-focused .focused-status-pill {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.ui-focused .focused-status-pill.live {
+  color: var(--status-green-text);
+}
+.ui-focused .focused-status-pill.bad {
+  color: var(--fill-danger);
+}
+.ui-focused div.focused-row {
+  cursor: default;
+}
+.ui-focused .focused-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-focused .focused-row-main > .focused-switch {
+  margin-left: 0;
+}
+.ui-focused .focused-row-text strong.wrap {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ui-focused .focused-foot-note {
+  margin: 10px 4px 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* Forms (routine, memory) */
+.ui-focused .focused-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ui-focused .focused-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ui-focused .focused-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.ui-focused .focused-preview-line {
+  margin: -4px 0 0;
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  align-self: flex-start;
+}
+.ui-focused .focused-segmented button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ui-focused .focused-segmented button.active {
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.ui-focused .focused-form-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ui-focused .focused-flex {
+  flex: 1;
+}
+
+/* Save bar: sticks to the bottom of the page while there is something to save. */
+.ui-focused .focused-save-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  background: var(--color-popup);
+  box-shadow: var(--shadow-overlay);
+}
+.ui-focused .focused-save-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-save-text.error {
+  color: var(--fill-danger);
+}
+
+.ui-focused .focused-menu-item.active {
+  background: var(--surface-active);
+}
+
+.ui-focused .focused-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  z-index: 60;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-popup);
+  box-shadow: var(--shadow-overlay);
+  font-size: 13px;
 }
 
 /* ── Graduation offer ─────────────────────────────────────────────────────────────── */

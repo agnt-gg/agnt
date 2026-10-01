@@ -27,11 +27,25 @@
         <i :class="item.icon" aria-hidden="true"></i><span>{{ item.label }}</span>
       </button>
       <div class="focused-menu-anchor">
-        <button type="button" class="focused-nav-row" :aria-expanded="moreOpen ? 'true' : 'false'" @click="moreOpen = !moreOpen">
+        <button
+        type="button"
+        class="focused-nav-row"
+        :class="{ active: moreItems.some((m) => m.page === activePage) }"
+        :aria-expanded="moreOpen ? 'true' : 'false'"
+        @click="moreOpen = !moreOpen"
+      >
           <i class="fas fa-ellipsis-h" aria-hidden="true"></i><span>More</span>
         </button>
         <div v-if="moreOpen" class="focused-menu" role="menu" @click="moreOpen = false">
-          <button v-for="m in moreItems" :key="m.screen" type="button" role="menuitem" class="focused-menu-item" @click="$emit('navigate', m.screen, m.opts || {})">
+          <button
+            v-for="m in moreItems"
+            :key="m.page"
+            type="button"
+            role="menuitem"
+            class="focused-menu-item"
+            :class="{ active: activePage === m.page }"
+            @click="$emit('open-page', m.page)"
+          >
             <i :class="m.icon" aria-hidden="true"></i>{{ m.label }}
           </button>
           <div class="focused-menu-sep"></div>
@@ -73,7 +87,7 @@
       </button>
       <div v-if="accountOpen" class="focused-menu focused-menu-up" role="menu" @click="accountOpen = false">
         <div v-if="userEmail" class="focused-menu-note">{{ userEmail }}</div>
-        <button type="button" role="menuitem" class="focused-menu-item" @click="$emit('navigate', 'SettingsScreen', {})">
+        <button type="button" role="menuitem" class="focused-menu-item" @click="$emit('open-page', 'settings')">
           <i class="fas fa-cog" aria-hidden="true"></i>Settings
         </button>
         <div class="focused-menu-sep"></div>
@@ -96,7 +110,7 @@ defineProps({
   activePage: { type: String, default: null },
   onChat: { type: Boolean, default: false },
 });
-defineEmits(['close', 'new-chat', 'open-page', 'open-conversation', 'navigate']);
+defineEmits(['close', 'new-chat', 'open-page', 'open-conversation']);
 
 const store = useStore();
 const route = useRoute();
@@ -107,13 +121,12 @@ const pageItems = [
   { id: 'plugins', label: FOCUSED_PAGES.plugins.title, icon: FOCUSED_PAGES.plugins.icon },
 ];
 
-// Studio screens one click from Focused. Everything else is Ctrl+K away.
+// Focused pages one click away (the demo's More). Studio-only screens are a
+// Ctrl+K search away, so nothing here leaves Focused.
 const moreItems = [
-  { screen: 'MemoryScreen', label: 'Memory', icon: 'fas fa-brain' },
-  { screen: 'GoalsScreen', label: 'Goals', icon: 'fas fa-bullseye' },
-  { screen: 'TracesScreen', label: 'Activity', icon: 'fas fa-stream' },
-  { screen: 'ArtifactsScreen', label: 'Files', icon: 'fas fa-folder' },
-  { screen: 'DashboardScreen', label: 'Dashboard', icon: 'fas fa-chart-line' },
+  { page: 'memory', label: 'Memory', icon: FOCUSED_PAGES.memory.icon },
+  { page: 'files', label: 'Files', icon: 'fas fa-folder' },
+  { page: 'settings', label: 'Settings', icon: FOCUSED_PAGES.settings.icon },
 ];
 
 const moreOpen = ref(false);

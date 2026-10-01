@@ -3,7 +3,7 @@ import { settingsDirectory, appsDirectory } from '@/mobile/sectionDirectories.js
 // the OTHER hand-maintained screen lists it must agree with:
 //
 //   1. Terminal.vue's lazy-import map        (which component loads)
-//   2. Terminal.vue's screenRoutes           (which URL the screen owns)
+//   2. Terminal/screenRoute.js SCREEN_ROUTES (which URL the screen owns)
 //   3. router/index.js terminalScreen metas  (deep links / back-forward)
 //   4. tourTargets.js sidebar.* ids          (guided-tour targets)
 //
@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings, visibleTabs } from './sections.js';
 import { TOUR_TARGETS } from '@/views/_components/utility/tourTargets.js';
 import { RAIL_BADGE_READERS } from './railBadges.js';
+import { SCREEN_ROUTES } from '@/views/Terminal/screenRoute.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const terminalSrc = read('../views/Terminal/Terminal.vue');
@@ -41,8 +42,9 @@ const lazyMapScreens = [...terminalSrc.matchAll(/\['(\w+Screen)',\s*\(\)\s*=>\s*
 const eagerScreens = [...terminalSrc.matchAll(/^\s*(\w+Screen):\s*markRaw\(/gm)].map((m) => m[1]);
 const resolvableScreens = [...lazyMapScreens, ...eagerScreens];
 
-// Terminal.vue screenRoutes entries: XScreen: '/route',
-const screenRouteScreens = [...terminalSrc.matchAll(/^\s*(\w+Screen):\s*'\/[^']*',?\s*$/gm)].map((m) => m[1]);
+// The screen → URL table changeScreen uses (imported, not regex-parsed: it
+// moved out of Terminal.vue into a pure module).
+const screenRouteScreens = Object.keys(SCREEN_ROUTES);
 
 // router/index.js: meta: { ..., terminalScreen: 'XScreen' }
 const routerScreens = [...routerSrc.matchAll(/terminalScreen:\s*'(\w+Screen)'/g)].map((m) => m[1]);
@@ -61,7 +63,7 @@ describe('canvas sections registry', () => {
     expect(missing).toEqual([]);
   });
 
-  it('every section screen has a screenRoutes entry in Terminal.vue', () => {
+  it('every section screen has a SCREEN_ROUTES entry', () => {
     const missing = sectionScreens.filter((s) => !screenRouteScreens.includes(s));
     expect(missing).toEqual([]);
   });

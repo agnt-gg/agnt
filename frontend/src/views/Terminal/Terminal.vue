@@ -18,7 +18,7 @@
         <component
           v-if="isScreenReady"
           :is="activeScreenComponent"
-          :key="activeScreen"
+          :key="mountedScreen"
           @screen-change="changeScreen"
         />
       </KeepAlive>
@@ -60,6 +60,8 @@ import FocusedShell from '@/views/Focused/FocusedShell.vue';
 import TryFocusedNote from '@/views/Focused/TryFocusedNote.vue';
 import { isUiModeToggleKey } from '@/services/uiMode.js';
 import { useUiModeDefault } from '@/composables/useUiModeDefault.js';
+import { screenRoute, normalizeScreen, isNavigation } from './screenRoute.js';
+import { focusedLocation } from '@/views/Focused/focusedRoutes.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 
 // Chat is the only eager screen (it is the default). Everything else —
@@ -161,80 +163,32 @@ export default {
     // Placeholder shown while a screen chunk is still loading
     const ScreenPlaceholder = { template: '<div style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>' };
 
-    const isScreenReady = computed(() => !!screenComponents[activeScreen.value]);
-
-    const activeScreenComponent = computed(() => {
-      return screenComponents[activeScreen.value] || null;
+    // In Focused, a route Focused has its own page for (focusedRoutes.js)
+    // mounts Chat underneath instead of the Studio screen: the page covers it,
+    // the conversation keeps streaming, and Studio's screen never loads just
+    // to be hidden. In Studio this is always the active screen.
+    const mountedScreen = computed(() => {
+      if (store.getters['theme/uiMode'] !== 'focused') return activeScreen.value;
+      return focusedLocation(activeScreen.value, route.query) ? 'ChatScreen' : activeScreen.value;
     });
 
-    const changeScreen = (screenName, options = {}) => {
-      // Agent Forge became a modal on Agents. Every old entry point (dashboard,
-      // nav, jump palette, chat's "edit agent") resolves here: with an agent id
-      // it opens that agent, otherwise it opens the new-agent modal.
-      if (screenName === 'AgentForgeScreen') {
-        screenName = 'AgentsScreen';
-        options = options.agentId
-          ? { ...options, select: { kind: 'agent', id: options.agentId } }
-          : { ...options, newAgent: true };
-      }
-      const screenRoutes = {
-        ChatScreen: '/chat',
-        AgentsScreen: '/agents',
-        ToolsScreen: '/tools',
-        WorkflowsScreen: '/workflows',
-        DashboardScreen: '/dashboard',
-        SettingsScreen: '/settings',
-        WorkflowForgeScreen: '/workflow-forge',
-        ToolForgeScreen: '/tool-forge',
-        BallJumperScreen: '/ball-jumper',
-        ConnectorsScreen: '/connectors',
-        PluginsScreen: '/plugins',
-        GoalsScreen: '/goals',
-        TracesScreen: '/traces',
-        MarketplaceScreen: '/marketplace',
-        WidgetManagerScreen: '/widget-manager',
-        WidgetForgeScreen: '/widget-forge',
-        SkillsScreen: '/skills',
-        ArtifactsScreen: '/artifacts',
-        ExperimentsScreen: '/experiments',
-        MemoryScreen: '/memory',
-        AutonomyScreen: '/autonomy',
-        WorkspaceScreen: '/workspace',
-      };
+    const isScreenReady = computed(() => !!screenComponents[mountedScreen.value]);
 
-      if (screenName in screenRoutes) {
-        activeScreen.value = screenName;
-        const targetPath = screenRoutes[screenName];
+    const activeScreenComponent = computed(() => {
+      return screenComponents[mountedScreen.value] || null;
+    });
 
-        if (screenName === 'WorkflowForgeScreen' && options.workflowId) {
-          router.push({ path: targetPath, query: { id: options.workflowId } });
-        } else if (screenName === 'WorkflowForgeScreen' && 'workflowId' in options) {
-          // Explicitly no workflow ("+ New workflow"): drop any ?id= so the
-          // forge opens its blank canvas instead of the last workflow.
-          router.push({ path: targetPath });
-        } else if (screenName === 'ToolForgeScreen' && options.toolId) {
-          router.push({ path: targetPath, query: { 'tool-id': options.toolId } });
-        } else if (screenName === 'TracesScreen' && options.selectedExecutionId) {
-          router.push({ path: targetPath, query: { executionId: options.selectedExecutionId } });
-        } else if (screenName === 'ExperimentsScreen' && options.selectedInsight) {
-          router.push({ path: targetPath, query: { insightId: options.selectedInsight.id } });
-        } else if (options.select || options.section || options.status || options.newGoal || options.newAgent) {
-          // Generic AGNT One navigation intents, carried in the URL so a
-          // deep link reproduces them: `select` opens an entity in the
-          // screen's inspector, `section` picks a left-nav view (Settings /
-          // Connectors), `status` presets a list filter, `newGoal` opens the
-          // composer on Goals.
-          const query = {};
-          if (options.select) query.select = `${options.select.kind}:${options.select.id}`;
-          if (options.section) query.section = options.section;
-          if (options.status) query.status = options.status;
-          if (options.newGoal || options.newAgent) query.new = '1';
-          router.push({ path: targetPath, query });
-        } else if (route.path !== targetPath) {
-          router.push(targetPath);
-        }
-      } else {
+    const changeScreen = (requestedScreen, requestedOptions = {}) => {
+      const [screenName, options] = normalizeScreen(requestedScreen, requestedOptions);
+      const target = screenRoute(screenName, options);
+      if (!target) {
         console.warn(`Attempted to navigate to unknown screen: ${screenName}`);
+        return;
+      }
+      activeScreen.value = screenName;
+      // The ?id= / bare-path rules live in screenRoute.js (pure, tested).
+      if (isNavigation(target, route.path)) {
+        router.push(Object.keys(target.query).length ? target : target.path);
       }
     };
 
@@ -318,6 +272,7 @@ export default {
     );
 
     return {
+      mountedScreen,
       frameComponent,
       showTryFocused,
       dismissTryFocused,

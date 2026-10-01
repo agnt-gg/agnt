@@ -1,5 +1,6 @@
 <template>
-  <FocusedPage :title="page.title" :sub="page.sub" action-label="New plugin" v-model:query="query" search-placeholder="Search plugins" @action="openConnectors">
+  <FocusedConnection v-if="item" :key="item" :provider-id="item" />
+  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New plugin" v-model:query="query" search-placeholder="Search plugins" @action="nav.ask('Connect AGNT to ')">
     <p v-if="!cards.connected.length && !cards.available.length" class="focused-empty">
       {{ query ? `No plugins match “${query}”.` : 'Plugins you add show up here.' }}
     </p>
@@ -8,10 +9,8 @@
         <span>{{ section.label }}</span><span class="focused-count">{{ section.cards.length }}</span>
       </div>
       <div v-if="section.cards.length" class="focused-grid">
-        <button v-for="c in section.cards" :key="c.id" type="button" class="focused-card" @click="openConnectors">
+        <button v-for="c in section.cards" :key="c.id" type="button" class="focused-card" @click="nav.go({ page: 'plugins', item: c.id })">
           <span class="focused-card-icon" aria-hidden="true">
-            <!-- Provider icons are names in the shared icon set, drawn exactly as
-                 Studio's Connectors draws them. -->
             <SvgIcon v-if="c.icon" :name="c.icon" />
             <template v-else>{{ initialOf(c.name) }}</template>
           </span>
@@ -26,14 +25,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import FocusedPage from './FocusedPage.vue';
+import FocusedConnection from './FocusedConnection.vue';
 import { FOCUSED_PAGES, pluginCards, initialOf } from './focusedModel.js';
 
-const emit = defineEmits(['run', 'ask']);
+defineProps({ item: { type: String, default: null } });
 const store = useStore();
+const nav = inject('focusedNav');
 const page = FOCUSED_PAGES.plugins;
 const query = ref('');
 
@@ -42,13 +43,6 @@ const sections = computed(() => [
   { id: 'connected', label: 'Connected', cards: cards.value.connected },
   { id: 'available', label: 'Available', cards: cards.value.available },
 ]);
-
-
-// Connecting is OAuth / key entry with real consequences; it happens on the
-// one screen that already does it properly, not in a copy of it.
-function openConnectors() {
-  emit('run', { type: 'screen', screen: 'ConnectorsScreen', opts: {} });
-}
 
 onMounted(() => {
   if (!store.state.appAuth?.allProviders?.length) store.dispatch('appAuth/fetchAllProviders').catch(() => {});
