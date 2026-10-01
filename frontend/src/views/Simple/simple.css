@@ -76,9 +76,27 @@
 
 .ui-simple .simple-topbar {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 10px 12px 0;
   flex: 0 0 auto;
+}
+/* With a conversation open it is the demo's slim title bar. */
+.ui-simple .simple-topbar.has-title {
+  min-height: 48px;
+  padding: 0 16px 0 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.ui-simple .simple-chat-title {
+  margin: 0 0 0 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
@@ -617,16 +635,23 @@
 /* One readable column, centred, like the demo. */
 .ui-simple .chat-screen-wrapper .conversation-container,
 .ui-simple .chat-screen-wrapper .input-container,
-.ui-simple .chat-screen-wrapper .suggestions-bar,
+.ui-simple .chat-screen-wrapper .simple-starters,
 .ui-simple .chat-screen-wrapper .chat-actions-bar {
   width: 100%;
-  max-width: 760px;
+  /* The demo's --column. */
+  max-width: 768px;
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
 }
 .ui-simple .chat-screen-wrapper .input-container {
   border-top: none;
+}
+/* The scrollbar takes width only from the thread, not from the composer, so
+   the message column centred half a scrollbar left of it (measured: 5px).
+   The demo's fix: reserve the gutter on both sides. */
+.ui-simple .chat-screen-wrapper:not(.simple-home) .conversation-canvas {
+  scrollbar-gutter: stable both-edges;
 }
 /* The composer reads as a box you type into, not a terminal line.
    Desktop only: on a phone BaseScreen already draws its own two-row composer
@@ -638,39 +663,127 @@
   box-sizing: border-box;
   margin-left: 0;
   margin-right: 0;
+  /* The demo's composer: 16px box, 10/10/10/14 padding, soft shadow, pink
+     focus ring, and every control a 32px rounded square. */
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 54px;
+  padding: 10px 10px 10px 10px;
   border: 1px solid var(--terminal-border-color);
-  border-radius: 14px;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-sm);
-  padding-left: 12px;
+  border-radius: 16px;
+  background: var(--surface-canvas);
+  box-shadow: var(--shadow-sm), 0 6px 20px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ui-simple:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
-  border-color: var(--border-strong);
+  border-color: var(--fill-brand);
+  box-shadow: 0 0 0 3px rgba(var(--pink-rgb), 0.28), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
-/* Buttons do not inherit the app font by default; cards here should. */
-.ui-simple .chat-screen-wrapper .suggestion-card {
-  font: inherit;
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .input-highlight-container {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
 }
-.ui-simple .chat-screen-wrapper .suggestions-bar {
-  border-top: none;
-  padding-right: 8px;
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line textarea {
+  font-size: 15px;
+  line-height: 24px;
+}
+/* Attach sits on the left, before the text, as in the demo. */
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line > .tooltip-container:has(.chat-attach-button) {
+  order: -1;
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button,
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button:hover,
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  transform: none;
+}
+/* Send: a pink square with an up arrow; grey until there is something to
+   send. Stop (while a reply streams): the same square in ink. */
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button,
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--fill-brand);
+  color: var(--on-fill-brand);
+  box-shadow: none;
+  transform: none;
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:hover:not(:disabled) {
+  background: var(--fill-brand);
+  filter: brightness(0.92);
+  transform: none;
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:disabled {
+  background: var(--surface-active);
+  color: var(--text-tertiary);
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button .fa-paper-plane::before {
+  content: '\f062'; /* fa-arrow-up */
+}
+/* Voice reads as a mic, like the demo's (same hands-free voice feature). */
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button .fa-comment-dots::before {
+  /* fa-microphone is solid-only in FA5 Free; the button's icon is regular. */
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  content: '\f130'; /* fa-microphone */
+}
+.ui-simple:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
+  background: var(--text-primary);
+  color: var(--surface-canvas);
 }
 
 /* Studio-only controls. Chats autosave and "New chat" lives in the sidebar,
    so Clear/Save is redundant here; the inspector toggle only means something
    while a preview is open (BaseScreen shows the right panel then). */
 .ui-simple .chat-screen-wrapper .chat-actions-bar,
+.ui-simple .chat-screen-wrapper .suggestions-bar,
 .ui-simple .chat-screen-wrapper:not(.artifact-active) .inspector-toggle {
   display: none;
 }
 
-/* Turns: the assistant speaks in plain text, the user in a soft bubble. */
+/* Scroll arrows: neutral, like every other Simple control (Studio's are green). */
+.ui-simple .chat-screen-wrapper .chat-scroll-controls .scroll-btn {
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--terminal-border-color);
+  box-shadow: var(--shadow-sm);
+}
+.ui-simple .chat-screen-wrapper .chat-scroll-controls .scroll-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* Turns: the assistant speaks in plain text, the user in an ink bubble; no
+   timestamps, as in the demo (they stay in Studio). */
 .ui-simple .chat-screen-wrapper .message-wrapper.assistant .message-card {
   background: transparent;
   border: none;
   box-shadow: none;
   padding-left: 0;
   padding-right: 0;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.ui-simple .chat-screen-wrapper .message-time {
+  display: none;
 }
 .ui-simple .chat-screen-wrapper .message-wrapper.user .message-content {
   display: flex;
@@ -679,11 +792,20 @@
 }
 .ui-simple .chat-screen-wrapper .message-wrapper.user .message-card {
   width: fit-content;
-  max-width: 85%;
+  max-width: 78%;
+  padding: 9px 14px;
   background: var(--surface-active);
+  color: var(--text-primary);
   border: none;
   box-shadow: none;
-  border-radius: 18px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+/* Light themes: the demo's ink bubble, near-black with white text. */
+.ui-simple:not(:where(.dark *)) .chat-screen-wrapper .message-wrapper.user .message-card {
+  background: var(--text-primary);
+  color: var(--surface-canvas);
 }
 /* No avatar column: the reply text, the user bubble and the composer share
    one left edge, as in the demo. Group-chat speakers are still named by the
@@ -701,13 +823,6 @@
 .ui-simple .chat-screen-wrapper .chat-provider-button,
 .ui-simple .chat-screen-wrapper .chat-tools-button {
   display: none;
-}
-
-/* Suggestions wrap instead of scrolling sideways in a clipped strip. */
-.ui-simple .chat-screen-wrapper .suggestions-grid {
-  flex-wrap: wrap;
-  overflow: visible;
-  justify-content: flex-start;
 }
 
 /* Steps, folded (MessageItem `.steps-folded`): one line per group. Only the
@@ -734,26 +849,30 @@
   font-size: 10px;
   color: var(--text-tertiary);
 }
-.ui-simple .steps-summary-dot {
-  width: 8px;
-  height: 8px;
+/* The demo's marks: ✓ done, ✕ failed or stopped, a pink spinner while working. */
+.ui-simple .steps-summary .steps-summary-mark {
+  font-size: 12px;
+}
+.ui-simple .steps-summary.steps-done .steps-summary-mark {
+  color: var(--status-green-text);
+}
+.ui-simple .steps-summary.steps-error .steps-summary-mark {
+  color: var(--fill-danger);
+}
+.ui-simple .steps-summary-spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  box-sizing: border-box;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--fill-brand);
   border-radius: 50%;
-  background: var(--text-tertiary);
-}
-.ui-simple .steps-summary.steps-done .steps-summary-dot {
-  background: var(--fill-success);
-}
-.ui-simple .steps-summary.steps-error .steps-summary-dot {
-  background: var(--fill-danger);
-}
-.ui-simple .steps-summary.steps-running .steps-summary-dot {
-  background: var(--fill-accent);
-  animation: ui-simple-pulse 1.4s ease-in-out infinite;
+  animation: ui-simple-spin 0.7s linear infinite;
 }
 /* Keyframe names are global; the ui-simple- prefix is the namespace. */
-@keyframes ui-simple-pulse {
-  50% {
-    opacity: 0.35;
+@keyframes ui-simple-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 .ui-simple .steps-folded.tool-execution-details {
@@ -788,23 +907,26 @@
   order: 1;
   flex: 0 0 auto;
 }
+/* Measured: on the home the canvas is a small box that kept its scrollbar —
+   its arrow buttons showed as two stray dots, its width pushed the hero 5px
+   off the column, and Studio's 48/32px padding doubled the hero-to-input gap
+   (the demo's is 36px, set on the hero). Nothing scrolls here, so none of it. */
 .ui-simple .chat-screen-wrapper.simple-home .conversation-canvas {
-  overflow: visible;
+  /* !important only because Chat.vue sets `overflow-y: scroll !important`
+     and `scrollbar-width: thin !important` on .conversation-canvas; nothing
+     weaker can override those. Home only: a conversation still scrolls. */
+  overflow-y: visible !important;
+  scrollbar-width: none !important;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 .ui-simple .chat-screen-wrapper.simple-home .input-container {
   order: 2;
   position: static;
   margin-top: 0;
 }
-.ui-simple .chat-screen-wrapper.simple-home .suggestions-bar {
+.ui-simple .chat-screen-wrapper.simple-home .simple-starters {
   order: 3;
-}
-/* On the home the suggestions are the menu, so they wrap and centre under
-   the input instead of scrolling sideways in a strip. */
-.ui-simple .chat-screen-wrapper.simple-home .suggestions-grid {
-  flex-wrap: wrap;
-  overflow: visible;
-  justify-content: center;
 }
 .ui-simple .chat-screen-wrapper.simple-home .inspector-toggle,
 .ui-simple .chat-screen-wrapper.simple-home .chat-scroll-controls {
@@ -816,11 +938,12 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
-  padding: 0 16px 18px;
+  gap: 8px;
+  /* The demo: the heading hangs 36px above the input. */
+  padding: 0 16px 36px;
 }
 .ui-simple .simple-home-logo {
-  height: 40px;
+  height: 43px;
   width: auto;
   margin-bottom: 10px;
 }
@@ -913,8 +1036,10 @@
   flex-direction: column;
   justify-content: center;
 }
-.ui-simple.is-compact .chat-screen-wrapper.simple-home .suggestions-bar {
+.ui-simple.is-compact .chat-screen-wrapper.simple-home .simple-starters {
   order: 2;
+  padding: 0 12px 8px;
+  box-sizing: border-box;
 }
 .ui-simple.is-compact .chat-screen-wrapper.simple-home .input-container {
   order: 3;

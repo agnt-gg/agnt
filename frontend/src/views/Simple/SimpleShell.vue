@@ -13,13 +13,18 @@
     <button v-if="isMobile && sidebarOpen" type="button" class="simple-scrim" aria-label="Close sidebar" @click="setSidebar(false)"></button>
 
     <main class="simple-main">
-      <header v-if="!sidebarOpen || isMobile" class="simple-topbar">
-        <button type="button" class="simple-icon-btn" aria-label="Open sidebar" @click="setSidebar(true)">
-          <i class="fas fa-bars" aria-hidden="true"></i>
-        </button>
-        <button type="button" class="simple-icon-btn" aria-label="New chat" @click="newChat">
-          <i class="fas fa-edit" aria-hidden="true"></i>
-        </button>
+      <!-- One slim bar: sidebar controls when it is closed, and the open
+           conversation's title, as in the AGNT One demo. -->
+      <header v-if="!sidebarOpen || isMobile || chatTitle" class="simple-topbar" :class="{ 'has-title': !!chatTitle }">
+        <template v-if="!sidebarOpen || isMobile">
+          <button type="button" class="simple-icon-btn" aria-label="Open sidebar" @click="setSidebar(true)">
+            <i class="fas fa-bars" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="simple-icon-btn" aria-label="New chat" @click="newChat">
+            <i class="fas fa-edit" aria-hidden="true"></i>
+          </button>
+        </template>
+        <h1 v-if="chatTitle" class="simple-chat-title">{{ chatTitle }}</h1>
       </header>
 
       <!-- Borrowed Studio: the full screen, untouched, with one way back. -->
@@ -113,6 +118,10 @@ watch(isMobile, (mobile) => {
 const page = ref(null);
 const libraryTabId = ref('agents');
 const borrowed = computed(() => isBorrowedScreen(props.screenName));
+// The open conversation's title. Empty on a new chat, so the home has no bar.
+const chatTitle = computed(() =>
+  !page.value && props.screenName === 'ChatScreen' ? String(store.state.chat?.savedOutputTitle || '').trim() : '',
+);
 const borrowedTitle = computed(() => screenTitle(props.screenName));
 
 function closeDrawer() {
@@ -177,7 +186,12 @@ async function ask(text) {
 // have. Simple reads its `fresh` unlocks for the one offer below instead.
 const onion = useNavigationOnion(store, { teams: ref([]), teamsKnown: ref(false), canAnnounce: ref(false) });
 const graduationAsked = ref(readFlag(GRADUATION_ASKED_KEY));
-const graduation = computed(() => graduationUnlock(onion.state.value.fresh, graduationAsked.value));
+// Only an unlock that happens WHILE in Simple counts. `fresh` persists across
+// sessions and modes: an existing account with 196 workflows had 'workflows'
+// left in it from Studio and was told "Your first workflow is saved".
+const freshAtEntry = new Set(onion.state.value.fresh || []);
+const unlockedHere = computed(() => (onion.state.value.fresh || []).filter((id) => !freshAtEntry.has(id)));
+const graduation = computed(() => graduationUnlock(unlockedHere.value, graduationAsked.value));
 const graduationCopy = computed(() => GRADUATION_COPY[graduation.value] || '');
 function closeGraduation() {
   graduationAsked.value = true;

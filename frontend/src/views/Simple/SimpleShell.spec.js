@@ -8,10 +8,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h, inject, ref } from 'vue';
+import { defineComponent, h, inject, ref, reactive } from 'vue';
 
 const dispatch = vi.fn();
-vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: {} }) }));
+const storeState = reactive({ chat: { savedOutputTitle: '' } });
+vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }) }));
 const push = vi.fn(() => Promise.resolve());
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }));
 // The onion is covered by its own specs; here it only has to exist.
@@ -53,6 +54,7 @@ describe('SimpleShell', () => {
     dispatch.mockClear();
     push.mockClear();
     fresh.value = [];
+    storeState.chat.savedOutputTitle = '';
     localStorage.clear();
   });
 
@@ -100,19 +102,43 @@ describe('SimpleShell', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('offers Studio once, after the first workflow, and remembers the answer', async () => {
+  it('does NOT offer Studio for an unlock left over from before Simple opened', () => {
+    // Regression: an account with 196 workflows had 'workflows' in the onion's
+    // persisted `fresh` from Studio and was told "Your first workflow is saved".
+    fresh.value = ['workflows'];
     const w = mountShell();
-    expect(w.find('.simple-graduation').exists()).toBe(false); // nothing built yet
+    expect(w.find('.simple-graduation').exists()).toBe(false);
     w.unmount();
-    fresh.value = ['workflows']; // the onion records the first workflow
-    const w2 = mountShell();
-    expect(w2.find('.simple-graduation').exists()).toBe(true);
-    await w2.find('.simple-graduation .simple-link').trigger('click');
-    expect(w2.find('.simple-graduation').exists()).toBe(false);
+  });
+
+  it('offers Studio once, when something is first built while in Simple, and remembers the answer', async () => {
+    fresh.value = ['workflows']; // stale, from before
+    const w = mountShell();
+    expect(w.find('.simple-graduation').exists()).toBe(false);
+    fresh.value = ['workflows', 'agents']; // first agent, built here
+    await w.vm.$nextTick();
+    expect(w.find('.simple-graduation').text()).toContain('Your first agent is ready.');
+    await w.find('.simple-graduation .simple-link').trigger('click');
+    expect(w.find('.simple-graduation').exists()).toBe(false);
     expect(localStorage.getItem('agnt:simple-graduation-asked')).toBe('true');
+    w.unmount();
+    fresh.value = [];
+    const w2 = mountShell();
+    fresh.value = ['workflows'];
+    await w2.vm.$nextTick();
+    expect(w2.find('.simple-graduation').exists()).toBe(false); // asked once, ever
     w2.unmount();
-    const w3 = mountShell();
-    expect(w3.find('.simple-graduation').exists()).toBe(false);
-    w3.unmount();
+  });
+
+  it('shows the open conversation title in a slim bar, and none on a new chat', async () => {
+    const w = mountShell('ChatScreen');
+    expect(w.find('.simple-chat-title').exists()).toBe(false);
+    storeState.chat.savedOutputTitle = 'Q3 board report';
+    await w.vm.$nextTick();
+    expect(w.find('.simple-chat-title').text()).toBe('Q3 board report');
+    w.unmount();
+    const other = mountShell('AgentsScreen');
+    expect(other.find('.simple-chat-title').exists()).toBe(false); // only on Chat
+    other.unmount();
   });
 });

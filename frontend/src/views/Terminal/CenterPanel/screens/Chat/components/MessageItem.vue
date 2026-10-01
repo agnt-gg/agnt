@@ -84,7 +84,9 @@
                 :aria-expanded="stepsOpen(partIdx) ? 'true' : 'false'"
                 @click="toggleSteps(partIdx)"
               >
-                <span class="steps-summary-dot" aria-hidden="true"></span>
+                <span v-if="stepsSummaryFor(part.items).state === 'running'" class="steps-summary-spin" aria-hidden="true"></span>
+                <i v-else-if="stepsSummaryFor(part.items).state === 'done'" class="fas fa-check steps-summary-mark" aria-hidden="true"></i>
+                <i v-else class="fas fa-times steps-summary-mark" aria-hidden="true"></i>
                 <span>{{ stepsSummaryFor(part.items).text }}</span>
                 <i class="fas" :class="stepsOpen(partIdx) ? 'fa-chevron-down' : 'fa-chevron-right'" aria-hidden="true"></i>
               </button>

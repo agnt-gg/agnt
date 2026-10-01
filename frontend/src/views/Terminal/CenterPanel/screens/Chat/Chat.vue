@@ -266,7 +266,12 @@
           <ChatScrollControls :target-getter="getConversationEl" @scroll-to-bottom="followFromScrollControl" />
         </div>
 
-        <!-- Quick Actions -->
+        <!-- Simple's start screen: the AGNT One rotating ideas, under the
+             composer (ordered by views/Simple/simple.css). A card sends. -->
+        <SimpleStarters v-if="showSimpleHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
+
+        <!-- Quick Actions (Studio's follow-up chips; Simple hides them in
+             simple.css and shows its own ideas above) -->
         <QuickActions
           v-if="!isMobile && hasConnectedAIProvider"
           :suggestions="suggestions"
@@ -299,6 +304,7 @@ import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
 import { contextWindowFromMetadata } from '@/utils/modelContextWindow.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
+import SimpleStarters from '@/views/Simple/SimpleStarters.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
@@ -339,6 +345,7 @@ export default {
     ProcessingState,
     AgentAvatar,
     QuickActions,
+    SimpleStarters,
     ChatActions,
     ContextMonitor,
     CompactionCard,
