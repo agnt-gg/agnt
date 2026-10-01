@@ -1,4 +1,5 @@
 import { API_CONFIG } from '@/tt.config.js';
+import { getTool, saveTool } from '@/views/Terminal/RightPanel/types/ToolForgePanel/components/ToolPanel/components/TopMenu/components/ToolActions/toolActionsApi.js';
 
 const BUILT_IN_TOOLS = [
   {
@@ -313,6 +314,26 @@ export default {
         commit('SET_FETCHING_WORKFLOW_TOOLS', false);
       }
     },
+    /** One custom tool, in full (code, parameters). Same call Tool Forge makes. */
+    async fetchCustomTool(_ctx, toolId) {
+      if (!toolId) throw new Error('No tool id');
+      const data = await getTool(toolId);
+      return data.tool || data;
+    },
+
+    /**
+     * Update a custom tool in place, through Tool Forge's own save, then
+     * refresh the list so every screen shows the change. The route upserts
+     * the whole record, so callers send the full fresh tool with their edits.
+     */
+    async saveCustomTool({ dispatch }, tool) {
+      if (!tool?.id) throw new Error('saveCustomTool updates an existing tool; it needs an id');
+      const saved = await saveTool(tool);
+      if (saved?.id && saved.id !== tool.id) throw new Error('AGNT saved this as a copy instead of updating it.');
+      await dispatch('fetchTools').catch(() => {});
+      return saved;
+    },
+
     async createTool({ commit, state }, tool) {
       commit('SET_LOADING', true);
       try {

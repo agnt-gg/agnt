@@ -236,6 +236,23 @@ export default {
         }
       }
     },
+    /**
+     * One full workflow, graph included (the list holds summaries only).
+     * Read-only: nothing is committed, so opening a workflow never rewrites
+     * the list a screen is showing.
+     */
+    async fetchWorkflowById(_ctx, workflowId) {
+      if (!workflowId) throw new Error('No workflow id');
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+      const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/${encodeURIComponent(workflowId)}`, {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      return data.workflow || data;
+    },
     async deleteWorkflow({ commit }, workflowId) {
       commit('SET_LOADING', true);
       try {

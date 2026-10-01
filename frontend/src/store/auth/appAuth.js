@@ -3,6 +3,7 @@ import { backfillLocalProviderKeys } from '@/services/localKeyBackfill.js';
 import axios from 'axios';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { encrypt } from '@/views/_utils/encryption.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from './licenseIdentity.js';
@@ -510,6 +511,61 @@ const actions = {
       commit('SET_CLI_PROVIDER_STATUS', { providerId, status: fallback });
       return fallback;
     }
+  },
+
+  // ── App connections (OAuth and API key), shared by Connectors and Focused ──
+  // The network half of connecting an app. Screens own the UI (popup, prompt,
+  // confirm); the calls and the refresh after them live here, once.
+
+  /** Start OAuth for an app: returns the URL the popup opens. */
+  async requestOAuthUrl(_ctx, providerId) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(
+      `${API_CONFIG.REMOTE_URL}/auth/connect/${encodeURIComponent(providerId)}?origin=${encodeURIComponent(window.location.origin)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    if (!data.authUrl) throw new Error('No authUrl provided in the response');
+    return data.authUrl;
+  },
+
+  /** After an OAuth popup closes: re-read what is connected. */
+  async refreshAfterConnect({ dispatch }) {
+    await dispatch('fetchConnectedApps', { forceRefresh: true });
+    await dispatch('fetchAllProviders');
+  },
+
+  /** Save an app's API key (encrypted in transit), then refresh. */
+  async saveApiKey({ dispatch }, { providerId, apiKey }) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${encodeURIComponent(providerId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ apiKey: encrypt(apiKey) }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    if (!result.success) throw new Error(result.message || 'Failed to save API key');
+    await dispatch('fetchConnectedApps', { forceRefresh: true });
+    dispatch('checkConnectionHealth');
+    return result;
+  },
+
+  /** Disconnect an OAuth/API-key app (locally and remotely), then refresh. */
+  async disconnectApp({ dispatch }, providerId) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${encodeURIComponent(providerId)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    if (!data.success) throw new Error('Disconnection failed');
+    await dispatch('fetchConnectedApps', { forceRefresh: true });
+    await dispatch('fetchAllProviders');
+    dispatch('checkConnectionHealth');
+    return data;
   },
 
   async connectProvider({ dispatch }, { providerId, payload }) {

@@ -846,7 +846,6 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
-import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { useTutorial } from './useTutorial.js';
@@ -1208,17 +1207,9 @@ export default {
 
     async function connectOAuthApp(app) {
       try {
-        const token = localStorage.getItem('token');
-        // Pass origin as query parameter for reliable Electron support
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/connect/${app.id}?origin=${encodeURIComponent(window.location.origin)}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
+        // The request lives in appAuth (shared with Focused); the popup is this screen's.
+        const authUrl = await store.dispatch('appAuth/requestOAuthUrl', app.id);
+        const data = { authUrl };
         if (data.authUrl) {
           // Open OAuth in popup window
           const width = 600;
@@ -1241,9 +1232,7 @@ export default {
           const checkPopup = setInterval(() => {
             if (popup.closed) {
               clearInterval(checkPopup);
-              // Refresh providers after popup closes
-              store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-              store.dispatch('appAuth/fetchAllProviders');
+              store.dispatch('appAuth/refreshAfterConnect');
             }
           }, 500);
         } else {
@@ -1264,23 +1253,9 @@ export default {
       });
       if (!confirmDisconnect) return;
       try {
-        const token = localStorage.getItem('token');
-        // Use local backend which will disconnect both locally and remotely
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
+        // appAuth disconnects (locally and remotely) and refreshes; it throws on failure.
+        const data = await store.dispatch('appAuth/disconnectApp', app.id);
         if (data.success) {
-          // Refresh the connected apps list and health to update UI
-          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-          await store.dispatch('appAuth/fetchAllProviders');
-          store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
 
           // Add to terminal log
@@ -1333,24 +1308,10 @@ export default {
 
     async function saveApiKey(app, apiKey) {
       try {
-        const token = localStorage.getItem('token');
-        const encryptedApiKey = encrypt(apiKey);
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ apiKey: encryptedApiKey }),
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const result = await response.json();
+        // appAuth encrypts, saves and refreshes; it throws on failure.
+        const result = await store.dispatch('appAuth/saveApiKey', { providerId: app.id, apiKey });
         if (result.success) {
           app.connected = true;
-          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-          store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `API key for ${app.name} saved successfully!`);
         } else {
           throw new Error(result.message || 'Failed to save API key');
