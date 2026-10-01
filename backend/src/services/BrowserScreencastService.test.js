@@ -18,7 +18,7 @@ vi.mock('../utils/realtimeSync.js', () => ({
 
 const {
   startViewing, stopViewing, dispatchInput, acknowledgeFrame, isStreaming, streamsForUser,
-  getBrowserState, controlBrowser, _stopAll,
+  getBrowserState, controlBrowser, setViewerQuality, forgetViewerQuality, _stopAll,
 } = await import('./BrowserScreencastService.js');
 
 /**
@@ -356,5 +356,64 @@ describe('a browser that goes away', () => {
 
   it('stopping something that was never started is not an error', () => {
     expect(stopViewing('never').ok).toBe(true);
+  });
+});
+
+describe('full-resolution frames for a fullscreen viewer', () => {
+  const formats = () => browser.received.filter((m) => m.method === 'Page.startScreencast').map((m) => m.params);
+  const start = () => startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+
+  it('starts card-sized, and restarts at full resolution when a viewer asks', async () => {
+    await start();
+    expect(formats()[0]).toMatchObject({ quality: 60, maxWidth: 1280, maxHeight: 800 });
+
+    const result = await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: true });
+    expect(result).toEqual({ ok: true, high: true });
+    expect(browser.methods().slice(-2)).toEqual(['Page.stopScreencast', 'Page.startScreencast']);
+    // 1080p must fit without downscaling: that downscale WAS the blur.
+    const high = formats().at(-1);
+    expect(high.maxWidth).toBeGreaterThanOrEqual(1920);
+    expect(high.maxHeight).toBeGreaterThanOrEqual(1080);
+    expect(high.quality).toBeGreaterThan(60);
+  });
+
+  it('does not restart when the tier does not change', async () => {
+    await start();
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: true });
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v2', high: true });
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: false });
+    // v2 is still fullscreen: one restart up, none down.
+    expect(formats()).toHaveLength(2);
+  });
+
+  it('drops back to card-sized when the last fullscreen viewer leaves fullscreen', async () => {
+    await start();
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: true });
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: false });
+    expect(formats().at(-1)).toMatchObject({ maxWidth: 1280, quality: 60 });
+  });
+
+  it('a departed viewer stops holding the stream at full resolution', async () => {
+    await start(); await start(); // two viewers
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: true });
+    forgetViewerQuality('host:u1', 'v1');
+    await settle();
+    expect(formats().at(-1)).toMatchObject({ maxWidth: 1280, quality: 60 });
+  });
+
+  it('refuses another user and an absent stream', async () => {
+    await start();
+    expect((await setViewerQuality({ userId: 'u2', instanceId: 'host:u1', viewerId: 'v1', high: true })).ok).toBe(false);
+    expect((await setViewerQuality({ userId: 'u1', instanceId: 'nope', viewerId: 'v1', high: true })).ok).toBe(false);
+    expect(formats()).toHaveLength(1);
+  });
+
+  it('a tab switch keeps the fullscreen tier', async () => {
+    await start();
+    await setViewerQuality({ userId: 'u1', instanceId: 'host:u1', viewerId: 'v1', high: true });
+    // The streamed tab goes away; the service re-attaches to another page.
+    browser.emit({ method: 'Target.detachedFromTarget', params: { sessionId: 'S1' } });
+    await settle();
+    expect(formats().at(-1).maxWidth).toBeGreaterThanOrEqual(1920);
   });
 });

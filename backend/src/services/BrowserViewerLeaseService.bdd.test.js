@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
-const fake = vi.hoisted(() => ({ ownsStream: vi.fn(() => true), startViewing: vi.fn(), stopViewing: vi.fn(), captureViewerFrame: vi.fn() }));
+const fake = vi.hoisted(() => ({ ownsStream: vi.fn(() => true), startViewing: vi.fn(), stopViewing: vi.fn(), captureViewerFrame: vi.fn(), setViewerQuality: vi.fn(), forgetViewerQuality: vi.fn() }));
 vi.mock('./BrowserScreencastService.js', () => fake);
 const leases = await import('./BrowserViewerLeaseService.js');
 beforeEach(() => {
@@ -19,6 +19,12 @@ describe('Given independently owned viewer leases', () => {
     leases.releaseSocketViewers('s'); leases.releaseSocketViewers('s');
     leases.releaseViewer({ userId: 'u', instanceId: 'i', viewerId: a.viewerId });
     expect(fake.stopViewing).toHaveBeenCalledTimes(2);
+  });
+  it('When a viewer is released, Then it stops holding the stream at full resolution', async () => {
+    fake.forgetViewerQuality.mockClear();
+    const a = await acquire();
+    leases.releaseViewer({ userId: 'u', instanceId: 'i', viewerId: a.viewerId });
+    expect(fake.forgetViewerQuality).toHaveBeenCalledWith('i', a.viewerId);
   });
   it('When HTTP succeeds but no socket registers, Then the pending lease expires', async () => {
     await acquire(); await vi.advanceTimersByTimeAsync(15000);

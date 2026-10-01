@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { addFrameViewer } from './browserViewerDeliveryRegistry.js';
 import { registerViewer, viewerStreamId, renewViewer, releaseViewer, releaseSocketViewers, ownsSocketViewer } from './BrowserViewerLeaseService.js';
-import { acknowledgeFrame, captureViewerFrame, ownsStream } from './BrowserScreencastService.js';
+import { acknowledgeFrame, captureViewerFrame, ownsStream, setViewerQuality } from './BrowserScreencastService.js';
 
 export function attachBrowserViewerSocket(socket) {
   const deliveries = new Map();
@@ -27,6 +27,13 @@ export function attachBrowserViewerSocket(socket) {
   on('browser:ack', ({ instanceId, viewerId, frameId, streamId } = {}) => {
     const request = {userId:socket.userId, socketId:socket.id, instanceId, viewerId};
     if (socket.connected && streamId && ownsSocketViewer(request) && ownsStream(socket.userId, instanceId, streamId)) acknowledgeFrame(instanceId, frameId, streamId);
+  });
+  // Full-resolution frames while this viewer is fullscreen. Only a registered
+  // viewer on THIS socket may ask, so a stale or foreign id changes nothing.
+  on('browser:quality', async ({ instanceId, viewerId, high } = {}, ack) => {
+    const request = { userId: socket.userId, socketId: socket.id, instanceId, viewerId };
+    if (!socket.userId || !socket.connected || !ownsSocketViewer(request)) return ack?.({ ok: false, error: 'viewer lease is unavailable' });
+    ack?.(await setViewerQuality({ userId: socket.userId, instanceId, viewerId, high: high === true }));
   });
   on('browser:watching', async ({ instanceId, viewerId } = {}, ack) => {
     const request = { userId: socket.userId, instanceId, viewerId, socketId: socket.id };

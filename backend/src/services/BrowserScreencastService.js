@@ -65,6 +65,24 @@ const ACK_TIMEOUT_MS = 2000;
  */
 const FRAME_FORMAT = { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 };
 
+/**
+ * The same stream while somebody is looking at it full-window.
+ *
+ * At FRAME_FORMAT a 1920x1080 page arrives as 1280x720 q60 and is stretched
+ * back up across the whole window, which is visibly soft and blocky. This
+ * tier sends the page at its own resolution (the cap only bounds a larger
+ * visible browser) at a quality where text edges survive. It is opt-in per
+ * viewer and dropped the moment that viewer leaves fullscreen or goes away,
+ * so the inline card keeps paying the small-frame price. A q85 1080p frame is
+ * roughly 150-400KB, well inside MAX_FRAME_CHARS.
+ */
+const FRAME_FORMAT_HIGH = { format: 'jpeg', quality: 85, maxWidth: 2560, maxHeight: 1600 };
+
+/** The format the stream should use given who is watching it. */
+function frameFormat(session) {
+  return session.highViewers.size > 0 ? FRAME_FORMAT_HIGH : FRAME_FORMAT;
+}
+
 /** instanceId -> session */
 const sessions = new Map();
 let capturesInFlight = 0;
@@ -103,13 +121,14 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
     const { sessionId, targetId } = await attachToPage(connection, getActiveTarget(cdpUrl));
     session = {
       userId, instanceId, cdpUrl, connection, sessionId, targetId, streamId: randomUUID(), viewers: 1, ackTimer: null, lastFrame: null,
+      highViewers: new Set(),
     };
     sessions.set(instanceId, session);
 
     connection.onEvent((message) => handleEvent(session, message));
 
     await connection.send('Page.enable', {}, sessionId);
-    await connection.send('Page.startScreencast', FRAME_FORMAT, sessionId);
+    await connection.send('Page.startScreencast', frameFormat(session), sessionId);
   } catch (err) {
     sessions.delete(instanceId);
     connection.close();
@@ -145,7 +164,7 @@ async function retarget(session, preferredTargetId) {
     session.lastFrame = null;
     clearTimeout(session.ackTimer);
     await session.connection.send('Page.enable', {}, sessionId);
-    await session.connection.send('Page.startScreencast', FRAME_FORMAT, sessionId);
+    await session.connection.send('Page.startScreencast', frameFormat(session), sessionId);
     if (previousSessionId && previousSessionId !== sessionId) {
       session.connection.post('Target.detachFromTarget', { sessionId: previousSessionId });
     }
@@ -224,6 +243,57 @@ function handleEvent(session, message) {
       streamId: session.streamId,
       url: message.params?.frame?.url || null,
     });
+  }
+}
+
+/**
+ * One viewer asks for (or gives up) full-resolution frames.
+ *
+ * Tracked per viewer, not as a session flag: two tabs can watch one browser,
+ * and the inline one leaving fullscreen must not drop the frames the other
+ * is still looking at full-window. The screencast is restarted only when the
+ * tier actually changes. A restart in the middle of a tab switch is skipped,
+ * because retarget starts its new screencast with frameFormat() anyway.
+ *
+ * @returns {{ ok: boolean, high?: boolean, error?: string }}
+ */
+export async function setViewerQuality({ userId, instanceId, viewerId, high }) {
+  const ownership = ownedSession(userId, instanceId);
+  if (ownership.error) return { ok: false, error: ownership.error };
+  if (typeof viewerId !== 'string' || !viewerId) return { ok: false, error: 'a viewer is required' };
+  const { session } = ownership;
+
+  const before = frameFormat(session);
+  if (high === true) session.highViewers.add(viewerId);
+  else session.highViewers.delete(viewerId);
+  const after = frameFormat(session);
+
+  if (after !== before && !session.retargeting) {
+    try {
+      await session.connection.send('Page.stopScreencast', {}, session.sessionId);
+      // The pending frame belonged to the old screencast; never ack it into the new one.
+      session.lastFrame = null;
+      clearTimeout(session.ackTimer);
+      await session.connection.send('Page.startScreencast', after, session.sessionId);
+    } catch (err) {
+      // The browser is going away; the close path reports that to the viewer.
+      return { ok: false, error: `could not change the stream quality: ${err.message}` };
+    }
+  }
+  return { ok: true, high: after === FRAME_FORMAT_HIGH };
+}
+
+/** A viewer left: it no longer holds the stream at full resolution. */
+export function forgetViewerQuality(instanceId, viewerId) {
+  const session = sessions.get(instanceId);
+  if (!session || !session.highViewers.delete(viewerId)) return;
+  // Fire and forget: the viewer is gone, and nobody waits on this. Skipped
+  // when this was the last viewer: stopViewing ends the screencast next.
+  if (session.highViewers.size === 0 && session.viewers > 1 && !session.retargeting) {
+    session.connection.post('Page.stopScreencast', {}, session.sessionId);
+    session.lastFrame = null;
+    clearTimeout(session.ackTimer);
+    session.connection.send('Page.startScreencast', FRAME_FORMAT, session.sessionId).catch(() => {});
   }
 }
 

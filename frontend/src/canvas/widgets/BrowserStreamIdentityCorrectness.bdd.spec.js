@@ -47,7 +47,7 @@ describe('Given receipt is not proof of valid pixels',()=>{
   expect(draw).toHaveBeenCalledTimes(1);
  });
  it('When oversized decoded live pixels are rejected, Then they do not suppress the valid snapshot',async()=>{
-  await boot();await authenticate();frame();images[0].width=2000;images[0].onload();snapshot();
+  await boot();await authenticate();frame();images[0].width=3000;images[0].onload();snapshot();
   expect(images).toHaveLength(2);images[1].onload();expect(draw).toHaveBeenCalledTimes(1);
  });
 });

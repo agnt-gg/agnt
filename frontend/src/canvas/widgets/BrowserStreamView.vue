@@ -58,6 +58,13 @@ const props = defineProps({
    * including when the user scrolls back through an old conversation.
    */
   launch: { type: Boolean, default: true },
+  /**
+   * Ask for full-resolution frames. The default stream is sized for a card;
+   * a host showing it full-window sets this so it is not a 1280px image
+   * stretched across the screen. The backend holds it per viewer and drops
+   * it when this viewer leaves.
+   */
+  highQuality: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['page', 'history', 'showing']);
@@ -84,6 +91,12 @@ let viewportSize = null;
 let observationOnly = false;
 let viewerId = null;
 let streamId = null;
+/** The backend has accepted this viewer, so it may ask for a quality tier. */
+let registered = false;
+
+/** The largest frame either tier can send; mirrors FRAME_FORMAT_HIGH. */
+const MAX_FRAME_WIDTH = 2560;
+const MAX_FRAME_HEIGHT = 1600;
 const frameDescription = ref('');
 let disposed = false;
 let authenticated = false;
@@ -194,7 +207,7 @@ function paint(payload) {
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Canvas rendering is unavailable.');
       if (payload.source === 'snapshot' && seenLiveFrame) { complete(); return; }
-      if (!Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0 || image.width > 1280 || image.height > 800) throw new Error('Browser frame exceeds the size limit.');
+      if (!Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0 || image.width > MAX_FRAME_WIDTH || image.height > MAX_FRAME_HEIGHT) throw new Error('Browser frame exceeds the size limit.');
       viewportSize = payload.metadata;
       canvas.width = image.width; canvas.height = image.height;
       context.drawImage(image, 0, 0);
@@ -239,6 +252,7 @@ function clearSubscription() {
   clearTimeout(renewalTimer); clearTimeout(renewalDeadline);
   clearTimeout(retryTimer); clearTimeout(frameTimer); clearTimeout(registrationTimer);
   releaseLease(instanceId, viewerId);
+  registered = false;
   instanceId = null; viewerId = null; streamId = null; frameDescription.value = ''; navigating.value = false; subscribing = false; painting = false;
   hasFrame.value = false; waiting.value = true;
 }
@@ -334,7 +348,11 @@ async function startWatching() {
     socket.emit('browser:watching', { instanceId, viewerId }, (result) => {
       if (disposed || epoch !== generation) return;
       clearTimeout(registrationTimer);
-      if (!result?.ok) registrationFailed(); else scheduleRenewal();
+      if (!result?.ok) { registrationFailed(); return; }
+      registered = true;
+      scheduleRenewal();
+      // A view that was already fullscreen when it (re)subscribed.
+      if (props.highQuality) sendQuality();
     });
     if (body.url) { currentUrl.value = body.url; emit('page', { url: body.url, title: '' }); }
     refreshHistory();
@@ -349,6 +367,19 @@ async function startWatching() {
     if (epoch === generation) subscribing = false;
   }
 }
+
+/**
+ * Tell the backend which frame tier this viewer wants. Best effort: a viewer
+ * that is not registered yet sends it on registration instead, and a refusal
+ * only means the frames stay card-sized.
+ */
+function sendQuality() {
+  if (!registered || !socket?.connected || !authenticated || !instanceId || !viewerId) return;
+  socket.emit('browser:quality', { instanceId, viewerId, high: props.highQuality }, (result) => {
+    if (result && !result.ok) console.warn('[BrowserStreamView] quality change refused:', result.error);
+  });
+}
+watch(() => props.highQuality, sendQuality);
 
 async function pollForSurface() {
   if (disposed || document.visibilityState === 'hidden' || !authenticated || !socket?.connected || instanceId || subscribing) return;

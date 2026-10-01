@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
-const fake = vi.hoisted(() => ({ ownsStream: vi.fn(() => true), startViewing: vi.fn(), stopViewing: vi.fn(), captureViewerFrame: vi.fn() }));
+const fake = vi.hoisted(() => ({ ownsStream: vi.fn(() => true), startViewing: vi.fn(), stopViewing: vi.fn(), captureViewerFrame: vi.fn(), setViewerQuality: vi.fn(), forgetViewerQuality: vi.fn() }));
 vi.mock('./BrowserScreencastService.js', () => fake);
 const leases = await import('./BrowserViewerLeaseService.js');
 beforeEach(() => {

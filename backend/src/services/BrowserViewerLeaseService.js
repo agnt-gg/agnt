@@ -1,6 +1,6 @@
 import { removeFrameViewer } from './browserViewerDeliveryRegistry.js';
 import { randomUUID } from 'node:crypto';
-import { startViewing, stopViewing, ownsStream } from './BrowserScreencastService.js';
+import { startViewing, stopViewing, ownsStream, forgetViewerQuality } from './BrowserScreencastService.js';
 
 // HTTP acquisition and socket registration are not atomic. Unregistered leases
 // expire; registered leases belong to one socket. Both cleanup paths are
@@ -75,6 +75,7 @@ export function releaseViewer({ userId, instanceId, viewerId }) {
   leases.delete(viewerId);
   removeFrameViewer(viewerId);
   clearTimeout(lease.timer);
+  forgetViewerQuality(instanceId, viewerId);
   stopViewing(instanceId, lease.streamId);
   return { ok: true };
 }

@@ -26,6 +26,7 @@
     :class="{ 'is-fullscreen': fullscreen }"
     :role="fullscreen ? 'dialog' : undefined"
     :aria-modal="fullscreen ? 'true' : undefined"
+    :style="fullscreen ? { top: `${chromeHeight}px` } : undefined"
     aria-label="Live browser"
   >
     <div class="live-header" @click="!fullscreen && (collapsed = !collapsed)">
@@ -54,7 +55,7 @@
         never launches (scrolling back must not open browsers); it stays
         hidden (v-show above) until it actually has pixels to show.
       -->
-      <BrowserStreamView :launch="live" @page="onPage" @showing="onShowing" />
+      <BrowserStreamView :launch="live" :high-quality="fullscreen" @page="onPage" @showing="onShowing" />
     </div>
   </div>
   </Teleport>
@@ -111,6 +112,21 @@ function onPage({ url }) {
 const fullscreen = ref(false);
 function toggleFullscreen() { fullscreen.value = !fullscreen.value; }
 
+/**
+ * How far down fullscreen starts: below the app's top bar, never over it.
+ *
+ * The first version covered the whole window, which put the exit button a few
+ * pixels from the window's own close button. The bar holds the window
+ * controls and stays visible and usable; the browser fills everything else.
+ * Measured rather than hard-coded because the bar's height differs between
+ * the desktop and compact layouts.
+ */
+const chromeHeight = ref(0);
+function measureChrome() {
+  const bar = document.querySelector('.cv-toolbar');
+  chromeHeight.value = bar ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
+}
+
 // Escape leaves fullscreen. Keys typed INTO the page never get here: the
 // stream canvas stops their propagation, so Escape inside a site's dialog
 // still reaches the site.
@@ -121,8 +137,14 @@ function onWindowKeydown(event) {
   }
 }
 watch(fullscreen, (on) => {
-  if (on) window.addEventListener('keydown', onWindowKeydown);
-  else window.removeEventListener('keydown', onWindowKeydown);
+  if (on) {
+    measureChrome();
+    window.addEventListener('keydown', onWindowKeydown);
+    window.addEventListener('resize', measureChrome);
+  } else {
+    window.removeEventListener('keydown', onWindowKeydown);
+    window.removeEventListener('resize', measureChrome);
+  }
 });
 // A newer turn taking the stream over unrenders this card; leave no
 // listener and no fullscreen state behind for when it comes back.
@@ -131,6 +153,7 @@ watch(owns, (isOwner) => { if (!isOwner) fullscreen.value = false; });
 onMounted(() => claimLiveView(props.cardKey, props.order));
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown);
+  window.removeEventListener('resize', measureChrome);
   releaseLiveView(props.cardKey);
 });
 </script>
@@ -243,6 +266,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   background: var(--color-darkest, #0b0b14);
+}
+
+/* Exit sits at the far LEFT in fullscreen, the opposite end of the window
+   from the app's close button. */
+.browser-live-card.is-fullscreen .live-fullscreen {
+  order: -1;
+  margin-left: 0;
+  margin-right: 4px;
 }
 
 .browser-live-card.is-fullscreen .live-header {

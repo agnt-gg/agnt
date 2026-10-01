@@ -14,7 +14,7 @@ const seen = vi.hoisted(() => ({ props: null, emit: null, setups: 0 }));
 
 vi.mock('@/utils/chunkRecovery.js', () => ({
   lazyComponent: () => defineComponent({
-    props: { launch: Boolean },
+    props: { launch: Boolean, highQuality: Boolean },
     emits: ['page', 'showing'],
     setup(props, { emit }) {
       seen.props = props; seen.emit = emit; seen.setups += 1;
@@ -88,6 +88,26 @@ describe('fullscreen', () => {
     // No remount either way: a new stream view would drop the lease and the
     // page state the user was in the middle of.
     expect(seen.setups).toBe(before);
+  });
+
+  it('stays below the app top bar, so its window controls are never covered', async () => {
+    const bar = document.body.appendChild(document.createElement('div'));
+    bar.className = 'cv-toolbar';
+    bar.getBoundingClientRect = () => ({ top: 0, bottom: 32, left: 0, right: 1000, width: 1000, height: 32 });
+    await mountCard(true);
+    await toggle(); await flushPromises();
+    expect(card().style.top).toBe('32px');
+    await toggle(); await flushPromises();
+    expect(card().style.top).toBe('');
+  });
+
+  it('asks for full-resolution frames only while fullscreen', async () => {
+    await mountCard(true);
+    expect(seen.props.highQuality).toBe(false);
+    await toggle(); await flushPromises();
+    expect(seen.props.highQuality).toBe(true);
+    await toggle(); await flushPromises();
+    expect(seen.props.highQuality).toBe(false);
   });
 
   it('leaves on Escape', async () => {
