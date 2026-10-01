@@ -6,6 +6,7 @@ import path from 'path';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
+import { resolveAccountAi } from '../../../services/ai/accountAi.js';
 import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
 import { waitForSurface, forgetSurfaceByUrl, announceHostSurface } from '../../../services/browserSurfaces.js';
 import { ensureFallbackSurface, isLoopbackWebSocket } from './browserFallbackSurface.js';
@@ -172,10 +173,15 @@ class AIBrowserUse extends BaseAction {
     let gatewayToken = null;
     let providerLabel = params.provider || 'The provider';
     try {
+      let provider = this.resolveProvider(params, workflowEngine);
+      let model = this.resolveModel(params, workflowEngine);
+      // A workflow node that names no provider runs on the account default,
+      // else its fallback chain. Never a vendor of this tool's choosing.
+      if (!provider) ({ provider, model } = await resolveAccountAi(userId, { model }));
       const resolved = {
         ...params,
-        provider: this.resolveProvider(params, workflowEngine),
-        model: this.resolveModel(params, workflowEngine),
+        provider,
+        model,
         cdpUrl: await this.resolveSurface(params, workflowEngine, userId),
       };
       const llm = await this.buildLlmSpec(resolved, userId);
@@ -258,7 +264,7 @@ class AIBrowserUse extends BaseAction {
    * conversation itself.
    */
   resolveProvider(params, workflowEngine) {
-    if (!this.isChatRun(workflowEngine)) return params.provider || 'OpenAI';
+    if (!this.isChatRun(workflowEngine)) return params.provider || null;
 
     const session = workflowEngine.provider || workflowEngine.normalizedProvider;
     if (params.provider && params.provider !== session) {
@@ -384,7 +390,8 @@ class AIBrowserUse extends BaseAction {
    * Python runner will construct, plus a gateway token when one is needed.
    */
   async buildLlmSpec(params, userId) {
-    const requested = params.provider || 'OpenAI';
+    const requested = params.provider;
+    if (!requested) throw new Error('Browser Agent has no provider: choose a default model in Settings.');
 
     // A custom provider is addressed by its UUID; it is OpenAI-compatible by
     // construction, which is the only kind AGNT's custom-provider system makes.

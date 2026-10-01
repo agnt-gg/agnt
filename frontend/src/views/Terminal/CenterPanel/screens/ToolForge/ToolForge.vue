@@ -51,7 +51,6 @@ import ContentActions from './components/ContentActions/ContentActions.vue';
 import useToolForge from './useToolForge';
 import { useToolForgeTutorial } from './useToolForgeTutorial.js';
 import { useContentLoader } from '@/composables/useContentLoader';
-import { AI_PROVIDERS_CONFIG } from '@/../user.config';
 
 export default {
   name: 'ToolForgeScreen',
@@ -129,13 +128,14 @@ export default {
       terminalLines.value.push(`Executing tool: ${currentTool.value.name}`);
 
       try {
-        // Make sure we have provider and model values
+        // A tool with no provider runs on the user's selected provider and
+        // model, never one of this screen's choosing.
         if (!currentTool.value.provider) {
-          currentTool.value.provider = AI_PROVIDERS_CONFIG.providers[0] || 'OpenAI'; // Fallback
+          currentTool.value.provider = store.state.aiProvider.selectedProvider || null;
+          currentTool.value.model = currentTool.value.model || store.state.aiProvider.selectedModel || null;
         }
-        if (!currentTool.value.model) {
-          const providerModels = AI_PROVIDERS_CONFIG.modelsByProvider[currentTool.value.provider];
-          currentTool.value.model = providerModels?.[0] || 'gpt-4o-mini'; // Fallback
+        if (!currentTool.value.model && currentTool.value.provider === store.state.aiProvider.selectedProvider) {
+          currentTool.value.model = store.state.aiProvider.selectedModel || null;
         }
 
         // Clear the hidden response area first

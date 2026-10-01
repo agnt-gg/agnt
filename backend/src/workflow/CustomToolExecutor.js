@@ -1,6 +1,7 @@
 import GenerateWithAiLlm from '../tools/library/actions/generate-with-ai-llm.js';
 import ExecuteJavaScript from '../tools/library/utilities/execute-javascript.js';
 import ExecutePython from '../tools/library/utilities/execute-python.js';
+import { resolveAccountAi } from '../services/ai/accountAi.js';
 
 class CustomToolExecutor {
   constructor(workflowEngine) {
@@ -86,15 +87,13 @@ class CustomToolExecutor {
 
     console.log('Final prompt:', prompt); // For debugging
 
-    // If an image is present, use a provider model that supports image analysis
-    if (imageData) {
-      resolvedParams['provider'] = 'anthropic';
-      resolvedParams['model'] = 'claude-3-5-sonnet-20240620'; // or another appropriate model that supports image analysis
-    }
-
-    // Only validate provider for actual AI tools (not code tools that were misrouted)
+    // No provider on the tool: the account default, else its fallback chain.
+    // An attached image no longer switches to a hardcoded vendor and model,
+    // which failed for every account without it.
     if (!node.code && !resolvedParams['provider']) {
-      throw new Error('Provider is required for AI LLM generation');
+      const account = await resolveAccountAi(this.workflowEngine?.userId, { model: resolvedParams['model'] });
+      resolvedParams['provider'] = account.provider;
+      resolvedParams['model'] = resolvedParams['model'] || account.model;
     }
 
     try {

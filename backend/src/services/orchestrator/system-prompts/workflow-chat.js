@@ -353,7 +353,7 @@ User: "Create a workflow that triggers every 5 minutes, calls an API, and proces
     → Parameters: { url: "https://api.example.com", method: "GET", headers: {} }
   - Node 3: "AI Analysis" at x:736, y:96
     → Variable name: aIAnalysis
-    → Parameters: { prompt: "Analyze this: {{hTTPRequest.response}}", provider: "Anthropic", model: "claude-3-5-sonnet-20241022" }
+    → Parameters: { prompt: "Analyze this: {{hTTPRequest.response}}" }  (no provider/model: the node runs on the user's default)
     → ✅ Uses correct camelCase: {{hTTPRequest.response}}
   - Edges connecting them
 → Step 5: Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API and AI" })

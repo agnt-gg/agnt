@@ -83,12 +83,20 @@ async function viaClaudeCode(prompt) {
   return r.stdout.trim();
 }
 
+// Direct-API routes need a model named by the operator. A built-in default
+// goes stale (every one shipped here had been retired) and fails on each call.
+function sentinelModel(route) {
+  const model = (process.env.SENTINEL_MODEL || '').trim();
+  if (!model) throw new Error(`SENTINEL_MODEL is not set; it names the model for the ${route} route.`);
+  return model;
+}
+
 // ---- OpenRouter ----
 function viaOpenRouter(prompt) {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('OPENROUTER_API_KEY not set');
   return httpsJson('openrouter.ai', '/api/v1/chat/completions', key, {
-    model: process.env.SENTINEL_MODEL || 'anthropic/claude-3.5-sonnet',
+    model: sentinelModel('openrouter'),
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 4096, temperature: 0.2,
   }, (j) => j.choices?.[0]?.message?.content);
@@ -99,7 +107,7 @@ function viaOpenAI(prompt) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OPENAI_API_KEY not set');
   return httpsJson('api.openai.com', '/v1/chat/completions', key, {
-    model: process.env.SENTINEL_MODEL || 'gpt-4o',
+    model: sentinelModel('openai'),
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 4096, temperature: 0.2,
   }, (j) => j.choices?.[0]?.message?.content);
@@ -111,7 +119,7 @@ function viaAnthropic(prompt) {
   if (!key) throw new Error('ANTHROPIC_API_KEY not set');
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: process.env.SENTINEL_MODEL || 'claude-3-5-sonnet-20241022',
+      model: sentinelModel('anthropic'),
       max_tokens: 4096, messages: [{ role: 'user', content: prompt }],
     });
     const req = https.request({

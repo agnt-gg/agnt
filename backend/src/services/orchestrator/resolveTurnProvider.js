@@ -1,4 +1,5 @@
 import { parseFallbackList, resolveProviderKey, resolveTierModel } from './ProviderFallback.js';
+import { resolveDefaultModelAsync } from '../ai/defaultModel.js';
 
 /**
  * Which provider/model a chat turn runs on, and which rung chose it.
@@ -11,9 +12,9 @@ import { parseFallbackList, resolveProviderKey, resolveTierModel } from './Provi
  *   6. credentials   any provider with a stored key (last resort)
  *
  * Rungs 2-6 contribute a WHOLE pair or nothing. Mixing halves across rungs is
- * how a turn ends up with one provider and another provider's model. Only a
- * request that named half a pair is completed from lower rungs, which keeps
- * API callers that send just a provider working as before.
+ * how a turn ends up with one provider and another provider's model. A request
+ * that names only a provider takes a model from a rung on THAT provider, else
+ * the provider's current catalogue default; never another provider's model.
  *
  * Why the conversation rung exists: the client only knows a conversation's
  * saved pair after it has loaded that conversation's settings. A turn sent
@@ -22,8 +23,11 @@ import { parseFallbackList, resolveProviderKey, resolveTierModel } from './Provi
  *
  * Why the fallback rung precedes the credential scan: when the account has no
  * usable default, the user has already said what to run next. The scan walks
- * the provider registry in its own order and picks a static model, which is a
- * guess about someone else's preferences.
+ * the provider registry in its own order, which is a guess. It is optional and
+ * only chat supplies it; background services fail loudly instead.
+ *
+ * No rung is a hardcoded vendor or model. When nothing is configured the
+ * result is nulls, and the caller reports that instead of guessing.
  *
  * Every loader is injected so each rung is testable without a database.
  *
@@ -75,12 +79,28 @@ export async function resolveTurnProvider({
       continue;
     }
 
-    provider = provider || pair.provider;
-    model = model || pair.model;
-    if (provider && model) return { provider, model, source: `request+${source}` };
+    if (provider) {
+      // Provider named: only a model from the same provider fits it.
+      if (pair.model && sameProvider(pair.provider, provider)) {
+        return { provider, model: pair.model, source: `request+${source}` };
+      }
+      continue;
+    }
+    if (pair.provider) return { provider: pair.provider, model, source: `request+${source}` };
+  }
+
+  if (provider && !model) {
+    const catalogModel = await resolveDefaultModelAsync(resolveProviderKey(provider) || provider.toLowerCase()).catch(() => null);
+    if (catalogModel) return { provider, model: catalogModel, source: 'request+catalog' };
   }
 
   return { provider, model, source: null };
+}
+
+function sameProvider(a, b) {
+  if (!a || !b) return false;
+  const key = (p) => resolveProviderKey(p) || String(p).toLowerCase();
+  return key(a) === key(b);
 }
 
 /** First tier of the account fallback chain that names a runnable pair. */

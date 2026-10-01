@@ -6,7 +6,7 @@ import TaskModel from '../models/TaskModel.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
 import { getProviderConfig } from './ai/providerConfigs.js';
-import UserModel from '../models/UserModel.js';
+import { resolveAccountAi } from './ai/accountAi.js';
 import db from '../models/database/index.js';
 import { broadcastToUser } from '../utils/realtimeSync.js';
 import VerifierGate, { calculateComposite as gateComposite } from './evolution/VerifierGate.js';
@@ -207,14 +207,8 @@ Return ONLY JSON:
   "feedback": "Brief textual feedback"
 }`;
 
-      // Use provider/model from request (frontend sends current selection), fall back to DB settings
-      let provider = reqProvider;
-      let model = reqModel;
-      if (!provider || !model) {
-        const userSettings = await UserModel.getUserSettings(userId);
-        provider = provider || userSettings?.selectedProvider || 'anthropic';
-        model = model || userSettings?.selectedModel || 'claude-sonnet-4-20250514';
-      }
+      // The request's selection, else the account default, else its fallback chain.
+      const { provider, model } = await resolveAccountAi(userId, { provider: reqProvider, model: reqModel });
       const _cfg = getProviderConfig(provider);
       const normalizedProvider = _cfg ? _cfg.key : provider.toLowerCase();
       const client = await createLlmClient(normalizedProvider, userId);

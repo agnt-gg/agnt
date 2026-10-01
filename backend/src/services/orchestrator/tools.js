@@ -60,6 +60,7 @@ import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeServ
 import { callService, serviceFailure } from '../agntServices.js';
 import { sendMail } from '../agntMail.js';
 import { runJob, summarizeJob } from '../agntSandbox.js';
+import { resolveAccountAi, resolveAccountImageProvider } from '../ai/accountAi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2384,14 +2385,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       if (authToken.toLowerCase().startsWith('bearer ')) {
         userApiKey = authToken.substring(7);
       }
-      // Pass the user's globally-selected provider/model from the conversation
-      // context so the AGNT SDK uses the same LLM the orchestrator is using,
-      // instead of hardcoding 'anthropic' / 'claude-3-5-sonnet-20240620'.
+      // The conversation's provider/model. When absent the request names none
+      // and the server resolves the account default; never a vendor guess.
       const agnt = new AGNT(
         userApiKey,
-        undefined,                        // baseURL — keep default
-        context?.provider || 'anthropic',  // user's selected provider
-        context?.model,                    // user's selected model
+        undefined,                    // baseURL — keep default
+        context?.provider || null,
+        context?.model || null,
       );
 
       try {
@@ -2641,8 +2641,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       const agnt = new AGNT(
         userApiKey,
         undefined,
-        context?.provider || 'anthropic',
-        context?.model,
+        context?.provider || null,
+        context?.model || null,
       );
 
       try {
@@ -3570,12 +3570,12 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             provider: {
               type: 'string',
               description:
-                "Optional LLM provider to use (e.g., 'openai', 'anthropic', 'groq'). If not specified, uses the agent's configured provider. Common values: 'openai', 'anthropic', 'groq', 'deepseek'.",
+                "Optional LLM provider. Omit it to use the agent's configured provider, else the user's default.",
             },
             model: {
               type: 'string',
               description:
-                "Optional LLM model to use (e.g., 'gpt-4o-mini', 'claude-3-5-sonnet-20240620', 'llama-3.1-70b-versatile'). If not specified, uses the agent's configured model. Common OpenAI models: 'gpt-4o', 'gpt-4o-mini'. Common Anthropic models: 'claude-3-5-sonnet-20240620', 'claude-3-haiku-20240307'.",
+                "Optional LLM model. Omit it to use the agent's configured model, else the user's default.",
             },
             last_user_message: {
               type: 'string',
@@ -3777,14 +3777,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               }
             }
 
-            // Step 3: Apply hardcoded defaults if still missing
-            if (!finalProvider) {
-              finalProvider = 'Anthropic';
-              console.log(`Using hardcoded default provider: ${finalProvider}`);
-            }
-            if (!finalModel) {
-              finalModel = 'claude-3-5-sonnet-20240620';
-              console.log(`Using hardcoded default model: ${finalModel}`);
+            // Step 3: still incomplete -> the account's fallback chain. No vendor
+            // is ever assumed; with nothing configured the tool says so.
+            if (!finalProvider || !finalModel) {
+              try {
+                ({ provider: finalProvider, model: finalModel } = await resolveAccountAi(userId, { provider: finalProvider, model: finalModel }));
+              } catch (resolveError) {
+                return JSON.stringify({ success: false, error: resolveError.message });
+              }
             }
 
             console.log(`Final provider/model for ${agent_id}: provider=${finalProvider}, model=${finalModel}`);
@@ -3795,9 +3795,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                 provider: finalProvider,
                 model: finalModel,
                 // finalProvider/finalModel were RESOLVED above — from the agent's
-                // own config, then the user's defaults, then a hardcoded
-                // 'Anthropic' / 'claude-3-5-sonnet-20240620'. None of those is
-                // the user asking to change their account default.
+                // own config, then the user's defaults, then the fallback chain.
+                // None of those is the user asking to change their account default.
                 //
                 // But the orchestrator's write-back guard only asks whether the
                 // REQUEST named a pair (requestHasPin), and this request does.
@@ -3917,19 +3916,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
             console.log(`Stream - Final provider/model for ${agent_id}: provider=${streamAgentProvider}, model=${streamAgentModel}`);
 
-            if (!streamAgentProvider) {
-              return JSON.stringify({
-                success: false,
-                error:
-                  "provider is required for 'send_message_stream'. Either specify it in the tool call, configure it in the agent settings, or set your default provider in user settings. Common values: 'openai', 'anthropic', 'groq', 'deepseek'.",
-              });
-            }
-            if (!streamAgentModel) {
-              return JSON.stringify({
-                success: false,
-                error:
-                  "model is required for 'send_message_stream'. Either specify it in the tool call, configure it in the agent settings, or set your default model in user settings. Examples: 'gpt-4o-mini', 'claude-3-5-sonnet-20240620', 'llama-3.1-70b-versatile'.",
-              });
+            // Still incomplete -> the account's fallback chain, else a clear error.
+            if (!streamAgentProvider || !streamAgentModel) {
+              try {
+                ({ provider: streamAgentProvider, model: streamAgentModel } = await resolveAccountAi(userId, { provider: streamAgentProvider, model: streamAgentModel }));
+              } catch (resolveError) {
+                return JSON.stringify({ success: false, error: resolveError.message });
+              }
             }
 
             try {
@@ -4261,7 +4254,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'string',
               enum: IMAGE_GEN_PROVIDER_KEYS,
               description:
-                `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
+                `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, uses the user's own image-capable provider.`,
             },
             model: {
               type: 'string',
@@ -4297,9 +4290,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
-      console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
-
+    execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
       if (!prompt) {
         return JSON.stringify({ success: false, error: 'Prompt is required for image generation.' });
       }
@@ -4307,6 +4298,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       try {
         // Import the ProviderRegistry to check capabilities
         const ProviderRegistry = await import('../../services/ai/ProviderRegistry.js');
+
+        // No provider named: the user's own image-capable provider (default,
+        // then fallback tiers). Never a vendor this tool picks for them.
+        if (!provider) {
+          provider = await resolveAccountImageProvider(context?.userId);
+          if (!provider) {
+            const supportedProviders = ProviderRegistry.getImageGenProviders().map((p) => p.provider).join(', ');
+            return JSON.stringify({
+              success: false,
+              error: `None of your configured providers can generate images. Connect one of: ${supportedProviders}, or name a provider.`,
+            });
+          }
+        }
+        console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
         // Validate provider supports image generation
         const normalizedProvider = provider.toLowerCase();

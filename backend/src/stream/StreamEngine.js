@@ -11,6 +11,7 @@ import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
 import { resolveDefaultModelAsync } from '../services/ai/defaultModel.js';
+import { resolveAccountAi } from '../services/ai/accountAi.js';
 
 /**
  * The model to use when a caller does not name one.
@@ -234,12 +235,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       combinedDocumentText = trimToWordLimit(combinedDocumentText, 8192);
 
-      // If an image is present, use Anthropic's Claude 3.5 Sonnet model
-      if (imageData) {
-        provider = 'anthropic';
-        modelName = 'claude-3-5-sonnet-20240620';
-      }
-
+      // The caller's provider is kept even when an image is attached. This used
+      // to switch every image request to one hardcoded vendor and model, which
+      // failed for any account without it.
       const providerLower = provider.toLowerCase();
 
       switch (providerLower) {
@@ -313,7 +311,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       }
     }
   }
-  async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider = 'anthropic') {
+  async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider) {
     let finalMessages = [];
 
     if (messages && messages.length > 0) {
@@ -899,10 +897,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       [NEW TEMPLATE OBJECT]:'''json`;
 
     try {
-      if (!provider) {
-        provider = 'anthropic';
-        model = 'claude-3-5-sonnet-20240620';
-      }
+      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
 
       const _providerConfig = getProviderConfig(provider);
       const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
@@ -1085,10 +1080,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
   }
   async generateWorkflow(workflowElements, provider, model) {
     try {
-      if (!provider) {
-        provider = 'claude-code';
-        model = 'claude-sonnet-4-6';
-      }
+      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
 
       const _providerConfig = getProviderConfig(provider);
       const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
@@ -1234,8 +1226,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         "instructions": "You are a helpful customer service representative. Always be polite, professional, and solution-oriented. Help customers with their questions, resolve issues, and escalate complex problems when necessary.",
         "category": "customer-service",
         "status": "active",
-        "provider": "anthropic",
-        "model": "claude-3-5-sonnet-20240620",
         "assignedTools": ["send-email", "web-search"],
         "assignedWorkflows": []
       }"
@@ -1248,8 +1238,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         "instructions": "You are an expert Python developer. Help users write clean, efficient Python code, debug issues, explain programming concepts, and provide best practices for software development.",
         "category": "development",
         "status": "active",
-        "provider": "openai",
-        "model": "gpt-4o",
         "assignedTools": ["execute-python", "web-search", "github-api"],
         "assignedWorkflows": []
       }"
@@ -1257,10 +1245,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       [NEW AGENT OBJECT]:'''json`;
 
     try {
-      if (!provider) {
-        provider = 'anthropic';
-        model = 'claude-3-5-sonnet-20240620';
-      }
+      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
 
       const _providerConfig = getProviderConfig(provider);
       const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();

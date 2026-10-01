@@ -143,25 +143,62 @@ export const NODE_STATS_SQL = {
     WHERE ne.rowid > ? AND ne.rowid <= ? AND e.id = ne.execution_id AND e.user_id = ?`,
 };
 
-/**
- * The pair every install's `users` table was created with as COLUMN DEFAULTS.
- *
- * SQLite cannot drop a column default without rebuilding the table, so any row
- * inserted without naming these columns (auth sync, fixtures) still receives
- * this pair on existing installs. Nobody chose it, and the model is retired at
- * Anthropic, so a turn that runs on it always fails. It reads back as "no
- * default", which hands the turn to the user's fallback chain instead.
- */
-export const SCHEMA_DEFAULT_AI = Object.freeze({ provider: 'Anthropic', model: 'claude-3-5-sonnet-20240620' });
-
 const nonEmpty = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
 
-/** The stored default pair, or nulls. Never a substituted vendor default. */
-export function readStoredDefaultAi(storedProvider, storedModel) {
+/** A SQLite `dflt_value` ('text', quoted) as the plain string, or null. */
+function unquoteColumnDefault(raw) {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw);
+  const quoted = /^'(.*)'$/s.exec(text);
+  return nonEmpty(quoted ? quoted[1].replace(/''/g, "'") : text);
+}
+
+let columnDefaultAiPromise = null;
+
+/**
+ * The default_provider/default_model COLUMN DEFAULTS this install's `users`
+ * table was created with, read from the schema itself.
+ *
+ * Older installs created both columns with a vendor default. SQLite cannot
+ * drop a column default without rebuilding the table, so any row inserted
+ * without naming the columns was stamped with a provider and model nobody
+ * chose. The values are read here rather than written in code, so nothing in
+ * the code names a vendor. On first use, rows still carrying the stamp are
+ * cleared once; new installs have no column default and this is a no-op.
+ */
+export function columnDefaultAi() {
+  columnDefaultAiPromise ??= new Promise((resolve) => {
+    db.all('PRAGMA table_info(users)', [], (err, columns) => {
+      if (err || !Array.isArray(columns)) {
+        columnDefaultAiPromise = null; // transient: try again next time
+        return resolve({ provider: null, model: null });
+      }
+      const columnDefault = (name) => unquoteColumnDefault(columns.find((c) => c.name === name)?.dflt_value);
+      const stamp = { provider: columnDefault('default_provider'), model: columnDefault('default_model') };
+      if (!stamp.provider || !stamp.model) return resolve(stamp);
+      db.run(
+        'UPDATE users SET default_provider = NULL, default_model = NULL WHERE default_provider = ? AND default_model = ?',
+        [stamp.provider, stamp.model],
+        function (updateErr) {
+          if (updateErr) console.warn('[UserModel] Could not clear unchosen default AI rows:', updateErr.message);
+          else if (this.changes > 0) console.info(`[UserModel] Cleared ${this.changes} unchosen default AI row(s) stamped by the legacy schema.`);
+          resolve(stamp);
+        }
+      );
+    });
+  });
+  return columnDefaultAiPromise;
+}
+
+/**
+ * The stored default pair, or nulls. Never a substituted default, and never
+ * the schema's own column-default stamp, which no user chose.
+ */
+export function readStoredDefaultAi(storedProvider, storedModel, columnDefault = {}) {
   const provider = nonEmpty(storedProvider);
   const model = nonEmpty(storedModel);
   if (!provider) return { provider: null, model: null };
-  if (provider.toLowerCase() === SCHEMA_DEFAULT_AI.provider.toLowerCase() && model === SCHEMA_DEFAULT_AI.model) {
+  if (columnDefault.provider && columnDefault.model && provider === columnDefault.provider && model === columnDefault.model) {
     return { provider: null, model: null };
   }
   return { provider, model };
@@ -385,7 +422,8 @@ class UserModel {
     });
   }
 
-  static getUserSettings(userId) {
+  static async getUserSettings(userId) {
+    const columnDefault = await columnDefaultAi();
     return new Promise((resolve, reject) => {
       db.get(
         `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled, subscription_costs as subscriptionCosts, routing_mode as routingMode, routing_policy as routingPolicy
@@ -398,7 +436,7 @@ class UserModel {
             // No substitution: a missing default is reported as missing, so the
             // orchestrator falls through to the user's own fallback chain rather
             // than to a vendor this account may not have.
-            const storedDefault = readStoredDefaultAi(row.selectedProvider, row.selectedModel);
+            const storedDefault = readStoredDefaultAi(row.selectedProvider, row.selectedModel, columnDefault);
             resolve({
               selectedProvider: storedDefault.provider,
               selectedModel: storedDefault.model,
@@ -455,7 +493,9 @@ class UserModel {
   }
 
   static updateUserSettings(userId, settings) {
-    return new Promise((resolve, reject) => {
+    // Legacy stamps are cleared first, so a model-only write can never be
+    // paired with a provider nobody chose.
+    return columnDefaultAi().then(() => new Promise((resolve, reject) => {
       const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts, routingMode, routingPolicy } = settings;
 
       const fields = [];
@@ -575,8 +615,8 @@ class UserModel {
             reject(err);
           } else if (this.changes === 0) {
             // User doesn't exist, create with settings. No default AI is
-            // invented here: the columns are named explicitly so the legacy
-            // column defaults (SCHEMA_DEFAULT_AI) never apply.
+            // invented here: the columns are named explicitly so a legacy
+            // column default (see columnDefaultAi) never applies.
             db.run(
               `INSERT INTO users (id, default_provider, default_model, custom_instructions, async_tools_enabled, tool_output_cap, max_tool_rounds, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
@@ -610,7 +650,7 @@ class UserModel {
           }
         }
       ));
-    });
+    }));
   }
 
   /** Most recent changes to the account default AI, newest first. */

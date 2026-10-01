@@ -121,8 +121,10 @@ class Middleware {
         } else {
           // User doesn't exist - create new record
           db.run(
-            `INSERT INTO users (id, email, name, created_at, updated_at)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            // Default AI columns named explicitly: a legacy schema's column
+            // default would otherwise stamp a provider the user never chose.
+            `INSERT INTO users (id, email, name, default_provider, default_model, created_at, updated_at)
+             VALUES (?, ?, ?, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
             [decoded.id, decoded.email || null, decoded.name || null],
             (insertErr) => {
               if (insertErr) {

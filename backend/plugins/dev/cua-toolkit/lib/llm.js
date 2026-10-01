@@ -27,7 +27,8 @@ export function resolveSession(params = {}, workflowEngine = null) {
   const sessionProvider = workflowEngine?.provider || workflowEngine?.normalizedProvider || null;
   const sessionModel = (workflowEngine?.model || '').trim() || null;
   // Session wins. Params only fill the gap when there is no session context.
-  const provider = sessionProvider || String(params.provider || '').trim() || 'OpenAI';
+  // Nothing named: send none, and the LLM node resolves the account default.
+  const provider = sessionProvider || String(params.provider || '').trim() || null;
   const model = sessionModel || String(params.model || '').trim() || '';
   return { provider, model, fromSession: !!sessionProvider };
 }

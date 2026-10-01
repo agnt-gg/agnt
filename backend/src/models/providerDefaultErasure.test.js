@@ -171,20 +171,20 @@ describe('getUserSettings never invents a default', () => {
     expect(settings.selectedModel).toBeNull();
   });
 
-  it('the legacy column-default pair reads back as no default', async () => {
-    // Existing installs still stamp this pair on any row inserted without
-    // naming the columns. Nobody chose it and the model is retired.
-    await dbRun('UPDATE users SET default_provider = ?, default_model = ? WHERE id = ?', ['Anthropic', 'claude-3-5-sonnet-20240620', OTHER]);
-    const settings = await UserModel.getUserSettings(OTHER);
-    expect(settings.selectedProvider).toBeNull();
-    expect(settings.selectedModel).toBeNull();
+  it('a fresh schema has no column default for the default AI', async () => {
+    // The stamp is read from the schema, so this is what makes the legacy
+    // path a no-op on new installs.
+    const columns = await new Promise((resolve, reject) => db.all('PRAGMA table_info(users)', [], (e, rows) => (e ? reject(e) : resolve(rows))));
+    const dflt = (name) => columns.find((c) => c.name === name)?.dflt_value ?? null;
+    expect(dflt('default_provider')).toBeNull();
+    expect(dflt('default_model')).toBeNull();
   });
 
-  it('a deliberate Anthropic choice with a current model is kept', async () => {
-    await UserModel.updateUserSettings(OTHER, { selectedProvider: 'Anthropic', selectedModel: 'claude-opus-5' });
+  it('a deliberate choice of any provider with a current model is kept', async () => {
+    await UserModel.updateUserSettings(OTHER, { selectedProvider: 'Some-Provider', selectedModel: 'some-model' });
     const settings = await UserModel.getUserSettings(OTHER);
-    expect(settings.selectedProvider).toBe('Anthropic');
-    expect(settings.selectedModel).toBe('claude-opus-5');
+    expect(settings.selectedProvider).toBe('Some-Provider');
+    expect(settings.selectedModel).toBe('some-model');
   });
 
   it('an unknown user has no default', async () => {
@@ -199,6 +199,27 @@ describe('getUserSettings never invents a default', () => {
     const row = await dbGet('SELECT default_provider, default_model FROM users WHERE id = ?', [NEW_USER]);
     expect(row.default_provider).toBeNull();
     expect(row.default_model).toBeNull();
+  });
+});
+
+describe('readStoredDefaultAi: the legacy schema stamp is not a choice', () => {
+  // Values are arbitrary: the stamp is whatever the install's schema says, so
+  // the code under test names no vendor and neither does this test.
+  const STAMP = { provider: 'Legacy-Vendor', model: 'legacy-model-1' };
+
+  it('a row equal to the column-default stamp reads as no default', async () => {
+    const { readStoredDefaultAi } = await import('./UserModel.js');
+    expect(readStoredDefaultAi(STAMP.provider, STAMP.model, STAMP)).toEqual({ provider: null, model: null });
+  });
+
+  it('the same provider with a different model is a real choice', async () => {
+    const { readStoredDefaultAi } = await import('./UserModel.js');
+    expect(readStoredDefaultAi(STAMP.provider, 'current-model', STAMP)).toEqual({ provider: STAMP.provider, model: 'current-model' });
+  });
+
+  it('with no stamp (new installs) every stored pair is returned as stored', async () => {
+    const { readStoredDefaultAi } = await import('./UserModel.js');
+    expect(readStoredDefaultAi(STAMP.provider, STAMP.model, { provider: null, model: null })).toEqual(STAMP);
   });
 });
 

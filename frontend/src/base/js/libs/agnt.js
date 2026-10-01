@@ -2,7 +2,8 @@ import axios from "axios";
 import { API_CONFIG } from "@/tt.config.js";
 
 class AGNT {
-  constructor(apiKey, baseURL = API_CONFIG.BASE_URL, provider = "anthropic", model = "claude-3-5-sonnet-20240620") {
+  // No vendor default: null lets the server use the account's own default.
+  constructor(apiKey, baseURL = API_CONFIG.BASE_URL, provider = null, model = null) {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
     this.provider = provider;

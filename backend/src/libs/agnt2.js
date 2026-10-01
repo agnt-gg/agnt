@@ -23,8 +23,9 @@ class AGNT {
   constructor(
     apiKey,
     baseURL = 'http://localhost:3333/api',
-    provider = 'anthropic',
-    model = 'claude-3-5-sonnet-20240620',
+    // No vendor default: null lets the server use the account's own default.
+    provider = null,
+    model = null,
     authBaseURL = 'https://api.agnt.gg'
   ) {
     this.apiKey = apiKey;

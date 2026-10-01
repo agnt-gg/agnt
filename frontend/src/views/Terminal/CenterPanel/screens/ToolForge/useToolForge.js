@@ -8,8 +8,18 @@ import {
 import generateUUID from '@/views/_utils/generateUUID.js';
 import { toKebabCase } from '@/views/_utils/stringFormatting.js';
 import { handleGenerateClick } from '@/views/_components/base/stream';
-import { API_CONFIG, AI_PROVIDERS_CONFIG } from '../../../../../../user.config.js';
+import { API_CONFIG } from '../../../../../../user.config.js';
 import store from '@/store/state';
+
+/**
+ * The user's own selected provider/model. Tools that name neither run on it.
+ * This used to be the first entry of a static provider list, which made every
+ * new tool an Anthropic tool with no model.
+ */
+function selectedAi() {
+  const ai = store.state.aiProvider || {};
+  return { provider: ai.selectedProvider || '', model: ai.selectedModel || '' };
+}
 
 export default function useToolForge() {
   const toolOutput = ref('');
@@ -83,8 +93,8 @@ export default function useToolForge() {
         ? customFields
         : {
             instructions: toolForgeData.promptTemplate || '',
-            provider: toolForgeData.provider || AI_PROVIDERS_CONFIG.providers[0] || '',
-            model: toolForgeData.model || AI_PROVIDERS_CONFIG.modelsByProvider[toolForgeData.provider || AI_PROVIDERS_CONFIG.providers[0]]?.[0] || '',
+            provider: toolForgeData.provider || selectedAi().provider,
+            model: toolForgeData.model || (toolForgeData.provider ? '' : selectedAi().model),
             ...customFields,
           },
       outputs:
@@ -113,8 +123,7 @@ export default function useToolForge() {
   const mapCustomToolToToolForge = (customTool) => {
     const fields = [];
 
-    const defaultProvider = AI_PROVIDERS_CONFIG.providers[0] || '';
-    const defaultModel = defaultProvider ? AI_PROVIDERS_CONFIG.modelsByProvider[defaultProvider]?.[0] || '' : '';
+    const { provider: defaultProvider, model: defaultModel } = selectedAi();
 
     const base = customTool.base || 'AI';
     const isCodeTool = base === 'CODE_JS' || base === 'CODE_PYTHON';
@@ -214,8 +223,7 @@ export default function useToolForge() {
     isExecuting.value = true;
     toolOutput.value = '';
 
-    const defaultProvider = AI_PROVIDERS_CONFIG.providers[0] || 'openai'; // Fallback to openai if no config
-    const defaultModel = defaultProvider ? AI_PROVIDERS_CONFIG.modelsByProvider[defaultProvider]?.[0] || 'gpt-4o-mini' : 'gpt-4o-mini';
+    const { provider: defaultProvider, model: defaultModel } = selectedAi();
 
     try {
       // Create a form element to hold our tool data

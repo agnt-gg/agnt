@@ -13,6 +13,7 @@ import { getPluginOAuthAccessToken, CLIENT_ROW_SUFFIX, clientRowId } from '../..
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
 import { authHeader, getSessionToken } from './sessionTokenCache.js';
 import { assertPersonalCredentialContext } from '../authorization/TeamExecutionContext.js';
+import { resolveDefaultModel } from '../ai/defaultModel.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
 class AuthManager {
@@ -969,13 +970,19 @@ async function checkOpenAIHealth(token) {
   }
 }
 
+// The provider's current catalogue default. A pinned id here went stale and
+// every health check then probed a model the vendor no longer serves.
+function healthCheckModel(providerKey) {
+  return resolveDefaultModel(providerKey);
+}
+
 // Add missing provider health checks
 async function checkAnthropicHealth(token) {
   try {
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
-        model: 'claude-3-haiku-20240307',
+        model: healthCheckModel('anthropic'),
         max_tokens: 1,
         messages: [{ role: 'user', content: 'test' }],
       },
@@ -1013,7 +1020,7 @@ async function checkClaudeCodeHealth(token) {
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
-        model: 'claude-3-haiku-20240307',
+        model: healthCheckModel('claude-code'),
         max_tokens: 1,
         messages: [{ role: 'user', content: 'test' }],
       },

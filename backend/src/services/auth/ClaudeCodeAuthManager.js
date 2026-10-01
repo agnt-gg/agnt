@@ -8,6 +8,8 @@ import { getClientIdentity } from '../ai/clientVersions.js';
 import { readSecretJson, clearSecretCache, secretStoreSupported } from './secretStore.js';
 import * as agntStore from './agntCredentialStore.js';
 import { TIER, resolveFirst, describeSource } from './credentialResolver.js';
+// The catalogue default, so a key check never probes a retired model id.
+import { resolveDefaultModel } from '../ai/defaultModel.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -303,7 +305,7 @@ class ClaudeCodeAuthManager {
       const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-          model: 'claude-3-haiku-20240307',
+          model: resolveDefaultModel('claude-code'),
           max_tokens: 1,
           messages: [{ role: 'user', content: 'test' }],
         },
@@ -614,7 +616,7 @@ class ClaudeCodeAuthManager {
       const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-          model: 'claude-3-haiku-20240307',
+          model: resolveDefaultModel('claude-code'),
           max_tokens: 1,
           messages: [{ role: 'user', content: 'test' }],
         },

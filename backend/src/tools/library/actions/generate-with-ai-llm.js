@@ -13,6 +13,7 @@ import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
 import { resolveDefaultModel } from '../../../services/ai/defaultModel.js';
+import { resolveAccountAi } from '../../../services/ai/accountAi.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 
@@ -333,6 +334,12 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async execute(params, inputData, workflowEngine) {
+    // No provider on the node: the account default, else its fallback chain.
+    // Never a vendor guess; with nothing configured this throws a clear error.
+    if (!String(params.provider || '').trim()) {
+      const account = await resolveAccountAi(workflowEngine?.userId || params.userId, { model: params.model });
+      params = { ...params, provider: account.provider, model: params.model || account.model };
+    }
     this.validateParams(params);
     if(currentTeamExecution()){
       if(params.mode && params.mode!=='Text Generation')throw new Error('Team model connections currently support text generation');
@@ -643,7 +650,8 @@ class GenerateWithAiLlm extends BaseAction {
     // model-specific max_tokens, and retries — no duplication.
     if (provider === 'claude-code' || provider === 'anthropic') {
       const client = await createLlmClient(provider, params.userId);
-      const model = params.model || (provider === 'claude-code' ? 'claude-sonnet-4-5-20250929' : 'claude-3-5-sonnet-20241022');
+      const model = params.model || providerDefaultModel(provider);
+      if (!model) throw new Error(`No model could be resolved for provider: ${provider}`);
       const adapter = await createLlmAdapter(provider, client, model);
 
       // Build user message content (text + optional image) in Anthropic format.
@@ -696,7 +704,8 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
-    const anthropicModel = params.model || 'claude-3-5-sonnet-20241022';
+    const anthropicModel = params.model || providerDefaultModel('anthropic');
+    if (!anthropicModel) throw new Error('No model could be resolved for provider: anthropic');
     const response = await anthropic.messages.create({
       model: anthropicModel,
       max_tokens: Number(params.maxTokens) || resolveMaxOutputTokens('anthropic', anthropicModel),

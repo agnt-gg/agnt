@@ -3,10 +3,10 @@
  *
  * THE BUG THIS EXISTS TO PREVENT
  * A turn that named no pair read the account default. When that default was
- * missing, the settings layer substituted Anthropic / claude-3-5-sonnet, a
- * retired model the account might not even have, so the turn always failed
- * before the failover chain rescued it. With no default, the turn now runs on
- * the user's own fallback chain first.
+ * missing, the settings layer substituted a hardcoded vendor and retired
+ * model the account might not even have, so the turn always failed before
+ * the failover chain rescued it. With no default, the turn now runs on the
+ * user's own fallback chain first.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { resolveTurnProvider, firstFallbackTier } from './resolveTurnProvider.js';
@@ -48,7 +48,7 @@ describe('resolveTurnProvider', () => {
   });
 
   it('THE REPORTED BUG: no default goes straight to the fallback chain, never a vendor guess', async () => {
-    const scanCredentials = vi.fn(async () => ({ provider: 'anthropic', model: 'claude-3-5-sonnet-20240620' }));
+    const scanCredentials = vi.fn(async () => ({ provider: 'any-vendor', model: 'any-model' }));
     const result = await resolveTurnProvider({
       loadUserSettings: async () => ({ selectedProvider: null, selectedModel: null, ...FALLBACK }),
       scanCredentials,
@@ -59,9 +59,30 @@ describe('resolveTurnProvider', () => {
 
   it('a default provider with no model is not runnable and falls to the chain', async () => {
     const result = await resolveTurnProvider({
-      loadUserSettings: async () => ({ selectedProvider: 'Anthropic', selectedModel: null, ...FALLBACK }),
+      loadUserSettings: async () => ({ selectedProvider: 'Claude-Code', selectedModel: null, ...FALLBACK }),
     });
     expect(result.source).toBe('fallback');
+  });
+
+  it("a provider-only request never borrows ANOTHER provider's model", async () => {
+    // Default is Claude-Code; the request names OpenAI-Codex alone. The old
+    // ladder completed it with claude-opus-5-5, an id OpenAI-Codex rejects.
+    const result = await resolveTurnProvider({
+      requestProvider: 'OpenAI-Codex',
+      loadUserSettings: async () => DEFAULT,
+    });
+    expect(result.provider).toBe('OpenAI-Codex');
+    expect(result.model).not.toBe('claude-opus-5-5');
+    expect(result.source).toBe('request+catalog');
+    expect(typeof result.model).toBe('string');
+  });
+
+  it('a provider-only request takes the fallback tier model when that tier is the same provider', async () => {
+    const result = await resolveTurnProvider({
+      requestProvider: 'openai-codex',
+      loadUserSettings: async () => ({ selectedProvider: null, selectedModel: null, ...FALLBACK }),
+    });
+    expect(result).toEqual({ provider: 'openai-codex', model: 'gpt-6-astra', source: 'request+fallback' });
   });
 
   it('halves from different rungs are never mixed when the request named nothing', async () => {
@@ -121,9 +142,9 @@ describe('firstFallbackTier', () => {
   it('skips a tier with no provider and resolves a missing model from the registry', () => {
     const tier = firstFallbackTier({
       fallbackEnabled: true,
-      fallbackProviders: [{ provider: '  ' }, { provider: 'Anthropic', model: null }],
+      fallbackProviders: [{ provider: '  ' }, { provider: 'OpenAI', model: null }],
     });
-    expect(tier.provider).toBe('anthropic');
+    expect(tier.provider).toBe('openai');
     expect(typeof tier.model).toBe('string');
     expect(tier.model.length).toBeGreaterThan(0);
   });
