@@ -272,6 +272,28 @@ describe('lanes are bounded', () => {
     expect(targets.isConfined(one.instanceId)).toBe(false);
   });
 
+  it('deleting a conversation closes ITS tab only, even while it is being watched', async () => {
+    const one = await ensure('conv:c1');
+    await ensure('conv:c2');
+    await screencast.startViewing({ userId: 'u1', instanceId: one.instanceId, cdpUrl: browser.url() });
+
+    expect(await lanes.closeConversationLane('u1', 'c1')).toBe(true);
+    expect(browser.pages.map((p) => p.targetId).sort()).toEqual(['START', 'T2']);
+    expect(lanes.lanesForUser('u1').map((l) => l.lane)).toEqual(['conv:c2']);
+    expect(lanes.boundSurface('u1', 'conv:c1')).toBeNull();
+  });
+
+  it('deleting a conversation that never had a lane forgets what it drove, and touches nothing', async () => {
+    lanes.bindConversation('u1', 'conv:c9', 'host:u1');
+    expect(await lanes.closeConversationLane('u1', 'c9')).toBe(false);
+    expect(lanes.boundSurface('u1', 'conv:c9')).toBeNull();
+    // Another user's conversation with the same id is not ours to close.
+    await ensure('conv:c1', 'u2');
+    expect(await lanes.closeConversationLane('u1', 'c1')).toBe(false);
+    expect(lanes.lanesForUser('u2')).toHaveLength(1);
+    expect(await lanes.closeConversationLane('u1', 'temp-5')).toBe(false);
+  });
+
   it('never closes the last page of the browser, which would end it for everyone', async () => {
     const lonely = await fakeBrowser({ startPages: [] });
     const lane = await lanes.ensureLane('u1', 'conv:c1', { cdpUrl: lonely.url() });

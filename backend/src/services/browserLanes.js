@@ -216,6 +216,24 @@ export async function closeLane(instanceId, reason = 'closed') {
   return true;
 }
 
+/**
+ * A conversation was deleted: close its tab and forget what it drove.
+ *
+ * Unlike the idle sweep this does not wait for the lane to be free — the
+ * conversation no longer exists, so nobody can legitimately be using it, and
+ * a tab left open for a chat that is gone is exactly the leak this closes.
+ *
+ * @returns {Promise<boolean>} whether a lane was open
+ */
+export async function closeConversationLane(userId, conversationId) {
+  const lane = laneForConversation(conversationId);
+  if (!userId || !lane) return false;
+  // Even with no lane (it used a widget or the shared browser), its record of
+  // what it drove is now meaningless.
+  bindings.delete(bindingKey(userId, lane));
+  return closeLane(hostInstanceId(userId, lane), 'conversation deleted');
+}
+
 /** Busy lanes are never closed: someone is watching, or a verb is opening or using it. */
 function closable(instanceId) {
   return !isStreaming(instanceId) && !ensuring.has(instanceId) && !isScopeBusy(instanceId);

@@ -4,6 +4,29 @@ import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { serializeParticipants } from '../utils/transcriptParticipants.js';
+import { closeConversationLane } from './browserLanes.js';
+
+/**
+ * A chat is gone: close the browser tab it was driving.
+ *
+ * Only once its LAST saved row is gone. One conversation can still have several
+ * rows from before saves were deduplicated (see
+ * ContentOutputModel.findByConversationId), and deleting a stale duplicate must
+ * not close the tab of a chat that is still in the sidebar.
+ *
+ * Never throws and is never awaited by the request: tidying a browser tab is
+ * not part of deleting a chat, and must not be able to fail or slow it.
+ */
+export async function releaseDeletedConversationBrowser(userId, conversationId) {
+  if (!userId || !conversationId) return false;
+  try {
+    if (await ContentOutputModel.findByConversationId(conversationId, userId)) return false;
+    return await closeConversationLane(userId, conversationId);
+  } catch (err) {
+    console.warn('[RunService] could not close the deleted conversation\'s browser:', err.message);
+    return false;
+  }
+}
 
 /**
  * How many messages an INCOMING conversation payload carries.
@@ -334,6 +357,10 @@ class RunService {
     try {
       const { id } = req.params;
       const userId = req.user.userId;
+      // Read before deleting: the row is the only record of which conversation
+      // (and so which browser tab) this was. Scoped to the caller, like delete.
+      const existing = await ContentOutputModel.findOne(id);
+      const conversationId = existing?.user_id === userId ? existing.conversation_id : null;
       const result = await ContentOutputModel.delete(id, userId);
       if (result === 0) {
         return res.status(404).json({ error: 'Content output not found' });
@@ -347,6 +374,9 @@ class RunService {
       });
 
       res.json({ message: `Content output ${id} deleted successfully.` });
+
+      // After answering, deliberately: see releaseDeletedConversationBrowser.
+      if (conversationId) releaseDeletedConversationBrowser(userId, conversationId);
     } catch (error) {
       console.error('Error deleting content output:', error);
       res.status(500).json({
