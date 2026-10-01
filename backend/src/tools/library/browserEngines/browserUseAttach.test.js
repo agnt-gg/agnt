@@ -22,6 +22,9 @@ import path from 'path';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-browser-attach-'));
 
+// Account lookup must not initialize the database in an attachment unit test.
+vi.mock('../../../models/UserModel.js', () => ({ default: { getUserSettings: vi.fn().mockResolvedValue(null) } }));
+
 vi.mock('../../../services/auth/AuthManager.js', () => ({
   default: { getValidAccessToken: vi.fn().mockResolvedValue('sk-test-key') },
 }));

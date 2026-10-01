@@ -23,6 +23,9 @@ import path from 'path';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-browser-chat-'));
 
+// Keep account routing real without starting the database for browser controls.
+vi.mock('../../../models/UserModel.js', () => ({ default: { getUserSettings: vi.fn().mockResolvedValue(null) } }));
+
 vi.mock('../../../services/auth/AuthManager.js', () => ({
   default: { getValidAccessToken: vi.fn().mockResolvedValue('sk-test-key') },
 }));
@@ -87,7 +90,10 @@ describe('the provider comes from the conversation', () => {
     // There is no conversation to inherit from, and the dropdown IS a user
     // choice — so it wins outright.
     expect(action.resolveProvider({ provider: 'DeepSeek' }, workflow())).toBe('DeepSeek');
-    expect(action.resolveProvider({}, workflow())).toBe('OpenAI');
+  });
+
+  it('leaves an unset workflow provider for account resolution, never a guessed vendor', () => {
+    expect(action.resolveProvider({}, workflow())).toBeNull();
   });
 
 });

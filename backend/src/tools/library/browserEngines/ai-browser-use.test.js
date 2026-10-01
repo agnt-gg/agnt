@@ -13,12 +13,16 @@
  *     concatenated into a `python -c` payload.
  */
 
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-browser-agent-'));
+
+// Keep account routing real; only persistence is outside this unit's boundary.
+const getUserSettings = vi.fn();
+vi.mock('../../../models/UserModel.js', () => ({ default: { getUserSettings } }));
 
 const authManager = { getValidAccessToken: vi.fn() };
 const customProviders = { isCustomProvider: vi.fn(), getProviderCredentials: vi.fn() };
@@ -55,6 +59,7 @@ const { verifyGatewayToken, _resetGatewayTokens } = await import('../../../servi
 beforeEach(() => {
   _resetGatewayTokens();
   _resetSurfaces();
+  getUserSettings.mockReset().mockResolvedValue(null);
   ensureFallbackSurface.mockReset().mockResolvedValue('ws://127.0.0.1:9333/devtools/browser/hidden');
   environment.ensureEnvironment.mockReset();
   authManager.getValidAccessToken.mockReset().mockResolvedValue('sk-test-key');
@@ -63,6 +68,71 @@ beforeEach(() => {
 });
 
 afterAll(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+describe('account routing through execute', () => {
+  let runRunner;
+  const params = { instructions: 'read the page', generateGif: 'false' };
+
+  beforeEach(() => {
+    environment.ensureEnvironment.mockResolvedValue('python-test-only');
+    runRunner = vi.spyOn(action, 'runRunner').mockResolvedValue({ success: true, finalResult: 'done' });
+  });
+
+  afterEach(() => runRunner.mockRestore());
+
+  it('uses the account provider and model when a workflow names neither', async () => {
+    getUserSettings.mockResolvedValue({ selectedProvider: 'DeepSeek', selectedModel: 'account-model' });
+    const result = await action.execute(params, {}, { userId: 'user-1' });
+    expect(result.success).toBe(true);
+    expect(getUserSettings).toHaveBeenCalledWith('user-1');
+    expect(authManager.getValidAccessToken).toHaveBeenCalledWith('user-1', 'deepseek');
+    expect(runRunner).toHaveBeenCalledWith('python-test-only', expect.objectContaining({
+      llm: expect.objectContaining({ class: 'ChatDeepSeek', kwargs: expect.objectContaining({ model: 'account-model' }) }),
+    }), params);
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('uses the account fallback chain when no default is configured', async () => {
+    getUserSettings.mockResolvedValue({
+      selectedProvider: null, selectedModel: null, fallbackEnabled: true,
+      fallbackProviders: [{ provider: 'DeepSeek', model: 'fallback-model' }],
+    });
+    const result = await action.execute(params, {}, { userId: 'user-1' });
+    expect(result.success).toBe(true);
+    expect(authManager.getValidAccessToken).toHaveBeenCalledWith('user-1', 'deepseek');
+    expect(runRunner.mock.calls[0][1].llm.kwargs.model).toBe('fallback-model');
+  });
+
+  it('keeps an explicitly selected workflow provider and model without consulting the account', async () => {
+    const result = await action.execute({ ...params, provider: 'DeepSeek', model: 'explicit-model' }, {}, { userId: 'user-1' });
+    expect(result.success).toBe(true);
+    expect(getUserSettings).not.toHaveBeenCalled();
+    expect(authManager.getValidAccessToken).toHaveBeenCalledWith('user-1', 'deepseek');
+    expect(runRunner.mock.calls[0][1].llm.kwargs.model).toBe('explicit-model');
+  });
+
+  it('keeps the chat selection authoritative rather than reading account defaults', async () => {
+    const result = await action.execute(
+      { ...params, provider: 'OpenAI', model: 'ignored-model', cdpUrl: 'ws://127.0.0.1:9333/devtools/browser/test' },
+      {}, { userId: 'user-1', provider: 'DeepSeek', model: 'session-model' },
+    );
+    expect(result.success).toBe(true);
+    expect(getUserSettings).not.toHaveBeenCalled();
+    expect(authManager.getValidAccessToken).toHaveBeenCalledWith('user-1', 'deepseek');
+    expect(runRunner.mock.calls[0][1].llm.kwargs.model).toBe('session-model');
+  });
+
+  it.each(['unconfigured', 'unavailable'])('fails before credentials or browser startup when account settings are %s', async state => {
+    if (state === 'unavailable') getUserSettings.mockRejectedValue(new Error('settings unavailable'));
+    const result = await action.execute(params, {}, { userId: 'user-1' });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/No AI model is configured/);
+    expect(authManager.getValidAccessToken).not.toHaveBeenCalled();
+    expect(environment.ensureEnvironment).not.toHaveBeenCalled();
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+    expect(runRunner).not.toHaveBeenCalled();
+  });
+});
 
 describe('credentials reach the provider', () => {
   it('passes the key as an argument, not an environment variable', async () => {

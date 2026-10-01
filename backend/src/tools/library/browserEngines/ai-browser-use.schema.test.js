@@ -18,8 +18,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// The action drags in the auth stack and the database on import; none of that
-// is involved in declaring a schema.
+// Isolate persistence at its boundary, including the account-default resolver.
+// None of these dependencies is involved in declaring a schema.
+vi.mock('../../../models/UserModel.js', () => ({ default: { getUserSettings: vi.fn().mockResolvedValue(null) } }));
 vi.mock('../../../services/auth/AuthManager.js', () => ({ default: { getValidAccessToken: vi.fn() } }));
 vi.mock('../../../services/ai/CustomOpenAIProviderService.js', () => ({ default: { isCustomProvider: vi.fn(), getProviderCredentials: vi.fn() } }));
 vi.mock('../../../utils/PathManager.js', () => ({ default: { getUserDataPath: () => '/tmp', getPath: (...p) => path.join('/tmp', ...p) } }));
