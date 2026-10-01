@@ -32,6 +32,11 @@ const MUST_BE_LAZY = [
   'imap',
   'mailparser',
   'pdfreader',
+  // The web scrape converter (services/scrape/upstream): loaded on the first scrape.
+  'turndown',
+  'turndown-plugin-gfm',
+  'unpdf',
+  'fflate',
 ];
 
 // Static forms only; `import('x')` inside a function is exactly what we want.

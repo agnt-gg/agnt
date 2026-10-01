@@ -1,0 +1,34 @@
+{
+  "upstream": "agnt-server/api.agnt.gg",
+  "commit": "be1f73acfb272414d40640d30912b74f20ea1507",
+  "files": {
+    "src/services/ScrapePolicy.js": {
+      "upstream": "src/services/ScrapePolicy.js",
+      "sha256": "34b528f94acafe63c4b23d34bcddb98fdb79fd295502b117786ca36114139e07"
+    },
+    "src/services/scrape/extract.js": {
+      "upstream": "src/services/scrape/extract.js",
+      "sha256": "f9314fd564a7e1bdd6f7e790055b1b2573fedf15e474a205cb03f1e91a994669"
+    },
+    "src/services/scrape/documents.js": {
+      "upstream": "src/services/scrape/documents.js",
+      "sha256": "faeed546b9aaeea0bad3fd173e08b2709b1651fbcca041e7535ae0d7dbe71baa"
+    },
+    "src/services/scrape/convert.js": {
+      "upstream": "src/services/scrape/convert.js",
+      "sha256": "90da29631708443a5b0ea22df60cfd382a727be4011b52fa25f67180bea3d0f6"
+    },
+    "src/services/scrape/convert-thread.mjs": {
+      "upstream": "src/services/scrape/convert-thread.mjs",
+      "sha256": "47220478b71f2062d8798fc3b212002220a3dbb1b482a2d2fa4144eb9c7443eb"
+    },
+    "tests/scrape-extract.nodetest.js": {
+      "upstream": "tests/scrape-extract.test.js",
+      "sha256": "740bb001ad7de0729601de44bf8d312d9d8d693fea29637ae4bc0d703655bf8a"
+    },
+    "tests/scrape-documents.nodetest.js": {
+      "upstream": "tests/scrape-documents.test.js",
+      "sha256": "dd752391e7fb5838b9db2bc99e047b8270de95e66231c5871dde4c042adc3fa2"
+    }
+  }
+}

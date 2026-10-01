@@ -31,8 +31,8 @@ const isExcluded = (needle) =>
 
 describe('runtime imports must be declared, not inherited', () => {
   it('declares puppeteer-core, which three runtime files import directly', () => {
-    // web-scrape.js, webScrape.js and WidgetDefinitionService.js all import
-    // 'puppeteer-core'. It used to resolve only because `puppeteer` dragged it
+    // services/scrape/localScrape.js (web scraping) and WidgetDefinitionService.js
+    // import 'puppeteer-core'. It used to resolve only because `puppeteer` dragged it
     // in transitively — so the package with ZERO imports was the load-bearing
     // one, and deleting the obviously-dead thing broke web scraping at runtime.
     expect(
@@ -44,8 +44,7 @@ describe('runtime imports must be declared, not inherited', () => {
   it('ANTI-VACUITY: those imports still exist', () => {
     // If every consumer were deleted, the rule above would be guarding nothing.
     const importers = [
-      'backend/src/tools/web-scrape.js',
-      'backend/src/services/webScrape.js',
+      'backend/src/services/scrape/localScrape.js',
       'backend/src/services/WidgetDefinitionService.js',
     ].filter((rel) => fs.existsSync(path.join(REPO_ROOT, rel)));
 

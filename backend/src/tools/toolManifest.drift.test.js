@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import browser from './library/actions/browser.js';
 import computerUse from './library/actions/computer-use.js';
 import triggerTimer from './library/triggers/trigger-timer.js';
+import webScrape from './library/actions/web-scrape.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
@@ -37,7 +38,9 @@ const entryFor = (manifest, type) => entriesOf(manifest).find((entry) => entry.t
 
 // trigger-timer: its time-zone parameter and fire-on-start meaning changed
 // with durable timers; the editor and the model read the manifest, not the file.
-const TOOLS = [browser, computerUse, triggerTimer];
+// web-scrape: grew formats, mainContentOnly, waitForMs, pageRange and per-format
+// outputs when it took on scrape.agnt.gg's pipeline.
+const TOOLS = [browser, computerUse, triggerTimer, webScrape];
 
 // De-registered 2026-09: `browser` is the one browser tool, and these three are
 // engines behind it, living outside every scanned directory. A manifest entry

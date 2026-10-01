@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
+import { SCRAPE_FORMATS } from '../scrape/localScrape.js';
 import toolRegistry from './toolRegistry.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
@@ -1107,29 +1108,52 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'web_scrape',
         description:
-          'Fetches and aggressively cleans a webpage URL, returning its main text content, all code snippets, and all discoverable links. Useful for deep content extraction from a specific webpage.',
+          "Reads a web page or a file at a URL in the user's own Chrome and converts it exactly as scrape.agnt.gg does: pages (tables, code and shadow-DOM content kept), PDF, Word, Excel, PowerPoint, CSV/TSV, JSON, YAML, XML/RSS, Markdown, source code, RTF and images. " +
+          'Ask only for the formats you need; you get only those back, markdown alone by default. ' +
+          'Returns {success, url, finalUrl, statusCode, title, formats: {<format>: {requested, success, data}}, isPartial, document (files only)}. ' +
+          'On failure returns {success: false, error, message}; error is one of page_blocked, page_not_found, destination_unavailable, scrape_timeout, extraction_failed, result_too_large, unsupported_file_type, pdf_images_only, invalid_url, invalid_formats, invalid_request, invalid_page_range, browser_not_found, scrape_failed.',
         parameters: {
           type: 'object',
           properties: {
             url: {
               type: 'string',
-              description: "The fully qualified URL of the webpage to scrape (e.g., 'https://example.com/article').",
+              description: "The URL of the page or file (e.g. 'https://example.com/article' or a link to a PDF).",
+            },
+            formats: {
+              type: 'array',
+              items: { type: 'string', enum: [...SCRAPE_FORMATS] },
+              description:
+                'Outputs to return, default ["markdown"]. markdown: headings, lists, tables, absolute links, fenced code. text: plain readable text. links: every absolute link. code: every code block. html: the cleaned main-content HTML. screenshot: a JPEG of the page as a data URI (large; pages only). bytes: the original response as a data URI, up to 4 MB (large).',
+            },
+            mainContentOnly: {
+              type: 'boolean',
+              description: 'Default true: drop navigation, headers, footers and sidebars. false keeps the whole page.',
+            },
+            waitForMs: {
+              type: 'integer',
+              minimum: 0,
+              maximum: 10000,
+              description: 'Extra wait after the page loads, for content that renders late. Default 0.',
+            },
+            pageRange: {
+              type: 'string',
+              description: 'PDF pages to convert: "5" or "2-9". Default: every page, up to 500.',
             },
           },
           required: ['url'],
         },
       },
     },
-    execute: async ({ url }) => {
+    execute: async ({ url, formats, mainContentOnly, waitForMs, pageRange } = {}) => {
       console.log(`Tool call: web_scrape with url: "${url}"`);
-      if (!url) return JSON.stringify({ success: false, error: 'URL is required for web scraping.' });
       try {
         // The local scraper's default export is a tool descriptor, not a
-        // function: call .execute({ url }). It launches the user's own Chrome,
-        // so scrapes run in parallel with no allowance and no per-page refusal.
-        const { textContent, links, codeContent } = await scrapeUtil.execute({ url });
-        return JSON.stringify({ success: true, url, textContent, links, codeContent, message: 'Content, links, and code snippets extracted successfully.' });
+        // function: call .execute(). It runs in the user's own Chrome, so
+        // scrapes run in parallel with no allowance and no per-page refusal,
+        // and it returns the hosted API's body, typed failures included.
+        return JSON.stringify(await scrapeUtil.execute({ url, formats, mainContentOnly, waitForMs, pageRange }));
       } catch (error) {
+        // scrapeUrl never throws; this only guards the JSON contract.
         return JSON.stringify(serviceFailure(error));
       }
     },

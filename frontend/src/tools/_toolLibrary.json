@@ -2746,30 +2746,98 @@
       "category": "action",
       "type": "web-scrape",
       "icon": "web",
-      "description": "Scrapes a URL to extract main text content, all links, AND all code snippets on the page. Use the returned `links` array for recursive research and `codeContent` to build documentation.",
+      "description": "Reads a web page or a file at a URL (PDF, Word, Excel, PowerPoint, CSV, JSON, RSS, Markdown, source code, images...) in your own Chrome and converts it exactly as scrape.agnt.gg does. Only the formats you choose are returned.",
       "parameters": {
         "url": {
           "type": "string",
           "inputType": "text",
-          "description": "The URL to scrape."
+          "description": "The URL of the page or file to scrape."
+        },
+        "formats": {
+          "type": "string",
+          "inputType": "text",
+          "default": "text,links,code",
+          "required": false,
+          "description": "Comma-separated outputs to return: markdown, text, links, code, html, screenshot, bytes. Only these outputs are filled; ask for just what the workflow uses (e.g. \"markdown\")."
+        },
+        "mainContentOnly": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "default": true,
+          "required": false,
+          "description": "Drop navigation, headers, footers and sidebars."
+        },
+        "waitForMs": {
+          "type": "number",
+          "inputType": "number",
+          "default": 0,
+          "required": false,
+          "description": "Extra wait after the page loads, for content that renders late (0-10000 ms)."
+        },
+        "pageRange": {
+          "type": "string",
+          "inputType": "text",
+          "default": "",
+          "required": false,
+          "description": "PDF pages to convert, e.g. \"5\" or \"2-9\". Empty converts every page (up to 500)."
         }
       },
       "outputs": {
+        "markdown": {
+          "type": "string",
+          "description": "The content as markdown (format: markdown)"
+        },
         "textContent": {
           "type": "string",
-          "description": "The main text content extracted from the page"
+          "description": "The content as plain text (format: text)"
         },
         "links": {
           "type": "array",
-          "description": "Array of all links found on the page"
+          "description": "Every absolute link (format: links)"
         },
         "codeContent": {
           "type": "string",
-          "description": "All code snippets found on the page"
+          "description": "Every code block, fenced (format: code)"
+        },
+        "html": {
+          "type": "string",
+          "description": "The cleaned main-content HTML (format: html)"
+        },
+        "screenshot": {
+          "type": "string",
+          "description": "A JPEG of the page as a data URI (format: screenshot)"
+        },
+        "bytes": {
+          "type": "string",
+          "description": "The original response as a data URI, up to 4 MB (format: bytes)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The page or document title"
+        },
+        "finalUrl": {
+          "type": "string",
+          "description": "The URL after redirects"
+        },
+        "statusCode": {
+          "type": "number",
+          "description": "The HTTP status of the page or file"
+        },
+        "document": {
+          "type": "object",
+          "description": "Files only: type, content type, size and pages, sheets or slides"
+        },
+        "isPartial": {
+          "type": "boolean",
+          "description": "True when some requested format could not be produced"
+        },
+        "errorCode": {
+          "type": "string",
+          "description": "Why the scrape failed, as a code (e.g. page_blocked)"
         },
         "error": {
           "type": "string",
-          "description": "Error message if the scraping failed"
+          "description": "Why the scrape failed, in a sentence"
         }
       }
     },
