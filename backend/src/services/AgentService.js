@@ -5,6 +5,26 @@ import generateUUID from '../utils/generateUUID.js';
 
 import universalChatHandler from './OrchestratorService.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import { resolveRuntimeOptions } from './orchestrator/runtimeOptions.js';
+
+/**
+ * The agent's own provider/model wins — unless the caller pins one with
+ * runtime.model.override (e.g. one agent benchmarked across several models).
+ * Without this, a request naming a model was silently overwritten and every
+ * "comparison" measured the agent's configured model. An invalid runtime
+ * object is left for the chat handler to reject with a 400.
+ */
+function applyAgentModel(body, provider, model) {
+  let pinned = null;
+  try { pinned = resolveRuntimeOptions(body.runtime).model; } catch { pinned = null; }
+  if (pinned?.override) {
+    body.provider = pinned.provider;
+    body.model = pinned.model;
+    return;
+  }
+  if (provider) body.provider = provider;
+  if (model) body.model = model;
+}
 
 /**
  * Fill missing agent.provider / agent.model from the user's selected settings.
@@ -304,9 +324,7 @@ class AgentService {
       return res.status(status).json({ error });
     }
 
-    // Use agent-specific provider/model if available, otherwise use request body values
-    if (provider) req.body.provider = provider;
-    if (model) req.body.model = model;
+    applyAgentModel(req.body, provider, model);
 
     // Add agent context and ID to request body for universal handler
     req.body.agentId = id;
@@ -323,9 +341,7 @@ class AgentService {
       return res.status(status).json({ error });
     }
 
-    // Use agent-specific provider/model if available, otherwise use request body values
-    if (provider) req.body.provider = provider;
-    if (model) req.body.model = model;
+    applyAgentModel(req.body, provider, model);
 
     // Add agent context and ID to request body for universal handler
     req.body.agentId = id;

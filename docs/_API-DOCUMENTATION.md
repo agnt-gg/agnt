@@ -577,9 +577,71 @@ Note: this endpoint returns the raw DB row plus parsed arrays — timestamps are
 }
 ```
 
-All fields except `message` are optional. `provider`/`model` default to the agent's saved provider/model, then the user's selected settings. `conversationId` keys persistent conversation history. `enabledTools` narrows (never widens) the agent's tool surface.
+All fields except `message` are optional. The agent's saved provider/model always wins over `provider`/`model` in the body (then the user's selected settings); to pin a pair for one call, use `runtime.model.override`. `conversationId` keys persistent conversation history. `enabledTools` narrows (never widens) the agent's tool surface.
 
 - **Response**: Server-sent events stream (same event vocabulary as [Universal Chat](#universal-chat) — `conversation_started`, `content_delta`, `tool_start`/`tool_end`, `final_content`, `done`, …). There is no JSON response mode.
+
+#### Runtime options (`runtime`)
+
+By default an agent call runs the full chat-app turn: the platform system prompt (~10–12K tokens of rendering rules, skills catalog, memory, the user's custom instructions), the agent's tools, a conversation log, cross-tab broadcasts (which make the open app adopt and **save the run as a conversation**) and a post-turn insight pass. A programmatic caller sends `runtime` to load and write only what it needs.
+
+```json
+{
+  "message": "STATE t=42s …",
+  "runtime": {
+    "profile": "realtime",
+    "prompt":  { "append": "Reply ONLY with JSON Lines." },
+    "model":   { "provider": "groq", "model": "openai/gpt-oss-120b", "override": true },
+    "limits":  { "maxInputTokens": 2000, "timeoutMs": 8000 }
+  }
+}
+```
+
+**Profiles** — a preset; any field below can then be overridden individually.
+
+| Profile | Prompt | Tools | Writes | Broadcast | Failover | Stream | Use for |
+|---|---|---|---|---|---|---|---|
+| `ui` (default) | full | agent's | everything | yes | chain | all events | the chat app — identical to sending no `runtime` |
+| `api` | lean, no memory / skills / custom instructions | agent's | none | no | chain | all events | scripts, webhooks, integrations |
+| `background` | lean, with memory / skills / custom instructions | agent's | conversation log, state, insights | no | chain | all events | cron, batch jobs, agent-to-agent delegation |
+| `realtime` | persona only | none | none | no | none | minimal + `line` | games, voice loops, classifiers |
+
+**Fields**
+
+| Field | Values | Meaning |
+|---|---|---|
+| `profile` | `ui` \| `api` \| `background` \| `realtime` | Preset (default `ui`). |
+| `prompt.platform` | `full` \| `lean` \| `none` | `full` = today's prompt. `lean` = tool and execution rules without chat-window blocks (artifacts, inline HTML, file embeds, chart guide). `none` = the agent's identity and instructions only. |
+| `prompt.memory`, `prompt.skills`, `prompt.customInstructions`, `prompt.workspace` | boolean | Include that section. A section that is off is not looked up at all. |
+| `prompt.append` | string (≤ 20,000 chars) | Caller contract appended at the end of the system prompt (output format, schema). |
+| `tools` | `agent` \| `none` \| `["name", …]` | A list **narrows** the agent's surface; naming a tool the agent is not allowed grants nothing. `[]` = `none`. |
+| `persist.conversationLog` | boolean | Write `conversation_logs` (the model's own history). |
+| `persist.transcript` | boolean | Mirror the turn into the saved conversation row. |
+| `persist.conversationState` | boolean | Keep the turn's state for async-tool follow-ups and prompt-cache restore. Off = async tool results cannot post back. |
+| `persist.insights` | boolean | Run post-turn insight extraction (a second model call). |
+| `broadcast` | boolean | Announce the run and mirror its events to the user's other clients. Only the `ui` profile can broadcast. |
+| `model.provider`, `model.model`, `model.override` | strings, boolean | With `override: true` (both names required), this call uses that pair instead of the agent's. |
+| `model.fallback` | `chain` \| `none` | `none` = no failover: a provider failure arrives as an `error` event (`recoverable: false`) instead of being answered by another model. |
+| `stream.events` | `all` \| `minimal` | `minimal` = `conversation_started`, `agent_execution_started`, `content_delta`, `line`, `final_content`, `error`, `provider_fallback`, `agent_execution_completed`, `done`. |
+| `stream.lines` | boolean | Emit `event: line` / `data: {"text", "index"}` for each complete line of the answer the moment its newline arrives (JSON-Lines callers can act on line 1 while line 2 is generating). |
+| `limits.maxInputTokens` | integer \| null | Refuse the call (an `error` event, nothing sent to the provider) if the request would exceed it. |
+| `limits.timeoutMs` | integer ≤ 600000 \| null | Abort the turn after this long. |
+| `limits.maxToolRounds` | integer 0–100 \| null | Cap tool rounds (never raises the configured cap). |
+| `limits.cancelOnDisconnect` | boolean | Abort generation when the caller closes the stream. (Normally a run outlives its socket so the app can reattach; a non-broadcast caller is never reattached.) |
+
+**Guarantees.** No `runtime` behaves exactly as before. Unknown keys and invalid values are a `400`, never a silent fallback to the expensive default. Every call still writes its execution trace, which records the provider/model that actually **served** the turn. A non-`ui` profile never rewrites the account's default provider. `runtime` is accepted on `/:id/chat` and `/:id/chat-stream` only.
+
+**Scenarios**
+
+| Scenario | Send |
+|---|---|
+| Game or voice brain | `{ "profile": "realtime", "prompt": { "append": "<output contract>" } }` |
+| Same prompt across several models (benchmark) | `realtime` + `model: { provider, model, override: true }`, failover stays `none` |
+| Webhook / Zapier one-shot | `{ "profile": "api" }` |
+| Classification / extraction to a schema | `{ "profile": "realtime", "prompt": { "append": "<JSON schema>" } }` |
+| Voice assistant that can search | `{ "profile": "realtime", "tools": ["web_search"], "prompt": { "platform": "lean" } }` |
+| Nightly report, delegated agent turn | `{ "profile": "background" }` |
+| Embedded widget chat with its own history | `{ "profile": "api", "persist": { "conversationLog": true, "conversationState": true } }` + a stable `conversationId` |
 
 ### Stream Chat with Agent
 

@@ -66,7 +66,9 @@ describe('announcing a started run', () => {
   it('does not announce for an unidentified user', () => {
     // broadcastToUser targets room `user:<id>`; a null id would address a room
     // nobody is in at best, and a shared one at worst.
-    expect(CODE.slice(announceIdx - 300, announceIdx)).toMatch(/if \(userId\) \{/);
+    // Also gated on runtime.broadcast: a programmatic caller's run must not be
+    // announced at all (OrchestratorService.runtimeOptions.test.js).
+    expect(CODE.slice(announceIdx - 300, announceIdx)).toMatch(/if \(userId && runtime\.broadcast\) \{/);
   });
 
   it('sends no transcript content in the announcement', () => {

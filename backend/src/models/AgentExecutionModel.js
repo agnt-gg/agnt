@@ -65,6 +65,30 @@ class AgentExecutionModel {
   }
 
   /**
+   * Record the provider/model that actually SERVED the run.
+   *
+   * create() stamps the requested pair before the request goes out. When the
+   * failover chain or the router hands the turn to another pair, the row kept
+   * naming the one that never answered — observed 2026-10-01: a run recorded
+   * as cerebras/qwen-3.8-27b was served by openai-codex/gpt-6-astra.
+   */
+  static recordServedModel(id, provider, model) {
+    if (!id || !provider || !model) return Promise.resolve(0);
+    const operation = () =>
+      new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE agent_executions SET provider = ?, model = ? WHERE id = ?',
+          [provider, model, id],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      });
+    return retryOnBusy(operation);
+  }
+
+  /**
    * Resolve the tree root for a would-be child (PRD-122).
    *
    * Returns the parent's root, so a grandchild attaches to the same tree as its

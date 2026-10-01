@@ -59,6 +59,10 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     // Gate decisions resolved once on turn 1 and replayed for the life of the
     // conversation. See below.
     residentElementIds = null,
+    // False for programmatic callers (runtime.prompt.platform 'lean'): the
+    // blocks gated on this only describe how the CHAT WINDOW renders output,
+    // which a script reading the raw text never sees.
+    chatUiBlocks = true,
   } = options;
 
   // Gate inputs are computed from the RESOLVED TOOL SURFACE (which
@@ -170,20 +174,20 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // turns them off.
   if (on('memory_recall')) parts.push(MEMORY_RECALL_GUIDANCE);
 
-  parts.push(ARTIFACTS_VS_WIDGETS);
+  if (chatUiBlocks) parts.push(ARTIFACTS_VS_WIDGETS);
   // Directly after ARTIFACTS_VS_WIDGETS on purpose. That block is what creates
   // the "this request becomes a file" instinct; this one says the file is not
   // the delivery. Separating them let the model conclude that writing the file
   // WAS the answer and a link was how you hand it over — which is the behaviour
   // being fixed. Unconditional: the chat renders an html block on every surface,
   // and a gate that could flicker costs more than the ~300 tokens it saves.
-  parts.push(HTML_INLINE_RENDERING);
-  parts.push(RESPONSE_FORMATTING);
+  if (chatUiBlocks) parts.push(HTML_INLINE_RENDERING);
+  if (chatUiBlocks) parts.push(RESPONSE_FORMATTING);
   // Local file rendering applies to every surface: any tool (generation, plugin,
   // MCP, file_operations, etc.) can return an absolute path the LLM needs to
   // embed. The frontend rewrites file:/// → /api/local-file/... so <img>,
   // <video>, <iframe>, <audio> all just work. Cheap to include unconditionally.
-  parts.push(LOCAL_FILE_RENDERING);
+  if (chatUiBlocks) parts.push(LOCAL_FILE_RENDERING);
   // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
   // execute_javascript_code / file_operations / agnt_tools — skip the block
   // when none of those are enabled, otherwise the LLM advertises tools the
@@ -192,7 +196,7 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // Chart.js only. The D3 / Three.js / HTML guides are ON-DEMAND via
   // discover_tools categories=["visualization"] — 2,670 tokens that were
   // resident on every turn for a capability used on a small minority of them.
-  parts.push(CHART_CHEATSHEET);
+  if (chatUiBlocks) parts.push(CHART_CHEATSHEET);
 
   if (on('mcp_tool_use')) parts.push(MCP_TOOL_USE_RULES);
 

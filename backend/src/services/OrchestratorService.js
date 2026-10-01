@@ -57,6 +57,7 @@ import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
+import { resolveRuntimeOptions, createLineFramer, MINIMAL_STREAM_EVENTS } from './orchestrator/runtimeOptions.js';
 import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrator/openToolCalls.js';
 import { mapOrderedComputerCalls } from './computerUse/operationQueue.js';
 import { captureComputerImages } from './computerUse/observationImages.js';
@@ -868,6 +869,23 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     routingMode: requestRoutingMode,
   } = requestBody;
 
+  // What this caller wants loaded, written and broadcast. Absent = the `ui`
+  // profile = exactly today's behaviour. See orchestrator/runtimeOptions.js.
+  let runtime;
+  try {
+    runtime = resolveRuntimeOptions(requestBody?.runtime);
+  } catch (runtimeError) {
+    return transport.reject(runtimeError.status || 400, runtimeError.message);
+  }
+  // Scoped to the agent endpoints for now: the main chat and the forges carry
+  // page-context and resume semantics this has not been validated against.
+  if (runtime.explicit && chatType !== 'agent') {
+    return transport.reject(400, 'The runtime option is supported on /agents/:id/chat and /agents/:id/chat-stream only.');
+  }
+  if (runtime.limits.maxToolRounds !== null) {
+    config.maxToolRounds = Math.min(config.maxToolRounds, runtime.limits.maxToolRounds);
+  }
+
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
   const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
   const reasoningValue = typeof rawReasoningValue === 'string' && rawReasoningValue.trim()
@@ -973,7 +991,9 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   const workspaceHasAiOverride = !!(workspaceState && workspaceState.ai && workspaceState.ai.provider);
   // FormData turns (file uploads) transmit persistDefault as the STRING
   // 'false', which is truthy — normalize both encodings before the guard.
-  const persistDefaultNormalized = !(persistDefault === false || persistDefault === 'false');
+  // A non-ui runtime profile borrows a provider for one call; it never
+  // redefines the account default.
+  const persistDefaultNormalized = runtime.profile === 'ui' && !(persistDefault === false || persistDefault === 'false');
   // A dynamically-routed turn is a turn-only choice by definition. Writing it
   // back would make one routed request silently redefine the account default
   // for every other surface — including the background jobs that read it.
@@ -1106,6 +1126,10 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     console.warn('[Chat] Could not build provider failover chain (using primary only):', e.message);
     providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
   }
+  // `fallback: 'none'` fails loudly on the provider the caller asked for. A
+  // benchmark or a game brain silently served by a different model is
+  // measuring the wrong thing.
+  if (runtime.model.fallback === 'none') providerChain = providerChain.slice(0, 1);
 
   // Validate message input (different formats for different handlers)
   let messageInput = preparedHistory || originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
@@ -1133,16 +1157,43 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   const abortFromSupervisor = () => streamAbortController.abort(signal.reason);
   if (signal?.aborted) abortFromSupervisor();
   else signal?.addEventListener('abort', abortFromSupervisor, { once: true });
+  // Opt-in only. Runs normally outlive their socket so a refreshed client can
+  // reattach (activeRuns.js). A non-broadcast caller is never reattached, so
+  // its stream closing means nobody will read the rest of the answer.
+  const detachCancelOnClose = runtime.limits.cancelOnDisconnect
+    ? transport.onClose(() => streamAbortController.abort('caller_disconnected'))
+    : null;
+  const runtimeTimeout = runtime.limits.timeoutMs
+    ? setTimeout(() => streamAbortController.abort('runtime_timeout'), runtime.limits.timeoutMs)
+    : null;
+  runtimeTimeout?.unref?.();
   let activeRun = null;
+  // `line` events: one per complete line of streamed text, sent the moment its
+  // newline arrives, so a JSON-Lines caller can act on line 1 while line 2 is
+  // still generating. Flushed before the turn's final events.
+  let framedDeltas = false;
+  const lineFramer = runtime.stream.lines
+    ? createLineFramer((text, index) => transport.send('line', { text, index }))
+    : null;
+  const deliversToCaller = (eventName) => runtime.stream.events === 'all' || MINIMAL_STREAM_EVENTS.has(eventName);
   const rawSendEvent = (eventName, data) => {
-    transport.send(eventName, data);
+    if (lineFramer && (eventName === 'final_content' || eventName === 'done')) {
+      // A non-streaming adapter delivers the whole answer here instead of as deltas.
+      if (!framedDeltas && eventName === 'final_content' && typeof data?.content === 'string') lineFramer.push(data.content);
+      lineFramer.flush();
+    }
+    if (deliversToCaller(eventName)) transport.send(eventName, data);
+    if (lineFramer && eventName === 'content_delta') {
+      framedDeltas = true;
+      lineFramer.push(data?.delta);
+    }
 
     // 2. Replay log + any reattached clients. This is what survives a refresh,
     //    so it must run whether or not the original socket is still alive.
     if (activeRun) publishToRun(activeRun, eventName, data);
 
     // Broadcast via Socket.IO to all user's connected clients (real-time sync across tabs)
-    if (userId) {
+    if (userId && runtime.broadcast) {
       // Map SSE event names to Socket.IO event names for chat events
       const chatEventMappings = {
         'assistant_message': RealtimeEvents.CHAT_MESSAGE_START,
@@ -1173,7 +1224,11 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   // Register the run BEFORE the first event is emitted, so the replay log is
   // complete from `conversation_started` onward. A client that reattaches at any
   // later point sees the identical event sequence the original socket saw.
-  activeRun = startRun({
+  //
+  // A registered run is listed by GET /orchestrator/runs and adopted by booting
+  // clients (runResume.js), which then autosave it as a conversation. A
+  // non-broadcast caller owns its stream and has nothing to reattach to.
+  if (runtime.broadcast) activeRun = startRun({
     conversationId,
     userId,
     chatType,
@@ -1211,7 +1266,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   // and MIGRATE_CONVERSATION_ID would then overwrite its own live slot with the
   // reattached one. Identity is carried explicitly rather than inferred from
   // the order two transports happen to deliver in.
-  if (userId) {
+  if (userId && runtime.broadcast) {
     broadcastToUser(userId, RealtimeEvents.RUN_STARTED, {
       conversationId,
       chatType,
@@ -1301,6 +1356,8 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     ...pickPageContext(requestBody),
     userId,
     conversationId,
+    // Read by chatConfigs to skip prompt sections and tools the caller did not ask for.
+    runtime,
     // PRD-051 identity mapping — coarse Phase 1 roles; refined in Phase 3
     role: agentId ? 'agent' : goalId ? 'goal' : 'user',
     // Latest user message text (for dynamic tool selection)
@@ -1717,7 +1774,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
       }));
 
     // Broadcast user message to all connected tabs (real-time sync)
-    if (!preparedHistory && userId && messages.length > 0) {
+    if (!preparedHistory && userId && runtime.broadcast && messages.length > 0) {
       const lastUserMessage = messages[messages.length - 1];
       if (lastUserMessage && lastUserMessage.role === 'user') {
         broadcastToUser(userId, RealtimeEvents.CHAT_USER_MESSAGE, {
@@ -1972,6 +2029,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       evictedUnits: conversationContext._evictedUnits || 0,
     });
     conversationContext._evictedUnits = contextResult.evictedUnits || 0;
+    if (runtime.limits.maxInputTokens !== null && contextResult.totalRequestTokens > runtime.limits.maxInputTokens) {
+      // Refused before the request is sent, not discovered on the bill.
+      throw new Error(
+        `Request is ~${contextResult.totalRequestTokens} input tokens, over this call's maxInputTokens of ` +
+        `${runtime.limits.maxInputTokens}. Narrow runtime.prompt / runtime.tools or raise the limit.`
+      );
+    }
 
     // Send context status.
     // `currentTokens` / `utilizationPercent` are retained for backwards
@@ -3144,7 +3208,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
         `[OrchestratorService] LLM adapter recovered from error ` +
         `(provider=${normalizedProvider} model=${model} chatType=${chatType}): ${recoveredError}`
       );
-      const extracted = extractDisplayText(responseMessage?.content);
+      if (runtime.model.fallback === 'none') {
+        // No failover was allowed, so this IS the outcome. Report it as an
+        // error the caller can branch on, not as prose in the answer stream.
+        streamErrorForLogging = { message: recoveredError || 'Provider request failed', details: String(recoveredError || '') };
+        sendEvent('error', { error: recoveredError || 'Provider request failed', provider: normalizedProvider, model, recoverable: false });
+      }
+      const extracted = runtime.model.fallback === 'none' ? '' : extractDisplayText(responseMessage?.content);
       const scrubbed = scrubEmptyPlaceholder(extracted);
       if (scrubbed) {
         sendEvent('content_delta', {
@@ -4008,6 +4078,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
         const computeSeconds = (Date.now() - executionStartTime) / 1000;
 
+        // The row was created with the REQUESTED pair. After a failover or a
+        // routing decision the turn was served by another one: record what
+        // actually answered, or the trace blames the wrong provider.
+        if (normalizedProvider !== String(resolvedProvider).toLowerCase() || model !== resolvedModel) {
+          await AgentExecutionModel.recordServedModel(agentExecutionId, normalizedProvider, model)
+            .catch((err) => console.warn('[Agent Execution] Could not record served model:', err.message));
+        }
+
         await AgentExecutionModel.update(
           agentExecutionId,
           finalStatus,
@@ -4062,7 +4140,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // attached immediately, so a late failure can never surface as an
     // unhandledRejection.
     const LOG_WRITE_TIMEOUT_MS = 30000;
-    const logPromise = (isNewConversation
+    const logPromise = (!runtime.persist.conversationLog ? Promise.resolve(null) : isNewConversation
       ? ConversationLogModel.create(logData)
       : ConversationLogModel.update(logData).then((updateResult) => {
           // A conversation whose original create failed/timed out would make
@@ -4105,7 +4183,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Fire-and-forget, and update-only: see persistTurnTranscript.js. The turn
     // is already complete and already durable; mirroring it must never be able
     // to delay or fail the response.
-    persistTurnTranscript({ conversationId, userId, providerMessages: messages })
+    if (runtime.persist.transcript) persistTurnTranscript({ conversationId, userId, providerMessages: messages })
       .then((result) => {
         if (result.written) console.log(`[TurnTranscript] Updated saved transcript for ${conversationId}`);
       })
@@ -4114,28 +4192,33 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
 
     // Store conversation context for autonomous messages
-    // This allows async tools to trigger AI responses later
-    conversationContext._cacheRoundState = cacheRounds.carryState();
-    conversationManager.store(conversationId, {
-      ...conversationContext,
-      messages,
-      authToken,
-      agentExecutionId, // Link autonomous messages to the execution
-      chatType, // Routes autonomous follow-up events to the right chat surface
-    });
+    // This allows async tools to trigger AI responses later. A caller that
+    // keeps no conversation (runtime.persist.conversationState=false) gets no
+    // follow-ups, so there is nothing to hold in memory or mirror to disk.
+    if (runtime.persist.conversationState) {
+      conversationContext._cacheRoundState = cacheRounds.carryState();
+      conversationManager.store(conversationId, {
+        ...conversationContext,
+        messages,
+        authToken,
+        agentExecutionId, // Link autonomous messages to the execution
+        chatType, // Routes autonomous follow-up events to the right chat surface
+      });
 
-    console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
+      console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
 
-    // Mirror the prefix-critical subset to disk so a restart does not cost a
-    // full cache write on this conversation's next turn. Fire-and-forget: it is
-    // an optimisation in front of an already-correct path, and skips itself
-    // entirely when nothing changed (the frozen sections settle on turn 1).
-    saveConversationState(conversationId, userId, conversationContext).catch((err) => {
-      console.error('[ConversationState] Persist failed (non-critical):', err.message);
-    });
+      // Mirror the prefix-critical subset to disk so a restart does not cost a
+      // full cache write on this conversation's next turn. Fire-and-forget: it is
+      // an optimisation in front of an already-correct path, and skips itself
+      // entirely when nothing changed (the frozen sections settle on turn 1).
+      saveConversationState(conversationId, userId, conversationContext).catch((err) => {
+        console.error('[ConversationState] Persist failed (non-critical):', err.message);
+      });
+    }
 
-    // Fire-and-forget: trigger insight extraction from chat execution
-    if (agentExecutionId && userId) {
+    // Fire-and-forget: trigger insight extraction from chat execution. It is
+    // a second model call per turn, so callers that did not ask for it skip it.
+    if (runtime.persist.insights && agentExecutionId && userId) {
       import('./evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
         InsightTriggers.onChatCompleted(agentExecutionId, userId, {
           agentId,
@@ -4156,6 +4239,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // terminator before their socket is closed.
     endRun(conversationId, streamAbortController.signal.aborted ? 'cancelled' : 'completed');
 
+    // Detach before finishing: finish() closes the transport, and a close that
+    // the turn itself caused must not mark a completed turn as cancelled.
+    detachCancelOnClose?.();
+    if (runtimeTimeout) clearTimeout(runtimeTimeout);
     transport.finish();
   }
   return {

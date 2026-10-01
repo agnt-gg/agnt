@@ -867,17 +867,63 @@ async function getUnifiedToolSchemas(context) {
   });
 }
 
+/**
+ * Persona-only system prompt (runtime.prompt.platform = 'none').
+ *
+ * The agent's identity and instructions, then only the sections the caller
+ * asked for, then the caller's own contract (`append`). No platform rules: a
+ * caller that wants tools and their rules uses platform 'lean' or 'full'.
+ */
+async function buildPersonaOnlyPrompt(context, agentOverride, promptOptions) {
+  const name = agentOverride?.name || 'the assistant';
+  // Descriptions are free text and usually end with a period of their own.
+  const description = (agentOverride?.description || '').trim().replace(/[.\s]+$/, '');
+  const parts = [
+    `You are ${name}${description ? ` — ${description}` : ''}.`,
+    agentOverride?.systemPrompt || '',
+  ];
+  const sections = [];
+  if (promptOptions.memory) sections.push(['memory', 'Memory', await loadFrozenMemorySection(context, context.agentId)]);
+  if (promptOptions.skills) sections.push(['skills', 'Skills catalog', await loadSkillsCatalogSection(context)]);
+  if (promptOptions.customInstructions) sections.push(['custom', 'Custom instructions', await loadCustomInstructionsSection(context)]);
+  if (promptOptions.workspace) sections.push(['workspace', 'Workspace context', await loadFrozenWorkspaceSection(context)]);
+  context._promptSections = [
+    ...sections.map(([id, label, text]) => ({ id, label, tokens: estimateTokens(text || ''), frozen: true })),
+    { id: 'agent', label: 'Agent override', tokens: estimateTokens(agentOverride?.systemPrompt || ''), frozen: true },
+  ];
+  parts.push(...sections.map(([, , text]) => text));
+  return withCallerContract(parts.filter(Boolean).join('\n\n'), promptOptions, context);
+}
+
+/** The caller's own output contract goes last: the model weights the tail of the prompt heavily too. */
+function withCallerContract(prompt, promptOptions, context) {
+  if (!promptOptions?.append) return prompt;
+  context._promptSections?.push({ id: 'append', label: 'Caller contract', tokens: estimateTokens(promptOptions.append), frozen: false });
+  return `${prompt}\n\n${promptOptions.append}`;
+}
+
 const unifiedConfig = {
   name: 'unified',
   async getToolSchemas(context) {
-    return getUnifiedToolSchemas(context);
+    const requested = context.runtime?.tools;
+    if (requested === 'none') return [];
+    const schemas = await getUnifiedToolSchemas(context);
+    if (!Array.isArray(requested)) return schemas;
+    // Narrowing only: a named list selects from the surface this agent
+    // already has. A name the agent is not allowed simply matches nothing.
+    const wanted = new Set(requested);
+    return schemas.filter((schema) => wanted.has(schema.function?.name));
   },
   async buildSystemPrompt(context) {
+    const promptOptions = context.runtime?.prompt || null;
     const agentOverride = await loadAgentOverride(context);
-    const skillsCatalogSection = await loadSkillsCatalogSection(context);
-    const memorySection = await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
-    const customInstructionsSection = await loadCustomInstructionsSection(context);
-    const workspaceSection = await loadFrozenWorkspaceSection(context);
+    if (promptOptions?.platform === 'none') return buildPersonaOnlyPrompt(context, agentOverride, promptOptions);
+    // Each section is skipped at the LOOKUP, not just left out of the text:
+    // memory, skills and custom instructions are DB reads per call.
+    const skillsCatalogSection = promptOptions?.skills === false ? '' : await loadSkillsCatalogSection(context);
+    const memorySection = promptOptions?.memory === false ? '' : await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
+    const customInstructionsSection = promptOptions?.customInstructions === false ? '' : await loadCustomInstructionsSection(context);
+    const workspaceSection = promptOptions?.workspace === false ? '' : await loadFrozenWorkspaceSection(context);
     const asyncToolsEnabled = await loadAsyncToolsEnabled(context);
 
     // Size each dynamic section BEFORE assembly. These are the parts that
@@ -899,6 +945,9 @@ const unifiedConfig = {
       agentOverride,
       asyncToolsEnabled,
       residentElementIds: loadFrozenPromptGates(context, asyncToolsEnabled),
+      // 'lean' keeps the tool and execution rules but drops what only a chat
+      // window renders: artifacts, inline HTML, file embeds, chart guide.
+      chatUiBlocks: promptOptions?.platform !== 'lean',
     });
 
     /**
@@ -910,7 +959,7 @@ const unifiedConfig = {
      * entire stable prefix ahead of it byte-identical between a spoken turn
      * and a typed one.
      */
-    if (!context.voiceMode) return prompt;
+    if (!context.voiceMode) return withCallerContract(prompt, promptOptions, context);
 
     const voiceSection = buildVoiceRegisterSection();
     context._promptSections.push({
@@ -919,7 +968,7 @@ const unifiedConfig = {
       tokens: estimateTokens(voiceSection),
       frozen: false,
     });
-    return `${prompt}\n\n${voiceSection}`;
+    return withCallerContract(`${prompt}\n\n${voiceSection}`, promptOptions, context);
   },
   maxToolRounds: 100,
   responseType: 'stream',
