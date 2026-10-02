@@ -14,7 +14,8 @@ import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/provid
 import { resolveDefaultModelAsync } from '../services/ai/defaultModel.js';
 import { NoAiConfiguredError } from '../services/ai/accountAi.js';
 import { resolveChain } from '../services/ai/ModelRouter.js';
-import { runWithFallback } from '../services/orchestrator/ProviderFallback.js';
+import { runWithFallback, classifyFailure } from '../services/orchestrator/ProviderFallback.js';
+import { createAttemptResponse } from './attemptResponse.js';
 import { providerHealth } from '../services/ai/providerHealth.js';
 import { recordLlmCall } from '../services/execution/LedgerRecorder.js';
 
@@ -161,9 +162,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     this.agnt = null;
   }
   async startStream(req, res, userQuery, files, provider, modelName, isChat, messages, accessToken, conversationId = null) {
-    // Client is now initialized with the factory based on provider
-    const client = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
-
     // Add these headers at the start of the method
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -243,77 +241,134 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       // The caller's provider is kept even when an image is attached. This used
       // to switch every image request to one hardcoded vendor and model, which
       // failed for any account without it.
-      const providerLower = provider.toLowerCase();
+      //
+      // FAILOVER BEFORE THE FIRST TOKEN. The requested pair runs first, then
+      // the account default and fallbacks (not cost-routed: the user picked
+      // this model to run their tool). Every attempt but the last writes to an
+      // attemptResponse, which keeps a setup failure (auth, rate limit,
+      // overload) away from the client so the next model can answer; once
+      // content has flowed the attempt is committed and a later error is shown,
+      // never spliced onto another model's answer. The last attempt writes to
+      // the real response, so its errors reach the client exactly as before.
+      const { chain: accountChain } = await resolveChain({
+        userId: this.userId,
+        origin: 'tool',
+        requested: { provider, model: modelName },
+        routing: 'never',
+      }).catch(() => ({ chain: [] }));
+      const chain = accountChain.length
+        ? accountChain
+        : [{ provider: provider.toLowerCase(), model: modelName, source: 'pinned', tier: 0, primary: true }];
+      const health = providerHealth.forUser(this.userId);
 
-      switch (providerLower) {
-        case 'claude-code':
-        case 'anthropic':
-          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, providerLower);
-          break;
-        case 'cerebras':
-        case 'deepseek':
-        case 'gemini':
-        case 'gemini-cli':
-        case 'antigravity':
-        case 'grokai':
-        case 'groq':
-        case 'kimi':
-        case 'kimi-code':
-        case 'local':
-        case 'minimax':
-        case 'openai':
-        case 'openai-codex':
-        case 'zai':
-          await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
-          break;
-        // CLI transports: OpenAI-compat chat.completions only — no .responses
-        // API, so they must NOT join the startCodexResponsesStream group.
-        case 'grok-build':
-        case 'cursor-cli':
-        case 'openrouter':
-        case 'togetherai':
-          await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, provider);
-          break;
-        // Add cases for other providers as needed
-        default:
-          throw new Error(`Unsupported provider: ${provider}`);
+      for (const [index, tier] of chain.entries()) {
+        const isLast = index === chain.length - 1;
+        const tierModel = tier.source === 'pinned' ? modelName : tier.model;
+        const attempt = isLast ? null : createAttemptResponse(res);
+        const target = attempt ? attempt.response : res;
+        try {
+          const tierClient = await createLlmClient(tier.provider, this.userId, {
+            conversationId,
+            // The caller fetched this credential for the provider it named.
+            authToken: tier.source === 'pinned' ? accessToken : null,
+          });
+          await this._streamOn(tier.provider, target, {
+            systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName: tierModel, imageData, client: tierClient,
+          });
+        } catch (attemptError) {
+          if (isLast) throw attemptError;
+          health.recordFailure(tier.provider, classifyFailure(attemptError?.message));
+          console.warn(`[StreamEngine] ${tier.provider}/${tierModel} could not start (${attemptError?.message}); trying the next model`);
+          continue;
+        }
+        if (isLast) return;
+        const outcome = await attempt.settled;
+        if (outcome.committed) {
+          health.recordSuccess(tier.provider);
+          return;
+        }
+        health.recordFailure(tier.provider, classifyFailure(outcome.error));
+        console.warn(`[StreamEngine] ${tier.provider}/${tierModel} failed before its first token (${outcome.error}); trying the next model`);
       }
     } catch (error) {
-      // 401 retry for claude-code: attempt one token refresh then recreate the client
-      const isClaudeCode = provider.toLowerCase() === 'claude-code';
-      const is401 = error?.status === 401 || error?.error?.status === 401 || error?.response?.status === 401;
+      await this._handleStreamFailure(error, { res, provider, conversationId, accessToken, systemPrompt, combinedDocumentText, userQuery, messages, modelName, imageData });
+    }
+  }
 
-      if (isClaudeCode && is401) {
-        console.log('[StreamEngine] Claude Code 401 — attempting token refresh and retry');
-        try {
-          const refreshResult = await messageConnection.refreshAccessToken();
-          if (refreshResult.success) {
-            const retryClient = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
-            const retryStreamId = generateUniqueId();
-            await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, retryStreamId, modelName, imageData, retryClient, 'claude-code');
-            return; // retry succeeded
-          }
-          // Refresh failed — send structured error so frontend can prompt re-auth
-          const reAuthError = refreshResult.revoked
-            ? { error: 'Claude Code session expired. Please reconnect.', code: 'REAUTH_REQUIRED' }
-            : { error: 'Claude Code token refresh failed. Please try again.', code: 'REFRESH_FAILED' };
-          console.error('[StreamEngine] Token refresh failed:', reAuthError.error);
-          if (!res.headersSent) res.status(401);
-          res.write(`data: ${JSON.stringify(reAuthError)}\n\n`);
-          res.end();
-          return;
-        } catch (retryError) {
-          console.error('[StreamEngine] Retry after refresh failed:', retryError.message);
+  /** One transport, chosen by provider. Throws for a provider with none. */
+  async _streamOn(providerKey, res, { systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client }) {
+    const providerLower = String(providerKey || '').toLowerCase();
+    switch (providerLower) {
+      case 'claude-code':
+      case 'anthropic':
+        await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, providerLower);
+        break;
+      case 'cerebras':
+      case 'deepseek':
+      case 'gemini':
+      case 'gemini-cli':
+      case 'antigravity':
+      case 'grokai':
+      case 'groq':
+      case 'kimi':
+      case 'kimi-code':
+      case 'local':
+      case 'minimax':
+      case 'openai':
+      case 'openai-codex':
+      case 'zai':
+        await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
+        break;
+      // CLI transports: OpenAI-compat chat.completions only — no .responses
+      // API, so they must NOT join the startCodexResponsesStream group.
+      case 'grok-build':
+      case 'cursor-cli':
+      case 'openrouter':
+      case 'togetherai':
+        await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, providerLower);
+        break;
+      // Add cases for other providers as needed
+      default:
+        throw new Error(`Unsupported provider: ${providerKey}`);
+    }
+  }
+
+  /** The last attempt's escaped error: one Claude Code token refresh, else report it. */
+  async _handleStreamFailure(error, { res, provider, conversationId, accessToken, systemPrompt, combinedDocumentText, userQuery, messages, modelName, imageData }) {
+    // 401 retry for claude-code: attempt one token refresh then recreate the client
+    const isClaudeCode = provider.toLowerCase() === 'claude-code';
+    const is401 = error?.status === 401 || error?.error?.status === 401 || error?.response?.status === 401;
+
+    if (isClaudeCode && is401) {
+      console.log('[StreamEngine] Claude Code 401 — attempting token refresh and retry');
+      try {
+        const refreshResult = await messageConnection.refreshAccessToken();
+        if (refreshResult.success) {
+          const retryClient = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
+          const retryStreamId = generateUniqueId();
+          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, retryStreamId, modelName, imageData, retryClient, 'claude-code');
+          return; // retry succeeded
         }
-      }
-
-      console.error('Error processing the file(s) or generating the text stream:', error);
-      if (!res.headersSent) {
-        res.status(500).send('An error occurred while processing the file(s) or generating the text stream.');
-      } else {
-        res.write(`data: ${JSON.stringify({ error: 'Stream error: ' + (error.message || 'Unknown error') })}\n\n`);
+        // Refresh failed — send structured error so frontend can prompt re-auth
+        const reAuthError = refreshResult.revoked
+          ? { error: 'Claude Code session expired. Please reconnect.', code: 'REAUTH_REQUIRED' }
+          : { error: 'Claude Code token refresh failed. Please try again.', code: 'REFRESH_FAILED' };
+        console.error('[StreamEngine] Token refresh failed:', reAuthError.error);
+        if (!res.headersSent) res.status(401);
+        res.write(`data: ${JSON.stringify(reAuthError)}\n\n`);
         res.end();
+        return;
+      } catch (retryError) {
+        console.error('[StreamEngine] Retry after refresh failed:', retryError.message);
       }
+    }
+
+    console.error('Error processing the file(s) or generating the text stream:', error);
+    if (!res.headersSent) {
+      res.status(500).send('An error occurred while processing the file(s) or generating the text stream.');
+    } else {
+      res.write(`data: ${JSON.stringify({ error: 'Stream error: ' + (error.message || 'Unknown error') })}\n\n`);
+      res.end();
     }
   }
   async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider) {

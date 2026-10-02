@@ -85,3 +85,83 @@ describe('StreamEngine generators — failover across the account chain', () => 
     await expect(new StreamEngine('u1').generateTool('x', undefined, undefined)).rejects.toMatchObject({ code: 'NO_AI_CONFIGURED' });
   });
 });
+
+describe('StreamEngine.startStream — failover before the first token', () => {
+  function sseRes() {
+    const out = { chunks: [], ended: false, statusCode: null };
+    return {
+      out,
+      headersSent: true,
+      setHeader: () => {},
+      flushHeaders: () => {},
+      write: (chunk) => { out.chunks.push(String(chunk)); return true; },
+      end: () => { out.ended = true; },
+      status(code) { out.statusCode = code; return this; },
+      send: (body) => { out.chunks.push(String(body)); out.ended = true; },
+    };
+  }
+
+  /** A Responses-API client: rejects at setup, or streams the given deltas. */
+  function responsesClient(behaviour) {
+    return {
+      responses: {
+        create: vi.fn(async () => {
+          if (behaviour instanceof Error) throw behaviour;
+          return (async function* stream() {
+            for (const delta of behaviour.deltas) {
+              if (delta instanceof Error) throw delta;
+              yield { type: 'response.output_text.delta', delta };
+            }
+          })();
+        }),
+      },
+    };
+  }
+
+  it('a setup failure on the requested model is invisible; the next model answers', async () => {
+    chainFor = () => [tier('openai', 'gpt-x', 'pinned', 0), tier('deepseek', 'd1', 'default', 1)];
+    createLlmClient.mockImplementation(async (provider) => (provider === 'openai'
+      ? responsesClient(Object.assign(new Error('429 rate limit exceeded'), { status: 429 }))
+      : responsesClient({ deltas: ['Hello', ' there'] })));
+    const res = sseRes();
+    await new StreamEngine('u1').startStream({}, res, 'hi', null, 'openai', 'gpt-x', 'false', null, 'tok');
+    const body = res.out.chunks.join('');
+    expect(body).toContain('Hello there');
+    expect(body).not.toMatch(/error/i);
+    expect(res.out.ended).toBe(true);
+    expect(providerHealth.isAvailable('u1', 'openai')).toBe(false);
+  });
+
+  it('the requested model gets the caller\'s credential; fallbacks fetch their own', async () => {
+    chainFor = () => [tier('openai', 'gpt-x', 'pinned', 0), tier('deepseek', 'd1', 'default', 1)];
+    createLlmClient.mockImplementation(async (provider) => (provider === 'openai'
+      ? responsesClient(new Error('503 overloaded'))
+      : responsesClient({ deltas: ['ok'] })));
+    await new StreamEngine('u1').startStream({}, sseRes(), 'hi', null, 'openai', 'gpt-x', 'false', null, 'tok');
+    expect(createLlmClient.mock.calls[0][2].authToken).toBe('tok');
+    expect(createLlmClient.mock.calls[1][2].authToken).toBeNull();
+  });
+
+  it('a failure AFTER content is shown, never spliced onto another model', async () => {
+    chainFor = () => [tier('openai', 'gpt-x', 'pinned', 0), tier('deepseek', 'd1', 'default', 1)];
+    createLlmClient.mockImplementation(async (provider) => (provider === 'openai'
+      ? responsesClient({ deltas: ['Partial answer', new Error('connection reset')] })
+      : responsesClient({ deltas: ['SHOULD NOT APPEAR'] })));
+    const res = sseRes();
+    await new StreamEngine('u1').startStream({}, res, 'hi', null, 'openai', 'gpt-x', 'false', null, 'tok');
+    const body = res.out.chunks.join('');
+    expect(body).toContain('Partial answer');
+    expect(body).toContain('connection reset');
+    expect(body).not.toContain('SHOULD NOT APPEAR');
+  });
+
+  it('when every model fails, the last one\'s error reaches the client as before', async () => {
+    chainFor = () => [tier('openai', 'gpt-x', 'pinned', 0), tier('deepseek', 'd1', 'default', 1)];
+    createLlmClient.mockImplementation(async (provider) => responsesClient(new Error(`${provider} is down`)));
+    const res = sseRes();
+    await new StreamEngine('u1').startStream({}, res, 'hi', null, 'openai', 'gpt-x', 'false', null, 'tok');
+    const body = res.out.chunks.join('');
+    expect(body).toContain('deepseek is down');
+    expect(body).not.toContain('openai is down');
+  });
+});
