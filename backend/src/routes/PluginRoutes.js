@@ -7,6 +7,7 @@ import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
 import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
 import { bundleSelection } from '../plugins/PluginBundler.js';
+import { packageInstalledPlugin } from '../plugins/packageInstalledPlugin.js';
 import reloadAllPlugins from '../plugins/reloadAllPlugins.js';
 import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
@@ -183,60 +184,13 @@ router.get('/installed/:name/package', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Plugin not found' });
     }
 
-    // Check if there's already a built .agnt file in dist
-    // Use parent of pluginsDir for builds (user data directory)
+    // Always build fresh from the installed folder: a cached archive would
+    // publish whatever version was packed first. The whole folder is packed,
+    // so tools in subfolders (tools/, lib/) ship with the plugin.
     const distDir = path.join(PluginInstaller.pluginsDir, '..', 'plugin-builds');
-    const existingPackage = path.join(distDir, `${name}.agnt`);
-
-    let packageBuffer;
-
-    try {
-      // Try to use existing package
-      await fs.access(existingPackage);
-      packageBuffer = await fs.readFile(existingPackage);
-      console.log(`[PluginRoutes] Using existing package: ${existingPackage}`);
-    } catch {
-      // Need to build the package
-      console.log(`[PluginRoutes] Building package for plugin: ${name}`);
-
-      // Create dist directory if needed
-      await fs.mkdir(distDir, { recursive: true });
-
-      // Get list of files to include
-      const filesToInclude = [];
-      const entries = await fs.readdir(pluginPath, { withFileTypes: true });
-
-      for (const entry of entries) {
-        // Skip hidden files and package-lock.json
-        if (entry.name.startsWith('.') || entry.name === 'package-lock.json') {
-          continue;
-        }
-
-        if (entry.isFile()) {
-          filesToInclude.push(entry.name);
-        } else if (entry.isDirectory() && entry.name === 'node_modules') {
-          // Include node_modules if it exists
-          filesToInclude.push('node_modules');
-        }
-      }
-
-      // Create tar.gz archive
-      const tar = await import('tar');
-      const outputFile = path.join(distDir, `${name}.agnt`);
-
-      await tar.create(
-        {
-          gzip: true,
-          file: outputFile,
-          cwd: pluginPath,
-          prefix: name,
-        },
-        filesToInclude
-      );
-
-      packageBuffer = await fs.readFile(outputFile);
-      console.log(`[PluginRoutes] Built package: ${outputFile} (${packageBuffer.length} bytes)`);
-    }
+    const outputFile = path.join(distDir, `${name}.agnt`);
+    const packageBuffer = await packageInstalledPlugin(pluginPath, name, outputFile);
+    console.log(`[PluginRoutes] Built package: ${outputFile} (${packageBuffer.length} bytes)`);
 
     // Return base64 encoded package data
     const base64Data = packageBuffer.toString('base64');
