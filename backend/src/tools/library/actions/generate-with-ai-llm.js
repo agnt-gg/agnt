@@ -401,6 +401,13 @@ class GenerateWithAiLlm extends BaseAction {
         }
       }
 
+      // AGNT Flash is credentialed by the signed-in session, not a stored key.
+      // With none cached, the SDK would send `Bearer null` and the service's
+      // 401 would read as the account being rejected, hiding the local cause.
+      if (normalizedProvider === 'agnt' && !accessTokenOrApiKey) {
+        throw new Error('Sign in to AGNT to use AGNT Flash. No signed-in session is available to this backend.');
+      }
+
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
       const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
 
