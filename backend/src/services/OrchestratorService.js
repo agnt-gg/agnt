@@ -18,6 +18,8 @@ import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapte
 import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
 import { resolveRoutingMode, parseRoutingPolicy } from './orchestrator/routingMode.js';
 import { buildRoutedChain } from './orchestrator/DynamicRouter.js';
+import { composeChain } from './orchestrator/chainComposer.js';
+import { providerHealth } from './ai/providerHealth.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { recordLlmCall } from './execution/LedgerRecorder.js';
@@ -1092,7 +1094,26 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
         },
       });
       if (routed && routed.chain.length > 0) {
-        dynamicChain = routed.chain;
+        // The routed picks LEAD; the turn's own resolved pair and the
+        // agent's (else the user's) fallback list FOLLOW. Without this a
+        // routed chain replaced the account chain outright, so a turn whose
+        // routed picks all failed never tried the model the user chose.
+        const routingAccountSettings = __routingSettings?.user || await UserModel.getUserSettings(userId).catch(() => null);
+        const routingAccountChain = (agentChain && agentChain.length > 1)
+          ? agentChain
+          : buildProviderChain({
+            provider: normalizedProvider,
+            model,
+            fallbackEnabled: !!routingAccountSettings?.fallbackEnabled,
+            fallbackProviders: routingAccountSettings?.fallbackProviders,
+            customProviderIds: await resolveCustomProviderIds(),
+          });
+        dynamicChain = composeChain({
+          routed: routed.chain,
+          defaults: routingAccountChain,
+          stake: routed.decision?.stake,
+          isAvailable: (provider) => providerHealth.isAvailable(userId, String(provider).toLowerCase()),
+        });
         // Re-point the turn at the routed tier BEFORE the client is built.
         // Tier 0 reuses the outer client/adapter (see runTierStream), so this
         // assignment is what actually makes the routed choice take effect.
@@ -3120,6 +3141,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // The user's Stop is not a provider failure. Every stream in the turn
         // goes through this one call, so the guard covers all of them.
         shouldStop: () => streamAbortController.signal.aborted,
+        // Every attempt teaches the router which providers are working for
+        // this user right now (providerHealth), so the NEXT routed choice
+        // avoids a provider that just failed instead of rediscovering it.
+        health: providerHealth.forUser(userId),
         runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
         onFallback: onProviderFallback,
       });
