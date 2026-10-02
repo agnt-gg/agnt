@@ -283,9 +283,13 @@ export function removeWorktree(repoRoot, slug, { force = false } = {}) {
  * Directories under .worktrees/ that git does not list. After `worktree
  * prune` has dropped stale admin entries, anything left on disk that is not
  * registered is a leak by definition.
+ *
+ * `prune: false` is the read-only form, for --dry. Pruning only drops records
+ * whose folder is already gone, and an orphan is a folder that exists, so the
+ * answer is the same either way; a dry run just must not change git's state.
  */
-export function findOrphans(repoRoot) {
-  git(repoRoot, ['worktree', 'prune']);
+export function findOrphans(repoRoot, { prune = true } = {}) {
+  if (prune) git(repoRoot, ['worktree', 'prune']);
   const base = path.join(repoRoot, WORKTREES_DIR);
   if (!fs.existsSync(base)) return [];
   const registered = listWorktrees(repoRoot).map((w) => w.path);
@@ -299,7 +303,7 @@ export function findOrphans(repoRoot) {
 }
 
 export function sweepOrphans(repoRoot, { dry = false } = {}) {
-  const orphans = findOrphans(repoRoot);
+  const orphans = findOrphans(repoRoot, { prune: !dry });
   const removed = [];
   for (const p of orphans) {
     if (dry) continue;

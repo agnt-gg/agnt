@@ -172,6 +172,21 @@ describe('sweep', () => {
     expect(onDisk()).toEqual(['ghost']);
   });
 
+  it("--dry leaves git's records alone, even for a worktree whose folder is missing", () => {
+    // A folder moved or on an unmounted drive: git still records it. A dry run
+    // must not prune that record (#123); only a real sweep may.
+    const r = createWorktree(root, 'away');
+    fs.rmSync(r.path, { recursive: true, force: true });
+    const admin = () => (fs.existsSync(path.join(root, '.git', 'worktrees')) ? fs.readdirSync(path.join(root, '.git', 'worktrees')) : []);
+    expect(admin()).toEqual(['away']);
+
+    sweepOrphans(root, { dry: true });
+    expect(admin()).toEqual(['away']);
+
+    sweepOrphans(root);
+    expect(admin()).toEqual([]);
+  });
+
   it('deletes the leak, and the real node_modules survives its junctions', () => {
     const p = leak('ghost');
     expect(fs.lstatSync(path.join(p, 'node_modules')).isSymbolicLink()).toBe(true);
