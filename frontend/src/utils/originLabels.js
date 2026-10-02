@@ -71,6 +71,9 @@ export const ORIGIN_LABELS = Object.freeze({
   insight: 'Insights',
   system: 'System',
   compaction: 'Chat compression',
+  title: 'Chat titles',
+  suggestion: 'Chat suggestions',
+  generator: 'Forge generation', // agent / tool / workflow definitions from a description
 });
 
 /**
