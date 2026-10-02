@@ -1,0 +1,62 @@
+name: Promote Docker release to latest
+run-name: promote ${{ inputs.version }} to latest
+
+# Repoint the moving tags (latest, full, X.Y, X.Y-full) at a release that is
+# ALREADY published. No build, no git tag, nothing new is published.
+#
+# Use it when a release is rolled back or its package version is deleted:
+# deleting a GHCR version deletes every tag on it, including :latest, which
+# breaks every documented `docker run`/compose install. Run this BEFORE
+# deleting a bad release so :latest never disappears.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published release that :latest should serve (e.g. 0.6.6)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-moving-tags
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Repoint moving tags
+    runs-on: ubuntu-latest
+    env:
+      IMG: ghcr.io/${{ github.repository_owner }}/agnt
+      # Passed through env, never interpolated into the script body.
+      REQUESTED: ${{ inputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Repoint latest, full, X.Y, X.Y-full
+        run: |
+          VERSION="${REQUESTED#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be X.Y.Z"; exit 1; }
+          MAJMIN="${VERSION%.*}"
+          docker buildx imagetools inspect "$IMG:$VERSION" >/dev/null \
+            || { echo "::error::$IMG:$VERSION is not published"; exit 1; }
+          docker buildx imagetools create \
+            -t "$IMG:latest" -t "$IMG:full" -t "$IMG:$VERSION-full" \
+            -t "$IMG:$MAJMIN" -t "$IMG:$MAJMIN-full" \
+            "$IMG:$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Verify moving tags
+        run: bash scripts/docker-verify-moving-tags.sh "$IMG" "$VERSION"

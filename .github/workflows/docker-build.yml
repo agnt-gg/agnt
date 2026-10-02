@@ -223,3 +223,19 @@ jobs:
         env:
           IMG: ${{ env.GHCR_IMAGE }}
         run: docker buildx imagetools inspect "$IMG:sha-${{ needs.prep.outputs.shortsha }}"
+
+      # The documented install path is :latest. Read it back from the registry
+      # rather than trusting the push. The checker comes from the workflow's own
+      # commit, not build_ref: a dispatch rebuilding an old tag predates it.
+      - name: Checkout repository
+        if: needs.prep.outputs.is_release == 'true'
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+
+      - name: Verify moving tags
+        if: needs.prep.outputs.is_release == 'true'
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+          VERSION: ${{ needs.prep.outputs.version }}
+        run: bash scripts/docker-verify-moving-tags.sh "$IMG" "$VERSION"
