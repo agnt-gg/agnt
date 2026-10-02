@@ -1356,8 +1356,17 @@ function createTables() {
         fired_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         status TEXT DEFAULT 'fired',
         error TEXT,
+        duration_ms INTEGER,
         FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
       )`);
+      // Migration: how long a run took (#95). Existing rows stay NULL.
+      db.run(`ALTER TABLE schedule_runs ADD COLUMN duration_ms INTEGER`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding duration_ms column to schedule_runs:', err);
+        } else if (!err) {
+          console.log('✓ Added duration_ms column to schedule_runs table');
+        }
+      });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
 
       // PRD-091: Layer 3 (Wallets) — linear capability budgets

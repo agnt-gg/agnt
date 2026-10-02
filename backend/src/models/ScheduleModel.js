@@ -167,16 +167,52 @@ class ScheduleModel {
     });
   }
 
-  static recordRun({ scheduleId, targetType, targetId, runTargetId, status, error }) {
+  /**
+   * Open a run row as 'running' before the target executes, so a caller can
+   * hand out its id immediately and the history shows work in flight.
+   */
+  static startRun({ scheduleId, targetType, targetId }) {
     const id = generateUUID();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO schedule_runs (id, schedule_id, target_type, target_id, run_target_id, status, error)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, scheduleId, targetType, targetId, runTargetId || null, status || 'fired', error || null],
+        `INSERT INTO schedule_runs (id, schedule_id, target_type, target_id, status)
+         VALUES (?, ?, ?, ?, 'running')`,
+        [id, scheduleId, targetType, targetId],
         function (err) {
           if (err) reject(err);
           else resolve(id);
+        }
+      );
+    });
+  }
+
+  /** Close a run row with its outcome. */
+  static finishRun(id, { status, error = null, runTargetId = null, durationMs = null }) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE schedule_runs SET status = ?, error = ?, run_target_id = ?, duration_ms = ? WHERE id = ?`,
+        [status, error, runTargetId, durationMs, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  /**
+   * Runs still 'running' when the scheduler starts were cut off by the app
+   * stopping; nothing will ever finish them. Returns how many were closed.
+   */
+  static markInterruptedRuns() {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE schedule_runs SET status = 'interrupted', error = 'The app stopped before this run finished'
+         WHERE status = 'running'`,
+        [],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
         }
       );
     });

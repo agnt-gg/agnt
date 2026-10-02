@@ -7038,12 +7038,14 @@ The durable cron scheduler (PRD-091 Layer 1). Use when the user wants recurring 
 **POST** `/:id/fire-now`
 
 - **Authentication**: Required
-- **Description**: Manually trigger the schedule's target (currently invokes `TaskOrchestrator.executeGoalAutonomous`). Does NOT update `next_run` — the regular cadence continues unaffected. Useful for "test run" or "I want it now."
-- **Response**:
+- **Description**: Manually trigger the schedule's target (currently invokes `TaskOrchestrator.executeGoalAutonomous`). Returns as soon as the run has started; the run continues in the background. Poll **Get Run History** for its outcome. The regular cadence continues: `next_run` stays on the next cron slot. Useful for "test run" or "I want it now."
+- **Response** (`202`):
 
 ```json
-{ "success": true, "result": { "executionId": "...", "status": "running" } }
+{ "success": true, "result": { "fired": true, "scheduleId": "schedule-uuid", "runId": "run-uuid", "status": "running" } }
 ```
+
+- **Errors**: `404` not found, `403` forbidden, `409` the schedule cannot fire (`reason` says why, e.g. an invalid cron)
 
 ### Get Run History
 
@@ -7061,14 +7063,19 @@ The durable cron scheduler (PRD-091 Layer 1). Use when the user wants recurring 
     {
       "id": "run-uuid",
       "schedule_id": "schedule-uuid",
+      "target_type": "goal",
+      "target_id": "goal-uuid",
+      "run_target_id": "goal-uuid",
       "fired_at": "2026-06-19T13:00:00.000Z",
-      "execution_id": "exec-uuid",
       "status": "completed",
+      "error": null,
       "duration_ms": 4823
     }
   ]
 }
 ```
+
+- **Run status**: `running` while in flight, then `completed`, `failed` (see `error`), or the goal run's own outcome (`stopped`, `stuck`, `needs_review`, `max_iterations`). `interrupted` means the app stopped before the run finished. `duration_ms` is `null` until the run ends and for runs recorded before 0.6.7.
 
 ### Delete Schedule
 

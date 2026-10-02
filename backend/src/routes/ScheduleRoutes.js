@@ -102,8 +102,11 @@ ScheduleRoutes.post('/:id/fire-now', authenticateToken, async (req, res) => {
     const existing = await ScheduleModel.findOne(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Schedule not found' });
     if (existing.user_id !== req.user.userId) return res.status(403).json({ error: 'Forbidden' });
+    // Answers once the run has started; the run itself continues in the
+    // background (202). A schedule that cannot fire is a 409 with the reason.
     const result = await SchedulerService.fireNow(req.params.id);
-    res.json({ success: true, result });
+    if (!result.fired) return res.status(409).json({ error: 'Schedule could not fire', reason: result.reason });
+    res.status(202).json({ success: true, result });
   } catch (err) {
     console.error('[Schedule Route] Fire-now error:', err);
     res.status(500).json({ error: 'Failed to fire schedule', details: err.message });
