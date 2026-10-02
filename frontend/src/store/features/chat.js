@@ -748,6 +748,18 @@ export default {
     SET_SAVED_OUTPUT_TITLE(state, title) {
       state.savedOutputTitle = title;
     },
+    /**
+     * A saved row's title changed on the server (auto-title, a rename in
+     * another tab). The header reads savedOutputTitle, a client cache that
+     * otherwise only ever holds what THIS tab derived, so follow the row.
+     */
+    SYNC_SAVED_OUTPUT_TITLE(state, { outputId, title } = {}) {
+      if (!outputId || typeof title !== 'string' || !title) return;
+      if (state.savedOutputId === outputId) state.savedOutputTitle = title;
+      for (const conv of Object.values(state.conversations || {})) {
+        if (conv && conv.savedOutputId === outputId) conv.savedOutputTitle = title;
+      }
+    },
     REMOVE_MESSAGE(state, messageId) {
       const index = state.messages.findIndex(m => m.id === messageId);
       if (index !== -1) {
@@ -3260,14 +3272,17 @@ export default {
           );
         }
 
+        // The server ranks titles (an auto-title or a rename beats the
+        // first-message title sent above), so cache what it STORED.
+        const storedTitle = result.output?.title || conversationTitle;
         if (conv) {
           commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: result.id });
-          commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: conversationTitle });
+          commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: storedTitle });
           commit('SCOPED_SET_IS_SAVING', { conversationId: convId, value: false });
           commit('SCOPED_SET_SAVE_STATUS', { conversationId: convId, status: 'saved' });
         } else {
           commit('SET_SAVED_OUTPUT_ID', result.id);
-          commit('SET_SAVED_OUTPUT_TITLE', conversationTitle);
+          commit('SET_SAVED_OUTPUT_TITLE', storedTitle);
           commit('SET_IS_SAVING', false);
           commit('SET_SAVE_STATUS', 'saved');
         }

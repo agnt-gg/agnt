@@ -441,6 +441,9 @@ export function useRealtimeSync() {
           output: data.output,
           snapshotStartedAt: Date.now() - REALTIME_SNAPSHOT_SLACK_MS,
         });
+        // The chat header shows the open conversation's title from the chat
+        // store, not the list — keep it in step (auto-titles, other tabs).
+        store.commit('chat/SYNC_SAVED_OUTPUT_TITLE', { outputId: data.output.id, title: data.output.title });
       } else {
         debouncedContentFetch();
       }
