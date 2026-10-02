@@ -14,7 +14,9 @@ import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
 import { resolveDefaultModel } from '../../../services/ai/defaultModel.js';
-import { resolveAccountAi } from '../../../services/ai/accountAi.js';
+import { resolveAccountAi, NoAiConfiguredError } from '../../../services/ai/accountAi.js';
+import { runWithFallback } from '../../../services/orchestrator/ProviderFallback.js';
+import { providerHealth } from '../../../services/ai/providerHealth.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 
@@ -334,7 +336,149 @@ class GenerateWithAiLlm extends BaseAction {
     this.authManager = AuthManager;
   }
 
+  /**
+   * Text and vision run across a chain of models; image generation and team
+   * executions keep their single-provider path (a different API, and a team
+   * connection is its own credential boundary).
+   */
   async execute(params, inputData, workflowEngine) {
+    const mode = params.mode || 'Text Generation';
+    if (mode === 'Image Generation' || currentTeamExecution()) {
+      return this.executeSingleProvider(params, inputData, workflowEngine);
+    }
+    return this.executeWithFailover(params, workflowEngine);
+  }
+
+  /**
+   * One text/vision generation, trying models in order until one answers.
+   *
+   *   node names a provider  that pair first, then the account default and
+   *                          fallbacks. Not cost-routed: a designer who picked
+   *                          a model for a step chose it on purpose, and its
+   *                          output feeds the next step.
+   *   node names none        background work: routed to the best-value model
+   *                          the user has connected, with the account default
+   *                          and fallbacks behind it (ModelRouter).
+   *
+   * Before, a node failed outright when its one provider hiccupped. Each
+   * attempt is recorded under the model that actually ran, and when every
+   * model fails the node reports the FIRST one's error — the one about the
+   * provider the designer chose.
+   */
+  async executeWithFailover(params, workflowEngine) {
+    const userId = workflowEngine?.userId || params.userId;
+    const mode = params.mode || 'Text Generation';
+    try {
+      const nodeChoseProvider = !!String(params.provider || '').trim();
+      const { resolveChain } = await import('../../../services/ai/ModelRouter.js');
+      const { chain } = await resolveChain({
+        userId,
+        origin: 'workflow_node',
+        requested: nodeChoseProvider ? { provider: params.provider, model: params.model } : {},
+        routing: nodeChoseProvider ? 'never' : 'auto',
+        intentInput: { hasImages: mode === 'Vision (Image → Text)' },
+      });
+      if (chain.length === 0) throw new NoAiConfiguredError();
+      this.validateParams({ ...params, provider: chain[0].provider });
+
+      let firstError = null;
+      const { result } = await runWithFallback({
+        chain,
+        health: providerHealth.forUser(userId),
+        runOne: async (tier) => {
+          const startedAt = Date.now();
+          const tierParams = { ...params, provider: tier.provider, model: tier.model };
+          let response = null;
+          let failure = null;
+          try {
+            const credential = await this.resolveCredential(tier.provider, userId);
+            const paramsWithAuth = { ...tierParams, apiKey: credential, userId };
+            response = mode === 'Vision (Image → Text)'
+              ? await this.handleVision(paramsWithAuth)
+              : await this.handleTextGeneration(paramsWithAuth);
+            return { responseMessage: { content: response.generatedText }, toolCalls: [], response };
+          } catch (error) {
+            failure = error;
+            if (!firstError) firstError = error;
+            throw error;
+          } finally {
+            // PRD-122: every attempt is priced, under the model that ran it.
+            recordLlmCall({
+              userId,
+              origin: 'workflow_node',
+              originId: workflowEngine?.currentExecutionId || null,
+              provider: tier.provider,
+              model: tierParams.model || response?.model || 'unknown',
+              usage: { inputTokens: response?.inputTokens || 0, outputTokens: response?.outputTokens || 0 },
+              durationMs: Date.now() - startedAt,
+              status: failure ? 'error' : 'ok',
+              error: failure ? String(failure.message || failure).slice(0, 500) : null,
+            }).catch(() => { /* the ledger reports its own failures */ });
+          }
+        },
+      });
+
+      if (!result?.response || result.recoveredFromError) {
+        throw firstError || new Error(result?.recoveredError || 'No model produced an answer');
+      }
+      return this.formatOutput(result.response);
+    } catch (error) {
+      console.error('Error in AI operation:', error);
+      return this.formatOutput({
+        generatedText: '',
+        tokenCount: 0,
+        generatedImages: [],
+        error: error.message || 'Unknown error occurred',
+      });
+    }
+  }
+
+  /**
+   * The credential a provider is called with, or null for keyless local
+   * transports. Throws a user-facing message when one is required and absent.
+   */
+  async resolveCredential(provider, userId) {
+    const normalizedProvider = String(provider || '').toLowerCase();
+    if (normalizedProvider === 'local') return null;
+
+    let credential = null;
+    try {
+      if (normalizedProvider === 'claude-code') {
+        credential = await messageConnection.getAccessToken();
+        if (!credential) throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
+      } else if (normalizedProvider === 'openai-codex') {
+        const codexStatus = await responseConnection.checkApiUsable();
+        if (!codexStatus.available) throw new Error('OpenAI Codex is not connected. Use device login to connect.');
+        credential = responseConnection.getAccessToken();
+        if (!credential) throw new Error('OpenAI Codex token not found after login.');
+      } else if (normalizedProvider === 'gemini-cli') {
+        const gcStatus = await projectConnection.checkApiUsable();
+        // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107)
+        if (gcStatus?.deprecated) throw new Error(gcStatus.hint);
+        credential = await projectConnection.getAccessToken();
+        if (!credential) throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
+      } else if (normalizedProvider === 'antigravity') {
+        credential = await catalogConnection.getAccessToken();
+        if (!credential) throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
+      } else {
+        credential = await this.authManager.getValidAccessToken(userId, normalizedProvider);
+      }
+    } catch (authError) {
+      console.error('Authentication error:', authError);
+      throw new Error(`Authentication required for ${provider}. Please set up API key or authenticate.`);
+    }
+
+    // AGNT Flash is credentialed by the signed-in session, not a stored key.
+    // With none cached, the SDK would send `Bearer null` and the service's
+    // 401 would read as the account being rejected, hiding the local cause.
+    if (normalizedProvider === 'agnt' && !credential) {
+      throw new Error('Sign in to AGNT to use AGNT Flash. No signed-in session is available to this backend.');
+    }
+    return credential;
+  }
+
+  /** Image generation and team executions: one provider, as before. */
+  async executeSingleProvider(params, inputData, workflowEngine) {
     // No provider on the node: the account default, else its fallback chain.
     // Never a vendor guess; with nothing configured this throws a clear error.
     if (!String(params.provider || '').trim()) {
@@ -353,60 +497,8 @@ class GenerateWithAiLlm extends BaseAction {
 
     try {
       const userId = workflowEngine.userId;
-      let accessTokenOrApiKey = null;
-
-      // Normalize provider name to lowercase for auth lookups
       const normalizedProvider = params.provider.toLowerCase();
-
-      // Get API key/token for non-local providers
-      if (normalizedProvider !== 'local') {
-        try {
-          // Special providers use local auth managers instead of remote service
-          if (normalizedProvider === 'claude-code') {
-            accessTokenOrApiKey = await messageConnection.getAccessToken();
-            if (!accessTokenOrApiKey) {
-              throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
-            }
-          } else if (normalizedProvider === 'openai-codex') {
-            const codexStatus = await responseConnection.checkApiUsable();
-            if (!codexStatus.available) {
-              throw new Error('OpenAI Codex is not connected. Use device login to connect.');
-            }
-            accessTokenOrApiKey = responseConnection.getAccessToken();
-            if (!accessTokenOrApiKey) {
-              throw new Error('OpenAI Codex token not found after login.');
-            }
-          } else if (normalizedProvider === 'gemini-cli') {
-            const gcStatus = await projectConnection.checkApiUsable();
-            if (gcStatus?.deprecated) {
-              // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107)
-              throw new Error(gcStatus.hint);
-            }
-            accessTokenOrApiKey = await projectConnection.getAccessToken();
-            if (!accessTokenOrApiKey) {
-              throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
-            }
-          } else if (normalizedProvider === 'antigravity') {
-            accessTokenOrApiKey = await catalogConnection.getAccessToken();
-            if (!accessTokenOrApiKey) {
-              throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
-            }
-          } else {
-            // All other providers use the remote auth service
-            accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, normalizedProvider);
-          }
-        } catch (authError) {
-          console.error('Authentication error:', authError);
-          throw new Error(`Authentication required for ${params.provider}. Please set up API key or authenticate.`);
-        }
-      }
-
-      // AGNT Flash is credentialed by the signed-in session, not a stored key.
-      // With none cached, the SDK would send `Bearer null` and the service's
-      // 401 would read as the account being rejected, hiding the local cause.
-      if (normalizedProvider === 'agnt' && !accessTokenOrApiKey) {
-        throw new Error('Sign in to AGNT to use AGNT Flash. No signed-in session is available to this backend.');
-      }
+      const accessTokenOrApiKey = await this.resolveCredential(params.provider, userId);
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
       const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
