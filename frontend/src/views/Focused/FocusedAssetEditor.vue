@@ -14,7 +14,7 @@
     :read-only="readOnly"
     :note="note"
     :meta="edited"
-    :chat-ask="readOnly ? '' : `Update my ${tab.noun} “${v.name}”: `"
+    :chat-ask="readOnly ? '' : editAsk(tab.noun, v.name)"
     :delete-label="deleteLabel"
     :dirty="dirty"
     :saving="saving"
@@ -182,7 +182,7 @@ import FocusedParamField from './FocusedParamField.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import { libraryTab } from './focusedModel.js';
+import { libraryTab, editAsk } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 import {
   workflowValues,

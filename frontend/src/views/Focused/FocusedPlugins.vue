@@ -1,6 +1,6 @@
 <template>
   <FocusedConnection v-if="item" :key="item" :provider-id="item" />
-  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New plugin" v-model:query="query" search-placeholder="Search plugins" @action="nav.ask('Connect AGNT to ')">
+  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New plugin" v-model:query="query" search-placeholder="Search plugins" @action="nav.ask(createAsk('plugin'))">
     <p v-if="!cards.connected.length && !cards.available.length" class="focused-empty">
       {{ query ? `No plugins match “${query}”.` : 'Plugins you add show up here.' }}
     </p>
@@ -27,7 +27,7 @@ import { useStore } from 'vuex';
 import FocusedPage from './FocusedPage.vue';
 import FocusedConnection from './FocusedConnection.vue';
 import FocusedPluginLogo from './FocusedPluginLogo.vue';
-import { FOCUSED_PAGES, pluginCards } from './focusedModel.js';
+import { FOCUSED_PAGES, pluginCards, createAsk } from './focusedModel.js';
 
 defineProps({ item: { type: String, default: null } });
 const store = useStore();

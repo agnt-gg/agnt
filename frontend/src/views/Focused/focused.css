@@ -596,6 +596,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  /* A <div> row (Scheduled: row + switch) is content-box by default, unlike
+     a <button> row; with width:100% its padding pushed the switch 28px past
+     the list's clipped edge. */
+  box-sizing: border-box;
   width: 100%;
   padding: 12px 14px;
   border: none;
@@ -1492,13 +1496,30 @@
   background: var(--surface-raised);
 }
 
+/* Settings: billing */
+.ui-focused .focused-billing-plan {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 /* Files */
+.ui-focused .focused-files-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 .ui-focused .focused-crumbs {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  margin-bottom: 10px;
+  min-width: 0;
   font-size: 13px;
   color: var(--text-tertiary);
 }

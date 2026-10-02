@@ -62,20 +62,41 @@ export function isFocusedPage(page) {
   return Object.prototype.hasOwnProperty.call(FOCUSED_PAGES, page);
 }
 
+// ── Asking in chat ─────────────────────────────────────────────────────────
+//
+// Creating or editing anything through Annie seeds the composer with ONE
+// phrasing, wherever it starts (every Library tab, Files, Plugins), so the
+// request always names what and which. Each ends in a space: the cursor
+// lands where the user finishes the sentence.
+
+const article = (noun) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
+
+/** "Create a workflow that " — or "Create a file in reports that ". */
+export function createAsk(noun, { within = '' } = {}) {
+  const where = String(within || '').trim();
+  return `Create ${article(noun)} ${noun}${where ? ` in ${where}` : ''} that `;
+}
+
+/** "Edit the Nightly backup workflow to " ("Edit this workflow to " unnamed). */
+export function editAsk(noun, name) {
+  const n = String(name || '').trim();
+  return n ? `Edit the ${n} ${noun} to ` : `Edit this ${noun} to `;
+}
+
 // ── Library ────────────────────────────────────────────────────────────────
 
 /**
  * One tab per kind of thing a user makes. `getter`/`fetch` name the shared
  * store; `catalogKey` is the buildJumpCatalog source key, so opening a row is
- * exactly what opening it from Ctrl+K does. `ask` seeds the chat input for
- * the "New …" button — creation goes through Annie, as in the AGNT One demo.
+ * exactly what opening it from Ctrl+K does. `noun` names it in the chat
+ * seeds (createAsk/editAsk) — creation goes through Annie, as in the demo.
  */
 export const LIBRARY_TABS = Object.freeze([
-  { id: 'agents', label: 'Agents', icon: 'fas fa-robot', getter: 'agents/allAgents', fetch: 'agents/fetchAgents', catalogKey: 'agents', prefix: 'agent:', noun: 'agent', ask: 'Create an agent that ' },
-  { id: 'workflows', label: 'Workflows', icon: 'fas fa-project-diagram', getter: 'workflows/allWorkflows', fetch: 'workflows/fetchWorkflows', catalogKey: 'workflows', prefix: 'workflow:', noun: 'workflow', ask: 'Build a workflow that ' },
-  { id: 'tools', label: 'Tools', icon: 'fas fa-wrench', getter: 'tools/customTools', fetch: 'tools/fetchTools', catalogKey: 'tools', prefix: 'tool:', noun: 'tool', ask: 'Make a tool that ' },
-  { id: 'skills', label: 'Skills', icon: 'fas fa-graduation-cap', getter: 'skills/allSkills', fetch: 'skills/fetchSkills', catalogKey: 'skills', prefix: 'skill:', noun: 'skill', ask: 'Write a skill for ' },
-  { id: 'widgets', label: 'Widgets', icon: 'fas fa-shapes', getter: 'widgetDefinitions/allDefinitions', fetch: 'widgetDefinitions/fetchDefinitions', catalogKey: 'widgets', prefix: 'widget:', noun: 'widget', ask: 'Make a widget that shows ' },
+  { id: 'agents', label: 'Agents', icon: 'fas fa-robot', getter: 'agents/allAgents', fetch: 'agents/fetchAgents', catalogKey: 'agents', prefix: 'agent:', noun: 'agent' },
+  { id: 'workflows', label: 'Workflows', icon: 'fas fa-project-diagram', getter: 'workflows/allWorkflows', fetch: 'workflows/fetchWorkflows', catalogKey: 'workflows', prefix: 'workflow:', noun: 'workflow' },
+  { id: 'tools', label: 'Tools', icon: 'fas fa-wrench', getter: 'tools/customTools', fetch: 'tools/fetchTools', catalogKey: 'tools', prefix: 'tool:', noun: 'tool' },
+  { id: 'skills', label: 'Skills', icon: 'fas fa-graduation-cap', getter: 'skills/allSkills', fetch: 'skills/fetchSkills', catalogKey: 'skills', prefix: 'skill:', noun: 'skill' },
+  { id: 'widgets', label: 'Widgets', icon: 'fas fa-shapes', getter: 'widgetDefinitions/allDefinitions', fetch: 'widgetDefinitions/fetchDefinitions', catalogKey: 'widgets', prefix: 'widget:', noun: 'widget' },
   // Files is the workspace on disk (fileSystemService), not a store list.
   { id: 'files', label: 'Files', icon: 'fas fa-folder', noun: 'file' },
 ]);
@@ -395,6 +416,37 @@ export function scheduleRows(schedules, query = '', goals = []) {
 }
 
 // ── Account ────────────────────────────────────────────────────────────────
+
+/** Plan names as Billing shows them (BillingManager.currentPlan). */
+export const PLAN_NAMES = Object.freeze({
+  free: 'Community Core',
+  personal: 'AGNT Pro',
+  always_on: 'Pro + Always-On',
+  business: 'AGNT Team',
+  enterprise: 'Managed Operations',
+});
+
+/**
+ * The billing card: userAuth's planType and subscription, in words. Same
+ * rules as Studio's Billing page, so the two never disagree on a status.
+ */
+export function billingSummary(planType, subscription) {
+  const type = String(planType || 'free').trim().toLowerCase() || 'free';
+  const sub = subscription || {};
+  const isFree = type === 'free';
+  const canceling = !isFree && sub.cancelAtPeriodEnd === true;
+  const periodEnd = Number(sub.currentPeriodEnd);
+  return {
+    isFree,
+    plan: PLAN_NAMES[type] || type.charAt(0).toUpperCase() + type.slice(1),
+    status: isFree ? 'Free plan' : canceling ? 'Canceling' : sub.planStatus === 'past_due' ? 'Past due' : 'Active',
+    // Stripe periods are in seconds.
+    renewsAt: !isFree && Number.isFinite(periodEnd) && periodEnd > 0 ? periodEnd * 1000 : 0,
+    renewLabel: canceling ? 'Access until' : 'Renews',
+    canCancel: !isFree && !canceling,
+    canReactivate: canceling,
+  };
+}
 
 // Routines: the editor's choices (the demo's), and cron in and out of them.
 

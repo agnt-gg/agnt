@@ -7,7 +7,7 @@
     v-model:description="v.description"
     name-placeholder="Agent name"
     description-placeholder="What this agent does"
-    :chat-ask="`Update my agent “${v.name || agent.name}”: `"
+    :chat-ask="editAsk('agent', v.name || agent.name)"
     delete-label="Delete agent"
     :meta="lastUsed"
     :dirty="dirty"
@@ -109,6 +109,7 @@ import AutoTextarea from './AutoTextarea.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
 import { agentValues, agentPayload, cleanIcon, ago } from './focusedEditors.js';
+import { editAsk } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 
 const props = defineProps({ agentId: { type: String, required: true } });

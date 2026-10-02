@@ -11,8 +11,10 @@ import { mount } from '@vue/test-utils';
 import { defineComponent, h, inject, ref, reactive } from 'vue';
 
 const dispatch = vi.fn();
-const storeState = reactive({ chat: { savedOutputTitle: '' } });
-vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }) }));
+const storeState = reactive({ chat: { savedOutputTitle: '', savedOutputId: null } });
+// mapState/mapActions: options-API components the pages import (UpgradeModal)
+// call them at module load, even though the pages are stubbed here.
+vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
 const push = vi.fn(() => Promise.resolve());
 const route = reactive({ query: {} });
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }));
@@ -20,6 +22,14 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => rout
 const fresh = ref([]);
 vi.mock('@/composables/useNavigationOnion.js', () => ({
   useNavigationOnion: () => ({ state: { get value() { return { fresh: fresh.value }; } } }),
+}));
+
+// The Main chat: a known id, and opening it only navigates (the load that
+// makes it the active conversation is what the test controls).
+const mainChatId = ref('main-1');
+const openMainChat = vi.fn(() => Promise.resolve());
+vi.mock('@/composables/useMainChat.js', () => ({
+  useMainChat: () => ({ mainChatId, openMainChat, clearMainChat: vi.fn(() => Promise.resolve(false)) }),
 }));
 
 import FocusedShell from './FocusedShell.vue';
@@ -69,7 +79,41 @@ describe('FocusedShell', () => {
     push.mockClear();
     fresh.value = [];
     storeState.chat.savedOutputTitle = '';
+    storeState.chat.savedOutputId = null;
+    openMainChat.mockClear();
     localStorage.clear();
+  });
+
+  it('regression: the chat seed waits for the Main chat to be the open conversation', async () => {
+    // The composer's draft is keyed by conversation and reloaded on a switch.
+    // Seeding before the Main chat is active filed the text under the chat
+    // being left, and the switch then replaced it: the prefix never showed.
+    storeState.chat.savedOutputId = 'some-other-chat';
+    const seen = vi.fn();
+    window.addEventListener('agnt:ask-annie', seen);
+    const w = mountShell('AgentsScreen');
+    const asking = nav.ask('Create an agent that ');
+    await new Promise((r) => setTimeout(r, 150));
+    expect(openMainChat).toHaveBeenCalledTimes(1);
+    expect(seen).not.toHaveBeenCalled();
+
+    storeState.chat.savedOutputId = 'main-1';
+    await asking;
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen.mock.calls[0][0].detail).toEqual({ text: 'Create an agent that ', send: false });
+    window.removeEventListener('agnt:ask-annie', seen);
+    w.unmount();
+  });
+
+  it('seeds at once when the Main chat is already open', async () => {
+    storeState.chat.savedOutputId = 'main-1';
+    const seen = vi.fn();
+    window.addEventListener('agnt:ask-annie', seen);
+    const w = mountShell('ConnectorsScreen');
+    await nav.ask('Edit the Gmail plugin to ');
+    expect(seen.mock.calls[0][0].detail.text).toBe('Edit the Gmail plugin to ');
+    window.removeEventListener('agnt:ask-annie', seen);
+    w.unmount();
   });
 
   it('tells every screen under it that it is in Focused', () => {

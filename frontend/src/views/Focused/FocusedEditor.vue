@@ -34,7 +34,7 @@
         <span v-else-if="meta" class="focused-edit-meta">{{ meta }}</span>
       </div>
       <slot name="actions" />
-      <button v-if="chatAsk" type="button" class="focused-btn" @click="$emit('ask', chatAsk)">Change in chat</button>
+      <button v-if="chatAsk" type="button" class="focused-btn" @click="$emit('ask', chatAsk)"><i class="fas fa-comment-dots" aria-hidden="true"></i>Edit in chat</button>
     </header>
 
     <p v-if="note" class="focused-edit-note" :class="{ warn: !readOnly }">{{ note }}</p>

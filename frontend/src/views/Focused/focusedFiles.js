@@ -48,6 +48,30 @@ export function crumbsOf(dir) {
   return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
 }
 
+/** The orders a folder can be listed in: [value, label]. */
+export const FILE_SORTS = Object.freeze([
+  ['name', 'Name'],
+  ['date', 'Date'],
+]);
+
+const timeOf = (v) => {
+  const t = typeof v === 'number' ? v : Date.parse(v || '');
+  return Number.isFinite(t) ? t : 0;
+};
+const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * A folder's entries in order: folders first, then by name (A→Z, numbers in
+ * number order) or by date (newest first; undated last; name breaks ties).
+ * Returns a new array — the listing it was given is left alone.
+ */
+export function sortFileItems(items, by = 'name') {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  const dirFirst = (a, b) => Number(b.type === 'directory') - Number(a.type === 'directory');
+  const order = by === 'date' ? (a, b) => timeOf(b.modifiedAt) - timeOf(a.modifiedAt) || byName(a, b) : byName;
+  return [...list].sort((a, b) => dirFirst(a, b) || order(a, b));
+}
+
 export function fmtSize(bytes) {
   const n = Number(bytes);
   if (!Number.isFinite(n) || n < 0) return '';

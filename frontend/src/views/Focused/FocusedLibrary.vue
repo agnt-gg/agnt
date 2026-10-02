@@ -19,7 +19,7 @@
     :action-label="'New ' + tab.noun"
     v-model:query="query"
     :search-placeholder="`Search ${(counts[tab.id] ?? '').toLocaleString()} ${tab.label.toLowerCase()}`.replace('  ', ' ')"
-    @action="nav.ask(tab.ask)"
+    @action="nav.ask(createAsk(tab.noun))"
   >
     <template #tabs><LibraryTabs :tabs="tabs" :current="tab.id" :counts="counts" @select="selectTab" /></template>
 
@@ -54,7 +54,7 @@ import FocusedAgentEditor from './FocusedAgentEditor.vue';
 import FocusedAssetEditor from './FocusedAssetEditor.vue';
 import FocusedFiles from './FocusedFiles.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
-import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows } from './focusedModel.js';
+import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows, createAsk } from './focusedModel.js';
 import { isRunningStatus } from './focusedEditors.js';
 
 const props = defineProps({ location: { type: Object, required: true } });

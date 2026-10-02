@@ -11,12 +11,14 @@
     :meta="fileMeta"
     :note="fileNote"
     :show-foot="false"
+    :chat-ask="editAsk('file', filePath)"
     :dirty="dirty"
     :saving="saving"
     :error="error"
     @back="leaveFile"
     @save="save"
     @discard="content = baseline"
+    @ask="nav.ask"
   >
     <template #actions>
       <button type="button" class="focused-btn" @click="openWithSystem">Open with system</button>
@@ -38,18 +40,33 @@
     v-else
     :title="FOCUSED_PAGES.library.title"
     :sub="FOCUSED_PAGES.library.sub"
+    action-label="New file"
     v-model:query="query"
     :search-placeholder="`Search ${dir ? baseName(dir) : 'files'}`"
+    @action="nav.ask(createAsk('file', { within: dir }))"
   >
     <template #tabs><slot name="tabs" /></template>
 
-    <nav class="focused-crumbs" aria-label="Folder">
-      <button type="button" class="focused-crumb" :class="{ current: !dir }" @click="openDir('')">Files</button>
-      <template v-for="c in crumbs" :key="c.path">
-        <i class="fas fa-chevron-right" aria-hidden="true"></i>
-        <button type="button" class="focused-crumb" :class="{ current: c.path === dir }" @click="openDir(c.path)">{{ c.name }}</button>
-      </template>
-    </nav>
+    <div class="focused-files-bar">
+      <nav class="focused-crumbs" aria-label="Folder">
+        <button type="button" class="focused-crumb" :class="{ current: !dir }" @click="openDir('')">Files</button>
+        <template v-for="c in crumbs" :key="c.path">
+          <i class="fas fa-chevron-right" aria-hidden="true"></i>
+          <button type="button" class="focused-crumb" :class="{ current: c.path === dir }" @click="openDir(c.path)">{{ c.name }}</button>
+        </template>
+      </nav>
+      <div class="focused-segmented" role="radiogroup" aria-label="Sort by">
+        <button
+          v-for="[value, label] in FILE_SORTS"
+          :key="value"
+          type="button"
+          role="radio"
+          :aria-checked="sortBy === value ? 'true' : 'false'"
+          :class="{ active: sortBy === value }"
+          @click="setSort(value)"
+        >{{ label }}</button>
+      </div>
+    </div>
 
     <p v-if="loading" class="focused-empty">Loading…</p>
     <p v-else-if="listError" class="focused-empty">{{ listError }}</p>
@@ -75,9 +92,9 @@ import { ref, computed, inject, watch, onMounted } from 'vue';
 import FocusedPage from './FocusedPage.vue';
 import FocusedEditor from './FocusedEditor.vue';
 import AutoTextarea from './AutoTextarea.vue';
-import { FOCUSED_PAGES } from './focusedModel.js';
+import { FOCUSED_PAGES, createAsk, editAsk } from './focusedModel.js';
 import { ago } from './focusedEditors.js';
-import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf } from './focusedFiles.js';
+import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf, FILE_SORTS, sortFileItems } from './focusedFiles.js';
 import { getTree, getFile, saveFile, rawFileUrl } from '@/services/fileSystemService.js';
 import { getWorkspaceRoot, artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { openLocalPath } from '@/utils/openLocalFile.js';
@@ -100,7 +117,26 @@ const query = ref('');
 // ── Folder ─────────────────────────────────────────────────────────────────
 const items = ref([]);
 const listError = ref('');
-const rows = computed(() => items.value.filter((i) => matches(query.value, i.name)));
+// The chosen order is a preference: it outlives the folder and the session.
+const SORT_KEY = 'agnt:focused-files-sort';
+const readSort = () => {
+  try {
+    const saved = localStorage.getItem(SORT_KEY);
+    return FILE_SORTS.some(([v]) => v === saved) ? saved : 'name';
+  } catch {
+    return 'name';
+  }
+};
+const sortBy = ref(readSort());
+function setSort(value) {
+  sortBy.value = value;
+  try {
+    localStorage.setItem(SORT_KEY, value);
+  } catch {
+    /* storage disabled: the order still applies until the page closes */
+  }
+}
+const rows = computed(() => sortFileItems(items.value.filter((i) => matches(query.value, i.name)), sortBy.value));
 const crumbs = computed(() => crumbsOf(props.dir));
 
 async function loadDir() {

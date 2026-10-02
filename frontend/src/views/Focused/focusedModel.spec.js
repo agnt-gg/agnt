@@ -23,6 +23,9 @@ import {
   isCron,
   memoryRows,
   initialOf,
+  createAsk,
+  editAsk,
+  billingSummary,
 } from './focusedModel.js';
 import { SECTION_ROUTES } from '@/canvas/sections.js';
 
@@ -45,6 +48,47 @@ describe('screens and pages', () => {
   });
 });
 
+describe('asking in chat', () => {
+  it('every create and edit seed is one phrasing, naming what and which, cursor after it', () => {
+    expect(createAsk('plugin')).toBe('Create a plugin that ');
+    expect(createAsk('agent')).toBe('Create an agent that ');
+    expect(createAsk('file', { within: 'reports/q3' })).toBe('Create a file in reports/q3 that ');
+    expect(createAsk('file', { within: '' })).toBe('Create a file that ');
+    expect(editAsk('plugin', 'Gmail')).toBe('Edit the Gmail plugin to ');
+    expect(editAsk('workflow', '  Nightly backup ')).toBe('Edit the Nightly backup workflow to ');
+    expect(editAsk('skill', '')).toBe('Edit this skill to ');
+  });
+
+  it('every Library tab has a seed for New and for Edit', () => {
+    for (const t of LIBRARY_TABS) {
+      expect(createAsk(t.noun), t.id).toMatch(/^Create an? \w+ that $/);
+      expect(editAsk(t.noun, 'X'), t.id).toBe(`Edit the X ${t.noun} to `);
+    }
+  });
+});
+
+describe('billing', () => {
+  it('a free account is offered an upgrade, nothing to cancel', () => {
+    expect(billingSummary('free', null)).toMatchObject({ isFree: true, plan: 'Community Core', status: 'Free plan', renewsAt: 0, canCancel: false, canReactivate: false });
+    expect(billingSummary(undefined, undefined).isFree).toBe(true);
+  });
+
+  it('a paid plan shows its name, status and renewal (Stripe seconds \u2192 ms)', () => {
+    expect(billingSummary('always_on', { currentPeriodEnd: 1_800_000_000 })).toMatchObject({
+      isFree: false, plan: 'Pro + Always-On', status: 'Active', renewsAt: 1_800_000_000_000, renewLabel: 'Renews', canCancel: true, canReactivate: false,
+    });
+  });
+
+  it('a canceling plan can be reactivated and says when access ends', () => {
+    expect(billingSummary('personal', { cancelAtPeriodEnd: true, currentPeriodEnd: 1 })).toMatchObject({ status: 'Canceling', renewLabel: 'Access until', canCancel: false, canReactivate: true });
+  });
+
+  it('past due and unknown plans are named, not hidden', () => {
+    expect(billingSummary('business', { planStatus: 'past_due' }).status).toBe('Past due');
+    expect(billingSummary('mystery', {}).plan).toBe('Mystery');
+  });
+});
+
 describe('library', () => {
   it('every store-backed tab names a getter, a fetch action and a catalog source; Files is the disk', () => {
     for (const t of LIBRARY_TABS) {
@@ -55,7 +99,7 @@ describe('library', () => {
       expect(t.getter).toMatch(/^\w+\/\w+$/);
       expect(t.fetch).toMatch(/^\w+\/\w+$/);
       expect(t.catalogKey).toBeTruthy();
-      expect(t.ask.endsWith(' ')).toBe(true); // the cursor lands after the seed
+      expect(t.noun).toMatch(/^[a-z]+$/); // names it in the chat seeds
     }
     expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'files']);
     expect(libraryTab('nope')).toBe(LIBRARY_TABS[0]);

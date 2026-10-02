@@ -10,6 +10,9 @@
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.connected }">{{ card.connected ? card.status : 'Not connected' }}</span>
         </div>
+        <button type="button" class="focused-btn" @click="nav.ask(editAsk('plugin', card.name))">
+          <i class="fas fa-comment-dots" aria-hidden="true"></i>Edit plugin
+        </button>
       </header>
 
       <p v-if="card.instructions" class="focused-instructions">{{ card.instructions }}</p>
@@ -70,7 +73,7 @@
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import FocusedPluginLogo from './FocusedPluginLogo.vue';
-import { pluginCard, CLI_DISCONNECT_ACTIONS } from './focusedModel.js';
+import { pluginCard, CLI_DISCONNECT_ACTIONS, editAsk } from './focusedModel.js';
 
 const props = defineProps({ providerId: { type: String, required: true } });
 const store = useStore();

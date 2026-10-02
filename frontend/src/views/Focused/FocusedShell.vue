@@ -85,6 +85,7 @@ import FocusedScheduled from './FocusedScheduled.vue';
 import FocusedMemory from './FocusedMemory.vue';
 import FocusedSettings from './FocusedSettings.vue';
 import { screenTitle } from './focusedModel.js';
+import { waitUntil } from './focusedTime.js';
 import { focusedLocation, routeFor } from './focusedRoutes.js';
 import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 import { useMainChat } from '@/composables/useMainChat.js';
@@ -194,9 +195,19 @@ async function clearMain() {
  * Ask in the Main chat, with the request typed in. Nothing is sent until
  * Enter. The Main chat routes real work to its own chats, so asking never
  * needs a new conversation.
+ *
+ * The seed waits for the Main chat to BE the active conversation. The
+ * composer's draft is keyed by conversation and reloaded on every switch
+ * (BaseScreen, chat/SET_ACTIVE_CONVERSATION), and the route push resolves
+ * before the conversation loads — so a seed written one tick after the push
+ * was filed under the outgoing chat and then replaced by the Main chat's own
+ * draft: from any page but the Main chat, the prefix never appeared.
  */
+const ASK_SWITCH_TIMEOUT_MS = 8000;
 async function ask(text) {
   await openMain();
+  const mainId = mainChat.mainChatId.value;
+  if (mainId) await waitUntil(() => store.state.chat?.savedOutputId === mainId, ASK_SWITCH_TIMEOUT_MS, 50);
   await nextTick();
   window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } }));
 }
