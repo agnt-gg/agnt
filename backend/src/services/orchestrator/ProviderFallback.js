@@ -369,6 +369,24 @@ export function classifyFailure(recoveredError) {
 }
 
 /**
+ * Failure reasons that condemn the PROVIDER, not just the model that was tried.
+ *
+ * After one of these, every later tier on the same provider is skipped for the
+ * rest of the run: a second model behind a dead key, an exhausted quota or an
+ * overloaded endpoint fails the same way, and each doomed attempt costs the
+ * user a full retry cycle. A model-specific failure ('unknown' — e.g. a 404 for
+ * a retired id, a context-length error) does NOT skip, because the account
+ * default on the same provider may well work.
+ *
+ * This is what lets a composed chain carry the user's default AFTER a routed
+ * pick on the same provider without reintroducing "three ways to lose on one
+ * vendor" — the rule moved from chain construction to run time, where the
+ * actual failure reason is known. Must stay in step with providerHealth's
+ * COOLDOWN_POLICY (pinned by test).
+ */
+export const PROVIDER_WIDE_FAILURES = Object.freeze(new Set(['auth', 'rate_limit', 'cap', 'overloaded', 'network']));
+
+/**
  * Decide whether an adapter result means "roll over to the next provider".
  *
  * The adapter result is the object returned by `adapter.call(...)`:
@@ -416,9 +434,18 @@ export function isCancellation(errorOrResult) {
  * @param {(tier:object)=>Promise<object>} args.runOne  builds+calls adapter for a tier
  * @param {()=>boolean} [args.shouldStop] authoritative caller cancellation state
  * @param {(info:object)=>void} [args.onFallback]  notified before each rollover
+ * @param {(result:object, tier:object)=>(true|string|false)} [args.validate]
+ *   "Did it work?" beyond "did it error". Anything but `true` rolls over with
+ *   reason 'invalid_output' (a string return is kept as the explanation).
+ *   Only callers with a cheap mechanical check should pass one: a validator
+ *   that guesses turns every model into a failure.
+ * @param {{recordFailure:Function, recordSuccess:Function}} [args.health]
+ *   per-user provider health (providerHealth.forUser). Told about every
+ *   attempt's TRANSPORT outcome; an answer that fails `validate` still proves
+ *   the provider works, so it counts as a success there.
  * @returns {Promise<{result: object, tier: object, attempts: object[]}>}
  */
-export async function runWithFallback({ chain, runOne, shouldStop, onFallback }) {
+export async function runWithFallback({ chain, runOne, shouldStop, onFallback, validate, health }) {
   if (!Array.isArray(chain) || chain.length === 0) {
     throw new Error('runWithFallback: empty provider chain');
   }
@@ -426,9 +453,21 @@ export async function runWithFallback({ chain, runOne, shouldStop, onFallback })
   const attempts = [];
   let lastResult = null;
   let lastTier = null;
+  const downProviders = new Set();
+  const providerKeyOf = (tier) => (resolveProviderKey(tier?.provider) || String(tier?.provider || '').toLowerCase());
+  const nextRunnable = (from) => {
+    for (let j = from; j < chain.length; j++) {
+      if (!downProviders.has(providerKeyOf(chain[j]))) return chain[j];
+    }
+    return null;
+  };
 
   for (let i = 0; i < chain.length; i++) {
     const tier = chain[i];
+    if (downProviders.has(providerKeyOf(tier))) {
+      attempts.push({ tier: tier.tier, provider: tier.provider, model: tier.model, failed: true, skipped: true, reason: 'provider_down' });
+      continue;
+    }
     lastTier = tier;
 
     let result;
@@ -456,27 +495,56 @@ export async function runWithFallback({ chain, runOne, shouldStop, onFallback })
     // cancelled request on every fallback tier. Check the authoritative state
     // after the attempt and before shouldFailover/onFallback.
     const stopped = typeof shouldStop === 'function' && shouldStop();
-    const failed = !stopped && shouldFailover(result);
+    const transportFailed = !stopped && shouldFailover(result);
+    let failed = transportFailed;
+    let reason = transportFailed ? classifyFailure(result.recoveredError) : null;
+
+    if (!stopped && !failed && typeof validate === 'function') {
+      let verdict;
+      try {
+        verdict = validate(result, tier);
+      } catch (validationError) {
+        verdict = validationError?.message || 'validator threw';
+      }
+      if (verdict !== true) {
+        failed = true;
+        reason = 'invalid_output';
+        result = { ...result, invalidOutput: true, validationError: typeof verdict === 'string' ? verdict : null };
+        lastResult = result;
+      }
+    }
+
+    if (health && !stopped) {
+      try {
+        if (transportFailed) health.recordFailure(tier.provider, reason);
+        else health.recordSuccess(tier.provider);
+      } catch {
+        /* health bookkeeping must never break the loop */
+      }
+    }
+
     attempts.push({
       tier: tier.tier,
       provider: tier.provider,
       model: tier.model,
       failed,
       ...(stopped ? { stopped: true } : {}),
-      reason: failed ? classifyFailure(result.recoveredError) : null,
+      reason,
     });
 
     if (stopped || !failed) {
       return { result, tier, attempts };
     }
 
-    const next = chain[i + 1];
+    if (PROVIDER_WIDE_FAILURES.has(reason)) downProviders.add(providerKeyOf(tier));
+
+    const next = nextRunnable(i + 1);
     if (next && typeof onFallback === 'function') {
       try {
         onFallback({
           from: tier,
           to: next,
-          reason: classifyFailure(result.recoveredError),
+          reason,
           recoveredError: result.recoveredError,
         });
       } catch {
@@ -500,6 +568,7 @@ export default {
   resolveTierModel,
   buildProviderChain,
   classifyFailure,
+  PROVIDER_WIDE_FAILURES,
   shouldFailover,
   isCancellation,
   runWithFallback,
