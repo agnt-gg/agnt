@@ -342,9 +342,9 @@ class GoalService {
         return res.status(400).json({ error: 'Category is required' });
       }
 
-      // Get goal and its evaluation
+      // Get goal and its evaluation. Another user's goal reads as not found.
       const goal = await GoalModel.findOne(id);
-      if (!goal) {
+      if (!goal || (goal.user_id && goal.user_id !== userId)) {
         return res.status(404).json({ error: 'Goal not found' });
       }
 
@@ -354,6 +354,12 @@ class GoalService {
           error: 'Goal must be evaluated and passed before saving as golden standard',
         });
       }
+
+      // The report is a goal_evaluations row: the overall score is the
+      // overall_score column and the per-dimension scores live in
+      // evaluation_data. There is no top-level `scores` (#94).
+      const scores = evaluation.evaluation_data?.scores || { overall: evaluation.overall_score };
+      const successScore = evaluation.overall_score ?? scores.overall ?? null;
 
       // Get all tasks
       const tasks = await TaskModel.findByGoalId(id);
@@ -372,7 +378,7 @@ class GoalService {
           order_index: t.order_index,
         })),
         evaluation: {
-          scores: evaluation.scores,
+          scores,
           feedback: evaluation.feedback,
         },
       };
@@ -382,7 +388,7 @@ class GoalService {
         category,
         goal.title,
         goal.description,
-        evaluation.scores.overall,
+        successScore,
         templateData,
         userId
       );
