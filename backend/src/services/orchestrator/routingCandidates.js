@@ -28,6 +28,19 @@ import {
 import LlmCallModel from '../../models/LlmCallModel.js';
 import { NOT_A_CHAT_MODEL, resolveDefaultModel } from '../ai/defaultModel.js';
 import { providerHealth } from '../ai/providerHealth.js';
+import { promptCacheTtlMs } from '../../utils/promptCacheTtl.js';
+
+/**
+ * The write multiplier a model pays to cache a new prefix. AGNT requests
+ * Anthropic's 1-hour cache, whose writes cost 2x rather than 1.25x, so the
+ * longer window's rate applies wherever the requested lifetime exceeds the
+ * 5-minute tier.
+ */
+function cacheWriteMultOf(econ, providerKey, model) {
+  const ttl = promptCacheTtlMs(providerKey, model) || 0;
+  const mult = ttl > 5 * 60 * 1000 ? econ.write1hMult : econ.write5mMult;
+  return Number.isFinite(mult) ? mult : 1.0;
+}
 
 /**
  * Providers that are never auto-routed TO.
@@ -262,6 +275,7 @@ export async function collectCandidates({
         reasoning: meta.reasoning === true,
 
         cacheReadMult: econ.readMult,
+        cacheWriteMult: cacheWriteMultOf(econ, lower, model),
         cacheKnown: econ.known,
 
         // `quality` is left undefined unless measured — DynamicChain treats a
@@ -277,25 +291,50 @@ export async function collectCandidates({
   return candidates;
 }
 
+/** SQLite CURRENT_TIMESTAMP is UTC 'YYYY-MM-DD HH:MM:SS'; Date.parse reads it as local. */
+export function parseLedgerTimestamp(ts) {
+  if (!ts) return null;
+  const text = String(ts);
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text.replace(' ', 'T')}Z`;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /**
- * Session state for the cache-affinity term: what served the LAST turn of this
- * conversation, and how much prefix it has warm.
+ * Session state for the cache-affinity term: which model served this
+ * conversation's last successful turn, how big the conversation is, and how
+ * much of it is still warm.
  *
- * Returns zeros on any failure. A missing session makes the switch penalty 0,
- * which degrades the router to a plain cost/quality optimiser rather than
- * making it wrong.
+ *   promptTokens  the last turn's prompt size — the best estimate of the next
+ *                 one, so a long conversation is priced as long everywhere
+ *   cachedTokens  the same, but only while that provider's cache can still
+ *                 hold it (promptCacheTtlMs); 0 once it has certainly expired.
+ *                 An unknown lifetime is not assumed expired — the switch
+ *                 cost is then gated by the provider's own known economics.
+ *
+ * Returns {} on any failure. A missing session makes the switch penalty 0 and
+ * removes continuity, which degrades the router to a plain cost/quality
+ * optimiser rather than making it wrong.
  */
-export async function getSessionAffinity(userId, conversationId) {
+export async function getSessionAffinity(userId, conversationId, { now = Date.now() } = {}) {
   if (!conversationId) return {};
   try {
     const last = await LlmCallModel.lastCallForConversation(userId, conversationId);
     if (!last || !last.provider) return {};
     const econ = getCacheEconomics(last.provider, last.model);
     const meta = getModelMetadata(last.provider, last.model) || {};
+    const promptTokens = (last.cache_read_tokens || 0) + (last.input_tokens || 0);
+
+    const servedAt = parseLedgerTimestamp(last.ts);
+    const ttl = promptCacheTtlMs(last.provider, last.model);
+    const expired = Number.isFinite(ttl) && servedAt !== null && now - servedAt > ttl;
+
     return {
       lastProvider: last.provider,
       lastModel: last.model,
-      cachedTokens: (last.cache_read_tokens || 0) + (last.input_tokens || 0),
+      promptTokens,
+      cachedTokens: expired ? 0 : promptTokens,
+      cacheExpired: expired,
       lastCacheReadMult: econ.readMult,
       lastInputCostPer1M: Number.isFinite(meta.inputCostPer1M) ? meta.inputCostPer1M : null,
     };

@@ -50,14 +50,50 @@
 export const MAX_FALLBACKS = 3;
 
 /**
- * κ — how much of a lost cache we actually believe.
+ * κ — how much of a lost cache we believe. Now 1.0: it is a measured cost.
  *
- * Below 1.0 because the switch penalty is an ESTIMATE of a future saving, and
- * an estimate weighted as heavily as a known price would pin every
- * conversation to its first provider forever, which is a worse failure than
- * occasionally paying for a cold prefix.
+ * It was 0.7 when the penalty was a guess — any provider match counted as
+ * warm, however old the cache and whichever model held it, so trusting it
+ * fully would have pinned conversations to stale prefixes. The session is now
+ * only warm when the SAME MODEL served it within that provider's documented
+ * cache lifetime (getSessionAffinity), so the penalty is one turn's real loss:
+ * the read discount given up plus the new model's write premium. Discounting
+ * a known cost would just be under-pricing a switch, and over-switching is
+ * what costs users money.
+ *
+ * It is deliberately NOT multiplied over future turns: a switch costs one cold
+ * turn, after which the new model is warm. The pressure to stay put for
+ * longer than the economics justify comes from the continuity bonus below,
+ * which is about consistency, and is named as such.
  */
-export const SWITCH_PENALTY_WEIGHT = 0.7;
+export const SWITCH_PENALTY_WEIGHT = 1.0;
+
+/**
+ * Preference for the user's own default model, as a score bonus.
+ *
+ * Scores live on roughly [-1, 1] (quality term ≤ (1-λ)·W, cost term ≤ λ), so
+ * 0.2 means a challenger must win by a fifth of the whole scale to displace
+ * the model the user chose. Under "balanced" that takes a large price gap;
+ * under "save money" a much cheaper capable model can still win — which is
+ * the flexibility routing exists to provide, and the dial the user set.
+ *
+ * One-shot background work (titles, insights, suggestions) has no
+ * conversation to keep consistent and no cache to protect, and cost is the
+ * point of routing it at all, so the default only breaks ties there.
+ */
+export const DEFAULT_PREFERENCE = 0.2;
+export const BACKGROUND_DEFAULT_PREFERENCE = 0.05;
+
+/**
+ * Preference for the model that served this conversation's last turn.
+ *
+ * Separate from the cache term on purpose. The cache term is money and
+ * disappears when the cache expires; this is continuity — one voice, one set
+ * of habits, one tokenizer's idea of the history — and it does not. It is
+ * also the hysteresis that stops a conversation oscillating between two
+ * near-equal models, paying a cold turn on every flip.
+ */
+export const CONVERSATION_CONTINUITY = 0.15;
 
 /** τ — latency weight. Small: correctness and cost dominate. */
 export const LATENCY_WEIGHT = 0.08;
@@ -187,26 +223,63 @@ export function estimateCost(candidate, intent = {}) {
 }
 
 /**
- * Dollars given up by moving off a warm conversation.
+ * Is this candidate the model that served the conversation's last turn?
  *
- * Only charged when we KNOW the discount (getCacheEconomics reports `known`).
- * Guessing a cache discount for a provider that may not give one would invent
- * a reason to stay put — the same "silent default" defect this codebase
- * already fixed once in its pricing layer.
+ * The SAME MODEL, not merely the same provider: a prompt cache belongs to one
+ * model, so moving from one Claude to another throws the prefix away exactly
+ * as moving to another vendor does. Treating the provider as the unit is what
+ * let the router "stay warm" while silently re-reading the whole history. A
+ * session that never recorded a model falls back to the provider alone.
+ */
+export function isIncumbent(candidate, session = {}) {
+  if (!session || !session.lastProvider || !candidate) return false;
+  if (String(session.lastProvider).toLowerCase() !== String(candidate.provider).toLowerCase()) return false;
+  if (!session.lastModel) return true;
+  return String(session.lastModel).toLowerCase() === String(candidate.model || '').toLowerCase();
+}
+
+/**
+ * Dollars given up by moving off a warm conversation: one turn's worth.
+ *
+ *   read discount lost  the warm prefix, re-read at full price instead of the
+ *                       LAST model's cached rate
+ *   write premium       the new model writing that prefix to its own cache
+ *                       (Anthropic 1.25x/2x, GPT-5.6+ 1.25x), when known
+ *
+ * The lost discount belongs to the PREVIOUS model and is gated on its own
+ * known economics (getSessionAffinity reports readMult 1.0 when unknown), so
+ * nothing is guessed. Warmth itself is decided upstream: a session whose cache
+ * outlived its provider's lifetime arrives with cachedTokens 0.
  */
 export function estimateSwitchCost(candidate, intent = {}, session = {}) {
   if (!session || !session.lastProvider) return 0;
-  const same = String(session.lastProvider).toLowerCase() === String(candidate.provider).toLowerCase();
-  if (same) return 0;                       // staying warm costs nothing
-  if (!session.cachedTokens) return 0;      // nothing warm to lose
-  if (candidate.cacheKnown === false) return 0;
-
-  const readMult = Number.isFinite(session.lastCacheReadMult) ? session.lastCacheReadMult : 1.0;
-  const rate = Number.isFinite(session.lastInputCostPer1M) ? session.lastInputCostPer1M : null;
-  if (rate === null || readMult >= 1.0) return 0;   // no discount existed → nothing lost
+  if (isIncumbent(candidate, session)) return 0; // staying warm costs nothing
+  if (!session.cachedTokens) return 0;           // nothing warm to lose
 
   const reusable = Math.min(session.cachedTokens, intent.contextTokens || session.cachedTokens);
-  return (reusable / 1e6) * rate * (1 - readMult);
+
+  let lost = 0;
+  const readMult = Number.isFinite(session.lastCacheReadMult) ? session.lastCacheReadMult : 1.0;
+  const lastRate = Number.isFinite(session.lastInputCostPer1M) ? session.lastInputCostPer1M : null;
+  if (lastRate !== null && readMult < 1.0) lost += (reusable / 1e6) * lastRate * (1 - readMult);
+
+  const writeMult = Number.isFinite(candidate.cacheWriteMult) ? candidate.cacheWriteMult : 1.0;
+  if (candidate.cacheKnown !== false && writeMult > 1.0 && Number.isFinite(candidate.inputCostPer1M)) {
+    lost += (reusable / 1e6) * candidate.inputCostPer1M * (writeMult - 1);
+  }
+
+  return lost;
+}
+
+/**
+ * Is this candidate the account default (the router's hint)? Compared on
+ * provider and, when the hint names one, model.
+ */
+export function isAccountDefault(candidate, preferred = {}) {
+  if (!preferred || !preferred.provider || !candidate) return false;
+  if (String(preferred.provider).toLowerCase() !== String(candidate.provider).toLowerCase()) return false;
+  if (!preferred.model) return true;
+  return String(preferred.model).toLowerCase() === String(candidate.model || '').toLowerCase();
 }
 
 /**
@@ -261,8 +334,12 @@ export function estimateQualityPrior(candidate) {
  *    write by hand in a unit test behaves identically under both transforms,
  *    which is exactly why this survived the unit suite.
  */
-export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session = {} } = {}) {
+export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session = {}, preferred = {} } = {}) {
   const stakeWeight = Number.isFinite(intent.stakeWeight) ? intent.stakeWeight : 1.0;
+  // Preferences are NOT costs, so they are added after normalisation as plain
+  // score: folding them into dollars would let a cheap pool make them vanish.
+  const defaultBonus = intent.conversational === false ? BACKGROUND_DEFAULT_PREFERENCE : DEFAULT_PREFERENCE;
+  const continuityBonus = intent.conversational === false ? 0 : CONVERSATION_CONTINUITY;
 
   const priced = eligible.map((c) => {
     const cost = estimateCost(c, intent);
@@ -323,8 +400,11 @@ export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session =
       const qualityTerm = (1 - lambda) * stakeWeight * qualityNorm;
       const costTerm = lambda * costNorm;
       const latencyTerm = LATENCY_WEIGHT * latencyNorm;
+      const isDefault = isAccountDefault(p.candidate, preferred);
+      const incumbent = isIncumbent(p.candidate, session);
+      const preferenceTerm = (isDefault ? defaultBonus : 0) + (incumbent ? continuityBonus : 0);
 
-      const score = qualityTerm - costTerm - latencyTerm;
+      const score = qualityTerm - costTerm - latencyTerm + preferenceTerm;
 
       return {
         ...p.candidate,
@@ -334,20 +414,20 @@ export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session =
         switchCostUsd: p.switchCost,
         quality: p.quality,
         qualityKnown: p.qualityKnown,
-        reason: explainChoice(p, { costNorm, switchNorm, lambda, intent, session }),
+        isDefault,
+        incumbent,
+        reason: explainChoice(p, { costNorm, switchNorm, lambda, intent, session, isDefault, incumbent }),
       };
     })
     .sort((a, b) => b.score - a.score);
 }
 
 /** One short phrase naming the dominant factor. Never post-hoc reconstructed. */
-function explainChoice(p, { costNorm, switchNorm, lambda, intent, session }) {
+function explainChoice(p, { costNorm, switchNorm, lambda, intent, session, isDefault, incumbent }) {
   const c = p.candidate;
-  if (session && session.lastProvider &&
-      String(session.lastProvider).toLowerCase() === String(c.provider).toLowerCase() &&
-      session.cachedTokens > 0) {
-    return 'cache-warm';
-  }
+  if (incumbent && session.cachedTokens > 0) return 'cache-warm';
+  if (incumbent && intent.conversational !== false) return 'conversation continuity';
+  if (isDefault && intent.conversational !== false) return 'your default model';
   if (c.subscription) {
     const rate = c.notionalCostPer1M;
     if (rate === null || rate === undefined) return 'included in plan';
@@ -411,7 +491,7 @@ export function buildDynamicChain({
     }];
   }
 
-  const scored = scoreCandidates(eligible, { intent, lambda, session });
+  const scored = scoreCandidates(eligible, { intent, lambda, session, preferred: hint });
 
   const chain = [];
   const usedProviders = new Set();
@@ -446,6 +526,11 @@ export function buildDynamicChain({
 export default {
   MAX_FALLBACKS,
   SWITCH_PENALTY_WEIGHT,
+  DEFAULT_PREFERENCE,
+  BACKGROUND_DEFAULT_PREFERENCE,
+  CONVERSATION_CONTINUITY,
+  isIncumbent,
+  isAccountDefault,
   LATENCY_WEIGHT,
   UNKNOWN_QUALITY_PRIOR,
   EXPLORE_BONUS,

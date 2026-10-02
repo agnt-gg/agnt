@@ -109,6 +109,15 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
 });
 
 /**
+ * Origins that are a CONVERSATION: a person reading turn after turn, a
+ * history re-sent on every one, and a model whose consistency they notice.
+ * Must equal LlmCallModel.CHAT_SURFACE_ORIGINS plus legacy 'chat' (pinned by
+ * routingIntent.test.js) — duplicated rather than imported to keep this pure.
+ * Everything else is one-shot background work.
+ */
+export const CONVERSATIONAL_ORIGINS = Object.freeze(['orchestrator', 'agent', 'workflow', 'tool', 'widget', 'goal', 'artifact', 'chat']);
+
+/**
  * Classify a turn.
  *
  * Everything is optional and every unknown falls to the SAFE side (normal
@@ -158,6 +167,9 @@ export function classifyIntent({
   return {
     stake,
     stakeWeight: STAKE_WEIGHTS[stake],
+    // Unknown origins count as conversational: the safe side keeps the
+    // user's default and the conversation's model, rather than routing away.
+    conversational: !key || CONVERSATIONAL_ORIGINS.includes(key) || !(key in ORIGIN_STAKE),
     verifiability,
     needsVision: !!hasImages,
     needsTools: !!hasTools,

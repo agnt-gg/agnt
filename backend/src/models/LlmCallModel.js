@@ -401,13 +401,21 @@ class LlmCallModel {
    * conversation so a shared conversation id can never leak another account's
    * routing state.
    */
+  //
+  // Only SUCCESSFUL CHAT TURNS count. A failed call warmed nothing and names a
+  // provider that just failed; a compaction, a suggestion or any other side
+  // call either reads a different prefix or never touched the conversation's
+  // cache at all. Letting any of those be "the last call" pointed the router
+  // at the wrong model for the next turn.
   static async lastCallForConversation(userId, conversationId) {
+    const origins = [...CHAT_SURFACE_ORIGINS, 'chat'];
     return dbGet(
       `SELECT provider, model, input_tokens, cache_read_tokens, ts
        FROM llm_calls
-       WHERE user_id = ? AND conversation_id = ?
+       WHERE user_id = ? AND conversation_id = ? AND status = 'ok'
+         AND origin IN (${origins.map(() => '?').join(', ')})
        ORDER BY ts DESC LIMIT 1`,
-      [userId, conversationId]
+      [userId, conversationId, ...origins]
     );
   }
 }

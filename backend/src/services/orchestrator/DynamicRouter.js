@@ -86,12 +86,19 @@ export async function buildRoutedChain({
       ? policy
       : parseRoutingPolicy(policy);
 
-    const intent = classifyIntent({ origin, ...intentInput });
+    const session = await getSessionAffinity(userId, conversationId);
 
-    const [candidates, session] = await Promise.all([
-      collectCandidates({ userId, authToken, authManager, intent }),
-      getSessionAffinity(userId, conversationId),
-    ]);
+    // A conversation re-sends its whole history every turn, and that re-read is
+    // the dominant cost. Without a size the estimator assumes a 2k-token
+    // prompt, so a 150k-token conversation was priced as a short question on
+    // every model and the cache term had nothing real to weigh against. The
+    // last turn's prompt is the best estimate of this one.
+    const sizedInput = !(intentInput.contextTokens > 0) && session.promptTokens > 0
+      ? { ...intentInput, contextTokens: session.promptTokens }
+      : intentInput;
+    const intent = classifyIntent({ origin, ...sizedInput });
+
+    const candidates = await collectCandidates({ userId, authToken, authManager, intent });
 
     if (!candidates || candidates.length === 0) return null;
 

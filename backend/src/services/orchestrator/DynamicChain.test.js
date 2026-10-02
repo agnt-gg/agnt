@@ -203,11 +203,20 @@ describe('SWITCH COST — the term nobody else has', () => {
     expect(c).toBeCloseTo((40000 / 1e6) * 3 * 0.9, 8);
   });
 
-  it('charges nothing when the discount is UNKNOWN rather than guessing one', () => {
+  it('charges nothing when the LAST model\'s discount is unknown rather than guessing one', () => {
     // Inventing a cache discount for a provider that may not give one would
     // manufacture a reason to stay put — the same silent-default defect this
-    // codebase already removed from its pricing layer.
-    expect(estimateSwitchCost({ ...dear, cacheKnown: false }, { contextTokens: 40000 }, session)).toBe(0);
+    // codebase already removed from its pricing layer. The discount that is
+    // LOST belongs to the previous model; getSessionAffinity reports 1.0 for it
+    // when unknown.
+    expect(estimateSwitchCost(dear, { contextTokens: 40000 }, { ...session, lastCacheReadMult: 1.0 })).toBe(0);
+  });
+
+  it('the destination\'s unknown economics do not cancel a discount that is known to be lost', () => {
+    // Leaving a warm Anthropic prefix costs the same wherever you go. Only the
+    // destination's WRITE premium needs the destination's economics.
+    const c = estimateSwitchCost({ ...dear, cacheKnown: false, cacheWriteMult: 2 }, { contextTokens: 40000 }, session);
+    expect(c).toBeCloseTo((40000 / 1e6) * 3 * 0.9, 8);
   });
 
   it('charges nothing with no session, and nothing with nothing warm', () => {
