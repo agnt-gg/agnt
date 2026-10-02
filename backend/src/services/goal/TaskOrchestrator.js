@@ -11,6 +11,7 @@ import GoalProcessor from './GoalProcessor.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
 import InsightTriggers from '../evolution/InsightTriggers.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
+import { detached } from '../../utils/detached.js';
 import { getNodeId } from '../cluster/nodeIdentity.js';
 import { checkSpendAdmission } from '../cluster/admission.js';
 import autonomousMessageService from '../AutonomousMessageService.js';
@@ -772,8 +773,8 @@ Begin working on this task now.`;
       if (!isCurrent()) return;
       notify({id:goalId,status:evaluation.status,evaluation:{passed:evaluation.passed,scores:evaluation.scores,feedback:evaluation.feedback}});
       // Notification/insight errors do not downgrade a committed decision.
-      if (conversationId) { try { Promise.resolve(this._sendGoalResultsToChat(goalId,conversationId,evaluation)).catch(error=>console.warn(error.message)); } catch(error) { console.warn(error.message); } }
-      if (evaluation.passed) { try { Promise.resolve(InsightTriggers.onGoalCompleted(goalId,userId,provider,model)).catch(error=>console.warn(error.message)); } catch(error) { console.warn(error.message); } }
+      if (conversationId) detached('Goal results to chat', () => this._sendGoalResultsToChat(goalId, conversationId, evaluation));
+      if (evaluation.passed) detached('Goal insights', () => InsightTriggers.onGoalCompleted(goalId, userId, provider, model));
       if (entry.experimentContext) import('../ExperimentService.js').then(mod=>mod.default.onRunCompleted(goalId,entry.experimentContext,evaluation)).catch(error=>console.warn(error.message));
     } finally {
       if (this.runningGoals.get(goalId) === entry) this.runningGoals.delete(goalId);
@@ -1209,16 +1210,13 @@ The goal you delegated did not fully pass. Let the user know:
           });
 
           // Auto-merge: send results summary back to the originating conversation
+          // Detached: the goal has passed; nothing after this may undo that.
           if (conversationId) {
-            this._sendGoalResultsToChat(goalId, conversationId, evaluation).catch(err => {
-              console.error('[AGI Loop] Auto-merge to chat failed (non-critical):', err.message);
-            });
+            detached('AGI Loop: auto-merge to chat', () => this._sendGoalResultsToChat(goalId, conversationId, evaluation));
           }
 
           // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
-          InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
-            console.error('[AGI Loop] Insight/SkillForge analysis failed (non-critical):', err.message);
-          });
+          detached('AGI Loop: insight/SkillForge analysis', () => InsightTriggers.onGoalCompleted(goalId, userId, provider, model));
 
           this.runningGoals.delete(goalId);
           return { goalId, status: 'completed', iteration, score: evaluation.scores.overall };
