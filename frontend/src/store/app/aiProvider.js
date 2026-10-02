@@ -784,7 +784,7 @@ const INITIAL_REASONING_VALUE = STORED_REASONING_VALUE !== 'default'
   ? STORED_REASONING_VALUE
   : (localStorage.getItem('reasoningEnabled') === 'true' ? 'on' : 'default');
 
-export default {
+const aiProviderModule = {
   namespaced: true,
   state: {
     providers: [...PROVIDER_DISPLAY_LIST],
@@ -1543,60 +1543,13 @@ export default {
       return dispatch('fetchProviderModels', { provider, forceRefresh: true });
     },
 
-    // Per-provider fetch actions (thin wrappers for backward compatibility)
-    async fetchOpenRouterModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'OpenRouter', forceRefresh });
-    },
+    // Per-provider fetch actions (fetch<Name>Models, named by
+    // PROVIDER_FETCH_ACTIONS) are generated below the module from
+    // BUILT_IN_PROVIDERS, so a provider cannot exist without one. Hand-writing
+    // them left AGNT, Antigravity, Cursor and Grok-Build without an action:
+    // dispatching their name failed silently and their models never loaded.
     async refreshOpenRouterModels({ dispatch }) {
       return dispatch('fetchProviderModels', { provider: 'OpenRouter', forceRefresh: true });
-    },
-    async fetchAnthropicModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Anthropic', forceRefresh });
-    },
-    async fetchOpenAIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'OpenAI', forceRefresh });
-    },
-    async fetchOpenAICodexModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex', forceRefresh });
-    },
-    async fetchGeminiModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Gemini', forceRefresh });
-    },
-    async fetchGeminiCLIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Gemini-CLI', forceRefresh });
-    },
-    async fetchGrokAIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'GrokAI', forceRefresh });
-    },
-    async fetchGroqModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Groq', forceRefresh });
-    },
-    async fetchTogetherAIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'TogetherAI', forceRefresh });
-    },
-    async fetchCerebrasModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Cerebras', forceRefresh });
-    },
-    async fetchChutesModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Chutes', forceRefresh });
-    },
-    async fetchClaudeCodeModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Claude-Code', forceRefresh });
-    },
-    async fetchDeepSeekModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'DeepSeek', forceRefresh });
-    },
-    async fetchKimiModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Kimi', forceRefresh });
-    },
-    async fetchKimiCodeModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Kimi-Code', forceRefresh });
-    },
-    async fetchMiniMaxModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'MiniMax', forceRefresh });
-    },
-    async fetchZAIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Z.AI', forceRefresh });
     },
 
     async fetchLocalModels({ commit, state }, { forceRefresh = false } = {}) {
@@ -1905,3 +1858,15 @@ export default {
     },
   },
 };
+
+// One fetch<Name>Models per built-in provider, delegating to the generic
+// fetcher. Local keeps its hand-written action (it talks to LM Studio
+// directly), so a hand-written action always wins over a generated one.
+for (const [displayName, actionFullName] of Object.entries(PROVIDER_FETCH_ACTIONS)) {
+  const actionName = actionFullName.replace('aiProvider/', '');
+  if (aiProviderModule.actions[actionName]) continue;
+  aiProviderModule.actions[actionName] = ({ dispatch }, { forceRefresh = false } = {}) =>
+    dispatch('fetchProviderModels', { provider: displayName, forceRefresh });
+}
+
+export default aiProviderModule;

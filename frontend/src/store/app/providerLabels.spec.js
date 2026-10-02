@@ -104,6 +104,25 @@ describe('the identifier underneath must not move', () => {
     expect(resolveProviderKey('openai-codex')).toBe('openai-codex');
   });
 
+  it('every provider in PROVIDER_FETCH_ACTIONS has an action the store defines', () => {
+    // The map is generated, the actions were hand-written: AGNT, Antigravity,
+    // Cursor and Grok-Build were never written, so dispatching their name was
+    // a silent "[vuex] unknown action type" and their model list never loaded.
+    const defined = Object.keys(aiProviderStore.actions);
+    const missing = Object.entries(PROVIDER_FETCH_ACTIONS)
+      .filter(([, action]) => !defined.includes(action.replace('aiProvider/', '')))
+      .map(([provider]) => provider);
+    expect(missing).toEqual([]);
+  });
+
+  it('a generated fetch action loads that provider through fetchProviderModels', async () => {
+    const calls = [];
+    const dispatch = (name, payload) => { calls.push([name, payload]); return Promise.resolve(['m']); };
+    const action = PROVIDER_FETCH_ACTIONS['Grok-Build'].replace('aiProvider/', '');
+    await aiProviderStore.actions[action]({ dispatch }, { forceRefresh: true });
+    expect(calls).toEqual([['fetchProviderModels', { provider: 'Grok-Build', forceRefresh: true }]]);
+  });
+
   it('still maps to the fetch action that actually exists', () => {
     // Generated from displayName. Rename displayName to 'ChatGPT' and this
     // becomes aiProvider/fetchChatGPTModels — an action nothing defines, so
