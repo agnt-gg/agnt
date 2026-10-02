@@ -15,6 +15,7 @@ import {
   logoUrl,
   brandHue,
   brandColor,
+  logoTone,
   cronLabel,
   scheduleRows,
   parseCron,
@@ -182,6 +183,15 @@ describe('plugins', () => {
     expect(logoSlug('')).toBe('');
     expect(logoUrl('notion')).toBe('https://cdn.simpleicons.org/notion');
     expect(logoUrl(null)).toBe('');
+  });
+
+  it('logoTone flags marks that would vanish on no background', () => {
+    expect(logoTone('github')).toBe('dark');
+    expect(logoTone('grokai')).toBe('dark'); // maps to the X mark
+    expect(logoTone('notion')).toBe('dark');
+    expect(logoTone('mailchimp')).toBe('light');
+    expect(logoTone('stripe')).toBe('');
+    expect(logoTone('')).toBe('');
   });
 
   it('brands Simple Icons lacks fall back in their own color; others get a hue', () => {

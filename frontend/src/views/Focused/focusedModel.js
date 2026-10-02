@@ -238,6 +238,23 @@ const BRAND_COLORS = Object.freeze({
   'hetzner-robot': '#D50C2D',
 });
 
+/**
+ * Logos drawn on no background at all need one adjustment each way.
+ * Measured from the published Simple Icons colors (luminance under 45 of
+ * 255): these are black or near-black, so on a dark theme they are shown
+ * white. The light set (yellow, mint) gets a faint edge on a light theme.
+ */
+const DARK_LOGOS = new Set(['apple', 'cursor', 'elevenlabs', 'kimi', 'notion', 'posthog', 'unsplash', 'x', 'github', 'anthropic', 'typeform', 'zendesk']);
+const LIGHT_LOGOS = new Set(['mailchimp', 'intercom']);
+
+/** 'dark' | 'light' | '' — how a brand logo's own color sits on the page. */
+export function logoTone(id) {
+  const slug = logoSlug(id);
+  if (DARK_LOGOS.has(slug)) return 'dark';
+  if (LIGHT_LOGOS.has(slug)) return 'light';
+  return '';
+}
+
 /** The brand's color for a fallback logo, or '' to use brandHue. */
 export function brandColor(id) {
   return BRAND_COLORS[String(id || '').toLowerCase()] || '';
