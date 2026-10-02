@@ -6,6 +6,65 @@ import { createLlmAdapter } from './orchestrator/llmAdapters.js';
 import { getProviderConfig } from './ai/providerConfigs.js';
 import { resolveAccountAi } from './ai/accountAi.js';
 
+/** A request the caller can fix: the route answers 400 with the message. */
+export class DatasetValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DatasetValidationError';
+    this.status = 400;
+  }
+}
+
+const DEFAULT_SPLIT = { trainRatio: 0.6, valRatio: 0.2, holdoutRatio: 0.2 };
+
+/**
+ * One manual dataset item, in the field names the runner reads
+ * (taskInput / expectedBehavior). The API reference documented
+ * input / expectedOutput, so both spellings are accepted (#93).
+ */
+function normalizeManualItem(item, index) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    throw new DatasetValidationError(`Item ${index} must be an object`);
+  }
+  const { input, expectedOutput, ...rest } = item;
+  const taskInput = item.taskInput ?? input;
+  const expectedBehavior = item.expectedBehavior ?? expectedOutput;
+  if (typeof taskInput !== 'string' || !taskInput.trim()) {
+    throw new DatasetValidationError(`Item ${index} needs a non-empty taskInput (or input)`);
+  }
+  if (typeof expectedBehavior !== 'string' || !expectedBehavior.trim()) {
+    throw new DatasetValidationError(`Item ${index} needs a non-empty expectedBehavior (or expectedOutput)`);
+  }
+  return { ...rest, taskInput, expectedBehavior };
+}
+
+/**
+ * Split ratios from a request. Accepts the documented { train, validation,
+ * test } and the stored { trainRatio, valRatio, holdoutRatio }; absent means
+ * the default. Ratios must be in [0, 1] and sum to 1.
+ */
+function normalizeSplitConfig(splitConfig) {
+  if (splitConfig == null) return DEFAULT_SPLIT;
+  if (typeof splitConfig !== 'object' || Array.isArray(splitConfig)) {
+    throw new DatasetValidationError('splitConfig must be an object');
+  }
+  const ratios = {
+    trainRatio: splitConfig.trainRatio ?? splitConfig.train ?? 0,
+    valRatio: splitConfig.valRatio ?? splitConfig.validation ?? 0,
+    holdoutRatio: splitConfig.holdoutRatio ?? splitConfig.test ?? 0,
+  };
+  for (const [name, value] of Object.entries(ratios)) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+      throw new DatasetValidationError(`splitConfig ${name} must be a number between 0 and 1`);
+    }
+  }
+  const total = ratios.trainRatio + ratios.valRatio + ratios.holdoutRatio;
+  if (Math.abs(total - 1) > 1e-6) {
+    throw new DatasetValidationError(`splitConfig ratios must sum to 1 (got ${Number(total.toFixed(6))})`);
+  }
+  return ratios;
+}
+
 class EvalDatasetService {
   /**
    * Generate a synthetic evaluation dataset from a skill's instructions using LLM.
@@ -197,22 +256,21 @@ Return ONLY a JSON array:
   /**
    * Import a manually created dataset.
    */
-  static async importManual(userId, name, items) {
-    try {
-      if (!Array.isArray(items)) throw new Error('Items must be an array');
-      items.forEach((item, idx) => {
-        if (!item.taskInput || !item.expectedBehavior) {
-          throw new Error(`Item ${idx} missing taskInput or expectedBehavior`);
-        }
-      });
+  static async importManual(userId, name, rawItems, { category = null, splitConfig = null } = {}) {
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      throw new DatasetValidationError('items must be a non-empty array');
+    }
+    const items = rawItems.map(normalizeManualItem);
+    const split = normalizeSplitConfig(splitConfig);
 
+    try {
       const datasetId = await ExperimentModel.createDataset(userId, {
         name: name || 'manual-dataset',
         skillId: null,
-        category: 'manual',
+        category: category || 'manual',
         source: 'manual',
         items,
-        splitConfig: { trainRatio: 0.6, valRatio: 0.2, holdoutRatio: 0.2 },
+        splitConfig: split,
       });
 
       console.log(`[EvalDatasetService] Imported manual dataset with ${items.length} items`);

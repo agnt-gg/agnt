@@ -1,6 +1,6 @@
 import express from 'express';
 import ExperimentService from '../services/ExperimentService.js';
-import EvalDatasetService from '../services/EvalDatasetService.js';
+import EvalDatasetService, { DatasetValidationError } from '../services/EvalDatasetService.js';
 import ExperimentModel from '../models/ExperimentModel.js';
 import GoldenStandardModel from '../models/GoldenStandardModel.js';
 import { authenticateToken } from './Middleware.js';
@@ -16,13 +16,17 @@ ExperimentRoutes.post('/datasets', authenticateToken, async (req, res) => {
 
     let datasetId;
     if (source === 'manual') {
-      datasetId = await EvalDatasetService.importManual(userId, name, items);
+      datasetId = await EvalDatasetService.importManual(userId, name, items, { category, splitConfig });
     } else {
       datasetId = await EvalDatasetService.generateSynthetic(skillId, userId);
     }
 
     res.status(201).json({ success: true, datasetId });
   } catch (error) {
+    // A malformed request is the caller's to fix: say what is wrong.
+    if (error instanceof DatasetValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('[Experiment Route] Create dataset error:', error);
     res.status(500).json({ error: 'Failed to create eval dataset' });
   }

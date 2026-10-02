@@ -3168,8 +3168,8 @@ Manages A/B testing experiments, evaluation datasets, and benchmarks for the evo
   "source": "manual|synthetic|history|golden",
   "items": [
     {
-      "input": "Test input",
-      "expectedOutput": "Expected output",
+      "taskInput": "Test input",
+      "expectedBehavior": "What a good response looks like",
       "metadata": {}
     }
   ],
@@ -3180,6 +3180,11 @@ Manages A/B testing experiments, evaluation datasets, and benchmarks for the evo
   }
 }
 ```
+
+- **Notes** (`source: "manual"`):
+  - Each item needs `taskInput` and `expectedBehavior`; `input` and `expectedOutput` are accepted as aliases.
+  - `category` defaults to `manual`. `splitConfig` ratios must be between 0 and 1 and sum to 1; omitted, the split is 0.6 / 0.2 / 0.2.
+  - A malformed request returns `400 { "error": "<what is wrong>" }`.
 
 - **Response**:
 
