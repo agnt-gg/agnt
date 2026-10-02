@@ -20,6 +20,7 @@ import { resolveRoutingMode, parseRoutingPolicy } from './orchestrator/routingMo
 import { buildRoutedChain } from './orchestrator/DynamicRouter.js';
 import { composeChain } from './orchestrator/chainComposer.js';
 import { scheduleAutoTitle } from './orchestrator/conversationTitler.js';
+import { generateSuggestions, fallbackSuggestions } from './orchestrator/suggestions.js';
 import { providerHealth } from './ai/providerHealth.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
@@ -4307,131 +4308,19 @@ async function handleSuggestions(req, res, config, userId, authToken) {
     return res.status(400).json({ error: 'User ID is required for authentication.' });
   }
 
-  const { history = [], lastUserMessage = '', lastAssistantMessage = '', agentContext, provider, model } = req.body;
+  const { lastUserMessage = '', lastAssistantMessage = '', agentContext, provider, model } = req.body;
 
-  // Validate required parameters
-  if (!provider || !model) {
-    return res.status(400).json({ error: 'Provider and model are required in the request body.' });
-  }
-
-  let client;
-  let adapter;
-  try {
-    client = await createLlmClient(provider, userId);
-    adapter = await createLlmAdapter(provider, client, model);
-  } catch (authError) {
-    console.error('Authentication error:', authError);
-    return res.status(500).json({ error: `${provider} authentication failed. Please set up your ${provider} API key.` });
-  }
-
+  // Routed through ModelRouter — see generateSuggestions for the chain and
+  // why the conversation id is deliberately left off.
   try {
     const systemPrompt = await config.buildSystemPrompt({ agentContext });
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `Based on this conversation:
-Last user message: "${lastUserMessage}"
-Last assistant response: "${lastAssistantMessage}"
-
-Generate 3 smart, contextual suggestions that would be helpful next steps. Return ONLY the JSON array.`,
-      },
-    ];
-
-    // Use the adapter to call the LLM (non-streaming for suggestions)
-    const { responseMessage, recoveredFromError, recoveredError } = await adapter.call(messages, []);
-
-    // If the adapter recovered from an error, return fallback suggestions with error info
-    if (recoveredFromError) {
-      console.error('API error occurred while generating suggestions:', recoveredError);
-
-      // Return fallback suggestions since the API call failed
-      const fallbackSuggestions = [
-        { id: 'fallback_1', text: 'Tell me more about this', icon: '💭' },
-        { id: 'fallback_2', text: 'Show me an example', icon: '📝' },
-        { id: 'fallback_3', text: 'What else can you do?', icon: '🔍' },
-      ];
-
-      return res.json({
-        suggestions: fallbackSuggestions,
-        error: recoveredError || 'API error occurred'
-      });
-    }
-
-    // Extract content based on provider
-    let content;
-    if (provider.toLowerCase() === 'anthropic') {
-      // Anthropic returns content as an array of blocks
-      if (Array.isArray(responseMessage.content)) {
-        const textBlock = responseMessage.content.find((c) => c.type === 'text');
-        content = textBlock ? textBlock.text : '';
-      } else {
-        content = responseMessage.content || '';
-      }
-    } else {
-      // OpenAI-like providers return content as a string
-      content = responseMessage.content || '';
-    }
-
-    // Ensure content is a string
-    if (Array.isArray(content)) {
-      const textBlock = content.find((c) => c.type === 'text');
-      content = textBlock ? textBlock.text : JSON.stringify(content);
-    }
-    if (!content || typeof content !== 'string') {
-      throw new Error('No content received from LLM');
-    }
-
-    // Clean up response
-    content = content.trim();
-
-    // Strip DeepSeek <think>...</think> reasoning tags
-    if (content.includes('<think>')) {
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    }
-
-    if (content.startsWith('```json')) {
-      content = content.substring(7);
-    }
-    if (content.startsWith('```')) {
-      content = content.substring(3);
-    }
-    if (content.endsWith('```')) {
-      content = content.substring(0, content.length - 3);
-    }
-    content = content.trim();
-
-    try {
-      const suggestions = JSON.parse(content);
-
-      if (Array.isArray(suggestions) && suggestions.length === 3) {
-        const suggestionsWithIds = suggestions.map((s, index) => ({
-          id: `dynamic_${Date.now()}_${index}`,
-          text: s.text || 'Explore more',
-          icon: s.icon || '◊',
-        }));
-
-        res.json({ suggestions: suggestionsWithIds });
-      } else {
-        throw new Error('Invalid suggestions format');
-      }
-    } catch (parseError) {
-      console.error('Failed to parse suggestions:', parseError);
-      console.error('Raw content:', content);
-
-      // Fallback suggestions
-      const fallbackSuggestions = [
-        { id: 'fallback_1', text: 'Tell me more about this', icon: '💭' },
-        { id: 'fallback_2', text: 'Show me an example', icon: '📝' },
-        { id: 'fallback_3', text: 'What else can you do?', icon: '🔍' },
-      ];
-
-      res.json({ suggestions: fallbackSuggestions });
-    }
+    const { complete } = await import('./ai/ModelRouter.js');
+    return res.json(await generateSuggestions({
+      userId, authToken, systemPrompt, lastUserMessage, lastAssistantMessage, provider, model,
+    }, complete));
   } catch (error) {
-    console.error('Error generating suggestions:', error);
-    res.status(500).json({ error: 'Failed to generate suggestions' });
+    console.warn('[Suggestions] Could not build the suggestion prompt:', error?.message || error);
+    return res.json({ suggestions: fallbackSuggestions(), error: error?.message || 'Could not generate suggestions' });
   }
 }
 

@@ -138,6 +138,10 @@ async function accountChainFor(userId, settings, deps) {
  * @param {string} [args.conversationId]    cache affinity for the router
  * @param {string} [args.authToken]
  * @param {'auto'|'always'|'never'} [args.routing]
+ * @param {Array<{provider:string, model?:string}>} [args.alsoTry]
+ *   last-resort tiers after the account chain — e.g. the chat's own model for
+ *   a side call, so it still works for an account with no default set. Unlike
+ *   `requested`, these are never pinned ahead of the routed picks.
  * @returns {Promise<{chain: Array, intent: object, routed: boolean, decision: object|null}>}
  */
 export async function resolveChain({
@@ -148,6 +152,7 @@ export async function resolveChain({
   conversationId = null,
   authToken = null,
   routing = 'auto',
+  alsoTry = [],
 } = {}, deps = defaultDeps) {
   const intent = classifyIntent({ origin, ...intentInput });
   const settings = userId ? await Promise.resolve().then(() => deps.loadUserSettings(userId)).catch(() => null) : null;
@@ -192,10 +197,14 @@ export async function resolveChain({
   }
 
   const health = deps.health.forUser(userId);
+  const lastResort = (Array.isArray(alsoTry) ? alsoTry : [])
+    .filter((t) => nonEmpty(t?.provider))
+    .map((t) => ({ provider: canonicalProvider(t.provider), model: nonEmpty(t.model) }));
+
   const chain = composeChain({
     pinned,
     routed,
-    defaults: accountChain,
+    defaults: [...accountChain, ...lastResort],
     stake: intent.stake,
     isAvailable: (provider) => health.isAvailable(canonicalProvider(provider)),
     keyOf: canonicalProvider,
@@ -244,12 +253,13 @@ export async function complete({
   adapterOptions = {},
   record = true,
   onUsage = null,
+  alsoTry = [],
 } = {}, deps = defaultDeps) {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new TypeError('ModelRouter.complete: messages must be a non-empty array');
   }
 
-  const { chain } = await resolveChain({ userId, origin, requested, intentInput, conversationId, authToken, routing }, deps);
+  const { chain } = await resolveChain({ userId, origin, requested, intentInput, conversationId, authToken, routing, alsoTry }, deps);
   if (chain.length === 0) throw new NoAiConfiguredError();
 
   const { result, tier, attempts } = await runWithFallback({

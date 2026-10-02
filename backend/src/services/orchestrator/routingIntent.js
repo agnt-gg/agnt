@@ -62,6 +62,10 @@ const ORIGIN_STAKE = Object.freeze({
   // A conversation's sidebar label. A plain one costs the user nothing; a
   // frontier model writing four words is the textbook over-escalation.
   title: 'low',
+  // Three follow-up chips: useful, never load-bearing.
+  suggestion: 'low',
+  // A definition the user will save and run — a normal-stakes answer.
+  generator: 'normal',
   goal_eval: 'high',
   goal_task: 'high',
   workflow_node: 'normal',
@@ -92,6 +96,10 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
   // refusal) — see conversationTitler.parseTitle. A real oracle, so a bad
   // answer rolls to the next pick instead of being shown.
   title: 'mechanical',
+  // Checked by parseSuggestions (exactly three, each a short label).
+  suggestion: 'mechanical',
+  // Checked by JSON.parse on the extracted object before it is accepted.
+  generator: 'mechanical',
   workflow_node: 'mechanical',
   workflow: 'mechanical',
   tool: 'mechanical',

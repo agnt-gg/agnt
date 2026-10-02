@@ -251,8 +251,11 @@ describe('StreamEngine — the model actually requested', () => {
     // methods still dispatch by transport, which is legitimate; what must be
     // gone is the duplicated per-generator ladder.
     expect((src.match(/switch \(lowerCaseProvider\) \{/g) || []).length).toBe(0);
-    // And every generator now shares one path.
-    expect((src.match(/_generateViaAdapter\(/g) || []).length).toBeGreaterThanOrEqual(4);
+    // And every generator now shares one path: generateTool, generateWorkflow
+    // and generateAgent call _generate (failover across the account chain),
+    // which is the ONLY caller of _generateViaAdapter (one adapter call).
+    expect((src.match(/this\._generate\(\{/g) || []).length).toBe(3);
+    expect((src.match(/this\._generateViaAdapter\(\{/g) || []).length).toBe(1);
   });
 });
 

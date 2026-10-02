@@ -69,6 +69,12 @@ export const ORIGINS = Object.freeze([
   // Conversation auto-titles (conversationTitler). Routed to the best-value
   // model the user can run; tracked so their spend is visible, not assumed.
   'title',
+  // Follow-up chips under a chat answer — one call after every turn, which
+  // was unrecorded until it moved onto ModelRouter.
+  'suggestion',
+  // Agent / tool / workflow definitions generated from a description
+  // (StreamEngine generators). Output is parsed as JSON and saved.
+  'generator',
 ]);
 
 class LlmCallModel {

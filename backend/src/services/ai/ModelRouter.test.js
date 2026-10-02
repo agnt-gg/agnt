@@ -122,6 +122,19 @@ describe('resolveChain — who to try, in order', () => {
     expect(chain[0].provider).toBe('deepseek');
   });
 
+  it('alsoTry tiers come after the account chain and are never pinned ahead of routing', async () => {
+    const deps = makeDeps({ settings: account, routed: routedPicks });
+    const { chain } = await resolveChain({ userId: 'u', origin: 'suggestion', alsoTry: [{ provider: 'kimi', model: 'k2' }] }, deps);
+    expect(pairs(chain).at(-1)).toBe('kimi/k2');
+    expect(chain[0].provider).toBe('groq');
+  });
+
+  it('alsoTry keeps a side call working for an account with no default at all', async () => {
+    const deps = makeDeps({ settings: null });
+    const { chain } = await resolveChain({ userId: 'u', origin: 'suggestion', alsoTry: [{ provider: 'kimi', model: 'k2' }] }, deps);
+    expect(pairs(chain)).toEqual(['kimi/k2']);
+  });
+
   it('tells the router what the job is', async () => {
     const deps = makeDeps({ settings: account, routed: routedPicks });
     await resolveChain({ userId: 'u', origin: 'title', conversationId: 'c1', intentInput: { contextTokens: 600, outputTokens: 30 } }, deps);

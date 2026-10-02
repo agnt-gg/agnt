@@ -12,7 +12,11 @@ import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
 import { resolveDefaultModelAsync } from '../services/ai/defaultModel.js';
-import { resolveAccountAi } from '../services/ai/accountAi.js';
+import { NoAiConfiguredError } from '../services/ai/accountAi.js';
+import { resolveChain } from '../services/ai/ModelRouter.js';
+import { runWithFallback } from '../services/orchestrator/ProviderFallback.js';
+import { providerHealth } from '../services/ai/providerHealth.js';
+import { recordLlmCall } from '../services/execution/LedgerRecorder.js';
 
 /**
  * The model to use when a caller does not name one.
@@ -724,6 +728,91 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     return { text, thinking };
   }
 
+  /**
+   * One generation, with failover: the caller's provider/model first, then the
+   * account default and fallbacks.
+   *
+   * Deliberately NOT cost-routed (routing: 'never'). The model a user picks in
+   * a Forge is a choice about the quality of a definition they will save and
+   * run, and a one-shot generation has no cache to protect — so the only thing
+   * routing could add here is a cheaper, possibly weaker author. What these
+   * callers lacked was resilience: one provider hiccup failed the whole
+   * generation.
+   *
+   * Contract kept from before: the requested model is sent verbatim (a missing
+   * one resolves through defaultGenerationModel, live-catalogue checked); when
+   * every tier fails, the FIRST tier's own error is thrown ("not supported",
+   * the provider's message) rather than a summary; and when every tier answers
+   * but none parses, the first tier's answer is returned as it always was.
+   *
+   * @returns {Promise<{text: string, thinking: string}>}
+   */
+  async _generate({ provider, model, systemPrompt, userPrompt }) {
+    const { chain } = await resolveChain({
+      userId: this.userId,
+      origin: 'generator',
+      requested: { provider, model },
+      routing: 'never',
+    });
+    if (chain.length === 0) throw new NoAiConfiguredError();
+
+    let firstError = null;
+    let firstOutput = null;
+    const { result } = await runWithFallback({
+      chain,
+      health: providerHealth.forUser(this.userId),
+      validate: (attempt) => {
+        try {
+          JSON.parse(this._removeMarkdownJson(attempt.generated?.text || ''));
+          return true;
+        } catch {
+          return 'not valid JSON';
+        }
+      },
+      runOne: async (tier) => {
+        const startedAt = Date.now();
+        // The pin keeps the caller's own (possibly empty) model so the
+        // live-catalogue default below applies exactly as it did before.
+        const tierModel = tier.source === 'pinned' ? (model || undefined) : tier.model;
+        let generated = null;
+        let failure = null;
+        try {
+          const client = await createLlmClient(tier.provider, this.userId);
+          if (!client) throw new Error(`Provider ${provider || tier.provider} is not supported.`);
+          generated = await this._generateViaAdapter({
+            client,
+            provider: tier.provider,
+            providerKey: tier.provider,
+            model: tierModel,
+            systemPrompt,
+            userPrompt,
+          });
+          if (!firstOutput) firstOutput = generated;
+          return { responseMessage: { content: generated.text }, toolCalls: [], generated, usage: this._lastGenerationUsage };
+        } catch (error) {
+          failure = error;
+          if (!firstError) firstError = error;
+          throw error;
+        } finally {
+          recordLlmCall({
+            userId: this.userId,
+            origin: 'generator',
+            provider: tier.provider,
+            model: tierModel || tier.model || 'unknown',
+            usage: generated ? this._lastGenerationUsage : null,
+            durationMs: Date.now() - startedAt,
+            status: failure ? 'error' : 'ok',
+            error: failure ? String(failure.message || failure).slice(0, 500) : null,
+          }).catch(() => { /* the ledger reports its own failures */ });
+        }
+      },
+    });
+
+    if (result?.generated && !result.invalidOutput) return result.generated;
+    if (firstOutput) return firstOutput;
+    throw firstError || new Error('No model produced a generation');
+  }
+
   async generateTool(templateOverview, provider, model) {
     const toolGenerationPrompt = `[PRIORITIZE THESE INSTRUCTIONS AND ESPECIALLY THE TEMPLATE BELOW]:
       Generate a detailed and complete JSON template with all fields and initial instructions based on the user's template overview requirements.
@@ -898,23 +987,10 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       [NEW TEMPLATE OBJECT]:'''json`;
 
     try {
-      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
-
-      const _providerConfig = getProviderConfig(provider);
-      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
-      const client = await createLlmClient(lowerCaseProvider, this.userId);
-
-      if (!client) {
-        throw new Error(`Provider ${provider} is not supported.`);
-      }
-
-      // ONE provider path. This used to be a ~20-arm switch with direct SDK
-      // calls, duplicated across all four generators — see _generateViaAdapter
-      // for why that mattered.
-      const { text, thinking } = await this._generateViaAdapter({
-        client,
+      // ONE provider path (see _generate): the requested model first, the
+      // account chain as failover.
+      const { text } = await this._generate({
         provider,
-        providerKey: lowerCaseProvider,
         model,
         systemPrompt: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
         userPrompt: toolGenerationPrompt,
@@ -1081,16 +1157,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
   }
   async generateWorkflow(workflowElements, provider, model) {
     try {
-      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
-
-      const _providerConfig = getProviderConfig(provider);
-      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
-      const client = await createLlmClient(lowerCaseProvider, this.userId);
-
-      if (!client) {
-        throw new Error(`Provider ${provider} is not supported.`);
-      }
-
       const { relevantWorkflowsContent } = await this.performWorkflowRAG(workflowElements.overview);
 
       const workflowGenSystemPrompt = `##### * ^ * WORKFLOW GENERATION MODE ENGAGED * ^ * #####
@@ -1168,13 +1234,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     16: VERY IMPORTANT: ONLY RETURN JSON READY TO RUN, NO EXTRA TEXT OR EXPLANATION OR PLEASANTRIES OR INTRODUCTION OR ANYTHING ELSE BEFORE OR AFTER THE JSON OR IT WILL BREAK THE SYSTEM!!!! NOT ONE FUCKING WORD OUTSIED OF THE JSON BRACKETS {}!!!!
     17: RETURN ONLY THE WORKFLOW JSON, NOTHING ELSE!!!! PLEASE CONSIDER THIS IN YOUR THINKING!!!!`;
 
-      // ONE provider path. This used to be a ~20-arm switch with direct SDK
-      // calls, duplicated across all four generators — see _generateViaAdapter
-      // for why that mattered.
-      const { text, thinking } = await this._generateViaAdapter({
-        client,
+      const { text, thinking } = await this._generate({
         provider,
-        providerKey: lowerCaseProvider,
         model,
         systemPrompt: workflowGenSystemPrompt,
         userPrompt: workflowElements.overview,
@@ -1246,23 +1307,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       [NEW AGENT OBJECT]:'''json`;
 
     try {
-      ({ provider, model } = await resolveAccountAi(this.userId, { provider, model }));
-
-      const _providerConfig = getProviderConfig(provider);
-      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
-      const client = await createLlmClient(lowerCaseProvider, this.userId);
-
-      if (!client) {
-        throw new Error(`Provider ${provider} is not supported.`);
-      }
-
-      // ONE provider path. This used to be a ~20-arm switch with direct SDK
-      // calls, duplicated across all four generators — see _generateViaAdapter
-      // for why that mattered.
-      const { text, thinking } = await this._generateViaAdapter({
-        client,
+      const { text } = await this._generate({
         provider,
-        providerKey: lowerCaseProvider,
         model,
         systemPrompt: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
         userPrompt: agentGenerationPrompt,
