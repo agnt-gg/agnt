@@ -1,8 +1,5 @@
 import SkillModel from '../../models/SkillModel.js';
 import SkillVersionModel from '../../models/SkillVersionModel.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import generateUUID from '../../utils/generateUUID.js';
 import { buildForgeProvenance, relationsFromCandidate } from '../../utils/skillRelations.js';
 import SkillDraftService from '../evolution/SkillDraftService.js';
@@ -119,34 +116,18 @@ MERGE RULES:
 
 Output the FULL updated skill instructions as markdown. No JSON wrapping, no code fences — just the raw markdown content.`;
 
-      let rawProvider = provider;
-      let resolvedModel = model;
-      if (!rawProvider || !resolvedModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
-        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
-      }
-
-      if (!rawProvider || !resolvedModel) return null;
-
-      const _cfg = getProviderConfig(rawProvider);
-      const normalizedProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are a skill merging assistant. Return updated skill instructions as markdown.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let result = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          result = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
+      // The merged text BECOMES the skill: high stake (goal_task), so the
+      // account chain leads and routed picks are backups only.
+      const { complete } = await import('../ai/ModelRouter.js');
+      const { text: result } = await complete({
+        userId,
+        origin: 'goal_task',
+        requested: { provider, model },
+        messages: [
+          { role: 'system', content: 'You are a skill merging assistant. Return updated skill instructions as markdown.' },
+          { role: 'user', content: prompt },
+        ],
+      });
 
       // Clean up
       let cleaned = result;

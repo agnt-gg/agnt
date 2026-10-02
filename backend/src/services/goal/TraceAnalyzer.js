@@ -2,9 +2,6 @@ import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import GoalEvaluator from './GoalEvaluator.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import { isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
@@ -329,40 +326,20 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
 }`;
 
     try {
-      // Use passed provider/model, fall back to user settings
-      let rawProvider = provider;
-      let resolvedModel = model;
-      if (!rawProvider || !resolvedModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
-        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
-      }
+      // A judge of a goal's trace: high stake, so the caller's pin, then the
+      // account default and fallbacks, and routed picks only as backups.
+      const { complete } = await import('../ai/ModelRouter.js');
+      const { text } = await complete({
+        userId,
+        origin: 'goal_eval',
+        requested: { provider, model },
+        messages: [
+          { role: 'system', content: 'You are an expert AI systems researcher. Analyze execution traces and return valid JSON only.' },
+          { role: 'user', content: prompt },
+        ],
+      });
 
-      if (!rawProvider || !resolvedModel) {
-        console.error('[TraceAnalyzer] No provider/model configured');
-        return null;
-      }
-
-      const _cfg = getProviderConfig(rawProvider);
-      const normalizedProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are an expert AI systems researcher. Analyze execution traces and return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let result = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          result = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
-
-      return this._validateAnalysis(result);
+      return this._validateAnalysis(text);
     } catch (error) {
       console.error('[TraceAnalyzer] LLM judge analysis failed:', error);
       return null;

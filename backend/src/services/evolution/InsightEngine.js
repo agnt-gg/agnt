@@ -2,9 +2,6 @@ import { prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 import InsightModel from '../../models/InsightModel.js';
 import AgentMemoryModel from '../../models/AgentMemoryModel.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import PayloadStore from '../storage/PayloadStore.js';
 
 /**
@@ -621,45 +618,30 @@ Rules:
   }
 
   /**
-   * Call the LLM using the standard createLlmClient + createLlmAdapter pattern.
-   * Same approach as PluginGenerator, OrchestratorService, etc.
+   * One insight-extraction completion, through ModelRouter as 'insight'.
+   *
+   * Low stake, no user waiting: the router picks the best-value model among
+   * the providers the user has connected, with the account default and
+   * fallbacks behind it. Before, this ran on the account default only — at
+   * frontier prices, and failing outright whenever that one provider did.
+   *
+   * The contract is unchanged: '' when no model produced an answer (callers
+   * parse '' as "nothing found"), and a throw only when the account has no AI
+   * configured at all. A caller's provider/model is honoured as a pin, never
+   * swapped for a static-list model (that rewrite once 400'd every call).
    */
   static async _callLlm(userId, messages, provider = null, model = null) {
-    let rawProvider = provider;
-    if (!rawProvider || !model) {
-      const UserModel = (await import('../../models/UserModel.js')).default;
-      const userSettings = await UserModel.getUserSettings(userId);
-      if (!rawProvider) rawProvider = userSettings?.selectedProvider;
-      if (!model) model = userSettings?.selectedModel;
-    }
-    if (!rawProvider) throw new Error('No AI provider configured');
-    if (!model) throw new Error('No AI model configured');
-
-    // Normalize provider the same way the orchestrator does
-    const providerConfig = getProviderConfig(rawProvider);
-    const normalizedProvider = providerConfig ? providerConfig.key : rawProvider.toLowerCase();
-
-    // The user's selected model is authoritative. We previously force-swapped
-    // it to providerModels[0] when it wasn't in the static fallbackModels list,
-    // but that list is curated and goes stale — for example, an openai-codex
-    // user with selectedModel="gpt-5.5" was getting silently rewritten to
-    // "gpt-5.2-codex" (the lone fallback entry), and the ChatGPT backend was
-    // 400-ing because that model name no longer exists. If the user's model
-    // works for chat, it works for background services too.
-
-    const client = await createLlmClient(normalizedProvider, userId);
-    const adapter = await createLlmAdapter(normalizedProvider, client, model);
-    const result = await adapter.call(messages, []);
-
-    if (result.responseMessage?.content) {
-      if (typeof result.responseMessage.content === 'string') {
-        return result.responseMessage.content;
+    const { complete } = await import('../ai/ModelRouter.js');
+    try {
+      const { text } = await complete({ userId, origin: 'insight', requested: { provider, model }, messages });
+      return text;
+    } catch (error) {
+      if (error?.code === 'ALL_TIERS_FAILED' || error?.code === 'INVALID_OUTPUT') {
+        console.warn('[InsightEngine] No model produced an answer:', error.message);
+        return '';
       }
-      if (Array.isArray(result.responseMessage.content)) {
-        return result.responseMessage.content.map(block => block.text || '').join('');
-      }
+      throw error;
     }
-    return '';
   }
 
   /**

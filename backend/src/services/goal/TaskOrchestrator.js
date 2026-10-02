@@ -10,9 +10,6 @@ import GoalEvaluator from './GoalEvaluator.js';
 import GoalProcessor from './GoalProcessor.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
 import InsightTriggers from '../evolution/InsightTriggers.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { getNodeId } from '../cluster/nodeIdentity.js';
 import { checkSpendAdmission } from '../cluster/admission.js';
@@ -1435,36 +1432,18 @@ Rules:
 - Return ONLY the JSON array`;
 
     try {
-      let rawProvider = provider;
-      let evalModel = model;
-      if (!rawProvider || !evalModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
-        if (!evalModel) evalModel = userSettings?.selectedModel;
-      }
-
-      if (!rawProvider || !evalModel) {
-        throw new Error('No provider/model configured for re-planning');
-      }
-
-      const _cfg = getProviderConfig(rawProvider);
-      const evalProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
-      const client = await createLlmClient(evalProvider, userId);
-      const adapter = await createLlmAdapter(evalProvider, client, evalModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are a task re-planning assistant. Return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let result = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          result = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
+      // Re-planning a goal: high stake (goal_task) — account chain first,
+      // routed picks as backups.
+      const { complete } = await import('../ai/ModelRouter.js');
+      const { text: result } = await complete({
+        userId,
+        origin: 'goal_task',
+        requested: { provider, model },
+        messages: [
+          { role: 'system', content: 'You are a task re-planning assistant. Return valid JSON only.' },
+          { role: 'user', content: prompt },
+        ],
+      });
 
       let cleanedResult = result;
       if (typeof result === 'string') {

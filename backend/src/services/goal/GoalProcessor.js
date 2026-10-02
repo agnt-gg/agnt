@@ -1,8 +1,5 @@
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import { checklistOf } from './goalChecklist.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -237,36 +234,22 @@ Rules:
       console.log('Sending goal analysis request to AI...');
       console.log(`[GoalProcessor] Available tool types: ${availableToolTypes.join(', ')}`);
 
-      // Use user's configured provider/model, fall back to user settings
-      let analysisProvider = provider;
-      let analysisModel = model;
-      if (!analysisProvider || !analysisModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!analysisProvider) analysisProvider = userSettings?.selectedProvider;
-        if (!analysisModel) analysisModel = userSettings?.selectedModel;
-      }
-      if (!analysisProvider || !analysisModel) {
-        throw new Error('No provider/model configured. Please set your default provider and model in settings.');
-      }
-      const _cfg = getProviderConfig(analysisProvider);
-      const normalizedProvider = _cfg ? _cfg.key : analysisProvider.toLowerCase();
-      console.log(`[GoalProcessor] Using provider: ${normalizedProvider}, model: ${analysisModel}`);
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, analysisModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are a goal analysis assistant. Return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let analysisResult = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          analysisResult = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          analysisResult = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
+      // Planning a goal: high stake (goal_task) — the caller's pin, then the
+      // account default and fallbacks, and routed picks only as backups. Throws
+      // NoAiConfiguredError ("choose a default model in Settings") when the
+      // account has nothing runnable, which the catch below reports.
+      const { complete } = await import('../ai/ModelRouter.js');
+      const served = await complete({
+        userId,
+        origin: 'goal_task',
+        requested: { provider, model },
+        messages: [
+          { role: 'system', content: 'You are a goal analysis assistant. Return valid JSON only.' },
+          { role: 'user', content: prompt },
+        ],
+      });
+      console.log(`[GoalProcessor] Served by provider: ${served.provider}, model: ${served.model}`);
+      const analysisResult = served.text;
       console.log('Raw AI response:', analysisResult);
 
       // Clean up the response (remove any markdown formatting)

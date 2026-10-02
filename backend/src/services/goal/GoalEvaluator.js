@@ -5,12 +5,8 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import { checklistOf, checklistPrompt, parseChecklistVerdict } from './goalChecklist.js';
-import { createLlmClient } from '../ai/LlmService.js';
-import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { getModelCost } from '../ai/providerConfigs.js';
-import { recordLlmCall } from '../execution/LedgerRecorder.js';
 
 /**
  * GoalEvaluator - AI-powered evaluation system for goals and tasks
@@ -43,15 +39,20 @@ class GoalEvaluator {
       const tasks = await TaskModel.findByGoalId(goalId);
       console.log(`[GoalEvaluator] Evaluating goal "${goal.title}" with ${tasks.length} tasks`);
 
-      // Token usage accumulator across all LLM calls
-      const tokenAccumulator = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-      function accumulateUsage(usage) {
+      // Token usage accumulator across all LLM calls. Each call is ALSO
+      // priced at the model that actually served it (ModelRouter may fail
+      // over), so the legacy estimated_cost column stays honest.
+      const tokenAccumulator = { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 };
+      function accumulateUsage(usage, served = null) {
         if (!usage) return;
-        const input = usage.prompt_tokens || usage.input_tokens || 0;
-        const output = usage.completion_tokens || usage.output_tokens || 0;
+        const input = usage.prompt_tokens || usage.input_tokens || usage.inputTokens || 0;
+        const output = usage.completion_tokens || usage.output_tokens || usage.outputTokens || 0;
         tokenAccumulator.inputTokens += input;
         tokenAccumulator.outputTokens += output;
         tokenAccumulator.totalTokens += input + output;
+        if (served?.provider && served?.model) {
+          tokenAccumulator.estimatedCost += getModelCost(served.provider, served.model, input, output)?.totalCost || 0;
+        }
       }
 
       // Step 2: Evaluate each task
@@ -75,41 +76,20 @@ class GoalEvaluator {
       const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
       const passed = completionDecision.passed;
 
-      // Calculate estimated cost from token usage
-      let resolvedProvider = provider;
-      let resolvedModel = model;
-      if (!resolvedProvider || !resolvedModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!resolvedProvider) resolvedProvider = userSettings?.selectedProvider;
-        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
-      }
-
+      // Ledger rows are written per call by ModelRouter (origin goal_eval,
+      // originId = this goal), each attributed to the model that SERVED it.
+      // The aggregate written here used to name the account default even when
+      // a call failed over — a wrong attribution once calls can move. This
+      // block now only fills the legacy goal_evaluations.estimated_cost column.
       let tokenUsage = null;
       if (tokenAccumulator.totalTokens > 0) {
-        const costInfo = getModelCost(resolvedProvider?.toLowerCase(), resolvedModel, tokenAccumulator.inputTokens, tokenAccumulator.outputTokens);
         tokenUsage = {
           inputTokens: tokenAccumulator.inputTokens,
           outputTokens: tokenAccumulator.outputTokens,
           totalTokens: tokenAccumulator.totalTokens,
-          estimatedCost: costInfo?.totalCost || 0,
+          estimatedCost: tokenAccumulator.estimatedCost,
         };
         console.log(`[GoalEvaluator] Token Usage: ${tokenAccumulator.inputTokens} in / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsage.estimatedCost || 0).toFixed(6)}`);
-
-        // PRD-122: this path already priced itself correctly, but it did so
-        // independently — which is exactly why two of the other three paths
-        // could skip pricing without anyone noticing. Routing it through the
-        // ledger means goal cost has one source of truth instead of two, and
-        // the local getModelCost call above stays only to populate the legacy
-        // goal_evaluations.estimated_cost column that existing UI reads.
-        await recordLlmCall({
-          userId,
-          origin: 'goal_eval',
-          originId: goalId,
-          provider: resolvedProvider,
-          model: resolvedModel,
-          usage: tokenAccumulator,
-        });
       }
 
       // Step 6: Store evaluation in database
@@ -188,7 +168,7 @@ class GoalEvaluator {
     const checklist = checklistOf(goal.success_criteria);
     if (!checklist.length) return [];
     try {
-      const raw = await this._complete(checklistPrompt(goal, checklist, tasks), 'You check work against a checklist. Return valid JSON only.', userId, provider, model, accumulateUsage);
+      const raw = await this._complete(checklistPrompt(goal, checklist, tasks), 'You check work against a checklist. Return valid JSON only.', userId, provider, model, accumulateUsage, goal.id);
       return parseChecklistVerdict(raw, checklist);
     } catch (error) {
       console.error('[GoalEvaluator] Checklist check failed:', error.message);
@@ -196,30 +176,28 @@ class GoalEvaluator {
     }
   }
 
-  /** One model call with the user's provider/model; returns the text. */
-  static async _complete(prompt, system, userId, provider, model, accumulateUsage) {
-    let useProvider = provider;
-    let useModel = model;
-    if (!useProvider || !useModel) {
-      const UserModel = (await import('../../models/UserModel.js')).default;
-      const settings = await UserModel.getUserSettings(userId);
-      useProvider = useProvider || settings?.selectedProvider;
-      useModel = useModel || settings?.selectedModel;
-    }
-    if (!useProvider || !useModel) throw new Error('No provider/model configured for evaluation');
-    const config = getProviderConfig(useProvider);
-    const key = config ? config.key : useProvider.toLowerCase();
-    const adapter = await createLlmAdapter(key, await createLlmClient(key, userId), useModel);
-    const result = await adapter.call(
-      [
+  /**
+   * One evaluation call; returns the text.
+   *
+   * Through ModelRouter as 'goal_eval' (high stake): the caller's pin if any,
+   * then the account default and fallbacks, and only THEN routed picks — a
+   * judgement is never handed to a cheaper model to save money, but it no
+   * longer fails outright when the one configured provider is down.
+   */
+  static async _complete(prompt, system, userId, provider, model, accumulateUsage, goalId = null) {
+    const { complete } = await import('../ai/ModelRouter.js');
+    const { text } = await complete({
+      userId,
+      origin: 'goal_eval',
+      originId: goalId,
+      requested: { provider, model },
+      messages: [
         { role: 'system', content: system },
         { role: 'user', content: prompt },
       ],
-      [],
-    );
-    if (accumulateUsage) accumulateUsage(result.usage || null);
-    const content = result.responseMessage?.content;
-    return typeof content === 'string' ? content : Array.isArray(content) ? content.map((block) => block.text || '').join('') : '';
+      onUsage: accumulateUsage ? (usage, served) => accumulateUsage(usage, served) : null,
+    });
+    return text;
   }
 
   /**
@@ -307,44 +285,15 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
 }`;
 
     try {
-      // ALWAYS use user's provider/model settings
-      let evalProvider = provider;
-      let evalModel = model;
-
-      if (!evalProvider || !evalModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-
-        if (!evalProvider) {
-          evalProvider = userSettings?.selectedProvider;
-        }
-        if (!evalModel) {
-          evalModel = userSettings?.selectedModel;
-        }
-      }
-
-      if (!evalProvider || !evalModel) {
-        throw new Error('No provider/model configured for evaluation');
-      }
-
-      const _cfg1 = getProviderConfig(evalProvider);
-      const normalizedProvider = _cfg1 ? _cfg1.key : evalProvider.toLowerCase();
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, evalModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are an expert evaluator. Return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let result = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          result = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
-      if (accumulateUsage) accumulateUsage(adapterResult.usage || null);
+      const result = await this._complete(
+        prompt,
+        'You are an expert evaluator. Return valid JSON only.',
+        userId,
+        provider,
+        model,
+        accumulateUsage,
+        task.goal_id || null,
+      );
 
       // Clean and parse response - remove thinking tags and markdown
       let cleanedResult = result;
@@ -461,44 +410,15 @@ Generate a concise evaluation report (2-3 paragraphs) that:
 Keep it professional but encouraging. Focus on constructive feedback.`;
 
     try {
-      // ALWAYS use user's provider/model settings
-      let evalProvider = provider;
-      let evalModel = model;
-
-      if (!evalProvider || !evalModel) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-
-        if (!evalProvider) {
-          evalProvider = userSettings?.selectedProvider;
-        }
-        if (!evalModel) {
-          evalModel = userSettings?.selectedModel;
-        }
-      }
-
-      if (!evalProvider || !evalModel) {
-        throw new Error('No provider/model configured for evaluation feedback');
-      }
-
-      const _cfg2 = getProviderConfig(evalProvider);
-      const normalizedProvider2 = _cfg2 ? _cfg2.key : evalProvider.toLowerCase();
-      const client = await createLlmClient(normalizedProvider2, userId);
-      const adapter = await createLlmAdapter(normalizedProvider2, client, evalModel);
-      const adapterResult = await adapter.call([
-        { role: 'system', content: 'You are an evaluation report writer. Provide constructive feedback.' },
-        { role: 'user', content: prompt },
-      ], []);
-
-      let feedback = '';
-      if (adapterResult.responseMessage?.content) {
-        if (typeof adapterResult.responseMessage.content === 'string') {
-          feedback = adapterResult.responseMessage.content;
-        } else if (Array.isArray(adapterResult.responseMessage.content)) {
-          feedback = adapterResult.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
-      if (accumulateUsage) accumulateUsage(adapterResult.usage || null);
+      const feedback = await this._complete(
+        prompt,
+        'You are an evaluation report writer. Provide constructive feedback.',
+        userId,
+        provider,
+        model,
+        accumulateUsage,
+        goal.id,
+      );
       return feedback.trim();
     } catch (error) {
       console.error('[GoalEvaluator] Failed to generate feedback:', error);
