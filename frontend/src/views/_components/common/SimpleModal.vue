@@ -9,11 +9,11 @@
           <input v-else :type="inputType" ref="promptInput" v-model="inputValue" :placeholder="placeholder" @keyup.enter="confirm" />
         </template>
         <div class="modal-actions">
-          <button type="button" :class="confirmClass" @click="confirm">
+          <button ref="confirmButton" type="button" :class="confirmClass" @click="confirm">
             {{ confirmText }}
           </button>
           <!-- Cancel button is always shown by default -->
-          <button type="button" v-if="isPrompt || showCancel" :class="cancelClass" @click="cancel">
+          <button ref="cancelButton" type="button" v-if="isPrompt || showCancel" :class="cancelClass" @click="cancel">
             {{ cancelText }}
           </button>
         </div>
@@ -53,6 +53,8 @@ export default {
       cancelClass: '',
       isTextArea: false, // Added: option to use textarea instead of input
       inputType: 'text', // Added: option to set input type (text, password, etc.)
+      // What had focus when the dialog opened (desktop); it gets focus back.
+      returnFocus: null,
     };
   },
   computed: {
@@ -83,6 +85,51 @@ export default {
         this.resolvePromise(null);
       }
     },
+    /**
+     * The button a keyboard user lands on. A destructive confirmation (a
+     * btn-danger confirm, e.g. "Delete Chat") lands on Cancel, so a stray
+     * Enter cannot destroy anything; any other lands on its confirm button.
+     */
+    defaultButton() {
+      const destructive = /\bdanger\b/.test(this.confirmClass || '');
+      return (destructive && this.$refs.cancelButton) || this.$refs.confirmButton || null;
+    },
+    /**
+     * Desktop keyboard contract (#91). Mobile is handled by useMobileOverlay,
+     * which already traps focus and closes on Escape for this element.
+     *   Escape  cancels
+     *   Tab     cycles inside the dialog
+     *   ← / →   move between the action buttons
+     */
+    onKeydown(event) {
+      if (!this.isOpen || this.mobilePresentation || event.defaultPrevented) return;
+      const dialog = this.mobileModalElement;
+      if (!dialog) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancel();
+        return;
+      }
+      const controls = [...dialog.querySelectorAll('button, input, textarea, a[href]')].filter((el) => !el.disabled);
+      if (event.key === 'Tab') {
+        if (!controls.length) return;
+        const index = controls.indexOf(document.activeElement);
+        const step = event.shiftKey ? -1 : 1;
+        const next = controls[(index + step + controls.length) % controls.length];
+        event.preventDefault();
+        next.focus();
+        return;
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const actions = [this.$refs.confirmButton, this.$refs.cancelButton].filter(Boolean);
+        const index = actions.indexOf(document.activeElement);
+        if (index === -1) return; // arrows inside the prompt field move the caret
+        event.preventDefault();
+        const step = event.key === 'ArrowLeft' ? -1 : 1;
+        actions[(index + step + actions.length) % actions.length].focus();
+      }
+    },
     showModal(options = {}) {
       this.title = options.title || '';
       this.message = options.message || '';
@@ -101,6 +148,7 @@ export default {
       this.isTextArea = options.isTextArea !== undefined ? options.isTextArea : false;
       // Set input type (text, password, etc.)
       this.inputType = options.inputType || 'text';
+      if (!this.isOpen) this.returnFocus = document.activeElement;
       this.isOpen = true;
       return new Promise((resolve) => {
         this.resolvePromise = resolve;
@@ -109,9 +157,24 @@ export default {
   },
   watch: {
     mobileDialog(value) { if (!value && this.isOpen && this.mobilePresentation) this.cancel(); },
-    isOpen(newVal) {
-      if (newVal && this.mobilePresentation) this.openMobileDialog('confirmation');
+    async isOpen(newVal) {
+      if (newVal) {
+        document.addEventListener('keydown', this.onKeydown, true);
+      } else {
+        document.removeEventListener('keydown', this.onKeydown, true);
+        const target = this.returnFocus;
+        this.returnFocus = null;
+        // Mobile restores its own focus through useMobileOverlay.
+        if (!this.mobilePresentation) this.$nextTick(() => { if (target?.isConnected) target.focus({ preventScroll: true }); });
+      }
+      if (newVal && this.mobilePresentation) await this.openMobileDialog('confirmation');
       else if (!newVal) this.closeMobileDialog();
+      // Move focus INTO the dialog. Left on the button that opened it, Enter
+      // re-clicked that button behind the scrim and reopened the dialog.
+      if (newVal && !this.isPrompt) {
+        await this.$nextTick();
+        if (this.isOpen) this.defaultButton()?.focus({ preventScroll: true });
+      }
       if (newVal && this.isPrompt) {
         this.$nextTick(() => {
           // Add a delay to prevent Enter key from button triggering input's enter handler
@@ -126,6 +189,9 @@ export default {
         });
       }
     },
+  },
+  beforeUnmount() {
+    document.removeEventListener('keydown', this.onKeydown, true);
   },
 };
 </script>
