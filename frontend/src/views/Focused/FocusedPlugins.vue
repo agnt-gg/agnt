@@ -10,10 +10,7 @@
       </div>
       <div v-if="section.cards.length" class="focused-grid">
         <button v-for="c in section.cards" :key="c.id" type="button" class="focused-card" @click="nav.go({ page: 'plugins', item: c.id })">
-          <span class="focused-card-icon" aria-hidden="true">
-            <SvgIcon v-if="c.icon" :name="c.icon" />
-            <template v-else>{{ initialOf(c.name) }}</template>
-          </span>
+          <FocusedPluginLogo :provider-id="c.providerId" :name="c.name" :icon="c.icon" />
           <span class="focused-row-text">
             <strong>{{ c.name }}</strong>
             <small :class="{ ok: c.connected }">{{ c.status }}</small>
@@ -27,10 +24,10 @@
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import FocusedPage from './FocusedPage.vue';
 import FocusedConnection from './FocusedConnection.vue';
-import { FOCUSED_PAGES, pluginCards, initialOf } from './focusedModel.js';
+import FocusedPluginLogo from './FocusedPluginLogo.vue';
+import { FOCUSED_PAGES, pluginCards } from './focusedModel.js';
 
 defineProps({ item: { type: String, default: null } });
 const store = useStore();

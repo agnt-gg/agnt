@@ -5,10 +5,7 @@
     <p v-if="!card" class="focused-empty">{{ loading ? 'Loading…' : 'This plugin isn’t available.' }}</p>
     <template v-else>
       <header class="focused-edit-head">
-        <span class="focused-edit-icon" aria-hidden="true">
-          <SvgIcon v-if="card.icon" :name="card.icon" />
-          <template v-else>{{ initialOf(card.name) }}</template>
-        </span>
+        <FocusedPluginLogo :provider-id="card.providerId" :name="card.name" :icon="card.icon" />
         <div class="focused-edit-names">
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.connected }">{{ card.connected ? card.status : 'Not connected' }}</span>
@@ -72,8 +69,8 @@
 <script setup>
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { pluginCard, CLI_DISCONNECT_ACTIONS, initialOf } from './focusedModel.js';
+import FocusedPluginLogo from './FocusedPluginLogo.vue';
+import { pluginCard, CLI_DISCONNECT_ACTIONS } from './focusedModel.js';
 
 const props = defineProps({ providerId: { type: String, required: true } });
 const store = useStore();

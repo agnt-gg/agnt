@@ -11,6 +11,10 @@ import {
   pluginCards,
   pluginCard,
   CLI_DISCONNECT_ACTIONS,
+  logoSlug,
+  logoUrl,
+  brandHue,
+  brandColor,
   cronLabel,
   scheduleRows,
   parseCron,
@@ -165,6 +169,33 @@ describe('plugins', () => {
   it('pluginCard finds one by id, any case', () => {
     expect(pluginCard(providers, ['openai'], 'OpenAI').name).toBe('OpenAI');
     expect(pluginCard(providers, [], 'nope')).toBeNull();
+  });
+
+  it('logos: the Simple Icons slug for each provider, mapped where the id differs', () => {
+    expect(logoSlug('slack')).toBe('slack');
+    expect(logoSlug('Google-Drive')).toBe('googledrive');
+    expect(logoSlug('claude-code')).toBe('claude');
+    expect(logoSlug('openai-codex')).toBe('openai');
+    expect(logoSlug('grokai')).toBe('x');
+    expect(logoSlug('ga4')).toBe('googleanalytics');
+    expect(logoSlug('hetzner-robot')).toBe('hetzner');
+    expect(logoSlug('')).toBe('');
+    expect(logoUrl('notion')).toBe('https://cdn.simpleicons.org/notion');
+    expect(logoUrl(null)).toBe('');
+  });
+
+  it('brands Simple Icons lacks fall back in their own color; others get a hue', () => {
+    expect(brandColor('Slack')).toBe('#E01E5A');
+    expect(brandColor('openai-codex')).toBe('#10A37F');
+    expect(brandColor('some-custom-app')).toBe('');
+    expect(brandColor(undefined)).toBe('');
+  });
+
+  it('brandHue is stable per name and spreads names apart', () => {
+    expect(brandHue('Firecrawl')).toBe(brandHue('Firecrawl'));
+    const hues = new Set(['Firecrawl', 'Apify', 'Tavily', 'Exa', 'Serper', 'Brave'].map(brandHue));
+    expect(hues.size).toBeGreaterThan(4);
+    for (const h of hues) expect(h >= 0 && h < 360).toBe(true);
   });
 
   it('every CLI provider has a disconnect action', () => {

@@ -177,6 +177,91 @@ export const CLI_DISCONNECT_ACTIONS = Object.freeze({
   antigravity: 'appAuth/disconnectAntigravity',
 });
 
+// ── Plugin logos ─────────────────────────────────────────────────────────────
+//
+// Brand-colored marks from Simple Icons, as the AGNT One demo drew them. A
+// provider whose id is not its Simple Icons slug is mapped here; anything the
+// CDN does not have (or no network) falls back to the app's own icon, tinted
+// with brandHue so no two fallbacks look alike.
+
+const LOGO_SLUGS = Object.freeze({
+  'claude-code': 'claude',
+  anthropic: 'anthropic',
+  'openai-codex': 'openai',
+  gemini: 'googlegemini',
+  'gemini-cli': 'googlegemini',
+  antigravity: 'google',
+  'google-maps': 'googlemaps',
+  grokai: 'x',
+  'grok-build': 'x',
+  'cursor-cli': 'cursor',
+  'stripe-test': 'stripe',
+  'digital-ocean': 'digitalocean',
+  aws: 'amazonwebservices',
+  twitter: 'x',
+  monday: 'mondaydotcom',
+  'coinbase-cdp': 'coinbase',
+  google: 'google',
+  ga4: 'googleanalytics',
+  analytics: 'googleanalytics',
+  searchconsole: 'googlesearchconsole',
+  'hetzner-robot': 'hetzner',
+});
+
+/**
+ * Brand colors for providers Simple Icons does not carry (several large
+ * brands have asked to be removed from it). Their fallback is the app's own
+ * logo shape, so in the brand's color it reads as the real mark. Anything not
+ * listed gets a stable hashed hue instead.
+ */
+const BRAND_COLORS = Object.freeze({
+  openai: '#10A37F',
+  'openai-codex': '#10A37F',
+  slack: '#E01E5A',
+  linkedin: '#0A66C2',
+  salesforce: '#00A1E0',
+  microsoft: '#D83B01',
+  aws: '#FF9900',
+  twilio: '#F22F46',
+  tableau: '#E97627',
+  metamask: '#F6851B',
+  canva: '#00C4CC',
+  monday: '#FF3D57',
+  docusign: '#FFCC22',
+  groq: '#F55036',
+  cerebras: '#F15A29',
+  togetherai: '#0F6FFF',
+  freshdesk: '#25C16F',
+  jotform: '#FF6100',
+  pandadoc: '#248567',
+  firecrawl: '#FF6B1A',
+  'hetzner-robot': '#D50C2D',
+});
+
+/** The brand's color for a fallback logo, or '' to use brandHue. */
+export function brandColor(id) {
+  return BRAND_COLORS[String(id || '').toLowerCase()] || '';
+}
+
+/** The Simple Icons slug for a provider id ('' when there is nothing to try). */
+export function logoSlug(id) {
+  const key = String(id || '').toLowerCase();
+  return LOGO_SLUGS[key] || key.replace(/[^a-z0-9]/g, '');
+}
+
+/** Where the brand-colored logo is ('' when there is no slug). */
+export function logoUrl(id) {
+  const slug = logoSlug(id);
+  return slug ? `https://cdn.simpleicons.org/${slug}` : '';
+}
+
+/** A stable hue (0-359) for a name: the same plugin is always the same color. */
+export function brandHue(name) {
+  let n = 0;
+  for (const ch of String(name || '')) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+  return n % 360;
+}
+
 /** One card by id, for the connection page (null when it is not known). */
 export function pluginCard(allProviders, connectedApps, id) {
   const key = String(id || '').toLowerCase();

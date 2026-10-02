@@ -1694,6 +1694,54 @@
   font-size: 13px;
 }
 
+/* ── Plugin logos (FocusedPluginLogo) ──
+   Brand marks sit on a light tile in every theme, as in the demo, so dark
+   marks (GitHub, X, Notion) stay visible on a dark page. */
+.ui-focused .focused-plugin-logo {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid var(--terminal-border-color);
+  background: #f8f9fc;
+  overflow: hidden;
+}
+.ui-focused .focused-plugin-logo img {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+/* No brand mark: the app's icon in a color of its own. SvgIcon paints with
+   --color-text, so redefining it here recolors the icon without touching it.
+   The defaults are overridden per plugin by an inline hue. */
+.ui-focused .focused-plugin-logo.fallback {
+  --logo-fg: var(--text-secondary);
+  --logo-bg: var(--surface-active);
+  --color-text: var(--logo-fg);
+  border-color: transparent;
+  background: var(--logo-bg);
+  color: var(--logo-fg);
+  font-weight: 700;
+  font-size: 16px;
+}
+.ui-focused .focused-plugin-logo.fallback svg {
+  width: 20px;
+  height: 20px;
+}
+.ui-focused .focused-edit-head .focused-plugin-logo {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  border-radius: 12px;
+}
+.ui-focused .focused-edit-head .focused-plugin-logo img {
+  width: 28px;
+  height: 28px;
+}
+
 /* ── Graduation offer ─────────────────────────────────────────────────────────────── */
 
 .ui-focused .focused-graduation {
