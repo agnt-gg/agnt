@@ -2402,7 +2402,7 @@ body.dark .create-output-btn {
 
 /* The pinned Main chat row: an ordinary row, set apart above the search. */
 .main-chat-item {
-  margin: 0 0 10px;
+  margin: 0;
   border-color: color-mix(in srgb, var(--color-primary) 35%, var(--terminal-border-color));
 }
 .main-chat-item .output-preview {

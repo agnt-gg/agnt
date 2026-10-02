@@ -53,6 +53,10 @@
         <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
         <div class="focused-edit-row"><span class="focused-edit-label">Email</span><span>{{ userEmail || '—' }}</span></div>
         <div class="focused-edit-row"><span class="focused-edit-label">Plan</span><span>{{ plan }}</span></div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">Session</span>
+          <button type="button" class="focused-btn" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
+        </div>
       </div>
     </section>
 
@@ -67,13 +71,21 @@
 <script setup>
 import { ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
 import UiModeSetting from './UiModeSetting.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { FOCUSED_PAGES } from './focusedModel.js';
 import { SUPPORTED_THEMES } from '@/store/app/theme.js';
 
 const store = useStore();
+const router = useRouter();
 const nav = inject('focusedNav');
+
+// The same sign-out Studio's Settings uses (LoginSection.logout).
+function logOut() {
+  store.dispatch('userAuth/logout');
+  router.push('/');
+}
 const page = FOCUSED_PAGES.settings;
 
 const themeOptions = SUPPORTED_THEMES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));

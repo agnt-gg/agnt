@@ -116,6 +116,10 @@
         <button type="button" role="menuitem" class="focused-menu-item" data-testid="switch-to-studio" @click="switchToStudio">
           <i class="fas fa-th-large" aria-hidden="true"></i>Switch to Studio<kbd>Ctrl Shift S</kbd>
         </button>
+        <div class="focused-menu-sep"></div>
+        <button type="button" role="menuitem" class="focused-menu-item" data-testid="focused-logout" @click="logOut">
+          <i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out
+        </button>
       </div>
     </div>
   </aside>
@@ -124,7 +128,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { FOCUSED_PAGES, recentConversations, initialOf } from './focusedModel.js';
 import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
 
@@ -137,6 +141,7 @@ defineEmits(['close', 'new-chat', 'open-page', 'open-conversation', 'open-main',
 
 const store = useStore();
 const route = useRoute();
+const router = useRouter();
 
 const pageItems = [
   { id: 'scheduled', label: FOCUSED_PAGES.scheduled.title, icon: FOCUSED_PAGES.scheduled.icon },
@@ -192,6 +197,11 @@ function openJump() {
 }
 function switchToStudio() {
   store.dispatch('theme/setUiMode', 'studio');
+}
+// The same sign-out Studio's Settings uses (LoginSection.logout).
+function logOut() {
+  store.dispatch('userAuth/logout');
+  router.push('/');
 }
 
 // Menus close on any click outside them.
