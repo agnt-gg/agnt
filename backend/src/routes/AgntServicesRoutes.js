@@ -3,6 +3,7 @@ import { authenticateToken } from './Middleware.js';
 import WebhookModel from '../models/WebhookModel.js';
 import { defaultInbox } from '../services/agntMail.js';
 import { serviceAllowed, SERVICES, serviceFailure, callService } from '../services/agntServices.js';
+import { getFlashAccount, startTopUp } from '../services/agntFlashAccount.js';
 
 /**
  * What the hosted services have given this account: the inbox address every
@@ -74,6 +75,26 @@ AgntServicesRoutes.get('/usage', authenticateToken, async (_req, res) => {
     })
   );
   res.set('Cache-Control', 'no-store').json({ services, fetchedAt: Date.now() });
+});
+
+/** AGNT Flash credits left for the signed-in account: the chat's credit chip. */
+AgntServicesRoutes.get('/models/account', authenticateToken, async (_req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store').json(await getFlashAccount());
+  } catch (error) {
+    const failure = serviceFailure(error);
+    res.status(failure.status === 401 ? 401 : 502).json(failure);
+  }
+});
+
+/** One click to a Stripe checkout for prepaid AGNT Flash credit. */
+AgntServicesRoutes.post('/models/top-up', authenticateToken, async (req, res) => {
+  try {
+    res.json(await startTopUp(Number(req.body?.amountCents)));
+  } catch (error) {
+    const failure = serviceFailure(error);
+    res.status(failure.status === 400 ? 400 : failure.status === 401 ? 401 : 502).json(failure);
+  }
 });
 
 AgntServicesRoutes.get('/inbox', authenticateToken, async (_req, res) => {

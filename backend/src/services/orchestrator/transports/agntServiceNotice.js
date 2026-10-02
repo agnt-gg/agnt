@@ -26,6 +26,15 @@ export const AGNT_NOTICE_CODES = Object.freeze(new Set([
   'budget_exceeded',
 ]));
 
+/**
+ * The machine-readable half of a notice. Chat renders the "keep going" card
+ * (upgrade / top up / bring your own) from this code, and the sentence above it
+ * stays the server's own words. It rides inside the message as an HTML comment
+ * so it survives persistence and reload without a second channel, and is
+ * invisible wherever the markdown is shown as-is.
+ */
+export const agntNoticeMarker = (code) => `<!-- agnt-notice:${code} -->`;
+
 const STATUS_PREFIX = /^\d{3}\s+/;
 const HTTPS_URL = /https:\/\/[^\s<>()[\]"'`]+/g;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
@@ -52,5 +61,5 @@ export function agntServiceNotice(error, provider) {
     : String(error.message || '').replace(STATUS_PREFIX, '').trim();
   if (!sentence) return null;
   const text = linkify(sentence);
-  return code && AGNT_NOTICE_CODES.has(code) ? text : `⚠️ **AGNT Flash:** ${text}`;
+  return code && AGNT_NOTICE_CODES.has(code) ? `${text}\n\n${agntNoticeMarker(code)}` : `⚠️ **AGNT Flash:** ${text}`;
 }

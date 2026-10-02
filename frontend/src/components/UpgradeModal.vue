@@ -48,7 +48,8 @@
  */
 import { mapActions, mapState } from 'vuex';
 
-const PLANS = [
+// Exported so the chat's out-of-credits card sells from the same table.
+export const PLANS = [
   {
     id: 'personal',
     name: 'AGNT Pro',

@@ -245,6 +245,7 @@
                     "
                     @toggle-tool="toggleToolCallExpansion"
                     @provider-connected="handleProviderConnected"
+                    @agnt-resume="handleAgntResume"
                     :can-edit-reply="message.id === editableReplyMessageId"
                     @edit-message="handleEditMessage"
                     @edit-reply="handleEditReply"
@@ -269,6 +270,9 @@
         <!-- Focused's start screen: the AGNT One rotating ideas, under the
              composer (ordered by views/Focused/focused.css). A card sends. -->
         <FocusedStarters v-if="showFocusedHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
+
+        <!-- AGNT Flash credits left, and a heads-up at 80% used -->
+        <AgntFlashMeter v-if="isAgntProviderSelected && hasConnectedAIProvider" />
 
         <!-- Quick Actions (Studio's follow-up chips; Focused hides them in
              focused.css and shows its own ideas above) -->
@@ -305,6 +309,7 @@ import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
 import { contextWindowFromMetadata } from '@/utils/modelContextWindow.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
+import AgntFlashMeter from './components/AgntFlashMeter.vue';
 import FocusedStarters from '@/views/Focused/FocusedStarters.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
@@ -346,6 +351,7 @@ export default {
     ProcessingState,
     AgentAvatar,
     QuickActions,
+    AgntFlashMeter,
     FocusedStarters,
     ChatActions,
     ContextMonitor,
@@ -1571,6 +1577,27 @@ export default {
         reasoningValue: store.state.aiProvider.reasoningValue,
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
       });
+    };
+
+    /**
+     * AGNT Flash is usable again (upgrade, top-up or a connected provider):
+     * resend the message that was refused, through the same path an edit uses,
+     * so the refusal is replaced rather than left in the transcript. Only the
+     * latest notice resumes; an old card scrolled up in history never resends.
+     */
+    // The provider list holds display names ('AGNT'); compare case-insensitively.
+    const isAgntProviderSelected = computed(() => String(store.state.aiProvider?.selectedProvider || '').toLowerCase() === 'agnt');
+
+    const handleAgntResume = async (noticeMessageId) => {
+      const messages = displayMessages.value;
+      const noticeIndex = messages.findIndex((m) => m.id === noticeMessageId);
+      if (noticeIndex === -1 || noticeIndex !== messages.length - 1) return;
+      const lastUser = messages
+        .slice(0, noticeIndex)
+        .reverse()
+        .find((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim());
+      if (!lastUser) return;
+      await handleEditMessage({ messageId: lastUser.id, newContent: lastUser.content });
     };
 
     // Stream event handler. Monitoring state (counters, token/cache stats,
@@ -3072,6 +3099,8 @@ export default {
       inspectorProps,
       handleScreenChange,
       handleProviderConnected,
+      handleAgntResume,
+      isAgntProviderSelected,
       executeSuggestion,
       toggleToolCallExpansion,
       getMessageStatus,

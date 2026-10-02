@@ -75,10 +75,15 @@ export async function serviceAllowed(service) {
  * `pro_required` (no plan), `allowance_exhausted` / `spending_not_authorized`
  * (plan used up), `authentication_required` (no session yet).
  */
-export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 12 } = {}) {
+/**
+ * `planGate: false` skips the local Pro gate for calls a free account is entitled
+ * to make: its own AGNT Flash trial balance and buying prepaid credit. The service
+ * still authenticates and decides; only the local pre-emptive denial is skipped.
+ */
+export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 12, planGate = true } = {}) {
   const s = SERVICES[service];
   if (!s) throw new Error('unknown service: ' + service);
-  if (!(await serviceAllowed(service))) throw proRequired(service);
+  if (planGate && !(await serviceAllowed(service))) throw proRequired(service);
   if (!getSessionToken()) throw new ServiceError(service, 401, 'authentication_required', { message: 'Sign in to AGNT to use ' + service + '.' });
 
   const headers = { ...authHeader(), Accept: 'application/json' };

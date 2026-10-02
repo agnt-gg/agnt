@@ -275,6 +275,9 @@
           <!-- Provider Setup UI -->
           <ProviderSetup v-if="message.showProviderSetup" @provider-connected="handleProviderConnected" />
 
+          <!-- AGNT Flash out of credits: upgrade, top up, or bring your own -->
+          <AgntFlashCard v-if="agntNotice" :code="agntNotice.code" @resume="handleAgntResume" />
+
           <!-- Provider Note (shown after provider buttons) -->
           <div v-if="message.showProviderNote" class="provider-note">
             <div class="note-icon">💡</div>
@@ -457,6 +460,7 @@
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, inject } from 'vue';
 import { summarizeSteps } from '@/services/stepsSummary.js';
 import { closingText } from '@/services/assistantReplyEdit.js';
+import { parseAgntNotice, stripAgntNotice } from '@/services/agntFlash.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
 import DOMPurify from 'dompurify';
@@ -466,6 +470,8 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 // Lazy-load ProviderSetup - only shown conditionally (message.showProviderSetup)
 // This defers the crypto-js dependency (~40KB) from the critical render path
 const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
+// Only rendered on an AGNT Flash credit notice.
+const AgntFlashCard = lazyComponent(() => import('./AgntFlashCard.vue'), { name: 'AgntFlashCard' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import { connectTarget } from './connectCards.js';
 import { shareTarget } from './shareCards.js';
@@ -628,6 +634,7 @@ export default {
   name: 'MessageItem',
   components: {
     ProviderSetup,
+    AgntFlashCard,
     Tooltip,
     GoalProgressWidget,
     ArtifactCards,
@@ -690,7 +697,7 @@ export default {
       default: false,
     },
   },
-  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message', 'edit-reply'],
+  emits: ['toggle-tool', 'provider-connected', 'agnt-resume', 'open-html-preview', 'edit-message', 'edit-reply'],
   setup(props, { emit }) {
     // A workspace already has a canvas dedicated to live surfaces. Browser
     // calls render there as a Browser widget; standalone chat has no canvas
@@ -2389,6 +2396,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         return renderMentionPills(userHtml, store.state.agents.agents);
       }
 
+      // The AGNT Flash notice tag drives the card below the text; it is never shown.
+      if (props.message.role === 'assistant') text = stripAgntNotice(text);
       // Completed document outputs are tangible cards; streaming prose remains live.
       if (props.compactArtifacts && props.message.role === 'assistant') text = compactArtifactText(text);
       // ASSISTANT MESSAGES: Process as markdown/HTML
@@ -2940,6 +2949,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       emit('provider-connected', provider);
     };
 
+    // The "keep going" card for an AGNT Flash credit refusal; null for every other message.
+    const agntNotice = computed(() => (props.message.role === 'assistant' ? parseAgntNotice(artifactContent.value) : null));
+    const handleAgntResume = () => emit('agnt-resume', props.message.id);
+
     // File preview helper functions
     const getFilePreviewUrl = (file) => {
       if (!file) return '';
@@ -3243,6 +3256,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       vizModalHTML,
       closeVizModal,
       handleProviderConnected,
+      agntNotice,
+      handleAgntResume,
       hasImages,
       extractImages,
       downloadImage,
