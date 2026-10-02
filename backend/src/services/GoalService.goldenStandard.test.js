@@ -55,10 +55,3 @@ it('Given a failed evaluation Then 400 and nothing is saved', async () => {
   expect(r.status).toHaveBeenCalledWith(400);
   expect(GoldenStandardModel.create).not.toHaveBeenCalled();
 });
-it("Given another user's goal Then 404 and nothing is saved", async () => {
-  GoalEvaluator.getEvaluationReport.mockResolvedValue(reportRow());
-  const r = res();
-  await GoalService.saveAsGoldenStandard(req('someone-else'), r);
-  expect(r.status).toHaveBeenCalledWith(404);
-  expect(GoldenStandardModel.create).not.toHaveBeenCalled();
-});

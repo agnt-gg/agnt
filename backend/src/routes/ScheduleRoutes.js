@@ -3,6 +3,7 @@ import ScheduleModel from '../models/ScheduleModel.js';
 import SchedulerService from '../services/scheduler/SchedulerService.js';
 import { isValidCron, nextFireTime } from '../services/scheduler/cronParser.js';
 import { authenticateToken } from './Middleware.js';
+import { findOwnedGoal } from './goalOwnership.js';
 
 const ScheduleRoutes = express.Router();
 
@@ -21,7 +22,7 @@ ScheduleRoutes.get('/', authenticateToken, async (req, res) => {
 ScheduleRoutes.get('/target/:targetType/:targetId', authenticateToken, async (req, res) => {
   try {
     const { targetType, targetId } = req.params;
-    const schedules = await ScheduleModel.findByTarget(targetType, targetId);
+    const schedules = await ScheduleModel.findByTarget(targetType, targetId, req.user.userId);
     res.json({ success: true, schedules });
   } catch (err) {
     console.error('[Schedule Route] By-target error:', err);
@@ -52,6 +53,10 @@ ScheduleRoutes.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'targetType, targetId, and cron are required' });
     }
     if (!isValidCron(cron)) return res.status(400).json({ error: 'Invalid cron expression' });
+    // A schedule runs its target as this user: it may only target their own goal.
+    if (targetType === 'goal' && !(await findOwnedGoal(targetId, userId))) {
+      return res.status(404).json({ error: 'Goal not found' });
+    }
 
     const tz = timezone || 'UTC';
     const nextRun = nextFireTime(cron, new Date(), tz);

@@ -4,6 +4,7 @@ import SkillForgeOrchestrator from '../services/goal/SkillForgeOrchestrator.js';
 import SkillEvalModel from '../models/SkillEvalModel.js';
 import SkillVersionModel from '../models/SkillVersionModel.js';
 import { authenticateToken } from './Middleware.js';
+import { requireOwnedGoal } from './goalOwnership.js';
 
 const SkillForgeRoutes = express.Router();
 
@@ -20,7 +21,7 @@ SkillForgeRoutes.get('/eligible-goals', authenticateToken, async (req, res) => {
 });
 
 // POST /api/skillforge/analyze/:goalId — Trigger trace analysis for a completed goal
-SkillForgeRoutes.post('/analyze/:goalId', authenticateToken, async (req, res) => {
+SkillForgeRoutes.post('/analyze/:goalId', authenticateToken, requireOwnedGoal('goalId'), async (req, res) => {
   try {
     const userId = req.user.userId;
     const { goalId } = req.params;
@@ -38,7 +39,7 @@ SkillForgeRoutes.post('/analyze/:goalId', authenticateToken, async (req, res) =>
 });
 
 // POST /api/skillforge/evolve/:goalId — Trigger full analysis + evolution
-SkillForgeRoutes.post('/evolve/:goalId', authenticateToken, async (req, res) => {
+SkillForgeRoutes.post('/evolve/:goalId', authenticateToken, requireOwnedGoal('goalId'), async (req, res) => {
   try {
     const userId = req.user.userId;
     const { goalId } = req.params;

@@ -51,9 +51,10 @@ class ScheduleModel {
     });
   }
 
-  static findByTarget(targetType, targetId) {
+  /** One user's schedules for a target. */
+  static findByTarget(targetType, targetId, userId) {
     return new Promise((resolve, reject) => {
-      db.all('SELECT * FROM schedules WHERE target_type = ? AND target_id = ?', [targetType, targetId], (err, rows) => {
+      db.all('SELECT * FROM schedules WHERE target_type = ? AND target_id = ? AND user_id = ?', [targetType, targetId, userId], (err, rows) => {
         if (err) reject(err);
         else resolve(rows || []);
       });

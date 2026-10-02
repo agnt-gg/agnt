@@ -342,9 +342,9 @@ class GoalService {
         return res.status(400).json({ error: 'Category is required' });
       }
 
-      // Get goal and its evaluation. Another user's goal reads as not found.
+      // Get goal and its evaluation (ownership is checked by the route)
       const goal = await GoalModel.findOne(id);
-      if (!goal || (goal.user_id && goal.user_id !== userId)) {
+      if (!goal) {
         return res.status(404).json({ error: 'Goal not found' });
       }
 
