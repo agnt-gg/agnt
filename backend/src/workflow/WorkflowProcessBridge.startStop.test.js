@@ -29,6 +29,7 @@ vi.mock('../services/auth/sessionTokenCache.js', () => ({
   subscribe: vi.fn(() => () => {}),
   getSessionToken: vi.fn(() => null),
   getSessionUserId: vi.fn(() => null),
+  getAllSessionEntries: vi.fn(() => []),
 }));
 
 let children = [];

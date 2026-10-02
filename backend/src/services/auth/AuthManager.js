@@ -49,7 +49,7 @@ class AuthManager {
     // AGNT Models is credentialed by the account itself: the session token the
     // desktop already holds is what models.agnt.gg accepts. There is no key to
     // store, so nothing below applies.
-    if (providerId === 'agnt') return getSessionToken() || null;
+    if (providerId === 'agnt') return getSessionToken(userId) || null;
     // Tier 1: env var
     const envVar = ENV_KEY_MAP[providerId];
     if (envVar) {
@@ -93,7 +93,8 @@ class AuthManager {
       try {
         const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
           params: { userId, providerId },
-          headers: authHeader(),
+          // This account's own session, never whichever account was active last.
+          headers: authHeader(userId),
           timeout: 5000,
         });
         return response.data?.access_token || null;
@@ -105,7 +106,7 @@ class AuthManager {
           // connected" with no way to work out why.
           console.warn(
             `[AuthManager] ${providerId}: the remote key store requires an authenticated request and no session ` +
-              `token is available yet${getSessionToken() ? '' : ' (none seen since startup)'}. Open the AGNT ` +
+              `token is available yet${getSessionToken(userId) ? '' : ' (none seen for this account since startup)'}. Open the AGNT ` +
               `window once, or re-save your ${providerId} key in Settings > Connected Apps to store it locally.`
           );
           return null;
@@ -351,7 +352,12 @@ class AuthManager {
               status: 'error',
               provider: providerId,
               lastChecked: new Date().toISOString(),
-              error: 'No valid token available',
+              // Name the cause when it is the missing session, so an account
+              // problem is never mistaken for a provider being disconnected.
+              error:
+                this.remoteUrl && !getSessionToken(userId)
+                  ? 'No signed-in session for this account yet'
+                  : 'No valid token available',
             });
             continue;
           }

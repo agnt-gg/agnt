@@ -20,19 +20,23 @@
  * no `req`. This module is the missing piece: the same token, remembered.
  *
  * ---------------------------------------------------------------------------
- * WHY A SINGLE SLOT IS CORRECT HERE, AND WHERE IT WOULD NOT BE
+ * ONE ENTRY PER ACCOUNT, NEVER A SHARED SLOT
  * ---------------------------------------------------------------------------
- * This is the DESKTOP backend. It serves exactly one human — the one running
- * the app — and its own database has a single user row. Background pollers
- * poll on behalf of that person and nobody else, so "the current user's token"
- * is a well-defined thing.
+ * This used to be a single slot that, on seeing a second user id, emptied
+ * itself and stayed empty until restart. That was safe while a desktop served
+ * one human. It stopped being true when the same install began switching
+ * between accounts (the Focused/mobile shell signs in as either): the first
+ * switch silently disabled every server-stored connection for BOTH accounts,
+ * reported only as "No valid token available".
  *
- * That assumption is load-bearing, so it is asserted rather than left implicit:
- * if a SECOND distinct user id is ever seen, the cache empties itself and stays
- * empty. A wrong token is far worse than no token — it would attribute one
- * user's polling to another — and multi-user is exactly the scenario where
- * this file must be replaced by a per-request credential rather than quietly
- * carrying on.
+ * So entries are keyed by user id. A caller that knows whom it acts for asks
+ * for THAT account's token and gets it or nothing — never another account's.
+ * A wrong token is still far worse than no token; keying by user is what makes
+ * "no token" the only failure mode.
+ *
+ * Callers with no user in scope (install-wide services, plan checks) get the
+ * ACTIVE account: the one that most recently authenticated a request, which is
+ * whoever is signed in right now.
  *
  * Nothing is persisted. The token lives in memory only, and a restart simply
  * means the next authenticated request from the UI re-populates it.
@@ -74,11 +78,20 @@
 import { createHash } from 'crypto';
 import { isApiKey } from './apiKey.js';
 
-/** @type {{token: string, userId: string, seenAt: number, expiresAt: number|null} | null} */
-let current = null;
+/** @typedef {{token: string, userId: string, seenAt: number, expiresAt: number|null}} SessionEntry */
 
-/** Set once a conflict is detected; disables the cache for the process. */
-let poisoned = false;
+/** @type {Map<string, SessionEntry>} keyed by user id */
+const entries = new Map();
+
+/** The account that most recently authenticated a request, or null. */
+let activeUserId = null;
+
+/**
+ * Accounts switched between on one install are a handful. The cap only exists
+ * because this map is written from the request path, and nothing reachable
+ * from there may grow without a limit. The least recently seen goes first.
+ */
+const MAX_ACCOUNTS = 8;
 
 /** @type {Set<(entry: {token: string, userId: string}) => void>} */
 const subscribers = new Set();
@@ -239,27 +252,21 @@ function notify(entry) {
  * @param {string} userId  the subject the caller verified it against
  */
 export function rememberSessionToken(token, userId) {
-  if (poisoned) return;
   if (typeof token !== 'string' || token.length === 0 || !userId) return;
-
-  if (current && current.userId !== userId) {
-    // Two identities on one desktop backend. The single-slot assumption above
-    // does not hold, so stop guessing rather than attribute work to the wrong
-    // person. Loud, because it means this module needs replacing, not tuning.
-    console.error(
-      `[sessionTokenCache] two user ids seen on one install (${current.userId} then ${userId}). ` +
-        `Disabling the cache: background calls will go unauthenticated rather than use the wrong identity.`
-    );
-    current = null;
-    poisoned = true;
-    return;
-  }
+  userId = String(userId);
+  const switchedAccount = activeUserId !== userId;
+  activeUserId = userId;
+  const current = entries.get(userId);
 
   // The same credential as last time. Refresh the liveness stamp and stop —
-  // this is the overwhelmingly common path, so it stays one comparison with no
-  // parsing and no hashing.
+  // this is the overwhelmingly common path, so it stays one lookup and one
+  // comparison with no parsing and no hashing.
   if (current && current.token === token) {
     current.seenAt = Date.now();
+    // Switching back to an account already held changes no token, but it does
+    // change who the active account is. Forward it so the workflow child's
+    // install-wide callers follow the switch. Fires per switch, not per request.
+    if (switchedAccount) notify(current);
     return;
   }
 
@@ -285,8 +292,21 @@ export function rememberSessionToken(token, userId) {
     return;
   }
 
-  current = { token, userId, seenAt: Date.now(), expiresAt: tokenExpiryMs(token) };
-  notify(current);
+  const entry = { token, userId, seenAt: Date.now(), expiresAt: tokenExpiryMs(token) };
+  entries.set(userId, entry);
+  evictBeyondCap();
+  notify(entry);
+}
+
+function evictBeyondCap() {
+  while (entries.size > MAX_ACCOUNTS) {
+    let oldest = null;
+    for (const entry of entries.values()) {
+      if (entry.userId !== activeUserId && (!oldest || entry.seenAt < oldest.seenAt)) oldest = entry;
+    }
+    if (!oldest) return;
+    entries.delete(oldest.userId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -309,35 +329,72 @@ function instanceCredential() {
   return { token: key, userId: owner };
 }
 
-/** The remembered token, else this hosted instance's key, else null. Never throws. */
-export function getSessionToken() {
-  return rememberedToken() ?? instanceCredential()?.token ?? null;
+/**
+ * The token to present for `userId`, else this hosted instance's key when
+ * `userId` is its owner, else null. Never throws.
+ *
+ * With no `userId`, acts for the ACTIVE account (see top of file). A caller
+ * that knows whom it acts for must pass it: that is what guarantees it can
+ * never be handed another account's credential.
+ *
+ * @param {string} [userId]
+ */
+export function getSessionToken(userId) {
+  const target = userId == null ? defaultUserId() : String(userId);
+  const remembered = target ? liveEntry(target)?.token : null;
+  if (remembered) return remembered;
+  const instance = instanceCredential();
+  if (!instance) return null;
+  return userId == null || String(userId) === instance.userId ? instance.token : null;
 }
 
-function rememberedToken() {
-  if (poisoned || !current) return null;
+/** @returns {SessionEntry|null} the entry for `userId` if still usable; drops it otherwise. */
+function liveEntry(userId) {
+  const entry = entries.get(userId);
+  if (!entry) return null;
 
   // The token's OWN expiry, not merely how long since we last saw it. `seenAt`
   // is refreshed by every authenticated request, so a token that expires while
   // the user is actively clicking would otherwise be handed to background
   // callers indefinitely — the MAX_AGE window below can only ever help once the
   // user STOPS using the app, which is the opposite of when this bites.
-  if (current.expiresAt !== null && Date.now() >= current.expiresAt) {
-    current = null;
+  const expired = entry.expiresAt !== null && Date.now() >= entry.expiresAt;
+  if (expired || Date.now() - entry.seenAt > MAX_AGE_MS) {
+    entries.delete(userId);
     return null;
   }
-
-  if (Date.now() - current.seenAt > MAX_AGE_MS) {
-    current = null;
-    return null;
-  }
-  return current.token;
+  return entry;
 }
 
-/** The user getSessionToken() acts for, or null. */
+/**
+ * Whom install-wide work acts for. A hosted instance belongs to its tenant
+ * owner, so a member signing in never redirects the owner's pollers; a desktop
+ * follows whichever account is signed in.
+ */
+function defaultUserId() {
+  const owner = process.env.AGNT_TENANT_SLUG ? process.env.AGNT_TENANT_OWNER : null;
+  return owner || activeUserId;
+}
+
+/** The user getSessionToken() with no argument acts for, or null. */
 export function getSessionUserId() {
-  if (rememberedToken()) return current.userId;
+  const target = defaultUserId();
+  if (target && liveEntry(target)) return target;
   return instanceCredential()?.userId ?? null;
+}
+
+/**
+ * Every usable entry, least recently seen first, so replaying them in order
+ * (a respawned workflow child) leaves the active account active.
+ *
+ * @returns {Array<{token: string, userId: string}>}
+ */
+export function getAllSessionEntries() {
+  const live = [...entries.keys()].map(liveEntry).filter(Boolean);
+  live.sort((a, b) => a.seenAt - b.seenAt);
+  const active = live.findIndex((e) => e.userId === activeUserId);
+  if (active >= 0) live.push(live.splice(active, 1)[0]);
+  return live.map(({ token, userId }) => ({ token, userId }));
 }
 
 /**
@@ -348,20 +405,26 @@ export function getSessionUserId() {
  * comparison bug turned a missing credential into a valid password. An absent
  * header is unambiguous; a malformed one invites something to try to parse it.
  */
-export function authHeader() {
-  const token = getSessionToken();
+export function authHeader(userId) {
+  const token = getSessionToken(userId);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Forget everything. Used on sign-out and by tests. */
-export function clearSessionToken() {
-  current = null;
+/** Forget one account's token, or every account's when called with none. */
+export function clearSessionToken(userId) {
+  if (userId == null) {
+    entries.clear();
+    activeUserId = null;
+    return;
+  }
+  entries.delete(String(userId));
+  if (activeUserId === String(userId)) activeUserId = null;
 }
 
-/** Test seam: also clears the poison latch and every subscriber. */
+/** Test seam: also clears every subscriber and the report dedupe. */
 export function __resetSessionTokenCacheForTests() {
-  current = null;
-  poisoned = false;
+  entries.clear();
+  activeUserId = null;
   subscribers.clear();
   reportedSuperseded.clear();
 }

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import fs from 'fs';
 import pathManager from '../../utils/PathManager.js';
-import { authHeader, getSessionToken } from './sessionTokenCache.js';
+import { getSessionToken, getSessionUserId } from './sessionTokenCache.js';
 
 /**
  * What this install's user is entitled to.
@@ -77,8 +77,8 @@ const PLAN_CACHE_MS = 60_000;
 /** Never let a slow cloud hold up a local request. Timeout => entitled. */
 const LOOKUP_TIMEOUT_MS = 4000;
 
-let cached = null; // { planType, at }
-let inFlight = null;
+let cached = null; // { account, planType, at }
+let inFlight = null; // { account, promise }
 
 function sentinelPath() {
   try {
@@ -111,19 +111,25 @@ export function isEnforcing() {
  * caller treats it as entitled. Only a definite 'free' denies.
  */
 export async function getPlanType({ force = false } = {}) {
-  if (!force && cached && Date.now() - cached.at < PLAN_CACHE_MS) return cached.planType;
+  // A plan belongs to an account, and the install can switch accounts. Every
+  // cached answer and in-flight lookup is for the account active right now, so
+  // one account's plan is never reported for another.
+  const account = getSessionUserId();
+  const fresh = cached && cached.account === account && Date.now() - cached.at < PLAN_CACHE_MS;
+  if (!force && fresh) return cached.planType;
 
   // Collapse concurrent callers onto one request. The pairing panel can fire
   // /status and /code within the same tick.
-  if (inFlight) return inFlight;
+  if (inFlight && inFlight.account === account) return inFlight.promise;
 
   const remoteUrl = process.env.REMOTE_URL;
-  if (!remoteUrl || !getSessionToken()) return null;
+  const token = getSessionToken(account ?? undefined);
+  if (!remoteUrl || !token) return null;
 
-  inFlight = (async () => {
+  const lookup = (async () => {
     try {
       const response = await axios.get(`${remoteUrl}/license/status`, {
-        headers: authHeader(),
+        headers: { Authorization: `Bearer ${token}` },
         timeout: LOOKUP_TIMEOUT_MS,
       });
 
@@ -136,17 +142,18 @@ export async function getPlanType({ force = false } = {}) {
       const planType = response.data?.planType;
       if (typeof planType !== 'string' || !planType) return null;
 
-      cached = { planType, at: Date.now() };
+      cached = { account, planType, at: Date.now() };
       return planType;
     } catch (error) {
       console.warn('[planEntitlements] plan lookup failed, treating as entitled:', error.message);
       return null;
     } finally {
-      inFlight = null;
+      if (inFlight?.promise === lookup) inFlight = null;
     }
   })();
 
-  return inFlight;
+  inFlight = { account, promise: lookup };
+  return lookup;
 }
 
 /**

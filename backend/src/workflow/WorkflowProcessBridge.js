@@ -5,6 +5,7 @@ import {
   subscribe as subscribeSessionToken,
   getSessionToken,
   getSessionUserId,
+  getAllSessionEntries,
 } from '../services/auth/sessionTokenCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -265,8 +266,13 @@ class WorkflowProcessBridge {
         // at 3am would silently drop every background call back to anonymous
         // until the user next touched the UI — and the token is 30-day, so
         // "next touched the UI" can be a very long time.
-        if (this.pushSessionToken(child)) {
-          console.log('[WorkflowProcessBridge] session token forwarded to workflow process');
+        // Every account this install holds, active one last so it stays active.
+        let forwarded = 0;
+        for (const { token, userId } of getAllSessionEntries()) {
+          if (this.pushSessionToken(child, token, userId)) forwarded += 1;
+        }
+        if (forwarded) {
+          console.log(`[WorkflowProcessBridge] ${forwarded} session token(s) forwarded to workflow process`);
         }
 
         if (settled) {

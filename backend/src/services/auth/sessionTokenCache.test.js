@@ -21,6 +21,7 @@ import {
   getSessionUserId,
   authHeader,
   clearSessionToken,
+  getAllSessionEntries,
   subscribe,
   __resetSessionTokenCacheForTests,
 } from './sessionTokenCache.js';
@@ -82,25 +83,63 @@ describe('remembering a verified token', () => {
   });
 });
 
-describe('the single-user assumption is enforced, not assumed', () => {
-  it('DISABLES itself if a second user id appears', () => {
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe('switching accounts on one install', () => {
+  // Regression: the cache used to disable itself for the life of the process
+  // the moment a second account signed in, which broke every server-stored
+  // connection for BOTH accounts as "No valid token available".
+
+  it('keeps each account\'s token, and hands each account only its own', () => {
     rememberSessionToken('tok-a', 'user-1');
     rememberSessionToken('tok-b', 'user-2');
 
-    // Returning either token would attribute one user's background work to the
-    // other. No token is the only safe answer.
-    expect(getSessionToken()).toBeNull();
-    expect(authHeader()).toEqual({});
-    expect(err).toHaveBeenCalled();
+    expect(getSessionToken('user-1')).toBe('tok-a');
+    expect(getSessionToken('user-2')).toBe('tok-b');
+    expect(authHeader('user-1')).toEqual({ Authorization: 'Bearer tok-a' });
+    expect(getSessionToken('user-3')).toBeNull();
+    expect(authHeader('user-3')).toEqual({});
   });
 
-  it('stays disabled once poisoned, even for the original user', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('install-wide callers follow the account signed in now, back and forth', () => {
     rememberSessionToken('tok-a', 'user-1');
     rememberSessionToken('tok-b', 'user-2');
-    rememberSessionToken('tok-a2', 'user-1');
+    expect(getSessionToken()).toBe('tok-b');
+    expect(getSessionUserId()).toBe('user-2');
+
+    // Switching back re-presents the same token; it must still switch.
+    rememberSessionToken('tok-a', 'user-1');
+    expect(getSessionToken()).toBe('tok-a');
+    expect(getSessionUserId()).toBe('user-1');
+  });
+
+  it('a refresh for one account never touches the other', () => {
+    rememberSessionToken('tok-a', 'user-1');
+    rememberSessionToken('tok-b', 'user-2');
+    rememberSessionToken('tok-a-refreshed', 'user-1');
+    expect(getSessionToken('user-1')).toBe('tok-a-refreshed');
+    expect(getSessionToken('user-2')).toBe('tok-b');
+  });
+
+  it('an expired active account yields nothing rather than another account\'s token', () => {
+    const past = ['x', Buffer.from(JSON.stringify({ exp: 1 })).toString('base64url'), 'y'].join('.');
+    rememberSessionToken('tok-a', 'user-1');
+    rememberSessionToken(past, 'user-2');
     expect(getSessionToken()).toBeNull();
+    expect(getSessionToken('user-1')).toBe('tok-a');
+  });
+
+  it('stays bounded however many accounts sign in, never evicting the active one', () => {
+    for (let i = 0; i < 20; i += 1) rememberSessionToken(`tok-${i}`, `user-${i}`);
+    expect(getAllSessionEntries().length).toBeLessThanOrEqual(8);
+    expect(getSessionToken('user-19')).toBe('tok-19');
+    expect(getSessionToken('user-0')).toBeNull();
+  });
+
+  it('sign-out of one account forgets only that account', () => {
+    rememberSessionToken('tok-a', 'user-1');
+    rememberSessionToken('tok-b', 'user-2');
+    clearSessionToken('user-2');
+    expect(getSessionToken('user-2')).toBeNull();
+    expect(getSessionToken('user-1')).toBe('tok-a');
   });
 
   it('a refreshed token for the SAME user is accepted', () => {

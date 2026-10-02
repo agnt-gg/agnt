@@ -23,6 +23,7 @@ vi.mock('../services/auth/sessionTokenCache.js', () => ({
   subscribe: vi.fn(() => () => {}),
   getSessionToken: vi.fn(() => null),
   getSessionUserId: vi.fn(() => null),
+  getAllSessionEntries: vi.fn(() => []),
 }));
 // The bridge forks a child on spawn(); it is never spawned here, but the import
 // must not reach the real module.

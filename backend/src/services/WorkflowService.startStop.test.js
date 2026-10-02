@@ -22,6 +22,7 @@ vi.mock('../services/auth/sessionTokenCache.js', () => ({
   subscribe: vi.fn(() => () => {}),
   getSessionToken: vi.fn(() => null),
   getSessionUserId: vi.fn(() => null),
+  getAllSessionEntries: vi.fn(() => []),
 }));
 vi.mock('child_process', () => ({ fork: vi.fn(), default: { fork: vi.fn() } }));
 

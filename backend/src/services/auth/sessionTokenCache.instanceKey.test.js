@@ -36,12 +36,25 @@ describe('sessionTokenCache falls back to the instance key', () => {
     expect(getSessionUserId()).toBe('owner-1');
   });
 
-  it('a second member poisons the session slot; the instance key still carries background work', () => {
+  it('a member signing in never redirects background work away from the owner', () => {
     hosted();
-    rememberSessionToken(jwtFor('owner-1', Math.floor(Date.now() / 1000) + 3600), 'owner-1');
+    const owner = jwtFor('owner-1', Math.floor(Date.now() / 1000) + 3600);
+    const member = jwtFor('member-2', Math.floor(Date.now() / 1000) + 3600);
+    rememberSessionToken(owner, 'owner-1');
+    rememberSessionToken(member, 'member-2');
+    expect(getSessionToken()).toBe(owner);
+    expect(getSessionUserId()).toBe('owner-1');
+    // The member's own calls still get the member's own token.
+    expect(getSessionToken('member-2')).toBe(member);
+  });
+
+  it('with only a member signed in, background work uses the instance key as the owner', () => {
+    hosted();
     rememberSessionToken(jwtFor('member-2', Math.floor(Date.now() / 1000) + 3600), 'member-2');
     expect(getSessionToken()).toBe(KEY);
     expect(getSessionUserId()).toBe('owner-1');
+    // The key is the owner's, so it is never handed out as the member's.
+    expect(getSessionToken('member-3')).toBeNull();
   });
 
   it('a desktop (no tenant) never uses one, even if the variable leaks in', () => {

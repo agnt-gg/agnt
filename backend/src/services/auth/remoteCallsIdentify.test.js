@@ -90,7 +90,7 @@ describe('background calls to api.agnt.gg identify themselves', () => {
 
       expect(calls.length, `no remote axios calls found in ${rel} — the scanner is broken, not the file`).toBeGreaterThan(0);
 
-      const bare = calls.filter((call) => !/authHeader\(\)|Authorization/.test(call));
+      const bare = calls.filter((call) => !/authHeader\(\w*\)|Authorization/.test(call));
       expect(
         bare,
         `${bare.length} remote call(s) in ${rel} go out with no credential:\n` +

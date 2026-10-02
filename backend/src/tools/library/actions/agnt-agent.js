@@ -6,7 +6,7 @@ import { executeTool } from '../../../services/orchestrator/tools.js';
 import { buildAgentRuntime } from '../../../services/orchestrator/agentRuntime.js';
 import { randomUUID } from 'crypto';
 import { workflowCancellation, runAgentConversation, refreshAgentSchemas } from './agentConversationLoop.js';
-import { getSessionToken, getSessionUserId } from '../../../services/auth/sessionTokenCache.js';
+import { getSessionToken } from '../../../services/auth/sessionTokenCache.js';
 
 /**
  * Normalize a conversationHistory parameter into a message array.
@@ -197,7 +197,7 @@ class AgentTool extends BaseAction {
         context: { ...runtimeContext, userId, workflowEngine }, cancellation,
         refreshSchemas: (context, schemas) => refreshAgentSchemas(context, schemas, userId, provider),
         dispatch: (name, args, context) => executeTool(name, args,
-          getSessionUserId() === userId ? getSessionToken() : null, context),
+          getSessionToken(userId), context),
       });
       const finalResponse = outcome.response;
       const toolExecutions = outcome.toolExecutions;

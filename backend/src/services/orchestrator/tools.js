@@ -25,7 +25,6 @@ import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js'
 import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceTools.js';
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
 import AuthManager from '../auth/AuthManager.js';
-import { authHeader } from '../auth/sessionTokenCache.js';
 import { readPlanDenialBody, planDenialMessage } from '../auth/planDenial.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import GrokBuildCliService from '../ai/GrokBuildCliService.js';

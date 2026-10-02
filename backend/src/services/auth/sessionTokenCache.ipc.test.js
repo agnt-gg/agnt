@@ -207,17 +207,31 @@ describe('the bridge forwards it', () => {
     });
   });
 
-  it('a poisoned cache forwards nothing (two users on one install)', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('forwards each account, tagged with its own user id, and every switch back', () => {
     const child = fakeChild();
     bridge.workflowProcess = child;
 
     cache.rememberSessionToken('tok-a', 'user-1');
-    child.sent.length = 0;
-    cache.rememberSessionToken('tok-b', 'user-2'); // poisons
+    cache.rememberSessionToken('tok-b', 'user-2');
+    cache.rememberSessionToken('tok-a', 'user-1'); // switch back: same token, new active account
+    cache.rememberSessionToken('tok-a', 'user-1'); // ordinary request: nothing to send
 
-    expect(child.sent, 'a wrong token is worse than no token').toHaveLength(0);
-    expect(bridge.pushSessionToken(fakeChild())).toBe(false);
+    expect(child.sent.map((m) => m.data)).toEqual([
+      { token: 'tok-a', userId: 'user-1' },
+      { token: 'tok-b', userId: 'user-2' },
+      { token: 'tok-a', userId: 'user-1' },
+    ]);
+  });
+
+  it('a respawned child gets every account, active account last', () => {
+    cache.rememberSessionToken('tok-a', 'user-1');
+    cache.rememberSessionToken('tok-b', 'user-2');
+    cache.rememberSessionToken('tok-a', 'user-1');
+
+    expect(cache.getAllSessionEntries()).toEqual([
+      { token: 'tok-b', userId: 'user-2' },
+      { token: 'tok-a', userId: 'user-1' },
+    ]);
   });
 });
 

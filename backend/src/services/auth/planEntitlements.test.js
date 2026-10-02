@@ -24,10 +24,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('axios', () => ({ default: { get: vi.fn() } }));
 
-const tokenState = { token: 'tok-1' };
+const tokenState = { token: 'tok-1', userId: 'user-1' };
 vi.mock('./sessionTokenCache.js', () => ({
-  authHeader: () => (tokenState.token ? { Authorization: `Bearer ${tokenState.token}` } : {}),
   getSessionToken: () => tokenState.token,
+  getSessionUserId: () => (tokenState.token ? tokenState.userId : null),
 }));
 
 vi.mock('../../utils/PathManager.js', () => ({
@@ -44,6 +44,7 @@ beforeEach(() => {
   __resetPlanEntitlementsForTests();
   vi.clearAllMocks();
   tokenState.token = 'tok-1';
+  tokenState.userId = 'user-1';
   process.env.REMOTE_URL = 'https://api.test';
   process.env.ENFORCE_PLAN_GATES = 'true'; // most tests want the gate live
 });
@@ -83,6 +84,17 @@ describe('plan lookup', () => {
     expect(await getPlanType()).toBe('personal');
     expect(axios.get.mock.calls[0][0]).toBe('https://api.test/license/status');
     expect(axios.get.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
+  });
+
+  it('switching account never reuses the other account\'s cached plan', async () => {
+    axios.get.mockResolvedValueOnce(okPlan('personal')).mockResolvedValueOnce(okPlan('free'));
+    expect(await getPlanType()).toBe('personal');
+
+    tokenState.token = 'tok-2';
+    tokenState.userId = 'user-2';
+    expect(await getPlanType()).toBe('free');
+    expect(axios.get).toHaveBeenCalledTimes(2);
+    expect(axios.get.mock.calls[1][1].headers.Authorization).toBe('Bearer tok-2');
   });
 
   it('caches, so a polling panel does not hammer the cloud', async () => {
