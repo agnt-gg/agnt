@@ -252,7 +252,9 @@ class RunService {
 
       broadcastToUser(userId, isNewOutput ? RealtimeEvents.CONTENT_CREATED : RealtimeEvents.CONTENT_UPDATED, {
         id: outputId,
-        title: title,
+        // The STORED title: the upsert ranks titles, so the one this client
+        // sent may have lost to an auto-title or a rename made elsewhere.
+        title: output?.title ?? title,
         contentType: contentType || 'html',
         userId: userId,
         output,

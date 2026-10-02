@@ -62,6 +62,7 @@ export function ensureMainChat(userId) {
     const conversationId = randomUUID();
     await ContentOutputModel.createOrUpdate(
       outputId, userId, null, null, emptyTranscript(conversationId), false, 'conversation', conversationId, MAIN_CHAT_TITLE,
+      { titleSource: 'system' },
     );
     await ConversationRoleModel.setMain(userId, outputId);
     const output = await ContentOutputModel.findMetaById(outputId);
@@ -84,6 +85,7 @@ export function clearMainChat(userId) {
     const conversationId = randomUUID();
     await ContentOutputModel.createOrUpdate(
       main.id, userId, null, null, emptyTranscript(conversationId), false, 'conversation', conversationId, MAIN_CHAT_TITLE,
+      { titleSource: 'system' },
     );
     // Clearing is something the user did: it must not light an unread dot.
     await ContentOutputModel.setReadState(main.id, userId, true);

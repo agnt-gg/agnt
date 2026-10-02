@@ -338,6 +338,7 @@ function createTables() {
         content_type TEXT DEFAULT 'html',
         conversation_id TEXT,
         title TEXT,
+        title_source TEXT,
         is_shareable INTEGER DEFAULT 0,
         group_id TEXT,
         last_read_at DATETIME,
@@ -2173,6 +2174,30 @@ function runMigrations() {
           console.error('Error adding channel_key column to content_outputs:', err);
         } else if (!err) {
           console.log('✓ Added channel_key column to content_outputs table');
+        }
+      });
+
+      // Migration: Add title_source column to content_outputs.
+      //
+      // WHO NAMED THIS CONVERSATION, ranked: 'user' = 'system' > 'auto' >
+      // 'derived' (NULL reads as 'derived'). Every writer goes through one
+      // full-row upsert that used to assign title unconditionally, so a
+      // client autosave carrying its first-message title silently overwrote
+      // anything better. The rank is enforced IN that upsert
+      // (ContentOutputModel.createOrUpdate), so no writer — client, turn-end
+      // mirror, recovery — can downgrade a title, and the auto-titler can
+      // never touch a name the user chose.
+      //
+      // NO BACKFILL: every existing title is either first-message-derived or
+      // a user rename, and the two are indistinguishable after the fact.
+      // NULL (derived) is the safe reading for the titler only because it
+      // generates a title just once, after a conversation's first exchange —
+      // existing conversations are past that point and are left alone.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN title_source TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding title_source column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added title_source column to content_outputs table');
         }
       });
 

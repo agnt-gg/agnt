@@ -10,6 +10,23 @@ import db from './database/index.js';
 export const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, participants, created_at, updated_at';
 
 /**
+ * Who named a conversation, and therefore who may rename it.
+ *
+ *   'user'    the user renamed it            — nothing automatic may change it
+ *   'system'  a fixed name (Main chat), or a sub-chat Annie named and refers
+ *             to by that name                — same protection as 'user'
+ *   'auto'    the auto-titler                — beats a derived title
+ *   'derived' the first thing the user said  — NULL reads as this
+ *
+ * A write may replace a title only at the same or a higher rank. Enforced in
+ * the upsert itself so every writer obeys it without having to know.
+ */
+export const TITLE_SOURCES = Object.freeze(['derived', 'auto', 'user', 'system']);
+const titleRankSql = (column) =>
+  `(CASE ${column} WHEN 'user' THEN 2 WHEN 'system' THEN 2 WHEN 'auto' THEN 1 ELSE 0 END)`;
+const TITLE_WINS_SQL = `${titleRankSql('excluded.title_source')} >= ${titleRankSql('content_outputs.title_source')}`;
+
+/**
  * The conversation-list query, built in one place so its plan can be tested.
  * @returns {{ sql: string, params: any[] }}
  */
@@ -63,7 +80,8 @@ class ContentOutputModel {
    * client-side, where streaming conversations are excluded from the chime
    * until the run completes (notifiableUnreadIds).
    */
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null, participants = null } = {}) {
+  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null, participants = null, titleSource = null } = {}) {
+    const normalizedTitleSource = TITLE_SOURCES.includes(titleSource) && titleSource !== 'derived' ? titleSource : null;
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
@@ -101,9 +119,14 @@ class ContentOutputModel {
       // same stickiness as channel_key: a roster that legitimately empties is
       // stored as NULL by the deriver, which reads back as Annie-alone, which
       // is the correct rendering for a conversation with no agents in it.
+      //
+      // THE title CLAUSE. Ranked, not assigned (see TITLE_SOURCES): a client
+      // autosave carries a first-message title on every save, and assigning
+      // it unconditionally is what would erase an auto-title seconds after it
+      // was written, or a user's rename on a tab that never saw it.
       db.run(
-        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, channel_key, participants, last_read_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, title_source, channel_key, participants, last_read_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
@@ -112,12 +135,13 @@ class ContentOutputModel {
            is_shareable = excluded.is_shareable,
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
-           title = excluded.title,
+           title = CASE WHEN ${TITLE_WINS_SQL} THEN excluded.title ELSE content_outputs.title END,
+           title_source = CASE WHEN ${TITLE_WINS_SQL} THEN excluded.title_source ELSE content_outputs.title_source END,
            channel_key = COALESCE(excluded.channel_key, content_outputs.channel_key),
            participants = COALESCE(excluded.participants, content_outputs.participants),
            last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, participants || null],
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, normalizedTitleSource, channelKey || null, participants || null],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
@@ -198,7 +222,7 @@ class ContentOutputModel {
   static updateTitle(id, userId, title) {
     return new Promise((resolve, reject) => {
       db.run(
-        'UPDATE content_outputs SET title = ?, updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        "UPDATE content_outputs SET title = ?, title_source = 'user', updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
         [title, id, userId],
         function (err) {
           if (err) reject(err);
@@ -207,6 +231,36 @@ class ContentOutputModel {
       );
     });
   }
+  /**
+   * Write a generated title — only over a title of a rank listed in `over`.
+   *
+   * The rank check is IN the UPDATE, so a rename that lands between the
+   * titler reading the row and writing it wins: this matches zero rows.
+   *
+   * Deliberately leaves updated_at and last_read_at alone. A label appearing
+   * is not activity: bumping updated_at would re-sort the sidebar under the
+   * user and light an unread dot on a conversation nobody touched.
+   *
+   * @param {{over?: Array<'derived'|'auto'>}} [options]
+   * @returns {Promise<{changes:number}>}
+   */
+  static setGeneratedTitle(id, userId, title, { over = ['derived'] } = {}) {
+    const allowed = over.filter((source) => source === 'derived' || source === 'auto');
+    if (allowed.length === 0) return Promise.resolve({ changes: 0 });
+    const marks = allowed.map(() => '?').join(', ');
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE content_outputs SET title = ?, title_source = 'auto'
+         WHERE id = ? AND user_id = ? AND COALESCE(title_source, 'derived') IN (${marks})`,
+        [title, id, userId, ...allowed],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
   static moveToGroup(id, userId, groupId) {
     return new Promise((resolve, reject) => {
       db.run(

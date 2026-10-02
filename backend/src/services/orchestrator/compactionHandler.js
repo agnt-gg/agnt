@@ -21,6 +21,7 @@ import { computeCacheSavings } from '../../utils/cacheSavings.js';
 import { getContextBudget } from '../../utils/contextManager.js';
 import { isSubscriptionProvider } from '../ai/providerConfigs.js';
 import conversationManager from '../ConversationManager.js';
+import { scheduleAutoTitle } from './conversationTitler.js';
 import db from '../../models/database/index.js';
 import {
   distillConversation,
@@ -167,6 +168,13 @@ export async function handleCompaction(req, res) {
     }
 
     await resetEvictionWatermark(conversationId, userId);
+
+    // A conversation long enough to compact has often drifted from its first
+    // subject. One cheap routed check: keep the title, or offer a better one.
+    // Never over a title the user set; never blocks this response.
+    if (typeof conversationId === 'string' && conversationId) {
+      scheduleAutoTitle({ userId, conversationId, mode: 'refine' });
+    }
 
     console.log(
       `[Compaction] ${conversationId || 'unsaved'}: ${messages.length} messages → summary in ${result.calls} call(s), ` +

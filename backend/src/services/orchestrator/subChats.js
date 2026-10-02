@@ -181,6 +181,9 @@ export async function startSubChat({ userId, authToken, parentConversationId, ti
     outputId, userId, null, null,
     deps.serializeTranscript({ conversationId, title: chatTitle, messages: [{ id: userMessageId, role: 'user', content: task, timestamp: Date.now() }] }),
     false, 'conversation', conversationId, chatTitle,
+    // The report back names this sub-chat by its title so the user can find
+    // it; the auto-titler renaming it would break that reference.
+    { titleSource: 'system' },
   );
   // Same place as the chat that started it — a delegated task belongs with
   // its project, not loose in the list.

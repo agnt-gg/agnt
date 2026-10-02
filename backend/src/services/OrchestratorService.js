@@ -19,6 +19,7 @@ import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } f
 import { resolveRoutingMode, parseRoutingPolicy } from './orchestrator/routingMode.js';
 import { buildRoutedChain } from './orchestrator/DynamicRouter.js';
 import { composeChain } from './orchestrator/chainComposer.js';
+import { scheduleAutoTitle } from './orchestrator/conversationTitler.js';
 import { providerHealth } from './ai/providerHealth.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
@@ -4222,6 +4223,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     if (runtime.persist.transcript) persistTurnTranscript({ conversationId, userId, providerMessages: messages })
       .then((result) => {
         if (result.written) console.log(`[TurnTranscript] Updated saved transcript for ${conversationId}`);
+        // The saved row now holds this turn's full exchange — the earliest
+        // point a conversation's subject is knowable. The titler decides for
+        // itself whether this conversation qualifies (first exchange, not
+        // user- or system-named) and never throws.
+        scheduleAutoTitle({ userId, conversationId, mode: 'initial' });
       })
       .catch((err) => {
         console.warn('[TurnTranscript] Unexpected failure (turn unaffected):', err?.message || err);
