@@ -3834,7 +3834,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
       console.log(`[Steering] Cleared leftover steer for ${conversationId} (turn ended without drain — frontend will auto-fire)`);
     }
 
-    if (currentRound >= config.maxToolRounds) {
+    // Exhausted means the loop stopped with tool calls still PENDING. Comparing
+    // the round count alone reported a zero-round budget (runtime.limits
+    // .maxToolRounds = 0, the realtime profile) as exhausted on every turn,
+    // including turns that never asked for a tool.
+    if (toolCalls && toolCalls.length > 0 && currentRound >= config.maxToolRounds) {
       segmentStopReason = 'segment_budget';
       console.warn(`[Tool Loop] Maximum rounds (${config.maxToolRounds}) reached, forcing completion`);
       sendEvent('error', {

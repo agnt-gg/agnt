@@ -128,6 +128,14 @@ describe('provider honesty', () => {
 });
 
 describe('stream shape and limits', () => {
+  it('a zero tool-round budget is only "exhausted" when tool calls are still pending', () => {
+    // The realtime profile sets maxToolRounds 0. Comparing the round count
+    // alone made 0 >= 0 true on every turn and appended an error event to
+    // answers that never requested a tool.
+    expect(SEGMENT).toContain('if (toolCalls && toolCalls.length > 0 && currentRound >= config.maxToolRounds) {');
+    expect(SEGMENT).not.toMatch(/\n\s*if \(currentRound >= config\.maxToolRounds\) \{/);
+  });
+
   it('filters the caller\'s SSE events without touching the replay log', () => {
     const body = SEGMENT.slice(at('const rawSendEvent'), at('const rawSendEvent') + 1500);
     expect(body).toContain('if (deliversToCaller(eventName)) transport.send(eventName, data);');
