@@ -1,5 +1,6 @@
 import { createChatTransport } from './orchestrator/chatTransport.js';
 import { admitConversationWork } from './orchestrator/conversationWorkRegistry.js';
+import { capToolResult } from './orchestrator/toolResultCap.js';
 import { userMessageText } from './orchestrator/taskMemory.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
@@ -2747,57 +2748,24 @@ IMPORTANT: The image data is already available in the system context. You don't 
           }
 
           // Hard cap on tool result size to prevent context window overflow.
-          // Even after data offloading, some tools return massive results
-          // with many sub-50k fields whose aggregate is enormous. The
-          // artifact-chat carve-out was removed alongside the offload skip;
-          // huge file reads now route through query_data instead.
+          // offloadLargeData above moves single fields over 50k; a result can
+          // still exceed the cap through many medium fields (an agnt_chat
+          // reply carries the other agent's answer plus every tool result it
+          // produced). Over the cap the whole result is stored where
+          // query_data reads it and the model gets a shortened view plus the
+          // reference; nothing is dropped and the tool's own success/error
+          // verdict is kept (#115). See orchestrator/toolResultCap.js.
           const MAX_TOOL_RESULT_CHARS = toolOutputCap; // user-tunable; default 100000 (~28k tokens)
           if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
             const originalSize = functionResponseContent.length;
-            console.log(`[Context Protection] Tool ${functionName} result too large (${originalSize} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
-
-            // Build a JSON-valid truncation envelope. NEVER raw-substring-cut the payload —
-            // that corrupts JSON whenever the cut lands inside a string literal, which then
-            // breaks JSON.parse downstream.
-            const buildTruncationEnvelope = (extra = {}) =>
-              JSON.stringify({
-                success: false,
-                _truncated: true,
-                _original_size: originalSize,
-                _max_size: MAX_TOOL_RESULT_CHARS,
-                error: `Tool ${functionName} result exceeded the ${MAX_TOOL_RESULT_CHARS}-char context-protection cap.`,
-                suggestion:
-                  'Request a narrower query, paginate, or call a more specific tool (e.g. fetch schema for a single item instead of listing all items with full detail).',
-                ...extra,
-              });
-
-            try {
-              const parsed = JSON.parse(functionResponseContent);
-
-              // Try to create a meaningful, JSON-valid summary for known shapes.
-              if (parsed && parsed.success !== undefined && Array.isArray(parsed.result)) {
-                const summary = {
-                  ...parsed,
-                  result: parsed.result.slice(0, 10),
-                  _truncated: true,
-                  _original_size: originalSize,
-                  _total_count: parsed.result.length,
-                  _note: `Showing first 10 of ${parsed.result.length} items. Full data was sent to the frontend.`,
-                };
-                functionResponseContent = JSON.stringify(summary);
-              } else {
-                // Unknown object shape — preserve top-level keys as a hint but drop the values.
-                const topLevelKeys =
-                  parsed && typeof parsed === 'object' ? Object.keys(parsed) : [];
-                functionResponseContent = buildTruncationEnvelope({
-                  _top_level_keys: topLevelKeys,
-                });
-              }
-            } catch {
-              // Payload wasn't valid JSON to begin with — still emit a valid envelope.
-              functionResponseContent = buildTruncationEnvelope();
-            }
-            console.log(`[Context Protection] Truncated ${functionName} result to ${functionResponseContent.length} chars`);
+            functionResponseContent = capToolResult(functionResponseContent, {
+              cap: MAX_TOOL_RESULT_CHARS,
+              functionName,
+              toolCallId: toolCall.id,
+              conversationContext,
+              summarize: generateDataSummary,
+            });
+            console.log(`[Context Protection] ${functionName} result (${originalSize} chars) over the ${MAX_TOOL_RESULT_CHARS}-char cap: stored in full, ${functionResponseContent.length}-char view sent`);
           }
 
           // Parse and validate response
