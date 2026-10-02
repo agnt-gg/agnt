@@ -26,6 +26,8 @@ import {
   getProviderConfig,
 } from '../ai/providerConfigs.js';
 import LlmCallModel from '../../models/LlmCallModel.js';
+import { NOT_A_CHAT_MODEL, resolveDefaultModel } from '../ai/defaultModel.js';
+import { providerHealth } from '../ai/providerHealth.js';
 
 /**
  * Providers that are never auto-routed TO.
@@ -123,14 +125,27 @@ export async function getMeasuredReliability(userId, { minSamples = 8, days = 14
   return byKey;
 }
 
+/** How many of a provider's cheapest priced models join its candidate set. */
+export const CHEAPEST_PER_PROVIDER = 3;
+
 /**
  * Which models of a provider are worth considering.
  *
  * Capped per provider because a gateway like OpenRouter publishes hundreds and
- * scoring all of them costs real CPU on the hot path for no benefit — the top
- * of a provider's own list is its recommended set.
+ * scoring all of them costs real CPU on the hot path for no benefit. But the
+ * top of a provider's list is ordered by the VENDOR (usually flagship first),
+ * so a cap on list position alone hid exactly the models a low-stake job
+ * should land on. Three sources, de-duplicated:
+ *
+ *   - the first `limit` listed  (the vendor's recommended set)
+ *   - the CHEAPEST_PER_PROVIDER cheapest with a published price
+ *   - the provider's live default (resolveDefaultModel), which is confirmed
+ *     against the vendor's current catalogue rather than a static guess
+ *
+ * Ids that cannot hold a conversation (whisper, tts, embeddings, guards) are
+ * removed first — a cheap speech model is not a cheap chat model.
  */
-function modelsForProvider(providerKey, limit) {
+export function modelsForProvider(providerKey, limit) {
   let models = [];
   try {
     models = ProviderRegistry.getTextModels(providerKey) || [];
@@ -141,7 +156,32 @@ function modelsForProvider(providerKey, limit) {
     const meta = getAllModelMetadata(providerKey);
     models = Object.keys(meta || {});
   }
-  return models.slice(0, limit);
+  models = models.filter((id) => typeof id === 'string' && id && !NOT_A_CHAT_MODEL.test(id));
+
+  const picks = new Set(models.slice(0, limit));
+
+  const cheapest = models
+    .map((id) => {
+      const meta = getModelMetadata(providerKey, id) || {};
+      const price = Number.isFinite(meta.inputCostPer1M) && Number.isFinite(meta.outputCostPer1M)
+        ? meta.inputCostPer1M + meta.outputCostPer1M
+        : null;
+      return { id, price };
+    })
+    .filter((m) => m.price !== null)
+    .sort((a, b) => a.price - b.price)
+    .slice(0, CHEAPEST_PER_PROVIDER);
+  for (const m of cheapest) picks.add(m.id);
+
+  let liveDefault = null;
+  try {
+    liveDefault = resolveDefaultModel(providerKey);
+  } catch {
+    liveDefault = null;
+  }
+  if (liveDefault && !NOT_A_CHAT_MODEL.test(liveDefault)) picks.add(liveDefault);
+
+  return [...picks];
 }
 
 /**
@@ -202,7 +242,10 @@ export async function collectCandidates({
         provider: lower,
         model,
         credentialed: true,
-        healthy: true,
+        // Learned from this user's real calls (providerHealth). A cooling
+        // provider is ineligible for the ROUTED picks; the composed chain
+        // still carries the account's own tiers, demoted, never dropped.
+        healthy: providerHealth.isAvailable(userId, lower),
         subscription,
         // Only set on subscription seats. Metered candidates leave this
         // undefined so estimateCost falls through to the normal in/out

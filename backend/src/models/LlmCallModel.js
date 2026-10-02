@@ -66,6 +66,9 @@ export const ORIGINS = Object.freeze([
   // full-price read of the transcript, deliberately spent so every later turn
   // re-sends a summary instead of the whole history.
   'compaction',
+  // Conversation auto-titles (conversationTitler). Routed to the best-value
+  // model the user can run; tracked so their spend is visible, not assumed.
+  'title',
 ]);
 
 class LlmCallModel {

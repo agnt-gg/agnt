@@ -59,6 +59,9 @@ export const VERIFIABILITIES = Object.freeze(['mechanical', 'referential', 'subj
 const ORIGIN_STAKE = Object.freeze({
   insight: 'low',
   system: 'low',
+  // A conversation's sidebar label. A plain one costs the user nothing; a
+  // frontier model writing four words is the textbook over-escalation.
+  title: 'low',
   goal_eval: 'high',
   goal_task: 'high',
   workflow_node: 'normal',
@@ -85,6 +88,10 @@ const ORIGIN_STAKE = Object.freeze({
  * model" policy, which is the failure mode in the opposite direction.
  */
 const ORIGIN_VERIFIABILITY = Object.freeze({
+  // Checked by code before it is accepted (parses, 1-10 words, not a
+  // refusal) — see conversationTitler.parseTitle. A real oracle, so a bad
+  // answer rolls to the next pick instead of being shown.
+  title: 'mechanical',
   workflow_node: 'mechanical',
   workflow: 'mechanical',
   tool: 'mechanical',
@@ -114,6 +121,9 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
  * @param {boolean} [args.hasImages]      turn carries image content
  * @param {boolean} [args.hasTools]       tool schemas are bound to this turn
  * @param {number} [args.contextTokens]   estimated prompt size
+ * @param {number} [args.outputTokens]    expected answer size; without it the
+ *   cost estimate assumes a full chat answer, which prices a four-word title
+ *   at ~40x what it costs and flattens every comparison that matters
  * @param {boolean} [args.isToolRound]    a follow-up round inside a turn
  * @param {boolean} [args.reasoningWanted] user asked for extended thinking
  * @returns {{stake:string, stakeWeight:number, verifiability:string,
@@ -125,6 +135,7 @@ export function classifyIntent({
   hasImages = false,
   hasTools = false,
   contextTokens = 0,
+  outputTokens = 0,
   isToolRound = false,
   reasoningWanted = false,
 } = {}) {
@@ -151,6 +162,8 @@ export function classifyIntent({
     needsVision: !!hasImages,
     needsTools: !!hasTools,
     contextTokens: Number.isFinite(contextTokens) && contextTokens > 0 ? contextTokens : 0,
+    // Omitted (not 0) when unknown, so estimateCost keeps its own default.
+    ...(Number.isFinite(outputTokens) && outputTokens > 0 ? { outputTokens } : {}),
     reasoningWanted: !!reasoningWanted,
   };
 }
