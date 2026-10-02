@@ -59,6 +59,17 @@ describe('ArtifactPreview — see the file, stay on the page', () => {
     w.unmount();
   });
 
+  it('a PDF frame is not sandboxed (Chromium paints it blank if it is); HTML keeps its sandbox', async () => {
+    const w = mountIt();
+    w.vm.show({ href: 'file:///C:/x/doc.pdf', name: 'doc.pdf' });
+    await nextTick();
+    expect(dialog().querySelector('iframe.ap-frame').hasAttribute('sandbox')).toBe(false);
+    w.vm.show({ href: 'file:///C:/x/page.html', name: 'page.html' });
+    await nextTick();
+    expect(dialog().querySelector('iframe.ap-frame').getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
+    w.unmount();
+  });
+
   it('text-like files are fetched and shown in a <pre>', async () => {
     global.fetch = servesFrom('C:/x/notes.md');
     const w = mountIt();

@@ -29,7 +29,8 @@
       <AutoTextarea v-if="editable" v-model="content" class="focused-code-edit" spellcheck="false" :aria-label="'Contents of ' + baseName(filePath)" />
       <pre v-else-if="textTooLong" class="focused-code-edit">{{ content.slice(0, TEXT_LIMIT) }}</pre>
       <div v-else-if="kind === 'image'" class="focused-file-media"><img :src="mediaUrl" :alt="baseName(filePath)" /></div>
-      <iframe v-else-if="kind === 'html' || kind === 'pdf'" class="focused-file-frame" :src="mediaUrl" sandbox="allow-scripts allow-same-origin" :aria-label="baseName(filePath)"></iframe>
+      <PdfFrame v-else-if="kind === 'pdf'" class="focused-file-frame" :src="mediaUrl" :label="baseName(filePath)" />
+      <iframe v-else-if="kind === 'html'" class="focused-file-frame" :src="mediaUrl" sandbox="allow-scripts allow-same-origin" :aria-label="baseName(filePath)"></iframe>
       <video v-else-if="kind === 'video'" class="focused-file-media" :src="mediaUrl" controls></video>
       <audio v-else-if="kind === 'audio'" :src="mediaUrl" controls></audio>
     </template>
@@ -92,6 +93,7 @@ import { ref, computed, inject, watch, onMounted } from 'vue';
 import FocusedPage from './FocusedPage.vue';
 import FocusedEditor from './FocusedEditor.vue';
 import AutoTextarea from './AutoTextarea.vue';
+import PdfFrame from '@/views/_components/common/PdfFrame.vue';
 import { FOCUSED_PAGES, createAsk, editAsk } from './focusedModel.js';
 import { ago } from './focusedEditors.js';
 import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf, FILE_SORTS, sortFileItems } from './focusedFiles.js';

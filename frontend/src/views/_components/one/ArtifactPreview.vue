@@ -37,7 +37,8 @@
             <p class="ap-path">{{ absPath }}</p>
             <p>I looked for it nearby and could not find it. It was most likely deleted or moved outside this folder.</p>
           </div>
-          <iframe v-else-if="kind === 'html' || kind === 'pdf'" :src="url" class="ap-frame" sandbox="allow-scripts allow-same-origin" :aria-label="name" tabindex="-1" @load="root?.focus()"></iframe>
+          <PdfFrame v-else-if="kind === 'pdf'" :src="url" class="ap-frame" :label="name" tabindex="-1" @load="root?.focus()" />
+          <iframe v-else-if="kind === 'html'" :src="url" class="ap-frame" sandbox="allow-scripts allow-same-origin" :aria-label="name" tabindex="-1" @load="root?.focus()"></iframe>
           <img v-else-if="kind === 'image'" :src="url" :alt="name" class="ap-media" />
           <video v-else-if="kind === 'video'" :src="url" controls class="ap-media"></video>
           <audio v-else-if="kind === 'audio'" :src="url" controls class="ap-audio"></audio>
@@ -57,6 +58,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { buildLocalFileUrl, absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 import { openLocalPath } from '@/utils/openLocalFile.js';
+import PdfFrame from '@/views/_components/common/PdfFrame.vue';
 
 const KIND_BY_EXT = {
   html: 'html', htm: 'html',
@@ -71,6 +73,7 @@ const TEXT_LIMIT = 200_000;
 
 export default {
   name: 'ArtifactPreview',
+  components: { PdfFrame },
   emits: ['open-in-files'],
   setup(_, { emit, expose }) {
     const open = ref(false);

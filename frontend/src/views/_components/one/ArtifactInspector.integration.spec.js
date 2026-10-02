@@ -130,6 +130,21 @@ describe('real card → existing inspector integration', () => {
     expect(w.find('iframe').attributes('sandbox')).toBe('allow-scripts');
     expect(w.find('iframe').attributes('srcdoc')).toContain('Hi')
   });
+  it('the right panel shows a PDF in an unsandboxed frame — a sandboxed one renders blank', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 206, headers: new Headers(), body: { cancel: vi.fn() } }));
+    const w = render({
+      id: 'p',
+      name: 'report.pdf',
+      kind: 'pdf',
+      href: 'file:///C:/work/report.pdf'
+    });
+    await flushPromises();
+    const frame = w.find('iframe');
+    expect(frame.exists()).toBe(true);
+    expect(frame.attributes()).not.toHaveProperty('sandbox');
+    expect(frame.attributes('src')).toContain('/local-file/C:/work/report.pdf');
+    expect(frame.attributes('aria-label')).toBe('report.pdf')
+  });
   it('markdown uses sanitization before HTML insertion', () => {
     const w = render({
       id: 'm',

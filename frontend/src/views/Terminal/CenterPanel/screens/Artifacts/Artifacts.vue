@@ -196,7 +196,7 @@
                   @ended="stopVisualizer"
                 />
               </div>
-              <iframe v-else-if="isPdfFile && activeTab" :src="rawFileUrl" class="ce-pdf-preview"></iframe>
+              <PdfFrame v-else-if="isPdfFile && activeTab" :src="rawFileUrl" class="ce-pdf-preview" :label="activeTab.name" />
               <div v-else-if="isEpubFile && activeTab" class="ce-epub-wrapper">
                 <div ref="epubContainerRef" class="ce-epub-container"></div>
                 <div class="ce-epub-nav">
@@ -409,6 +409,7 @@ import { artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { injectArtifactPreviewBase } from '@/utils/artifactPreviewBase.js';
 import { dirtyOverrides, prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
 import ShareBundlePreflight from '@/components/common/ShareBundlePreflight.vue';
+import PdfFrame from '@/views/_components/common/PdfFrame.vue';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 
@@ -772,7 +773,7 @@ function parseDelimited(content, delimiter) {
 
 export default {
   name: 'ArtifactsScreen',
-  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable, FilesBrowser, ShareBundlePreflight },
+  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable, FilesBrowser, ShareBundlePreflight, PdfFrame },
   emits: ['screen-change'],
   setup(_, { emit }) {
     const baseScreenRef = ref(null);

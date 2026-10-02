@@ -7,8 +7,7 @@
     @dragleave="handleDragLeave"
     @drop="handleDrop"
   >
-    <!-- PDF preview using iframe or object -->
-    <iframe v-if="pdfPreviewUrl" :src="pdfPreviewUrl" class="pdf-preview" type="application/pdf" frameborder="0"> </iframe>
+    <PdfFrame v-if="pdfPreviewUrl" :src="pdfPreviewUrl" class="pdf-preview" />
 
     <!-- Placeholder when no PDF -->
     <div v-else class="pdf-placeholder">
@@ -55,11 +54,13 @@
 <script>
 import WidgetBase from './WidgetBase.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import PdfFrame from '@/views/_components/common/PdfFrame.vue';
 
 export default {
   name: 'PdfPreview',
   components: {
     Tooltip,
+    PdfFrame,
   },
   mixins: [WidgetBase],
   props: {

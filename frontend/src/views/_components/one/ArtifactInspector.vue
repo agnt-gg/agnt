@@ -9,7 +9,7 @@
       <ArtifactFileCover v-else-if="['archive','file'].includes(artifact.kind)" :item="artifact" />
       <pre v-else-if="tab==='Source' || artifact.kind==='text'">{{ source }}</pre>
       <iframe v-else-if="artifact.kind==='html'" :key="artifact.id" :src="url || undefined" :srcdoc="url ? undefined : inlineHtml" sandbox="allow-scripts" referrerpolicy="no-referrer" :aria-label="artifact.name"></iframe>
-      <iframe v-else-if="artifact.kind==='pdf'" :src="url" sandbox="" :aria-label="artifact.name"></iframe>
+      <PdfFrame v-else-if="artifact.kind==='pdf'" :src="url" :label="artifact.name" />
       <img v-else-if="artifact.kind==='image'" :src="url" :alt="artifact.name" @error="mediaError" />
       <video v-else-if="artifact.kind==='video'" :src="url" controls @error="mediaError"></video>
       <audio v-else-if="artifact.kind==='audio'" :src="url" controls @error="mediaError"></audio>
@@ -23,6 +23,7 @@
 </template>
 <script setup>
 import ArtifactFileCover from './ArtifactFileCover.vue';
+import PdfFrame from '@/views/_components/common/PdfFrame.vue';
 import '@/styles/components/artifactMarkdown.css';
 import {
   computed,
