@@ -25,5 +25,11 @@ export default defineConfig({
   },
   // Shared with vite.config.js. Tests must resolve exactly what the build
   // resolves, or a passing suite proves nothing about the shipped bundle.
-  resolve: { alias: aliases }
+  resolve: { alias: aliases },
+  // TermsPrivacyModal imports LICENSE.md?raw. `vitest related` walks the
+  // import graph without the ?raw query and tried to parse the markdown as
+  // JavaScript, aborting before a single test ran — so `npm run
+  // test:impacted` gave frontend changes no coverage at all. Declaring
+  // markdown an asset fixes the graph walk; ?raw still yields the text.
+  assetsInclude: ['**/*.md'],
 })
