@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getBestChromePath } from '../utils/chrome-detector.js';
 import { sandboxFlags } from './browserRuntime.js';
 import { notifyWidgetChanged } from '../utils/widgetChangeNotifier.js';
+import { isWidgetContentChange } from './widgetProvenance.js';
 
 // --- Persistent Puppeteer browser for thumbnail captures ---
 // Lazy-launched on first capture, auto-closes after 60s of inactivity.
@@ -364,10 +365,12 @@ class WidgetDefinitionService {
         useThemeStyles,
       } = req.body;
 
-      // Check existence
+      // Check existence (and read what the provenance check compares against)
       const existing = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM widget_definitions WHERE id = ? AND user_id = ?', [widgetId, req.user?.id || req.user?.userId], (err, row) =>
-          err ? reject(err) : resolve(row),
+        db.get(
+          'SELECT id, source_code, config, data_bindings FROM widget_definitions WHERE id = ? AND user_id = ?',
+          [widgetId, req.user?.id || req.user?.userId],
+          (err, row) => (err ? reject(err) : resolve(row)),
         );
       });
 
@@ -375,14 +378,18 @@ class WidgetDefinitionService {
         return res.status(404).json({ error: 'Widget definition not found' });
       }
 
-      // PRD-057: mark plugin-installed widgets as user-modified on UI updates
-      await new Promise((resolve) => {
-        db.run(
-          `UPDATE widget_definitions SET is_user_modified = 1 WHERE id = ? AND user_id = ? AND source_plugin IS NOT NULL`,
-          [widgetId, req.user?.id || req.user?.userId],
-          () => resolve()
-        );
-      });
+      // PRD-057: a plugin widget the USER edited keeps their edits across plugin
+      // updates. Only a real content change counts; placing, resizing or a
+      // thumbnail capture must not freeze the widget on its first version.
+      if (isWidgetContentChange(existing, req.body)) {
+        await new Promise((resolve) => {
+          db.run(
+            `UPDATE widget_definitions SET is_user_modified = 1 WHERE id = ? AND user_id = ? AND source_plugin IS NOT NULL`,
+            [widgetId, req.user?.id || req.user?.userId],
+            () => resolve()
+          );
+        });
+      }
 
       await new Promise((resolve, reject) => {
         db.run(
