@@ -652,6 +652,49 @@ export default {
       // Key name must stay `content` — MessageItem reads cached.content.
       cache.set(dataId, { content: fullContent, toolCallId, messageId, size, path });
     },
+    /**
+     * Forget every channel's transcript when the signed-in account changes.
+     *
+     * This store is ONE localStorage key for the whole browser, not one per
+     * account, so without this the next account to sign in rehydrates the
+     * previous account's chats. The queued debounced write goes first: it holds
+     * the old transcripts and would otherwise land after the clear.
+     *
+     * The legacy per-page keys go too: they are read only to migrate into an
+     * EMPTY channel, which after this clear is every channel — so leaving them
+     * would hand the next account the previous account's old chats on the next
+     * load. `_migrated` is kept; it only records reads made this page-load.
+     */
+    RESET_FOR_SESSION_END(state) {
+      for (const controller of Object.values(state.abortControllers || {})) {
+        try { controller?.abort?.(); } catch (e) { /* already aborted */ }
+      }
+      pendingConversations = null;
+      firstPendingAt = 0;
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+      }
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(SPLIT_INDEX_KEY);
+        for (const legacyKey of Object.values(LEGACY_KEYS)) localStorage.removeItem(legacyKey);
+      } catch (e) {
+        console.warn('[chatUnified] could not clear the previous account\'s cached chats:', e);
+      }
+      Object.assign(state, {
+        conversations: {},
+        streamingChannels: {},
+        loadingSuggestionsChannels: {},
+        expandedToolCalls: {},
+        runningToolCalls: {},
+        messageStates: {},
+        abortControllers: {},
+        pendingSteers: {},
+        imageCaches: {},
+        dataCaches: {},
+      });
+    },
     PERSIST_CONVERSATIONS(state) {
       // Explicit persistence request — write through immediately (PRD-058).
       pendingConversations = null;

@@ -1,6 +1,7 @@
 import { createStore } from 'vuex';
 import { withUserScopedReset, RESET_MUTATION } from './_utils/userScopedReset.js';
 import { invalidateAllFreshness } from './_utils/withFreshness.js';
+import { clearAccountScopedStorage } from './_utils/accountScopedStorage.js';
 import { reportBootMark } from '@/utils/bootMark.js';
 import chat from './features/chat';
 import chatUnified from './features/chatUnified';
@@ -190,6 +191,14 @@ const store = createStore({
       for (const name of Object.keys(USER_SCOPED_MODULES)) {
         commit(`${name}/${RESET_MUTATION}`);
       }
+
+      // The chat stores are not in USER_SCOPED_MODULES: they hold live streams
+      // and component subscriptions a blind state reset would break, so each
+      // has its own reset. Before these existed, signing in as another account
+      // opened onto the previous account's conversation.
+      commit('chat/RESET_FOR_SESSION_END');
+      commit('chatUnified/RESET_FOR_SESSION_END');
+      clearAccountScopedStorage();
 
       // The caches describe the state that was just wiped, so they go with it.
       //

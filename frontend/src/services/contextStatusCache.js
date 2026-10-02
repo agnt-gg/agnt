@@ -11,7 +11,7 @@
 // per-browser presentation state, it needs no migration, and losing it costs
 // nothing more than the blank panel we already had.
 
-const STORAGE_KEY = 'agnt_last_context_status';
+export const STORAGE_KEY = 'agnt_last_context_status';
 
 // Bounded so a long-lived browser profile cannot grow this without limit.
 export const CACHE_LIMIT = 40;

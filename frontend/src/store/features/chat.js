@@ -913,6 +913,82 @@ export default {
     },
 
     /**
+     * Forget every conversation this signed-in account had open.
+     *
+     * RESET_CHAT only empties the conversation on screen. When the SESSION ends
+     * (sign-out, or signing in as another account) everything in this module
+     * belongs to the account that just left: every background conversation,
+     * the agent caches, and the per-conversation skill/goal/AI bindings. They
+     * used to survive, so the next account opened onto the previous account's
+     * chat.
+     *
+     * Not the generic withUserScopedReset: this state holds live streams and
+     * timers that must be stopped, not just dropped, and component-owned
+     * subscriptions (`streamEventCallbacks`) that a kept-alive Chat screen
+     * registered once and will not register again. store/chatSessionReset.spec.js
+     * names exactly what survives and fails if a new state field is neither
+     * reset here nor listed there.
+     */
+    RESET_FOR_SESSION_END(state) {
+      const stopLiveWork = (holder) => {
+        if (!holder) return;
+        if (holder.streamAbortController) {
+          try { holder.streamAbortController.abort(); } catch (e) { /* already aborted */ }
+          holder.streamAbortController = null;
+        }
+        if (holder.streamReader) {
+          try { holder.streamReader.cancel(); } catch (e) { /* already cancelled */ }
+          holder.streamReader = null;
+        }
+        if (holder.autosaveDebounceTimer) {
+          clearTimeout(holder.autosaveDebounceTimer);
+          holder.autosaveDebounceTimer = null;
+        }
+      };
+      stopLiveWork(state);
+      for (const conv of Object.values(state.conversations || {})) stopLiveWork(conv);
+
+      if (state.mainChatWindow) {
+        state.mainChatWindow.messages.clear();
+        state.mainChatWindow.threads.clear();
+      }
+
+      Object.assign(state, {
+        activeStreamId: null,
+        activeStream: null,
+        streamReader: null,
+        streamAbortController: null,
+        isStreaming: false,
+        isRemoteStreaming: false,
+        pendingSteer: '',
+        messageCount: 0,
+        messages: [],
+        currentConversationId: null,
+        activeAsyncTools: new Map(),
+        imageCache: new Map(),
+        dataCache: new Map(),
+        savedOutputId: null,
+        savedOutputTitle: null,
+        lastSaveTimestamp: null,
+        isSaving: false,
+        saveStatus: null,
+        autosaveDebounceTimer: null,
+        currentAgentId: null,
+        currentAgentName: null,
+        currentAgentAvatar: null,
+        agentConversations: {},
+        conversations: {},
+        activeConversationId: null,
+        savedMainConversationId: null,
+        activeSkillByConv: {},
+        activeGoalByConv: {},
+        aiByConv: {},
+        routingModeByConv: {},
+        goalCreateMode: false,
+      });
+    },
+
+    /**
      * Prepare state for a new chat without aborting background streams.
      * Used by "New Chat" so existing conversations keep streaming.
      */

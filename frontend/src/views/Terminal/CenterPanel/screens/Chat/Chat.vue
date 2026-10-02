@@ -298,6 +298,7 @@ import BaseScreen from '../../BaseScreen.vue';
   import { safeTruncate } from '@/utils/safeTruncate.js';
 import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
+import { createNewSessionLanding } from './newSessionLanding.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
 import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
@@ -2668,6 +2669,28 @@ export default {
 
     // MathJax typesetting is handled per-message in MessageItem.vue (after streaming completes).
     // A global watcher here would fire on every stream chunk, causing flicker with morphdom.
+
+    // ACCOUNT SWITCH. This screen is kept alive and initialises once, so after
+    // a session ends (sign-out, or signing in as someone else) it would go on
+    // showing the conversation it already had. resetUserScopedData empties the
+    // chat stores; this lands the NEXT session in its own Main chat — where a
+    // cold start lands — instead of the previous account's conversation.
+    const landInMainChatForNewSession = async () => {
+      resetMessageWindow();
+      currentConversationId.value = null;
+      // A content-id in the URL names the previous account's conversation.
+      if (route.query['content-id']) {
+        const { 'content-id': _previousAccountConversation, ...rest } = route.query;
+        await router.replace({ path: route.path, query: rest }).catch(() => {});
+      }
+      const main = await store.dispatch('contentOutputs/fetchMainChat').catch(() => null);
+      if (main?.id) {
+        await loadSavedOutput(main.id);
+        return;
+      }
+      clearConversation();
+    };
+    watch(() => store.state.userAuth?.sessionState, createNewSessionLanding(landInMainChatForNewSession));
 
     // Watch for route query parameter changes to load saved outputs
     watch(

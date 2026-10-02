@@ -29,7 +29,7 @@
  * error dialog.
  */
 
-const STORAGE_KEY = 'chatDraftsV1';
+export const STORAGE_KEY = 'chatDraftsV1';
 
 /** Longest draft we will persist. Beyond this, the tail is dropped. */
 export const MAX_DRAFT_CHARS = 20000;
