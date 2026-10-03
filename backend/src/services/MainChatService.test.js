@@ -114,14 +114,86 @@ describe('clearMainChat', () => {
     expect(new Date(row.last_read_at + 'Z').getTime()).toBeGreaterThanOrEqual(new Date(row.updated_at + 'Z').getTime());
   });
 
+  it('a stale named autosave cannot restore the transcript after clear', async () => {
+    const before = await MainChat.ensureMainChat(USER);
+    const after = await MainChat.clearMainChat(USER);
+    const service = (await import('./RunService.js')).default;
+    const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    await service.saveOrUpdateContentOutput({ user: { id: USER, userId: USER }, body: {
+      id: before.id, conversationId: before.conversation_id, contentType: 'conversation',
+      content: JSON.stringify({ conversationId: before.conversation_id, messages: [{ role: 'user', content: 'old history' }] }),
+    } }, response);
+    expect(response.statusCode).toBe(409);
+    expect(response.body.error).toBe('conversation_reset');
+    const stored = await ContentOutputModel.findOne(after.id);
+    expect(stored.conversation_id).toBe(after.conversation_id);
+    expect(JSON.parse(stored.content).messages).toEqual([]);
+  });
+
   it('keeps sub-chats linked to the Main chat across a clear', async () => {
     const main = await MainChat.ensureMainChat(USER);
     await ContentOutputModel.createOrUpdate('sub-a', USER, null, null, '{"messages":[]}', false, 'conversation', 'conv-sub-a', 'Task A');
     await ConversationRoleModel.addSub(USER, 'sub-a', main.id);
 
     await MainChat.clearMainChat(USER);
-    const state = await MainChat.getMainChatState(USER);
-    expect(state.main.id).toBe(main.id);
-    expect(state.subChats).toContainEqual({ id: 'sub-a', parentId: main.id });
+    expect(await ConversationRoleModel.listSubChats(USER)).toContainEqual({ id: 'sub-a', parentId: main.id });
+  });
+});
+
+// Reported: new pages were saved into the Main chat, whose row the sidebar no
+// longer shows, so those conversations could not be found.
+describe('the retired Main chat', () => {
+  const RELEASE_USER = 'user-main-release';
+  const EMPTY_USER = 'user-main-empty';
+  beforeAll(async () => {
+    for (const uid of [RELEASE_USER, EMPTY_USER]) await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+  });
+
+  it('the sidebar state never creates or returns a Main chat', async () => {
+    const state = await MainChat.getMainChatState(EMPTY_USER);
+    expect(state.main).toBeNull();
+    expect(await ConversationRoleModel.findMainOutputId(EMPTY_USER)).toBeNull();
+    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [EMPTY_USER])).toEqual([]);
+  });
+
+  it('a used Main chat becomes an ordinary listed conversation, every message kept, named after its first request', async () => {
+    const main = await MainChat.ensureMainChat(RELEASE_USER);
+    const transcript = { conversationId: main.conversation_id, title: 'Main chat', messages: [
+      { id: 'a0', role: 'assistant', content: 'Hi!' },
+      { id: 'u1', role: 'user', content: 'whats this server err on our updater\nmore detail' },
+      { id: 'a1', role: 'assistant', content: 'Looking.' },
+    ] };
+    await ContentOutputModel.createOrUpdate(main.id, RELEASE_USER, null, null, JSON.stringify(transcript), false, 'conversation', main.conversation_id, 'Main chat', { titleSource: 'system' });
+
+    expect(await MainChat.releaseMainChat(RELEASE_USER)).toEqual({ id: main.id, action: 'released' });
+    expect(await ConversationRoleModel.findMainOutputId(RELEASE_USER)).toBeNull();
+    const row = await ContentOutputModel.findOne(main.id);
+    expect(row.title).toBe('whats this server err on our updater');
+    expect(row.archived_at).toBeNull();
+    expect(JSON.parse(row.content).messages).toHaveLength(3);
+    // Idempotent, and it stays released: nothing re-pins or recreates it.
+    expect(await MainChat.releaseMainChat(RELEASE_USER)).toBeNull();
+    expect((await MainChat.getMainChatState(RELEASE_USER)).main).toBeNull();
+    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [RELEASE_USER])).toHaveLength(1);
+  });
+
+  it('a name the user gave it is kept', async () => {
+    const uid = 'user-main-named';
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    const main = await MainChat.ensureMainChat(uid);
+    await ContentOutputModel.createOrUpdate(main.id, uid, null, null, JSON.stringify({ messages: [{ role: 'user', content: 'hello' }] }), false, 'conversation', main.conversation_id, 'Main chat', { titleSource: 'system' });
+    await ContentOutputModel.updateTitle(main.id, uid, 'My planning thread'); // as the sidebar's rename does
+    await MainChat.releaseMainChat(uid);
+    expect((await ContentOutputModel.findOne(main.id)).title).toBe('My planning thread');
+  });
+
+  it('an unused Main chat is archived, not deleted, so the list gains no empty row', async () => {
+    const uid = 'user-main-unused';
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    const main = await MainChat.ensureMainChat(uid);
+    expect(await MainChat.releaseMainChat(uid)).toEqual({ id: main.id, action: 'archived' });
+    const row = await ContentOutputModel.findOne(main.id);
+    expect(row).toBeTruthy();
+    expect(row.archived_at).toBeTruthy();
   });
 });

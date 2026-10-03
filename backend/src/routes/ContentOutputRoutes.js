@@ -1,6 +1,6 @@
 import express from 'express';
 import RunService from '../services/RunService.js';
-import { getMainChatState, clearMainChat } from '../services/MainChatService.js';
+import { getMainChatState } from '../services/MainChatService.js';
 import { authenticateToken } from './Middleware.js';
 
 // Set up new route
@@ -26,13 +26,10 @@ ContentOutputRoutes.get('/main-chat', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error loading the main chat' });
   }
 });
-ContentOutputRoutes.post('/main-chat/clear', authenticateToken, async (req, res) => {
-  try {
-    res.json({ main: await clearMainChat(req.user.userId || req.user.id) });
-  } catch (error) {
-    console.error('Error clearing the main chat:', error);
-    res.status(500).json({ error: 'Error clearing the main chat' });
-  }
+// The Main chat is retired (see MainChatService). Clearing one would mint it
+// again, so the route refuses rather than recreate what was removed.
+ContentOutputRoutes.post('/main-chat/clear', authenticateToken, (req, res) => {
+  res.status(410).json({ error: 'main_chat_retired' });
 });
 ContentOutputRoutes.get('/:id', authenticateToken, RunService.getContentOutput);
 ContentOutputRoutes.put('/:id', authenticateToken, RunService.saveOrUpdateContentOutput);

@@ -1,3 +1,5 @@
+import { acquireConversationSave } from './conversationSaveLock.js';
+import ConversationRoleModel from '../models/ConversationRoleModel.js';
 import ContentOutputModel from '../models/ContentOutputModel.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
@@ -50,24 +52,6 @@ function countTranscriptMessages(content) {
   } catch {
     return null;
   }
-}
-
-// All browser saves reach this singleton server. Hold the conversation's
-// address through lookup, truncation validation, write and notification;
-// locking just the INSERT leaves the first-save check/write race intact.
-const conversationSaves = new Map();
-
-async function acquireConversationSave(userId, conversationId) {
-  const key = JSON.stringify([userId, conversationId]);
-  const previous = conversationSaves.get(key);
-  let release;
-  const current = new Promise(resolve => { release = resolve; });
-  conversationSaves.set(key, current);
-  if (previous) await previous;
-  return () => {
-    if (conversationSaves.get(key) === current) conversationSaves.delete(key);
-    release();
-  };
 }
 
 class RunService {
@@ -123,13 +107,13 @@ class RunService {
   async saveOrUpdateContentOutput(req, res) {
     let releaseSave;
     try {
-      if (req.body.conversationId) {
-        releaseSave = await acquireConversationSave(req.user.userId, req.body.conversationId);
+      if (req.body.id || req.body.conversationId) {
+        releaseSave = await acquireConversationSave(req.user.userId || req.user.id, 'content-outputs');
       }
       // Saves never mark read — the read watermark moves only via the
       // explicit read PATCH (the email model). See ContentOutputModel.
       const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey, allowTruncate } = req.body;
-      const userId = req.user.userId;
+      const userId = req.user.userId || req.user.id;
 
       // WHICH ROW DOES THIS SAVE BELONG TO?
       //
@@ -155,6 +139,10 @@ class RunService {
       // lookup with another user's id would be a second chance to get that
       // wrong. Scoped by userId, so it can only ever adopt the caller's row.
       if (existingOutput && existingOutput.user_id !== userId) existingOutput = null;
+      if (existingOutput && conversationId && existingOutput.conversation_id !== conversationId &&
+          (await ConversationRoleModel.roleOf(existingOutput.id, userId))?.role === 'main') {
+        return res.status(409).json({ error: 'conversation_reset', id: existingOutput.id });
+      }
       else if (!existingOutput && conversationId) {
         existingOutput = await ContentOutputModel.findMetaByConversationId(conversationId, userId);
         // Remember HOW we found it. Adoption is the dangerous provenance:

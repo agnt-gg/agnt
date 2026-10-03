@@ -40,6 +40,11 @@ class ConversationRoleModel {
     );
   }
 
+  /** Drop the user's 'main' marker. The conversation row itself is untouched. */
+  static releaseMain(userId) {
+    return run(`DELETE FROM conversation_roles WHERE user_id = ? AND role = 'main'`, [userId]);
+  }
+
   /** { role, parent_output_id } for one row, or null when it has no role. */
   static roleOf(outputId, userId) {
     return get(`SELECT role, parent_output_id FROM conversation_roles WHERE output_id = ? AND user_id = ?`, [outputId, userId]);
