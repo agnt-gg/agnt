@@ -64,7 +64,8 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // Marketplace tabs, the search box, the counts — is already on the screen
   // itself, so the column had nothing to say. Right is dynamic (plugin detail
   // vs. news).
-  PluginsScreen: { leftPanel: false, input: false },
+  // Shares the Apps sidebar: Plugins is a row of it (appsDirectory).
+  PluginsScreen: { leftPanel: 'ConnectorsPanel', input: false },
   SettingsScreen: { input: false }, // right: dynamic
   SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },

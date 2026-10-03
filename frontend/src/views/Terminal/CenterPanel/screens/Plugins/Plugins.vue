@@ -19,6 +19,7 @@
     screenId="PluginsScreen"
     :activeRightPanel="activeRightPanel"
     :panelProps="{ context: 'plugins' }"
+    :leftPanelProps="{ screenName: 'PluginsScreen' }"
     @screen-change="(screenName) => emit('screen-change', screenName)"
   >
     <template #default>

@@ -100,12 +100,6 @@ export const settingsDirectory = [
         "description": "Audio feedback"
       },
       {
-        "id": "notifications",
-        "icon": "fas fa-bell",
-        "label": "Notifications",
-        "description": "Notification preferences"
-      },
-      {
         "id": "tours",
         "icon": "fas fa-route",
         "label": "Tours",
@@ -198,6 +192,13 @@ export const appsDirectory = [
         "label": "Webhooks",
         "pro": true,
         "description": "Incoming events"
+      },
+      {
+        "id": "plugins",
+        "icon": "fas fa-puzzle-piece",
+        "label": "Plugins",
+        "screen": "PluginsScreen",
+        "description": "Installed app extensions"
       }
     ]
   }

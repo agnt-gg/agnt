@@ -30,14 +30,10 @@
         <!-- API Keys Section -->
         <div v-else-if="activeSection === 'api-keys'" class="settings-content" data-section="api-keys">
           <div class="content-header">
-            <h2 class="content-title">API Keys</h2>
-            <p class="content-subtitle">Manage your API keys and credentials</p>
+            <h2 class="content-title">API Key</h2>
+            <p class="content-subtitle">Call your AGNT from bots, scripts and other services</p>
           </div>
-          <div class="settings-grid">
-            <div class="settings-section mid-section">
-              <ApiKeyManager />
-            </div>
-          </div>
+          <ApiKeyManager />
         </div>
 
         <!-- Navigation Section -->
@@ -60,6 +56,9 @@
             <p class="content-subtitle">Customize your visual experience</p>
           </div>
           <div class="settings-grid">
+            <div class="settings-section full-width">
+              <UiModeSetting />
+            </div>
             <div class="settings-section lower-section full-width">
               <ThemeSelector />
             </div>
@@ -189,20 +188,6 @@
           </div>
         </div>
 
-        <!-- Notifications Section -->
-        <div v-else-if="activeSection === 'notifications'" class="settings-content" data-section="notifications">
-          <div class="content-header">
-            <h2 class="content-title">Notification Settings</h2>
-            <p class="content-subtitle">Configure your notification preferences</p>
-          </div>
-          <div class="settings-grid">
-            <div class="settings-section">
-              <h3>Notification Preferences</h3>
-              <p>Notification settings will be implemented here.</p>
-            </div>
-          </div>
-        </div>
-
         <!-- Security Section -->
         <div v-else-if="activeSection === 'security'" class="settings-content" data-section="security">
           <div class="content-header">
@@ -324,6 +309,7 @@ import FallbackProviders from '../Connectors/components/FallbackProviders.vue';
 import ChatBehaviorSettings from '../Connectors/components/ChatBehaviorSettings.vue';
 import ApiKeyManager from './components/ApiKeyManager/ApiKeyManager.vue';
 import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
+import UiModeSetting from '@/views/Focused/UiModeSetting.vue';
 import NavigationSettings from './components/NavigationSettings/NavigationSettings.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
 import UsageManager from './components/UsageManager/UsageManager.vue';
@@ -356,6 +342,7 @@ export default {
     ChatBehaviorSettings,
     ApiKeyManager,
     ThemeSelector,
+    UiModeSetting,
     NavigationSettings,
     BillingManager,
     UsageManager,

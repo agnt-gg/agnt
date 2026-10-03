@@ -887,7 +887,10 @@ export default {
     const baseScreenRef = ref(null);
     const mobileView = inject('isMobile', ref(false));
     const mobileDirectoryOpen = ref(!route?.query?.section);
-    const mobileSelectSection = item => { mobileDirectoryOpen.value = false; setInnerSection(item.id); showSection(item.id); };
+    const mobileSelectSection = item => {
+      if (item.screen) { emit('screen-change', item.screen); return; }
+      mobileDirectoryOpen.value = false; setInnerSection(item.id); showSection(item.id);
+    };
 
 
     // Fan a provider-changed event to other tabs via the local backend's

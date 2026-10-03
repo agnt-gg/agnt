@@ -386,7 +386,10 @@ describe('canvas sections registry', () => {
     const apps = connectors[0];
     // "Add-on" is not a thing AGNT has. The unit is a plugin, everywhere the
     // user can read one: this tab, the mobile heading, and the system counts.
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS', 'PLUGINS']);
+    // Plugins is a row of the Apps sidebar, not a toolbar tab, but the row
+    // still owns the screen so the rail stays highlighted on it.
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS']);
+    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['APPS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
     expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'MARKET' }]);
     expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECTORS', 'CONNECTORS']);
@@ -396,12 +399,16 @@ describe('canvas sections registry', () => {
     expect(canvasSrc).toMatch(/'is-warn': item\.id === 'apps'/);
   });
 
-  it('AI Providers leads the Connect nav instead of taking a row; Plugins has one door', () => {
+  it('AI Providers leads the Connect nav instead of taking a row; Plugins is its last row', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    const connectNavIds = appsDirectory.flatMap(g => g.items).map(i => i.id);
+    const items = appsDirectory.flatMap(g => g.items);
+    const connectNavIds = items.map(i => i.id);
     expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
-    expect(connectNavIds).not.toContain('plugins');
+    // Plugins is listed beside the connections, and opens its OWN screen
+    // rather than a section of Connectors (which has no plugins branch).
+    expect(connectNavIds.at(-1)).toBe('plugins');
+    expect(items.find(i => i.id === 'plugins').screen).toBe('PluginsScreen');
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
 
     // Providers is the FIRST row of that nav, not a rail row. Ordering is the
@@ -414,7 +421,8 @@ describe('canvas sections registry', () => {
   it('every view the Connect panel lists has a branch on the Connect screen', () => {
     // The panel is the only way to reach these views, so a row naming a view
     // the screen cannot render shows a blank page rather than erroring.
-    const connectNavIds = appsDirectory.flatMap(g => g.items).map(i => i.id);
+    // Rows that open their own screen (item.screen) are not Connectors views.
+    const connectNavIds = appsDirectory.flatMap(g => g.items).filter(i => !i.screen).map(i => i.id);
     const branches = new Set([...connectorsScreenSrc.matchAll(/activeSection === '([\w-]+)'/g)].map((m) => m[1]));
     expect(connectNavIds.filter((id) => !branches.has(id))).toEqual([]);
   });

@@ -139,7 +139,12 @@ describe('a screen can have no left column at all', () => {
   const baseScreen = fs.readFileSync(path.join(SRC, 'views/Terminal/CenterPanel/BaseScreen.vue'), 'utf8');
 
   it('resolves to false rather than to a derived name', () => {
-    expect(resolvePanel(undefined, 'PluginsScreen', 'leftPanel')).toBe(false);
+    // Any screen that opts out must come back false, never a derived name.
+    const optedOut = Object.entries(SCREEN_DEFAULTS).filter(([, v]) => v.leftPanel === false).map(([id]) => id);
+    expect(optedOut.length).toBeGreaterThan(0);
+    for (const id of optedOut) expect(resolvePanel(undefined, id, 'leftPanel'), id).toBe(false);
+    // Plugins now shares the Apps sidebar.
+    expect(resolvePanel(undefined, 'PluginsScreen', 'leftPanel')).toBe('ConnectorsPanel');
   });
 
   it('no screen that opts out still ships a left panel component', () => {

@@ -154,7 +154,10 @@ export const MAIN_SECTIONS = [
   // ── CONNECTORS ── the outside world, and where more of it comes from.
   {
     // To a business user "connect Slack" and "install the Slack plugin" are
-    // the same intent, so Connections and Plugins are two tabs of one row.
+    // the same intent, so Plugins lives in the Apps sidebar beside AI
+    // Providers, API / OAuth and the rest (appsDirectory), not as a tab.
+    // PluginsScreen stays a separate screen the sidebar opens; it is listed
+    // here, unlabelled, only so the rail row stays highlighted on it.
     // AI Providers is deliberately not a row either: "which model" is one more
     // thing you connect, so it is the first view INSIDE Apps — see
     // CONNECT_ITEMS in LeftPanel/ConnectorsPanel. MCP servers stay there for
@@ -166,7 +169,7 @@ export const MAIN_SECTIONS = [
     badge: 'connect',
     screens: [
       { screen: 'ConnectorsScreen', label: 'APPS' },
-      { screen: 'PluginsScreen', label: 'PLUGINS' },
+      { screen: 'PluginsScreen', label: 'PLUGINS', tab: false },
     ],
   },
   {

@@ -232,3 +232,60 @@ test('after an account switch the greeting catches up when connections arrive la
   await expect(page.getByText("Hi! I'm Annie, your personal AI assistant.")).toBeVisible();
   await expect(page.locator('.input-container textarea')).toBeEnabled();
 });
+
+
+const studio = async (page, path) => {
+  await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'studio'); });
+  await isolatePreferences(page);
+  await page.goto(path);
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+};
+
+test('Settings: no Notifications page, and the Layout chooser leads the Theme page @ci', async ({ appPage: page }) => {
+  await studio(page, '/settings');
+  await expect(page.locator('[data-nav="theme"]')).toBeVisible();
+  expect(await page.locator('[data-nav="notifications"]').count()).toBe(0);
+  await page.locator('[data-nav="theme"]').click();
+  const theme = page.locator('[data-section="theme"]');
+  await expect(theme.getByRole('radiogroup', { name: 'Layout' })).toBeVisible();
+  // Above the theme cards, not below them.
+  const layoutTop = await theme.locator('.ui-mode-setting').evaluate(el => el.getBoundingClientRect().top);
+  const themesTop = await theme.locator('.lower-section').evaluate(el => el.getBoundingClientRect().top);
+  expect(layoutTop).toBeLessThan(themesTop);
+  await theme.getByTestId('ui-mode-focused').click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.getters['theme/uiMode'])).toBe('focused');
+});
+
+for (const themeName of ['cyberpunk', 'light']) test('API Key page has real spacing and the app fonts in ' + themeName + ' @ci', async ({ appPage: page }, testInfo) => {
+  await studio(page, '/settings');
+  await page.evaluate(t => document.querySelector('#app').__vue_app__.config.globalProperties.$store.dispatch('theme/setTheme', t), themeName);
+  await page.locator('[data-nav="api-keys"]').click();
+  const section = page.locator('[data-section="api-keys"]');
+  const card = section.locator('.api-card, .pro-gate-locked').first();
+  await expect(card).toBeVisible();
+  const box = await card.evaluate(el => { const c = getComputedStyle(el); return { pl: parseFloat(c.paddingLeft), pt: parseFloat(c.paddingTop), font: c.fontFamily, radius: parseFloat(c.borderTopLeftRadius) }; });
+  expect(box.pl).toBeGreaterThanOrEqual(18);
+  expect(box.pt).toBeGreaterThanOrEqual(18);
+  expect(box.radius).toBeGreaterThanOrEqual(10);
+  const bodyFont = await page.evaluate(() => getComputedStyle(document.querySelector('[data-section="api-keys"] .content-title')).fontFamily);
+  expect(box.font).toBe(bodyFont);
+  await section.screenshot({ path: testInfo.outputPath('api-key-' + themeName + '.png') });
+  await page.screenshot({ path: 'C:/Users/Studio/AppData/Roaming/AGNT/projects/updater-067-mobile-evidence-01/api-key-' + themeName + '.png' });
+});
+
+test('Plugins is a row of the Apps sidebar, not a toolbar tab, and the sidebar stays on Plugins @ci', async ({ appPage: page }) => {
+  await studio(page, '/connectors');
+  const sidebar = page.locator('.connectors-panel');
+  await expect(sidebar.locator('[data-nav="plugins"]')).toBeVisible();
+  // The toolbar row of tabs for Apps no longer offers Plugins.
+  await expect(page.locator('.cv-nav-panels .cv-pbtn').first()).toBeVisible();
+  expect(await page.locator('.cv-nav-panels .cv-pbtn').filter({ hasText: /plugins/i }).count()).toBe(0);
+  await sidebar.locator('[data-nav="plugins"]').click();
+  await expect(page).toHaveURL(/\/plugins/);
+  await expect(page.locator('.connectors-panel [data-nav="plugins"]')).toHaveClass(/active/);
+  await expect(page.getByRole('heading', { name: 'My Plugins' })).toBeVisible();
+  // And back to a section of Apps from the Plugins screen.
+  await page.locator('.connectors-panel [data-nav="mcp-servers"]').click();
+  await expect(page).toHaveURL(/\/connectors/);
+  await expect(page.locator('.connectors-panel [data-nav="mcp-servers"]')).toHaveClass(/active/);
+});

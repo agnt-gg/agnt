@@ -17,9 +17,9 @@
             v-for="item in CONNECT_ITEMS"
             :key="item.id"
             class="nav-item"
-            :class="{ active: activeSection === item.id }"
+            :class="{ active: isActive(item) }"
             :data-nav="item.id"
-            @click="handleNavClick(item.id)"
+            @click="handleNavClick(item)"
           >
             <i :class="item.icon"></i>
             <span>
@@ -85,13 +85,18 @@ import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 // CONNECT rail row of its own for a while; a whole row for one view of one
 // screen said it was a bigger idea than it is.
 //
-// Plugins is deliberately absent: it has its own rail row, and an installable
-// asset is not something AGNT reaches out to.
+// Plugins is the one row that opens its own screen (item.screen): it is a
+// separate screen that shares this sidebar, so the nav stays put when you move
+// between connecting a service and installing a plugin.
 const CONNECT_ITEMS = appsDirectory[0].items;
 
 export default {
   name: 'ConnectorsPanel',
   emits: ['panel-action'],
+  props: {
+    /** The screen this sidebar sits beside (ConnectorsScreen or PluginsScreen). */
+    screenName: { type: String, default: 'ConnectorsScreen' },
+  },
   setup(props, { emit }) {
     const store = useStore();
     // Not local state: reading the shared value is what keeps this panel in
@@ -104,13 +109,28 @@ export default {
       return secrets.length + allProviders.length;
     });
 
-    const handleNavClick = (section) => {
-      setInnerSection(section);
-      emit('panel-action', 'connectors-nav', section);
+    const onOwnScreen = (item) => !!item.screen && props.screenName === item.screen;
+    const isActive = (item) =>
+      item.screen ? onOwnScreen(item) : props.screenName !== 'PluginsScreen' && activeSection.value === item.id;
+
+    const handleNavClick = (item) => {
+      // The { screen } form: BaseScreen turns it into a screen change for any
+      // screen. A bare string is left to each screen's own handler, and the
+      // Apps screen has none, so the click went nowhere.
+      if (item.screen) {
+        emit('panel-action', 'navigate', { screen: item.screen });
+        return;
+      }
+      setInnerSection(item.id);
+      // From the Plugins screen, a section row first goes back to Apps; the
+      // shared section value then shows the chosen view there.
+      if (props.screenName === 'PluginsScreen') emit('panel-action', 'navigate', { screen: 'ConnectorsScreen', opts: { section: item.id } });
+      else emit('panel-action', 'connectors-nav', item.id);
     };
 
     return {
       activeSection,
+      isActive,
       handleNavClick,
       totalSecrets,
       CONNECT_ITEMS,
