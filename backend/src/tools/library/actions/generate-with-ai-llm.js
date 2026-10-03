@@ -19,6 +19,12 @@ import { runWithFallback } from '../../../services/orchestrator/ProviderFallback
 import { providerHealth } from '../../../services/ai/providerHealth.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
+import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
+import {
+  generateImageSubscriptionFirst,
+  isSubscriptionFirstProvider,
+  chatGptSubscriptionSignedIn,
+} from '../../../services/images/subscriptionFirstImage.js';
 
 /**
  * Provider facts come from the registry. This file used to carry its own copy.
@@ -498,7 +504,11 @@ class GenerateWithAiLlm extends BaseAction {
     try {
       const userId = workflowEngine.userId;
       const normalizedProvider = params.provider.toLowerCase();
-      const accessTokenOrApiKey = await this.resolveCredential(params.provider, userId);
+      // OpenAI images try the ChatGPT subscription first, so the API key is
+      // only looked up if they fall back to the API (a user with just a
+      // ChatGPT login has no key, and must not be refused up front).
+      const subscriptionFirst = (params.mode || 'Text Generation') === 'Image Generation' && isSubscriptionFirstProvider(normalizedProvider);
+      const accessTokenOrApiKey = subscriptionFirst ? null : await this.resolveCredential(params.provider, userId);
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
       const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
@@ -535,8 +545,10 @@ class GenerateWithAiLlm extends BaseAction {
         userId,
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
-        provider: normalizedProvider,
-        model: params.model || response?.model || 'unknown',
+        // Recorded under what actually served it: an OpenAI image request
+        // served by the ChatGPT subscription is an openai-codex call.
+        provider: response?.servedProvider || normalizedProvider,
+        model: response?.servedModel || params.model || response?.model || 'unknown',
         usage: {
           inputTokens: response?.inputTokens || 0,
           outputTokens: response?.outputTokens || 0,
@@ -669,6 +681,10 @@ class GenerateWithAiLlm extends BaseAction {
   async handleImageGeneration(params) {
     const provider = params.provider.toLowerCase();
 
+    if (isSubscriptionFirstProvider(provider)) {
+      return this.imageResult(await this.generateImageSubscriptionFirst(params));
+    }
+
     // The REGISTRY decides who can generate images. The local table this used
     // to consult listed stale image models and disagreed with the catalog the
     // orchestrator validates against, so a user could pick a provider the tool
@@ -682,10 +698,11 @@ class GenerateWithAiLlm extends BaseAction {
     if (!method) {
       throw new Error(`Image generation not implemented for provider: ${params.provider}`);
     }
-    const response = await this[method](params);
+    return this.imageResult(await this[method](params));
+  }
 
+  imageResult(response) {
     const images = response.generatedImages || [];
-
     return {
       generatedText: '',
       tokenCount: 0,
@@ -694,7 +711,65 @@ class GenerateWithAiLlm extends BaseAction {
       revisedPrompt: response.revisedPrompt || null,
       imageMetadata: response.imageMetadata || null,
       groundingMetadata: response.groundingMetadata || null,
+      servedProvider: response.servedProvider || null,
+      servedModel: response.servedModel || null,
+      inputTokens: response.inputTokens || 0,
+      outputTokens: response.outputTokens || 0,
       error: null,
+    };
+  }
+
+  /**
+   * OpenAI images: the ChatGPT/Codex subscription first, then the API.
+   * `params.fallbackProvider` (default openai) names the API used when the
+   * subscription is not signed in, cannot serve the request, or fails.
+   */
+  async generateImageSubscriptionFirst(params) {
+    const result = await generateImageSubscriptionFirst(params, {
+      subscription: {
+        signedIn: chatGptSubscriptionSignedIn,
+        generate: (request) =>
+          generateCodexImage(
+            { ...request, provider: 'openai-codex' },
+            {
+              createClient: createLlmClient,
+              userId: request.userId,
+              signal: request.signal,
+              // The request is billed to the ChatGPT account on the login;
+              // without one it must not be sent.
+              beforeDispatch: async () => {
+                if (!responseConnection.getChatGptAccountId()) throw new Error('No ChatGPT account on the Codex login.');
+              },
+            },
+          ),
+      },
+      api: async (request, apiProvider) => {
+        const method = GenerateWithAiLlm.IMAGE_ROUTES[apiProvider];
+        if (!method) throw new Error(`Image generation not implemented for provider: ${apiProvider}`);
+        const apiKey = await this.resolveCredential(apiProvider, request.userId);
+        // Without a key the SDK would send `Bearer null` and the provider's
+        // "Incorrect API key provided: null" would hide the real cause.
+        if (!apiKey) throw new Error(`No ${apiProvider} API key is connected.`);
+        const models = ProviderRegistry.getImageGenCapabilities(apiProvider)?.models || [];
+        const model = request.model && models.includes(request.model) ? request.model : imageDefaultModel(apiProvider);
+        const response = await this[method]({ ...request, provider: apiProvider, apiKey, model });
+        return { ...response, servedModel: model };
+      },
+    });
+
+    const subscription = result.servedBy === 'subscription';
+    const usage = subscription ? result.imageMetadata?.usage : null;
+    return {
+      ...result,
+      servedModel: subscription ? result.imageMetadata?.returnedModel || 'chatgpt-subscription' : result.servedModel,
+      inputTokens: usage?.input_tokens || 0,
+      outputTokens: usage?.output_tokens || 0,
+      imageMetadata: {
+        ...(result.imageMetadata || {}),
+        servedBy: result.servedBy,
+        provider: result.servedProvider,
+        ...(result.subscriptionSkipped ? { subscriptionSkipped: result.subscriptionSkipped } : {}),
+      },
     };
   }
 
@@ -1326,7 +1401,8 @@ class GenerateWithAiLlm extends BaseAction {
         // Validate provider supports image generation — against the registry,
         // the same source handleImageGeneration and the orchestrator's
         // generate_image schema now use, so all three agree by construction.
-        if (!ProviderRegistry.supportsImageGeneration(params.provider.toLowerCase())) {
+        // openai-codex is the ChatGPT subscription route (subscription first).
+        if (!isSubscriptionFirstProvider(params.provider) && !ProviderRegistry.supportsImageGeneration(params.provider.toLowerCase())) {
           const supported = ProviderRegistry.getImageGenProviders().map((p) => p.name || p.provider).join(', ');
           throw new Error(`Provider ${params.provider} does not support image generation. Supported providers: ${supported}`);
         }

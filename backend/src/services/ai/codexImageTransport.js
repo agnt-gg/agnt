@@ -16,16 +16,43 @@ export function referenceDataUri(value) {
   validatePng(decodeBase64(match[1]));
   return value;
 }
+/**
+ * Sizes the subscription endpoint honours, and how the OpenAI Images sizes AGNT
+ * offers map onto them. Measured live 2026-10-02: 1536x1024 came back exactly
+ * 1536x1024; 1024x1024 and auto came back square; 1792x1024 was accepted but
+ * came back square, so the legacy DALL-E sizes are translated to the matching
+ * orientation rather than sent through.
+ */
+const CODEX_SIZES = { auto: 'auto', '1024x1024': '1024x1024', '1536x1024': '1536x1024', '1024x1536': '1024x1536',
+  '256x256': '1024x1024', '512x512': '1024x1024', '1792x1024': '1536x1024', '1024x1792': '1024x1536' };
+// gpt-image vocabulary passes through; DALL-E's 'standard' / 'hd' translate.
+const CODEX_QUALITIES = { auto: 'auto', low: 'low', medium: 'medium', high: 'high', standard: 'auto', hd: 'high' };
+
+export function codexImageSize(size) {
+  if (!size) return 'auto';
+  const mapped = CODEX_SIZES[size];
+  if (!mapped) throw new Error(`Unsupported image size for the ChatGPT subscription: ${size}`);
+  return mapped;
+}
+export function codexImageQuality(quality) {
+  if (!quality) return 'auto';
+  const mapped = CODEX_QUALITIES[quality];
+  if (!mapped) throw new Error(`Unsupported image quality for the ChatGPT subscription: ${quality}`);
+  return mapped;
+}
+
 function requestFor(params) {
   const operation = params.imageOperation || 'Generate';
   if (!['Generate', 'Edit'].includes(operation)) throw new Error('Codex supports Generate/Edit, not Variation.');
+  // The subscription picks its own image model; a model pin meant for the
+  // Images API is recorded but cannot be honoured.
   const requestedModel = params.model || 'provider-default';
-  if (requestedModel !== 'provider-default') throw new Error('Codex does not establish that model pins or latest are honored. Use provider-default (engine identity unknown); no model substitution was made.');
   if (params.numberOfImages != null && Number(params.numberOfImages) !== 1) throw new Error('Codex supports one image per request.');
-  if (params.imageSize && params.imageSize !== 'auto') throw new Error('Codex v1 supports auto image size only.');
-  if (params.imageQuality && params.imageQuality !== 'auto') throw new Error('Codex v1 supports auto quality only.');
-  if (params.imageStyle || params.aspectRatio || params.mask) throw new Error('Unsupported Codex rendering control.');
-  if (params.responseFormat && params.responseFormat !== 'b64_json') throw new Error('Codex returns base64 PNG only.');
+  const size = codexImageSize(params.imageSize);
+  const quality = codexImageQuality(params.imageQuality);
+  // imageStyle was a DALL-E 3 control with no gpt-image equivalent; the API
+  // path ignores it too. A mask or aspect ratio cannot be honoured here.
+  if (params.aspectRatio || params.mask) throw new Error('Unsupported Codex rendering control.');
   const prompt = params.imagePrompt;
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 16000) throw new Error('Codex image prompt must contain 1–16000 characters.');
   if (params.referenceImage && params.referenceImages) throw new Error('Use one explicit reference selector, not both.');
@@ -34,7 +61,7 @@ function requestFor(params) {
   if (operation === 'Generate' && refs.length) throw new Error('Generate cannot silently discard references; use Edit.');
   if (operation === 'Edit' && !refs.length) throw new Error('Edit requires explicit PNG references.');
   if (refs.reduce((sum, ref) => sum + (typeof ref === 'string' ? ref.length : MAX_RESPONSE_BYTES), 0) > MAX_RESPONSE_BYTES) throw new Error('Total reference bytes exceed limit.');
-  const body = { prompt, background: 'auto', quality: 'auto', size: 'auto' };
+  const body = { prompt, background: 'auto', quality, size };
   if (refs.length) body.images = refs.map(ref => ({ image_url: referenceDataUri(ref) }));
   return { body, operation, requestedModel, referenceCount: refs.length };
 }

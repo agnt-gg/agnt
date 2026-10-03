@@ -4286,7 +4286,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'generate_image',
         description:
-          'Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation. Use this tool when the user asks you to create, generate, or make images.',
+            'Generate images using AI. Supports OpenAI, Google Gemini, and Grok image generation. OpenAI images use the ChatGPT/Codex subscription first when signed in, then the API. Use this tool when the user asks you to create, generate, or make images.',
         parameters: {
           type: 'object',
           properties: {
@@ -4343,10 +4343,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Import the ProviderRegistry to check capabilities
         const ProviderRegistry = await import('../../services/ai/ProviderRegistry.js');
 
-        // No provider named: the user's own image-capable provider (default,
-        // then fallback tiers). Never a vendor this tool picks for them.
+        // No provider named: the ChatGPT subscription first when signed in,
+        // with the user's own image-capable provider (default, then fallback
+        // tiers) as the API fallback. Otherwise that provider directly.
+        // Never a vendor this tool picks for them.
+        const { isSubscriptionFirstProvider, chatGptSubscriptionSignedIn } = await import('../images/subscriptionFirstImage.js');
+        let fallbackProvider = null;
         if (!provider) {
-          provider = await resolveAccountImageProvider(context?.userId);
+          const accountImageProvider = await resolveAccountImageProvider(context?.userId);
+          if (await chatGptSubscriptionSignedIn()) {
+            provider = 'openai';
+            if (accountImageProvider && accountImageProvider !== 'openai') fallbackProvider = accountImageProvider;
+          } else {
+            provider = accountImageProvider;
+          }
           if (!provider) {
             const supportedProviders = ProviderRegistry.getImageGenProviders().map((p) => p.provider).join(', ');
             return JSON.stringify({
@@ -4357,9 +4367,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
         console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
-        // Validate provider supports image generation
+        // Validate provider supports image generation. openai / openai-codex
+        // go to the ChatGPT subscription first; their model and options are
+        // checked against the API provider they fall back to.
         const normalizedProvider = provider.toLowerCase();
-        if (!ProviderRegistry.supportsImageGeneration(normalizedProvider)) {
+        const subscriptionFirst = isSubscriptionFirstProvider(normalizedProvider);
+        const routeProvider = subscriptionFirst ? fallbackProvider || 'openai' : normalizedProvider;
+        if (!ProviderRegistry.supportsImageGeneration(routeProvider)) {
           const supportedProviders = ProviderRegistry.getImageGenProviders()
             .map((p) => p.provider)
             .join(', ');
@@ -4382,10 +4396,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
 
         // Get available models dynamically (with fallback to static)
-        const availableModels = await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
+        const availableModels = await ProviderRegistry.getImageGenModels(routeProvider, userId, authToken);
 
         // Get provider capabilities
-        const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
+        const capabilities = ProviderRegistry.getImageGenCapabilities(routeProvider);
 
         // Use default model if not specified
         const selectedModel = model || capabilities.defaultModel;
@@ -4419,19 +4433,18 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           imagePrompt: prompt,
           imageOperation: 'Generate',
           numberOfImages: numberOfImages,
+          ...(fallbackProvider ? { fallbackProvider } : {}),
         };
 
         // Add provider-specific parameters
-        if (normalizedProvider === 'openai') {
+        if (subscriptionFirst || routeProvider === 'openai') {
           if (size) params.imageSize = size;
           if (quality) params.imageQuality = quality;
           if (style) params.imageStyle = style;
           params.responseFormat = 'b64_json'; // Always use base64 for orchestrator
-        } else if (normalizedProvider === 'gemini') {
-          if (aspectRatio) params.aspectRatio = aspectRatio;
-        } else if (normalizedProvider === 'grokai') {
-          params.responseFormat = 'b64_json'; // Always use base64 for orchestrator
         }
+        if (routeProvider === 'gemini' && aspectRatio) params.aspectRatio = aspectRatio;
+        if (routeProvider === 'grokai') params.responseFormat = 'b64_json'; // Always use base64 for orchestrator
 
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
@@ -4489,10 +4502,19 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         }
 
+        // Report what actually served the request, not what was asked for.
+        const meta = result.imageMetadata || {};
+        const bySubscription = meta.servedBy === 'subscription';
+        const servedProvider = meta.servedBy ? meta.provider : provider;
+        const servedModel = bySubscription ? meta.returnedModel || 'ChatGPT subscription' : meta.model || selectedModel;
+        const servedVia = bySubscription ? 'your ChatGPT subscription' : `${servedProvider} ${servedModel}`;
+
         return JSON.stringify({
           success: true,
-          provider: provider,
-          model: selectedModel,
+          provider: servedProvider,
+          model: servedModel,
+          servedBy: meta.servedBy || 'api',
+          ...(meta.subscriptionSkipped ? { subscriptionSkipped: meta.subscriptionSkipped } : {}),
           generatedImages,
           firstImage: result.firstImage || null,
           savedImageIds,
@@ -4503,7 +4525,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
           imageMetadata: result.imageMetadata || null,
-          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
+          message: `Successfully generated ${generatedImages.length} image(s) using ${servedVia}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {
         console.error('Error in generate_image tool:', error);
