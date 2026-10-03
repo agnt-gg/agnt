@@ -242,7 +242,10 @@
         />
 
         <!-- Section screens: render directly via slot (fast, no widget overhead) -->
-        <div v-else v-show="!showLibrary && !showTeamWorkspace" class="cv-personal-content"><slot /></div>
+        <!-- data-fullscreen-host: the one box a screen's "fullscreen" may fill.
+             It is below the top bar and beside the sidebar by construction, so
+             nothing expanded inside a screen can cover the app's own chrome. -->
+        <div v-else v-show="!showLibrary && !showTeamWorkspace" class="cv-personal-content" data-fullscreen-host><slot /></div>
       </div>
     </div>
 
@@ -1202,7 +1205,7 @@ export default {
 
 /* Reference sidebar: scope first, then the destinations from the registry. */
 
-.cv-personal-content{height:100%;min-height:0;display:flex;flex-direction:column}.cv-personal-content>*{flex:1;min-height:0}
+.cv-personal-content{position:relative;height:100%;min-height:0;display:flex;flex-direction:column}.cv-personal-content>*{flex:1;min-height:0}
 
 .cv-mobile-menu, .cv-mobile-nav-close { border: 0; background: transparent; color: var(--color-text); min-width: 44px; min-height: 44px; cursor: pointer; -webkit-app-region: no-drag; }
 .cv-mobile-nav-close { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; width: 100%; border-bottom: 1px solid var(--terminal-border-color); }

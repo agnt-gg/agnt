@@ -13,20 +13,25 @@
     the DOM is empty.
   -->
   <!--
-    Fullscreen MOVES this card to <body> rather than opening a second viewer.
-    A disabled Teleport keeps the same component instance, so the stream lease,
-    the page and anything half-typed survive the toggle; a modal holding a
-    fresh BrowserStreamView would re-subscribe and flash "Opening…".
+    Fullscreen MOVES this card rather than opening a second viewer. A disabled
+    Teleport keeps the same component instance, so the stream lease, the page
+    and anything half-typed survive the toggle; a modal holding a fresh
+    BrowserStreamView would re-subscribe and flash "Opening…".
+
+    It moves into the screen's fullscreen HOST (CanvasScreen's content box),
+    not <body>. That box is below the top bar and beside the sidebar, so the
+    expanded browser cannot cover either, whatever the layout does. <body> is
+    only the fallback for a surface with no app chrome at all.
   -->
-  <Teleport to="body" :disabled="!fullscreen">
+  <Teleport :to="fullscreenHost || 'body'" :disabled="!fullscreen">
   <div
     v-if="owns"
     v-show="live || showing"
+    ref="cardRef"
     class="browser-live-card"
-    :class="{ 'is-fullscreen': fullscreen }"
+    :class="{ 'is-fullscreen': fullscreen, 'is-window-fullscreen': fullscreen && !fullscreenHost }"
     :role="fullscreen ? 'dialog' : undefined"
     :aria-modal="fullscreen ? 'true' : undefined"
-    :style="fullscreen ? { top: `${chromeHeight}px` } : undefined"
     aria-label="Live browser"
   >
     <div class="live-header" @click="!fullscreen && (collapsed = !collapsed)">
@@ -68,7 +73,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, onDeactivated } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { claimLiveView, releaseLiveView, ownsLiveView } from './browserLiveRegistry.js';
 
@@ -122,51 +127,56 @@ function onPage({ url }) {
   pageUrl.value = url || '';
 }
 
+const cardRef = ref(null);
 const fullscreen = ref(false);
-function toggleFullscreen() { fullscreen.value = !fullscreen.value; }
 
 /**
- * How far down fullscreen starts: below the app's top bar, never over it.
- *
- * The first version covered the whole window, which put the exit button a few
- * pixels from the window's own close button. The bar holds the window
- * controls and stays visible and usable; the browser fills everything else.
- * Measured rather than hard-coded because the bar's height differs between
- * the desktop and compact layouts.
+ * The box fullscreen fills: the nearest [data-fullscreen-host] around THIS
+ * card, resolved while the card is still in the transcript (once teleported,
+ * its ancestry is the host itself). Structural rather than measured: a top
+ * offset read once from the top bar went stale on every layout change, and
+ * when it read 0 the browser sat under the bar's window-drag region, where
+ * Electron swallows clicks — the exit button stopped working.
  */
-const chromeHeight = ref(0);
-function measureChrome() {
-  const bar = document.querySelector('.cv-toolbar');
-  chromeHeight.value = bar ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
-}
+const fullscreenHost = ref(null);
 
-// Escape leaves fullscreen. Keys typed INTO the page never get here: the
-// stream canvas stops their propagation, so Escape inside a site's dialog
-// still reaches the site.
-function onWindowKeydown(event) {
-  if (event.key === 'Escape' && fullscreen.value) {
-    event.preventDefault();
-    fullscreen.value = false;
-  }
+function enterFullscreen() {
+  fullscreenHost.value = cardRef.value?.closest?.('[data-fullscreen-host]') || null;
+  fullscreen.value = true;
+}
+function exitFullscreen() { fullscreen.value = false; }
+function toggleFullscreen() { if (fullscreen.value) exitFullscreen(); else enterFullscreen(); }
+
+/**
+ * Escape ALWAYS leaves fullscreen, so there is never a state you cannot get
+ * out of. Capture phase, because the stream canvas stops propagation of every
+ * key it forwards to the page — a bubbling listener never saw Escape once the
+ * user had clicked into the page. Fullscreen owns Escape the way a browser's
+ * own fullscreen does; outside fullscreen it still reaches the page.
+ */
+function onEscapeCapture(event) {
+  if (event.key !== 'Escape' || !fullscreen.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  exitFullscreen();
 }
 watch(fullscreen, (on) => {
-  if (on) {
-    measureChrome();
-    window.addEventListener('keydown', onWindowKeydown);
-    window.addEventListener('resize', measureChrome);
-  } else {
-    window.removeEventListener('keydown', onWindowKeydown);
-    window.removeEventListener('resize', measureChrome);
-  }
+  if (on) window.addEventListener('keydown', onEscapeCapture, true);
+  else window.removeEventListener('keydown', onEscapeCapture, true);
 });
 // A newer turn taking the stream over unrenders this card; leave no
 // listener and no fullscreen state behind for when it comes back.
-watch(owns, (isOwner) => { if (!isOwner) fullscreen.value = false; });
+watch(owns, (isOwner) => { if (!isOwner) exitFullscreen(); });
+
+// Chat lives inside <KeepAlive>. Navigating away DEACTIVATES it, and Vue does
+// not move teleported content on deactivation — a fullscreen browser would
+// stay on top of whatever screen the user went to, with no way back short of
+// a restart. Leaving the screen therefore leaves fullscreen.
+onDeactivated(exitFullscreen);
 
 onMounted(() => claimLiveView(props.cardKey, props.order, props.conversationId));
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onWindowKeydown);
-  window.removeEventListener('resize', measureChrome);
+  window.removeEventListener('keydown', onEscapeCapture, true);
   releaseLiveView(props.cardKey);
 });
 </script>
@@ -268,17 +278,26 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Same full-window treatment as the HTML/visualization preview modal. */
+/* Fills the screen's content box (the fullscreen host), never the window.
+   z-index stays BELOW the top bar (100): the bar's own popovers — Jump, the
+   model picker — must open over the browser, not under it. */
 .browser-live-card.is-fullscreen {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 10000;
+  z-index: 99;
   margin: 0;
   border: none;
   border-radius: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-darkest, #0b0b14);
+}
+
+/* Fallback only: a surface with no fullscreen host has no app chrome to
+   protect, so the whole window is the right box. */
+.browser-live-card.is-window-fullscreen {
+  position: fixed;
+  z-index: 10000;
 }
 
 /* Exit sits at the far LEFT in fullscreen, the opposite end of the window

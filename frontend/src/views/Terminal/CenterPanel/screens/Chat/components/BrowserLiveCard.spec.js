@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, KeepAlive, shallowRef } from 'vue';
 
 const seen = vi.hoisted(() => ({ props: null, emit: null, setups: 0 }));
 
@@ -33,12 +33,21 @@ afterEach(() => { wrapper?.unmount(); wrapper = null; _resetLiveRegistry(); docu
 // the element being attached to a document, which a mounted wrapper is not).
 const hidden = () => /display:\s*none/.test(wrapper.find('.browser-live-card').attributes('style') || '');
 
-const mountCard = async (live, extra = {}) => {
+// The app's screen box, as CanvasScreen renders it. Fullscreen must fill THIS,
+// never the window — the top bar and sidebar live outside it.
+const makeHost = () => {
+  const host = document.body.appendChild(document.createElement('div'));
+  host.setAttribute('data-fullscreen-host', '');
+  return host;
+};
+
+const mountCard = async (live, extra = {}, { host = makeHost() } = {}) => {
   wrapper = mount(BrowserLiveCard, {
     props: { cardKey: `m-${Math.random()}`, order: Date.now(), live, ...extra },
     global: { directives: { tooltip: {} } },
-    // Attached, so a teleported card is still findable in the real DOM.
-    attachTo: document.body.appendChild(document.createElement('div')),
+    // Attached inside the host, as the chat transcript is, so a teleported
+    // card is still findable in the real DOM.
+    attachTo: (host || document.body).appendChild(document.createElement('div')),
   });
   await flushPromises();
 };
@@ -72,33 +81,65 @@ describe('fullscreen', () => {
   const toggle = () => card().querySelector('.live-fullscreen').click();
   const isFullscreen = () => card().classList.contains('is-fullscreen');
 
-  it('moves the SAME live view to the whole window, and back', async () => {
+  it('moves the SAME live view into the screen box, and back', async () => {
     await mountCard(true);
+    const host = document.querySelector('[data-fullscreen-host]');
     const before = seen.setups;
 
     await toggle(); await flushPromises();
-    // Teleported to <body>, covering the window.
-    expect(card()?.parentElement).toBe(document.body);
+    // A direct child of the screen box: below the top bar and beside the
+    // sidebar by construction, never a window-wide layer on <body>.
+    expect(card()?.parentElement).toBe(host);
     expect(card().classList.contains('is-fullscreen')).toBe(true);
+    expect(card().classList.contains('is-window-fullscreen')).toBe(false);
     expect(card().getAttribute('role')).toBe('dialog');
 
     await toggle(); await flushPromises();
     expect(isFullscreen()).toBe(false);
-    expect(card().parentElement).not.toBe(document.body);
+    expect(card().parentElement).not.toBe(host);
     // No remount either way: a new stream view would drop the lease and the
     // page state the user was in the middle of.
     expect(seen.setups).toBe(before);
   });
 
-  it('stays below the app top bar, so its window controls are never covered', async () => {
-    const bar = document.body.appendChild(document.createElement('div'));
-    bar.className = 'cv-toolbar';
-    bar.getBoundingClientRect = () => ({ top: 0, bottom: 32, left: 0, right: 1000, width: 1000, height: 32 });
+  it('falls back to the whole window only where there is no app chrome', async () => {
+    await mountCard(true, {}, { host: null });
+    await toggle(); await flushPromises();
+    expect(card()?.parentElement).toBe(document.body);
+    expect(card().classList.contains('is-window-fullscreen')).toBe(true);
+  });
+
+  it('leaves on Escape even when the page has focus and swallows the key', async () => {
     await mountCard(true);
     await toggle(); await flushPromises();
-    expect(card().style.top).toBe('32px');
+    // The real stream canvas forwards keys with @keydown.stop, so a bubbling
+    // window listener never hears them. This was the trap.
+    const page = card().querySelector('.stream-stub');
+    page.addEventListener('keydown', (event) => event.stopPropagation());
+    page.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flushPromises();
+    expect(isFullscreen()).toBe(false);
+  });
+
+  it('leaves fullscreen when the user navigates away from chat (KeepAlive)', async () => {
+    // Chat is cached by <KeepAlive>; deactivation does not move teleported
+    // content, so a fullscreen card used to stay on top of the next screen.
+    const Other = defineComponent({ render: () => h('div', { class: 'other-screen' }) });
+    const current = shallowRef(BrowserLiveCard);
+    const host = makeHost();
+    wrapper = mount(defineComponent({
+      render: () => h(KeepAlive, null, [h(current.value, { cardKey: 'k-alive', order: Date.now(), live: true })]),
+    }), {
+      global: { directives: { tooltip: {} } },
+      attachTo: host.appendChild(document.createElement('div')),
+    });
+    await flushPromises();
     await toggle(); await flushPromises();
-    expect(card().style.top).toBe('');
+    expect(card()?.parentElement).toBe(host);
+
+    current.value = Other; await flushPromises();
+    // Nothing left covering the screen the user went to.
+    expect(document.querySelector('.browser-live-card.is-fullscreen')).toBeNull();
   });
 
   it('asks for full-resolution frames only while fullscreen', async () => {
