@@ -13,7 +13,7 @@ const store = { value: null, get: vi.fn(), save: vi.fn() };
 const releaseInboxReader = vi.fn(async () => true);
 const hosted = { slug: null };
 vi.mock('../../services/agntMail.js', () => ({ listInbound: (...a) => listInbound(...a), releaseInboxReader: (...a) => releaseInboxReader(...a) }));
-vi.mock('../../services/agntServices.js', () => ({ serviceFailure: (e) => ({ error: e.message }), hostedInstanceSlug: () => hosted.slug }));
+vi.mock('../../services/agntServices.js', () => ({ serviceFailure: (e) => ({ error: e.message }), hostedInstanceSlug: () => hosted.slug, serverNow: () => Date.now() }));
 vi.mock('../../models/TriggerCursorModel.js', () => ({ default: { get: (...a) => store.get(...a), save: (...a) => store.save(...a) } }));
 
 const listening = () => ({

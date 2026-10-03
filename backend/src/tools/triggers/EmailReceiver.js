@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { listInbound, releaseInboxReader } from '../../services/agntMail.js';
-import { serviceFailure, hostedInstanceSlug } from '../../services/agntServices.js';
+import { deliveredTag, workflowTag } from '../../services/mailAddressing.js';
+import { serviceFailure, hostedInstanceSlug, serverNow } from '../../services/agntServices.js';
 import TriggerCursorModel from '../../models/TriggerCursorModel.js';
 
 // Where the inbox read position is stored (TriggerCursorModel).
@@ -88,7 +89,7 @@ class EmailReceiver extends EventEmitter {
     if (this.since !== null) return;
     try {
       const stored = await TriggerCursorModel.get(CURSOR_SOURCE);
-      this.since = stored ?? Date.now();
+      this.since = stored ?? serverNow(); // service clock: compared with createdAt
       this.persistedSince = stored;
       // Record a first-ever start now, not on the first delivery: otherwise a
       // restart before any mail arrived would begin again at a later "now"
@@ -97,7 +98,7 @@ class EmailReceiver extends EventEmitter {
     } catch (error) {
       // An unreadable store must not stop mail: fall back to the old behaviour.
       console.error('Local EmailReceiver: could not load the inbox cursor, starting from now:', error.message);
-      this.since = Date.now();
+      this.since = serverNow();
     }
   }
 
@@ -117,9 +118,9 @@ class EmailReceiver extends EventEmitter {
    * not replay it. At most once a minute, so this is not a write per poll.
    */
   async _skipUnwatchedMail() {
-    const now = Date.now();
-    if (now - this.bootedAt < LISTENER_GRACE_MS) return;
+    if (Date.now() - this.bootedAt < LISTENER_GRACE_MS) return; // local timer
     await this._releaseReader();
+    const now = serverNow(); // the cursor is on the service's clock
     if (now - this.since < 60000) return;
     this.since = now;
     await this._saveSince();
@@ -179,8 +180,21 @@ class EmailReceiver extends EventEmitter {
           advanced = Math.max(advanced, message.createdAt || advanced);
           continue;
         }
+        // Mail to a workflow's own subaddress goes to that workflow only; mail
+        // to the bare inbox goes to every listener.
+        const tag = deliveredTag(message);
+        const targets = tag ? workflowIds.filter((id) => workflowTag(id) === tag) : workflowIds;
+        if (targets.length === 0) {
+          // Addressed to a workflow that is not listening. Just after boot it
+          // may still be starting, so wait for it; after that it is mail for a
+          // stopped workflow and must not hold up everyone else's.
+          if (Date.now() - this.bootedAt < LISTENER_GRACE_MS) break;
+          console.log(`Local EmailReceiver: no listening workflow for ${tag}; skipping message ${message.id}`);
+          advanced = Math.max(advanced, message.createdAt || advanced);
+          continue;
+        }
         let accepted = false;
-        for (const workflowId of workflowIds) {
+        for (const workflowId of targets) {
           if (await this._triggerWorkflowByEmail(workflowId, message)) accepted = true;
         }
         if (!accepted) break; // engines not ready: leave the cursor here
@@ -206,7 +220,7 @@ class EmailReceiver extends EventEmitter {
       type: 'email',
       id: message.id,
       from: message.from,
-      to: message.to,
+      to: message.deliveredTo || message.to,
       subject: message.subject,
       body: message.text ?? '',
       html: undefined, // the service returns plain text; html is not carried

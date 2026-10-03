@@ -5,8 +5,9 @@ import { serviceFailure } from '../../../services/agntServices.js';
 /**
  * Send Email, from the agent's own inbox on mail.agnt.gg. Included with AGNT Pro.
  *
- * The relay on api.agnt.gg is retired; every send now goes through the
- * account's inbox and counts against the plan's monthly email units.
+ * Every send goes through the account's inbox and counts against the plan's
+ * monthly email units. Only if mail.agnt.gg cannot be reached at all does it
+ * fall back to the api.agnt.gg relay (agntMail.sendMail).
  */
 class SendEmail extends BaseAction {
   static schema = {
@@ -64,7 +65,7 @@ class SendEmail extends BaseAction {
     super('sendEmail');
   }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
     this.validateParams(params);
     const isHtml = params.isHtml === true || params.isHtml === 'true' || (Array.isArray(params.isHtml) && params.isHtml.includes('true'));
     let attachments = params.attachments;
@@ -78,8 +79,9 @@ class SendEmail extends BaseAction {
         text: isHtml ? String(params.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : params.body,
         html: isHtml ? params.body : undefined,
         attachments: Array.isArray(attachments) ? attachments : undefined,
+        workflowId: workflowEngine?.workflowId,
       });
-      return this.formatOutput({ success: true, messageId: result.id, state: result.state, from: result.from, error: null });
+      return this.formatOutput({ success: true, messageId: result.id, state: result.state, from: result.from, ...(result.via ? { via: result.via } : {}), error: null });
     } catch (error) {
       const failure = serviceFailure(error);
       return this.formatOutput({ success: false, messageId: null, from: null, error: failure.message || failure.error, ...failure });

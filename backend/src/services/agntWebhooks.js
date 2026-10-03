@@ -20,14 +20,36 @@ export async function createEndpoint(workflowId, name) {
   // before the row was written) adopt it rather than minting a duplicate that
   // eats the plan's endpoint allowance.
   const existing = await findEndpointByName(wanted);
-  if (existing) return existing;
-  const endpoint = await callService('webhooks', '/endpoints', { method: 'POST', idempotent: true, body: { name: wanted } });
-  return { id: endpoint.id, slug: endpoint.slug, url: endpoint.url, state: endpoint.state };
+  const endpoint = existing || (await callService('webhooks', '/endpoints', { method: 'POST', idempotent: true, body: { name: wanted } }));
+  return untilActive({ id: endpoint.id, slug: endpoint.slug, url: endpoint.url, state: endpoint.state });
+}
+
+// A new endpoint is `provisioning` for a few seconds, and its public URL
+// answers 404 until it is `active` (measured: ~3s). Handing the URL out before
+// then means a sender that fires at once loses its event.
+const ACTIVATION_TIMEOUT_MS = 20_000;
+const ACTIVATION_POLL_MS = 500;
+
+async function untilActive(endpoint, { timeoutMs = ACTIVATION_TIMEOUT_MS, pollMs = ACTIVATION_POLL_MS } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let current = endpoint;
+  while (current.state === 'provisioning' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    const list = await callService('webhooks', '/endpoints');
+    const hit = (list.endpoints || []).find((e) => e.id === endpoint.id);
+    if (hit) current = { ...current, state: hit.state };
+  }
+  // Still provisioning past the deadline: return it anyway. Events cannot
+  // arrive before it is active, and the poll reads it fine meanwhile.
+  if (current.state === 'provisioning') console.warn(`agntWebhooks: endpoint ${endpoint.slug} still provisioning after ${timeoutMs}ms`);
+  return current;
 }
 
 async function findEndpointByName(name) {
   const list = await callService('webhooks', '/endpoints');
-  const hit = (list.endpoints || []).find((e) => e.name === name && e.state === 'active');
+  // Provisioning counts: a crash between create and activation must adopt it,
+  // not mint a second one.
+  const hit = (list.endpoints || []).find((e) => e.name === name && (e.state === 'active' || e.state === 'provisioning'));
   return hit ? { id: hit.id, slug: hit.slug, url: hit.url, state: hit.state } : null;
 }
 

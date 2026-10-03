@@ -2,6 +2,8 @@ import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import WebhookModel from '../models/WebhookModel.js';
 import { defaultInbox } from '../services/agntMail.js';
+import { workflowAddress } from '../services/mailAddressing.js';
+import { legacyWebhooks } from '../services/legacyRelay.js';
 import { serviceAllowed, SERVICES, serviceFailure, callService } from '../services/agntServices.js';
 import { getFlashAccount, startTopUp } from '../services/agntFlashAccount.js';
 
@@ -97,11 +99,14 @@ AgntServicesRoutes.post('/models/top-up', authenticateToken, async (req, res) =>
   }
 });
 
-AgntServicesRoutes.get('/inbox', authenticateToken, async (_req, res) => {
+// ?workflowId= returns that workflow's own address (inbox+wf-<id>@...), which
+// only that workflow receives. Without it, the bare inbox, which all receive.
+AgntServicesRoutes.get('/inbox', authenticateToken, async (req, res) => {
   try {
     if (!(await serviceAllowed('mail'))) return res.json({ pro: false, address: null });
     const inbox = await defaultInbox();
-    res.json({ pro: true, address: inbox.address, inboxId: inbox.id });
+    const workflowId = typeof req.query.workflowId === 'string' && req.query.workflowId ? req.query.workflowId : null;
+    res.json({ pro: true, address: workflowId ? workflowAddress(inbox.address, workflowId) : inbox.address, inboxAddress: inbox.address, inboxId: inbox.id });
   } catch (error) {
     const failure = serviceFailure(error);
     res.status(failure.code === 'pro_required' ? 200 : 502).json({ pro: failure.code !== 'pro_required', address: null, error: failure.error });
@@ -113,7 +118,9 @@ AgntServicesRoutes.get('/webhook/:workflowId', authenticateToken, async (req, re
     if (!(await serviceAllowed('webhooks'))) return res.json({ pro: false, url: null });
     const row = await WebhookModel.findByWorkflowId(req.params.workflowId, req.user.id);
     const url = row?.endpoint_id ? row.webhook_url : null;
-    res.json({ pro: true, url, state: url ? 'active' : 'pending' });
+    // The pre-0.6.7 URL is registered alongside the hosted one while the
+    // workflow is active, so senders that still use it keep delivering.
+    res.json({ pro: true, url, legacyUrl: row ? legacyWebhooks.url(req.params.workflowId) : null, state: url ? 'active' : 'pending' });
   } catch (error) {
     res.status(500).json({ pro: true, url: null, error: serviceFailure(error).error });
   }

@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 const hooks = { pullEvents: vi.fn(), createEndpoint: vi.fn(), retireEndpoint: vi.fn(), eventToTrigger: (e) => e };
 vi.mock('../../services/agntWebhooks.js', () => hooks);
+// The old api.agnt.gg relay is a separate source; idle here so no test reaches the network.
+vi.mock('../../services/legacyRelay.js', () => ({ legacyWebhooks: { url: (id) => 'https://api.agnt.gg/webhook/' + id, register: async () => ({}), unregister: async () => ({}), poll: async () => [], confirm: async () => ({}), release: async () => ({}) } }));
 vi.mock('../../services/agntServices.js', async (orig) => ({ ...(await orig()), serviceFailure: (e) => ({ success: false, error: e.code || e.message, code: e.code, status: e.status }) }));
 const model = { attachEndpoint: vi.fn(async () => ({ updated: true })), saveCursor: vi.fn(async () => ({})), findByWorkflowId: vi.fn(async () => null), loadAll: vi.fn(async () => []), create: vi.fn(), deleteByWorkflowId: vi.fn(), findOwnerId: vi.fn() };
 vi.mock('../../models/WebhookModel.js', () => ({ default: model }));

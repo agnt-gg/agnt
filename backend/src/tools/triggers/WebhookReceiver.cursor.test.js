@@ -10,7 +10,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  */
 const hooks = { pullEvents: vi.fn(async () => []), createEndpoint: vi.fn(), retireEndpoint: vi.fn(), eventToTrigger: (e) => e };
 vi.mock('../../services/agntWebhooks.js', () => hooks);
-vi.mock('../../services/agntServices.js', async (orig) => ({ ...(await orig()), serviceFailure: (e) => ({ success: false, error: e.code || e.message, code: e.code, status: e.status }) }));
+// The old api.agnt.gg relay is a separate source; idle here so no test reaches the network.
+vi.mock('../../services/legacyRelay.js', () => ({ legacyWebhooks: { url: (id) => 'https://api.agnt.gg/webhook/' + id, register: async () => ({}), unregister: async () => ({}), poll: async () => [], confirm: async () => ({}), release: async () => ({}) } }));
+// The service clock is the (faked) clock in these tests; skew is covered in WebhookReceiver.fallback.test.js.
+vi.mock('../../services/agntServices.js', async (orig) => ({ ...(await orig()), serverNow: () => Date.now(), serviceFailure: (e) => ({ success: false, error: e.code || e.message, code: e.code, status: e.status }) }));
 const stored = new Map(); // workflowId -> row
 const model = {
   findByWorkflowId: vi.fn(async (id) => stored.get(id) ?? null),

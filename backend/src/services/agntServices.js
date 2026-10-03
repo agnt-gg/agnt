@@ -47,6 +47,51 @@ export class ServiceError extends Error {
   }
 }
 
+/**
+ * THE SERVICES' CLOCK. Read cursors compare against timestamps the service
+ * assigned (an event's receivedAt, a message's createdAt). Seeding a cursor
+ * with this machine's Date.now() mixes clocks: a desktop running even 100ms
+ * fast skipped events posted the moment its workflow started, and one running
+ * minutes fast would skip minutes of them. Every response's Date header gives
+ * the offset; serverNow() is that clock, biased early so it is never ahead of
+ * the service (an early cursor re-reads nothing that was delivered, because
+ * nothing is delivered before a workflow listens).
+ */
+let serverClockOffsetMs = null;
+const UNKNOWN_CLOCK_MARGIN_MS = 60_000;
+
+function noteServerClock(res) {
+  const stamped = Date.parse(res?.headers?.get?.('date') || '');
+  if (Number.isFinite(stamped)) serverClockOffsetMs = stamped - Date.now();
+}
+
+export function serverNow() {
+  // The Date header is truncated to the second, so the estimate already trails
+  // the service; one more second covers network latency.
+  return serverClockOffsetMs === null ? Date.now() - UNKNOWN_CLOCK_MARGIN_MS : Date.now() + serverClockOffsetMs - 1000;
+}
+
+export function __resetServerClockForTests() {
+  serverClockOffsetMs = null;
+}
+
+/**
+ * Connection failures that prove the request never reached the service.
+ * A reset or a timeout is NOT here: the service may already have acted on it.
+ */
+const NEVER_CONNECTED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+
+/**
+ * True only when `error` proves the service never received the request: the
+ * connection itself could not be made. The one condition under which sending
+ * the same work elsewhere cannot do it twice. A 502 does not qualify: nginx
+ * also answers 502 when the upstream drops the connection after reading it.
+ */
+export function neverReached(error) {
+  if (!(error instanceof ServiceError)) return false;
+  return error.status === 0 && !error.detail?.timedOut && NEVER_CONNECTED.has(error.detail?.causeCode);
+}
+
 /** A refusal the UI can render as the Pro gate, with no network round trip. */
 export function proRequired(service) {
   const s = SERVICES[service];
@@ -112,8 +157,12 @@ export async function callService(service, path, { method = 'GET', body, idempot
         await sleep(backoffMs(attempt++, null));
         continue;
       }
-      throw new ServiceError(service, 0, 'unreachable', { message: error.message });
+      // The cause code is kept so a caller can tell "never connected" (safe to
+      // try elsewhere) from "connection dropped after sending" (it may have
+      // been accepted). See neverReached().
+      throw new ServiceError(service, 0, 'unreachable', { message: error.message, causeCode: error.cause?.code || error.code || null, timedOut: error.name === 'TimeoutError' });
     }
+    noteServerClock(res);
     const text = await res.text();
     let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }

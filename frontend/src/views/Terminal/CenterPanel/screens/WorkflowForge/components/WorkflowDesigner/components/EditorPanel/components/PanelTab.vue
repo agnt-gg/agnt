@@ -231,6 +231,7 @@
                       {{ getReplacedValue(key, param.value) }}
                     </p>
                   </Tooltip>
+                  <p v-if="legacyAddressNote(key, param.value)" class="static-value-note">{{ legacyAddressNote(key, param.value) }}</p>
                 </template>
                 <!-- IF FIELD IS A CODEAREA -->
                 <template v-else-if="(param.inputType || param.fieldType) === 'codearea'">
@@ -482,11 +483,12 @@ export default {
   data() {
     return {
       hostedWebhookUrl: null,
+      hostedWebhookLegacyUrl: null,
       hostedWebhookPro: null,
       hostedWebhookRequested: null,
       hostedInboxAddress: null,
       hostedInboxPro: null,
-      hostedInboxRequested: false,
+      hostedInboxRequested: null,
       localEdgeContent: {
         conditions: [{ if: '', condition: 'true', value: '' }],
         maxIterations: 1,
@@ -1058,21 +1060,38 @@ export default {
         const data = await res.json();
         this.hostedWebhookPro = data.pro !== false;
         this.hostedWebhookUrl = data.url || null;
+        this.hostedWebhookLegacyUrl = data.legacyUrl || null;
       } catch {
         this.hostedWebhookRequested = null;
       }
     },
+    // Per workflow: each workflow has its own address (inbox+wf-<id>@...), so
+    // switching workflows must fetch again, exactly like the webhook URL.
     async ensureHostedInbox() {
-      if (this.hostedInboxRequested) return;
-      this.hostedInboxRequested = true;
+      if (this.hostedInboxRequested === this.workflowId) return;
+      this.hostedInboxRequested = this.workflowId;
+      this.hostedInboxAddress = null;
       try {
-        const res = await fetch(`${API_CONFIG.BASE_URL}/agnt-services/inbox`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+        const query = this.workflowId ? `?workflowId=${encodeURIComponent(this.workflowId)}` : '';
+        const res = await fetch(`${API_CONFIG.BASE_URL}/agnt-services/inbox${query}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
         const data = await res.json();
         this.hostedInboxPro = data.pro !== false;
         this.hostedInboxAddress = data.address || null;
       } catch {
-        this.hostedInboxRequested = false;
+        this.hostedInboxRequested = null;
       }
+    },
+    // One line under the address: the old webhook URL still delivers; the old
+    // workflow-<id>@agnt.gg address does not (that relay could not keep one
+    // account's mail from another's, so it was retired).
+    legacyAddressNote(key, value) {
+      if (typeof value === 'string' && value.includes('{{WEBHOOK_URL}}') && this.hostedWebhookUrl && this.hostedWebhookLegacyUrl) {
+        return `Your previous URL still works: ${this.hostedWebhookLegacyUrl}`;
+      }
+      if (this.nodeContent?.type === 'receive-email' && key === 'emailAddress' && this.hostedInboxAddress && this.workflowId) {
+        return `workflow-${this.workflowId}@agnt.gg no longer receives mail; use the address above.`;
+      }
+      return '';
     },
 
     onTextareaFocus(event) {
@@ -1775,6 +1794,14 @@ body.dark p.static-value {
 
 p.static-value:hover {
   color: var(--color-primary) !important;
+}
+
+p.static-value-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 135%;
+  color: var(--color-text-muted);
+  word-break: break-all;
 }
 
 .form-group.output-value p {

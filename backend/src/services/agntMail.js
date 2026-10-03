@@ -5,7 +5,8 @@
  * for the life of the process. Its address is what the Receive Email trigger
  * shows and what Send Email sends from.
  */
-import { callService } from './agntServices.js';
+import { callService, neverReached } from './agntServices.js';
+import { legacyMail } from './legacyRelay.js';
 
 let cachedInbox = null;
 let inFlight = null;
@@ -51,14 +52,32 @@ export function resetInboxCache() {
   inFlight = null;
 }
 
-export async function sendMail({ to, subject, text, html, attachments, inReplyTo }) {
-  const inbox = await defaultInbox();
-  const body = { to, subject, text: text ?? '' };
-  if (html) body.html = html;
-  if (Array.isArray(attachments) && attachments.length) body.attachments = attachments;
-  if (inReplyTo) body.inReplyTo = inReplyTo;
-  const result = await callService('mail', `/inboxes/${inbox.id}/messages`, { method: 'POST', idempotent: true, body });
-  return { ...result, from: inbox.address };
+/**
+ * Send from the account inbox. If mail.agnt.gg cannot be connected to at all,
+ * the message goes out through the api.agnt.gg relay instead - only then,
+ * because any other failure (a refusal, a timeout, a dropped connection) may
+ * mean it was already accepted, and sending again would deliver it twice.
+ * Attachments have no legacy path, so a message with them is never rerouted.
+ */
+export async function sendMail({ to, subject, text, html, attachments, inReplyTo, workflowId }) {
+  const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+  try {
+    const inbox = await defaultInbox();
+    const body = { to, subject, text: text ?? '' };
+    if (html) body.html = html;
+    if (hasAttachments) body.attachments = attachments;
+    if (inReplyTo) body.inReplyTo = inReplyTo;
+    const result = await callService('mail', `/inboxes/${inbox.id}/messages`, { method: 'POST', idempotent: true, body });
+    return { ...result, from: inbox.address };
+  } catch (error) {
+    if (!neverReached(error) || hasAttachments) throw error;
+    console.warn(`agntMail: mail.agnt.gg unreachable (${error.detail?.causeCode}); sending through the legacy relay`);
+    const result = await legacyMail.send({ to, subject, text, html, workflowId }).catch((legacyError) => {
+      console.error(`agntMail: legacy relay also failed: ${legacyError.message}`);
+      throw error; // report the primary failure; the fallback was a bonus
+    });
+    return { id: result.messageId || null, state: 'sent_via_legacy_relay', from: null, via: 'legacy' };
+  }
 }
 
 /** Inbound messages received after `since` (epoch ms), oldest first. */

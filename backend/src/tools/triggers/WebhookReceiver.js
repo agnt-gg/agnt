@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { createEndpoint, retireEndpoint, pullEvents, eventToTrigger } from '../../services/agntWebhooks.js';
-import { serviceFailure } from '../../services/agntServices.js';
+import { serviceFailure, neverReached, serverNow } from '../../services/agntServices.js';
+import { legacyWebhooks } from '../../services/legacyRelay.js';
 import WebhookModel from '../../models/WebhookModel.js';
 import WorkflowModel from '../../models/WorkflowModel.js';
 
@@ -18,6 +19,13 @@ import WorkflowModel from '../../models/WorkflowModel.js';
  * Hosted webhooks are part of AGNT Pro. A free account gets a plan refusal at
  * registration time, which the workflow surfaces as a node error with the
  * upgrade message, rather than a URL that will never fire.
+ *
+ * THE OLD URL KEEPS WORKING. Senders configured before the move post to
+ * api.agnt.gg/webhook/<workflowId>. Every active workflow is registered there
+ * too, and both sources are polled every tick, independently: one being down
+ * never stops the other. If webhooks.agnt.gg cannot be reached at all when a
+ * workflow starts, it runs on the old URL alone and gets its hosted URL the
+ * next time it starts.
  */
 
 /** Constant-time comparison for the webhook's own auth secret. */
@@ -97,16 +105,29 @@ class LocalWebhookReceiver extends EventEmitter {
       ? { id: existing.endpoint_id, slug: existing.slug, url: existing.webhook_url }
       : null;
 
+    const legacy = { workflowId, method, authType, authToken, username, password, responseMode };
+    const legacyRegistered = await this._registerLegacy(legacy);
+
     if (!endpoint) {
       try {
         endpoint = await createEndpoint(workflowId, `workflow-${String(workflowId).slice(0, 8)}`);
       } catch (error) {
-        const failure = serviceFailure(error);
-        throw new Error(failure.message || failure.error);
+        // Unreachable, and the old relay took the registration: run on the old
+        // URL now. Anything else (no plan, bad request) is the user's answer.
+        if (!(neverReached(error) && legacyRegistered)) {
+          const failure = serviceFailure(error);
+          throw new Error(failure.message || failure.error);
+        }
+        console.warn(`LocalWebhookReceiver: webhooks.agnt.gg unreachable; ${workflowId} listens on the legacy URL only for now`);
+        this.webhooks.set(workflowId, { ...legacy, userId, url: legacyWebhooks.url(workflowId), endpointId: null, since: serverNow(), legacyRegistered, responseBody, responseContentType });
+        this.startPolling();
+        return legacyWebhooks.url(workflowId);
       }
     }
 
-    const since = this.webhooks.get(workflowId)?.since ?? existing?.cursor ?? Date.now();
+    // Service clock, never this machine's: the cursor is compared with the
+    // service's receivedAt (see agntServices.serverNow).
+    const since = this.webhooks.get(workflowId)?.since ?? existing?.cursor ?? serverNow();
     this.webhooks.set(workflowId, {
       userId,
       endpointId: endpoint.id,
@@ -122,6 +143,7 @@ class LocalWebhookReceiver extends EventEmitter {
       responseMode,
       responseBody,
       responseContentType,
+      legacyRegistered,
     });
 
     try {
@@ -172,57 +194,122 @@ class LocalWebhookReceiver extends EventEmitter {
     }
   }
 
+  /** Register on the old relay so the old URL keeps delivering. Never fatal. */
+  async _registerLegacy(webhook) {
+    try {
+      await legacyWebhooks.register(webhook);
+      return true;
+    } catch (error) {
+      console.warn(`LocalWebhookReceiver: ${webhook.workflowId}: old URL not registered (${error.message})`);
+      return false;
+    }
+  }
+
   async pollForTriggers() {
     if (!this.pollingEnabled || this.polling) return;
     this.polling = true;
     try {
-      for (const [workflowId, webhook] of this.webhooks) {
-        if (!webhook.endpointId) continue;
-        const engine = this.processManager.activeWorkflows.get(workflowId);
-        if (!engine || !(engine.isListening || engine.isRunning)) continue;
-
-        let events;
-        try {
-          events = await pullEvents(webhook.endpointId, webhook.since);
-        } catch (error) {
-          const failure = serviceFailure(error);
-          if (failure.status === 404 || failure.code === 'endpoint_not_found' || failure.error === 'endpoint_not_found') {
-            // The hosted endpoint is gone (retired, or the service forgot it).
-            // The workflow is still listening, so it gets a new one now rather
-            // than logging the same line every ten seconds until someone
-            // re-activates it by hand.
-            await this._replaceEndpoint(workflowId, webhook);
-            continue;
-          }
-          // A plan refusal here means the subscription lapsed under a live
-          // workflow. Say so once per poll; the endpoint keeps storing events.
-          console.error(`LocalWebhookReceiver: ${workflowId}: ${failure.message || failure.error}`);
-          continue;
-        }
-        if (!events.length) continue;
-
-        let advanced = webhook.since;
-        for (const event of events) {
-          const trigger = eventToTrigger(event);
-          const result = await this._processWebhookTrigger(workflowId, trigger);
-          if (result === null) break; // engine not ready: stop here, see it again next poll
-          if (result?.status >= 400) {
-            // Refused (wrong method or credentials) and the cursor moves past it,
-            // exactly as the sender was refused on the relay; say why so the
-            // workflow owner can see it rather than wonder why nothing fired.
-            console.warn(`LocalWebhookReceiver: ${workflowId}: refused hosted event ${event.id} (${result.status} ${result.message})`);
-          }
-          advanced = later(advanced, event.receivedAt);
-        }
-        if (advanced !== webhook.since) {
-          webhook.since = advanced;
-          WebhookModel.saveCursor(workflowId, advanced).catch((e) => console.error('LocalWebhookReceiver: cursor save failed:', e.message));
-        }
+      // Independent sources: a failure in one is logged and the other runs.
+      const results = await Promise.allSettled([this._pollHosted(), this._pollLegacy()]);
+      for (const result of results) {
+        if (result.status === 'rejected') console.error('LocalWebhookReceiver: Error polling for webhook triggers:', result.reason);
       }
-    } catch (error) {
-      console.error('LocalWebhookReceiver: Error polling for webhook triggers:', error);
     } finally {
       this.polling = false;
+    }
+  }
+
+  /** Workflows whose engine is up and listening right now. */
+  _listening() {
+    const out = [];
+    for (const [workflowId] of this.webhooks) {
+      const engine = this.processManager.activeWorkflows.get(workflowId);
+      if (engine && (engine.isListening || engine.isRunning)) out.push(workflowId);
+    }
+    return out;
+  }
+
+  /**
+   * Events posted to the old api.agnt.gg/webhook/<id> URL. The server claims
+   * what it returns; each one is confirmed once its workflow took it, and
+   * released (back to pending) if not, so nothing is lost or delivered twice.
+   */
+  async _pollLegacy() {
+    const workflowIds = this._listening();
+    if (workflowIds.length === 0) return;
+    let triggers;
+    try {
+      triggers = await legacyWebhooks.poll(workflowIds);
+    } catch (error) {
+      if (error.code !== 'paused' && Date.now() - (this.lastLegacyError || 0) > 60000) {
+        console.warn(`LocalWebhookReceiver: old webhook URLs not polled: ${error.message}`);
+        this.lastLegacyError = Date.now();
+      }
+      return;
+    }
+    if (!triggers.length) return;
+    const processed = [];
+    const unprocessed = [];
+    for (const trigger of triggers) {
+      // { id, workflowId, triggerData: { method, headers, body, query } }, already parsed by the server.
+      const { workflowId } = trigger;
+      const data = trigger.triggerData || {};
+      let result = null;
+      try {
+        result = await this._processWebhookTrigger(workflowId, { ...data, method: String(data?.method || 'POST').toUpperCase(), headers: data?.headers || {} });
+      } catch (error) {
+        console.error(`LocalWebhookReceiver: ${workflowId}: legacy event ${trigger.id} failed:`, error.message);
+      }
+      // Refused (method/credentials) counts as handled, exactly as on the hosted path.
+      (result === null ? unprocessed : processed).push(trigger.id);
+    }
+    if (processed.length) await legacyWebhooks.confirm(processed).catch((e) => console.error('LocalWebhookReceiver: legacy confirm failed:', e.message));
+    if (unprocessed.length) await legacyWebhooks.release(unprocessed).catch((e) => console.error('LocalWebhookReceiver: legacy release failed:', e.message));
+  }
+
+  async _pollHosted() {
+    for (const [workflowId, webhook] of this.webhooks) {
+      if (!webhook.endpointId) continue;
+      const engine = this.processManager.activeWorkflows.get(workflowId);
+      if (!engine || !(engine.isListening || engine.isRunning)) continue;
+
+      let events;
+      try {
+        events = await pullEvents(webhook.endpointId, webhook.since);
+      } catch (error) {
+        const failure = serviceFailure(error);
+        if (failure.status === 404 || failure.code === 'endpoint_not_found' || failure.error === 'endpoint_not_found') {
+          // The hosted endpoint is gone (retired, or the service forgot it).
+          // The workflow is still listening, so it gets a new one now rather
+          // than logging the same line every ten seconds until someone
+          // re-activates it by hand.
+          await this._replaceEndpoint(workflowId, webhook);
+          continue;
+        }
+        // A plan refusal here means the subscription lapsed under a live
+        // workflow. Say so once per poll; the endpoint keeps storing events.
+        console.error(`LocalWebhookReceiver: ${workflowId}: ${failure.message || failure.error}`);
+        continue;
+      }
+      if (!events.length) continue;
+
+      let advanced = webhook.since;
+      for (const event of events) {
+        const trigger = eventToTrigger(event);
+        const result = await this._processWebhookTrigger(workflowId, trigger);
+        if (result === null) break; // engine not ready: stop here, see it again next poll
+        if (result?.status >= 400) {
+          // Refused (wrong method or credentials) and the cursor moves past it,
+          // exactly as the sender was refused on the relay; say why so the
+          // workflow owner can see it rather than wonder why nothing fired.
+          console.warn(`LocalWebhookReceiver: ${workflowId}: refused hosted event ${event.id} (${result.status} ${result.message})`);
+        }
+        advanced = later(advanced, event.receivedAt);
+      }
+      if (advanced !== webhook.since) {
+        webhook.since = advanced;
+        WebhookModel.saveCursor(workflowId, advanced).catch((e) => console.error('LocalWebhookReceiver: cursor save failed:', e.message));
+      }
     }
   }
 
@@ -239,7 +326,7 @@ class LocalWebhookReceiver extends EventEmitter {
   async _replaceEndpoint(workflowId, webhook) {
     try {
       const endpoint = await createEndpoint(workflowId);
-      Object.assign(webhook, { endpointId: endpoint.id, slug: endpoint.slug, url: endpoint.url, since: Date.now() });
+      Object.assign(webhook, { endpointId: endpoint.id, slug: endpoint.slug, url: endpoint.url, since: serverNow() });
       await WebhookModel.attachEndpoint(workflowId, webhook.userId, { endpoint_id: endpoint.id, slug: endpoint.slug, webhook_url: endpoint.url });
       await this._persistCursor(workflowId, webhook.since);
       console.log(`LocalWebhookReceiver: ${workflowId}: hosted endpoint was gone; now ${endpoint.url}`);
@@ -301,6 +388,9 @@ class LocalWebhookReceiver extends EventEmitter {
     ownerIdHint = ownerIdHint || entry?.userId || null;
     this.webhooks.delete(workflowId);
 
+    // The old URL stops with the workflow, as it always did.
+    await legacyWebhooks.unregister(workflowId).catch((error) => console.warn(`LocalWebhookReceiver: ${workflowId}: old URL not unregistered (${error.message})`));
+
     // The hosted endpoint is retired with the workflow. Deactivating a workflow
     // and re-activating it later gets a fresh URL; that is the same rule the
     // retired relay had, and it keeps orphaned endpoints from counting against
@@ -331,7 +421,7 @@ class LocalWebhookReceiver extends EventEmitter {
           endpointId: webhook.endpoint_id || null,
           slug: webhook.slug || null,
           url: webhook.webhook_url,
-          since: webhook.cursor ?? Date.now(),
+          since: webhook.cursor ?? serverNow(),
           method: webhook.method,
           authType: webhook.auth_type,
           workflowId: webhook.workflow_id,
