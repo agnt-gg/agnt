@@ -1,3 +1,4 @@
+import { accountModelPair } from './ai/accountModel.js';
 import { createChatTransport } from './orchestrator/chatTransport.js';
 import { admitConversationWork } from './orchestrator/conversationWorkRegistry.js';
 import { capToolResult } from './orchestrator/toolResultCap.js';
@@ -918,6 +919,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     conversationSettings: convSettings,
     loadAgent: () => (agentId && agentId !== 'agent-chat' ? AgentModel.findOne(agentId) : null),
     loadUserSettings: () => UserModel.getUserSettings(userId),
+    loadAccountModel: async () => accountModelPair(userId),
     scanCredentials: async () => {
       for (const providerKey of Object.keys(ProviderRegistry.PROVIDER_CAPABILITIES)) {
         try {

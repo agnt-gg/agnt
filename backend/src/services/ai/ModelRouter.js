@@ -47,6 +47,7 @@ import { normalizeGlobalRoutingMode, parseRoutingPolicy } from '../orchestrator/
 import { providerHealth } from './providerHealth.js';
 import { resolveDefaultModel } from './defaultModel.js';
 import { NoAiConfiguredError } from './accountAi.js';
+import { accountModelPair } from './accountModel.js';
 import { CHAT_SURFACE_ORIGINS } from '../../models/LlmCallModel.js';
 
 /** Origins whose routing follows the user's chat routing setting. */
@@ -67,6 +68,7 @@ export const defaultDeps = Object.freeze({
     (await import('../orchestrator/llmAdapters.js')).createLlmAdapter(provider, client, model, options),
   recordCall: async (row) => (await import('../execution/LedgerRecorder.js')).recordLlmCall(row),
   health: providerHealth,
+  accountModel: (userId) => accountModelPair(userId),
 });
 
 function nonEmpty(value) {
@@ -115,6 +117,8 @@ async function accountChainFor(userId, settings, deps) {
   const defaultModel = nonEmpty(settings.selectedModel);
   let primary = defaultProvider && defaultModel ? { provider: defaultProvider, model: defaultModel } : null;
   if (!primary) primary = firstFallbackTier(settings);
+  // Nothing configured: AGNT's own model, the same rung chat turns use.
+  if (!primary && deps.accountModel) primary = deps.accountModel(userId);
   if (!primary) return [];
 
   return buildProviderChain({

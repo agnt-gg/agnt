@@ -9,7 +9,8 @@ import { resolveDefaultModelAsync } from '../ai/defaultModel.js';
  *   3. agent         the responding agent's own config
  *   4. default       the account default
  *   5. fallback      the account's fallback chain, first usable tier
- *   6. credentials   any provider with a stored key (last resort)
+ *   6. account       AGNT's own model, while the account's session is live
+ *   7. credentials   any provider with a stored key (last resort)
  *
  * Rungs 2-6 contribute a WHOLE pair or nothing. Mixing halves across rungs is
  * how a turn ends up with one provider and another provider's model. A request
@@ -26,7 +27,9 @@ import { resolveDefaultModelAsync } from '../ai/defaultModel.js';
  * the provider registry in its own order, which is a guess. It is optional and
  * only chat supplies it; background services fail loudly instead.
  *
- * No rung is a hardcoded vendor or model. When nothing is configured the
+ * The account rung is the one fixed provider, and deliberately so: the
+ * signed-in session is its credential, so it is runnable for every account
+ * without a key (see ai/accountModel.js). No rung is a third-party vendor. When nothing is configured the
  * result is nulls, and the caller reports that instead of guessing.
  *
  * Every loader is injected so each rung is testable without a database.
@@ -39,6 +42,7 @@ export async function resolveTurnProvider({
   conversationSettings = null,
   loadAgent = async () => null,
   loadUserSettings = async () => null,
+  loadAccountModel = async () => null,
   scanCredentials = async () => null,
 }) {
   let provider = nonEmpty(requestProvider);
@@ -62,6 +66,7 @@ export async function resolveTurnProvider({
       return settings ? pairOf(settings.selectedProvider, settings.selectedModel) : null;
     }],
     ['fallback', async () => firstFallbackTier(await userSettings())],
+    ['account', loadAccountModel],
     ['credentials', scanCredentials],
   ];
 

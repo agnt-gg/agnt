@@ -2,12 +2,14 @@ import UserModel from '../../models/UserModel.js';
 import { resolveTurnProvider } from '../orchestrator/resolveTurnProvider.js';
 import { parseFallbackList, resolveProviderKey } from '../orchestrator/ProviderFallback.js';
 import { supportsImageGeneration } from './ProviderRegistry.js';
+import { accountModelPair } from './accountModel.js';
 
 /**
  * The provider/model for work that runs outside a chat turn: generators,
  * evals, experiments, tools, workflow nodes.
  *
  *   what the caller named -> the account default -> the account fallback chain
+ *   -> AGNT's own model while the account is signed in
  *
  * There is deliberately no vendor fallback. Every one that existed named a
  * provider not every account has, usually with a retired model, so it failed
@@ -33,6 +35,7 @@ export async function resolveAccountAi(userId, { provider, model } = {}) {
     requestProvider: provider,
     requestModel: model,
     loadUserSettings: () => (userId ? UserModel.getUserSettings(userId) : null),
+    loadAccountModel: async () => accountModelPair(userId),
   });
   if (!resolved.provider || !resolved.model) throw new NoAiConfiguredError();
   return resolved;
