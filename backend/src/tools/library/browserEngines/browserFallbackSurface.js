@@ -52,6 +52,8 @@ import { headlessLaunchProfile } from './browserStealth.js';
 let session = null;
 /** Shared in-flight launch, so two concurrent callers get one browser. */
 let launching = null;
+/** In-flight browser switch: the old browser closing before the new one launches. */
+let switching = null;
 
 const PROFILE_DIR = 'browser_control_profile';
 
@@ -450,12 +452,16 @@ export const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
 export async function ensureFallbackSurface({ log = console.log, browser = '', hidden = false } = {}) {
   const wanted = String(browser || '').trim().toLowerCase();
 
+  // A caller arriving mid-switch must not be handed the browser being closed.
+  if (switching) await switching;
+
   // A DIFFERENT browser was asked for than the one already running. Naming a
   // browser is a human instruction, so it wins over the convenience of reusing
   // whatever happens to be open.
   if (isAlive() && wanted && session.browserKey !== wanted && session.requested !== wanted) {
     log(`[Browser Control] switching browser: ${session.browserKey} -> ${wanted}`);
-    closeFallbackSurface();
+    switching = closeAndAwaitExit(log).finally(() => { switching = null; });
+    await switching;
   }
 
   // A hidden/visible MISMATCH deliberately reuses what is already running.
@@ -476,6 +482,56 @@ export async function ensureFallbackSurface({ log = console.log, browser = '', h
 
   launching = launchBrowser({ log, browser: wanted, hidden }).finally(() => { launching = null; });
   return launching;
+}
+
+/**
+ * Chromium's RESULT_CODE_PROFILE_IN_USE: the user-data-dir lock is held by
+ * another process, so the new one refused it and quit.
+ */
+export const EXIT_PROFILE_IN_USE = 21;
+
+/** How long a browser switch waits for the old browser to let go of the profile. */
+const SWITCH_EXIT_WAIT_MS = 10000;
+
+/** Resolves true once `child` has exited, false if it is still running after `ms`. */
+function waitForExit(child, ms) {
+  if (child.exitCode !== null || child.signalCode != null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => { clearTimeout(timer); resolve(true); };
+    const timer = setTimeout(() => { child.off('exit', onExit); resolve(false); }, ms);
+    child.once('exit', onExit);
+  });
+}
+
+/**
+ * Close the current browser and wait until its process has actually exited.
+ *
+ * The next browser launches on the SAME profile directory, and a kill is only a
+ * request: launching while the old process tree is still dying gets exit 21
+ * from Chromium. MEASURED (Chrome -> Edge, Chrome 154 / Edge 154, Windows):
+ * launching immediately after taskkill exited 21 in 2 of 3 runs; waiting for
+ * the old browser cleared it every time. findProfileHolder() cannot catch this
+ * window — a dying browser stops answering on its port before it releases the
+ * lock.
+ */
+async function closeAndAwaitExit(log) {
+  const child = session?.child;
+  await closeFallbackSurfaceGracefully({ log });
+  if (child && !(await waitForExit(child, SWITCH_EXIT_WAIT_MS))) {
+    log(`[Browser Control] the previous browser has not exited after ${SWITCH_EXIT_WAIT_MS / 1000}s; launching anyway.`);
+  }
+}
+
+/** Why a browser quit before it opened, in terms the reader can act on. */
+function describeEarlyExit({ label, code, headless }) {
+  const what = `${label} exited immediately (code ${code}) instead of opening${headless ? ' in headless mode' : ''}.`;
+  if (code === EXIT_PROFILE_IN_USE) {
+    return `${what} Its profile is still in use by another browser process`
+      + ' (usually one that is still shutting down); try again in a few seconds.';
+  }
+  if (headless) return what;
+  return `${what} There may be no display available on this machine —`
+    + ' set AGNT_BROWSER_HEADLESS=1 to launch without one.';
 }
 
 async function launchBrowser({ log, browser, hidden = false }) {
@@ -614,12 +670,7 @@ async function launchBrowser({ log, browser, hidden = false }) {
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       session = null;
-      throw new Error(
-        `${label} exited immediately (code ${child.exitCode}) instead of opening`
-        + `${headlessHere ? ' in headless mode' : ''}.`
-        + (headlessHere ? '' : ' There may be no display available on this machine —'
-          + ' set AGNT_BROWSER_HEADLESS=1 to launch without one.'),
-      );
+      throw new Error(describeEarlyExit({ label, code: child.exitCode, headless: headlessHere }));
     }
     const endpoint = readEndpoint(profilePath);
     if (endpoint) {

@@ -37,7 +37,7 @@ vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a), spawnSync: () =>
 
 const {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, _fallbackSessionForTests,
-  findBrowser, installedBrowsers,
+  findBrowser, installedBrowsers, EXIT_PROFILE_IN_USE,
 } = await import('./browserFallbackSurface.js');
 
 const PROFILE = path.join(tmpDir, 'browser_control_profile');
@@ -49,10 +49,18 @@ let spawned;
 let fakePort = 51999;
 /** How the fake browser behaves once launched. */
 let browserBehaviour;
+/** How long a fake browser takes to die after taskkill — a real tree is not instant. */
+let killExitDelayMs;
+/** Launches and exits in the order they happened, as 'launch:<pid>' / 'exit:<pid>'. */
+let lifecycle;
+/** Fake browsers by pid, so taskkill can kill the one it names. */
+const fakeBrowsersByPid = new Map();
+let nextPid = 4242;
 
 function fakeBrowser() {
   const child = new EventEmitter();
-  child.pid = 4242;
+  child.pid = nextPid;
+  nextPid += 1;
   child.exitCode = null;
   child.killed = false;
   // Real ChildProcess methods the launcher calls. A double that is missing one
@@ -72,6 +80,9 @@ beforeEach(() => {
   fs.rmSync(PROFILE, { recursive: true, force: true });
   spawned = [];
   browserBehaviour = 'writes-port-file';
+  killExitDelayMs = 0;
+  lifecycle = [];
+  fakeBrowsersByPid.clear();
 
   // Pin the executable so these tests assert OUR logic rather than whether the
   // machine running them happens to have Chrome installed. Any real path will
@@ -92,10 +103,25 @@ beforeEach(() => {
 
   spawn.mockImplementation((command, args) => {
     spawned.push({ command, args: args || [] });
-    // taskkill is the teardown path, not a browser launch.
-    if (/taskkill/i.test(command)) return fakeBrowser();
+    // taskkill is the teardown path, not a browser launch. Like the real one,
+    // it returns before the browser it names has finished dying.
+    if (/taskkill/i.test(command)) {
+      const target = fakeBrowsersByPid.get(Number(args[args.indexOf('/PID') + 1]));
+      if (target && target.exitCode === null) {
+        // Bound now: a kill issued by beforeEach must not land in the next test's record.
+        const record = lifecycle;
+        setTimeout(() => {
+          target.exitCode = 1;
+          record.push(`exit:${target.pid}`);
+          target.emit('exit', 1);
+        }, killExitDelayMs);
+      }
+      return fakeBrowser();
+    }
 
     const child = fakeBrowser();
+    fakeBrowsersByPid.set(child.pid, child);
+    lifecycle.push(`launch:${child.pid}`);
     if (browserBehaviour === 'writes-port-file') {
       // What Chrome does once it is genuinely listening: port on line 1,
       // websocket path on line 2.
@@ -105,6 +131,8 @@ beforeEach(() => {
       }, 10);
     } else if (browserBehaviour === 'exits-immediately') {
       setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 10);
+    } else if (browserBehaviour === 'profile-in-use') {
+      setTimeout(() => { child.exitCode = EXIT_PROFILE_IN_USE; child.emit('exit', EXIT_PROFILE_IN_USE); }, 10);
     }
     return child;
   });
@@ -417,6 +445,19 @@ describe('failure says what happened', () => {
       .rejects.toThrow(/exited immediately/i);
   });
 
+  it('says the PROFILE is busy on exit 21, not that the machine has no display', async () => {
+    // MEASURED: Edge exiting 21 on a desktop was reported as "There may be no
+    // display available" — a wrong cause stated confidently, which sent the
+    // reader after a display problem that did not exist.
+    browserBehaviour = 'profile-in-use';
+
+    const failure = ensureFallbackSurface({ log: () => {} });
+
+    await expect(failure).rejects.toThrow(/code 21/);
+    await expect(failure).rejects.toThrow(/profile is still in use/i);
+    await expect(failure).rejects.not.toThrow(/no display/i);
+  });
+
   it('does not leave a dead session behind after a failed launch', async () => {
     browserBehaviour = 'exits-immediately';
     await expect(ensureFallbackSurface({ log: () => {} })).rejects.toThrow();
@@ -654,6 +695,38 @@ describe('choosing a browser by name', () => {
 
     expect(launchCalls()).toHaveLength(2);
     expect(launchCalls()[1].command.toLowerCase()).toMatch(/brave/);
+  });
+
+  it('waits for the old browser to EXIT before launching the new one on the same profile', async () => {
+    // The regression: the switch fired taskkill and launched immediately.
+    // Chromium refuses a profile a dying browser still holds, so the new one
+    // exited 21 — 2 of 3 times in a real Chrome -> Edge switch.
+    killExitDelayMs = 200;
+    await ensureFallbackSurface({ log: () => {}, browser: process.execPath });
+    const oldPid = _fallbackSessionForTests().child.pid;
+
+    onlyInstalled('brave');
+    await ensureFallbackSurface({ log: () => {}, browser: 'brave' });
+
+    const newPid = _fallbackSessionForTests().child.pid;
+    expect(lifecycle).toEqual([`launch:${oldPid}`, `exit:${oldPid}`, `launch:${newPid}`]);
+  });
+
+  it('does not hand a caller arriving mid-switch the browser being closed', async () => {
+    killExitDelayMs = 200;
+    await ensureFallbackSurface({ log: () => {}, browser: process.execPath });
+
+    const oldPid = _fallbackSessionForTests().child.pid;
+
+    onlyInstalled('brave');
+    const switchingTo = ensureFallbackSurface({ log: () => {}, browser: 'brave' });
+    const bystander = ensureFallbackSurface({ log: () => {} })
+      .then(() => lifecycle.push('bystander-answered'));
+    await Promise.all([switchingTo, bystander]);
+
+    // Answering before the old browser exited would hand back its endpoint.
+    expect(lifecycle.indexOf('bystander-answered')).toBeGreaterThan(lifecycle.indexOf(`exit:${oldPid}`));
+    expect(launchCalls()).toHaveLength(2);
   });
 
   it('does NOT relaunch when the same browser is asked for twice', async () => {
