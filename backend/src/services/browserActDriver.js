@@ -1118,6 +1118,32 @@ async function openTab(driver, url) {
   return { ...(snap || await pageState(driver)), tabId: created.targetId };
 }
 
+/**
+ * A tab opened by a link (target=_blank) starts life on about:blank, which is
+ * already `complete`, and only then commits the real page. Focusing it in that
+ * window snapshotted an empty document, so the agent read a page with no
+ * title or controls. Wait until the tab holds its own document.
+ *
+ * The target's reported URL cannot tell the two apart (it can still read
+ * about:blank before the commit), so a tab that is STILL blank after a short
+ * grace is taken to be genuinely blank. Nothing waits past the deadline.
+ */
+const BLANK_TAB_GRACE_MS = 1500;
+async function waitForTabDocument(driver, timeoutMs = 8000) {
+  const started = Date.now();
+  const deadline = started + timeoutMs;
+  while (Date.now() < deadline) {
+    if (driver.dialog) return;
+    // eslint-disable-next-line no-await-in-loop -- this IS the polling loop.
+    const state = await evaluate(driver, '[document.readyState, location.href]').catch(() => null);
+    const [readyState, href] = Array.isArray(state) ? state : [];
+    const ready = readyState === 'complete' || readyState === 'interactive';
+    if (ready && (href !== 'about:blank' || Date.now() - started >= BLANK_TAB_GRACE_MS)) return;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(100);
+  }
+}
+
 async function focusTab(driver, tabId) {
   const id = String(tabId || '').trim();
   const tabs = await listTabs(driver);
@@ -1125,6 +1151,7 @@ async function focusTab(driver, tabId) {
   if (!tab) throw new Error(`No tab "${id}". Open tabs: ${tabs.map((t) => `${t.id} (${t.title || t.url})`).join(', ') || 'none'}`);
   if (tab.id !== driver.targetId) await attachDriverTo(driver, tab.id);
   await driver.connection.send('Target.activateTarget', { targetId: tab.id }).catch(() => {});
+  await waitForTabDocument(driver);
   const snap = await takeSnapshot(driver, { maxChars: INLINE_SNAPSHOT_CHARS }).catch(() => null);
   return { ...(snap || await pageState(driver)), tabId: tab.id };
 }

@@ -26,10 +26,11 @@ const FIXTURE = `<!doctype html><html><head><title>Fixture</title></head><body>
   <option value="us">United States</option><option value="ca">Canada</option><option value="mx">Mexico</option>
 </select></label>
 <input id="q" aria-label="Search" value="old">
-<div id="hover" onmouseenter="document.getElementById('out').textContent='hovered'">hover zone</div>
+<div id="hover" onmouseenter="document.getElementById('hover-out').textContent='hovered'">hover zone</div>
 <button id="later" onclick="setTimeout(()=>{const p=document.createElement('p');p.id='appeared';p.textContent='Appeared later';document.body.appendChild(p)},400)">Show later</button>
 <button id="boom" onclick="console.error('boom happened'); fetch('/missing'); setTimeout(()=>{throw new Error('async fail')},10)">Boom</button>
 <p id="out">none</p>
+<p id="hover-out">not hovered</p>
 <script>console.log('fixture ready')</script>
 </body></html>`;
 
@@ -128,7 +129,7 @@ describe.skipIf(!haveBrowser)('real Chromium', () => {
     expect(inner((await act('read', { selector: '#out' })).text)).toBe('picked:ca');
 
     await act('hover', { selector: '#hover' });
-    expect(inner((await act('read', { selector: '#out' })).text)).toBe('hovered');
+    expect(inner((await act('read', { selector: '#hover-out' })).text)).toBe('hovered');
 
     await act('type', { selector: '#q', text: 'new value' });
     const snap = await act('snapshot', { query: 'search' });

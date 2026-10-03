@@ -101,6 +101,10 @@ async function fakeBrowser() {
           if (expr.includes('location.href') && expr.includes('document.title')) {
             return reply({ result: { value: JSON.stringify({ url: tab.url, title: tab.title }) } });
           }
+          // focusTab asks for both at once, as Chromium returns them: [state, href].
+          if (expr.includes('readyState') && expr.includes('location.href')) {
+            return reply({ result: { value: [tab.loading ? 'loading' : 'complete', tab.committedUrl ?? tab.url] } });
+          }
           if (expr.includes('readyState')) return reply({ result: { value: 'complete' } });
           if (expr.includes('innerWidth')) return reply({ result: { value: JSON.stringify({ w: 1280, h: 800 }) } });
           if (expr.includes('selectAll')) return reply({ result: { value: true } });
@@ -296,6 +300,23 @@ describe('tabs', () => {
     expect(r.snapshot).toContain('URL: https://two.example/');
     expect(browser.state.active).toBe('T2');
     await expect(act('click', { ref: 'e1' })).resolves.toMatchObject({ url: 'https://two.example/' });
+  });
+
+  it('focus on a link-opened tab waits for its page instead of snapshotting about:blank', async () => {
+    // target=_blank: the tab exists, but its document is still the initial
+    // about:blank (already "complete") until the real page commits.
+    const tab = { targetId: 'T2', url: 'https://late.example/', title: '', committedUrl: 'about:blank' };
+    browser.state.tabs.push(tab);
+    setTimeout(() => { delete tab.committedUrl; tab.title = 'Late page'; }, 300);
+    const r = await act('focus', { tabId: 'T2' });
+    expect(r.title).toBe('Late page');
+  });
+
+  it('focus on a tab that really is blank returns promptly, not at the deadline', async () => {
+    browser.state.tabs.push({ targetId: 'T2', url: 'about:blank', title: '', committedUrl: 'about:blank' });
+    const started = Date.now();
+    await act('focus', { tabId: 'T2' });
+    expect(Date.now() - started).toBeLessThan(4000);
   });
 
   it('tab switches replace observers instead of multiplying every event', async () => {
