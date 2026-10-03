@@ -34,6 +34,8 @@ vi.mock('./sessionDiscovery.js', () => ({
   discoverSessions: () => ({ sessions: [], connected: [], adoptable: [] }),
 }));
 
+vi.mock('../../models/UserModel.js', () => ({ default: { getPreferences: async () => ({ global: {} }) } }));
+
 vi.mock('../../models/database/index.js', () => ({
   default: {
     all: (sql, params, cb) => {

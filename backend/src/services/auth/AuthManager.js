@@ -1,3 +1,4 @@
+import { isLocalProviderDisconnected } from './localProviderAccess.js';
 import db from '../../models/database/index.js';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
@@ -216,6 +217,12 @@ class AuthManager {
       }
     }
 
+    // Discovery and remote merges must not re-add an account's opt-out.
+    if (userId) {
+      for (const providerId of connected) {
+        if (await isLocalProviderDisconnected(userId, providerId)) connected.delete(providerId);
+      }
+    }
     return Array.from(connected).map((providerId) => ({ providerId, connected: true }));
   }
   async disconnectProviderAndRemoveApiKey(providerId, userId) {
@@ -283,12 +290,13 @@ class AuthManager {
    *   provider — in which case the caller falls through to the token ladder
    *   exactly as before.
    */
-  async getLocalProviderHealth(providerId) {
+  async getLocalProviderHealth(providerId, userId) {
     const entry = getAuthEntry(providerId);
     if (!entry?.local || typeof entry.manager?.checkApiUsable !== 'function') return null;
 
     const lastChecked = new Date().toISOString();
     try {
+      if (userId && await isLocalProviderDisconnected(userId, providerId)) return { providerId, isConnected: false, isHealthy: false, lastChecked, error: 'Disconnected for your AGNT account' };
       const status = await entry.manager.checkApiUsable();
 
       // `available` is the same signal the provider page and the connected list
@@ -338,7 +346,7 @@ class AuthManager {
 
           // Local CLI providers keep their credential outside the vault, so the
           // token ladder below cannot see it. Ask the provider instead.
-          const localHealth = await this.getLocalProviderHealth(providerId);
+          const localHealth = await this.getLocalProviderHealth(providerId, userId);
           if (localHealth) {
             results.push(localHealth);
             continue;
@@ -505,7 +513,7 @@ class AuthManager {
           // which happen below. Returning the record early skipped every one of
           // them, so the provider vanished from the stream instead of being
           // reported healthy — which the streaming test caught.
-          const localHealth = await this.getLocalProviderHealth(providerId);
+          const localHealth = await this.getLocalProviderHealth(providerId, userId);
           const token = localHealth ? null : await this.getValidAccessToken(userId, providerId);
 
           if (localHealth) {

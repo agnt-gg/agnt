@@ -1,3 +1,4 @@
+import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import { getConnection } from './connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
@@ -53,6 +54,7 @@ export async function createLlmClient(provider, userId, options = {}) {
   const lowerCaseProvider = config ? config.key : provider.toLowerCase();
 
   // 2. Check for special auth providers that don't use the standard AuthManager flow
+  await assertLocalProviderAccess(userId, lowerCaseProvider);
   const specialClient = await _createSpecialAuthClient(lowerCaseProvider, options);
   if (specialClient) return specialClient;
 

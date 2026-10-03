@@ -1,3 +1,4 @@
+import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 /**
  * CursorCliService — local wrapper around the Cursor Agent CLI (`cursor-agent`).
  *
@@ -256,6 +257,7 @@ async function checkAuth({ timeoutMs = 25000 } = {}) {
  */
 async function runExec({
   prompt,
+  userId = null,
   model = DEFAULT_MODEL,
   cwd,
   force = true,
@@ -283,6 +285,7 @@ async function runExec({
   if (mode != null && !READ_ONLY_MODES.has(mode)) {
     throw new Error(`cursor_exec: unsupported mode '${mode}' (expected 'plan' or 'ask')`);
   }
+  if (userId) await assertLocalProviderAccess(userId, 'cursor-cli');
   const resolvedSandbox = normalizeSandbox(sandbox);
   const streaming = typeof onDelta === 'function'
     || typeof onReasoning === 'function'

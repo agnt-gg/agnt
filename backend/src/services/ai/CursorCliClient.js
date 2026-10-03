@@ -212,6 +212,7 @@ export function createCursorCliClient({
 
           const runOptions = {
             prompt,
+            userId,
             model,
             cwd,
             force,

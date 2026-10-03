@@ -10,6 +10,7 @@ import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH } from '../../config/oauthClients.j
 import { getClientIdentity, getClientVersion, getCachedClientVersion } from './clientVersions.js';
 import { resolveDefaultModel } from './defaultModel.js';
 import { readSecretJson, clearSecretCache, secretStoreSupported } from '../auth/secretStore.js';
+import { isLocalProviderDisconnected } from '../auth/localProviderAccess.js';
 import * as agntStore from '../auth/agntCredentialStore.js';
 import { describeSource } from '../auth/credentialResolver.js';
 import { reconcile } from '../../utils/lineEndings.js';
@@ -1403,11 +1404,13 @@ export async function listConnectionModels(id, { forceRefresh = false } = {}) {
 export const VOICE_CREDENTIAL_SOURCE = Object.freeze({ PLATFORM: 'openai', CHATGPT: 'openai-codex' });
 export async function resolveVoiceCredentials(userId, dependencies = {}) {
   const connection = dependencies.connection || getConnection('openai-codex');
+  const isDisconnected = dependencies.isLocalProviderDisconnected || isLocalProviderDisconnected;
+  const codexDisconnected = userId ? await isDisconnected(userId, 'openai-codex') : false;
   const candidates = [], seen = new Set();
   const add = candidate => { if (!seen.has(candidate.token)) { seen.add(candidate.token); candidates.push(candidate); } };
   // Resolve once: callers retain this snapshot for their fallback attempt.
   try {
-    const token = tokenText(await connection.ensureValidOAuthToken());
+    const token = codexDisconnected ? '' : tokenText(await connection.ensureValidOAuthToken());
     if (token) {
       let accountId = null;
       try { accountId = connection.getChatGptAccountId() || null; } catch { /* Optional claim. */ }

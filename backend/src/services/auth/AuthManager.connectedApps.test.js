@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   dbThrows: false,
 }));
 
+vi.mock('../../models/UserModel.js', () => ({ default: { getPreferences: async () => ({ global: {} }) } }));
+
 vi.mock('../../models/database/index.js', () => ({
   default: {
     all: (sql, params, cb) => {
@@ -120,6 +122,11 @@ describe('a CLI session the user made in their terminal', () => {
 
     expect(idsFrom(await AuthManager.getConnectedApps('user-1', null)))
       .toEqual(['claude-code', 'cursor-cli']);
+  });
+
+  it('an anonymous caller still gets the machine list; account opt-outs need an account', async () => {
+    setSessions(cliSession('claude-code'));
+    expect(idsFrom(await AuthManager.getConnectedApps(null, null))).toContain('claude-code');
   });
 
   it('does not duplicate a provider that is also stored locally', async () => {

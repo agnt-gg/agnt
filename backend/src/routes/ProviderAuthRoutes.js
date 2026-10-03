@@ -15,6 +15,7 @@ import CodexCliService from '../services/ai/CodexCliService.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { authenticateToken } from './Middleware.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
+import { isLocalProviderDisconnected, setLocalProviderDisconnected } from '../services/auth/localProviderAccess.js';
 import { listPluginAuthProviders, publicProviderView, getPluginAuthProvider } from '../plugins/pluginAuth.js';
 import { startPluginOAuth, completePluginOAuth, getPluginOAuthStatus } from '../plugins/pluginOAuth.js';
 
@@ -41,9 +42,14 @@ const router = express.Router();
  * Filesystem + env + OS secret store only — no network, no CLI spawns — so
  * this is safe to call on app boot and cheap to poll.
  */
-router.get('/auth/discover', requireAuthHeader, (req, res) => {
+router.get('/auth/discover', requireAuthHeader, async (req, res) => {
   try {
-    return res.json({ success: true, ...discoverSessions() });
+    const discovery = discoverSessions();
+    const connected = [];
+    for (const session of discovery.connected) {
+      if (!await isLocalProviderDisconnected(req.user.id, session.providerId)) connected.push(session);
+    }
+    return res.json({ success: true, ...discovery, connected });
   } catch (error) {
     console.error('[ProviderAuth] Session discovery failed:', error.message);
     return res.status(500).json({ success: false, error: error.message || 'Discovery failed' });
@@ -96,6 +102,9 @@ router.get('/:providerId/auth/status', requireAuthHeader, async (req, res) => {
   }
 
   try {
+    if (await isLocalProviderDisconnected(req.user.id, providerId)) {
+      return res.json({ success: true, available: false, apiUsable: false, disconnected: true, hint: 'Disconnected for your AGNT account' });
+    }
     const status = await providerEntry.manager.checkApiUsable();
 
     const extra = {};
@@ -136,6 +145,7 @@ router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => 
       try {
         const result = await providerEntry.manager.saveManualToken(token);
         if (!result.success) return res.status(400).json(result);
+        await setLocalProviderDisconnected(req.user.id, providerId, false);
         return res.json(result);
       } catch (error) {
         return res.status(500).json({ success: false, error: error.message || 'Failed to save token' });
@@ -151,6 +161,7 @@ router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => 
       try {
         const result = providerEntry.manager.saveManualApiKey(apiKey);
         if (result.success) {
+          await setLocalProviderDisconnected(req.user.id, providerId, false);
           const status = await providerEntry.manager.checkApiUsable({ forceRefresh: true });
           return res.json({ success: true, message: 'Gemini CLI connected successfully', apiUsable: status.apiUsable });
         }
@@ -190,9 +201,8 @@ router.post('/:providerId/auth/disconnect', authenticateToken, async (req, res) 
 
   if (providerEntry.local) {
     try {
-      const result = await providerEntry.manager.logout();
-      if (!result.success) return res.status(500).json(result);
-      return res.json(result);
+      await setLocalProviderDisconnected(req.user.id, providerId, true);
+      return res.json({ success: true, providerId, message: 'Disconnected for your AGNT account. Other accounts and the local CLI session are unchanged.' });
     } catch (error) {
       return res.status(500).json({ success: false, error: error.message });
     }
@@ -223,6 +233,9 @@ router.post('/:providerId/auth/refresh', requireAuthHeader, async (req, res) => 
   }
 
   try {
+    if (await isLocalProviderDisconnected(req.user.id, req.providerId)) {
+      return res.status(409).json({ success: false, code: 'PROVIDER_DISCONNECTED', error: 'Reconnect this provider before refreshing it.' });
+    }
     const result = await providerEntry.manager.refreshAccessToken();
 
     if (result.success) {
@@ -253,6 +266,7 @@ router.get('/:providerId/auth/oauth/start', requireAuthHeader, async (req, res) 
   try {
     // The shared runtime preserves each connection’s sign-in contract.
     const result = await providerEntry.manager.startOAuth();
+    await setLocalProviderDisconnected(req.user.id, req.providerId, false);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message || 'Failed to start OAuth flow' });
@@ -379,6 +393,7 @@ router.post('/:providerId/auth/device/start', requireAuthHeader, async (req, res
 
   try {
     const session = await providerEntry.manager.startDeviceAuth();
+    await setLocalProviderDisconnected(req.user.id, req.providerId, false);
     res.json({
       success: true,
       sessionId: session.sessionId,

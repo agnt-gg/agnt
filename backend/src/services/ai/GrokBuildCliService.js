@@ -1,3 +1,4 @@
+import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 /**
  * GrokBuildCliService — headless runner for the Grok Build CLI.
  *
@@ -164,6 +165,7 @@ class GrokBuildCliService {
    * model id is rejected by the account.
    */
   async runExecStream(options = {}, handlers = {}) {
+    if (options.userId) await assertLocalProviderAccess(options.userId, 'grok-build');
     try {
       return await this._runExecStreamOnce(options, handlers);
     } catch (error) {

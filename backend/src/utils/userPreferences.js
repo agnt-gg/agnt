@@ -125,6 +125,12 @@ export const GLOBAL_PREFS = Object.freeze({
   // 'simple' is the shell's name while it was built; still accepted so a
   // client from then keeps syncing (the frontend reads it as 'focused').
   uiMode: str(8, ['focused', 'studio', 'simple']),
+  localClaudeCodeDisconnected: bool(),
+  localCodexDisconnected: bool(),
+  localGeminiCliDisconnected: bool(),
+  localAntigravityDisconnected: bool(),
+  localGrokBuildDisconnected: bool(),
+  localCursorDisconnected: bool(),
 });
 
 export const DEVICE_PREFS = Object.freeze({

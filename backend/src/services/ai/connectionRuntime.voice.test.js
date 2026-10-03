@@ -23,7 +23,8 @@ vi.mock('../auth/AuthManager.js', () => ({
 
 
 const { resolveVoiceCredentials, isBorrowedCredential, VOICE_CREDENTIAL_SOURCE } = await import('./connectionRuntime.js');
-const dependencies = { connection: { ensureValidToken: (...a) => ensureValidToken(...a), ensureValidOAuthToken: (...a) => ensureValidOAuthToken(...a), getChatGptAccountId: (...a) => getChatGptAccountId(...a) }, authManager: { getValidAccessToken: (...a) => getValidAccessToken(...a) } };
+const disconnected = new Set();
+const dependencies = { isLocalProviderDisconnected: async (user, provider) => disconnected.has(`${user}:${provider}`), connection: { ensureValidToken: (...a) => ensureValidToken(...a), ensureValidOAuthToken: (...a) => ensureValidOAuthToken(...a), getChatGptAccountId: (...a) => getChatGptAccountId(...a) }, authManager: { getValidAccessToken: (...a) => getValidAccessToken(...a) } };
 const resolveVoiceChain = user => resolveVoiceCredentials(user, dependencies);
 const resolveVoiceCredential = async user => (await resolveVoiceChain(user))[0] ?? null;
 const hasVoiceCredential = async user => (await resolveVoiceChain(user)).length > 0;
@@ -37,6 +38,16 @@ beforeEach(() => {
   ensureValidToken.mockResolvedValue(null);
   ensureValidOAuthToken.mockResolvedValue(null);
   getChatGptAccountId.mockReturnValue(null);
+  disconnected.clear();
+});
+
+describe('a disconnect is per AGNT account', () => {
+  it('an account that disconnected Codex gets no ChatGPT credential; another account still does', async () => {
+    ensureValidOAuthToken.mockResolvedValue('chatgpt-oauth');
+    disconnected.add('alice:openai-codex');
+    expect(await resolveVoiceChain('alice')).toEqual([]);
+    expect((await resolveVoiceChain('bob')).map((c) => c.source)).toEqual([VOICE_CREDENTIAL_SOURCE.CHATGPT]);
+  });
 });
 
 describe('an API key must not be able to HIDE the subscription', () => {

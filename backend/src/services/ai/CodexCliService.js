@@ -1,3 +1,4 @@
+import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import { getConnection } from './connectionRuntime.js';
 const responseConnection = getConnection('openai-codex');
 import fs from 'fs';
@@ -208,6 +209,7 @@ class CodexCliService {
    * before any agent output — so the retry never duplicates streamed deltas.
    */
   async runExecStream(options = {}, handlers = {}) {
+    if (options.userId) await assertLocalProviderAccess(options.userId, 'openai-codex');
     try {
       return await this._runExecStreamOnce(options, handlers);
     } catch (error) {
