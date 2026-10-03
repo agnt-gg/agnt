@@ -985,7 +985,7 @@ export default {
     });
 
     // --- OAuth Providers State ---
-    const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
+    const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectionHealth = computed(() => store.state.appAuth.connectionHealth);
     const refreshingHealth = computed(() => store.getters['appAuth/isHealthCheckLoading']);
@@ -1742,7 +1742,7 @@ export default {
       // ?section=providers (toolbar "no provider" pill, Jump palette) lands on
       // a specific view; otherwise keep whatever was open.
       const wanted = typeof route.query?.section === 'string' ? route.query.section : '';
-      if (wanted && wanted !== activeSection.value) activeSection.value = wanted;
+      if (wanted && wanted !== activeSection.value) showSection(wanted);
 
       // Background load secrets
       store.dispatch('connectors/loadSecrets');
@@ -1770,7 +1770,7 @@ export default {
       // }
     }
     function showSection(next) {
-      activeSection.value = next;
+      activeSection.value = next === 'api-keys' ? 'oauth' : next;
       resetForm();
       selectedSecret.value = null;
     }

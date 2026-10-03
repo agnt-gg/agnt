@@ -28,13 +28,14 @@ export function useProviderConnection(modalRef) {
   const store = useStore();
 
   const allProviders = computed(() => store.state.appAuth.allProviders || []);
-  const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
+  const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
 
   // ── helpers ──────────────────────────────────────────────
 
   const isProviderConnected = (providerId) => {
     if (!providerId) return false;
     const normalized = resolveProviderKey(providerId) || providerId.toLowerCase();
+    if (normalized === 'agnt') return !!store.getters['userAuth/isAuthenticated'];
     return connectedApps.value.includes(normalized) || connectedApps.value.includes(providerId);
   };
 

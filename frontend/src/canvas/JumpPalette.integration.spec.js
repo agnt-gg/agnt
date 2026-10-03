@@ -154,7 +154,7 @@ describe('JumpPalette real grid', () => {
 describe('catalog loading independent of visited screens',()=>{
  it('loads archived conversations on opening and navigates by output ID',async()=>{global.fetch.mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/content-outputs')?{outputs:[{id:'saved-77',conversation_id:'conversation-22',content_type:'conversation',title:'Previous release discussion',archived_at:'2026-01-01'}]}:{agents:[],workflows:[],goals:[],tools:[],skills:[],widgets:[],plugins:[]}}));const{router}=await setup();const input=document.querySelector('input');input.value='previous release';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises();const row=document.querySelector('[data-jump-id="chat:saved-77"]');expect(row).not.toBeNull();row.click();await flushPromises();expect(router.currentRoute.value.query['content-id']).toBe('saved-77')});
  it('loads tools and skills with empty screen stores',async()=>{global.fetch.mockImplementation(async url=>({ok:true,json:async()=>url.includes('/skills/')?{skills:[{id:'sk1',name:'Evidence skill'}]}:url.includes('/custom-tools/')?{tools:[{id:'ct1',name:'Evidence checker'}]}:{outputs:[],agents:[],workflows:[],goals:[],tools:[],widgets:[],plugins:[]}}));await setup();const input=document.querySelector('input');input.value='evidence';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises();expect(document.querySelector('[data-jump-id="skill:sk1"]')).not.toBeNull();expect(document.querySelector('[data-jump-id="tool:ct1"]')).not.toBeNull()});
- it('offers the Store when nothing installed matches, and opens it by asset id',async()=>{
+ it('offers the Market when nothing installed matches, and opens it by asset id',async()=>{
   const listing={id:'listing-uuid',asset_id:'agnt-invoice-parser',asset_type:'agent',title:'Invoice Parser',tagline:'Reads invoices',price:0};
   global.fetch.mockImplementation(async url=>({ok:true,json:async()=>url.includes('/marketplace/items')?{items:[listing]}:{outputs:[],agents:[],workflows:[],goals:[],tools:[],skills:[],widgets:[],plugins:[],results:[]}}));
   const{router}=await setup();
@@ -162,12 +162,12 @@ describe('catalog loading independent of visited screens',()=>{
   await new Promise(r=>setTimeout(r,300));await flushPromises();
   const row=document.querySelector('[data-jump-id="store:listing-uuid"]');
   expect(row).not.toBeNull();
-  expect(document.body.textContent).toContain('the Store does');
+  expect(document.body.textContent).toContain('the Market does');
   row.click();await flushPromises();
   expect(router.currentRoute.value.path).toBe('/marketplace');
   expect(router.currentRoute.value.query.item).toBe('agnt-invoice-parser');
  });
- it('never offers the Store while something installed still matches',async()=>{
+ it('never offers the Market while something installed still matches',async()=>{
   const listing={id:'listing-uuid',asset_id:'agnt-research',asset_type:'agent',title:'Research agent',price:0};
   global.fetch.mockImplementation(async url=>({ok:true,json:async()=>url.includes('/marketplace/items')?{items:[listing]}:{outputs:[],agents:[],workflows:[],goals:[],tools:[],skills:[],widgets:[],plugins:[],results:[]}}));
   await setup();
@@ -177,13 +177,13 @@ describe('catalog loading independent of visited screens',()=>{
   expect(document.querySelector('[data-jump-id="agent:a"]')).not.toBeNull();
   expect(document.querySelector('.jp-store')).toBeNull();
  });
- it('stays quiet about local results when the Store is unreachable',async()=>{
+ it('stays quiet about local results when the Market is unreachable',async()=>{
   global.fetch.mockImplementation(async url=>url.includes('/marketplace/items')?{ok:false,status:503}:({ok:true,json:async()=>({outputs:[],agents:[],workflows:[],goals:[],tools:[],skills:[],widgets:[],plugins:[],results:[]})}));
   await setup();
   const input=document.querySelector('input');input.value='nothing matches this';input.dispatchEvent(new Event('input',{bubbles:true}));
   await new Promise(r=>setTimeout(r,300));await flushPromises();
   expect(document.querySelector('.jp-store')).toBeNull();
-  expect(document.body.textContent).toContain('the Store could not be reached');
+  expect(document.body.textContent).toContain('the Market could not be reached');
   expect(document.querySelector('.jp-ask')).not.toBeNull();
  });
  it('shows content-only conversation matches returned by history search',async()=>{global.fetch.mockImplementation(async url=>({ok:true,json:async()=>url.includes('/memory/search')?{results:[{kind:'output',id:'out1',title:'Daily conversation',snippet:'the unusual phrase',meta:{content_type:'conversation',conversation_id:'c1'}}]}:{outputs:[],agents:[],workflows:[],goals:[],tools:[],skills:[],widgets:[],plugins:[],items:[]}}));await setup();const input=document.querySelector('input');input.value='unusual phrase';input.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,300));await flushPromises();expect(document.querySelector('[data-jump-id="chat:out1"]')).not.toBeNull();expect(document.body.textContent).toContain('the unusual phrase')});

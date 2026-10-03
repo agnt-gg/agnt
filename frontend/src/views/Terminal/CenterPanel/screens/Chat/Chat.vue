@@ -102,6 +102,17 @@
 
         <!-- Conversation Canvas -->
         <div class="conversation-canvas-wrapper" :class="{ 'scroll-controls-clear-actions': scrollControlsShareActionsCorner }">
+          <button
+            v-if="!isMobile && !isFocused && baseScreenRef?.showLeftPanel"
+            type="button"
+            class="inspector-toggle chat-library-toggle"
+            :class="{ 'is-open': !baseScreenRef?.leftPanelCollapsed }"
+            v-tooltip="baseScreenRef?.leftPanelCollapsed ? 'Show chats' : 'Hide chats'"
+            :aria-label="baseScreenRef?.leftPanelCollapsed ? 'Show chats' : 'Hide chats'"
+            @click="baseScreenRef?.toggleLeftPanelCollapsed()"
+          >
+            <i :class="baseScreenRef?.leftPanelCollapsed ? 'fas fa-angle-double-right' : 'fas fa-angle-double-left'"></i>
+          </button>
           <!-- Inspector toggle. The right panel is collapsed by default on
                Chat (screenRegistry `rightCollapsedDefault`); this is the one
                visible way back in from the thread itself. -->
@@ -154,7 +165,7 @@
                   Show earlier messages ({{ hiddenMessageCount }})
                 </button>
               </div>
-              <TransitionGroup v-show="!showFocusedHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
+              <TransitionGroup v-show="!showFocusedHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" :key="$store.state.chat.activeConversationId" tag="div" class="message-flow">
                 <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
                   <div v-if="message.kind === 'skill-pill'" class="inline-pill-row" :data-message-id="message.id">
@@ -649,6 +660,13 @@ export default {
 
     // Automatically switch to Local provider ONLY if no other provider is configured
     const autoSwitchToLocalIfNeeded = async () => {
+      // A signed-in account always has AGNT, its own default model. Probing
+      // LM Studio used to win the race against that default and SAVE 'Local'
+      // as the account's provider, which then read as disconnected whenever
+      // LM Studio was closed. Local stays one click away in the picker.
+      // Only a DEFINITIVELY signed-out session may auto-pick Local: while the
+      // session is still being confirmed at boot, an account may be signing in.
+      if (store.state.userAuth?.sessionState !== 'invalid' || store.state.userAuth?.token) return;
       const selectedProvider = store.state.aiProvider?.selectedProvider;
       const connectedApps = store.state.appAuth?.connectedApps || [];
 
@@ -698,6 +716,7 @@ export default {
 
       if (!selectedProvider) return false;
 
+      if (selectedProvider.toLowerCase() === 'agnt') return store.getters['userAuth/isAuthenticated'];
       // Local provider is only available when the local server is running
       if (selectedProvider.toLowerCase() === 'local') {
         return isLocalServerRunning.value;
@@ -2312,14 +2331,10 @@ export default {
       store.dispatch('chat/registerStreamEventCallback', handleStreamEvent);
 
       // PRIORITY: If loading a saved output, start immediately — don't wait on provider checks
-      let contentId = route.query['content-id'];
-      // A cold start with nothing asked for lands in the Main chat — the one
-      // conversation the user always comes back to. Unreachable server: the
-      // fresh-chat path below, exactly as before.
-      if (!contentId && !store.state.chat.activeConversationId) {
-        const main = await store.dispatch('contentOutputs/fetchMainChat');
-        if (main?.id) contentId = main.id;
-      }
+      // A cold start with nothing asked for is a fresh conversation. It used
+      // to land in the Main chat, whose row is no longer listed, so whatever
+      // was typed there could not be found again.
+      const contentId = route.query['content-id'];
       let contentLoadPromise = null;
       if (contentId) {
         terminalLines.value = ['Loading saved output...'];
@@ -2361,6 +2376,9 @@ export default {
 
         // Ensure version is available before building welcome message
         await versionPromise;
+        // An initialization await may overlap New chat or a saved-chat open.
+        // Never append another greeting into the conversation now on screen.
+        if (store.state.chat.messages.length !== 0) return;
 
         // Determine which message to show based on provider selection AND connection status
         const selectedProvider = store.state.aiProvider?.selectedProvider;
@@ -2370,7 +2388,9 @@ export default {
         // Check if the selected provider is actually connected (or if it's Local and server is running)
         let isProviderActuallyConnected = false;
         if (selectedProvider) {
-          if (selectedProvider.toLowerCase() === 'local') {
+          if (selectedProvider.toLowerCase() === 'agnt') {
+            isProviderActuallyConnected = store.getters['userAuth/isAuthenticated'];
+          } else if (selectedProvider.toLowerCase() === 'local') {
             isProviderActuallyConnected = isLocalServerRunning.value;
           } else if (customProviders.some((cp) => cp.id === selectedProvider)) {
             // Custom providers are connected by virtue of existing in the list.
@@ -2577,7 +2597,9 @@ export default {
           // Check if the selected provider is actually connected
           let isProviderActuallyConnected = false;
           if (selectedProvider) {
-            if (selectedProvider.toLowerCase() === 'local') {
+            if (selectedProvider.toLowerCase() === 'agnt') {
+              isProviderActuallyConnected = store.getters['userAuth/isAuthenticated'];
+            } else if (selectedProvider.toLowerCase() === 'local') {
               isProviderActuallyConnected = isLocalServerRunning.value;
             } else {
               // Check if it's a custom provider
@@ -2700,9 +2722,9 @@ export default {
     // ACCOUNT SWITCH. This screen is kept alive and initialises once, so after
     // a session ends (sign-out, or signing in as someone else) it would go on
     // showing the conversation it already had. resetUserScopedData empties the
-    // chat stores; this lands the NEXT session in its own Main chat — where a
-    // cold start lands — instead of the previous account's conversation.
-    const landInMainChatForNewSession = async () => {
+    // chat stores; this lands the NEXT session in a fresh conversation — where
+    // a cold start lands — instead of the previous account's conversation.
+    const landInFreshChatForNewSession = async () => {
       resetMessageWindow();
       currentConversationId.value = null;
       // A content-id in the URL names the previous account's conversation.
@@ -2710,14 +2732,9 @@ export default {
         const { 'content-id': _previousAccountConversation, ...rest } = route.query;
         await router.replace({ path: route.path, query: rest }).catch(() => {});
       }
-      const main = await store.dispatch('contentOutputs/fetchMainChat').catch(() => null);
-      if (main?.id) {
-        await loadSavedOutput(main.id);
-        return;
-      }
       clearConversation();
     };
-    watch(() => store.state.userAuth?.sessionState, createNewSessionLanding(landInMainChatForNewSession));
+    watch(() => store.state.userAuth?.sessionState, createNewSessionLanding(landInFreshChatForNewSession));
 
     // Watch for route query parameter changes to load saved outputs
     watch(
@@ -3464,6 +3481,7 @@ export default {
   opacity: 0.7;
   transition: opacity 0.15s ease, color 0.15s ease;
 }
+.chat-library-toggle { left: 10px; right: auto; }
 .inspector-toggle:hover {
   opacity: 1;
   color: var(--color-text);

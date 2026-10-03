@@ -45,7 +45,7 @@
           </div>
         </div>
 
-<MobileCollection v-if="mobileView && activeView !== 'evolution'" :view-id="activeView === 'skills' ? 'skills' : 'skills-discovered'" :title="activeView === 'skills' ? 'Skills' : 'Discovered skills'" count-label="skills" :items="activeView === 'skills' ? filteredSkills : filteredDiscoveredSkills" v-model:search="searchQuery" :selected-id="selectedSkill?.id" :create-label="activeView === 'skills' ? 'Create skill' : ''" icon="fas fa-brain" @select="activeView === 'skills' ? selectSkill($event) : selectDiscoveredSkill($event)" @create="openCreateModal"><template #actions><button v-if="activeView === 'skills'" @click="triggerImport">Import SKILL.md</button><button v-else @click="rescanSkills">Rescan</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button><div v-if="activeView === 'discovered'" class="m-scan-locations"><strong>Scan locations</strong><p v-for="location in discoveryScanLocations" :key="typeof location === 'string' ? location : location.path">{{ typeof location === 'string' ? location : location.path }}</p><small v-if="discoveryLastScan">Last scan: {{ discoveryLastScan }}</small></div></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ SKILLS VIEW ═══ -->
+<MobileCollection v-if="mobileView && activeView !== 'evolution'" :view-id="activeView === 'skills' ? 'skills' : 'skills-discovered'" :title="activeView === 'skills' ? 'Skills' : 'Discovered skills'" count-label="skills" :items="activeView === 'skills' ? filteredSkills : filteredDiscoveredSkills" v-model:search="searchQuery" :selected-id="selectedSkill?.id" :create-label="activeView === 'skills' ? 'Create skill' : ''" icon="fas fa-brain" @select="activeView === 'skills' ? selectSkill($event) : selectDiscoveredSkill($event)" @create="openCreateModal"><template #actions><button v-if="activeView === 'skills'" @click="triggerImport">Import SKILL.md</button><button v-else @click="rescanSkills">Rescan</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button><div v-if="activeView === 'discovered'" class="m-scan-locations"><strong>Scan locations</strong><p v-for="location in discoveryScanLocations" :key="typeof location === 'string' ? location : location.path">{{ typeof location === 'string' ? location : location.path }}</p><small v-if="discoveryLastScan">Last scan: {{ discoveryLastScan }}</small></div></template></MobileCollection><MarketplaceShelf v-if="mobileView && activeView === 'skills'" asset-type="skill" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" @installed="() => store.dispatch('skills/fetchSkills')" /><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ SKILLS VIEW ═══ -->
         <template v-if="activeView === 'skills'">
           <div v-if="filteredSkills.length > 0" class="card-grid skills-grid">
             <div
@@ -113,6 +113,8 @@
             </div>
           </div>
         </template>
+
+        <MarketplaceShelf v-if="activeView === 'skills' && !ownsNothing" asset-type="skill" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" @installed="() => store.dispatch('skills/fetchSkills')" />
 
         <!-- ═══ DISCOVERED VIEW (Agent Skills Standard) ═══ -->
         <template v-if="activeView === 'discovered'">

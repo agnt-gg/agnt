@@ -136,7 +136,7 @@ export default {
 
     const providerNames = computed(() => store.getters['aiProvider/filteredProviders'] || []);
     const connectedLower = computed(() =>
-      (store.state.appAuth?.connectedApps || []).map((p) => String(p).toLowerCase())
+      ((store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []).map((p) => String(p).toLowerCase())
     );
     const defaultProviderLower = computed(() =>
       String(store.state.aiProvider?.selectedProvider || '').toLowerCase()

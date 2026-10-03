@@ -39,6 +39,33 @@ const ctx = (connectedApps = []) => ({ commit: vi.fn(), dispatch: vi.fn(), state
 const appsCommits = (c) => c.commit.mock.calls.filter(([m]) => m === 'SET_CONNECTED_APPS').map(([, v]) => v);
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 
+describe('AGNT account-native connection', () => {
+  it('a verified free account is connected without license, OAuth, API key or a probe', () => {
+    const state = { connectedApps: [] };
+    expect(appAuth.getters.connectedApps(state, {}, {}, { 'userAuth/isAuthenticated': true })).toEqual(['agnt']);
+    expect(appAuth.getters.connectedApps(state, {}, {}, { 'userAuth/isAuthenticated': false })).toEqual([]);
+  });
+  it('never retains an account-native connection after sign-out or duplicates it', () => {
+    const state = { connectedApps: ['openai', 'agnt'] };
+    expect(appAuth.getters.connectedApps(state, {}, {}, { 'userAuth/isAuthenticated': true })).toEqual(['openai', 'agnt']);
+    expect(appAuth.getters.connectedApps(state, {}, {}, { 'userAuth/isAuthenticated': false })).toEqual(['openai']);
+  });
+  it('a disconnected CLI cannot be resurrected by stale cache or the remote lane', async () => {
+    cliStatus.impl = async id => ({ available: false, disconnected: id === 'cursor-cli' });
+    axios.get.mockImplementation(async url => ({ data: url === REMOTE ? ['cursor-cli', 'gmail'] : [] }));
+    const c = ctx(['cursor-cli', 'openai']);
+    await appAuth.actions.fetchConnectedApps(c);
+    expect(appsCommits(c).at(-1)).toEqual(['gmail']);
+  });
+  it('a disconnected CLI drops from the cached list even when the remote lane is down', async () => {
+    cliStatus.impl = async id => ({ available: false, disconnected: id === 'cursor-cli' });
+    axios.get.mockImplementation(async url => { if (url === REMOTE) throw new Error('down'); return { data: [] }; });
+    const c = ctx(['cursor-cli', 'gmail']);
+    await appAuth.actions.fetchConnectedApps(c);
+    expect(appsCommits(c).at(-1)).toEqual(['gmail']);
+  });
+});
+
 describe('fetchConnectedApps on a cold start', () => {
   it('commits the local set while the CLI probes and agnt.gg are still pending', async () => {
     let releaseCli;

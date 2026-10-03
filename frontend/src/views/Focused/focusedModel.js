@@ -149,6 +149,7 @@ export function isIconClass(icon) {
 export function glyphKind(icon) {
   const s = typeof icon === 'string' ? icon.trim() : '';
   if (!s) return 'none';
+  if (/^(https?:\/\/|data:image\/|blob:|\/|\.\/)/i.test(s)) return 'image';
   if (isIconClass(s)) return 'class';
   if (/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(s) && s.length > 2) return 'name';
   return 'text';
@@ -190,12 +191,14 @@ const providerKey = (p) => String((typeof p === 'string' ? p : p?.id) || '').toL
  * connect flows are multi-step and live in Studio's Connectors; Focused shows
  * their status and can disconnect them (CLI_DISCONNECT_ACTIONS).
  */
-export const CLI_PROVIDERS = new Set(['claude-code', 'openai-codex', 'gemini-cli', 'antigravity']);
+export const CLI_PROVIDERS = new Set(['claude-code', 'openai-codex', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli']);
 export const CLI_DISCONNECT_ACTIONS = Object.freeze({
   'claude-code': 'appAuth/disconnectClaudeCode',
   'openai-codex': 'appAuth/logoutCodex',
   'gemini-cli': 'appAuth/disconnectGeminiCli',
   antigravity: 'appAuth/disconnectAntigravity',
+  'grok-build': 'appAuth/disconnectGrokBuild',
+  'cursor-cli': 'appAuth/disconnectCursor',
 });
 
 // ── Plugin logos ─────────────────────────────────────────────────────────────
@@ -322,7 +325,7 @@ export function pluginCards(allProviders, connectedApps, query = '') {
     cards.push({
       id,
       providerId: String(p.id),
-      name: String(p.name || p.id),
+      name: id === 'agnt' ? 'AGNT Flash' : String(p.name || p.id),
       icon: typeof p.icon === 'string' ? p.icon : '',
       connectionType: CLI_PROVIDERS.has(id) ? 'cli' : String(p.connectionType || ''),
       instructions: String(p.instructions || p.custom_prompt || ''),
@@ -337,9 +340,9 @@ export function pluginCards(allProviders, connectedApps, query = '') {
     cards.push({
       id,
       providerId: id,
-      name: id,
-      icon: '',
-      connectionType: CLI_PROVIDERS.has(id) ? 'cli' : '',
+      name: id === 'agnt' ? 'AGNT Flash' : id,
+      icon: id === 'agnt' ? 'fas fa-bolt' : '',
+      connectionType: id === 'agnt' ? 'account' : CLI_PROVIDERS.has(id) ? 'cli' : '',
       instructions: '',
       connected: true,
       status: 'Connected',

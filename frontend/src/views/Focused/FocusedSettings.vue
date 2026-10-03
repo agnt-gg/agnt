@@ -117,9 +117,11 @@ const router = useRouter();
 const nav = inject('focusedNav');
 
 // The same sign-out Studio's Settings uses (LoginSection.logout).
-function logOut() {
-  store.dispatch('userAuth/logout');
-  router.push('/');
+async function logOut() {
+  await store.dispatch('userAuth/logout');
+  // Settings is the public sign-in surface. Focused's settings editor contains
+  // account controls, not LoginSection, so explicitly borrow Studio here.
+  await router.replace({ path: '/settings', query: { studio: '1', section: 'login' } });
 }
 const page = FOCUSED_PAGES.settings;
 

@@ -143,6 +143,21 @@ describe('mid-session session rejection', () => {
   });
 });
 
+describe('rate limit attribution', () => {
+  it('does not turn a provider or boot-probe 429 into a free-account quota warning', async () => {
+    const store = makeStore();
+    initializeAxiosInterceptor(store, makeRouter());
+    await fire({ response: { status: 429, data: { error: 'Provider busy' } } });
+    expect(store.dispatch).not.toHaveBeenCalledWith('theme/setRateLimited', expect.anything());
+  });
+  it('shows a real account quota with its reset, rather than inventing a free plan', async () => {
+    const store = makeStore();
+    initializeAxiosInterceptor(store, makeRouter());
+    await fire({ response: { status: 429, data: { error: 'Rate limit exceeded', resetAt: Date.now() + 60000, limit: 1000, window: 'hour', currentPlan: 'free' } } });
+    expect(store.dispatch).toHaveBeenCalledWith('theme/setRateLimited', expect.objectContaining({ limit: 1000, window: 'hour' }));
+  });
+});
+
 describe('what must NOT trigger a logout', () => {
   let store;
   let router;

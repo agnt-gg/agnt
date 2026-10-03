@@ -309,7 +309,7 @@ export default {
 
     // Provider state
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
-    const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
+    const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
     // The filter, sort and lane split now live in ProviderLanes.vue, which the
     // chat's setup card renders too. This screen supplies the raw store state
@@ -797,7 +797,7 @@ export default {
       const currentProvider = store.state.aiProvider.selectedProvider;
       const currentModel = store.state.aiProvider.selectedModel;
       if (!currentProvider || !currentModel) {
-        const connected = store.state.appAuth.connectedApps || [];
+        const connected = (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || [];
         if (connected.length > 0) {
           // Find the first connected AI provider
           const providerToSelect = connected.find((appId) => {

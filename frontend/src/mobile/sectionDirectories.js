@@ -193,12 +193,6 @@ export const appsDirectory = [
         "description": "Servers, tools and resources"
       },
       {
-        "id": "api-keys",
-        "icon": "fas fa-key",
-        "label": "Vault",
-        "description": "Saved API keys"
-      },
-      {
         "id": "webhooks",
         "icon": "fas fa-link",
         "label": "Webhooks",

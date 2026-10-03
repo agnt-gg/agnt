@@ -6,13 +6,15 @@
     <div v-if="error" class="m-file-error" role="alert"><p>{{ error }}</p><button @click="load(directory)">Retry</button></div>
     <p v-else-if="loading" role="status">Loading files…</p>
     <div v-else class="m-files"><button v-for="item in filtered" :key="item.path" type="button" class="m-file" @click="isDirectory(item) ? load(item.path) : $emit('open', item.path)"><span class="m-file-icon"><i :class="isDirectory(item) ? 'fas fa-folder' : 'fas fa-file-alt'" aria-hidden="true"></i></span><span class="m-file-copy"><strong>{{ item.name }}</strong><small>{{ isDirectory(item) ? 'Folder' : fileKind(item.name) }}</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></button><p v-if="!filtered.length" class="m-file-empty">{{ query ? 'No files match this search.' : 'This folder is empty.' }}</p></div>
+    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="item => $emit('market', item)" />
     <button type="button" class="m-file-add" @click="$emit('manage')"><i class="fas fa-plus"></i>Upload, create or manage files</button>
   </section>
 </template>
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { getTree } from '@/services/fileSystemService.js';
-defineEmits(['open','manage']);
+defineEmits(['open','manage','market']);
 const directory=ref(''),query=ref(''),items=ref([]),loading=ref(false),error=ref('');let requestVersion=0;
 const isDirectory=item=>item.type==='directory'||item.type==='folder'||item.isDirectory===true;
 const parentDirectory=computed(()=>directory.value.split('/').slice(0,-1).join('/'));

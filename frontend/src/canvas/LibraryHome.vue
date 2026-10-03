@@ -22,7 +22,7 @@ const collections=[
  {screen:'MemoryScreen',label:'Memory',icon:'fas fa-brain',description:'Saved knowledge and preferences'},
  {screen:'WidgetManagerScreen',label:'Widgets',icon:'fas fa-shapes',description:'Reusable workspace components'},
  {screen:'PluginsScreen',label:'Plugins',icon:'fas fa-puzzle-piece',description:'Installed app extensions'},
- {screen:'MarketplaceScreen',label:'Marketplace',icon:'fas fa-store',description:'Discover more assets and extensions'},
+ {screen:'MarketplaceScreen',label:'Market',icon:'fas fa-store',description:'Discover more assets and extensions'},
 ];
 const filtered=computed(()=>collections.filter(item=>(item.label+' '+item.description).toLowerCase().includes(query.value.trim().toLowerCase())));
 </script>

@@ -3101,7 +3101,7 @@ export default {
       const savedOutputTitle = conv ? conv.savedOutputTitle : state.savedOutputTitle;
       const currentConvId = conv ? conv.conversationId : state.currentConversationId;
 
-      if (!state.autosaveEnabled || isSaving) return;
+      if (!state.autosaveEnabled || isSaving || conv?.discarded) return;
       if (agentId) return; // Don't autosave agent chats
 
       const meaningfulMessages = messages.filter((msg) => msg.role === 'user' || (msg.role === 'assistant' && !msg.showProviderSetup));
@@ -3229,8 +3229,13 @@ export default {
         // refusal into a recovery — a tab that reloaded into a short
         // transcript visibly gets its history back instead of quietly
         // continuing with a truncated one.
+        if (conv?.discarded) return;
         if (response.status === 409) {
           const refusal = await response.json().catch(() => ({}));
+          if (refusal.error === 'conversation_reset') {
+            await dispatch('detachSavedOutput', savedOutputId);
+            return;
+          }
           console.warn(
             `[Autosave] Server refused a truncating save for ${convId}: `
             + `stored ${refusal.storedMessageCount} messages vs our ${refusal.incomingMessageCount}. `
@@ -3480,6 +3485,9 @@ export default {
       if (!outputId) return;
       for (const [convId, conv] of Object.entries(state.conversations)) {
         if (conv?.savedOutputId !== outputId) continue;
+        conv.discarded = true;
+        if (conv.autosaveDebounceTimer) clearTimeout(conv.autosaveDebounceTimer);
+        commit('SCOPED_SET_AUTOSAVE_TIMER', { conversationId: convId, timer: null });
         commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: null });
         commit('SCOPED_SET_MESSAGES', { conversationId: convId, messages: [] });
       }

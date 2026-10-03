@@ -210,6 +210,16 @@ describe('Given a signed-in account and the first-run fill', () => {
     expect(store.state.aiProvider.selectedProvider).toBeNull();
   });
 
+  it('an account with no saved default does not inherit another account’s browser selection', async () => {
+    const { store, writes } = signedInStore({ ok: true, json: async () => ({ selectedProvider: null, selectedModel: null }) });
+    store.state.aiProvider.selectedProvider = 'OpenAI';
+    store.state.aiProvider.selectedModel = 'previous-account-model';
+    await store.dispatch('aiProvider/loadUserSettings');
+    expect(store.state.aiProvider.selectedProvider).toBe('AGNT');
+    expect(store.state.aiProvider.selectedModel).toBe('agnt-flash');
+    expect(writes).toHaveLength(1);
+  });
+
   it('when the server confirms there is no default, then the AGNT default is saved as one complete pair', async () => {
     const { store, writes } = signedInStore({ ok: true, json: async () => ({ selectedProvider: null, selectedModel: null }) });
     await store.dispatch('aiProvider/loadUserSettings');

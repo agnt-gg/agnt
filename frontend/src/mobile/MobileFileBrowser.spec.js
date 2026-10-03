@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 vi.mock('@/services/fileSystemService.js',()=>({getTree:vi.fn()}));
+// Filesystem behaviour is isolated here; the real shelf/store integration is
+// covered by MarketplaceShelf.spec and the signed-in browser tests.
+vi.mock('@/views/Terminal/_components/MarketplaceShelf.vue', () => ({ default: { template: '<div />' } }));
 import { getTree } from '@/services/fileSystemService.js';
 import MobileFileBrowser from './MobileFileBrowser.vue';
 const items=[{name:'report.md',path:'report.md',type:'file'},{name:'Sources',path:'Sources',type:'directory'}];

@@ -7,13 +7,14 @@
     @panel-action="handlePanelAction"
   >
     <template #default>
-      <MobileFileBrowser v-if="isMobile" v-show="mobileFileBrowserOpen" @open="mobileOpenFile" @manage="baseScreenRef.openMobilePanel('right')" />
+      <MobileFileBrowser v-if="isMobile" v-show="mobileFileBrowserOpen" @open="mobileOpenFile" @manage="baseScreenRef.openMobilePanel('right')" @market="item => $emit('screen-change', 'MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {})" />
       <!-- Desktop: no side panels. The grid is the page until a file is opened. -->
       <FilesBrowser
         v-if="!isMobile"
         v-show="desktopBrowserOpen"
         ref="filesBrowserRef"
         @open="desktopOpenFile"
+        @market="item => $emit('screen-change', 'MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {})"
         @renamed="(data) => handlePanelAction('file-renamed', data)"
         @deleted="(data) => handlePanelAction('file-deleted', data)"
       />

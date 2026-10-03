@@ -362,7 +362,7 @@ export default {
     // Local + custom providers are always offered; built-ins require appAuth.connectedApps.
     const aiProviderOptions = computed(() => {
       const list = store.getters['aiProvider/allProviders'] || [];
-      const connected = (store.state.appAuth?.connectedApps || []).map((p) => String(p).toLowerCase());
+      const connected = ((store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []).map((p) => String(p).toLowerCase());
       return list
         .map((p) => ({ id: p.id || p.key, name: p.name || p.displayName || p.id || p.key, isCustom: !!p.isCustom }))
         .filter((p) => {

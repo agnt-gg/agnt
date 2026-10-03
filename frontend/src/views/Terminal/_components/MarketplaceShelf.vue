@@ -135,10 +135,10 @@
         <div class="ms-strip-head">
           <div class="ms-head-txt">
             <div class="ms-title">
-              <i class="fas fa-store"></i>More {{ typePlural }} from the marketplace
+              <i class="fas fa-store"></i>{{ fallbackShelf ? 'Top picks from the Market' : 'More ' + typePlural + ' from the Market' }}
               <span class="ms-count">{{ typeItems.length }}</span>
             </div>
-            <div class="ms-sub">Most installed · the search above filters your own {{ typePlural }}</div>
+            <div class="ms-sub">{{ fallbackShelf ? 'Ready-made agents, workflows and tools to get started' : 'Most installed · install and make it yours' }}</div>
           </div>
           <button class="ms-all" @click="$emit('browse')">Browse all <i class="fas fa-arrow-right"></i></button>
           <Tooltip text="Hide marketplace suggestions on this screen" width="auto">
@@ -146,7 +146,7 @@
           </Tooltip>
         </div>
         <div class="ms-rail">
-          <div v-for="item in rankedItems" :key="item.id" class="ms-row" @click="$emit('browse', item)">
+          <div v-for="item in topItems" :key="item.id" class="ms-row" @click="$emit('browse', item)">
             <div class="ms-row-ico" :style="iconStyle(item)"><i :class="assetIcon(item)"></i></div>
             <div class="ms-row-txt">
               <h4>{{ item.title }}</h4>
@@ -216,6 +216,8 @@ export default {
     /** The screen's existing search string. The shelf NEVER writes to the marketplace store's global filters. */
     query: { type: String, default: '' },
     createLabel: { type: String, default: 'Create' },
+    fallbackToAll: { type: Boolean, default: false },
+    maxItems: { type: Number, default: 6 },
   },
   emits: ['create', 'browse', 'installed', 'availability', 'clear-search'],
   setup(props, { emit }) {
@@ -230,16 +232,16 @@ export default {
     const { handleInstall } = useMarketplaceInstall(simpleModal);
 
     const status = computed(() => store.getters['marketplace/shelfStatus']);
-    const typeItems = computed(() =>
-      isShelfEligible(props.assetType) ? store.getters['marketplace/shelfItemsByType'](props.assetType) : []
-    );
+    const ownTypeItems = computed(() => isShelfEligible(props.assetType) ? store.getters['marketplace/shelfItemsByType']?.(props.assetType) || [] : []);
+    const fallbackShelf = computed(() => props.fallbackToAll && !ownTypeItems.value.length);
+    const typeItems = computed(() => fallbackShelf.value ? store.getters['marketplace/shelfItems'] || [] : ownTypeItems.value);
 
     /* The whole marketplace section hangs off this one predicate, so every
        degraded path (ineligible type, failed fetch, empty catalogue, dismissed
        strip) collapses to the same safe outcome: render Create, render nothing
        else. */
     const showShelf = computed(() => {
-      if (!isShelfEligible(props.assetType)) return false;
+      if (!isShelfEligible(props.assetType) && !props.fallbackToAll) return false;
       if (status.value === 'error' || status.value === 'loading' || status.value === 'idle') return false;
       if (!typeItems.value.length) return false;
       if (props.variant === 'strip' && dismissed.value) return false;
@@ -249,6 +251,7 @@ export default {
     watch(showShelf, (v) => emit('availability', v), { immediate: true });
 
     const rankedItems = computed(() => [...typeItems.value].sort(byPopularity));
+    const topItems = computed(() => rankedItems.value.slice(0, Math.max(1, props.maxItems)));
 
     const matched = computed(() =>
       rankedItems.value.filter(
@@ -330,7 +333,7 @@ export default {
       if (installingIds.value.has(item.id)) return;
       installingIds.value = new Set(installingIds.value).add(item.id);
       try {
-        const result = await handleInstall(item, props.assetType);
+        const result = await handleInstall(item, item.asset_type || props.assetType);
         if (result && result.success) emit('installed', item);
       } finally {
         const next = new Set(installingIds.value);
@@ -347,7 +350,7 @@ export default {
       category,
       showShelf,
       typeItems,
-      rankedItems,
+      rankedItems, topItems, fallbackShelf,
       visibleItems,
       hiddenCount,
       categories,

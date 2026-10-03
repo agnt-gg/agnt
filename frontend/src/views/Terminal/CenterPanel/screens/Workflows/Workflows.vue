@@ -20,6 +20,8 @@
 
       <div class="workflows-panel" @click="onContentClick">
 <MobileCollection v-if="mobileView" view-id="workflows" title="Workflows" count-label="workflows" :items="filteredWorkflows" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedWorkflowId" create-label="Create workflow" icon="fas fa-project-diagram" @update:search="handleSearch" @select="handleWorkflowClick" @create="handlePanelAction('create')"><template #actions><button @click="triggerWorkflowImport">Import</button><button :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
+<MarketplaceShelf v-if="mobileView" asset-type="workflow" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+
 <input
               ref="workflowImportInput"
               type="file"

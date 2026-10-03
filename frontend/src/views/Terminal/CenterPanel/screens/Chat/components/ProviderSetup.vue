@@ -36,7 +36,7 @@ export default {
     const modal = ref(null);
 
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
-    const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
+    const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
     const claudeCodeStatus = computed(() => store.state.appAuth.claudeCodeStatus || {});
 

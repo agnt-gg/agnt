@@ -230,6 +230,15 @@ describe('MarketplaceShelf — install', () => {
 });
 
 describe('MarketplaceShelf — strip variant', () => {
+  it('files and widgets get honest cross-type top picks when their type has no catalogue', async () => {
+    const { wrapper } = await mountShelf({ assetType: 'widget', variant: 'strip', fallbackToAll: true, maxItems: 2 });
+    expect(wrapper.findAll('.ms-row')).toHaveLength(2);
+    expect(wrapper.find('.ms-title').text()).toContain('Top picks from the Market');
+    expect(wrapper.text()).not.toContain('More widgets');
+    await wrapper.find('.ms-row-get').trigger('click');
+    expect(handleInstall).toHaveBeenCalledWith(expect.objectContaining({ asset_type: 'agent' }), 'agent');
+  });
+
   it('renders compact rows, not full cards, so the user’s own work stays dominant', async () => {
     const { wrapper } = await mountShelf({ variant: 'strip' });
     expect(wrapper.findAll('.ms-row')).toHaveLength(4);

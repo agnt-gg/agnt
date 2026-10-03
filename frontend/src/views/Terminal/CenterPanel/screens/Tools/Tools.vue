@@ -19,6 +19,8 @@
 
       <div class="tools-panel">
 <MobileCollection v-if="mobileView" view-id="tools" title="Tools" count-label="tools" :items="filteredTools" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedTool?.id" create-label="Create tool" icon="fas fa-wrench" @update:search="handleSearch" @select="selectTool" @create="handlePanelAction('create')"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
+<MarketplaceShelf v-if="mobileView" asset-type="tool" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+
 <div v-show="!mobileView" class="desktop-view-container">
         <!-- Title, count, search. Create lives in the right panel. -->
         <ScreenToolbar

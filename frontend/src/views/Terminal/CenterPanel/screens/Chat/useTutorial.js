@@ -9,7 +9,7 @@ export function useTutorial(emitFunction) {
   const hasAIProvider = computed(() => {
     // Check if a provider is selected AND connected
     const selectedProvider = store.state.aiProvider?.selectedProvider;
-    const connectedApps = store.state.appAuth?.connectedApps || [];
+    const connectedApps = store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps ?? [];
 
     if (!selectedProvider) return false;
 

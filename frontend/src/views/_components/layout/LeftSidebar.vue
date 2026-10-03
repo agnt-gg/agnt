@@ -195,7 +195,7 @@
       </RouterLink>
       </Tooltip>
       <!-- MARKETPLACE -->
-      <Tooltip text="Marketplace" width="auto">
+      <Tooltip text="Market" width="auto">
       <RouterLink to="/marketplace" class="icon">
         <svg
           class="svg-icon"

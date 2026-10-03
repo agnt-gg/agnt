@@ -84,6 +84,7 @@
         </button>
       </li>
     </ul>
+    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="item => nav.openScreen('MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {})" />
     <p v-if="rows.length > CAP" class="focused-foot-note">Showing {{ CAP }} of {{ rows.length.toLocaleString() }}. Search to find the rest.</p>
   </FocusedPage>
 </template>
@@ -91,6 +92,7 @@
 <script setup>
 import { ref, computed, inject, watch, onMounted } from 'vue';
 import FocusedPage from './FocusedPage.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import FocusedEditor from './FocusedEditor.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import PdfFrame from '@/views/_components/common/PdfFrame.vue';

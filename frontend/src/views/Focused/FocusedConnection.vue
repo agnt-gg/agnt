@@ -32,7 +32,7 @@
             </form>
           </div>
         </div>
-        <div class="focused-form-foot">
+        <div v-if="card.id !== 'agnt'" class="focused-form-foot">
           <button type="button" class="focused-btn danger" :disabled="busy" @click="disconnect">Disconnect</button>
         </div>
       </section>

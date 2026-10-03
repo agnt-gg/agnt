@@ -194,6 +194,13 @@ export default {
   color: var(--color-primary);
 }
 
+.tool-icon :deep(svg) {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
 .tool-icon.status-healthy {
   color: var(--color-green);
 }

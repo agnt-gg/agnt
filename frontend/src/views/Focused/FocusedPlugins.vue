@@ -18,6 +18,7 @@
         </button>
       </div>
     </template>
+    <MarketplaceShelf asset-type="plugin" variant="strip" @browse="item => nav.openScreen('MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {})" />
   </FocusedPage>
 </template>
 
@@ -25,6 +26,7 @@
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import FocusedPage from './FocusedPage.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import FocusedConnection from './FocusedConnection.vue';
 import FocusedPluginLogo from './FocusedPluginLogo.vue';
 import { FOCUSED_PAGES, pluginCards, createAsk } from './focusedModel.js';

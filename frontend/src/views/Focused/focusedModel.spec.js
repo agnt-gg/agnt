@@ -140,6 +140,9 @@ describe('library', () => {
     expect(glyphKind('robot')).toBe('name');
     expect(glyphKind('\uD83E\uDD16')).toBe('text');
     expect(glyphKind('AB')).toBe('text');
+    expect(glyphKind('https://example.com/agent.png')).toBe('image');
+    expect(glyphKind('data:image/png;base64,AA==')).toBe('image');
+    expect(glyphKind('/api/images/agent')).toBe('image');
     expect(glyphKind('')).toBe('none');
     expect(glyphKind(null)).toBe('none');
   });
@@ -206,6 +209,11 @@ describe('plugins', () => {
     expect(available.find((c) => c.id === 'slack').providerId).toBe('Slack');
   });
 
+  it('account-native AGNT is named clearly and does not ask for a key', () => {
+    const card = pluginCard([], ['agnt'], 'agnt');
+    expect(card).toMatchObject({ name: 'AGNT Flash', connectionType: 'account', connected: true });
+  });
+
   it('keeps a connection the catalogue does not list', () => {
     const { connected } = pluginCards([], ['gemini-cli']);
     expect(connected[0]).toMatchObject({ id: 'gemini-cli', connected: true, connectionType: 'cli' });
@@ -253,7 +261,7 @@ describe('plugins', () => {
   });
 
   it('every CLI provider has a disconnect action', () => {
-    expect(Object.keys(CLI_DISCONNECT_ACTIONS).sort()).toEqual(['antigravity', 'claude-code', 'gemini-cli', 'openai-codex']);
+    expect(Object.keys(CLI_DISCONNECT_ACTIONS).sort()).toEqual(['antigravity', 'claude-code', 'cursor-cli', 'gemini-cli', 'grok-build', 'openai-codex']);
   });
 });
 

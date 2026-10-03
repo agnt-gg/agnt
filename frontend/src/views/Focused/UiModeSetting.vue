@@ -87,8 +87,8 @@ p {
   background: var(--surface-hover);
 }
 .ui-mode-choice.active {
-  border-color: var(--fill-brand);
-  background: var(--surface-active);
+  border-color: rgba(var(--green-rgb), 0.35);
+  background: rgba(var(--green-rgb), 0.08);
 }
 .ui-mode-choice i {
   margin-top: 2px;

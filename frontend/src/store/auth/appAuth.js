@@ -193,6 +193,8 @@ const actions = {
         // isCacheable option at the bottom of this action.
         let localLaneAnswered = false;
         let remoteLaneAnswered = false;
+        const disconnectedCli = new Set();
+        const withoutDisconnected = apps => apps.filter(id => !disconnectedCli.has(id));
 
         // Shared normalizer — handles strings, {provider_id}, {providerId}, {id}.
         // Used by every lane so the merge is collision-free by ID.
@@ -248,6 +250,10 @@ const actions = {
           if (result.status === 'fulfilled') {
             const status = result.value || {};
             commit('SET_CLI_PROVIDER_STATUS', { providerId: id, status });
+            if (status.disconnected === true) {
+              disconnectedCli.add(id);
+              connectedApps = connectedApps.filter(app => app !== id);
+            }
             if (status.available === true && !connectedApps.includes(id)) {
               connectedApps = [...connectedApps, id];
             }
@@ -275,7 +281,7 @@ const actions = {
         if (remoteResult && Array.isArray(remoteResult.data)) {
           remoteLaneAnswered = true;
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
-          const merged = Array.from(new Set([...remoteApps, ...connectedApps]));
+          const merged = withoutDisconnected(Array.from(new Set([...remoteApps, ...connectedApps])));
           commit('SET_CONNECTED_APPS', merged);
 
           // Backfill any provider whose key exists ONLY on the remote into this
@@ -313,12 +319,11 @@ const actions = {
            * newly discovered one appear.
            */
           const known = (state.connectedApps || []).map(normalizeProviderId).filter(Boolean);
-          const merged = Array.from(new Set([...known, ...connectedApps]));
+          const merged = withoutDisconnected(Array.from(new Set([...known, ...connectedApps])));
 
-          // Only commit on a real change. A union can only grow, so equal size
-          // means an equal set — and committing every 60s would churn every
-          // watcher of connectedApps for nothing.
-          if (merged.length !== known.length) {
+          // Keep remote-only apps through outages, but an explicit account
+          // disconnect outranks every stale source. Only publish a real change.
+          if (merged.length !== known.length || merged.some(id => !known.includes(id))) {
             commit('SET_CONNECTED_APPS', merged);
           }
         }
@@ -672,6 +677,12 @@ const actions = {
   async pollCodexDeviceAuth({ dispatch }, opts = {}) {
     return dispatch('pollProviderDeviceAuth', { providerId: 'openai-codex', ...opts });
   },
+  async disconnectGrokBuild({ dispatch }) {
+    return dispatch('disconnectProvider', 'grok-build');
+  },
+  async disconnectCursor({ dispatch }) {
+    return dispatch('disconnectProvider', 'cursor-cli');
+  },
   async logoutCodex({ dispatch }) {
     return dispatch('disconnectProvider', 'openai-codex');
   },
@@ -952,7 +963,10 @@ const actions = {
 const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 const getters = {
-  connectedApps: (state) => state.connectedApps,
+  connectedApps: (state, getters, rootState, rootGetters) => {
+    const external = state.connectedApps.filter(id => String(id).toLowerCase() !== 'agnt');
+    return rootGetters['userAuth/isAuthenticated'] ? [...external, 'agnt'] : external;
+  },
   // Backward-compatible getters for existing component reads
   codexStatus: (state) => state.cliProviderStatuses['openai-codex'] || { available: false, apiUsable: false },
   codexDeviceSession: (state) => state.codexDeviceSession,

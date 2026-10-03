@@ -35,8 +35,8 @@
           </div>
         </div>
 
-        <!-- The Main chat: pinned first, the one place to stay in. Never an
-             item in the lists below (contentOutputs/visibleOutputs). -->
+        <!-- Main-chat shortcut hidden by request; account routing and saved state remain intact.
+
         <div
           class="output-item main-chat-item"
           :class="{ active: isMainOpen, streaming: isMainStreaming }"
@@ -63,6 +63,7 @@
             </button>
           </div>
         </div>
+        -->
 
         <div class="list-header">
           <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />

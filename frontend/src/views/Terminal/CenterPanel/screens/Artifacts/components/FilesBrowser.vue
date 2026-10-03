@@ -78,6 +78,7 @@
         </div>
       </article>
     </div>
+    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="item => emit('market', item)" />
     <p v-if="truncated" class="fb-note">Showing the first results. Narrow the search to see more.</p>
 
     <div v-if="dragDepth > 0" class="fb-drop" aria-hidden="true">
@@ -113,11 +114,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import WorkspacePicker from '@/components/WorkspacePicker.vue';
 import { createDirectory, deleteFile, getSettings, getTree, renameFile, saveFile, searchTree, updateSettings, uploadFiles } from '@/services/fileSystemService.js';
 import { KIND_ICONS, breadcrumbs, formatAge, formatSize, invalidName, joinPath, kindOf, sortItems } from '../filesBrowser.js';
 
-const emit = defineEmits(['open', 'renamed', 'deleted']);
+const emit = defineEmits(['open', 'renamed', 'deleted', 'market']);
 
 const dir = ref('');
 const items = ref([]);

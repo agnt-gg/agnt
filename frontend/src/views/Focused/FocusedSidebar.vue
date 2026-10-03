@@ -13,7 +13,8 @@
     </div>
 
     <nav class="focused-nav">
-      <!-- The Main chat: pinned first, the one place to stay in. -->
+      <!-- Main-chat shortcut hidden by request; account routing and saved state remain intact.
+
       <div class="focused-main-chat" :class="{ active: onChat && isMainOpen }">
         <button
           type="button"
@@ -35,6 +36,8 @@
           <i class="fas fa-eraser" aria-hidden="true"></i>
         </button>
       </div>
+      -->
+
       <button type="button" class="focused-nav-row" :class="{ active: onChat && !activeConversationId }" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i><span>New chat</span>
       </button>
@@ -43,7 +46,7 @@
         :key="item.id"
         type="button"
         class="focused-nav-row"
-        :class="{ active: activePage === item.id }"
+        :class="{ active: activePage === item.id || (item.id === 'market' && route.path === '/marketplace') }"
         @click="$emit('open-page', item.id)"
       >
         <i :class="item.icon" aria-hidden="true"></i><span>{{ item.label }}</span>
@@ -147,6 +150,7 @@ const pageItems = [
   { id: 'scheduled', label: FOCUSED_PAGES.scheduled.title, icon: FOCUSED_PAGES.scheduled.icon },
   { id: 'library', label: FOCUSED_PAGES.library.title, icon: FOCUSED_PAGES.library.icon },
   { id: 'plugins', label: FOCUSED_PAGES.plugins.title, icon: FOCUSED_PAGES.plugins.icon },
+  { id: 'market', label: 'Market', icon: 'fas fa-store' },
 ];
 
 // Focused pages one click away (the demo's More). Studio-only screens are a
@@ -199,9 +203,11 @@ function switchToStudio() {
   store.dispatch('theme/setUiMode', 'studio');
 }
 // The same sign-out Studio's Settings uses (LoginSection.logout).
-function logOut() {
-  store.dispatch('userAuth/logout');
-  router.push('/');
+async function logOut() {
+  await store.dispatch('userAuth/logout');
+  // Settings is the public sign-in surface. Focused's settings editor contains
+  // account controls, not LoginSection, so explicitly borrow Studio here.
+  await router.replace({ path: '/settings', query: { studio: '1', section: 'login' } });
 }
 
 // Menus close on any click outside them.

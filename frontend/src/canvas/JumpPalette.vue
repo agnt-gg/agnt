@@ -27,12 +27,12 @@
             </div>
           </section>
           <section v-if="storeSuggestions.length" class="jp-group jp-store">
-            <div class="jp-group-label jp-store-label"><i class="fas fa-store" aria-hidden="true"></i>You don’t have one — the Store does<small>{{ storeSuggestions.length }}</small></div>
+            <div class="jp-group-label jp-store-label"><i class="fas fa-store" aria-hidden="true"></i>You don’t have one — the Market does<small>{{ storeSuggestions.length }}</small></div>
             <div class="jp-group-items">
               <button v-for="item in storeSuggestions" :key="item.id" class="jp-row" :class="{sel:selected===item.id}" :data-jump-id="item.id" @click="run(item)" @mouseenter="selected=item.id"><span class="jp-ic"><i :class="item.icon"></i></span><span class="jp-label">{{ item.label }}<small v-if="item.snippet" class="jp-snippet">{{ item.snippet }}</small></span><small class="jp-hint">{{ item.hint }}</small></button>
             </div>
           </section>
-          <p v-else-if="query.trim() && !total && storeUnavailable" class="jp-row jp-store-down">Nothing installed matches, and the Store could not be reached.</p>
+          <p v-else-if="query.trim() && !total && storeUnavailable" class="jp-row jp-store-down">Nothing installed matches, and the Market could not be reached.</p>
           <button v-if="query.trim() && !total" class="jp-row jp-ask" @click="ask"><span class="jp-ic"><i class="fas fa-comment-dots"></i></span><span>Ask Annie about “{{ query.trim() }}”</span></button>
         </div>
       </section>
@@ -177,7 +177,7 @@ watch(query, () => {
     await Promise.all([
       (async()=>{try{const body=await searchRequest('/filesystem/search?q='+encodeURIComponent(query.value.trim()),options);if(generation===fileGeneration){files.value=body.items||[];searchLimit.value=!!body.truncated;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='File search unavailable. ';}})(),
       (async()=>{try{const body=await searchRequest('/memory/search?q='+encodeURIComponent(query.value.trim())+'&limit=200',options);if(generation===fileGeneration){history.value=historySearchItems(body.results||[]);searchLimit.value=searchLimit.value||(body.results||[]).length>=200;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='History search unavailable. ';}})(),
-      // Deliberately NOT folded into fileError: the Store being unreachable is
+      // Deliberately NOT folded into fileError: the Market being unreachable is
       // not a degraded local search, and saying so next to results the user
       // can already act on would be noise.
       (async()=>{try{const term=query.value.trim();const items=await marketplaceSearch(term,{signal:fileAbort.signal});if(generation===fileGeneration)storeHits.value=marketplaceStoreItems(items,term);}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')storeUnavailable.value=true;}})(),

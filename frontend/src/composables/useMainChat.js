@@ -60,6 +60,9 @@ export function useMainChat() {
     if (!id) return false;
     if (isMainStreaming.value) return false;
     if (typeof confirm === 'function' && !(await confirm())) return false;
+    // The server serializes clears against saves and refuses the old
+    // conversation id. Invalidate local copies only after success, so a
+    // failed clear never destroys the user's in-memory transcript.
     await store.dispatch('contentOutputs/clearMainChat');
     await store.dispatch('chat/detachSavedOutput', id);
     await openMainChat();

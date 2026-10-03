@@ -46,7 +46,7 @@ export default {
     const providerSelect = ref(null);
     const modelSelect = ref(null);
 
-    const connectedProviders = computed(() => store.state.appAuth.connectedApps);
+    const connectedProviders = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps));
     const providers = computed(() => store.getters['aiProvider/filteredProviders']);
     const modelsByProvider = computed(() => store.state.aiProvider.allModels);
 

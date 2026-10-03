@@ -46,7 +46,7 @@
         </div>
 
         <!-- Main Content -->
-        <MobileCollection v-if="mobileView && activeTab !== 'my-earnings'" view-id="store" :title="profileUserId ? (profileInfo?.name || 'Publisher') : 'Store'" count-label="assets" :items="profileUserId ? profileItems : filteredWorkflows" :search="filters.search" :tabs="tabs" :active="activeTab" :selected-id="selectedWorkflow?.id" title-key="title" icon="fas fa-store" @update:search="handleSearch" @tab="selectTab" @select="handleWorkflowClick"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Price, rating & sort</button><button @click="baseScreenRef.openMobilePanel('right')">Publish asset</button></template><template #item="{item}"><span class="m-store-price">{{ item.price ? '$' + Number(item.price).toFixed(2) : 'Free' }}</span><button @click="handleWorkflowClick(item)">Details & reviews</button></template></MobileCollection>
+        <MobileCollection v-if="mobileView && activeTab !== 'my-earnings'" view-id="store" :title="profileUserId ? (profileInfo?.name || 'Publisher') : 'Market'" count-label="assets" :items="profileUserId ? profileItems : filteredWorkflows" :search="filters.search" :tabs="tabs" :active="activeTab" :selected-id="selectedWorkflow?.id" title-key="title" icon="fas fa-store" @update:search="handleSearch" @tab="selectTab" @select="handleWorkflowClick"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Price, rating & sort</button><button @click="baseScreenRef.openMobilePanel('right')">Publish asset</button></template><template #item="{item}"><span class="m-store-price">{{ item.price ? '$' + Number(item.price).toFixed(2) : 'Free' }}</span><button @click="handleWorkflowClick(item)">Details & reviews</button></template></MobileCollection>
         <div v-show="!mobileView || activeTab === 'my-earnings'" class="marketplace-content">
           <!-- ── Toolbar ── Screen chrome, so it lives OUTSIDE the scroller.
                A pinned bar INSIDE the scroll flow can only hide the cards
@@ -2917,7 +2917,7 @@ body.dark .view-btn:not(:last-child) {
 /* mask-image clips to the PADDING box — keep vertical inset or the pills get shaved */
 .mk-chips {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -2932,7 +2932,7 @@ body.dark .view-btn:not(:last-child) {
   align-items: center;
   gap: 7px;
   flex: 0 0 auto;
-  padding: 7px 14px;
+  padding: 5px 10px;
   white-space: nowrap;
   border-radius: var(--border-radius-full);
   border: 1px solid var(--terminal-border-color);
@@ -3576,4 +3576,10 @@ body.rose .mk-chip.on {
   .mk-hero:hover { transform: none; }
 }
 
+
+/* Low-profile tabs with room between labels and a usable overflow rail. */
+.marketplace-panel :deep(.tab-controls) { gap: 16px; align-items: center; }
+.marketplace-panel :deep(.tab-tabs) { flex: 1; min-width: 0; gap: 8px; overflow-x: auto; scrollbar-width: thin; padding: 6px 0; }
+.marketplace-panel :deep(.tab-button) { flex: 0 0 auto; min-height: 32px; padding: 6px 10px; font-size: 12px; line-height: 18px; white-space: nowrap; border-radius: 6px; }
+.marketplace-panel :deep(.layout-toggle) { flex: none; }
 </style>

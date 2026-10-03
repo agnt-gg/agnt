@@ -101,7 +101,7 @@ export const UNLOCK_RULES = [
     id: 'store',
     needs: ['agents', 'workflows', 'tools'],
     when: (f) => count(f.agents) + count(f.workflows) + count(f.tools) > 0,
-    title: 'Store',
+    title: 'Market',
     message: 'Ready-made agents, workflows and plugins — install one, or publish yours.',
   },
   {

@@ -17,6 +17,8 @@
     <template #default="{ terminalLines }">
       <div class="agents-panel" :class="{ 'has-details': !!selectedAgent, expanded: isDetailsExpanded }" @click="onContentClick">
 <MobileCollection v-if="mobileView" v-show="!selectedAgent" view-id="agents" title="Agents" count-label="agents" :items="filteredAgentsGrid" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedAgent?.id" create-label="Create agent" icon="fas fa-robot" @update:search="handleSearch" @select="selectMobileAgent" @create="openCreate()"><template #actions><button @click="triggerAgentImport">Import</button><button :disabled="!selectedAgent" @click="exportSelectedAgent">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
+<MarketplaceShelf v-if="mobileView" asset-type="agent" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+
 <input
               ref="agentImportInput"
               type="file"

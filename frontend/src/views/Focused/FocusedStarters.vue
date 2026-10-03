@@ -126,8 +126,8 @@ defineExpose({ tick, moreIdeas });
 }
 .focused-starter:hover {
   background: var(--surface-raised);
-  border-color: var(--fill-brand);
-  box-shadow: 0 0 0 3px rgba(var(--pink-rgb), 0.12);
+  border-color: rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.1);
 }
 .focused-starter:focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -163,7 +163,7 @@ defineExpose({ tick, moreIdeas });
   width: 12px;
   height: 12px;
   flex: none;
-  color: var(--fill-brand);
+  color: var(--color-green);
 }
 .focused-starter-label {
   display: block;

@@ -35,6 +35,7 @@
         <div class="plugins-grid">
           <div class="plugins-section">
             <PluginManager @show-alert="showAlert" />
+            <MarketplaceShelf asset-type="plugin" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
           </div>
         </div>
       </div>
@@ -47,6 +48,7 @@ import { ref, computed, inject, watch } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import PluginManager from '../Connectors/components/Plugins.vue';
 
 const emit = defineEmits(['screen-change']);

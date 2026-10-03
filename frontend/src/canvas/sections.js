@@ -176,8 +176,8 @@ export const MAIN_SECTIONS = [
     id: 'store',
     group: 'CONNECTORS',
     icon: 'fas fa-store',
-    label: 'Store',
-    screens: [{ screen: 'MarketplaceScreen', label: 'STORE' }],
+    label: 'Market',
+    screens: [{ screen: 'MarketplaceScreen', label: 'MARKET' }],
   },
 ];
 

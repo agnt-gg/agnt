@@ -1260,6 +1260,12 @@ const aiProviderModule = {
               : canonicalizeProviderCase(state.providers, savedProvider) || savedProvider;
             const model = settings.selectedModel;
             serverHasNoDefault = !provider;
+            // localStorage belongs to the browser, not this account. A server
+            // confirmed empty choice must not retain the previous user's pair.
+            if (serverHasNoDefault) {
+              commit('SET_SELECTED_PROVIDER', null);
+              commit('SET_SELECTED_MODEL', null);
+            }
 
             if (settings.customInstructions !== undefined) {
               commit('SET_CUSTOM_INSTRUCTIONS', settings.customInstructions || '');

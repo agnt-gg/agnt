@@ -18,7 +18,7 @@
   height: 100%;
   overflow: hidden;
   position: relative;
-  background: var(--surface-canvas);
+  background: var(--color-background);
   color: var(--text-primary);
 }
 
@@ -109,7 +109,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--surface-raised);
+  background: var(--color-background);
   border-right: 1px solid var(--terminal-border-color);
 }
 .ui-focused.is-sidebar-closed .focused-sidebar {
@@ -180,7 +180,7 @@
   padding-right: 40px;
 }
 .ui-focused .focused-main-chat .focused-nav-row i {
-  color: var(--fill-brand);
+  color: var(--color-green);
 }
 .ui-focused .focused-main-chat .focused-nav-row.unread::after {
   content: '';
@@ -191,7 +191,7 @@
   height: 6px;
   margin-top: -3px;
   border-radius: 50%;
-  background: var(--fill-brand);
+  background: var(--color-green);
 }
 .ui-focused .focused-main-clear {
   position: absolute;
@@ -212,7 +212,7 @@
 .ui-focused .focused-sub-mark {
   margin-right: 6px;
   font-size: 0.75em;
-  color: var(--fill-brand);
+  color: var(--color-green);
   opacity: 0.8;
 }
 
@@ -290,7 +290,7 @@
   bottom: 7px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--fill-brand);
+  background: var(--color-green);
 }
 /* Unread is a dot, not bold: a list that is mostly unread read as a wall. */
 .ui-focused .focused-recent.unread {
@@ -306,7 +306,7 @@
   height: 6px;
   margin-top: -3px;
   border-radius: 50%;
-  background: var(--fill-brand);
+  background: var(--color-green);
 }
 .ui-focused .focused-recents-empty {
   padding: 8px 10px;
@@ -343,8 +343,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--fill-brand);
-  color: var(--on-fill-brand);
+  background: rgba(var(--green-rgb), 0.16);
+  color: var(--color-green);
   font-weight: 700;
   font-size: 13px;
 }
@@ -441,7 +441,7 @@
   min-height: 40px;
   padding: 0 14px;
   border-bottom: 1px solid var(--terminal-border-color);
-  background: var(--surface-raised);
+  background: var(--color-background);
   font-size: 13px;
 }
 .ui-focused .focused-back,
@@ -496,6 +496,7 @@
   font-size: 13px;
   color: var(--text-secondary);
 }
+/* Same treatment as Studio's New button (ScreenToolbar .wm-btn-create). */
 .ui-focused .focused-primary {
   display: inline-flex;
   align-items: center;
@@ -503,14 +504,18 @@
   flex: 0 0 auto;
   min-height: 36px;
   padding: 0 14px;
-  border: none;
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
-  background: var(--fill-brand);
-  color: var(--on-fill-brand);
+  background: rgba(var(--green-rgb), 0.04);
+  color: var(--color-green);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+.ui-focused .focused-primary:hover:not(:disabled) {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 .ui-focused .focused-tabs {
   display: flex;
@@ -537,9 +542,11 @@
 .ui-focused .focused-tab:hover {
   background: var(--surface-hover);
 }
+/* Studio's active tab (BaseTabControls): green tint, readable text. */
 .ui-focused .focused-tab.active {
-  background: var(--text-primary);
-  color: var(--surface-canvas);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.35);
+  color: var(--text-primary);
 }
 .ui-focused .focused-tab.active i,
 .ui-focused .focused-tab.active .focused-count {
@@ -686,7 +693,7 @@
   padding: 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
-  background: var(--surface-raised);
+  background: var(--color-background);
   color: var(--text-primary);
   font: inherit;
   text-align: left;
@@ -715,12 +722,39 @@
 }
 .ui-focused .chat-screen-wrapper .input-container {
   border-top: none;
+  padding-left: 0;
+  padding-right: 0;
 }
-/* The scrollbar takes width only from the thread, not from the composer, so
-   the message column centred half a scrollbar left of it (measured: 5px).
-   The demo's fix: reserve the gutter on both sides. */
+/* Studio's scrollable-content is content-box, padded and wider than its
+   parent. A nested centred column cannot align with its sibling composer.
+   Both now occupy the same border-box, including the scroll gutter. */
+.ui-focused .chat-screen-wrapper .scrollable-content {
+  box-sizing: border-box;
+  padding: 0;
+}
+.ui-focused .chat-screen-wrapper .conversation-canvas {
+  box-sizing: border-box;
+  padding-left: 0;
+  padding-right: 0;
+  /* The overlay scrollbar must not subtract width from this column alone. */
+  overflow-y: auto !important;
+  scrollbar-width: none !important;
+}
+.ui-focused .chat-screen-wrapper .conversation-container,
+.ui-focused .chat-screen-wrapper .input-container {
+  width: min(768px, calc(100% - 32px));
+}
+.ui-focused .focused-row-icon img,
+.ui-focused .focused-edit-icon img,
+.ui-focused .focused-card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* No asymmetric gutter: the transcript and composer share one column. */
 .ui-focused .chat-screen-wrapper:not(.focused-home) .conversation-canvas {
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: auto;
 }
 /* The composer reads as a box you type into, not a terminal line.
    Desktop only: on a phone BaseScreen already draws its own two-row composer
@@ -741,13 +775,13 @@
   padding: 10px 10px 10px 10px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 16px;
-  background: var(--surface-canvas);
+  background: var(--color-background);
   box-shadow: var(--shadow-sm), 0 6px 20px rgba(0, 0, 0, 0.12);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ui-focused:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
-  border-color: var(--fill-brand);
-  box-shadow: 0 0 0 3px rgba(var(--pink-rgb), 0.28), 0 6px 20px rgba(0, 0, 0, 0.12);
+  border-color: var(--color-green);
+  box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.28), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 .ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .input-highlight-container {
   flex: 1;
@@ -790,14 +824,13 @@
   padding: 0;
   border: 0;
   border-radius: 8px;
-  background: var(--fill-brand);
-  color: var(--on-fill-brand);
+  background: var(--color-green);
+  color: var(--color-dark-navy);
   box-shadow: none;
   transform: none;
 }
 .ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:hover:not(:disabled) {
-  background: var(--fill-brand);
-  filter: brightness(0.92);
+  background: rgba(var(--green-rgb), 0.8);
   transform: none;
 }
 .ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:disabled {
@@ -816,7 +849,7 @@
 }
 .ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
   background: var(--text-primary);
-  color: var(--surface-canvas);
+  color: var(--color-background);
 }
 
 /* Studio-only controls. Chats autosave and "New chat" lives in the sidebar,
@@ -830,7 +863,7 @@
 
 /* Scroll arrows: neutral, like every other Focused control (Studio's are green). */
 .ui-focused .chat-screen-wrapper .chat-scroll-controls .scroll-btn {
-  background: var(--surface-raised);
+  background: var(--color-background);
   color: var(--text-secondary);
   border: 1px solid var(--terminal-border-color);
   box-shadow: var(--shadow-sm);
@@ -874,7 +907,7 @@
 /* Light themes: the demo's ink bubble, near-black with white text. */
 .ui-focused:not(:where(.dark *)) .chat-screen-wrapper .message-wrapper.user .message-card {
   background: var(--text-primary);
-  color: var(--surface-canvas);
+  color: var(--color-background);
 }
 /* No avatar column: the reply text, the user bubble and the composer share
    one left edge, as in the demo. Group-chat speakers are still named by the
@@ -934,7 +967,7 @@
   flex: none;
   box-sizing: border-box;
   border: 1.5px solid var(--border-strong);
-  border-top-color: var(--fill-brand);
+  border-top-color: var(--color-green);
   border-radius: 50%;
   animation: ui-focused-spin 0.7s linear infinite;
 }
@@ -1024,7 +1057,7 @@
 }
 .ui-focused .focused-home-hero h1 em {
   font-style: normal;
-  color: var(--fill-brand);
+  color: var(--color-green);
 }
 .ui-focused .focused-home-hero p {
   margin: 0;
@@ -1097,7 +1130,7 @@
   cursor: pointer;
 }
 .ui-focused .focused-edit-icon.editable:hover {
-  box-shadow: 0 0 0 2px var(--fill-brand);
+  box-shadow: 0 0 0 2px var(--color-green);
 }
 .ui-focused .focused-edit-names {
   flex: 1;
@@ -1143,7 +1176,7 @@
 .ui-focused .focused-inline-title:focus,
 .ui-focused .focused-inline-sub:focus {
   outline: none;
-  border-color: var(--fill-brand);
+  border-color: var(--color-green);
   background: var(--color-darker-0);
 }
 .ui-focused .focused-edit-meta {
@@ -1283,7 +1316,7 @@
 }
 .ui-focused .focused-input:focus {
   outline: none;
-  border-color: var(--fill-brand);
+  border-color: var(--color-green);
 }
 .ui-focused .focused-input.mono,
 .ui-focused .focused-code-edit {
@@ -1321,7 +1354,7 @@
 .ui-focused .focused-doc-edit:focus,
 .ui-focused .focused-code-edit:focus {
   outline: none;
-  border-color: var(--fill-brand);
+  border-color: var(--color-green);
 }
 
 /* A switch, as in the demo: a pill with a knob, brand when on. */
@@ -1350,12 +1383,12 @@
   transition: transform 0.15s, background 0.15s;
 }
 .ui-focused .focused-switch[aria-checked='true'] {
-  background: var(--fill-brand);
+  background: var(--color-green);
   box-shadow: none;
 }
 .ui-focused .focused-switch[aria-checked='true']::after {
   transform: translateX(16px);
-  background: var(--on-fill-brand);
+  background: var(--color-dark-navy);
 }
 .ui-focused .focused-switch:disabled {
   opacity: 0.5;
@@ -1436,7 +1469,7 @@
 }
 .ui-focused .focused-step-title:focus {
   outline: none;
-  border-color: var(--fill-brand);
+  border-color: var(--color-green);
 }
 .ui-focused .focused-step-type {
   font-size: 12px;
@@ -1493,7 +1526,7 @@
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   overflow: hidden;
-  background: var(--surface-raised);
+  background: var(--color-background);
 }
 
 /* Settings: billing */
@@ -1560,7 +1593,7 @@
   height: 70vh;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
-  background: var(--surface-raised);
+  background: var(--color-background);
 }
 
 /* Lists: a status pill, a row with its own control, a cap note */
@@ -1847,4 +1880,19 @@
 }
 .ui-focused.is-compact .chat-screen-wrapper.focused-home .mobile-conversation-heading {
   display: none;
+}
+
+/* Compact Studio uses a padded full-width container. Focused keeps one
+   identical transcript/composer column at every presentation width. */
+.ui-focused.is-compact .chat-screen-wrapper .conversation-canvas {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.ui-focused.is-compact .chat-screen-wrapper .conversation-container {
+  width: calc(100% - 24px);
+  margin-inline: auto;
+}
+.ui-focused.is-compact .chat-screen-wrapper .input-container {
+  width: 100%;
+  max-width: none;
 }

@@ -212,7 +212,7 @@ export default {
 
     const providers = computed(() => store.getters['aiProvider/filteredProviders']);
     const customProviders = computed(() => store.state.aiProvider.customProviders || []);
-    const connectedProviders = computed(() => store.state.appAuth.connectedApps);
+    const connectedProviders = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps));
 
     // Always work with lowercase strings
     const connectedProvidersLower = computed(() => connectedProviders.value.map((p) => p.toLowerCase()));

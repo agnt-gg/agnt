@@ -119,7 +119,7 @@ export default {
     });
 
     const allProviders = computed(() => store.state.appAuth.allProviders);
-    const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
+    const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
 
     const integrationDetails = computed(() => {
       // Get all providers from the store

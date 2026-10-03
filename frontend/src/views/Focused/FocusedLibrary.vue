@@ -40,6 +40,7 @@
         </button>
       </li>
     </ul>
+    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" fallback-to-all @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
     <p v-if="rows.length > shownRows.length" class="focused-foot-note">
       Showing {{ shownRows.length }} of {{ rows.length.toLocaleString() }}. Search to find the rest.
     </p>
@@ -54,6 +55,7 @@ import FocusedAgentEditor from './FocusedAgentEditor.vue';
 import FocusedAssetEditor from './FocusedAssetEditor.vue';
 import FocusedFiles from './FocusedFiles.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows, createAsk } from './focusedModel.js';
 import { isRunningStatus } from './focusedEditors.js';
 
@@ -75,6 +77,8 @@ const rows = computed(() => (tab.value.getter ? libraryRows(tab.value.id, itemsF
 const shownRows = computed(() => rows.value.slice(0, CAP));
 
 const statusClass = (s) => (isRunningStatus(s) ? 'live' : /^(failed|error)$/i.test(s) ? 'bad' : '');
+
+function browseMarket(item) { nav.openScreen('MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {}); }
 
 function selectTab(id) {
   query.value = '';

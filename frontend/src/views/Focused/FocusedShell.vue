@@ -153,6 +153,7 @@ function go(loc) {
   pushScreen(screen, opts);
 }
 function openPage(id) {
+  if (id === 'market') { pushScreen('MarketplaceScreen'); return; }
   if (id === 'library') go({ page: 'library', tab: 'agents' });
   else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
   else if (['plugins', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
@@ -192,22 +193,25 @@ async function clearMain() {
   if (cleared) toast('Main chat cleared');
 }
 /**
- * Ask in the Main chat, with the request typed in. Nothing is sent until
- * Enter. The Main chat routes real work to its own chats, so asking never
- * needs a new conversation.
+ * Ask in a NEW conversation, with the request typed in. Nothing is sent until
+ * Enter. A chat already blank and unsaved is reused rather than replaced.
  *
- * The seed waits for the Main chat to BE the active conversation. The
+ * The seed waits for that new conversation to BE the active one. The
  * composer's draft is keyed by conversation and reloaded on every switch
- * (BaseScreen, chat/SET_ACTIVE_CONVERSATION), and the route push resolves
- * before the conversation loads — so a seed written one tick after the push
- * was filed under the outgoing chat and then replaced by the Main chat's own
- * draft: from any page but the Main chat, the prefix never appeared.
+ * (BaseScreen, chat/SET_ACTIVE_CONVERSATION), so a seed written before the
+ * switch lands was filed under the outgoing chat and then replaced.
  */
 const ASK_SWITCH_TIMEOUT_MS = 8000;
+const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat?.messages || []).some((m) => m?.role === 'user');
 async function ask(text) {
-  await openMain();
-  const mainId = mainChat.mainChatId.value;
-  if (mainId) await waitUntil(() => store.state.chat?.savedOutputId === mainId, ASK_SWITCH_TIMEOUT_MS, 50);
+  if (onBlankChat()) {
+    closeDrawer();
+    await router.push('/chat').catch(() => {});
+  } else {
+    const leaving = store.state.chat?.activeConversationId;
+    await newChat();
+    await waitUntil(() => store.state.chat?.activeConversationId !== leaving, ASK_SWITCH_TIMEOUT_MS, 50);
+  }
   await nextTick();
   window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } }));
 }
@@ -253,6 +257,7 @@ function toast(text) {
 // One service for every page: where to go and how to ask. Pages never import
 // the router or Terminal; they only say what they want.
 provide('focusedNav', {
+  openScreen: pushScreen,
   go,
   ask,
   chat: backToChat,

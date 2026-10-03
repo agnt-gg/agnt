@@ -194,6 +194,7 @@
 
 
 </div>
+        <MarketplaceShelf asset-type="widget" variant="strip" fallback-to-all @browse="$emit('screen-change', 'MarketplaceScreen')" />
         <!-- Import Modal -->
         <Teleport to="body">
           <div v-if="showImportModal" class="wm-modal-overlay" @click.self="closeImportModal">

@@ -96,7 +96,7 @@ export default {
     const store = useStore();
     // Not local state: reading the shared value is what keeps this panel in
     // step with the sidebar when navigation starts from the rail.
-    const activeSection = computed(() => activeInnerSection.value || 'oauth');
+    const activeSection = computed(() => activeInnerSection.value === 'api-keys' ? 'oauth' : activeInnerSection.value || 'oauth');
 
     const totalSecrets = computed(() => {
       const secrets = store.getters['connectors/allSecrets'] || [];

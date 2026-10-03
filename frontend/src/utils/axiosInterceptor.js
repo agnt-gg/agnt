@@ -95,7 +95,11 @@ export function initializeAxiosInterceptor(vuexStore, routerInstance = null) {
       }
 
       // Check if it's a 429 error
-      if (error.response && error.response.status === 429) {
+      if (error.response?.status === 429 &&
+          error.response.data?.error === 'Rate limit exceeded' &&
+          Number.isFinite(error.response.data?.resetAt) &&
+          Number.isFinite(error.response.data?.limit) &&
+          ['hour', 'day'].includes(error.response.data?.window)) {
         console.warn('Rate limit exceeded:', error.response.data);
 
         // Extract rate limit info from response

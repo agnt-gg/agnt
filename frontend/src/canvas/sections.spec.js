@@ -167,7 +167,7 @@ describe('canvas sections registry', () => {
         'Chat', 'Dashboard',
         'Goals', 'Activity', 'Files',
         'Agents', 'Workflows', 'Tools',
-        'Apps', 'Store',
+        'Apps', 'Market',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
         'chat', 'dashboard',
@@ -388,7 +388,7 @@ describe('canvas sections registry', () => {
     // user can read one: this tab, the mobile heading, and the system counts.
     expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS', 'PLUGINS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
-    expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'STORE' }]);
+    expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'MARKET' }]);
     expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECTORS', 'CONNECTORS']);
     expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['settings']);
     // The attention badge rides the Apps row, and the canvas paints it as a warning there.

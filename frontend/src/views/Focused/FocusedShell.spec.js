@@ -11,7 +11,7 @@ import { mount } from '@vue/test-utils';
 import { defineComponent, h, inject, ref, reactive } from 'vue';
 
 const dispatch = vi.fn();
-const storeState = reactive({ chat: { savedOutputTitle: '', savedOutputId: null } });
+const storeState = reactive({ chat: { savedOutputTitle: '', savedOutputId: null, activeConversationId: null, messages: [] } });
 // mapState/mapActions: options-API components the pages import (UpgradeModal)
 // call them at module load, even though the pages are stubbed here.
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
@@ -80,39 +80,51 @@ describe('FocusedShell', () => {
     fresh.value = [];
     storeState.chat.savedOutputTitle = '';
     storeState.chat.savedOutputId = null;
+    storeState.chat.activeConversationId = null;
+    storeState.chat.messages = [];
     openMainChat.mockClear();
     localStorage.clear();
   });
 
-  it('regression: the chat seed waits for the Main chat to be the open conversation', async () => {
-    // The composer's draft is keyed by conversation and reloaded on a switch.
-    // Seeding before the Main chat is active filed the text under the chat
-    // being left, and the switch then replaced it: the prefix never showed.
-    storeState.chat.savedOutputId = 'some-other-chat';
+  // Reported: new pages were saved into the retired Main chat and vanished.
+  it('regression: an ask opens a NEW chat and seeds it only once that chat is open', async () => {
+    storeState.chat.savedOutputId = 'some-saved-chat';
+    storeState.chat.activeConversationId = 'conv-old';
     const seen = vi.fn();
+    const fresh = vi.fn();
     window.addEventListener('agnt:ask-annie', seen);
+    window.addEventListener('trigger-new-chat', fresh);
     const w = mountShell('AgentsScreen');
     const asking = nav.ask('Create an agent that ');
     await new Promise((r) => setTimeout(r, 150));
-    expect(openMainChat).toHaveBeenCalledTimes(1);
+    expect(openMainChat).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith('/chat');
+    expect(fresh).toHaveBeenCalledTimes(1);
     expect(seen).not.toHaveBeenCalled();
 
-    storeState.chat.savedOutputId = 'main-1';
+    storeState.chat.activeConversationId = 'temp-new';
     await asking;
     expect(seen).toHaveBeenCalledTimes(1);
     expect(seen.mock.calls[0][0].detail).toEqual({ text: 'Create an agent that ', send: false });
     window.removeEventListener('agnt:ask-annie', seen);
+    window.removeEventListener('trigger-new-chat', fresh);
     w.unmount();
   });
 
-  it('seeds at once when the Main chat is already open', async () => {
-    storeState.chat.savedOutputId = 'main-1';
+  it('reuses a chat that is already blank instead of replacing it', async () => {
+    storeState.chat.savedOutputId = null;
+    storeState.chat.messages = [];
     const seen = vi.fn();
+    const fresh = vi.fn();
     window.addEventListener('agnt:ask-annie', seen);
+    window.addEventListener('trigger-new-chat', fresh);
     const w = mountShell('ConnectorsScreen');
     await nav.ask('Edit the Gmail plugin to ');
+    expect(openMainChat).not.toHaveBeenCalled();
+    expect(fresh).not.toHaveBeenCalled();
     expect(seen.mock.calls[0][0].detail.text).toBe('Edit the Gmail plugin to ');
     window.removeEventListener('agnt:ask-annie', seen);
+    window.removeEventListener('trigger-new-chat', fresh);
     w.unmount();
   });
 

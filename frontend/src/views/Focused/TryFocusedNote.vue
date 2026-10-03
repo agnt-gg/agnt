@@ -120,8 +120,8 @@ onBeforeUnmount(() => {
 .try-focused-badge {
   padding: 3px 10px;
   border-radius: 999px;
-  background: var(--fill-brand);
-  color: var(--on-fill-brand);
+  background: rgba(var(--green-rgb), 0.12);
+  color: var(--color-green);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -134,7 +134,7 @@ h2 {
 }
 h2 em {
   font-style: normal;
-  color: var(--fill-brand);
+  color: var(--color-green);
 }
 p {
   margin: 0;
@@ -165,7 +165,7 @@ p {
 .try-focused-points i {
   width: 16px;
   text-align: center;
-  color: var(--fill-brand);
+  color: var(--color-green);
 }
 .try-focused-actions {
   display: flex;
@@ -185,8 +185,8 @@ p {
 }
 .try-focused-primary {
   border: none;
-  background: var(--fill-brand);
-  color: var(--on-fill-brand);
+  background: var(--color-green);
+  color: var(--color-dark-navy);
   font-weight: 700;
 }
 .try-focused-quiet {

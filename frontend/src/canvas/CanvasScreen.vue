@@ -189,11 +189,11 @@
           <!-- Shown only to a plan that can actually upgrade. A paid account
                being sold what it already owns reads as a billing error, so
                enterprise and pro never see this. -->
-          <Tooltip v-if="canUpgrade" text="Upgrade to Pro" position="right" width="auto" :disabled="railLabelsVisible">
+          <Tooltip v-if="canUpgrade" text="Upgrade" position="right" width="auto" :disabled="railLabelsVisible">
             <button class="cv-sb-page cv-sb-upgrade" data-tour-id="sidebar.upgrade" @click="openUpgrade">
               <i class="fas fa-bolt"></i>
               <span class="cv-sb-label" v-marquee>
-                <span class="cv-sb-label-inner">Upgrade to Pro</span>
+                <span class="cv-sb-label-inner">Upgrade</span>
               </span>
             </button>
           </Tooltip>
