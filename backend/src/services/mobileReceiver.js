@@ -22,6 +22,7 @@
  */
 import { callService, hostedInstanceSlug } from './agntServices.js';
 import { getSessionToken, getSessionUserId } from './auth/sessionTokenCache.js';
+import { receiveMedia, findOutboundFiles, sendMedia, FILE_LINK, trimLink } from './mobileMedia.js';
 
 const WAIT_SECONDS = 25;
 const MAX_CONCURRENT = 2;
@@ -34,26 +35,39 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref?.()
 
 /**
  * Make an answer fit a text message: no image tokens or local file links, no
- * fenced code, and never empty.
+ * fenced code. Links to files that go along as attachments say so; others
+ * point at the app. Empty only when attachments carry the whole answer.
  */
-export function toTextReply(raw) {
+export function toTextReply(raw, { attached = [] } = {}) {
+  const sentTokens = new Set(attached.map((file) => file.token));
   let text = String(raw || '');
   text = text.replace(/```[\s\S]*?```/g, '[code is in your AGNT app]');
   text = text.replace(/<img[^>]*>/gi, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '');
   text = text.replace(/\{\{(IMAGE|DATA)_REF:[^}]+\}\}/g, '');
-  text = text.replace(/\[([^\]]+)\]\(file:\/\/[^)]+\)/g, '$1 (in your AGNT app)');
+  text = text.replace(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/g, (_, label, url) => `${label} (${sentTokens.has(url) ? 'attached' : 'in your AGNT app'})`);
+  text = text.replace(FILE_LINK, (match) => {
+    const url = trimLink(match);
+    return (sentTokens.has(url) ? '(attached)' : '(in your AGNT app)') + match.slice(url.length);
+  });
   text = text.replace(/\n{3,}/g, '\n\n').trim();
-  return text || "Done. The details are in your AGNT app.";
+  if (text) return text;
+  return attached.length ? '' : 'Done. The details are in your AGNT app.';
 }
 
 /** Read one orchestrator SSE response to its final answer. */
 export async function readFinalAnswer(response) {
+  return (await readTurn(response)).text;
+}
+
+/** The final answer plus the ids of images the turn generated. */
+export async function readTurn(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let accumulated = '';
   let finalText = null;
   let error = null;
+  const imageIds = [];
   const handle = (block) => {
     let event = 'message';
     let data = '';
@@ -64,7 +78,8 @@ export async function readFinalAnswer(response) {
     if (!data) return;
     let parsed;
     try { parsed = JSON.parse(data); } catch { return; }
-    if (event === 'content_delta') accumulated = parsed.accumulated || accumulated + (parsed.delta || '');
+    if (event === 'image_generated') { const id = parsed.imageId || parsed.id || parsed.ref; if (typeof id === 'string') imageIds.push(id); }
+    else if (event === 'content_delta') accumulated = parsed.accumulated || accumulated + (parsed.delta || '');
     else if (event === 'final_content' && typeof parsed.content === 'string') finalText = parsed.content;
     else if (event === 'error' && !parsed.continuing) error = parsed.error || 'error';
   };
@@ -81,13 +96,16 @@ export async function readFinalAnswer(response) {
   if (buffer.trim()) handle(buffer);
   const text = finalText ?? accumulated;
   if (!text && error) throw new Error(error);
-  return text;
+  return { text, imageIds };
 }
 
 export class MobileReceiver {
-  constructor({ port = process.env.PORT || 3333, fetchImpl = fetch } = {}) {
+  constructor({ port = process.env.PORT || 3333, fetchImpl = fetch, converters, resolveImage } = {}) {
     this.base = `http://127.0.0.1:${port}/api`;
     this.fetch = fetchImpl;
+    this.converters = converters;
+    // Generated images are found by id in local image storage.
+    this.resolveImage = resolveImage || (async (id) => (await import('./ImageStorage.js')).findImageFile(id));
     this.running = false;
     this.inFlight = new Set();
     this.failures = 0;
@@ -161,26 +179,41 @@ export class MobileReceiver {
       const token = userId ? getSessionToken(userId) : null;
       if (!token) throw new Error('no signed-in user');
       const transcript = await this.loadTranscript(token, message.conversationId);
-      const answer = await this.ask(token, message, transcript.messages);
-      const reply = toTextReply(answer);
-      await callService('mobile', `/messages/${encodeURIComponent(message.id)}/reply`, { method: 'POST', body: { text: reply }, timeoutMs: 30_000, planGate: false });
-      await this.saveTranscript(token, message, transcript, reply).catch((error) => console.warn('[MobileReceiver] transcript save failed:', error.message));
+      const incoming = await receiveMedia(message.media || [], { fetchImpl: this.fetch, ...(this.converters ? { converters: this.converters } : {}) });
+      const text = [message.text, ...incoming.notes].filter(Boolean).join('\n')
+        || `(sent ${incoming.files.length === 1 ? 'an attachment' : incoming.files.length + ' attachments'})`;
+      const turn = await this.ask(token, { ...message, text }, transcript.messages, incoming.files);
+      const outgoing = await findOutboundFiles(turn.text, { imageIds: turn.imageIds, resolveImage: this.resolveImage });
+      const attached = outgoing.length ? await sendMedia(message.id, outgoing, { callService, fetchImpl: this.fetch }) : [];
+      const reply = toTextReply(turn.text, { attached });
+      await callService('mobile', `/messages/${encodeURIComponent(message.id)}/reply`, { method: 'POST', body: { text: reply, media: attached.map((file) => file.mediaId) }, timeoutMs: 30_000, planGate: false });
+      const sentNames = attached.map((file) => `[sent: ${file.name}]`).join(' ');
+      const received = incoming.files.map((file) => `[attached: ${file.originalname}]`).join(' ');
+      await this.saveTranscript(token, { ...message, text: [text, received].filter(Boolean).join('\n') }, transcript, [reply, sentNames].filter(Boolean).join('\n'))
+        .catch((error) => console.warn('[MobileReceiver] transcript save failed:', error.message));
     } catch (error) {
       console.error('[MobileReceiver] could not answer a text:', error.message);
       await callService('mobile', `/messages/${encodeURIComponent(message.id)}/release`, { method: 'POST', body: {}, timeoutMs: 15_000, planGate: false }).catch(() => {});
     }
   }
 
-  async ask(token, message, history) {
+  /** One orchestrator turn. Files go as a multipart upload, exactly like the chat window's. */
+  async ask(token, message, history, files = []) {
     const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: message.text }];
-    const response = await this.fetch(`${this.base}/orchestrator/chat`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-AGNT-Client-Id': 'mobile-receiver' },
-      body: JSON.stringify({ messages, conversationId: message.conversationId, routingMode: 'default', persistDefault: false, textMode: true }),
-      signal: AbortSignal.timeout(TURN_TIMEOUT_MS),
-    });
+    const fields = { messages, conversationId: message.conversationId, routingMode: 'default', persistDefault: false, textMode: true };
+    let body = JSON.stringify(fields);
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'text/event-stream', 'X-AGNT-Client-Id': 'mobile-receiver' };
+    if (files.length) {
+      // Strings raw, everything else JSON: the backend re-parses JSON-shaped fields.
+      body = new FormData();
+      for (const [key, value] of Object.entries(fields)) body.append(key, typeof value === 'string' ? value : JSON.stringify(value));
+      for (const file of files) body.append('files', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    } else {
+      headers['Content-Type'] = 'application/json';
+    }
+    const response = await this.fetch(`${this.base}/orchestrator/chat`, { method: 'POST', headers, body, signal: AbortSignal.timeout(TURN_TIMEOUT_MS) });
     if (!response.ok) throw new Error(`orchestrator ${response.status}`);
-    return readFinalAnswer(response);
+    return readTurn(response);
   }
 
   async loadTranscript(token, conversationId) {

@@ -31,7 +31,14 @@ describe('buildTextRegisterSection', () => {
   it('keeps the work unchanged and file paths off the phone', () => {
     const text = buildTextRegisterSection();
     expect(text).toMatch(/Do the work exactly as you normally/);
-    expect(text).toMatch(/Never reference local file paths/);
+    expect(text).toMatch(/Never reference local file paths otherwise/);
+  });
+
+  it('tells Annie how files travel both ways', () => {
+    const text = buildTextRegisterSection();
+    expect(text).toMatch(/file:\/\/\/ link/);
+    expect(text).toMatch(/attached to your reply automatically, up to 4 files/);
+    expect(text).toMatch(/voice notes \(as a transcript\)/);
   });
 });
 

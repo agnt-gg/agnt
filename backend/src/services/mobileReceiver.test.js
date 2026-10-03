@@ -36,6 +36,12 @@ describe('toTextReply', () => {
     expect(toTextReply('<img src="{{IMAGE_REF:abc}}" alt="x">')).toBe('Done. The details are in your AGNT app.');
     expect(toTextReply('a\n\n\n\nb')).toBe('a\n\nb');
   });
+  it('marks attached files, and may be empty when files carry the answer', () => {
+    const attached = [{ token: 'file:///C:/x/chart.png' }];
+    expect(toTextReply('[chart](file:///C:/x/chart.png) and file:///C:/x/other.pdf', { attached })).toBe('chart (attached) and (in your AGNT app)');
+    expect(toTextReply('Done: file:///C:/x/chart.png.', { attached })).toBe('Done: (attached).');
+    expect(toTextReply('{{IMAGE_REF:abc}}', { attached: [{ token: '{{IMAGE_REF:abc}}' }] })).toBe('');
+  });
 });
 
 describe('readFinalAnswer', () => {
@@ -73,9 +79,45 @@ describe('MobileReceiver.handle', () => {
     // History starts on a user turn and ends with this text.
     expect(body.messages).toEqual([{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }, { role: 'user', content: "what's on today?" }]);
 
-    expect(calls).toEqual([expect.objectContaining({ service: 'mobile', path: '/messages/m-1/reply', opts: expect.objectContaining({ method: 'POST', body: { text: 'Two meetings: **10am** and 2pm.' } }) })]);
+    expect(calls).toEqual([expect.objectContaining({ service: 'mobile', path: '/messages/m-1/reply', opts: expect.objectContaining({ method: 'POST', body: { text: 'Two meetings: **10am** and 2pm.', media: [] } }) })]);
     const saved = JSON.parse(JSON.parse(requests.find((r) => r.url.endsWith('/content-outputs/save')).init.body).content);
     expect(saved.messages.slice(-2).map((m) => m.content)).toEqual(["what's on today?", 'Two meetings: **10am** and 2pm.']);
+  });
+
+  it('a photo goes to Annie as an upload; the chart she makes comes back attached', async () => {
+    const fs = await import('fs/promises');
+    const os = await import('os');
+    const path = await import('path');
+    const { pathToFileURL } = await import('url');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agnt-rx-'));
+    const chart = path.join(dir, 'chart.png');
+    await fs.writeFile(chart, 'PNGDATA');
+    const requests = [];
+    const fetchImpl = vi.fn(async (url, init = {}) => {
+      requests.push({ url, init });
+      if (url === 'https://files.test/photo') return new Response(Buffer.from('JPEGBYTES'));
+      if (url === 'https://files.test/put-1') return new Response('', { status: 201 });
+      if (url.endsWith('/orchestrator/chat')) return sse(['final_content', { content: `Here is the trend: [chart](${pathToFileURL(chart).href})` }]);
+      if (url.endsWith('/content-outputs/save')) return new Response('{}', { status: 200 });
+      return new Response('{}', { status: 404 });
+    });
+    script = [{ mediaId: 'media-out-1', uploadUrl: 'https://files.test/put-1' }];
+    const media = [{ id: 'mi-1', name: 'IMG_1.jpg', mime: 'image/jpeg', bytes: 9, url: 'https://files.test/photo' }];
+    await new MobileReceiver({ port: 4444, fetchImpl }).handle({ ...message, text: '', media });
+
+    const chat = requests.find((r) => r.url.endsWith('/orchestrator/chat'));
+    expect(chat.init.body).toBeInstanceOf(FormData);
+    expect(chat.init.headers['Content-Type']).toBeUndefined(); // multipart sets its own boundary
+    const upload = chat.init.body.get('files');
+    expect(upload.name).toBe('IMG_1.jpg');
+    expect(Buffer.from(await upload.arrayBuffer()).toString()).toBe('JPEGBYTES');
+    expect(JSON.parse(chat.init.body.get('messages')).at(-1)).toEqual({ role: 'user', content: '(sent an attachment)' });
+    expect(chat.init.body.get('textMode')).toBe('true');
+
+    expect(calls.map((c) => c.path)).toEqual(['/messages/m-1/media', '/messages/m-1/reply']);
+    expect(calls[0].opts.body).toEqual({ name: 'chart.png', mime: 'image/png', bytes: 7 });
+    expect(calls[1].opts.body).toEqual({ text: 'Here is the trend: chart (attached)', media: ['media-out-1'] });
+    await fs.rm(dir, { recursive: true, force: true });
   });
 
   it('gives the text back to the queue when Annie fails, and never replies', async () => {
