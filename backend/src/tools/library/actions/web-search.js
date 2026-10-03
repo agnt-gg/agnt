@@ -1,13 +1,11 @@
 import BaseAction from '../BaseAction.js';
-import { callService, serviceFailure } from '../../../services/agntServices.js';
+import { serviceFailure } from '../../../services/agntServices.js';
+import { searchWeb } from '../../../services/search/searchRouter.js';
 
 /**
- * Web search, served by search.agnt.gg and included with AGNT Pro.
- *
- * Until now this fetched a shared Google key from api.agnt.gg and called
- * Google itself — every install, paid or not, spending the same key. The
- * hosted service meters per account against the plan's monthly allowance,
- * and refuses a free account before it costs anything.
+ * Web search, included with AGNT Pro: Google in an invisible Chrome on this computer when it
+ * can, search.agnt.gg when it cannot (services/search/searchRouter.js). Same results either
+ * way; the chat tool web_search takes the same path.
  */
 class WebSearch extends BaseAction {
   static schema = {
@@ -51,8 +49,8 @@ class WebSearch extends BaseAction {
     if (!query) return this.formatOutput({ results: [], error: 'searchQuery is required' });
     const count = Math.max(1, Math.min(10, parseInt(params.numResults, 10) || 5));
     try {
-      const data = await callService('search', '/search', { method: 'POST', idempotent: true, body: { query, results: count } });
-      return this.formatOutput({ results: data.results || [], error: null });
+      const data = await searchWeb({ query, count });
+      return this.formatOutput({ results: data.results, error: null });
     } catch (error) {
       const failure = serviceFailure(error);
       return this.formatOutput({ results: [], error: failure.message || failure.error, ...failure });

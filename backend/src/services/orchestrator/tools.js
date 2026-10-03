@@ -57,7 +57,8 @@ import { augmentEnvPath } from '../../utils/envPath.js';
 import { coerceArgumentTypes } from '../../utils/argumentCoercion.js';
 import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
-import { callService, serviceFailure } from '../agntServices.js';
+import { serviceFailure } from '../agntServices.js';
+import { searchWeb } from '../search/searchRouter.js';
 import { sendMail } from '../agntMail.js';
 import { runJob, summarizeJob } from '../agntSandbox.js';
 import { resolveAccountAi, resolveAccountImageProvider } from '../ai/accountAi.js';
@@ -1074,7 +1075,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'web_search',
         description:
-          'Perform a web search using Google Custom Search API to find information online. ALWAYS USE THIS IN CONJUNCTION WITH THE WEB_SCRAPE TOOL',
+          'Search the web with Google to find information online. ALWAYS USE THIS IN CONJUNCTION WITH THE WEB_SCRAPE TOOL',
         parameters: {
           type: 'object',
           properties: {
@@ -1096,8 +1097,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       console.log(`Tool call: web_search with query: "${query}"`);
       if (!query) return JSON.stringify({ success: false, error: 'Search query is required.' });
       try {
-        const data = await callService('search', '/search', { method: 'POST', idempotent: true, body: { query, results: Math.max(1, Math.min(10, Number(num) || 5)) } });
-        return JSON.stringify({ success: true, query, results: data.results || [], resultsCount: data.resultsCount ?? (data.results || []).length, usage: data.usage });
+        return JSON.stringify(await searchWeb({ query, count: num }));
       } catch (error) {
         return JSON.stringify(serviceFailure(error));
       }
