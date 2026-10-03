@@ -121,61 +121,75 @@
 
             <!-- Privacy Policy -->
             <div v-else key="privacy" class="content-section">
-              <h3>Privacy Manifesto</h3>
-              <p class="subtitle-text">The Local-First Promise</p>
-              <p class="last-updated">Last Updated: November 24, 2025</p>
+              <h3>Privacy Policy</h3>
+              <p class="subtitle-text">Your computer by default, our cloud when you choose it</p>
+              <p class="last-updated">Last Updated: October 3, 2026</p>
 
               <div class="content-text">
                 <div class="manifesto-intro">
-                  <strong>✓ PRIVACY FIRST</strong>
-                  <p>We do not want your data. Privacy first is the entire point of AGNT.</p>
+                  <strong>✓ YOU DECIDE WHERE YOUR DATA LIVES</strong>
+                  <p>
+                    AGNT runs on your computer, and it also offers optional cloud services. What you keep on your machine stays there; what you
+                    send to a cloud service is processed on our servers so that service can work. We do not sell your data.
+                  </p>
                 </div>
 
-                <h4>1. WHAT WE COLLECT (The Control Plane)</h4>
-                <p>We collect only the minimum data required to operate the automation system:</p>
+                <h4>1. WHAT STAYS ON YOUR COMPUTER</h4>
+                <p>By default, the AGNT app keeps these in a database on your own machine:</p>
                 <ul>
-                  <li><strong>Identity:</strong> Email Address, Name, Stripe Customer ID.</li>
-                  <li><strong>Hardware:</strong> A hashed Hardware ID (to prevent license sharing).</li>
+                  <li><strong>Your chats and prompts</strong>, unless you send them to a cloud model (see section 3).</li>
+                  <li><strong>Your agents, workflows, tools, and skills</strong>, and their settings.</li>
+                  <li><strong>Your files and outputs</strong>: whatever your automations create.</li>
+                </ul>
+
+                <h4>2. YOUR API KEYS AND SIGN-INS</h4>
+                <ul>
                   <li>
-                    <strong>API Keys:</strong> Your API keys and auth tokens are stored fully encrypted on our servers to ensure 100% uptime on
-                    refresh tokens. Only your node can decrypt and access these keys.
+                    <strong>Cloud storage of keys is optional.</strong> You can keep every key on your own machine, in environment variables or in
+                    the app's local encrypted store, and AGNT will use them from there.
                   </li>
-                  <li><strong>Telemetry:</strong> Crash logs and error reports (only if you opt-in via the Debug Console).</li>
+                  <li>
+                    <strong>Cloud key sync</strong> is a feature of paid cloud plans. Your keys and sign-in tokens are stored encrypted on our
+                    servers and refreshed automatically, so connections stay live even while your computer is off or offline.
+                  </li>
+                  <li>Disconnecting a service deletes the tokens we stored for it.</li>
                 </ul>
 
-                <h4>2. WHAT WE DO NOT COLLECT (The Data Plane)</h4>
-                <p>Everything else stays on your machine. We have Zero Visibility into:</p>
+                <h4>3. CLOUD SERVICES YOU CHOOSE TO USE</h4>
+                <p>When you use one of these, the data needed for it is sent to and processed on our servers:</p>
                 <ul>
-                  <li><strong>Your Prompts:</strong> We do not see what you type.</li>
-                  <li><strong>Your Agents:</strong> We do not see the agents you build.</li>
-                  <li><strong>Your Outputs:</strong> The results of your automations live in your local SQLite database.</li>
+                  <li>
+                    <strong>AGNT models</strong> (such as AGNT Flash): your prompts pass through our model service to the model that answers.
+                    We keep usage records (tokens and cost) for billing, not the text of your prompts or responses.
+                  </li>
+                  <li><strong>Web search</strong>: we keep a billing record for each search, not your search terms.</li>
+                  <li><strong>Email inboxes</strong>: messages sent and received through an AGNT inbox are stored so you can read them.</li>
+                  <li>
+                    <strong>Cloud instances and shared workspaces</strong>: the work you run there, and anything you share with your team, is
+                    stored on our servers.
+                  </li>
                 </ul>
 
-                <h4>3. THIRD-PARTY SERVICES & INTEGRATIONS</h4>
+                <h4>4. WHAT WE COLLECT FOR YOUR ACCOUNT</h4>
+                <ul>
+                  <li><strong>Identity:</strong> email address and name.</li>
+                  <li><strong>Billing:</strong> plan and subscription status. Payments are handled by Stripe; we never see your card number.</li>
+                  <li><strong>License:</strong> a hashed hardware ID, to prevent license sharing.</li>
+                  <li><strong>Usage of paid services:</strong> what you used and what it cost.</li>
+                  <li><strong>Crash reports:</strong> only if you turn them on.</li>
+                </ul>
+
+                <h4>5. OTHER SERVICES YOU CONNECT</h4>
                 <p>
-                  AGNT integrates with various third-party services. Your data interactions with these services are governed by their respective
-                  privacy policies:
+                  When you use another company's AI model with your own key, or connect an app such as Gmail, Slack, or a database, AGNT talks to
+                  that service using your credentials, and that service's own privacy policy applies. Some connections are set up through our
+                  servers, which store the resulting sign-in tokens encrypted. You are responsible for following the terms of the services you
+                  connect.
                 </p>
-                <ul>
-                  <li><strong>Stripe:</strong> Processes payments and identity verification.</li>
-                  <li>
-                    <strong>LLM Providers:</strong> If you use OpenAI, Anthropic, Google, or other AI providers, your prompts and data are sent
-                    directly from your machine to them. We do not proxy this traffic.
-                  </li>
-                  <li>
-                    <strong>Third-Party Integrations:</strong> AGNT allows you to connect to any third-party service (email providers, databases,
-                    APIs, social media platforms, etc.). When you configure these integrations, your agents communicate directly with these services
-                    using your credentials. We do not intercept, store, or monitor this traffic.
-                  </li>
-                  <li>
-                    <strong>Your Responsibility:</strong> You are responsible for reviewing and complying with the privacy policies and terms of
-                    service of any third-party services you integrate with AGNT.
-                  </li>
-                </ul>
 
-                <h4>4. Contact Us</h4>
+                <h4>6. CONTACT</h4>
                 <p>
-                  If you have questions about this Privacy Policy, please contact us at:
+                  The full policy is at <a href="https://agnt.gg/privacy/" target="_blank" rel="noopener">agnt.gg/privacy</a>. Questions:
                   <a href="mailto:legal@agnt.gg">legal@agnt.gg</a>
                 </p>
               </div>

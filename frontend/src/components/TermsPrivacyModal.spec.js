@@ -15,7 +15,18 @@ describe('TermsPrivacyModal', () => {
 
     await wrapper.setProps({ show: false });
     await wrapper.setProps({ show: true, defaultTab: 'privacy' });
-    expect(heading(wrapper)).toBe('Privacy Manifesto');
+    expect(heading(wrapper)).toBe('Privacy Policy');
+  });
+
+  it('describes the cloud services and optional key sync, not a local-only promise', () => {
+    const text = mount(TermsPrivacyModal, { props: { show: true, defaultTab: 'privacy' } }).text();
+    // AGNT Flash and the hosted services run on our servers; saying traffic is never
+    // proxied, or that we have zero visibility, would be false.
+    expect(text).not.toMatch(/do not proxy|Zero Visibility|Local-First Promise/i);
+    expect(text).toContain('Cloud storage of keys is optional');
+    expect(text).toMatch(/environment variables/i);
+    expect(text).toMatch(/Cloud key sync.*paid cloud plans/s);
+    expect(text).toContain('AGNT models');
   });
 
   it('renders the repository LICENSE.md, not a hard-coded license', async () => {
