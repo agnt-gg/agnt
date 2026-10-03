@@ -4,7 +4,7 @@
     <header class="sys-head">
       <h2 class="sys-cap">System overview</h2>
       <span class="sys-live" :class="{ on: live.running > 0 }">
-        <span class="sys-live-dot" aria-hidden="true"></span>{{ display(live.running) }} running
+        <span class="sys-live-dot" aria-hidden="true"></span>{{ display(live.running, EXECUTIONS) }} running
       </span>
     </header>
 
@@ -17,12 +17,12 @@
           type="button"
           class="sys-activity"
           :class="{ 'is-hot': tile.hot }"
-          :aria-label="`${tile.label}: ${display(tile.value)}`"
+          :aria-label="`${tile.label}: ${display(tile.value, tile.source)}`"
           @click="go(tile.screen, tile.opts)"
         >
           <span class="sys-activity-icon" aria-hidden="true"><i :class="tile.icon"></i></span>
           <span class="sys-activity-label">{{ tile.label }}</span>
-          <span class="sys-activity-value">{{ display(tile.value) }}</span>
+          <span class="sys-activity-value">{{ display(tile.value, tile.source) }}</span>
           <i class="fas fa-chevron-right sys-arrow" aria-hidden="true"></i>
         </button>
       </div>
@@ -37,11 +37,11 @@
           type="button"
           class="sys-tile"
           :class="{ 'sys-tile--wide': tile.screen === 'ConnectorsScreen' }"
-          :aria-label="`${tile.label}: ${display(tile.value)}${tile.screen === 'ConnectorsScreen' ? ' healthy / total' : ''}`"
+          :aria-label="`${tile.label}: ${display(tile.value, tile.source)}${tile.screen === 'ConnectorsScreen' ? ' healthy / total' : ''}`"
           @click="go(tile.screen, tile.opts)"
         >
           <span class="sys-tile-icon" aria-hidden="true"><i :class="tile.icon"></i></span>
-          <span class="sys-tile-value" :class="{ 'is-empty': isEmpty(tile.value) }">{{ display(tile.value) }}</span>
+          <span class="sys-tile-value" :class="{ 'is-empty': isEmpty(tile.value) }">{{ display(tile.value, tile.source) }}</span>
           <span class="sys-tile-label">{{ tile.label }}</span>
           <span v-if="tile.screen === 'ConnectorsScreen'" class="sys-tile-detail">Healthy / total</span>
           <i class="fas fa-chevron-right sys-arrow" aria-hidden="true"></i>
@@ -60,6 +60,12 @@ import { API_CONFIG } from '@/tt.config.js';
 import { HYDRATION, len } from '@/services/accountInventory.js';
 
 const RUNNING = new Set(['running', 'executing', 'in_progress']);
+const EXECUTIONS = 'executionHistory/getExecutions';
+const PLUGINS = 'plugins';
+
+// Last plugin total this session, so a revisit shows it at once while the
+// fresh count loads. Null until the first answer: an unknown is never a 0.
+let lastPluginCount = null;
 
 // Plugins have no store module, and the tools-derived `installedPlugins` getter
 // groups plugin TOOLS by plugin_name — so a plugin that ships only agents,
@@ -81,7 +87,14 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const hydrating = ref(true);
-    const pluginCount = ref(0);
+    const pluginCount = ref(lastPluginCount ?? 0);
+    // Which counts have answered. Each tile shows its number the moment ITS
+    // source arrives; it used to wait for every source, so the 5 ms schedules
+    // count sat at "—" behind the slowest load (memories, plugins).
+    const loaded = ref(new Set(lastPluginCount === null ? [] : [PLUGINS]));
+    const markLoaded = (source) => {
+      if (!loaded.value.has(source)) loaded.value = new Set(loaded.value).add(source);
+    };
 
     const g = (key, fallback) => {
       const v = store.getters[key];
@@ -98,43 +111,58 @@ export default {
     });
 
     const liveTiles = computed(() => [
-      { label: 'Running', value: live.value.running, icon: 'fas fa-bolt', hot: live.value.running > 0, screen: 'TracesScreen', opts: { status: 'running' } },
-      { label: 'Goals executing', value: live.value.goalsExecuting, icon: 'fas fa-bullseye', hot: live.value.goalsExecuting > 0, screen: 'GoalsScreen' },
-      { label: 'Waiting on you', value: live.value.approvals, icon: 'fas fa-user-check', hot: live.value.approvals > 0, screen: 'AutonomyScreen' },
+      { label: 'Running', value: live.value.running, icon: 'fas fa-bolt', hot: live.value.running > 0, screen: 'TracesScreen', opts: { status: 'running' }, source: EXECUTIONS },
+      { label: 'Goals executing', value: live.value.goalsExecuting, icon: 'fas fa-bullseye', hot: live.value.goalsExecuting > 0, screen: 'GoalsScreen', source: 'goals/allGoals' },
+      { label: 'Waiting on you', value: live.value.approvals, icon: 'fas fa-user-check', hot: live.value.approvals > 0, screen: 'AutonomyScreen', source: 'insights/allInsights' },
     ]);
 
     const inventoryTiles = computed(() => {
       const healthy = g('appAuth/healthyConnectionsCount', 0);
       const total = g('appAuth/totalConnectionsCount', 0);
       return [
-        { label: 'Chats', value: g('contentOutputs/totalCount', 0) || len(g('contentOutputs/outputs', [])), icon: 'fas fa-comments', screen: 'ChatScreen' },
-        { label: 'Goals', value: len(g('goals/allGoals', [])), icon: 'fas fa-bullseye', screen: 'GoalsScreen' },
-        { label: 'Agents', value: len(g('agents/allAgents', [])), icon: 'fas fa-robot', screen: 'AgentsScreen' },
-        { label: 'Workflows', value: len(g('workflows/allWorkflows', [])), icon: 'fas fa-project-diagram', screen: 'WorkflowsScreen' },
-        { label: 'Tools', value: len(g('tools/customTools', [])), icon: 'fas fa-wrench', screen: 'ToolsScreen' },
-        { label: 'Skills', value: len(g('skills/allSkills', [])), icon: 'fas fa-graduation-cap', screen: 'SkillsScreen' },
-        { label: 'Widgets', value: len(g('widgetDefinitions/allDefinitions', [])), icon: 'fas fa-th', screen: 'WidgetManagerScreen' },
-        { label: 'Plugins', value: pluginCount.value, icon: 'fas fa-puzzle-piece', screen: 'PluginsScreen' },
-        { label: 'Memories', value: len(g('insights/agentMemories', [])), icon: 'fas fa-brain', screen: 'MemoryScreen' },
-        { label: 'Schedules', value: len(g('schedules/allSchedules', [])), icon: 'fas fa-clock', screen: 'AutonomyScreen', opts: { section: 'schedules' } },
+        { label: 'Chats', value: g('contentOutputs/totalCount', 0) || len(g('contentOutputs/outputs', [])), icon: 'fas fa-comments', screen: 'ChatScreen', source: 'contentOutputs/outputs' },
+        { label: 'Goals', value: len(g('goals/allGoals', [])), icon: 'fas fa-bullseye', screen: 'GoalsScreen', source: 'goals/allGoals' },
+        { label: 'Agents', value: len(g('agents/allAgents', [])), icon: 'fas fa-robot', screen: 'AgentsScreen', source: 'agents/allAgents' },
+        { label: 'Workflows', value: len(g('workflows/allWorkflows', [])), icon: 'fas fa-project-diagram', screen: 'WorkflowsScreen', source: 'workflows/allWorkflows' },
+        { label: 'Tools', value: len(g('tools/customTools', [])), icon: 'fas fa-wrench', screen: 'ToolsScreen', source: 'tools/customTools' },
+        { label: 'Skills', value: len(g('skills/allSkills', [])), icon: 'fas fa-graduation-cap', screen: 'SkillsScreen', source: 'skills/allSkills' },
+        { label: 'Widgets', value: len(g('widgetDefinitions/allDefinitions', [])), icon: 'fas fa-th', screen: 'WidgetManagerScreen', source: 'widgetDefinitions/allDefinitions' },
+        { label: 'Plugins', value: pluginCount.value, icon: 'fas fa-puzzle-piece', screen: 'PluginsScreen', source: PLUGINS },
+        { label: 'Memories', value: len(g('insights/agentMemories', [])), icon: 'fas fa-brain', screen: 'MemoryScreen', source: 'insights/agentMemories' },
+        { label: 'Schedules', value: len(g('schedules/allSchedules', [])), icon: 'fas fa-clock', screen: 'AutonomyScreen', opts: { section: 'schedules' }, source: 'schedules/allSchedules' },
+        // Connections comes from the health check, not from this hydration,
+        // so it keeps the panel-wide rule (no source).
         { label: 'Connections', value: `${healthy} / ${total}`, icon: 'fas fa-plug', screen: 'ConnectorsScreen' },
       ];
     });
 
     const isEmpty = (value) => value === 0 || value === '0 / 0';
-    // A zero we have not proved yet is not a zero. Say nothing instead.
-    const display = (value) => (hydrating.value && isEmpty(value) ? '—' : value);
+    // A zero we have not proved yet is not a zero. Say nothing instead, but
+    // only until THAT count's own source has answered.
+    const display = (value, source) => {
+      if (!isEmpty(value)) return value;
+      const answered = source ? loaded.value.has(source) : false;
+      return hydrating.value && !answered ? '—' : value;
+    };
 
     const hydrate = async () => {
-      const jobs = HYDRATION.filter(([getter]) => len(g(getter, [])) === 0).map(([, action, payload]) =>
-        store.dispatch(action, payload).catch(() => {}),
-      );
+      const jobs = HYDRATION.map(([getter, action, payload]) => {
+        if (len(g(getter, [])) > 0) {
+          markLoaded(getter);
+          return null;
+        }
+        return Promise.resolve(store.dispatch(action, payload))
+          .catch(() => {})
+          .finally(() => markLoaded(getter));
+      }).filter(Boolean);
       jobs.push(
         fetchPluginCount()
           .then((count) => {
             pluginCount.value = count;
+            lastPluginCount = count;
           })
-          .catch(() => {}),
+          .catch(() => {})
+          .finally(() => markLoaded(PLUGINS)),
       );
       await Promise.allSettled(jobs);
       hydrating.value = false;
@@ -144,7 +172,7 @@ export default {
 
     const go = (screen, opts) => emit('panel-action', 'navigate', opts ? { screen, opts } : screen);
 
-    return { live, liveTiles, inventoryTiles, display, isEmpty, go };
+    return { live, liveTiles, inventoryTiles, display, isEmpty, go, EXECUTIONS };
   },
 };
 </script>

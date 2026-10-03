@@ -95,4 +95,23 @@ describe('SystemOverviewPanel presentation', () => {
     expect(wrapper.findAll('.sys-tile')[0].find('.sys-tile-value').text()).toBe('0');
     expect(wrapper.find('.sys-tile--wide').find('.sys-tile-value').text()).toBe('0 / 0');
   });
+
+  // Reported: Plugins, Memories and Schedules sat at "—" for a long time on the
+  // Dashboard. Every count waited for the slowest load; each now shows when its own answers.
+  it('shows each count as soon as its own source answers, while a slow one is still loading', async () => {
+    let finishMemories;
+    const memoriesPending = new Promise((resolve) => { finishMemories = resolve; });
+    const dispatch = vi.fn((action) => (action === 'insights/fetchAllMemories' ? memoriesPending : Promise.resolve()));
+    const { wrapper } = renderPanel({}, dispatch);
+    await flushPromises();
+    const tile = (label) => wrapper.findAll('.sys-tile').find((t) => t.text().includes(label)).find('.sys-tile-value').text();
+    // Schedules and Plugins answered: real numbers, not "—".
+    expect(tile('Schedules')).toBe('0');
+    expect(tile('Plugins')).toBe('7');
+    // Memories has not: still honestly unknown.
+    expect(tile('Memories')).toBe('—');
+    finishMemories();
+    await flushPromises();
+    expect(tile('Memories')).toBe('0');
+  });
 });

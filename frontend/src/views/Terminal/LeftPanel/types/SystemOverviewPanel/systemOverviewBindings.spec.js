@@ -90,6 +90,9 @@ describe('SystemOverviewPanel store bindings', () => {
   });
 
   it('never renders an unproven zero as a real count', () => {
-    expect(source).toMatch(/hydrating\.value && isEmpty\(value\)/);
+    // An unproven zero shows "—": a zero is displayed only once that count's
+    // own source has answered (behaviour covered in SystemOverviewPanel.spec).
+    expect(source).toMatch(/if \(!isEmpty\(value\)\) return value;/);
+    expect(source).toMatch(/hydrating\.value && !answered \? '—' : value/);
   });
 });
