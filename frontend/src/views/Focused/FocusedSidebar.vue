@@ -92,11 +92,17 @@
         <button
           type="button"
           class="focused-recent"
-          :class="{ active: onChat && c.id === activeConversationId, unread: c.unread }"
+          :class="{ active: onChat && c.id === activeConversationId, unread: c.unread, working: c.working }"
+          :aria-busy="c.working ? 'true' : undefined"
           v-tooltip="c.title"
           @click="$emit('open-conversation', c.id)"
         >
-          <i v-if="c.sub" class="fas fa-level-up-alt fa-rotate-90 focused-sub-mark" aria-label="Task from the Main chat"></i>{{ c.title }}
+          <span class="focused-recent-title">
+            <span v-if="c.working" class="focused-working-dot" aria-hidden="true"></span>
+            <i v-if="c.sub" class="fas fa-level-up-alt fa-rotate-90 focused-sub-mark" aria-label="Task from the Main chat"></i>{{ c.title }}
+          </span>
+          <!-- Same wording as Studio's list (ConversationMetaLine). -->
+          <span v-if="c.working" class="focused-recent-status">{{ c.speaker || 'Working' }} speaking</span>
         </button>
       </li>
       <li v-if="!recents.length" class="focused-recents-empty">{{ query ? 'No chats match.' : 'Your chats show up here.' }}</li>
@@ -183,7 +189,10 @@ function closeSearch() {
 
 const { mainChatId, isMainOpen, isMainUnread, isMainStreaming } = useMainChat();
 const recents = computed(() =>
-  recentConversations(store.getters['contentOutputs/visibleOutputs'], query.value, 60, store.getters['contentOutputs/subChatIdSet']),
+  recentConversations(store.getters['contentOutputs/visibleOutputs'], query.value, 60, store.getters['contentOutputs/subChatIdSet'], {
+    workingIds: store.getters['chat/streamingOutputIds'],
+    speakingById: store.getters['chat/speakingByOutputId'],
+  }),
 );
 // Same precedence as Studio's list (OutputList.activeOutputId).
 const activeConversationId = computed(() => route.query['content-id'] || store.state.chat?.savedOutputId || null);

@@ -104,3 +104,46 @@ test('Focused log out ends the session and lands on sign-in @ci', async ({ appPa
   await expect(page).toHaveURL(/\/settings/);
   await expect(page.getByRole('button', { name: /sign in|log in|continue/i }).first()).toBeVisible();
 });
+
+
+// Reported: a running chat in Focused's Recents looked exactly like an unread
+// one. It must pulse and say who is speaking, then fall back to unread when done.
+test('Focused Recents shows a running chat as working, with who is speaking @ci', async ({ appPage: page }) => {
+  await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'focused'); });
+  await page.route('**/users/preferences**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  // The chat list, served by the backend, with the conversation unread
+  // (activity after its read watermark). The page's own reloads keep it.
+  const now = new Date(), earlier = new Date(now.getTime() - 60000);
+  const row = { id: 'out-live', title: 'Background research', content_type: 'conversation', updated_at: now.toISOString(), created_at: earlier.toISOString(), last_read_at: earlier.toISOString() };
+  await page.route(/\/api\/content-outputs(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ outputs: [row], totalCount: 1 }) })
+    : r.fallback());
+  await page.goto('/chat');
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+  const recent = page.locator('.focused-recent', { hasText: 'Background research' });
+  await expect(recent).toHaveClass(/unread/);
+
+  // A run starts in that conversation, as a stream would set it.
+  await page.evaluate(() => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+    store.commit('chat/ENSURE_CONVERSATION', 'conv-live');
+    store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: 'conv-live', id: 'out-live' });
+    store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: 'conv-live', messages: [
+      { id: 'u', role: 'user', content: 'research this' },
+      { id: 'a', role: 'assistant', content: '', agentId: 'agent-sol', agentName: 'Sol' },
+    ] });
+    store.commit('chat/SCOPED_SET_STREAMING', { conversationId: 'conv-live', value: true });
+  });
+  await expect(recent).toHaveClass(/working/);
+  await expect(recent).not.toHaveClass(/unread/);
+  await expect(recent).toHaveAttribute('aria-busy', 'true');
+  await expect(recent.locator('.focused-working-dot')).toBeVisible();
+  await expect(recent.locator('.focused-recent-status')).toHaveText('Sol speaking');
+  expect(await recent.locator('.focused-working-dot').evaluate(el => getComputedStyle(el).animationName)).toBe('ui-focused-working-pulse');
+
+  // The run ends: the pulse goes, and the unread dot comes back.
+  await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.commit('chat/SCOPED_SET_STREAMING', { conversationId: 'conv-live', value: false }));
+  await expect(recent).not.toHaveClass(/working/);
+  await expect(recent.locator('.focused-recent-status')).toHaveCount(0);
+  await expect(recent).toHaveClass(/unread/);
+});

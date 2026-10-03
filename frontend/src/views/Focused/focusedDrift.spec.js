@@ -50,6 +50,9 @@ describe('Focused shell drift guard', () => {
     const keyframes = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(keyframes.filter((k) => !k.startsWith('ui-focused-'))).toEqual([]);
     css = css.replace(/@keyframes\s+ui-focused-[\w-]+\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+    // An @media line is a condition, not a selector. Drop only the header, so
+    // every rule INSIDE it is still held to the same scoping check.
+    css = css.replace(/@media[^{]*\{/g, '');
     const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim())).filter(Boolean);
     expect(selectors.length).toBeGreaterThan(40);
     const unscoped = selectors.filter((s) => !s.startsWith('.ui-focused'));

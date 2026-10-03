@@ -166,17 +166,30 @@ function timeOf(value) {
  * The conversation list: newest activity first, titled, filtered by title.
  * Input is contentOutputs/visibleOutputs (archived rows and the pinned Main
  * chat already excluded). `subChatIds` marks tasks the Main chat handed off.
+ *
+ * `live` says which chats have a run in flight, and who is speaking in each:
+ * chat/streamingOutputIds and chat/speakingByOutputId, the same two getters
+ * Studio's list reads, so the two modes can never disagree about what is
+ * running. A running chat is not also "unread": it is still being written,
+ * and its dot would read as finished news (Studio shows one or the other).
  */
-export function recentConversations(outputs, query = '', limit = 60, subChatIds = null) {
+export function recentConversations(outputs, query = '', limit = 60, subChatIds = null, live = {}) {
+  const workingIds = live.workingIds;
+  const speakingById = live.speakingById || {};
   const rows = (Array.isArray(outputs) ? outputs : [])
     .filter((o) => o && o.id)
-    .map((o) => ({
-      id: o.id,
-      title: String(o.title || '').trim() || 'Untitled chat',
-      at: timeOf(o.updated_at || o.created_at),
-      unread: !!o.last_read_at && timeOf(o.updated_at) > timeOf(o.last_read_at),
-      sub: !!subChatIds?.has?.(o.id),
-    }))
+    .map((o) => {
+      const working = !!workingIds?.has?.(o.id);
+      return {
+        id: o.id,
+        title: String(o.title || '').trim() || 'Untitled chat',
+        at: timeOf(o.updated_at || o.created_at),
+        unread: !working && !!o.last_read_at && timeOf(o.updated_at) > timeOf(o.last_read_at),
+        sub: !!subChatIds?.has?.(o.id),
+        working,
+        speaker: working ? String(speakingById[o.id]?.name || '').trim() || null : null,
+      };
+    })
     .filter((r) => matches(query, r.title))
     .sort((a, b) => b.at - a.at);
   return limit > 0 ? rows.slice(0, limit) : rows;

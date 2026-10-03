@@ -182,6 +182,25 @@ describe('recents', () => {
     const [never] = recentConversations([{ id: 'y', title: 't', updated_at: '2026-09-02', last_read_at: null }]);
     expect(never.unread).toBe(false);
   });
+
+  // Reported: in Focused a running chat looked exactly like an unread one.
+  it('marks a running chat as working, names who is speaking, and does not also call it unread', () => {
+    const rows = [
+      { id: 'run', title: 'Running', updated_at: '2026-09-02', last_read_at: '2026-09-01' },
+      { id: 'idle', title: 'Idle', updated_at: '2026-09-02', last_read_at: '2026-09-01' },
+    ];
+    const live = { workingIds: new Set(['run']), speakingById: { run: { id: 'sol', name: 'Sol' } } };
+    const byId = Object.fromEntries(recentConversations(rows, '', 60, null, live).map((r) => [r.id, r]));
+    expect(byId.run).toMatchObject({ working: true, speaker: 'Sol', unread: false });
+    expect(byId.idle).toMatchObject({ working: false, speaker: null, unread: true });
+  });
+
+  it('is idle without live state, and a running chat with no named speaker still says it is working', () => {
+    const [plain] = recentConversations([{ id: 'a', title: 't' }]);
+    expect(plain).toMatchObject({ working: false, speaker: null });
+    const [unnamed] = recentConversations([{ id: 'a', title: 't' }], '', 60, null, { workingIds: new Set(['a']) });
+    expect(unnamed).toMatchObject({ working: true, speaker: null });
+  });
 });
 
 describe('plugins', () => {

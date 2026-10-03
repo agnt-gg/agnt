@@ -253,7 +253,9 @@
   overflow-y: auto;
 }
 .ui-focused .focused-recent {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   width: 100%;
   min-height: 34px;
   padding: 0 10px;
@@ -264,10 +266,46 @@
   font: inherit;
   font-size: 13px;
   text-align: left;
+  cursor: pointer;
+}
+.ui-focused .focused-recent-title,
+.ui-focused .focused-recent-status {
+  display: block;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
+}
+/* A chat with a run in flight: a pulsing dot before the title and who is
+   speaking under it, the same signal Studio's list gives. */
+.ui-focused .focused-recent.working {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.ui-focused .focused-working-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--color-green);
+  box-shadow: 0 0 0 0 rgba(var(--green-rgb), 0.55);
+  animation: ui-focused-working-pulse 1.4s ease-out infinite;
+}
+.ui-focused .focused-recent-status {
+  margin-top: 1px;
+  padding-left: 14px;
+  font-size: 11.5px;
+  color: var(--color-green);
+}
+@keyframes ui-focused-working-pulse {
+  0% { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--green-rgb), 0.55); }
+  70% { opacity: 0.55; box-shadow: 0 0 0 6px rgba(var(--green-rgb), 0); }
+  100% { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--green-rgb), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-focused .focused-working-dot { animation: none; }
 }
 .ui-focused .focused-recent:hover {
   background: var(--surface-hover);
