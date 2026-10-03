@@ -64,7 +64,7 @@ const PAID_PLANS = new Set(['personal', 'always_on', 'business', 'enterprise']);
 const KNOWN_FEATURES = new Set([
   'remoteAccess', 'webhooks', 'emailServer', 'apiAccess', 'cloudSync',
   // Hosted services, included with Pro. Mirror `services` in the API's PLAN_DETAILS.
-  'models', 'search', 'sandbox', 'mail', 'hostedWebhooks',
+  'models', 'search', 'sandbox', 'mail', 'hostedWebhooks', 'mobile',
 ]);
 
 /**

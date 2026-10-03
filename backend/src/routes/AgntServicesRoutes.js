@@ -4,7 +4,7 @@ import WebhookModel from '../models/WebhookModel.js';
 import { defaultInbox } from '../services/agntMail.js';
 import { workflowAddress } from '../services/mailAddressing.js';
 import { legacyWebhooks } from '../services/legacyRelay.js';
-import { serviceAllowed, SERVICES, serviceFailure, callService } from '../services/agntServices.js';
+import { serviceAllowed, SERVICES, serviceFailure, callService, hostedInstanceSlug } from '../services/agntServices.js';
 import { getFlashAccount, startTopUp } from '../services/agntFlashAccount.js';
 
 /**
@@ -47,6 +47,10 @@ AgntServicesRoutes.get('/usage', authenticateToken, async (_req, res) => {
     webhooks: (u, extra) => [
       { key: 'units', label: 'Webhook units', used: u.usedUnits, included: u.includedUnits, unit: 'units' },
       { key: 'endpoints', label: 'Endpoints', used: extra.count, included: u.maxInboxes ?? u.maxEndpoints, unit: 'endpoints' },
+    ],
+    mobile: (u) => [
+      { key: 'texts', label: 'Texts', used: u.usedUnits, included: u.includedUnits, unit: 'texts' },
+      { key: 'phones', label: 'Phones', used: undefined, included: u.maxInboxes, unit: 'phones' },
     ],
   };
   const extras = {
@@ -111,6 +115,51 @@ AgntServicesRoutes.get('/inbox', authenticateToken, async (req, res) => {
     const failure = serviceFailure(error);
     res.status(failure.code === 'pro_required' ? 200 : 502).json({ pro: failure.code !== 'pro_required', address: null, error: failure.error });
   }
+});
+
+/**
+ * Text Annie (mobile.agnt.gg), for Settings -> Phone Access. A thin proxy: the
+ * service owns phones, routing and billing; this keeps the browser on its own
+ * origin and the session token on the server. `planGate: false` because the
+ * service answers the plan question itself (and offers a $5 standalone plan).
+ */
+const mobileProxy = (method, path, { body, idempotent = false } = {}) =>
+  callService('mobile', path, { method, body, idempotent, planGate: false, timeoutMs: 20000, retries: 2 });
+const mobileFailure = (res, error) => {
+  const failure = serviceFailure(error);
+  // callService folds every 402 into 'pro_required'; keep the service's own
+  // reason (hosting_required, insufficient_credit, ...) for the UI.
+  const reason = error?.detail?.error || failure.code || 'request_failed';
+  res.status(failure.status && failure.status >= 400 && failure.status < 600 ? failure.status : 502).json({ ...failure, reason });
+};
+AgntServicesRoutes.get('/mobile/status', authenticateToken, async (_req, res) => {
+  try {
+    const status = await mobileProxy('GET', '/status');
+    // A phone that finished linking since the last look: start answering it.
+    if ((status.phones || []).some((p) => p.state === 'active')) kickReceiver();
+    res.set('Cache-Control', 'no-store').json({ ...status, instance: hostedInstanceSlug() || 'desktop' });
+  } catch (error) { mobileFailure(res, error); }
+});
+// A phone linked or rerouted here should be answered at once, not after the
+// receiver's idle back-off.
+const kickReceiver = () => import('../services/mobileReceiver.js').then((m) => m.getMobileReceiver()?.kick()).catch(() => {});
+AgntServicesRoutes.post('/mobile/phones', authenticateToken, async (req, res) => {
+  try {
+    res.status(201).json(await mobileProxy('POST', '/phones', { body: { number: req.body?.number, route: req.body?.route || hostedInstanceSlug() || 'desktop' } }));
+    kickReceiver();
+  } catch (error) { mobileFailure(res, error); }
+});
+AgntServicesRoutes.post('/mobile/phones/:id/code', authenticateToken, async (req, res) => {
+  try { res.json(await mobileProxy('POST', `/phones/${encodeURIComponent(req.params.id)}/code`, { body: {} })); } catch (error) { mobileFailure(res, error); }
+});
+AgntServicesRoutes.put('/mobile/phones/:id', authenticateToken, async (req, res) => {
+  try {
+    res.json(await mobileProxy('PUT', `/phones/${encodeURIComponent(req.params.id)}`, { body: { route: req.body?.route } }));
+    kickReceiver();
+  } catch (error) { mobileFailure(res, error); }
+});
+AgntServicesRoutes.delete('/mobile/phones/:id', authenticateToken, async (req, res) => {
+  try { res.json(await mobileProxy('DELETE', `/phones/${encodeURIComponent(req.params.id)}`)); } catch (error) { mobileFailure(res, error); }
 });
 
 AgntServicesRoutes.get('/webhook/:workflowId', authenticateToken, async (req, res) => {

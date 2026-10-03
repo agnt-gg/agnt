@@ -853,6 +853,9 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // two registers — a short opening paragraph for the voice, the detail after
     // a blank line for the screen (system-prompts/voiceRegister.js).
     voiceMode,
+    // This turn came by text message (mobile.agnt.gg) and is answered as one:
+    // short plain text (system-prompts/textRegister.js).
+    textMode,
     // When false, use this turn's provider/model but do NOT persist them as the
     // account-wide default. Sent by per-workspace-provider turns so that using a
     // tab with its own provider never rewrites the user's global default.

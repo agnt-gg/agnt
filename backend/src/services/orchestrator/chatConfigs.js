@@ -13,6 +13,7 @@ import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
+import { buildTextRegisterSection } from './system-prompts/textRegister.js';
 import { loadConversationRoleSection } from './system-prompts/conversationRole.js';
 import { buildDeferredCatalog } from './deferredTools.js';
 
@@ -967,6 +968,14 @@ const unifiedConfig = {
     if (roleSection) {
       context._promptSections.push({ id: 'conversation-role', label: 'Conversation role', tokens: estimateTokens(roleSection), frozen: true });
       assembled = `${assembled}\n\n${roleSection}`;
+    }
+
+    // Text-message turns (mobile.agnt.gg) get their own tail section, by the
+    // same rule as voice: per-turn text goes last so the prefix stays cached.
+    if (context.textMode && context.textMode !== 'false') {
+      const textSection = buildTextRegisterSection();
+      context._promptSections.push({ id: 'text', label: 'Text message register', tokens: estimateTokens(textSection), frozen: false });
+      assembled = `${assembled}\n\n${textSection}`;
     }
 
     if (!context.voiceMode) return withCallerContract(assembled, promptOptions, context);

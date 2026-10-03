@@ -166,9 +166,12 @@
         <div v-else-if="activeSection === 'phone-access'" class="settings-content" data-section="phone-access">
           <div class="content-header">
             <h2 class="content-title">Phone Access</h2>
-            <p class="content-subtitle">Run this AGNT instance from your phone over your local network</p>
+            <p class="content-subtitle">Text Annie from anywhere, or run this AGNT from your phone over your local network</p>
           </div>
           <div class="settings-grid">
+            <div class="settings-section full-width">
+              <TextAnnieCard />
+            </div>
             <div class="settings-section full-width">
               <PhoneAccessSection />
             </div>
@@ -323,6 +326,7 @@ import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdo
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
 import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue';
 import PhoneAccessSection from './components/PhoneAccessSection/PhoneAccessSection.vue';
+import TextAnnieCard from './components/PhoneAccessSection/TextAnnieCard.vue';
 import ConnectionSection from './components/ConnectionSection/ConnectionSection.vue';
 import LeaderboardSection from './components/LeaderboardSection/LeaderboardSection.vue';
 import DataExportSection from './components/DataExportSection/DataExportSection.vue';
@@ -357,6 +361,7 @@ export default {
     ReferralsSection,
     LeaderboardSection,
     PhoneAccessSection,
+    TextAnnieCard,
     ConnectionSection,
     DataExportSection,
     DataRestoreSection,

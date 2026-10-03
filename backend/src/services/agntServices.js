@@ -29,6 +29,9 @@ export const SERVICES = Object.freeze({
   sandbox: { base: 'https://sandbox.agnt.gg/sandbox/v1', feature: 'sandbox', docs: 'https://sandbox.agnt.gg/docs.html' },
   mail: { base: 'https://mail.agnt.gg/mail/v1', feature: 'mail', docs: 'https://mail.agnt.gg/docs.html' },
   webhooks: { base: 'https://webhooks.agnt.gg/hooks/v1', feature: 'hostedWebhooks', docs: 'https://webhooks.agnt.gg/docs.html' },
+  // Text Annie: phones routed to this instance. The service meters texts; the
+  // work runs here, on this instance's own models and credits.
+  mobile: { base: 'https://mobile.agnt.gg/mobile/v1', feature: 'mobile', docs: 'https://mobile.agnt.gg/docs.html' },
 });
 
 /** This process's hosted-instance slug, or null on a desktop install. */
@@ -222,6 +225,14 @@ const SERVICE_MESSAGES = {
   // account in a short cooldown. Retrying inside it only deepens the hole.
   failure_rate_limited: (s) => `Too many ${s} requests failed recently, so ${s} is cooling down for a few minutes. Try again shortly.`,
   unreachable: (s) => `Could not reach ${s}.agnt.gg. Check your connection and try again.`,
+  // Text Annie (mobile.agnt.gg) refusals the phone-linking screen shows as-is.
+  hosting_required: (s) => (s === 'mobile' ? 'Texting Annie needs AGNT Mobile: included with paid AGNT plans, or $5/month at mobile.agnt.gg.' : null),
+  phone_limit: () => "Your plan's phone slots are all in use. Unlink a phone, or upgrade at mobile.agnt.gg.",
+  phone_in_use: () => 'That number is already linked to an AGNT account.',
+  invalid_phone: () => 'That does not look like a mobile number. Include the country code, e.g. +44 7700 900123.',
+  line_capacity_reached: () => 'AGNT Mobile is at capacity for new phones right now. Please try again shortly.',
+  photon_unavailable: () => 'The messaging service did not answer. Please try again in a moment.',
+  route_not_owned: () => 'You can only send texts to an AGNT you own.',
 };
 
 /** Tool-friendly failure shape. Tools return this instead of throwing. */

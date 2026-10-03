@@ -949,6 +949,14 @@ function startServer() {
       // whatever localStorage had cached.
       afterBoot('Codex model prewarm', () => prewarmCodexModels());
 
+      // Text Annie: answer texts routed to this instance by mobile.agnt.gg.
+      // Outbound long-poll only; idles at one request every few minutes when
+      // no phone is routed here, and does nothing at all when signed out.
+      afterBoot('mobile receiver', async () => {
+        const { startMobileReceiver } = await import('./src/services/mobileReceiver.js');
+        startMobileReceiver({ port: config.port });
+      });
+
       // Defer all heavy initialization to next tick so the listen callback
       // returns immediately and the server can respond to health checks
       setImmediate(() => {

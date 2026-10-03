@@ -32,6 +32,9 @@ export const PAGE_CONTEXT_FIELDS = Object.freeze([
   // answer will be spoken as well as shown, which changes how it should be
   // written (see system-prompts/voiceRegister.js).
   'voiceMode',
+  // `textMode`: the answer goes back as a text message (mobile.agnt.gg), so it
+  // must be short plain text (see system-prompts/textRegister.js).
+  'textMode',
 ]);
 
 /**
