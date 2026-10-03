@@ -4,7 +4,16 @@ const businessIcons = readdirSync(new URL('../../frontend/src/assets/icons/', im
 const json = body => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 const sampleItems = ['agent', 'workflow', 'tool', 'skill', 'plugin'].map((type, index) => ({ id: `market-${type}`, asset_id: `starter-${type}`, asset_type: type, title: `Top ${type} starter`, price: 0, downloads: 100 - index, rating: 0, rating_count: 0, category: 'Productivity' }));
 
+// Every spec in a worker shares ONE test account on ONE backend, so a mode set
+// by an earlier spec is synced to that account and hydrated into the next one
+// (a Focused spec ran first and this file's Studio tests opened in Focused).
+// Each test owns its UI mode: the synced preferences are blanked.
+async function isolatePreferences(page) {
+  await page.route('**/users/preferences**', r => r.fulfill(json({})));
+}
+
 async function freeAccount(page) {
+  await isolatePreferences(page);
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'studio'); localStorage.removeItem('selectedProvider'); localStorage.removeItem('selectedModel'); });
   await page.route('**/users/subscription/status', r => r.fulfill(json({ planType: 'free', status: 'active', features: {} })));
   await page.route('**/users/settings', r => r.fulfill(json({ selectedProvider: null, selectedModel: null })));
@@ -190,4 +199,36 @@ test('a fresh /chat is a new conversation, never the Main chat @ci', async ({ ap
   });
   expect(state).toEqual({ saved: null, title: null, mainId: null, mainRows: 0 });
   for (const body of mainCalls) expect(body?.main ?? null).toBeNull();
+});
+
+
+// Reported: after signing into another account, the chat said no AI provider
+// was connected until a refresh. A page load waits for connections before it
+// draws the greeting; an account switch did not, and never redrew it. Here
+// the session ends and a new one starts in the same page, as a sign-in does,
+// and the new account's connections arrive late.
+test('after an account switch the greeting catches up when connections arrive late @ci', async ({ appPage: page }) => {
+  await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'studio'); });
+  await isolatePreferences(page);
+  let connectedDelayMs = 0;
+  await page.route('**/users/settings', r => r.fulfill(json({ selectedProvider: 'OpenAI', selectedModel: 'gpt-4o' })));
+  await page.route('**/models/*/models*', r => r.fulfill(json({ success: true, models: ['gpt-4o'] })));
+  await page.route('**/providers/*/auth/status', r => r.fulfill(json({ available: false, apiUsable: false })));
+  await page.route('**/auth/connected', async r => { await new Promise(done => setTimeout(done, connectedDelayMs)); await r.fulfill(json(['openai'])); });
+  await page.goto('/chat');
+  await expect(page.getByText("Hi! I'm Annie, your personal AI assistant.")).toBeVisible({ timeout: 15000 });
+
+  connectedDelayMs = 3000;
+  await page.evaluate(async () => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+    store.commit('userAuth/SET_SESSION_STATE', 'invalid');
+    await new Promise(done => setTimeout(done, 200));
+    store.commit('userAuth/SET_SESSION_STATE', 'valid');
+  });
+  // The new session's chat is drawn before its connections land...
+  await expect(page.locator('.setup-message')).toBeVisible({ timeout: 2500 });
+  // ...and must catch up when they do, without a reload.
+  await expect(page.locator('.setup-message')).toHaveCount(0, { timeout: 15000 });
+  await expect(page.getByText("Hi! I'm Annie, your personal AI assistant.")).toBeVisible();
+  await expect(page.locator('.input-container textarea')).toBeEnabled();
 });

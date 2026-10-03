@@ -314,6 +314,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import { createNewSessionLanding } from './newSessionLanding.js';
+import { buildProviderGreeting, greetingNeedsReplacing } from './providerGreeting.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
 import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
@@ -2380,60 +2381,11 @@ export default {
         // Never append another greeting into the conversation now on screen.
         if (store.state.chat.messages.length !== 0) return;
 
-        // Determine which message to show based on provider selection AND connection status
-        const selectedProvider = store.state.aiProvider?.selectedProvider;
-        const connectedApps = store.state.appAuth?.connectedApps || [];
-        const customProviders = store.state.aiProvider?.customProviders || [];
-
-        // Check if the selected provider is actually connected (or if it's Local and server is running)
-        let isProviderActuallyConnected = false;
-        if (selectedProvider) {
-          if (selectedProvider.toLowerCase() === 'agnt') {
-            isProviderActuallyConnected = store.getters['userAuth/isAuthenticated'];
-          } else if (selectedProvider.toLowerCase() === 'local') {
-            isProviderActuallyConnected = isLocalServerRunning.value;
-          } else if (customProviders.some((cp) => cp.id === selectedProvider)) {
-            // Custom providers are connected by virtue of existing in the list.
-            isProviderActuallyConnected = true;
-          } else {
-            const providerKey = resolveProviderKey(selectedProvider);
-            isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === providerKey);
-          }
-        }
-
-        // Show Annie welcome if provider is selected AND connected
-        // Show setup message if NO provider selected OR provider not connected
-        if (selectedProvider && isProviderActuallyConnected) {
-          // Show normal Annie welcome message when a provider is selected AND connected
-          store.commit('chat/ADD_MESSAGE', {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: "Hi! I'm Annie, your personal AI assistant. What can I help you build today?",
-            timestamp: Date.now(),
-            metadata: ['AGNT Status: Online', `Version: ${appVersion.value || '...'}`],
-          });
-          terminalLines.value = ['AI Assistant: Orchestrator online. JavaScript execution tool available.'];
-        } else {
-          // Show "no provider" message when NO provider is selected OR provider is not connected
-          store.commit('chat/ADD_MESSAGE', {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: `<div class="setup-message">
-  <div class="setup-header">
-    <div class="setup-icon">🚀</div>
-    <div>
-      <h2>Welcome to AGNT</h2>
-      <p class="setup-lede">One step before Annie can talk: pick where she thinks.</p>
-    </div>
-  </div>
-</div>`,
-            timestamp: Date.now(),
-            showProviderSetup: true, // Special flag to show provider setup UI
-            showProviderNote: true, // Special flag to show note after provider buttons
-            contentType: 'html', // Mark as HTML content
-          });
-          terminalLines.value = ['Please connect an AI provider to begin.'];
-        }
+        const connected = hasConnectedAIProvider.value;
+        store.commit('chat/ADD_MESSAGE', buildProviderGreeting(connected, { id: generateMessageId(), version: appVersion.value }));
+        terminalLines.value = connected
+          ? ['AI Assistant: Orchestrator online. JavaScript execution tool available.']
+          : ['Please connect an AI provider to begin.'];
       } else {
         backfillActiveSuggestions();
       }
@@ -2590,59 +2542,7 @@ export default {
       // Re-add the initial welcome message
       nextTick(() => {
         if (store.state.chat.messages.length === 0) {
-          const selectedProvider = store.state.aiProvider?.selectedProvider;
-          const connectedApps = store.state.appAuth?.connectedApps || [];
-          const customProviders = store.state.aiProvider?.customProviders || [];
-
-          // Check if the selected provider is actually connected
-          let isProviderActuallyConnected = false;
-          if (selectedProvider) {
-            if (selectedProvider.toLowerCase() === 'agnt') {
-              isProviderActuallyConnected = store.getters['userAuth/isAuthenticated'];
-            } else if (selectedProvider.toLowerCase() === 'local') {
-              isProviderActuallyConnected = isLocalServerRunning.value;
-            } else {
-              // Check if it's a custom provider
-              const isCustomProvider = customProviders.some((cp) => cp.id === selectedProvider);
-              if (isCustomProvider) {
-                isProviderActuallyConnected = true;
-              } else {
-                // Check built-in providers
-                const providerKey = resolveProviderKey(selectedProvider);
-                isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === providerKey);
-              }
-            }
-          }
-
-          if (selectedProvider && isProviderActuallyConnected) {
-            // Show normal Annie welcome message when a provider is selected AND connected
-            store.commit('chat/ADD_MESSAGE', {
-              id: generateMessageId(),
-              role: 'assistant',
-              content: "Hi! I'm Annie, your personal AI assistant. What can I help you build today?",
-              timestamp: Date.now(),
-              metadata: ['AGNT Status: Online', `Version: ${appVersion.value || '...'}`],
-            });
-          } else {
-            // Show "no provider" message when NO provider is selected OR provider is not connected
-            store.commit('chat/ADD_MESSAGE', {
-              id: generateMessageId(),
-              role: 'assistant',
-              content: `<div class="setup-message">
-  <div class="setup-header">
-    <div class="setup-icon">🚀</div>
-    <div>
-      <h2>Welcome to AGNT</h2>
-      <p class="setup-lede">One step before Annie can talk: pick where she thinks.</p>
-    </div>
-  </div>
-</div>`,
-              timestamp: Date.now(),
-              showProviderSetup: true, // Special flag to show provider setup UI
-              showProviderNote: true, // Special flag to show note after provider buttons
-              contentType: 'html', // Mark as HTML content
-            });
-          }
+          store.commit('chat/ADD_MESSAGE', buildProviderGreeting(hasConnectedAIProvider.value, { id: generateMessageId(), version: appVersion.value }));
         }
         scrollToBottom();
       });
@@ -2989,6 +2889,30 @@ export default {
         };
       },
     );
+
+    /**
+     * A chat whose only message is a greeting always shows the greeting for
+     * the CURRENT connection state. An invariant rather than a reaction to a
+     * change: the greeting can be drawn just before or just after the state
+     * settles (an account switch draws it while connections are still
+     * loading), and either order must end correct. See providerGreeting.js.
+     */
+    const greetingIsStale = computed(() => greetingNeedsReplacing(store.state.chat.messages || [], hasConnectedAIProvider.value));
+    const reconcileGreeting = () => {
+      const connected = hasConnectedAIProvider.value;
+      const conversationId = store.state.chat.activeConversationId;
+      const messages = store.state.chat.messages || [];
+      if (!conversationId || !greetingNeedsReplacing(messages, connected)) return;
+      store.commit('chat/SCOPED_SET_MESSAGES', {
+        conversationId,
+        messages: [buildProviderGreeting(connected, { id: generateMessageId(), version: appVersion.value })],
+      });
+      terminalLines.value = connected
+        ? ['AI Assistant: Orchestrator online. JavaScript execution tool available.']
+        : ['Please connect an AI provider to begin.'];
+    };
+
+    watch(greetingIsStale, (stale) => { if (stale) reconcileGreeting(); }, { immediate: true });
 
     // Watch for provider connection changes and update input state
     watch(
