@@ -60,7 +60,8 @@
           <div v-if="qrSvg" class="ta-qr" v-html="qrSvg" v-tooltip="'Scan to open Messages with the code ready'"></div>
         </div>
         <p class="ta-fine">
-          Scan with your phone's camera to open Messages with the code filled in.
+          Or scan with that phone's camera: Messages opens with the code filled in.
+          Just tap send.
           This updates by itself once your text arrives · {{ expiresIn }}
           · <button class="ta-inline" type="button" @click="copy(linking.code)">{{ copied ? 'Copied' : 'Copy code' }}</button>
         </p>
@@ -133,21 +134,12 @@ const formatNumber = (value) => {
   return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : value || '';
 };
 
-/** The link a phone camera opens: Photon's tap-to-text page with the code. */
-const textHref = computed(() => {
-  const phone = linking.value?.phone;
-  if (!phone) return '';
-  if (phone.textLink?.startsWith('https://')) {
-    const url = new URL(phone.textLink);
-    url.searchParams.set('msg', linking.value.code);
-    return url.href;
-  }
-  return phone.line ? `sms:${phone.line}?body=${encodeURIComponent(linking.value.code)}` : '';
-});
+/** SMSTO:<line>:<code> - the camera opens Messages directly (see linkQrPayload). */
 const qrSvg = computed(() => {
-  if (!textHref.value) return '';
+  const payload = linking.value && textAnnie.linkQrPayload(linking.value.phone.line, linking.value.code);
+  if (!payload) return '';
   try {
-    return toSvg(textHref.value, { moduleSize: 4, quietZone: 2, dark: '#000000', light: '#ffffff' });
+    return toSvg(payload, { moduleSize: 6, quietZone: 4, dark: '#000000', light: '#ffffff' });
   } catch {
     return ''; // never render a corrupt code; the number and code are on screen
   }
@@ -276,7 +268,7 @@ onBeforeUnmount(() => {
 .ta-step { font-size: 12px; color: var(--color-light-med-navy, #8b93a7); margin-bottom: 4px; }
 .ta-code { display: inline-block; font-size: 22px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 12px; border-radius: 6px; background: var(--color-background, #12121c); color: var(--color-text, #e0e0e0); user-select: all; }
 .ta-line { font-size: 18px; color: var(--color-text, #e0e0e0); }
-.ta-qr { width: 132px; height: 132px; padding: 6px; border-radius: 8px; background: #fff; margin-left: auto; }
+.ta-qr { width: 168px; height: 168px; border-radius: 8px; background: #fff; margin-left: auto; }
 .ta-qr :deep(svg) { width: 100%; height: 100%; display: block; }
 .ta-fine { margin: 6px 0 0; font-size: 12px; color: var(--color-light-med-navy, #8b93a7); }
 .ta-fine a, .ta-inline { color: var(--color-primary, #19ef83); }
