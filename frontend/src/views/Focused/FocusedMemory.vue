@@ -78,8 +78,8 @@ const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
 
-const all = computed(() => memoryRows(store.getters['insights/agentMemories']));
-const rows = computed(() => memoryRows(store.getters['insights/agentMemories'], query.value));
+const all = computed(() => memoryRows(store.getters['memory/agentMemories']));
+const rows = computed(() => memoryRows(store.getters['memory/agentMemories'], query.value));
 const editing = computed(() => !!props.item || props.isNew);
 const memory = computed(() => (props.item ? all.value.find((m) => m.id === String(props.item)) || null : null));
 const editTitle = computed(() => (props.item ? 'Edit memory' : 'Add memory'));
@@ -103,11 +103,11 @@ async function save() {
   error.value = '';
   try {
     if (memory.value) {
-      await store.dispatch('insights/updateAgentMemory', { id: memory.value.id, content, memoryType: type.value });
+      await store.dispatch('memory/updateAgentMemory', { id: memory.value.id, content, memoryType: type.value });
     } else {
-      await store.dispatch('insights/addAgentMemory', { agentId: 'orchestrator', memoryType: type.value, content });
+      await store.dispatch('memory/addAgentMemory', { agentId: 'orchestrator', memoryType: type.value, content });
     }
-    await store.dispatch('insights/fetchAllMemories');
+    await store.dispatch('memory/fetchAllMemories');
     nav.toast(memory.value ? 'Memory updated.' : 'Memory added.');
     nav.go({ page: 'memory' });
   } catch (e) {
@@ -121,8 +121,8 @@ async function forget() {
   if (!(await nav.confirm({ title: 'Forget this?', message: 'AGNT won’t remember it any more.', confirmText: 'Forget', danger: true }))) return;
   busy.value = true;
   try {
-    await store.dispatch('insights/deleteAgentMemory', { id: memory.value.id });
-    await store.dispatch('insights/fetchAllMemories');
+    await store.dispatch('memory/deleteAgentMemory', { id: memory.value.id });
+    await store.dispatch('memory/fetchAllMemories');
     nav.toast('Forgotten.');
     nav.go({ page: 'memory' });
   } catch (e) {
@@ -137,7 +137,7 @@ const back = () => nav.go({ page: 'memory' });
 onMounted(async () => {
   if (!all.value.length) {
     loading.value = true;
-    await store.dispatch('insights/fetchAllMemories').catch(() => {});
+    await store.dispatch('memory/fetchAllMemories').catch(() => {});
     loading.value = false;
   }
   fill();

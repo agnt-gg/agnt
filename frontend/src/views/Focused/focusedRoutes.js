@@ -38,7 +38,7 @@ export const LIBRARY_ITEM_KIND = Object.freeze({
 
 export const PAGE_SCREENS = Object.freeze({
   plugins: 'ConnectorsScreen',
-  scheduled: 'AutonomyScreen',
+  scheduled: 'GoalsScreen',
   memory: 'MemoryScreen',
   settings: 'SettingsScreen',
 });
@@ -89,6 +89,7 @@ export function focusedLocation(screen, query = {}) {
     case 'ConnectorsScreen':
     case 'PluginsScreen':
       return { page: 'plugins', item: selected(query, 'provider') };
+    case 'GoalsScreen':
     case 'AutonomyScreen': {
       // Autonomy also hosts approvals and limits, which are Studio's. Only
       // its schedules are Focused's "Scheduled".

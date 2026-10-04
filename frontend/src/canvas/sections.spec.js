@@ -223,7 +223,7 @@ describe('canvas sections registry', () => {
     // No AGENT FORGE: a new agent is a modal on the Agents page itself.
     expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY']);
     expect(agents.screens.some((t) => t.screen === 'AgentForgeScreen')).toBe(false);
-    expect(agents.screens.some((t) => t.screen === 'AutonomyScreen')).toBe(false);
+    expect(agents.screens.some((t) => t.screen === 'LearningScreen')).toBe(false);
   });
 
   it('Workflows is its own row paired with its forge; Tools owns Widgets as a tab', () => {
@@ -276,7 +276,7 @@ describe('canvas sections registry', () => {
     expect(visibleTabs(ctxOnly, 'BScreen').map((t) => t.label)).toEqual(['A', 'B']);
 
     const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
-    expect(visibleTabs(settings, 'ExperimentsScreen').map((t) => t.label)).toEqual(['SETTINGS']);
+    expect(visibleTabs(settings, 'LearningScreen').map((t) => t.label)).toEqual(['SETTINGS']);
     expect(visibleTabs(null, 'ChatScreen')).toEqual([]);
     // The toolbar must derive its strip from the same function the test does.
     expect(canvasSrc).toMatch(/activeSectionTabs[\s\S]{0,220}?visibleTabs\(/);
@@ -298,7 +298,7 @@ describe('canvas sections registry', () => {
     // treats them as custom pages and the gear goes dark while you are on
     // them) while owning no row of their own in MAIN_SECTIONS. Memory used to
     // be here too; it is a tab of the Agents row now.
-    const systemScreens = ['AutonomyScreen', 'ExperimentsScreen'];
+    const systemScreens = ['LearningScreen'];
     const mainScreens = MAIN_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
     for (const screen of systemScreens) {
       expect(SECTION_ROUTES.has(screen)).toBe(true);
@@ -331,7 +331,7 @@ describe('canvas sections registry', () => {
       // and the toolbar repeats the panel that navigates them.
       const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
       expect(settings.screens.filter((t) => t.tab !== false).map((t) => t.screen)).toEqual(['SettingsScreen']);
-      for (const screen of ['AutonomyScreen', 'ExperimentsScreen']) expect(SECTION_ROUTES.has(screen)).toBe(true);
+      for (const screen of ['LearningScreen']) expect(SECTION_ROUTES.has(screen)).toBe(true);
     });
 
     it('the toolbar actually honours tab:false, and names the screen instead', () => {

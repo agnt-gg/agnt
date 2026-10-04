@@ -87,7 +87,7 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-    const memories = computed(() => store.getters['insights/agentMemories'] || []);
+    const memories = computed(() => store.getters['memory/agentMemories'] || []);
     const agents = computed(() => store.getters['agents/allAgents'] || []);
 
     const agentNameMap = computed(() => {
@@ -169,7 +169,7 @@ export default {
     };
 
     const refreshMemories = () => {
-      store.dispatch('insights/fetchAllMemories');
+      store.dispatch('memory/fetchAllMemories');
       store.dispatch('agents/fetchAgents', { force: true });
     };
 

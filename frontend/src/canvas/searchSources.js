@@ -137,7 +137,7 @@ export function historySearchItems(results){
     else if(row.kind==='execution'){screen='TracesScreen';action={type:'inspect',kind:'trace',id:meta.execution_id||row.id,screen};}
     else if(row.kind==='memory'){screen='MemoryScreen';action={type:'inspect',kind:'memory',id:meta.memory_id||row.id,screen};}
     else if(row.kind==='version'){screen='WorkflowsScreen';action={type:'inspect',kind:'workflow',id:meta.workflow_id,screen};}
-    else {screen='ExperimentsScreen';action={type:'screen',screen,opts:{select:{kind:row.kind,id:row.id}}};}
+    else {screen='LearningScreen';action={type:'screen',screen,opts:{select:{kind:row.kind,id:row.id}}};}
     return {id,label:row.title||row.kind,icon:screen==='ChatScreen'?'fas fa-comments':'fas fa-file-alt',hint:row.kind,snippet:row.snippet||'',action,screen,serverMatched:true};
   });
 }

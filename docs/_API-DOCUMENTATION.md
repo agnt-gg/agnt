@@ -11686,3 +11686,38 @@ Base path: `https://api.agnt.gg/workflows` (Internal: `WorkflowRoutes.js`)
 ---
 
 _This documentation covers all API endpoints as of v0.5.0. For the most up-to-date information, please refer to the source code in `backend/src/routes/`._
+
+
+## Learning Routes
+
+Base path: `/api/learning`
+
+All routes require authentication and operate only on the caller’s account. Legacy Evolution, Experiments, SkillForge and mutation write routes return 410; their GET history remains available. Memory writes remain supported.
+
+**GET** `/`
+- **Authentication**: Required
+- Returns versioned findings, trials, policies, settings and evidence coverage.
+
+**GET** `/events`
+- **Authentication**: Required
+- Returns up to 200 account-scoped content-free learning events.
+
+**POST** `/settings`
+- **Authentication**: Required
+- Body: `{paused:boolean}`. Reviews continue while new collection and policy effects are paused.
+
+**POST** `/findings/:id/approve`
+- **Authentication**: Required
+- Body: `{revision,candidateHash,durationDays,minimumSamples}`. Exact hash-bound owner approval; only a supported read-only retry action is available.
+
+**POST** `/findings/:id/dismiss`
+- **Authentication**: Required
+- Body: `{revision}`.
+
+**POST** `/trials/:id/keep`
+- **Authentication**: Required
+- Body: `{revision,candidateHash}`. Only supported reviews can be promoted.
+
+**POST** `/trials/:id/undo`
+- **Authentication**: Required
+- Body: `{revision}`. Deactivates the policy and verifies it is inactive.

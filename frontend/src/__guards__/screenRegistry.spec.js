@@ -39,7 +39,7 @@ const baseScreenTag = (raw) => raw.match(/<BaseScreen[\s\S]*?>/)?.[0] ?? '';
 
 describe('every screen is declared in the registry', () => {
   it('finds a plausible number of screens', () => {
-    expect(screenRoots().length).toBeGreaterThanOrEqual(20);
+    expect(screenRoots().length).toBeGreaterThanOrEqual(19); // Six generator screens consolidated into Learning.
   });
 
   it('each screenId used by a screen root has a SCREEN_DEFAULTS entry', () => {

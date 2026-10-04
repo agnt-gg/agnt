@@ -27,9 +27,10 @@ export const SCREEN_ROUTES = Object.freeze({
   WidgetForgeScreen: '/widget-forge',
   SkillsScreen: '/skills',
   ArtifactsScreen: '/artifacts',
-  ExperimentsScreen: '/experiments',
+  LearningScreen: '/learning',
+  ExperimentsScreen: '/learning',
   MemoryScreen: '/memory',
-  AutonomyScreen: '/autonomy',
+  AutonomyScreen: '/learning',
   WorkspaceScreen: '/workspace',
 });
 
@@ -39,6 +40,8 @@ export const SCREEN_ROUTES = Object.freeze({
  * opens that agent, otherwise it opens the new-agent modal.
  */
 export function normalizeScreen(screenName, options = {}) {
+  if (['ExperimentsScreen','SkillForgeScreen','ExperimentForgeScreen','ExperimentInsightsScreen','EvalDatasetsScreen'].includes(screenName)) return ['LearningScreen', options];
+  if (screenName === 'AutonomyScreen') return [options.section === 'schedules' ? 'GoalsScreen' : 'LearningScreen', options];
   if (screenName !== 'AgentForgeScreen') return [screenName, options];
   return [
     'AgentsScreen',

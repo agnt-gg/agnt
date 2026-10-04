@@ -39,8 +39,7 @@ const SCREEN_ICONS = {
   ConnectorsScreen: 'fas fa-plug',
   SettingsScreen: 'fas fa-cog',
   MemoryScreen: 'fas fa-brain',
-  ExperimentsScreen: 'fas fa-dna',
-  AutonomyScreen: 'fas fa-user-shield',
+  LearningScreen: 'fas fa-seedling',
 };
 
 const title = (s) => String(s || '').replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\s+/g, ' ');
@@ -102,7 +101,7 @@ export function buildJumpIndex(src) {
     { id: 'do:new-goal', icon: 'fas fa-bullseye', label: 'Run a goal…', hint: 'Goals', action: { type: 'screen', screen: 'GoalsScreen', opts: { newGoal: true } }, _hay: ['new goal', 'run goal', 'create goal'] },
   ];
   if (src.approvals > 0) {
-    doItems.unshift({ id: 'do:approvals', icon: 'fas fa-user-shield', label: `Review ${src.approvals} pending approval${src.approvals === 1 ? '' : 's'}`, hint: 'Autonomy', action: { type: 'screen', screen: 'AutonomyScreen' }, _hay: ['approve', 'approvals', 'autonomy', 'pending'] });
+    doItems.unshift({ id: 'do:approvals', icon: 'fas fa-user-shield', label: `Review ${src.approvals} pending approval${src.approvals === 1 ? '' : 's'}`, hint: 'Learning', action: { type: 'screen', screen: 'LearningScreen' }, _hay: ['approve', 'approvals', 'autonomy', 'pending'] });
   }
   if (src.hasProvider === false) {
     doItems.unshift({ id: 'do:provider', icon: 'fas fa-robot', label: 'Connect an AI provider', hint: 'Connections › AI Providers', action: { type: 'screen', screen: 'ConnectorsScreen', opts: { section: 'providers' } }, _hay: ['provider', 'connect', 'api key', 'model'] });

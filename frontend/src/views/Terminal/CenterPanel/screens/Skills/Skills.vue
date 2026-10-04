@@ -13,9 +13,9 @@
     <template #default>
       <div class="skills-screen">
         <ScreenToolbar v-show="!mobileView"
-          :title="activeView === 'skills' ? 'SKILLS' : 'EVOLUTION'"
-          :count="activeView === 'skills' ? filteredSkills.length : leaderboard.length"
-          :countLabel="activeView === 'skills' ? 'skills' : 'evolved skills'"
+          title="SKILLS"
+          :count="activeView === 'skills' ? filteredSkills.length : discoveredSkills.length"
+          countLabel="skills"
           searchPlaceholder="Search skills..."
           :searchQuery="searchQuery"
           :searchScope="shelfHasFocus ? 'Marketplace' : ''"
@@ -37,10 +37,6 @@
             <button class="view-tab" :class="{ active: activeView === 'discovered' }" @click="switchToDiscovered">
               <i class="fas fa-folder-open"></i> Discovered
               <span class="tab-count">{{ discoveredSkills.length }}</span>
-            </button>
-            <button class="view-tab" :class="{ active: activeView === 'evolution' }" @click="switchToEvolution">
-              <i class="fas fa-dna"></i> Evolution
-              <span class="tab-count">{{ leaderboard.length }}</span>
             </button>
           </div>
         </div>
@@ -203,179 +199,7 @@
           </div>
         </template>
 
-</div>        <!-- ═══ EVOLUTION VIEW (SkillForge) ═══ -->
-        <template v-if="activeView === 'evolution'">
-          <!-- Evolution sub-tabs -->
-          <div class="sf-tabs">
-            <button v-for="tab in forgeTabs" :key="tab.id" class="sf-tab" :class="{ active: forgeTab === tab.id }" @click="forgeTab = tab.id">
-              <i :class="tab.icon"></i> {{ tab.label }}
-            </button>
-          </div>
-
-          <!-- Dashboard -->
-          <div v-if="forgeTab === 'dashboard'" class="sf-content">
-            <div class="stats-row">
-              <div class="stat-card">
-                <div class="stat-value">{{ forgeStats?.totalEvaluations || 0 }}</div>
-                <div class="stat-label">A/B Tests</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ forgeStats?.skillsKept || 0 }}</div>
-                <div class="stat-label">Kept</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ forgeStats?.skillsDiscarded || 0 }}</div>
-                <div class="stat-label">Discarded</div>
-              </div>
-              <div class="stat-card accent">
-                <div class="stat-value">{{ forgeStats?.skillsPromoted || 0 }}</div>
-                <div class="stat-label">Gold</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ formatDelta(forgeStats?.averageDelta) }}</div>
-                <div class="stat-label">Avg Delta</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ formatPercent(forgeStats?.winRate) }}</div>
-                <div class="stat-label">Win Rate</div>
-              </div>
-            </div>
-
-            <div class="section-header">
-              <h3><i class="fas fa-trophy"></i> Leaderboard</h3>
-            </div>
-            <div v-if="filteredLeaderboard.length > 0" class="leaderboard-list">
-              <div v-for="(skill, idx) in filteredLeaderboard" :key="skill.skill_id" class="leaderboard-item" @click="viewSkillDetail(skill)">
-                <span class="lb-rank">#{{ idx + 1 }}</span>
-                <div class="lb-info">
-                  <span class="lb-name">{{ skill.skill_name }}</span>
-                  <span class="lb-category">{{ skill.category }}</span>
-                </div>
-                <div class="lb-stats">
-                  <span class="lb-metric" :class="deltaClass(skill.avg_delta)">{{ formatDelta(skill.avg_delta) }} SES</span>
-                  <span class="lb-metric-sub">{{ formatPercent(skill.win_rate) }} win &middot; {{ skill.total_evaluations }} tests</span>
-                </div>
-              </div>
-            </div>
-            <div v-else class="empty-state-container">
-              <div class="empty-state">
-                <i class="fas fa-flask"></i>
-                <p>No evolved skills yet</p>
-                <span class="empty-hint">Complete goals to generate skill candidates.</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- A/B Tests -->
-          <div v-if="forgeTab === 'evaluations'" class="sf-content">
-            <div v-if="evaluations.length > 0" class="evals-list">
-              <div
-                v-for="ev in evaluations"
-                :key="ev.id"
-                class="eval-card"
-                :class="{ kept: ev.decision === 'kept' || ev.decision === 'promoted', discarded: ev.decision === 'discarded' }"
-              >
-                <div class="eval-header">
-                  <span class="eval-decision" :class="ev.decision"><i :class="decisionIcon(ev.decision)"></i> {{ ev.decision?.toUpperCase() }}</span>
-                  <span class="eval-date">{{ formatFullDate(ev.created_at) }}</span>
-                </div>
-                <div class="eval-metrics">
-                  <div class="eval-metric">
-                    <span class="metric-label">Baseline</span
-                    ><span class="metric-value">{{ ev.baseline_ses != null ? ev.baseline_ses.toFixed(1) : 'N/A' }}</span>
-                  </div>
-                  <div class="eval-metric">
-                    <span class="metric-label">Treatment</span
-                    ><span class="metric-value">{{ ev.treatment_ses != null ? ev.treatment_ses.toFixed(1) : 'N/A' }}</span>
-                  </div>
-                  <div class="eval-metric">
-                    <span class="metric-label">Delta</span><span class="metric-value" :class="deltaClass(ev.delta)">{{ formatDelta(ev.delta) }}</span>
-                  </div>
-                </div>
-                <p v-if="ev.judge_reasoning" class="eval-reasoning">{{ ev.judge_reasoning }}</p>
-              </div>
-            </div>
-            <div v-else class="empty-state-container">
-              <div class="empty-state">
-                <i class="fas fa-vial"></i>
-                <p>No A/B tests recorded yet</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Forge -->
-          <div v-if="forgeTab === 'forge'" class="sf-content">
-            <div class="forge-section">
-              <h3><i class="fas fa-dna"></i> Forge Skills from Goals</h3>
-              <p class="forge-desc">Select a completed goal to analyze its trace and forge a skill.</p>
-              <div class="forge-filters">
-                <input v-model="goalSearch" class="form-input" placeholder="Search goals..." />
-                <button class="filter-btn" :class="{ active: showEligibleOnly }" @click="showEligibleOnly = !showEligibleOnly">
-                  <i class="fas fa-filter"></i> Eligible Only
-                </button>
-                <button class="filter-btn" @click="refreshGoals">
-                  <i :class="isLoadingGoals ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
-                </button>
-              </div>
-              <div v-if="isLoadingGoals" class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading goals...</div>
-              <div v-else-if="filteredGoals.length > 0" class="goals-list">
-                <div
-                  v-for="goal in filteredGoals"
-                  :key="goal.id"
-                  class="goal-card"
-                  :class="{ selected: selectedGoal?.id === goal.id, eligible: goal.eligible, ineligible: !goal.eligible }"
-                  @click="selectGoal(goal)"
-                >
-                  <div class="goal-header">
-                    <span class="goal-title">{{ goal.title }}</span>
-                    <span v-if="goal.eligible" class="badge eligible"><i class="fas fa-check"></i></span>
-                    <span v-else class="badge ineligible"><i class="fas fa-times"></i></span>
-                  </div>
-                  <div class="goal-metrics">
-                    <span class="goal-metric"
-                      ><i class="fas fa-star"></i> {{ goal.eval_score != null ? Math.round(goal.eval_score) + '%' : 'N/A' }}</span
-                    >
-                    <span class="goal-metric"><i class="fas fa-tasks"></i> {{ goal.completed_tasks }}/{{ goal.task_count }}</span>
-                    <span class="goal-metric"><i class="fas fa-redo"></i> {{ goal.iteration_count }} iters</span>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="empty-state-container">
-                <div class="empty-state">
-                  <i class="fas fa-flag-checkered"></i>
-                  <p>No completed goals found</p>
-                </div>
-              </div>
-
-              <div v-if="selectedGoal" class="selected-goal-actions">
-                <div class="selected-goal-bar">
-                  <span class="selected-name">{{ selectedGoal.title }}</span>
-                  <div class="action-buttons">
-                    <button class="forge-btn analyze" :disabled="isAnalyzing" @click="runAnalysis">
-                      <i :class="isAnalyzing ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i> {{ isAnalyzing ? 'Analyzing...' : 'Analyze' }}
-                    </button>
-                    <button class="forge-btn primary" :disabled="!selectedGoal.eligible || isEvolving" @click="runEvolution">
-                      <i :class="isEvolving ? 'fas fa-spinner fa-spin' : 'fas fa-hammer'"></i> {{ isEvolving ? 'Forging...' : 'Forge' }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div v-if="lastAnalysis" class="result-panel">
-                <h4><i class="fas fa-clipboard-check"></i> Trace Analysis</h4>
-                <div v-if="lastAnalysis.analysis" class="analysis-content">
-                  <div class="analysis-meta">
-                    <span class="meta-badge" :class="lastAnalysis.analysis.traceQuality">{{ lastAnalysis.analysis.traceQuality }}</span>
-                    <span class="meta-info">{{ lastAnalysis.analysis.patternCount || lastAnalysis.analysis.patterns?.length || 0 }} patterns</span>
-                  </div>
-                  <p class="analysis-summary">{{ lastAnalysis.analysis.overallAssessment }}</p>
-                </div>
-                <p v-else class="result-message">{{ lastAnalysis.message || 'No data.' }}</p>
-              </div>
-            </div>
-          </div>
-        </template>
-      </div>
+</div>      </div>
 
       <!-- Create/Edit Modal -->
       <Teleport to="body">
@@ -528,18 +352,6 @@ const saving = ref(false);
 const modalError = ref('');
 const form = ref({ name: '', description: '', instructions: '', icon: 'fas fa-puzzle-piece', category: 'general' });
 
-// SkillForge state
-const forgeTab = ref('dashboard');
-const selectedGoal = ref(null);
-const goalSearch = ref('');
-const showEligibleOnly = ref(false);
-
-const forgeTabs = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'fas fa-chart-bar' },
-  { id: 'evaluations', label: 'A/B Tests', icon: 'fas fa-vial' },
-  { id: 'forge', label: 'Forge', icon: 'fas fa-hammer' },
-];
-
 // Skills data
 const allSkills = computed(() => store.getters['skills/allSkills'] || []);
 const discoveredSkills = computed(() => store.getters['skills/discoveredSkills'] || []);
@@ -615,49 +427,9 @@ const filteredDiscoveredSkills = computed(() => {
   return sortByName(base);
 });
 
-// SkillForge data
-const forgeStats = computed(() => store.getters['skillforge/stats']);
-const evaluations = computed(() => store.getters['skillforge/evaluations']);
-const leaderboard = computed(() => store.getters['skillforge/leaderboard']);
-const isAnalyzing = computed(() => store.getters['skillforge/isAnalyzing']);
-const isEvolving = computed(() => store.getters['skillforge/isEvolving']);
-const isLoadingGoals = computed(() => store.getters['skillforge/isLoadingGoals']);
-const lastAnalysis = computed(() => store.getters['skillforge/lastAnalysis']);
-const eligibleGoals = computed(() => store.getters['skillforge/eligibleGoals']);
-
-const filteredLeaderboard = computed(() => {
-  const q = searchQuery.value.toLowerCase();
-  const base = q
-    ? leaderboard.value.filter((s) => s.skill_name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q))
-    : leaderboard.value;
-  return sortByName(base, 'skill_name');
-});
-
-const filteredGoals = computed(() => {
-  let goals = eligibleGoals.value || [];
-  if (showEligibleOnly.value) goals = goals.filter((g) => g.eligible);
-  const q = goalSearch.value.toLowerCase();
-  if (q) goals = goals.filter((g) => g.title?.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q));
-  return goals;
-});
-
-// Load forge data when switching to evolution tab
-watch(forgeTab, (tab) => {
-  if (tab === 'forge' && eligibleGoals.value.length === 0) {
-    store.dispatch('skillforge/fetchEligibleGoals');
-  }
-});
-
 const switchToDiscovered = () => {
   activeView.value = 'discovered';
   store.dispatch('skills/fetchDiscoveredSkills');
-};
-
-const switchToEvolution = () => {
-  activeView.value = 'evolution';
-  store.dispatch('skillforge/fetchStats');
-  store.dispatch('skillforge/fetchLeaderboard');
-  store.dispatch('skillforge/fetchEvaluations');
 };
 
 // Initialization
@@ -666,7 +438,6 @@ const initializeScreen = () => {
   // Prefetch counts for the Discovered + Evolution tab badges so the numbers
   // are correct on first paint, not just after the user clicks the tab.
   store.dispatch('skills/fetchDiscoveredSkills').catch(() => {});
-  store.dispatch('skillforge/fetchLeaderboard').catch(() => {});
 };
 
 const handlePanelAction = (action, payload) => {
@@ -915,44 +686,6 @@ const importDiscoveredSkill = async (skill) => {
     });
   } finally {
     importingSkill.value = null;
-  }
-};
-
-// SkillForge actions
-const viewSkillDetail = (skill) => {
-  // Select in the skills view for the right panel
-  const found = allSkills.value.find((s) => s.id === skill.skill_id);
-  if (found) {
-    selectedSkill.value = found;
-    activeView.value = 'skills';
-  }
-};
-
-const selectGoal = (goal) => {
-  selectedGoal.value = selectedGoal.value?.id === goal.id ? null : goal;
-  store.commit('skillforge/SET_LAST_ANALYSIS', null);
-  store.commit('skillforge/SET_LAST_EVOLUTION', null);
-};
-
-const refreshGoals = () => {
-  store.dispatch('skillforge/fetchEligibleGoals');
-};
-
-const runAnalysis = async () => {
-  if (!selectedGoal.value) return;
-  try {
-    await store.dispatch('skillforge/analyzeGoal', selectedGoal.value.id);
-  } catch (err) {
-    console.error('Analysis error:', err);
-  }
-};
-
-const runEvolution = async () => {
-  if (!selectedGoal.value) return;
-  try {
-    await store.dispatch('skillforge/evolveFromGoal', selectedGoal.value.id);
-  } catch (err) {
-    console.error('Forge error:', err);
   }
 };
 

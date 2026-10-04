@@ -23,7 +23,7 @@ describe('jumpIndex', () => {
     const { groups } = buildJumpIndex(src);
     const goto = groups.find((g) => g.id === 'goto').items;
     const screens = goto.map((i) => i.action.screen);
-    for (const s of ['ChatScreen', 'ArtifactsScreen', 'ToolsScreen', 'ToolForgeScreen', 'MemoryScreen', 'AutonomyScreen', 'SettingsScreen']) {
+    for (const s of ['ChatScreen', 'ArtifactsScreen', 'ToolsScreen', 'ToolForgeScreen', 'MemoryScreen', 'LearningScreen', 'SettingsScreen']) {
       expect(screens).toContain(s);
     }
     // The first screen of a section is labelled with the section name.

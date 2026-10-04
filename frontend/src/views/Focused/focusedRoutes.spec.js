@@ -91,7 +91,7 @@ describe('routeFor is the inverse of focusedLocation', () => {
     // existing workflow/tool opens in Focused (tested above).
     const studioOnly = new Set([
       'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen', 'MarketplaceScreen',
-      'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
+      'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
     ]);
     for (const screen of SECTION_ROUTES) {
       if (studioOnly.has(screen)) continue;

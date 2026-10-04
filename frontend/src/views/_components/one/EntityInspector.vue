@@ -221,14 +221,14 @@ export default {
             runLoading.value = false;
           }
         }
-        if (props.kind === 'memory' && props.id) store.dispatch('insights/fetchAgentMemories', props.id).catch(() => {});
+        if (props.kind === 'memory' && props.id) store.dispatch('memory/fetchAgentMemories', props.id).catch(() => {});
       },
       { immediate: true },
     );
 
     const running = computed(() => executions.value.filter((e) => isRunning(e.status)));
     const escalated = computed(() => store.getters['insights/escalatedInsights'] || []);
-    const memories = computed(() => store.getters['insights/agentMemories'] || []);
+    const memories = computed(() => store.getters['memory/agentMemories'] || []);
     const agentRuns = computed(() => (agent.value ? (store.getters['executionHistory/getAgentExecutions'] || []).filter((e) => String(e.agent_id || e.agentId) === String(agent.value.id)).slice(0, 10) : []));
     const wfSteps = computed(() => {
       const nodes = workflow.value?.nodes || workflow.value?.canvas?.nodes || [];
@@ -261,7 +261,7 @@ export default {
         return { ...base, title: r ? runDisplayName(r) : `run ${String(props.id || '').slice(0, 8)}`, sub: `run · ${r?.status || ''}`, icon: 'fas fa-stream', tone: 'indigo', badge: r?.status || '', badgeTone: statusTone(r?.status), openLabel: 'Open in Runs' };
       }
       if (k === 'running') return { ...base, title: 'Running now', sub: `${running.value.length} running`, icon: 'fas fa-stream', tone: 'blue', badge: String(running.value.length), openScreen: 'TracesScreen', openLabel: 'Open Runs' };
-      if (k === 'autonomy') return { ...base, title: 'Awaiting approval', sub: `${escalated.value.length} actions`, icon: 'fas fa-user-shield', tone: 'yellow', badge: String(escalated.value.length), openScreen: 'AutonomyScreen', openLabel: 'Open Autonomy' };
+      if (k === 'autonomy') return { ...base, title: 'Awaiting approval', sub: `${escalated.value.length} actions`, icon: 'fas fa-user-shield', tone: 'yellow', badge: String(escalated.value.length), openScreen: 'LearningScreen', openLabel: 'Open Learning' };
       if (k === 'memory') return { ...base, title: 'Memory', sub: `${memories.value.length} entries`, icon: 'fas fa-brain', tone: 'pink', openScreen: 'MemoryScreen', openLabel: 'Open Memory' };
       return { ...base, title: String(k), sub: '' };
     });

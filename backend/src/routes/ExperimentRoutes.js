@@ -70,7 +70,7 @@ ExperimentRoutes.post('/datasets/generate', authenticateToken, async (req, res) 
 ExperimentRoutes.get('/datasets/:id', authenticateToken, async (req, res) => {
   try {
     const dataset = await EvalDatasetService.getDatasetById(req.params.id);
-    if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
+    if (!dataset || dataset.user_id !== req.user.userId) return res.status(404).json({ error: 'Dataset not found' });
 
     const splits = EvalDatasetService.getDatasetSplit(dataset);
     res.json({ success: true, dataset, splits });
@@ -94,7 +94,7 @@ ExperimentRoutes.delete('/datasets/:id', authenticateToken, async (req, res) => 
 
 ExperimentRoutes.get('/benchmarks', authenticateToken, async (req, res) => {
   try {
-    const benchmarks = await GoldenStandardModel.findAll();
+    const benchmarks = await GoldenStandardModel.findByUserId(req.user.userId);
     res.json({ success: true, benchmarks: benchmarks || [] });
   } catch (error) {
     console.error('[Experiment Route] Benchmarks error:', error);
@@ -133,7 +133,7 @@ ExperimentRoutes.get('/', authenticateToken, async (req, res) => {
 ExperimentRoutes.get('/:id', authenticateToken, async (req, res) => {
   try {
     const experiment = await ExperimentService.getExperimentWithResults(req.params.id);
-    if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
+    if (!experiment || experiment.user_id !== req.user.userId) return res.status(404).json({ error: 'Experiment not found' });
     res.json({ success: true, experiment });
   } catch (error) {
     console.error('[Experiment Route] Get error:', error);
@@ -168,6 +168,8 @@ ExperimentRoutes.delete('/:id', authenticateToken, async (req, res) => {
 
 ExperimentRoutes.get('/:id/runs', authenticateToken, async (req, res) => {
   try {
+    const experiment = await ExperimentModel.findOne(req.params.id);
+    if (!experiment || experiment.user_id !== req.user.userId) return res.status(404).json({error:'Experiment not found'});
     const runs = await ExperimentModel.findRunsByExperiment(req.params.id);
     res.json({ success: true, runs });
   } catch (error) {

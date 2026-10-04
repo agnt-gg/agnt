@@ -14,7 +14,7 @@ const sampleGetters = () => ({
   'tools/customTools': [{ id: 'tool' }],
   'skills/allSkills': [{ id: 'skill' }],
   'widgetDefinitions/allDefinitions': [{ id: 'widget' }],
-  'insights/agentMemories': [{ id: 'memory' }],
+  'memory/agentMemories': [{ id: 'memory' }],
   'insights/allInsights': [{ id: 'insight' }],
   'schedules/allSchedules': [{ id: 'schedule' }],
   'contentOutputs/outputs': [{ id: 'chat' }],
@@ -54,9 +54,9 @@ describe('SystemOverviewPanel presentation', () => {
     await flushPromises();
     const destinations = [
       { screen: 'TracesScreen', opts: { status: 'running' } },
-      'GoalsScreen', 'AutonomyScreen', 'ChatScreen', 'GoalsScreen', 'AgentsScreen',
+      'GoalsScreen', 'LearningScreen', 'ChatScreen', 'GoalsScreen', 'AgentsScreen',
       'WorkflowsScreen', 'ToolsScreen', 'SkillsScreen', 'WidgetManagerScreen', 'PluginsScreen',
-      'MemoryScreen', { screen: 'AutonomyScreen', opts: { section: 'schedules' } }, 'ConnectorsScreen',
+      'MemoryScreen', { screen: 'GoalsScreen', opts: { section: 'schedules' } }, 'ConnectorsScreen',
     ];
     const buttons = wrapper.findAll('button');
     expect(buttons).toHaveLength(destinations.length);
@@ -101,7 +101,7 @@ describe('SystemOverviewPanel presentation', () => {
   it('shows each count as soon as its own source answers, while a slow one is still loading', async () => {
     let finishMemories;
     const memoriesPending = new Promise((resolve) => { finishMemories = resolve; });
-    const dispatch = vi.fn((action) => (action === 'insights/fetchAllMemories' ? memoriesPending : Promise.resolve()));
+    const dispatch = vi.fn((action) => (action === 'memory/fetchAllMemories' ? memoriesPending : Promise.resolve()));
     const { wrapper } = renderPanel({}, dispatch);
     await flushPromises();
     const tile = (label) => wrapper.findAll('.sys-tile').find((t) => t.text().includes(label)).find('.sys-tile-value').text();

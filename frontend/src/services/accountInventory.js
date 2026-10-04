@@ -20,7 +20,7 @@ export const HYDRATION = [
   ['skills/allSkills', 'skills/fetchSkills'],
   ['schedules/allSchedules', 'schedules/fetchSchedules'],
   ['widgetDefinitions/allDefinitions', 'widgetDefinitions/fetchDefinitions'],
-  ['insights/agentMemories', 'insights/fetchAllMemories'],
+  ['memory/agentMemories', 'memory/fetchAllMemories'],
   ['insights/allInsights', 'insights/fetchInsights'],
   ['executionHistory/getExecutions', 'executionHistory/fetchExecutions'],
   ['contentOutputs/outputs', 'contentOutputs/fetchOutputs', { limit: 1, offset: 0, loadAll: false, force: true }],

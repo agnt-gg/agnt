@@ -207,8 +207,7 @@ export const BOTTOM_SECTIONS = [
     label: 'Settings',
     screens: [
       { screen: 'SettingsScreen', label: 'SETTINGS' },
-      { screen: 'AutonomyScreen', label: 'APPROVALS', tab: false },
-      { screen: 'ExperimentsScreen', label: 'IMPROVEMENTS', tab: false },
+      { screen: 'LearningScreen', label: 'LEARNING', tab: false },
     ],
   },
 ];

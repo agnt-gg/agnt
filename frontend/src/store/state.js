@@ -38,6 +38,7 @@ import skills from './features/skills';
 import skillforge from './features/skillforge';
 import experiments from './features/experiments';
 import insights from './features/insights';
+import memory from './features/memory';
 import schedules from './features/schedules';
 import wallets from './features/wallets';
 import contracts from './features/contracts';
@@ -65,6 +66,7 @@ const USER_SCOPED_MODULES = {
   widgetLayout,
   widgetDefinitions,
   skills,
+  memory,
   appAuth,
 };
 

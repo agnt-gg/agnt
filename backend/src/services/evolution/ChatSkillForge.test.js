@@ -277,26 +277,11 @@ describe('wiring contract', () => {
   const TRIGGERS = read('InsightTriggers.js');
   const EVOLVER = read('..', 'goal', 'SkillEvolver.js');
 
-  it('forges OUTSIDE the insightsEnabled guard', () => {
-    // Insight extraction pays an LLM call per turn, which is why it is opt-in
-    // and default-off. Forging only fires on the third repetition. Putting it
-    // behind the same switch would reproduce the complaint it exists to fix:
-    // chat that visibly never learns.
-    const fn = TRIGGERS.slice(
-      TRIGGERS.indexOf('static async onChatCompleted'),
-      TRIGGERS.indexOf('static async onGoalCompleted'),
-    );
-    const forgeIdx = fn.indexOf('ChatSkillForge.onChatCompleted');
-    const guardIdx = fn.indexOf("isSourceEnabled(userId, 'agent_chat')");
-    expect(forgeIdx).toBeGreaterThan(-1);
-    expect(guardIdx).toBeGreaterThan(-1);
-    expect(forgeIdx).toBeLessThan(guardIdx);
-  });
-
-  it('forging is fire-and-forget and cannot reject into the chat path', () => {
-    const fn = TRIGGERS.slice(TRIGGERS.indexOf('static async onChatCompleted'), TRIGGERS.indexOf('static async onGoalCompleted'));
-    const call = fn.slice(fn.indexOf('ChatSkillForge.onChatCompleted'));
-    expect(call).toMatch(/\.catch\(/);
+  it('completion hooks collect evidence instead of independently forging or applying', () => {
+    expect(TRIGGERS).toContain('observeExecution');
+    expect(TRIGGERS).not.toContain('ChatSkillForge.onChatCompleted');
+    expect(TRIGGERS).not.toContain('InsightEngine.extract');
+    expect(TRIGGERS).not.toContain('routePendingForUser');
   });
 
   it('does not label structural quality as an executed A/B evaluation', () => {

@@ -39,7 +39,7 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // Autonomy.vue), so its left panel was duplicate navigation.
   // Right: the approval queue (AGNT One). `null` used to fall back to Chat's
   // panel beside the policy screen.
-  AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: 'AutonomyPanel', input: false },
+  LearningScreen: { leftPanel: 'SettingsPanel', rightPanel: false, input: false },
   // Chat opens with the inspector (right panel) collapsed: the thread is the
   // point, the inspector is on demand. A small toggle at the top-right of the
   // canvas expands it; the choice is remembered for THIS screen only.
@@ -48,10 +48,6 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // Left: a system overview — how many of everything, what is moving right
   // now, every tile a door. Right: Active Workflows + Integration Health.
   DashboardScreen: { leftPanel: 'SystemOverviewPanel', rightPanel: 'DashboardPanel', input: false },
-  EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
-  ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
-  ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },
-  ExperimentsScreen: { leftPanel: 'SettingsPanel', rightPanel: 'ExperimentsPanel', input: false },
   // Goals has no side columns: both used to show the same goal count the
   // board already shows. The selected goal's detail opens INSIDE the screen
   // (Goals.vue `goal-detail-drawer`, which hosts RightPanel/GoalsPanel).
@@ -67,7 +63,6 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // Shares the Apps sidebar: Plugins is a row of it (appsDirectory).
   PluginsScreen: { leftPanel: 'ConnectorsPanel', input: false },
   SettingsScreen: { input: false }, // right: dynamic
-  SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },
   ToolForgeScreen: { leftPanel: 'ToolForgePanel', rightPanel: 'ToolForgeResponsePanel', input: false },
   ToolsScreen: { leftPanel: 'ToolsPanel', input: false }, // right: dynamic

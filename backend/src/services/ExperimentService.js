@@ -38,7 +38,7 @@ class ExperimentService {
   static async runExperiment(experimentId, userId, { provider, model } = {}) {
     try {
       const experiment = await ExperimentModel.findOne(experimentId);
-      if (!experiment) throw new Error(`Experiment not found: ${experimentId}`);
+      if (!experiment || experiment.user_id !== userId) throw new Error('Experiment unavailable');
 
       // Auto-generate synthetic dataset if none was provided at creation time
       let datasetId = experiment.eval_dataset_id;

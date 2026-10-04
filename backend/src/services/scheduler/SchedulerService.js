@@ -118,125 +118,20 @@ class SchedulerService {
         }
       }
 
-      // Canary sweep — every 5th tick (~5 minutes), check recently-applied
-      // mutations for regressions and auto-revert.
-      this._canaryTickCounter = (this._canaryTickCounter || 0) + 1;
-      if (this._canaryTickCounter % 5 === 0) {
-        await this._runCanarySweep().catch((err) => console.error('[Scheduler] canary sweep error:', err.message));
-      }
-
-      // Contract miner — every 60th tick (~1 hour), scan recently-active users
-      // and mine refinement-type contract proposals from their tool runs.
-      // Each proposal lands as a `contract_proposal` insight; the autonomy
-      // router governs whether it actually installs. Cheap when nothing has
-      // changed (dedup in _storeInsightWithDedup); only does real work when
-      // tools have accumulated new samples since the last sweep.
-      this._minerTickCounter = (this._minerTickCounter || 0) + 1;
-      if (this._minerTickCounter % 60 === 0) {
-        await this._runContractMiningSweep().catch((err) => console.error('[Scheduler] contract miner error:', err.message));
+      // Persisted trial deadlines are reviewed even while collection is paused.
+      const { getLearningCoordinator } = await import('../learning/LearningCoordinator.js');
+      const learning=await getLearningCoordinator();
+      await learning.reviewDue();
+      const { reconcileLearningEvidence } = await import('../learning/learningRuntime.js');
+      try { await reconcileLearningEvidence(); } catch(error) {
+        await learning.transaction(()=>learning.run(`INSERT INTO learning_health(source,failures,last_error,last_failure_at) VALUES('reconciliation',1,?,?) ON CONFLICT(source) DO UPDATE SET failures=failures+1,last_error=excluded.last_error,last_failure_at=excluded.last_failure_at`,[error.code||'evidence_reconciliation_failed',Date.now()]));
+        throw error;
       }
     } finally {
       this._ticking = false;
     }
   }
 
-  /**
-   * Periodic contract miner. Finds users with recent tool activity and asks
-   * InsightTriggers to roll up their tool usage into contract proposals.
-   *
-   * Cadence: every ~1 hour on the scheduler tick. Cheap when nothing changed
-   * (insights deduped by sourceType+sourceId+targetId+content hash inside
-   * the engine).
-   */
-  static async _runContractMiningSweep() {
-    try {
-      const db = (await import('../../models/database/index.js')).default;
-      const InsightTriggers = (await import('../evolution/InsightTriggers.js')).default;
-
-      // Active users in the last 24h (have at least one agent execution).
-      // Cap at 50 — tail users with sparse activity wait until next sweep.
-      const userRows = await new Promise((resolve) => {
-        db.all(
-          `SELECT user_id, COUNT(*) AS recent_runs
-             FROM agent_executions
-            WHERE start_time > datetime('now', '-1 day')
-              AND user_id IS NOT NULL
-            GROUP BY user_id
-           HAVING recent_runs >= 5
-            LIMIT 50`,
-          [],
-          (err, rows) => resolve(err ? [] : (rows || []))
-        );
-      });
-
-      if (userRows.length === 0) return;
-      console.log(`[Scheduler] Contract miner sweep: ${userRows.length} active user(s)`);
-
-      let totalInsights = 0;
-      for (const { user_id: userId } of userRows) {
-        const ids = await InsightTriggers.onPeriodicRollup(userId).catch((err) => {
-          console.warn(`[Scheduler] miner: rollup for ${userId} failed:`, err.message);
-          return [];
-        });
-        totalInsights += Array.isArray(ids) ? ids.length : 0;
-      }
-
-      if (totalInsights > 0) {
-        console.log(`[Scheduler] Contract miner sweep complete: ${totalInsights} new insight(s) extracted across ${userRows.length} user(s)`);
-      }
-    } catch (err) {
-      console.error('[Scheduler] Contract mining sweep failed:', err.message);
-    }
-  }
-
-  static async _runCanarySweep() {
-    try {
-      const FitnessScoreService = (await import('../evolution/FitnessScoreService.js')).default;
-      const db = (await import('../../models/database/index.js')).default;
-      // Recently-applied, still-active mutations across all users (the scheduler
-      // is global). We only revert when there's a clear regression.
-      const rows = await new Promise((resolve) => {
-        db.all(
-          `SELECT * FROM mutation_history
-            WHERE status = 'applied'
-              AND fitness_before IS NOT NULL
-              AND created_at > datetime('now', '-1 day')
-            LIMIT 50`,
-          [],
-          (err, r) => resolve(err ? [] : (r || []))
-        );
-      });
-
-      for (const mh of rows) {
-        const verdict = await FitnessScoreService.canaryCheck(mh.id, { minDelta: -0.05 }).catch(() => null);
-        if (verdict && verdict.regression) {
-          await this._revertMutation(mh, `Regression: fitness dropped ${verdict.delta.toFixed(3)}`);
-        }
-      }
-    } catch (err) {
-      console.error('[Scheduler] Canary sweep failed:', err.message);
-    }
-  }
-
-  static async _revertMutation(mh, reason) {
-    try {
-      const MutationHistoryModel = (await import('../../models/MutationHistoryModel.js')).default;
-      if (mh.snapshot_kind === 'workflow_version' && mh.snapshot_ref) {
-        try {
-          const WorkflowVersionService = (await import('../WorkflowVersionService.js')).default;
-          await WorkflowVersionService.revertToVersion(mh.target_id, mh.snapshot_ref);
-        } catch (e) {
-          console.warn('[Scheduler] Workflow revert failed:', e.message);
-        }
-      }
-      await MutationHistoryModel.markReverted(mh.id, reason);
-      console.log(`[Scheduler] Canary auto-reverted mutation ${mh.id}: ${reason}`);
-    } catch (err) {
-      console.error('[Scheduler] Revert failed:', err.message);
-    }
-  }
-
-  /** Fire one schedule and wait for its run to finish (the heartbeat path). */
   static async _fireOne(schedule, now) {
     const started = await this._startRun(schedule, now);
     if (started.fired) await started.completion;

@@ -176,7 +176,7 @@ describe('FocusedShell', () => {
     nav.go({ page: 'library', tab: 'workflows', item: 'w 2' });
     expect(push).toHaveBeenLastCalledWith({ path: '/workflows', query: { select: 'workflow:w 2' } });
     nav.go({ page: 'scheduled', isNew: true });
-    expect(push).toHaveBeenLastCalledWith({ path: '/autonomy', query: { section: 'schedules', new: '1' } });
+    expect(push).toHaveBeenLastCalledWith({ path: '/goals', query: { section: 'schedules', new: '1' } });
     nav.studio('WorkflowForgeScreen', { workflowId: 'w3' });
     expect(push).toHaveBeenLastCalledWith({ path: '/workflow-forge', query: { id: 'w3', studio: '1' } });
     w.unmount();

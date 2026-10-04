@@ -92,10 +92,10 @@ describe('dashboard panel navigation through the real component chain', () => {
     expect(buttons).toHaveLength(14);
     for (const button of buttons) await button.trigger('click');
     expect(dashboard.emitted('screen-change')).toEqual([
-      ['TracesScreen', { status: 'running' }], ['GoalsScreen'], ['AutonomyScreen'],
+      ['TracesScreen', { status: 'running' }], ['GoalsScreen'], ['LearningScreen'],
       ['ChatScreen'], ['GoalsScreen'], ['AgentsScreen'], ['WorkflowsScreen'],
       ['ToolsScreen'], ['SkillsScreen'], ['WidgetManagerScreen'], ['PluginsScreen'],
-      ['MemoryScreen'], ['AutonomyScreen', { section: 'schedules' }], ['ConnectorsScreen'],
+      ['MemoryScreen'], ['GoalsScreen', { section: 'schedules' }], ['ConnectorsScreen'],
     ]);
   });
 

@@ -1123,7 +1123,7 @@ ${execution.log}
           emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
           break;
         case 'navigate-to-insight':
-          emit('screen-change', 'ExperimentsScreen', { selectedInsight: payload });
+          emit('screen-change', 'LearningScreen', { legacyInsightId: payload?.id });
           break;
         case 'update-execution-details':
           // This action is handled by the right panel directly

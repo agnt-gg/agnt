@@ -45,18 +45,11 @@ export const settingsDirectory = [
     "label": "Assistant",
     "items": [
       {
-        "id": "autonomy",
-        "icon": "fas fa-user-shield",
-        "label": "Approvals",
-        "screen": "AutonomyScreen",
-        "description": "Decisions and permissions"
-      },
-      {
-        "id": "evolution",
-        "icon": "fas fa-dna",
-        "label": "Improvements",
-        "screen": "ExperimentsScreen",
-        "description": "Insights and experiments"
+        "id": "learning",
+        "icon": "fas fa-seedling",
+        "label": "Learning",
+        "screen": "LearningScreen",
+        "description": "Evidence, trials and supported improvements"
       }
     ]
   },

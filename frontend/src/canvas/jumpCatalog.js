@@ -16,7 +16,7 @@ export const JUMP_CATEGORIES = [{
   {
     id: 'knowledge',
     label: 'Files & knowledge',
-    screens: ['ArtifactsScreen', 'MemoryScreen', 'ExperimentsScreen']
+    screens: ['ArtifactsScreen', 'MemoryScreen', 'LearningScreen']
   },
   {
     id: 'automation',
@@ -26,7 +26,7 @@ export const JUMP_CATEGORIES = [{
   {
     id: 'connections',
     label: 'Connections & control',
-    screens: ['ConnectorsScreen', 'PluginsScreen', 'AutonomyScreen']
+    screens: ['ConnectorsScreen', 'PluginsScreen']
   },
   {
     id: 'workspace',

@@ -175,14 +175,9 @@ export default {
           label: 'Memory',
         },
         {
-          screen: 'ExperimentsScreen',
-          icon: 'flask',
-          label: 'Evolution',
-        },
-        {
-          screen: 'AutonomyScreen',
-          icon: 'autonomy',
-          label: 'Autonomy',
+          screen: 'LearningScreen',
+          icon: 'brain',
+          label: 'Learning',
         },
       ],
       system: [

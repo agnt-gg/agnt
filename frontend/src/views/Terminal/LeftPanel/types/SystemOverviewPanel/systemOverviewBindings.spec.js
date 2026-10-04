@@ -16,6 +16,7 @@ import contentOutputs from '@/store/features/contentOutputs.js';
 import executionHistory from '@/store/user/executionHistory.js';
 import goals from '@/store/features/goals.js';
 import insights from '@/store/features/insights.js';
+import memory from '@/store/features/memory.js';
 import schedules from '@/store/features/schedules.js';
 import skills from '@/store/features/skills.js';
 import tools from '@/store/features/tools.js';
@@ -29,6 +30,7 @@ const MODULES = {
   executionHistory,
   goals,
   insights,
+  memory,
   schedules,
   skills,
   tools,

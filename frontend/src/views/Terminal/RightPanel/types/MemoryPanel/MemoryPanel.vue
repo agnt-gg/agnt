@@ -104,7 +104,7 @@ export default {
     const store = useStore();
     const agents = computed(() => store.getters['agents/allAgents'] || []);
     const summaryStats = computed(() => {
-      const all = store.getters['insights/agentMemories'] || [];
+      const all = store.getters['memory/agentMemories'] || [];
       const types = new Set(all.map((m) => m.memory_type || m.type).filter(Boolean));
       return [
         { label: 'Memories', value: all.length },

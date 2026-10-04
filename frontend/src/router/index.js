@@ -172,10 +172,15 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'BallJumperScreen' },
     },
     {
+      path: '/learning',
+      name: 'TerminalLearning',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'LearningScreen' },
+    },
+    {
       path: '/experiments',
       name: 'TerminalExperiments',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'ExperimentsScreen' },
+      redirect: to => ({path:'/learning',query:to.query}),
     },
     {
       path: '/memory',
@@ -186,8 +191,7 @@ const router = createRouter({
     {
       path: '/autonomy',
       name: 'TerminalAutonomy',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'AutonomyScreen' },
+      redirect: to => ({path:to.query.section==='schedules'?'/goals':'/learning',query:to.query}),
     },
     {
       // Device pairing landing page. NOT requiresAuth — the whole point is

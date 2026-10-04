@@ -243,7 +243,7 @@ const memoryForm = ref({
 });
 
 // Data
-const memories = computed(() => store.getters['insights/agentMemories'] || []);
+const memories = computed(() => store.getters['memory/agentMemories'] || []);
 const agents = computed(() => store.getters['agents/allAgents'] || []);
 
 // Build agent name lookup
@@ -361,14 +361,14 @@ const saveMemory = async () => {
   saving.value = true;
   try {
     if (showEditModal.value) {
-      await store.dispatch('insights/updateAgentMemory', {
+      await store.dispatch('memory/updateAgentMemory', {
         id: memoryForm.value.id,
         content: memoryForm.value.content,
         memoryType: memoryForm.value.memoryType,
         relevanceScore: memoryForm.value.relevanceScore,
       });
     } else {
-      await store.dispatch('insights/addAgentMemory', {
+      await store.dispatch('memory/addAgentMemory', {
         agentId: memoryForm.value.agentId,
         memoryType: memoryForm.value.memoryType,
         content: memoryForm.value.content,
@@ -394,7 +394,7 @@ const confirmDelete = async (mem) => {
   });
   if (confirmed) {
     try {
-      await store.dispatch('insights/deleteAgentMemory', { id: mem.id });
+      await store.dispatch('memory/deleteAgentMemory', { id: mem.id });
       if (selectedMemory.value?.id === mem.id) selectedMemory.value = null;
       loadMemories();
     } catch (err) {
@@ -415,7 +415,7 @@ const clearOrphaned = async () => {
   });
   if (confirmed) {
     try {
-      await store.dispatch('insights/deleteOrphanedMemories');
+      await store.dispatch('memory/deleteOrphanedMemories');
       activeAgentFilter.value = 'all';
       loadMemories();
     } catch (err) {
@@ -448,7 +448,7 @@ const handlePanelAction = (action, data) => {
 };
 
 const loadMemories = () => {
-  store.dispatch('insights/fetchAllMemories');
+  store.dispatch('memory/fetchAllMemories');
 };
 
 const initializeScreen = () => {

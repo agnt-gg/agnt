@@ -95,9 +95,8 @@ const screenLoaders = [
   ['WidgetForgeScreen', () => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')],
   ['SkillsScreen', () => import('./CenterPanel/screens/Skills/Skills.vue')],
   ['ArtifactsScreen', () => import('./CenterPanel/screens/Artifacts/Artifacts.vue')],
-  ['ExperimentsScreen', () => import('./CenterPanel/screens/Experiments/Experiments.vue')],
+  ['LearningScreen', () => import('./CenterPanel/screens/Learning/Learning.vue')],
   ['MemoryScreen', () => import('./CenterPanel/screens/Memory/Memory.vue')],
-  ['AutonomyScreen', () => import('./CenterPanel/screens/Autonomy/Autonomy.vue')],
   ['WorkspaceScreen', () => import('./CenterPanel/screens/Workspace/Workspace.vue')],
 ];
 

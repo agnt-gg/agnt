@@ -2670,9 +2670,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // SYNCHRONOUS TOOL EXECUTION — single dispatcher across all chat surfaces
           try {
             await assertOwnership?.();
+            const { executeWithLearning } = await import('./learning/learningRuntime.js');
+            const invoke = () => executeTool(functionName, functionArgs, authToken, conversationContext);
+            const learnedInvoke = () => executeWithLearning({ userId, executionId: agentExecutionId, callId: toolCall.id, capability: functionName, execute: invoke, assertCurrent: assertOwnership });
             let rawFunctionResponse = dispatchTool
-              ? await dispatchTool({ toolCallId: toolCall.id, name: functionName, args: functionArgs, execute: () => executeTool(functionName, functionArgs, authToken, conversationContext) })
-              : await executeTool(functionName, functionArgs, authToken, conversationContext);
+              ? await dispatchTool({ toolCallId: toolCall.id, name: functionName, args: functionArgs, execute: learnedInvoke })
+              : await learnedInvoke();
 
           functionResponseContent = rawFunctionResponse;
 

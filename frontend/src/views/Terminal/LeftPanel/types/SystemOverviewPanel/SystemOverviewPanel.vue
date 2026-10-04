@@ -113,7 +113,7 @@ export default {
     const liveTiles = computed(() => [
       { label: 'Running', value: live.value.running, icon: 'fas fa-bolt', hot: live.value.running > 0, screen: 'TracesScreen', opts: { status: 'running' }, source: EXECUTIONS },
       { label: 'Goals executing', value: live.value.goalsExecuting, icon: 'fas fa-bullseye', hot: live.value.goalsExecuting > 0, screen: 'GoalsScreen', source: 'goals/allGoals' },
-      { label: 'Waiting on you', value: live.value.approvals, icon: 'fas fa-user-check', hot: live.value.approvals > 0, screen: 'AutonomyScreen', source: 'insights/allInsights' },
+      { label: 'Waiting on you', value: live.value.approvals, icon: 'fas fa-user-check', hot: live.value.approvals > 0, screen: 'LearningScreen', source: 'insights/allInsights' },
     ]);
 
     const inventoryTiles = computed(() => {
@@ -128,8 +128,8 @@ export default {
         { label: 'Skills', value: len(g('skills/allSkills', [])), icon: 'fas fa-graduation-cap', screen: 'SkillsScreen', source: 'skills/allSkills' },
         { label: 'Widgets', value: len(g('widgetDefinitions/allDefinitions', [])), icon: 'fas fa-th', screen: 'WidgetManagerScreen', source: 'widgetDefinitions/allDefinitions' },
         { label: 'Plugins', value: pluginCount.value, icon: 'fas fa-puzzle-piece', screen: 'PluginsScreen', source: PLUGINS },
-        { label: 'Memories', value: len(g('insights/agentMemories', [])), icon: 'fas fa-brain', screen: 'MemoryScreen', source: 'insights/agentMemories' },
-        { label: 'Schedules', value: len(g('schedules/allSchedules', [])), icon: 'fas fa-clock', screen: 'AutonomyScreen', opts: { section: 'schedules' }, source: 'schedules/allSchedules' },
+        { label: 'Memories', value: len(g('memory/agentMemories', [])), icon: 'fas fa-brain', screen: 'MemoryScreen', source: 'memory/agentMemories' },
+        { label: 'Schedules', value: len(g('schedules/allSchedules', [])), icon: 'fas fa-clock', screen: 'GoalsScreen', opts: { section: 'schedules' }, source: 'schedules/allSchedules' },
         // Connections comes from the health check, not from this hydration,
         // so it keeps the panel-wide rule (no source).
         { label: 'Connections', value: `${healthy} / ${total}`, icon: 'fas fa-plug', screen: 'ConnectorsScreen' },
