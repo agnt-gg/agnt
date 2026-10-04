@@ -386,15 +386,18 @@ describe('canvas sections registry', () => {
     expect(canvasSrc).toMatch(/'is-warn': item\.id === 'apps'/);
   });
 
-  it('the Apps nav leads with Your apps; App Forge opens its own screen; the plumbing is under Advanced', () => {
+  // Email and Webhooks are headline features: they were buried under an
+  // "Advanced" caption. There is no Advanced group on Apps; Advanced is a
+  // Settings group (navigation, remote access, backup, reset).
+  it('the Apps nav is one list: Your apps, then Email and Webhooks; App Forge opens its own screen', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    expect(appsDirectory.map((g) => g.label)).toEqual(['Apps', 'Advanced']);
-    const [main, advanced] = appsDirectory;
+    expect(appsDirectory.map((g) => g.label)).toEqual(['Apps']);
+    const [main] = appsDirectory;
     // Your apps is the default view (one card per thing you connect).
-    expect(main.items.map((i) => i.id)).toEqual(['apps', 'plugins', 'mcp-servers']);
+    expect(main.items.map((i) => i.id)).toEqual(['apps', 'email-server', 'webhooks', 'mcp-servers', 'plugins', 'oauth']);
     expect(main.items.find((i) => i.id === 'plugins')).toMatchObject({ label: 'App Forge', screen: 'PluginsScreen' });
-    expect(advanced.items.map((i) => i.id)).toEqual(['oauth', 'email-server', 'webhooks']);
+    expect(appsDirectory.flatMap((g) => g.items).map((i) => i.label).join(' ')).not.toMatch(/advanced/i);
     expect(connectorsScreenSrc).toMatch(/const activeSection = ref\('apps'\)/);
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
 

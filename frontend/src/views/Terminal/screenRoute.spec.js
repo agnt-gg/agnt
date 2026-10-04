@@ -22,6 +22,21 @@ describe('screenRoute', () => {
     expect(screenRoute('AgentsScreen', { newAgent: true }).query).toEqual({ new: '1' });
   });
 
+  // Shelves passed the clicked listing (or a bare `item` key) and this
+  // dropped both, so every click landed on the Market home.
+  it('Market opens the exact listing clicked: by listing, item key or select', () => {
+    expect(screenRoute('MarketplaceScreen', { listing: { id: 'row-9', asset_id: 'agnt-usecase-triage' } }).query).toEqual({ item: 'agnt-usecase-triage' });
+    expect(screenRoute('MarketplaceScreen', { listing: { id: 'row-9' } }).query).toEqual({ item: 'row-9' });
+    expect(screenRoute('MarketplaceScreen', { item: 'asset-1' }).query).toEqual({ item: 'asset-1' });
+    expect(screenRoute('MarketplaceScreen', { select: { kind: 'marketplace', id: 7 } }).query).toEqual({ item: '7' });
+    expect(screenRoute('MarketplaceScreen', { listing: { id: 'r', asset_id: 'a' }, studio: true }).query).toEqual({ item: 'a', studio: '1' });
+    // "Browse all" (no card) still opens the Market home.
+    expect(screenRoute('MarketplaceScreen', { listing: undefined }).query).toEqual({});
+    expect(screenRoute('MarketplaceScreen', {}).query).toEqual({});
+    // `listing`/`item` mean nothing to other screens.
+    expect(screenRoute('AgentsScreen', { listing: { id: 'x' }, item: 'y' }).query).toEqual({});
+  });
+
   it('studio:true asks for the full Studio screen', () => {
     expect(screenRoute('AgentsScreen', { select: { kind: 'agent', id: 'a' }, studio: true }).query).toEqual({ select: 'agent:a', studio: '1' });
   });

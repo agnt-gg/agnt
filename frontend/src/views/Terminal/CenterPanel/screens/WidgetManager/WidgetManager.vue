@@ -62,7 +62,7 @@
               :query="searchQuery"
               create-label="New Widget"
               @create="createNewWidget"
-              @browse="$emit('screen-change', 'MarketplaceScreen')"
+              @browse="listing => $emit('screen-change', 'MarketplaceScreen', { listing })"
               @installed="onShelfInstalled"
               @clear-search="searchQuery = ''"
               @availability="(v) => (shelfAvailable = v)"
@@ -194,7 +194,7 @@
 
 
 </div>
-        <MarketplaceShelf asset-type="widget" variant="strip" fallback-to-all @browse="$emit('screen-change', 'MarketplaceScreen')" />
+        <MarketplaceShelf asset-type="widget" variant="strip" fallback-to-all @browse="listing => $emit('screen-change', 'MarketplaceScreen', { listing })" />
         <!-- Import Modal -->
         <Teleport to="body">
           <div v-if="showImportModal" class="wm-modal-overlay" @click.self="closeImportModal">

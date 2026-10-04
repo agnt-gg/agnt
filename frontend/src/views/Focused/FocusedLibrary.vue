@@ -79,7 +79,7 @@ const shownRows = computed(() => rows.value.slice(0, CAP));
 
 const statusClass = (s) => (isRunningStatus(s) ? 'live' : /^(failed|error)$/i.test(s) ? 'bad' : '');
 
-function browseMarket(item) { nav.openScreen('MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {}); }
+function browseMarket(listing) { nav.openScreen('MarketplaceScreen', { listing }); }
 
 function selectTab(id) {
   query.value = '';

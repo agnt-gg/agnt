@@ -1,10 +1,10 @@
 /**
  * The Apps sidebar, shared by the Apps screen and App Forge (PluginsScreen).
  *
- * Your apps leads (one card per thing you connect); App Forge is a row that
- * opens its own screen, and the sidebar stays on screen while you are there.
- * The raw plumbing sits under an Advanced caption. AI models are not here:
- * they are Settings › AI Models.
+ * Your apps leads (one card per thing you connect), then Email and Webhooks,
+ * which are headline features and never behind a caption. App Forge is a row
+ * that opens its own screen, and the sidebar stays on screen while you are
+ * there. AI models are not here: they are Settings › AI Models.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -19,10 +19,11 @@ const rowText = (w) => w.findAll('.nav-item').map((b) => b.text().replace(/\s*\[
 beforeEach(() => setInnerSection(null));
 
 describe('Apps sidebar', () => {
-  it('leads with Your apps, then App Forge and MCP Servers, with the plumbing under Advanced', () => {
+  it('is one list: Your apps, Email and Webhooks first, with no Advanced caption', () => {
     const w = mount(ConnectorsPanel);
-    expect(rowText(w)).toEqual(['Your apps', 'App Forge', 'MCP Servers', 'Keys & Sign-ins', 'Email Inbox', 'Webhooks']);
-    expect(w.findAll('h4').map((h) => h.text())).toEqual(['Advanced']);
+    expect(rowText(w)).toEqual(['Your apps', 'Email Inbox', 'Webhooks', 'MCP Servers', 'App Forge', 'Keys & Sign-ins']);
+    expect(w.findAll('h4')).toHaveLength(0);
+    expect(w.text()).not.toMatch(/Advanced/);
     expect(w.text()).not.toMatch(/AI Provider|Plugin/);
   });
 

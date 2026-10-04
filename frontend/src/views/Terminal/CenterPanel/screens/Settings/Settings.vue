@@ -5,7 +5,7 @@
     screenId="SettingsScreen"
     :hidePanels="!isLoggedIn"
     :leftPanelProps="{ activeSection }"
-    @screen-change="(screenName) => emit('screen-change', screenName)"
+    @screen-change="(screenName, opts) => emit('screen-change', screenName, opts)"
     @panel-action="handlePanelAction"
     @base-mounted="initializeScreen"
   >
@@ -264,12 +264,11 @@
             <p class="content-subtitle">Version, updates, and where to find help</p>
           </div>
           <div class="settings-grid">
-            <!-- Version · update check · latest releases. This was the
-                 "AGNT News & Updates" right panel on Connectors, Plugins and
-                 Settings; it has one home now and the toolbar carries an
-                 "update" pill when there is one. -->
+            <!-- Version · update check · release notes. Their one home; the
+                 right panel is news only, and the toolbar carries an
+                 "update" pill when there is one (UpdateNotification). -->
             <div class="settings-section full-width">
-              <NewsPanel />
+              <ReleaseNotes />
             </div>
             <!-- Docs · GitHub · Discord · Feedback — once, here, and in ⌘K. -->
             <div class="settings-section full-width">
@@ -300,7 +299,7 @@ import { ref, computed, watch , inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import MobileDirectory from '@/mobile/MobileDirectory.vue';
-import { settingsDirectory } from '@/mobile/sectionDirectories.js';
+import { settingsDirectory, DEFAULT_SETTINGS_SECTION } from '@/mobile/sectionDirectories.js';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
@@ -318,7 +317,7 @@ import BillingManager from './components/BillingManager/BillingManager.vue';
 import UsageManager from './components/UsageManager/UsageManager.vue';
 import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
-import NewsPanel from '@/views/Terminal/RightPanel/types/NewsPanel/NewsPanel.vue';
+import ReleaseNotes from './components/ReleaseNotes/ReleaseNotes.vue';
 import TourSettings from './components/TourSettings/TourSettings.vue';
 import SoundsSettings from './components/SoundsSettings/SoundsSettings.vue';
 import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue';
@@ -352,7 +351,7 @@ export default {
     UsageManager,
     CreditPurchase,
     ResourcesSection,
-    NewsPanel,
+    ReleaseNotes,
     TourSettings,
     SoundsSettings,
     SecuritySettings,
@@ -377,8 +376,22 @@ export default {
     const mobileDirectoryOpen = ref(!route?.query?.section);
     const mobileSelectSection = item => { mobileDirectoryOpen.value = false; handlePanelAction(item.screen ? 'settings-goto' : 'settings-nav', item.screen || item.id); };
 
-    const activeSection = ref('profile');
-    watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
+    // Opens on the first row of the Settings nav (AI Models).
+    const activeSection = ref(DEFAULT_SETTINGS_SECTION);
+    // `?section=` drives the page: on first load (immediate, so it does not
+    // wait for base-mounted, which a slow backend delays) and whenever it
+    // changes, including while this screen is cached by KeepAlive — that is
+    // how a row clicked on another screen sharing this nav (Learning) lands
+    // on the right section.
+    watch(
+      () => route?.query?.section,
+      (section) => {
+        if (typeof section !== 'string' || !section) return;
+        mobileDirectoryOpen.value = false;
+        activeSection.value = section;
+      },
+      { immediate: true },
+    );
     const componentKey = ref(0);
 
     const isLoggedIn = computed(() => store.getters['userAuth/isAuthenticated']);
@@ -464,13 +477,9 @@ export default {
       window.location.href = '/settings';
     };
 
-    // Watch for login state changes and switch to profile section
+    // Just signed in: land on the page Settings opens on.
     watch(isLoggedIn, (newValue, oldValue) => {
-      if (newValue && !oldValue) {
-        // User just logged in, switch to profile section
-        console.log('User logged in, switching to profile section');
-        activeSection.value = 'profile';
-      }
+      if (newValue && !oldValue) activeSection.value = DEFAULT_SETTINGS_SECTION;
     });
 
     return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory,

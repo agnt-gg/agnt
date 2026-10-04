@@ -53,7 +53,7 @@
           <button class="toggle-option" :class="{ active: selectedInterval === 'monthly' }" @click="selectedInterval = 'monthly'">Monthly</button>
           <button class="toggle-option" :class="{ active: selectedInterval === 'yearly' }" @click="selectedInterval = 'yearly'">
             Yearly
-            <span class="save-badge">Save 33%</span>
+            <span v-if="yearlySavings > 0" class="save-badge">Save {{ yearlySavings }}%</span>
           </button>
         </div>
       </div>
@@ -217,6 +217,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { onMounted, onBeforeUnmount } from 'vue';
+import { priceLabel, yearlySavingsPercent } from './planPrices.js';
 
 // ============================================
 // DISCOUNT CONFIGURATION
@@ -336,9 +337,14 @@ export default {
       return newIndex > currentIndex;
     },
 
+    // Derived from the prices (planPrices.js), never typed in.
+    yearlySavings() {
+      return yearlySavingsPercent();
+    },
+
     plans() {
       // The Pro ladder. Prices and allowances mirror the live plan tables on
-      // api.agnt.gg; change them there first. Team seats are added on the
+      // api.agnt.gg; change them there first (prices: planPrices.js). Team seats are added on the
       // Billing page after purchase, not chosen here.
       const y = this.selectedInterval === 'yearly';
       const six = (flash, search, minutes, mail, hooks) => [
@@ -355,7 +361,7 @@ export default {
           planType: 'personal',
           name: 'AGNT Pro',
           icon: '⭐',
-          price: y ? '$290/year' : '$29/mo',
+          price: priceLabel('personal', y),
           originalPrice: null,
           tagline: 'Your agent, hosted. Everything included.',
           features: [
@@ -369,7 +375,7 @@ export default {
           planType: 'always_on',
           name: 'Pro + Always-On',
           icon: '🌙',
-          price: y ? '$490/year' : '$49/mo',
+          price: priceLabel('always_on', y),
           originalPrice: null,
           tagline: 'Pro, awake around the clock.',
           popular: true,
@@ -384,7 +390,7 @@ export default {
           planType: 'business',
           name: 'AGNT Team',
           icon: '🚀',
-          price: y ? '$990/year' : '$99/mo',
+          price: priceLabel('business', y),
           originalPrice: null,
           tagline: 'Always-On for three people, one shared instance.',
           features: [

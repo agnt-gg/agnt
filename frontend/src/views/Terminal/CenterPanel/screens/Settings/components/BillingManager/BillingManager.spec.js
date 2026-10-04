@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import BillingManager from './BillingManager.vue';
+import { PLAN_PRICES, yearlySavingsPercent } from './planPrices.js';
 
 /**
  * data() is the one place a stale identifier fails at runtime and nowhere
@@ -50,6 +51,20 @@ describe('BillingManager pricing', () => {
       for (const s of six) expect(names, `${plan.name} is missing ${s}`).toContain(s);
       expect(plan.features.filter((f) => six.includes(f.text)).every((f) => f.included)).toBe(true);
     }
+  });
+
+  // The badge said "Save 33%" while a year cost ten months: 16.7%.
+  it('the yearly badge is the real saving, computed from the prices', () => {
+    expect(yearlySavingsPercent()).toBe(17);
+    for (const { monthly, yearly } of Object.values(PLAN_PRICES)) expect(1 - yearly / (monthly * 12)).toBeCloseTo(1 / 6, 5);
+    // True of every plan: the smallest saving (50% and 16.7% → 17%).
+    expect(yearlySavingsPercent({ a: { monthly: 10, yearly: 60 }, b: { monthly: 10, yearly: 100 } })).toBe(17);
+    expect(yearlySavingsPercent({ a: { monthly: 10, yearly: 120 } })).toBe(0);
+    expect(yearlySavingsPercent({})).toBe(0);
+  });
+
+  it('the badge reads the computed saving, not a typed-in number', () => {
+    expect(BillingManager.computed.yearlySavings.call({})).toBe(17);
   });
 
   it('maps every displayed plan name to a checkout plan type', () => {

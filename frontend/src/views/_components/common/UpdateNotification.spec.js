@@ -241,3 +241,34 @@ describe('builds that do not update themselves', () => {
     expect(w.find('.update-banner').exists()).toBe(false);
   });
 });
+
+// The toolbar's "update" pill used to be written only by NewsPanel, so it
+// appeared only after someone opened Settings. This component is always
+// mounted (App.vue) and is now its one writer, on both update paths.
+describe('the toolbar update pill', () => {
+  it('is published from the agnt.gg notice path', async () => {
+    electronMock = null;
+    globalThis.fetch = vi.fn(async (u) => ({ json: async () => (String(u).endsWith('/version') ? { version: '0.6.6' } : { updateAvailable: true, latestVersion: '0.6.7', currentVersion: '0.6.6' }) }));
+    const dispatch = vi.fn();
+    mount(UpdateNotification, { global: { provide: { store: { dispatch } } } });
+    await flushPromises();
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.7' });
+  });
+
+  it('is published from the self-updating desktop path, and cleared when there is none', async () => {
+    const d = desktop();
+    const dispatch = vi.fn();
+    mount(UpdateNotification, { global: { provide: { store: { dispatch } } } });
+    await flushPromises();
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', null);
+    d.push({ phase: 'ready', available: { version: '0.6.8' } });
+    await flushPromises();
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.8' });
+  });
+
+  it('mounts without a store (the publisher is optional)', async () => {
+    electronMock = null;
+    expect(() => mount(UpdateNotification)).not.toThrow();
+    await flushPromises();
+  });
+});

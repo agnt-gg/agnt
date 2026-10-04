@@ -105,4 +105,23 @@ describe('Focused Market', () => {
     expect(w.find('.focused-market-detail-art i').exists()).toBe(true);
     w.unmount();
   });
+
+  // Shelves and agnt:// links name a listing by its asset id; this page used
+  // to match only the listing id, so those links found nothing.
+  it('opens a listing named by its asset id or its listing id', () => {
+    getters['marketplace/shelfItems'] = [{ id: 'row-9', asset_id: 'agnt-usecase-triage', title: 'Inbox triage', asset_type: 'agent', price: '0.00', downloads: 3 }];
+    for (const key of ['agnt-usecase-triage', 'row-9']) {
+      const w = mountMarket(key);
+      expect(w.find('.focused-market-detail').text(), key).toContain('Inbox triage');
+      w.unmount();
+    }
+  });
+
+  it('opening a card links by the stable asset id', async () => {
+    getters['marketplace/shelfItems'] = [{ id: 'row-9', asset_id: 'agnt-usecase-triage', title: 'Inbox triage', asset_type: 'agent', price: '0.00', downloads: 3 }];
+    const w = mountMarket();
+    await w.find('.focused-market-card-open').trigger('click');
+    expect(nav.go).toHaveBeenCalledWith({ page: 'market', item: 'agnt-usecase-triage' });
+    w.unmount();
+  });
 });

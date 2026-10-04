@@ -7,6 +7,7 @@
  *
  * Returns { path, query } to push, or null for an unknown screen.
  */
+import { marketplaceItemKey } from '@/services/marketplaceLink.js';
 
 export const SCREEN_ROUTES = Object.freeze({
   ChatScreen: '/chat',
@@ -74,8 +75,15 @@ export function screenRoute(screenName, options = {}) {
     // picks a left-nav view, `status` presets a list filter, `newGoal` /
     // `newAgent` open a composer.
     if (options.select) {
-      if (screenName === 'MarketplaceScreen' && options.select.kind === 'marketplace') query.item = options.select.id;
+      if (screenName === 'MarketplaceScreen' && options.select.kind === 'marketplace') query.item = String(options.select.id);
       else query.select = `${options.select.kind}:${options.select.id}`;
+    }
+    // Market: `listing` (a clicked shelf card) or a bare `item` key opens that
+    // exact listing. Both were dropped here, so every shelf click landed on
+    // the Market home instead of the thing clicked.
+    if (screenName === 'MarketplaceScreen' && !query.item) {
+      const key = marketplaceItemKey(options.listing) || (options.item != null && options.item !== '' ? String(options.item) : '');
+      if (key) query.item = key;
     }
     if (options.section) query.section = options.section;
     if (options.status) query.status = options.status;

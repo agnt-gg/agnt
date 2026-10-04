@@ -20,7 +20,7 @@
 
       <div class="workflows-panel" @click="onContentClick">
 <MobileCollection v-if="mobileView" view-id="workflows" title="Workflows" count-label="workflows" :items="filteredWorkflows" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedWorkflowId" create-label="Create workflow" icon="fas fa-project-diagram" @update:search="handleSearch" @select="handleWorkflowClick" @create="handlePanelAction('create')"><template #actions><button @click="triggerWorkflowImport">Import</button><button :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
-<MarketplaceShelf v-if="mobileView" asset-type="workflow" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+<MarketplaceShelf v-if="mobileView" asset-type="workflow" variant="strip" @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
 
 <input
               ref="workflowImportInput"
@@ -58,7 +58,7 @@
                 :query="searchQuery"
                 create-label="Create Workflow"
                 @create="handlePanelAction('create')"
-                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
                 @installed="onShelfInstalled"
                 @clear-search="handleSearch('')"
                 @availability="(v) => (shelfAvailable = v)"
@@ -132,7 +132,7 @@
                 v-if="!ownsNothing"
                 asset-type="workflow"
                 variant="strip"
-                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
                 @installed="onShelfInstalled"
               />
             </div>

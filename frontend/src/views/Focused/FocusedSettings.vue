@@ -94,6 +94,16 @@
     </section>
     <UpgradeModal :open="upgradeOpen" :suggest="billing.isFree ? 'personal' : planType" @close="closeUpgrade" />
 
+    <!-- Usage: Studio's own Usage page (Settings › Usage), embedded rather than
+         re-implemented, so both modes show the numbers the services enforce. -->
+    <section class="focused-edit-block focused-usage">
+      <div class="focused-edit-block-head">
+        <h3>Usage</h3>
+        <span class="focused-edit-hint">Models, Search, Sandbox, Mail and Webhooks this month.</span>
+      </div>
+      <UsageManager />
+    </section>
+
     <div class="focused-form-foot">
       <span class="focused-edit-hint">API keys, sounds, security and everything else:</span>
       <span class="focused-flex"></span>
@@ -109,6 +119,7 @@ import { useRouter } from 'vue-router';
 import UiModeSetting from './UiModeSetting.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import UpgradeModal from '@/components/UpgradeModal.vue';
+import UsageManager from '@/views/Terminal/CenterPanel/screens/Settings/components/UsageManager/UsageManager.vue';
 import { FOCUSED_PAGES, billingSummary } from './focusedModel.js';
 import { SUPPORTED_THEMES } from '@/store/app/theme.js';
 

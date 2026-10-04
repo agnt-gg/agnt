@@ -36,7 +36,7 @@
         <div class="plugins-grid">
           <div class="plugins-section">
             <PluginManager @show-alert="showAlert" />
-            <MarketplaceShelf asset-type="plugin" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+            <MarketplaceShelf asset-type="plugin" variant="strip" @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
           </div>
         </div>
       </div>

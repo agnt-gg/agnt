@@ -1,4 +1,11 @@
-// Mirrors the existing panel navigation; shared with mobile landing views.
+// One source for the Settings and Apps navigation, shared by the desktop
+// panels (SettingsPanel, ConnectorsPanel) and the mobile landing views. Both
+// panels render whatever groups are declared here, in order, so regrouping is
+// an edit to this file only.
+
+// Settings: what you set once and come back to. AI Models leads (and is the
+// page Settings opens on). "Advanced" is the plumbing: navigation, remote
+// access and backend connections, backup and restore, reset.
 export const settingsDirectory = [
   {
     "label": "General",
@@ -8,6 +15,42 @@ export const settingsDirectory = [
         "icon": "fas fa-robot",
         "label": "AI Models",
         "description": "Which model Annie uses, and its fallbacks"
+      },
+      {
+        "id": "learning",
+        "icon": "fas fa-seedling",
+        "label": "Learning",
+        "screen": "LearningScreen",
+        "description": "Evidence, trials and supported improvements"
+      },
+      {
+        "id": "theme",
+        "icon": "fas fa-palette",
+        "label": "Theme",
+        "description": "Appearance and backgrounds"
+      },
+      {
+        "id": "sounds",
+        "icon": "fas fa-volume-up",
+        "label": "Sounds",
+        "description": "Audio feedback"
+      },
+      {
+        "id": "security",
+        "icon": "fas fa-shield-alt",
+        "label": "Security",
+        "description": "Permissions and policy"
+      }
+    ]
+  },
+  {
+    "label": "Account",
+    "items": [
+      {
+        "id": "profile",
+        "icon": "fas fa-user",
+        "label": "Profile",
+        "description": "Your profile and AGNT score"
       },
       {
         "id": "billing",
@@ -22,39 +65,33 @@ export const settingsDirectory = [
         "description": "What you've used of Models, Search, Sandbox, Mail and Webhooks"
       },
       {
-        "id": "profile",
-        "icon": "fas fa-user",
-        "label": "Profile",
-        "description": "Your profile and AGNT score"
-      },
-      {
         "id": "referrals",
         "icon": "fas fa-users",
         "label": "Referrals",
         "description": "Invites and commissions"
       },
       {
+        "id": "leaderboard",
+        "icon": "fas fa-trophy",
+        "label": "Leaderboard",
+        "description": "Referral and global rankings"
+      },
+      {
         "id": "api-keys",
         "icon": "fas fa-key",
         "label": "AGNT API Key",
         "description": "A key for bots and scripts that never expires"
-      }
-    ]
-  },
-  {
-    "label": "Assistant",
-    "items": [
+      },
       {
-        "id": "learning",
-        "icon": "fas fa-seedling",
-        "label": "Learning",
-        "screen": "LearningScreen",
-        "description": "Evidence, trials and supported improvements"
+        "id": "general",
+        "icon": "fas fa-sign-out-alt",
+        "label": "Sign in / out",
+        "description": "Switch or sign out of your account"
       }
     ]
   },
   {
-    "label": "Config",
+    "label": "Advanced",
     "items": [
       {
         "id": "navigation",
@@ -75,35 +112,6 @@ export const settingsDirectory = [
         "description": "This computer, remote servers and teams"
       },
       {
-        "id": "security",
-        "icon": "fas fa-shield-alt",
-        "label": "Security",
-        "description": "Permissions and policy"
-      },
-      {
-        "id": "theme",
-        "icon": "fas fa-palette",
-        "label": "Theme",
-        "description": "Appearance and backgrounds"
-      },
-      {
-        "id": "sounds",
-        "icon": "fas fa-volume-up",
-        "label": "Sounds",
-        "description": "Audio feedback"
-      },
-      {
-        "id": "tours",
-        "icon": "fas fa-route",
-        "label": "Tours",
-        "description": "Guided walkthroughs"
-      }
-    ]
-  },
-  {
-    "label": "Data",
-    "items": [
-      {
         "id": "backup",
         "icon": "fas fa-database",
         "label": "Backup & Restore",
@@ -118,42 +126,31 @@ export const settingsDirectory = [
     ]
   },
   {
-    "label": "About",
+    "label": "Help",
     "items": [
+      {
+        "id": "tours",
+        "icon": "fas fa-route",
+        "label": "Tours",
+        "description": "Guided walkthroughs"
+      },
       {
         "id": "about",
         "icon": "fas fa-info-circle",
         "label": "About & Resources",
         "description": "Version, updates and help"
-      },
-      {
-        "id": "leaderboard",
-        "icon": "fas fa-trophy",
-        "label": "Leaderboard",
-        "description": "Referral and global rankings"
-      }
-    ]
-  },
-  {
-    "label": "Account",
-    "items": [
-      {
-        "id": "general",
-        "label": "Sign in / out",
-        "icon": "fas fa-user"
-      },
-      {
-        "id": "api-keys",
-        "label": "AGNT.gg API Key",
-        "icon": "fas fa-key"
       }
     ]
   }
 ];
-// Apps: one place for everything AGNT can use. A plugin and the sign-in it
-// needs are ONE card in "Your apps" (services/appCards); AI models are not
-// apps and live in Settings › AI Models. "Advanced" holds the raw plumbing a
-// power user still wants to reach: every stored key, inboxes, webhooks.
+
+// The page Settings opens on: the first row of its nav (AI Models).
+export const DEFAULT_SETTINGS_SECTION = settingsDirectory[0].items[0].id;
+
+// Apps: one flat list, no "Advanced". Email and Webhooks are headline
+// features, so they sit directly under Your apps, never behind a caption.
+// A plugin and the sign-in it needs are ONE card in "Your apps"
+// (services/appCards); AI models are not apps and live in Settings › AI Models.
 export const appsDirectory = [
   {
     "label": "Apps",
@@ -163,30 +160,6 @@ export const appsDirectory = [
         "icon": "fas fa-th-large",
         "label": "Your apps",
         "description": "Everything you installed and connected"
-      },
-      {
-        "id": "plugins",
-        "icon": "fas fa-hammer",
-        "label": "App Forge",
-        "screen": "PluginsScreen",
-        "description": "Build, bundle or install an app"
-      },
-      {
-        "id": "mcp-servers",
-        "icon": "fas fa-server",
-        "label": "MCP Servers",
-        "description": "Apps that run as MCP servers"
-      }
-    ]
-  },
-  {
-    "label": "Advanced",
-    "items": [
-      {
-        "id": "oauth",
-        "icon": "fas fa-key",
-        "label": "Keys & Sign-ins",
-        "description": "Every stored key and sign-in, with health"
       },
       {
         "id": "email-server",
@@ -201,6 +174,25 @@ export const appsDirectory = [
         "label": "Webhooks",
         "pro": true,
         "description": "Incoming events"
+      },
+      {
+        "id": "mcp-servers",
+        "icon": "fas fa-server",
+        "label": "MCP Servers",
+        "description": "Apps that run as MCP servers"
+      },
+      {
+        "id": "plugins",
+        "icon": "fas fa-hammer",
+        "label": "App Forge",
+        "screen": "PluginsScreen",
+        "description": "Build, bundle or install an app"
+      },
+      {
+        "id": "oauth",
+        "icon": "fas fa-key",
+        "label": "Keys & Sign-ins",
+        "description": "Every stored key and sign-in, with health"
       }
     ]
   }

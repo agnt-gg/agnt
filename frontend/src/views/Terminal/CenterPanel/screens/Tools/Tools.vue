@@ -19,7 +19,7 @@
 
       <div class="tools-panel">
 <MobileCollection v-if="mobileView" view-id="tools" title="Tools" count-label="tools" :items="filteredTools" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedTool?.id" create-label="Create tool" icon="fas fa-wrench" @update:search="handleSearch" @select="selectTool" @create="handlePanelAction('create')"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
-<MarketplaceShelf v-if="mobileView" asset-type="tool" variant="strip" @browse="emit('screen-change', 'MarketplaceScreen')" />
+<MarketplaceShelf v-if="mobileView" asset-type="tool" variant="strip" @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
 
 <div v-show="!mobileView" class="desktop-view-container">
         <!-- Title, count, search. Create lives in the right panel. -->
@@ -49,7 +49,7 @@
                 :query="searchQuery"
                 create-label="Create Tool"
                 @create="handlePanelAction('create')"
-                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
                 @installed="onShelfInstalled"
                 @clear-search="handleSearch('')"
                 @availability="(v) => (shelfAvailable = v)"
@@ -124,7 +124,7 @@
                 v-if="!searchQuery"
                 asset-type="tool"
                 variant="strip"
-                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
                 @installed="onShelfInstalled"
               />
             </div>

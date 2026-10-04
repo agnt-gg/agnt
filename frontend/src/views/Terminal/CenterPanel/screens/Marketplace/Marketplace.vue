@@ -575,6 +575,7 @@ import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } fr
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import { claimReferral } from '@/services/referral/referralProgram.js';
+import { matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
@@ -1675,7 +1676,9 @@ export default {
      * and the router pushed a new query). Same function, so the two arrival
      * paths cannot drift apart.
      */
-    const findListing = (assetId) => everyAssetType.value.find((i) => i && i.asset_id === assetId);
+    // By asset id OR listing id: links use the asset id, Focused and older
+    // callers the listing id. Matching one kind only reported "No listing".
+    const findListing = (key) => everyAssetType.value.find((i) => matchesMarketplaceKey(i, key));
 
     const openByAssetId = async (assetId) => {
       if (!assetId) return;

@@ -25,7 +25,7 @@
           </div>
           <button type="button" class="focused-market-get" :disabled="busy || isInstalled(selectedItem)" @click="install(selectedItem)">{{ installLabel(selectedItem) }}</button>
           <p v-if="selectedItem.description && selectedItem.tagline" class="focused-market-description">{{ selectedItem.description }}</p>
-          <button type="button" class="focused-link" @click="nav.studio('MarketplaceScreen', { select: { kind: 'marketplace', id: selectedItem.id } })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+          <button type="button" class="focused-link" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
         </div>
       </article>
       <div v-else-if="status === 'ready'" class="focused-empty" role="status">This item is no longer available. <button type="button" class="focused-link" @click="nav.go({ page: 'market' })">Browse Market</button></div>
@@ -79,6 +79,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, iconStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
+import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 
 const props = defineProps({ item: { type: String, default: null } });
 const nav = inject('focusedNav');
@@ -95,13 +96,14 @@ const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(i
 const status = computed(() => store.getters['marketplace/shelfStatus']);
 const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const visibleItems = computed(() => items.value.filter(listing => (type.value === 'all' || listing.asset_type === type.value) && matchesQuery(listing, query.value)).slice().sort(byPopularity));
-const selectedItem = computed(() => items.value.find(listing => String(listing.id) === props.item));
+// `item` is a link key: asset id (shelves, agnt:// links) or listing id.
+const selectedItem = computed(() => items.value.find(listing => matchesMarketplaceKey(listing, props.item)));
 const spotlight = computed(() => visibleItems.value[0]);
 const busy = computed(() => installingId.value !== null);
 const isInstalled = listing => installedHere.value.has(String(listing.id)) || (store.state.marketplace?.myInstalls || []).some(owned => String(owned.marketplace_item_id || owned.id) === String(listing.id));
 const price = listing => Number(listing.price) > 0 ? `$${Number(listing.price).toFixed(2)}` : 'Get';
 const installLabel = listing => String(installingId.value) === String(listing.id) ? 'Installing…' : isInstalled(listing) ? 'Installed' : price(listing);
-const openItem = listing => nav.go({ page: 'market', item: String(listing.id) });
+const openItem = listing => nav.go({ page: 'market', item: marketplaceItemKey(listing) });
 const imageFor = listing => failedImages.value.has(String(listing.id)) ? null : listing.preview_image;
 const hideImage = listing => { failedImages.value = new Set([...failedImages.value, String(listing.id)]); };
 async function load(force = false) {

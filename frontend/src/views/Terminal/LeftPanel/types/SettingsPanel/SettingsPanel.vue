@@ -1,29 +1,27 @@
-<!-- SettingsPanel — the SYSTEM navigation.
+<!-- SettingsPanel — the Settings navigation.
 
-     Everything that used to be scattered between the main sidebar (Memory,
-     Evolution, Autonomy) and Connectors' inner nav (Default AI Provider) now
-     lives here, under two captions. The main rail carries WORK / PLAN / BUILD
-     / CONNECT and one gear; twelve configuration rows would have drowned it.
+     Renders settingsDirectory (mobile/sectionDirectories.js) group by group,
+     exactly as declared, so regrouping Settings is an edit to that one file.
+     It used to index the directory by position ([0]…[4]) with a hand-written
+     block per group; a sixth group was silently invisible on desktop.
 
      Two kinds of row, one nav:
        • a Settings SECTION  → 'settings-nav'  (Settings.vue swaps its body)
        • a whole SCREEN      → 'settings-goto' (the host screen navigates)
-     Memory / Evolution / Autonomy are full screens, not Settings sections, so
-     they take the second path. They also render THIS panel on their left
-     (screenRegistry.js), which is what makes SYSTEM feel like one place
-     instead of three unrelated destinations you can only reach once. -->
+     A screen row (Learning) also renders THIS panel on its left
+     (screenRegistry.js), so its host must handle 'settings-nav' too. -->
 <template>
   <div class="settings-panel">
     <div class="panel-header">
-      <h2 class="title">/ System</h2>
+      <h2 class="title">/ Settings</h2>
     </div>
 
     <div class="settings-nav">
-      <div class="nav-section" data-section="general">
-        <h4>General</h4>
+      <div v-for="group in SETTINGS_GROUPS" :key="group.label" class="nav-section" :data-section="group.label.toLowerCase()">
+        <h4>{{ group.label }}</h4>
         <div class="nav-items">
           <button
-            v-for="item in GENERAL_ITEMS"
+            v-for="item in group.items"
             :key="item.id"
             class="nav-item"
             :class="{ active: activeSection === item.id }"
@@ -34,146 +32,38 @@
             <span>{{ item.label }}</span>
           </button>
         </div>
-      </div>
-
-      <!-- The three screens that govern how Annie herself behaves: how much
-           she may do alone, what she remembers, how she improves. They are
-           full screens rather than sections of this one, so they navigate. -->
-      <div class="nav-section" data-section="assistant">
-        <h4>Assistant</h4>
-        <div class="nav-items">
-          <button
-            v-for="item in ASSISTANT_ITEMS"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeSection === item.id }"
-            :data-nav="item.id"
-            @click="handleNavClick(item)"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="nav-section" data-section="config">
-        <h4>Config</h4>
-        <div class="nav-items">
-          <button
-            v-for="item in CONFIG_ITEMS"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeSection === item.id }"
-            :data-nav="item.id"
-            @click="handleNavClick(item)"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Data: what AGNT holds for you, and the two irreversible verbs. These
-           sections existed in Settings.vue with no row to reach them. -->
-      <div class="nav-section" data-section="data">
-        <h4>Data</h4>
-        <div class="nav-items">
-          <button
-            v-for="item in DATA_ITEMS"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeSection === item.id }"
-            :data-nav="item.id"
-            @click="handleNavClick(item)"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- About: version, news and updates, Docs · GitHub · Discord · Feedback.
-           The Resources block that every right panel used to carry lives
-           here now, once. -->
-      <div class="nav-section" data-section="about">
-        <h4>About</h4>
-        <div class="nav-items">
-          <button
-            v-for="item in ABOUT_ITEMS"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeSection === item.id }"
-            :data-nav="item.id"
-            @click="handleNavClick(item)"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Logout is an action, not a settings page, so it sits below the
-           captions rather than inside one. It kept its 'general' section id
-           because that is the Settings view that hosts LoginSection. -->
-      <div class="nav-footer">
-        <button class="nav-item nav-item-quiet" :class="{ active: activeSection === 'general' }" data-nav="general" @click="handleNavClick(LOGOUT_ITEM)">
-          <i class="fas fa-sign-out-alt"></i>
-          <span>Logout</span>
-        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { settingsDirectory } from '@/mobile/sectionDirectories.js';
+import { settingsDirectory, DEFAULT_SETTINGS_SECTION } from '@/mobile/sectionDirectories.js';
 import { toRefs } from 'vue';
 
-// `screen` present → the row navigates to a whole screen rather than swapping
-// the Settings body. Everything else is a Settings section id, matching the
-// `activeSection === '…'` branches in Settings.vue.
-const GENERAL_ITEMS = settingsDirectory[0].items;
-
-// Memory is a tab of the Agents row (it is a property of an agent). What
-// stays behind the gear is what you decide once about the machine: what she
-// may do without asking, and how she improves herself.
-const ASSISTANT_ITEMS = settingsDirectory[1].items;
-
-const CONFIG_ITEMS = settingsDirectory[2].items;
-
-const DATA_ITEMS = settingsDirectory[3].items;
-
-const ABOUT_ITEMS = settingsDirectory[4].items;
-
-const LOGOUT_ITEM = Object.freeze({ id: 'general', icon: 'fas fa-sign-out-alt', label: 'Logout' });
+const SETTINGS_GROUPS = settingsDirectory;
 
 export default {
   name: 'SettingsPanel',
   props: {
     activeSection: {
       type: String,
-      default: 'profile',
+      default: DEFAULT_SETTINGS_SECTION,
     },
   },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const { activeSection } = toRefs(props);
 
+    // `screen` present → the row navigates to a whole screen rather than
+    // swapping the Settings body. Everything else is a Settings section id,
+    // matching the `activeSection === '…'` branches in Settings.vue.
     const handleNavClick = (item) => {
       if (item.screen) emit('panel-action', 'settings-goto', item.screen);
       else emit('panel-action', 'settings-nav', item.id);
     };
 
-    return {
-      activeSection,
-      handleNavClick,
-      GENERAL_ITEMS,
-      ASSISTANT_ITEMS,
-      CONFIG_ITEMS,
-      DATA_ITEMS,
-      ABOUT_ITEMS,
-      LOGOUT_ITEM,
-    };
+    return { activeSection, handleNavClick, SETTINGS_GROUPS };
   },
 };
 </script>
@@ -282,14 +172,4 @@ export default {
   flex: 1;
 }
 
-/* Pushed to the bottom and separated: an action, not a destination. */
-.nav-footer {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--terminal-border-color-light);
-}
-
-.nav-item-quiet {
-  opacity: 0.75;
-}
 </style>

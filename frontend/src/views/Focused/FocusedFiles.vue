@@ -84,7 +84,7 @@
         </button>
       </li>
     </ul>
-    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="item => nav.openScreen('MarketplaceScreen', item?.asset_id ? { item: item.asset_id } : {})" />
+    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="listing => nav.openScreen('MarketplaceScreen', { listing })" />
     <p v-if="rows.length > CAP" class="focused-foot-note">Showing {{ CAP }} of {{ rows.length.toLocaleString() }}. Search to find the rest.</p>
   </FocusedPage>
 </template>

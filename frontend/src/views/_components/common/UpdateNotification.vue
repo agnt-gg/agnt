@@ -110,12 +110,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 
 import { API_CONFIG } from '@/tt.config.js';
 import { useElectron } from '@/composables/useElectron';
 
 const { electron } = useElectron();
+// Vuex's injection key. Optional: specs mount this without a store.
+const store = inject('store', null);
 
 // ── desktop self-update: main owns the state; this only renders it ─────────
 const state = ref(null); // see preload.js autoUpdate.state()
@@ -138,6 +140,16 @@ function keyOf(s) {
 }
 
 const selfUpdating = computed(() => !!state.value?.enabled);
+
+// The version waiting to be installed, whichever path found it. This
+// component is always mounted (App.vue), so it is the ONE writer of the
+// toolbar's "update" pill. That used to be NewsPanel, which meant the pill
+// only appeared after someone happened to open Settings.
+const availableVersion = computed(() => {
+  if (selfUpdating.value) return state.value?.available?.version || null;
+  return updateInfo.value?.updateAvailable ? updateInfo.value.latestVersion || null : null;
+});
+watch(availableVersion, (version) => store?.dispatch('shell/setUpdateAvailable', version ? { version } : null), { immediate: true });
 
 const view = computed(() => {
   const s = state.value;

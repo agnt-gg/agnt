@@ -8,8 +8,6 @@
       <button v-if="compactLayout && screenName === 'ChatScreen' && !showLibrary && !showTeamWorkspace && !onCustomPage" class="cv-mobile-icon cv-mobile-new-chat" type="button" aria-label="New chat" @click="requestMobileNewChat"><i class="fas fa-edit" aria-hidden="true"></i></button>
       <button v-if="compactLayout && mobilePanels.right" class="cv-mobile-icon cv-mobile-inspector" type="button" data-mobile-panel="right" :aria-label="screenName === 'ChatScreen' ? 'This chat' : 'Inspector'" @click="requestMobilePanel('right')"><i class="fas fa-info-circle" aria-hidden="true"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
-      <!-- Which space everything on screen belongs to. Only shown in a team, where it matters. -->
-      <span v-if="activeTeamId" class="cv-space-chip" role="status" :aria-label="'Working in workspace ' + workspaceLabel"><i class="fas fa-users" aria-hidden="true"></i>{{ workspaceLabel }}</span>
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
@@ -71,6 +69,17 @@
             <i class="fas fa-caret-down" aria-hidden="true"></i>
           </button>
         </Tooltip>
+        <!-- The space everything on screen belongs to (Personal or a team),
+             right of the model: the two app-wide "which" controls, side by
+             side. On a phone this bar is hidden, so it lives in the
+             navigation drawer there instead (below). -->
+        <WorkspaceSwitcher
+          v-if="!compactLayout"
+          toolbar
+          :model-value="activeTeamId" :teams="workspaceTeams"
+          :error="workspaceError" :unread="spaceUnread" :account="accountEmail" :personal-hint="personalHint"
+          @select="selectWorkspace" @refresh="loadWorkspaceTeams"
+        />
         <Tooltip v-if="onCustomPage" text="Add widget">
           <button class="cv-btn" @click="showCatalog = true">+</button>
         </Tooltip>
@@ -115,7 +124,9 @@
         :role="compactLayout ? 'dialog' : undefined" :aria-modal="compactLayout && navigationOpen ? 'true' : undefined"
         :aria-label="compactLayout ? 'Navigation' : undefined" :inert="compactLayout && !navigationOpen ? true : undefined"
         :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
+        <!-- Phones only: the top bar's controls are hidden there. -->
         <WorkspaceSwitcher
+          v-if="compactLayout"
           :model-value="activeTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
           :error="workspaceError" :unread="spaceUnread" :account="accountEmail" :personal-hint="personalHint"
           @select="selectWorkspace" @refresh="loadWorkspaceTeams"
@@ -532,7 +543,6 @@ export default {
       canAnnounce: computed(() => !compactLayout.value && !store.getters['userAuth/shouldShowOnboarding']),
     });
     const teamNavigationTab = ref('Members');
-    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===activeTeamId.value)?.name || (activeTeamId.value ? 'Workspace' : 'Personal'));
     // Who is signed in HERE: each instance is its own site, so a mismatch is otherwise invisible.
     const accountEmail = computed(() => store.state.userAuth?.userEmail || '');
     // Where Personal leads from a workspace: the instance this tab came from, by name.
@@ -1134,7 +1144,7 @@ export default {
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryActive, openPrimary, isNavigationItemActive, mobileDestinations, openMobileDestination, onMobileDestination, mobileTitle, mobilePanels, requestMobilePanel, requestMobileNewChat, titleCase,
-      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,accountEmail,personalHint,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
+      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,accountEmail,personalHint,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,
@@ -1273,13 +1283,6 @@ export default {
 .cv-toolbar .cv-pbtn,
 .cv-toolbar .cv-clock {
   -webkit-app-region: no-drag;
-}
-
-.cv-space-chip {
-  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-  margin: 0 8px 0 2px; padding: 3px 9px; border-radius: 999px;
-  font-size: 11px; font-weight: 500; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
-  color: var(--color-primary); background: rgba(var(--primary-rgb), .1); border: 1px solid rgba(var(--primary-rgb), .35);
 }
 
 .cv-brand-logo {
