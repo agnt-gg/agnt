@@ -998,6 +998,7 @@ export default {
         model,
         onFrontendEvent,
         files,
+        steered = false,
       } = payload;
 
       // A send needs *something* — text OR attached files. Files alone with no
@@ -1022,6 +1023,8 @@ export default {
         role: 'user',
         content: displayContent,
         timestamp: Date.now(),
+        // A steer that missed every tool seam is still a steer.
+        ...(steered ? { steered: true } : {}),
       };
       commit('ADD_MESSAGE', { channelKey, message: userMessage });
 
@@ -1163,6 +1166,7 @@ export default {
               channelKey,
               chatType,
               content: leftoverSteer,
+              steered: true,
               pageContext,
               pageState,
               provider,

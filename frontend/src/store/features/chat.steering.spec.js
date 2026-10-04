@@ -162,6 +162,27 @@ describe('mid-run steer splits the assistant turn (main chat / chat.js)', () => 
     expect(state.pendingSteer).toBe('');
   });
 
+  it('regression: a steer the turn ended before applying is shown as a steered bubble, right after the reply it interrupted, BEFORE it is sent', async () => {
+    state.conversations[CONV].messages.push(
+      { id: 'u1', role: 'user', content: 'tell me a long story', timestamp: 1 },
+      { id: 'A1', role: 'assistant', content: 'Once upon a time...', timestamp: 2 },
+    );
+    state.conversations[CONV].isStreaming = false;
+    state.conversations[CONV].pendingSteer = 'change the story a bit';
+    let shownWhenSent = null;
+    const dispatch = vi.fn(async () => { shownWhenSent = transcript(); });
+
+    await chat.actions.drainPendingSteer({ commit, state, dispatch, rootState: { aiProvider: {} } }, { conversationId: CONV });
+
+    const steer = state.conversations[CONV].messages.at(-1);
+    expect(steer).toMatchObject({ role: 'user', content: 'change the story a bit', steered: true, steerAfterMessageId: 'A1' });
+    // Not a legacy-shaped id: the replay repair must never mistake it for a copy.
+    expect(steer.id).not.toMatch(/^msg-steer-\d+$/);
+    expect(shownWhenSent).toEqual(['user:tell me a long story', 'assistant:Once upon a time...', 'user:change the story a bit']);
+    expect(dispatch).toHaveBeenCalledWith('startStreamingConversation', expect.objectContaining({ userInput: 'change the story a bit', conversationId: CONV }));
+    expect(state.conversations[CONV].pendingSteer).toBe('');
+  });
+
   it('keeps working when the backend omits assistantMessageId (older server)', () => {
     state.conversations[CONV].messages.push({ id: 'u1', role: 'user', content: 'go', timestamp: 1 });
     emit('assistant_message', { id: 'A1', role: 'assistant', content: '', toolCalls: [] });

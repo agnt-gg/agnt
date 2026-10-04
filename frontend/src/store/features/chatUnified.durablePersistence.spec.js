@@ -176,6 +176,17 @@ describe('the transcript is written to the server', () => {
   });
 });
 
+describe('a late steer is visible', () => {
+  it('regression: a steer re-sent after the turn ended shows as a steered user bubble', async () => {
+    state.conversations[CH] = { messages: [], conversationId: CONV, suggestions: [], savedOutputId: null, lastUpdate: 0 };
+    await chatUnified.actions.sendMessage(
+      { commit, dispatch, state, rootState: { aiProvider: {} } },
+      { channelKey: CH, chatType: 'orchestrator', content: 'change the story', steered: true },
+    );
+    expect(state.conversations[CH].messages[0]).toMatchObject({ role: 'user', content: 'change the story', steered: true });
+  });
+});
+
 describe('a channel transcript belongs to its channel, not to the chat list', () => {
   it('saves the owning channel with the transcript', async () => {
     seed(TURN);

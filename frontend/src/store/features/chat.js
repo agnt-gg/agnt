@@ -2509,6 +2509,26 @@ export default {
       // that resends for ever is not.
       commit('SCOPED_CLEAR_PENDING_STEER', { conversationId });
 
+      // The user must SEE what they said. startStreamingConversation sends a
+      // turn but never draws its bubble (Chat.vue's submit does that), so a
+      // steer that missed every tool seam used to go out invisibly: the agent
+      // answered it, the transcript never showed it. It lands directly after
+      // the reply it interrupted, marked as a steer. The id is deliberately
+      // NOT legacy-shaped (msg-steer-<digits>) so replay repair never touches it.
+      const interrupted = [...conv.messages].reverse().find((message) => message.role === 'assistant');
+      const now = Date.now();
+      commit('SCOPED_ADD_MESSAGE', {
+        conversationId,
+        message: {
+          id: `msg-${now}-steer`,
+          role: 'user',
+          content: steer,
+          timestamp: now,
+          steered: true,
+          ...(interrupted?.id ? { steerAfterMessageId: interrupted.id } : {}),
+        },
+      });
+
       await dispatch('startStreamingConversation', {
         userInput: steer,
         files: [],
