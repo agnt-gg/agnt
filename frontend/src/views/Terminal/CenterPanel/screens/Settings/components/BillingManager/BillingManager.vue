@@ -365,7 +365,7 @@ export default {
           originalPrice: null,
           tagline: 'Your agent, hosted. Everything included.',
           features: [
-            ...six('100M credits / mo', '150 searches + 750 pages / mo', '100 compute-minutes / mo', '1,000 units · 1 inbox', '1,000 units · 3 endpoints'),
+            ...six('100M credits / mo', '150 searches + 750 pages / mo', '100 compute-minutes / mo', '1,000 units · 1 inbox', '1,000 units · 10 endpoints'),
             { text: 'Runtime', included: true, detail: 'Sleeps when idle · 8 active hrs/day' },
             { text: 'Seats', included: true, detail: '1' },
           ],
@@ -380,7 +380,7 @@ export default {
           tagline: 'Pro, awake around the clock.',
           popular: true,
           features: [
-            ...six('300M credits / mo', '500 searches + 2,500 pages / mo', '300 compute-minutes / mo', '5,000 units · 5 inboxes', '5,000 units · 3 endpoints'),
+            ...six('300M credits / mo', '500 searches + 2,500 pages / mo', '300 compute-minutes / mo', '5,000 units · 5 inboxes', '5,000 units · 25 endpoints'),
             { text: 'Runtime', included: true, detail: 'Never sleeps' },
             { text: 'Seats', included: true, detail: '1' },
           ],
@@ -394,7 +394,7 @@ export default {
           originalPrice: null,
           tagline: 'Always-On for three people, one shared instance.',
           features: [
-            ...six('600M credits / mo', '1,400 searches + 7,000 pages / mo', '600 compute-minutes / mo', '20,000 units · 15 inboxes', '20,000 units · 10 endpoints'),
+            ...six('600M credits / mo', '1,400 searches + 7,000 pages / mo', '600 compute-minutes / mo', '20,000 units · 15 inboxes', '20,000 units · 100 endpoints'),
             { text: 'Runtime', included: true, detail: 'Never sleeps' },
             { text: 'Seats', included: true, detail: '3 · +$25/mo each extra' },
             { text: 'Shared credential vault', included: true },
