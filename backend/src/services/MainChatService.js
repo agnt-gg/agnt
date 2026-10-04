@@ -32,11 +32,18 @@ export const MAIN_CHAT_TITLE = 'Main chat';
 // second role row, but only after a second orphan conversation was written.
 // One backend process owns this database, so a per-user promise chain is a
 // complete answer.
+//
+// The queue holds `settled`, which never rejects: the caller receives a
+// failure through `next`, which it handles. A queue entry built with
+// next.finally() rejects too, and with no later call chained onto it nobody
+// handles that copy, so one SQLITE_BUSY became an unhandledRejection that
+// took the whole backend down.
 const pendingByUser = new Map();
+const ignore = () => {};
 function serialized(userId, task) {
   const previous = pendingByUser.get(userId) || Promise.resolve();
-  const next = previous.catch(() => {}).then(task);
-  const settled = next.finally(() => {
+  const next = previous.then(task);
+  const settled = next.then(ignore, ignore).then(() => {
     if (pendingByUser.get(userId) === settled) pendingByUser.delete(userId);
   });
   pendingByUser.set(userId, settled);

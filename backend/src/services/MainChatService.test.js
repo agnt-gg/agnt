@@ -4,7 +4,7 @@
  *
  * Runs against a throwaway AGNT_HOME — never touches the user's database.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fsp from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -211,5 +211,46 @@ describe('the pinned Main chat', () => {
     expect(created.id).not.toBe(main.id);
     expect(await ConversationRoleModel.findMainOutputId(PIN_USER)).toBe(main.id);
     expect(JSON.parse((await ContentOutputModel.findOne(main.id)).content).messages).toEqual([]);
+  });
+});
+
+describe('a failed database call', () => {
+  // A locked database rejected getMainChatState; the route handled that, but
+  // the per-user queue held a SECOND promise that rejected with nobody
+  // listening, and the backend's unhandledRejection policy killed the process.
+  it('rejects to its caller only, never as an unhandled rejection', async () => {
+    const uid = 'user-main-busy';
+    const unhandled = [];
+    const onUnhandled = (reason) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    const busy = Object.assign(new Error('SQLITE_BUSY: database is locked'), { code: 'SQLITE_BUSY' });
+    const spy = vi.spyOn(ConversationRoleModel, 'findMainOutputId').mockRejectedValueOnce(busy);
+    try {
+      await expect(MainChat.getMainChatState(uid)).rejects.toBe(busy);
+      // Unhandled rejections are reported after the microtask queue drains.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      spy.mockRestore();
+    }
+  });
+
+  it('does not poison the queue: the next call for that user succeeds', async () => {
+    const uid = 'user-main-busy-next';
+    // getMainChatState creates the Main chat, which needs a real user row.
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    const busy = Object.assign(new Error('SQLITE_BUSY: database is locked'), { code: 'SQLITE_BUSY' });
+    const spy = vi.spyOn(ConversationRoleModel, 'findMainOutputId').mockRejectedValueOnce(busy);
+    try {
+      const failing = MainChat.getMainChatState(uid);
+      const following = MainChat.getMainChatState(uid);
+      await expect(failing).rejects.toBe(busy);
+      const state = await following;
+      expect(state.main?.id).toBeTruthy();
+      expect(state.subChats).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
