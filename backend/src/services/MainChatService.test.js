@@ -140,60 +140,38 @@ describe('clearMainChat', () => {
   });
 });
 
-// Reported: new pages were saved into the Main chat, whose row the sidebar no
-// longer shows, so those conversations could not be found.
-describe('the retired Main chat', () => {
-  const RELEASE_USER = 'user-main-release';
-  const EMPTY_USER = 'user-main-empty';
+// The sidebar pins the Main chat again (texts land in it). The Oct 3 bug was
+// ordinary conversations ending up in it while its row was hidden; these pin
+// that the pin and "a new chat is its own conversation" both hold.
+describe('the pinned Main chat', () => {
+  const PIN_USER = 'user-main-pin';
   beforeAll(async () => {
-    for (const uid of [RELEASE_USER, EMPTY_USER]) await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [PIN_USER, `${PIN_USER}@test.local`]);
   });
 
-  it('the sidebar state never creates or returns a Main chat', async () => {
-    const state = await MainChat.getMainChatState(EMPTY_USER);
-    expect(state.main).toBeNull();
-    expect(await ConversationRoleModel.findMainOutputId(EMPTY_USER)).toBeNull();
-    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [EMPTY_USER])).toEqual([]);
+  it('the sidebar state creates the Main chat once and returns it with sub-chat links', async () => {
+    const [first, second] = await Promise.all([MainChat.getMainChatState(PIN_USER), MainChat.getMainChatState(PIN_USER)]);
+    expect(first.main.id).toBe(second.main.id);
+    expect(first.main.title).toBe(MainChat.MAIN_CHAT_TITLE);
+    expect(await ConversationRoleModel.findMainOutputId(PIN_USER)).toBe(first.main.id);
+    expect(Array.isArray(first.subChats)).toBe(true);
+    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [PIN_USER])).toHaveLength(1);
   });
 
-  it('a used Main chat becomes an ordinary listed conversation, every message kept, named after its first request', async () => {
-    const main = await MainChat.ensureMainChat(RELEASE_USER);
-    const transcript = { conversationId: main.conversation_id, title: 'Main chat', messages: [
-      { id: 'a0', role: 'assistant', content: 'Hi!' },
-      { id: 'u1', role: 'user', content: 'whats this server err on our updater\nmore detail' },
-      { id: 'a1', role: 'assistant', content: 'Looking.' },
-    ] };
-    await ContentOutputModel.createOrUpdate(main.id, RELEASE_USER, null, null, JSON.stringify(transcript), false, 'conversation', main.conversation_id, 'Main chat', { titleSource: 'system' });
-
-    expect(await MainChat.releaseMainChat(RELEASE_USER)).toEqual({ id: main.id, action: 'released' });
-    expect(await ConversationRoleModel.findMainOutputId(RELEASE_USER)).toBeNull();
-    const row = await ContentOutputModel.findOne(main.id);
-    expect(row.title).toBe('whats this server err on our updater');
-    expect(row.archived_at).toBeNull();
-    expect(JSON.parse(row.content).messages).toHaveLength(3);
-    // Idempotent, and it stays released: nothing re-pins or recreates it.
-    expect(await MainChat.releaseMainChat(RELEASE_USER)).toBeNull();
-    expect((await MainChat.getMainChatState(RELEASE_USER)).main).toBeNull();
-    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [RELEASE_USER])).toHaveLength(1);
-  });
-
-  it('a name the user gave it is kept', async () => {
-    const uid = 'user-main-named';
-    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
-    const main = await MainChat.ensureMainChat(uid);
-    await ContentOutputModel.createOrUpdate(main.id, uid, null, null, JSON.stringify({ messages: [{ role: 'user', content: 'hello' }] }), false, 'conversation', main.conversation_id, 'Main chat', { titleSource: 'system' });
-    await ContentOutputModel.updateTitle(main.id, uid, 'My planning thread'); // as the sidebar's rename does
-    await MainChat.releaseMainChat(uid);
-    expect((await ContentOutputModel.findOne(main.id)).title).toBe('My planning thread');
-  });
-
-  it('an unused Main chat is archived, not deleted, so the list gains no empty row', async () => {
-    const uid = 'user-main-unused';
-    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
-    const main = await MainChat.ensureMainChat(uid);
-    expect(await MainChat.releaseMainChat(uid)).toEqual({ id: main.id, action: 'archived' });
-    const row = await ContentOutputModel.findOne(main.id);
-    expect(row).toBeTruthy();
-    expect(row.archived_at).toBeTruthy();
+  it('a new conversation saved alongside it is its own row, never the Main chat', async () => {
+    const { main } = await MainChat.getMainChatState(PIN_USER);
+    const service = (await import('./RunService.js')).default;
+    const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    await service.saveOrUpdateContentOutput({ user: { id: PIN_USER, userId: PIN_USER }, body: {
+      conversationId: 'conv-a-new-chat', contentType: 'conversation', title: 'A new chat',
+      content: JSON.stringify({ conversationId: 'conv-a-new-chat', messages: [{ role: 'user', content: 'hello' }] }),
+    } }, response);
+    expect(response.statusCode).toBe(200);
+    const rows = await all(`SELECT id, conversation_id FROM content_outputs WHERE user_id = ?`, [PIN_USER]);
+    expect(rows).toHaveLength(2);
+    const created = rows.find((r) => r.conversation_id === 'conv-a-new-chat');
+    expect(created.id).not.toBe(main.id);
+    expect(await ConversationRoleModel.findMainOutputId(PIN_USER)).toBe(main.id);
+    expect(JSON.parse((await ContentOutputModel.findOne(main.id)).content).messages).toEqual([]);
   });
 });

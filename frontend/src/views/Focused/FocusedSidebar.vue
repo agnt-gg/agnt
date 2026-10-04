@@ -13,8 +13,7 @@
     </div>
 
     <nav class="focused-nav">
-      <!-- Main-chat shortcut hidden by request; account routing and saved state remain intact.
-
+      <!-- The Main chat: pinned first. Texts to Annie land here; New chat never does. -->
       <div class="focused-main-chat" :class="{ active: onChat && isMainOpen }">
         <button
           type="button"
@@ -36,7 +35,6 @@
           <i class="fas fa-eraser" aria-hidden="true"></i>
         </button>
       </div>
-      -->
 
       <button type="button" class="focused-nav-row" :class="{ active: onChat && !activeConversationId }" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i><span>New chat</span>

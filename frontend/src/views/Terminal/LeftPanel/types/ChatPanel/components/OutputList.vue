@@ -35,8 +35,8 @@
           </div>
         </div>
 
-        <!-- Main-chat shortcut hidden by request; account routing and saved state remain intact.
-
+        <!-- The Main chat: pinned first. Texts to Annie land here; New chat never
+             does. Never an item in the lists below (contentOutputs/visibleOutputs). -->
         <div
           class="output-item main-chat-item"
           :class="{ active: isMainOpen, streaming: isMainStreaming }"
@@ -63,7 +63,6 @@
             </button>
           </div>
         </div>
-        -->
 
         <div class="list-header">
           <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />

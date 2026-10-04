@@ -127,15 +127,16 @@ test('free workspace gate is readable in light and dark themes and opens Team pr
 });
 
 
-test('Main-chat shortcuts are absent in both frames without removing new chat or the chat list @ci', async ({ appPage: page }) => {
+// The Main chat is pinned again (texts to Annie land in it). It sits beside
+// New chat and the chat list, never instead of them.
+test('the Main chat is pinned once in both frames, beside new chat and the chat list @ci', async ({ appPage: page }) => {
   await freeAccount(page);
   await page.goto('/chat'); await ready(page); await mode(page, 'studio');
-  expect(await page.locator('[data-testid="main-chat-row"]').count()).toBe(0);
+  await expect(page.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
   await expect(page.locator('.chat-library-toggle')).toBeVisible();
   await expect(page.locator('.left-panel-component input[placeholder="Search chats..."]')).toBeAttached();
   await mode(page, 'focused');
-  expect(await page.locator('[data-testid="focused-main-chat"]').count()).toBe(0);
-  expect(await page.locator('.focused-main-chat').count()).toBe(0);
+  await expect(page.locator('[data-testid="focused-main-chat"]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'New chat', exact: true }).first()).toBeVisible();
 });
 
@@ -183,22 +184,23 @@ for (const width of [1440, 900]) test('Market categories stay compact and separa
 });
 
 
-// Reported: a new page was saved into the retired Main chat and vanished from
-// the list. Real backend: no Main chat is created, and /chat opens a new one.
+// Reported (Oct 3): a new page was saved into the Main chat while its row was
+// hidden, and vanished. The Main chat exists and is pinned again, and /chat
+// still opens a conversation of its own, never the Main chat.
 test('a fresh /chat is a new conversation, never the Main chat @ci', async ({ appPage: page }) => {
   await freeAccount(page);
-  const mainCalls = [];
-  page.on('response', async r => { if (/\/content-outputs\/main-chat$/.test(r.url())) mainCalls.push(await r.json().catch(() => null)); });
   await page.goto('/chat'); await ready(page);
   await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.getters.criticalDataReady);
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => !!document.querySelector('#app').__vue_app__.config.globalProperties.$store.getters['contentOutputs/mainChatId']);
   const state = await page.evaluate(() => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
     return { saved: store.state.chat.savedOutputId, title: store.state.chat.savedOutputTitle, mainId: store.getters['contentOutputs/mainChatId'],
       mainRows: (store.getters['contentOutputs/outputs'] || []).filter((o) => o.title === 'Main chat').length };
   });
-  expect(state).toEqual({ saved: null, title: null, mainId: null, mainRows: 0 });
-  for (const body of mainCalls) expect(body?.main ?? null).toBeNull();
+  expect(state.saved).toBeNull();
+  expect(state.title).toBeNull();
+  expect(state.mainId).toBeTruthy();
+  expect(state.mainRows).toBe(1);
 });
 
 

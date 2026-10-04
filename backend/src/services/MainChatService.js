@@ -20,58 +20,12 @@ import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 export const MAIN_CHAT_TITLE = 'Main chat';
 
 /**
- * RETIRED. The Main chat was a pinned conversation every new chat landed in.
- * With its sidebar row removed, anything typed into it became invisible, so a
- * cold start and every "ask" now open an ordinary conversation instead, and an
- * existing Main chat is handed back as one (releaseMainChat). ensure/clear are
- * kept, unrouted, so the change is reversible; nothing in the app calls them.
+ * WHERE A CHAT LANDS. The Main chat is pinned, never the default. "New chat"
+ * and every "ask" open an ordinary conversation (the Oct 3 bug was new chats
+ * landing here while its row was hidden). Two things put a message in the
+ * Main chat: the user opening it from its pinned row, and a text message
+ * (services/mobileReceiver.js), because a phone has exactly one thread.
  */
-
-/** The first line of the first thing the user said, as a list title. */
-function titleFromTranscript(content) {
-  let transcript;
-  try { transcript = JSON.parse(content || '{}'); } catch { return null; }
-  const messages = Array.isArray(transcript) ? transcript : transcript?.messages;
-  const first = (Array.isArray(messages) ? messages : []).find((m) => m?.role === 'user' && typeof m.content === 'string' && m.content.trim());
-  if (!first) return null;
-  const line = first.content.trim().split(/\r?\n/)[0].trim();
-  return line.length > 60 ? `${line.slice(0, 57).trimEnd()}...` : line;
-}
-
-/**
- * Turn the user's Main chat back into an ordinary conversation. Idempotent.
- *
- * A Main chat with something in it keeps every message, loses its pin, and is
- * named after its first request (only while it still carries the generic
- * system title; a name the user chose is kept). One that was never used is
- * archived, not deleted, so nothing is lost and the list gains no empty
- * "Main chat" row.
- *
- * @returns {Promise<{id: string, action: 'released'|'archived'}|null>}
- */
-export function releaseMainChat(userId) {
-  if (!userId) return Promise.reject(new Error('userId is required'));
-  return serialized(userId, async () => {
-    const id = await ConversationRoleModel.findMainOutputId(userId);
-    if (!id) {
-      await ConversationRoleModel.releaseMain(userId); // a role whose row was deleted
-      return null;
-    }
-    const row = await ContentOutputModel.findOne(id);
-    const title = titleFromTranscript(row?.content);
-    await ConversationRoleModel.releaseMain(userId);
-    if (!title) {
-      await ContentOutputModel.setArchived(id, userId, true);
-      return { id, action: 'archived' };
-    }
-    // setGeneratedTitle only overwrites derived/auto titles; this one is
-    // 'system'. The guard keeps any name the user gave it.
-    if (row?.title === MAIN_CHAT_TITLE) await ContentOutputModel.updateTitle(id, userId, title);
-    const output = await ContentOutputModel.findMetaById(id);
-    if (output) announce(userId, RealtimeEvents.CONTENT_UPDATED, output);
-    return { id, action: 'released' };
-  });
-}
 
 // Get-or-create must not race itself: two tabs booting at once would each see
 // "no main" and each create one. The partial unique index would reject the
@@ -153,14 +107,10 @@ export function clearMainChat(userId) {
   }));
 }
 
-/**
- * What the sidebar asks for on mount: sub-chat links, and never a Main chat.
- * Any Main chat this user still has is released first, so clients still on a
- * build that pins it get its conversation back in their ordinary list.
- */
+/** The Main chat plus every sub-chat link, in one call for the sidebar. */
 export async function getMainChatState(userId) {
-  await releaseMainChat(userId);
-  return { main: null, subChats: await ConversationRoleModel.listSubChats(userId) };
+  const [main, subChats] = await Promise.all([ensureMainChat(userId), ConversationRoleModel.listSubChats(userId)]);
+  return { main, subChats };
 }
 
-export default { ensureMainChat, clearMainChat, releaseMainChat, getMainChatState, MAIN_CHAT_TITLE };
+export default { ensureMainChat, clearMainChat, getMainChatState, MAIN_CHAT_TITLE };
