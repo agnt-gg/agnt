@@ -36,7 +36,7 @@ const SCREEN_ICONS = {
   WidgetManagerScreen: 'fas fa-shapes',
   WidgetForgeScreen: 'fas fa-shapes',
   MarketplaceScreen: 'fas fa-store',
-  ConnectorsScreen: 'fas fa-plug',
+  ConnectorsScreen: 'fas fa-cube',
   SettingsScreen: 'fas fa-cog',
   MemoryScreen: 'fas fa-brain',
   LearningScreen: 'fas fa-seedling',
@@ -104,7 +104,7 @@ export function buildJumpIndex(src) {
     doItems.unshift({ id: 'do:approvals', icon: 'fas fa-user-shield', label: `Review ${src.approvals} pending approval${src.approvals === 1 ? '' : 's'}`, hint: 'Learning', action: { type: 'screen', screen: 'LearningScreen' }, _hay: ['approve', 'approvals', 'autonomy', 'pending'] });
   }
   if (src.hasProvider === false) {
-    doItems.unshift({ id: 'do:provider', icon: 'fas fa-robot', label: 'Connect an AI provider', hint: 'Connections › AI Providers', action: { type: 'screen', screen: 'ConnectorsScreen', opts: { section: 'providers' } }, _hay: ['provider', 'connect', 'api key', 'model'] });
+    doItems.unshift({ id: 'do:provider', icon: 'fas fa-robot', label: 'Choose an AI model', hint: 'Settings › AI Models', action: { type: 'screen', screen: 'SettingsScreen', opts: { section: 'providers' } }, _hay: ['provider', 'connect', 'api key', 'model'] });
   }
   doItems.push({ id: 'do:docs', icon: 'fas fa-book', label: 'Docs', hint: 'Quick start · tools · spec', action: { type: 'route', path: '/docs' }, _hay: ['docs', 'documentation', 'help', 'guide'] });
   doItems.push({ id: 'do:about', icon: 'fas fa-info-circle', label: 'About · GitHub · Discord · Feedback', hint: 'Settings › About', action: { type: 'screen', screen: 'SettingsScreen', opts: { section: 'about' } }, _hay: ['about', 'github', 'discord', 'feedback', 'version', 'resources'] });

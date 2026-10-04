@@ -1399,6 +1399,14 @@
 .ui-focused .focused-connector-card .focused-market-card-copy { flex: 1; }
 .ui-focused .focused-connector-state { flex: 0 0 32px; color: var(--text-secondary); }
 .ui-focused .focused-connector-state.ok { color: var(--status-green-text); }
+.ui-focused .focused-connector-state.warn { color: var(--status-amber-text); }
+.ui-focused .focused-apps-attention { color: var(--status-amber-text); margin: 0 0 12px; }
+/* An app page's "What's inside": one row per app a sign-in turns on. */
+.ui-focused .focused-app-inside { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ui-focused .focused-app-inside li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--terminal-border-color); }
+.ui-focused .focused-app-inside li:first-child { border-top: 0; }
+.ui-focused .focused-app-inside strong { font-weight: 500; }
+.ui-focused .focused-app-inside small { color: var(--text-secondary); flex: 1; }
 @media (max-width: 1100px) {
   .ui-focused .focused-market-controls { flex-wrap: wrap; }
   .ui-focused .focused-connectors-actions { width: 100%; }

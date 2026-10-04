@@ -31,7 +31,9 @@ describe('AGNT-One mobile navigation', () => {
    const { wrapper } = setup(); expect(wrapper.find('.cv-mobile-menu').exists()).toBe(true);
    expect(wrapper.find('.cv-sidebar').attributes('inert')).toBeDefined(); await wrapper.find('.cv-mobile-menu').trigger('click');
    const labels = wrapper.findAll('.cv-sidebar .cv-sb-page').map(b => b.text());
-   for(const label of ['Chat','Goals','Files','Library','Members','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
+   for(const label of ['Chat','Goals','Files','Members','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
+   // Library is not a Studio row: BUILD already lists every kind of thing you made.
+   expect(labels.some(t=>t.includes('Library'))).toBe(false);
    // The drawer mirrors the rail, and the rail carries destinations only:
    // search is reached from the jump bar, not from a nav row.
    expect(labels.some(t=>t.includes('Search'))).toBe(false);

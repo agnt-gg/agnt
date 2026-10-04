@@ -1,9 +1,10 @@
 /**
- * The Apps sidebar, shared by the Apps screen and the Plugins screen.
+ * The Apps sidebar, shared by the Apps screen and App Forge (PluginsScreen).
  *
- * Reported: Plugins was a tab in the toolbar while AI Providers, API / OAuth,
- * Emails and the rest lived in the left sidebar. It is now a sidebar row like
- * them, and the sidebar stays on screen while you are on Plugins.
+ * Your apps leads (one card per thing you connect); App Forge is a row that
+ * opens its own screen, and the sidebar stays on screen while you are there.
+ * The raw plumbing sits under an Advanced caption. AI models are not here:
+ * they are Settings › AI Models.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -18,12 +19,19 @@ const rowText = (w) => w.findAll('.nav-item').map((b) => b.text().replace(/\s*\[
 beforeEach(() => setInnerSection(null));
 
 describe('Apps sidebar', () => {
-  it('lists Plugins beside the connections', () => {
+  it('leads with Your apps, then App Forge and MCP Servers, with the plumbing under Advanced', () => {
     const w = mount(ConnectorsPanel);
-    expect(rowText(w)).toEqual(['AI Providers', 'API / OAuth', 'Emails', 'MCP', 'Webhooks', 'Plugins']);
+    expect(rowText(w)).toEqual(['Your apps', 'App Forge', 'MCP Servers', 'Keys & Sign-ins', 'Email Inbox', 'Webhooks']);
+    expect(w.findAll('h4').map((h) => h.text())).toEqual(['Advanced']);
+    expect(w.text()).not.toMatch(/AI Provider|Plugin/);
   });
 
-  it('on the Apps screen, a section row switches the section; Plugins opens its screen', async () => {
+  it('highlights Your apps by default', () => {
+    const w = mount(ConnectorsPanel, { props: { screenName: 'ConnectorsScreen' } });
+    expect(w.findAll('.nav-item.active').map((b) => b.attributes('data-nav'))).toEqual(['apps']);
+  });
+
+  it('on the Apps screen, a section row switches the section; App Forge opens its screen', async () => {
     const w = mount(ConnectorsPanel, { props: { screenName: 'ConnectorsScreen' } });
     await w.get('[data-nav="mcp-servers"]').trigger('click');
     await w.get('[data-nav="plugins"]').trigger('click');
@@ -33,13 +41,13 @@ describe('Apps sidebar', () => {
     ]);
   });
 
-  it('on the Plugins screen, Plugins is the highlighted row and nothing else is', () => {
+  it('on App Forge, App Forge is the highlighted row and nothing else is', () => {
     setInnerSection('oauth');
     const w = mount(ConnectorsPanel, { props: { screenName: 'PluginsScreen' } });
     expect(w.findAll('.nav-item.active').map((b) => b.attributes('data-nav'))).toEqual(['plugins']);
   });
 
-  it('from the Plugins screen, a section row goes back to Apps on that section', async () => {
+  it('from App Forge, a section row goes back to Apps on that section', async () => {
     const w = mount(ConnectorsPanel, { props: { screenName: 'PluginsScreen' } });
     await w.get('[data-nav="webhooks"]').trigger('click');
     expect(w.emitted('panel-action')).toEqual([['navigate', { screen: 'ConnectorsScreen', opts: { section: 'webhooks' } }]]);

@@ -93,8 +93,15 @@ export function focusedLocation(screen, query = {}) {
       // Files: `artifact:` opens a file (same intent Studio's Files reads),
       // `dir:` a folder. Both are resolved against the workspace by the page.
       return library('files', selected(query, 'artifact'), { dir: selected(query, 'dir') || '' });
-    case 'ConnectorsScreen':
-      return { page: 'connectors', item: selected(query, 'provider') };
+    case 'ConnectorsScreen': {
+      // AI models are not apps: the old ?section=providers link (pill, Jump,
+      // bookmarks) means "which model", which is Settings in both shells.
+      if (str(query.section) === 'providers') return { page: 'settings' };
+      // Apps: a card is a sign-in (`provider:google`) or an app with none of
+      // its own (`app:figma-bridge`, item `app:figma-bridge` — the appCards id).
+      const app = selected(query, 'app');
+      return { page: 'connectors', item: selected(query, 'provider') || (app ? `app:${app}` : null) };
+    }
     // PluginsScreen is NOT here on purpose: plugins are code installed into
     // AGNT, not connections to outside apps, and Focused has no page for them.
     // Folding it into Connectors made /plugins show the wrong list.
@@ -131,7 +138,11 @@ export function routeFor(loc) {
     if (loc.tab === 'files' && loc.dir) return [screen, { select: { kind: 'dir', id: loc.dir } }];
     return [screen, {}];
   }
-  if (loc.page === 'connectors') return [PAGE_SCREENS.connectors, loc.item ? { select: { kind: 'provider', id: loc.item } } : {}];
+  if (loc.page === 'connectors') {
+    if (!loc.item) return [PAGE_SCREENS.connectors, {}];
+    const app = String(loc.item).startsWith('app:') ? String(loc.item).slice(4) : null;
+    return [PAGE_SCREENS.connectors, { select: app ? { kind: 'app', id: app } : { kind: 'provider', id: loc.item } }];
+  }
   if (loc.page === 'scheduled') {
     const opts = { section: 'schedules' };
     if (loc.item) opts.select = { kind: 'schedule', id: loc.item };

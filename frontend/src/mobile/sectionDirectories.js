@@ -6,8 +6,8 @@ export const settingsDirectory = [
       {
         "id": "providers",
         "icon": "fas fa-robot",
-        "label": "AI Provider",
-        "description": "Default models and fallback providers"
+        "label": "AI Models",
+        "description": "Which model Annie uses, and its fallbacks"
       },
       {
         "id": "billing",
@@ -36,7 +36,7 @@ export const settingsDirectory = [
       {
         "id": "api-keys",
         "icon": "fas fa-key",
-        "label": "API Key",
+        "label": "AGNT API Key",
         "description": "A key for bots and scripts that never expires"
       }
     ]
@@ -150,34 +150,50 @@ export const settingsDirectory = [
     ]
   }
 ];
+// Apps: one place for everything AGNT can use. A plugin and the sign-in it
+// needs are ONE card in "Your apps" (services/appCards); AI models are not
+// apps and live in Settings › AI Models. "Advanced" holds the raw plumbing a
+// power user still wants to reach: every stored key, inboxes, webhooks.
 export const appsDirectory = [
   {
-    "label": "Connections",
+    "label": "Apps",
     "items": [
       {
-        "id": "providers",
-        "icon": "fas fa-robot",
-        "label": "AI Providers",
-        "description": "Default models and fallback providers"
+        "id": "apps",
+        "icon": "fas fa-th-large",
+        "label": "Your apps",
+        "description": "Everything you installed and connected"
       },
       {
-        "id": "oauth",
-        "icon": "fas fa-plug",
-        "label": "API / OAuth",
-        "description": "Connected services"
-      },
-      {
-        "id": "email-server",
-        "icon": "fas fa-envelope",
-        "label": "Emails",
-        "pro": true,
-        "description": "Active email listeners"
+        "id": "plugins",
+        "icon": "fas fa-hammer",
+        "label": "App Forge",
+        "screen": "PluginsScreen",
+        "description": "Build, bundle or install an app"
       },
       {
         "id": "mcp-servers",
         "icon": "fas fa-server",
-        "label": "MCP",
-        "description": "Servers, tools and resources"
+        "label": "MCP Servers",
+        "description": "Apps that run as MCP servers"
+      }
+    ]
+  },
+  {
+    "label": "Advanced",
+    "items": [
+      {
+        "id": "oauth",
+        "icon": "fas fa-key",
+        "label": "Keys & Sign-ins",
+        "description": "Every stored key and sign-in, with health"
+      },
+      {
+        "id": "email-server",
+        "icon": "fas fa-envelope",
+        "label": "Email Inbox",
+        "pro": true,
+        "description": "Active email listeners"
       },
       {
         "id": "webhooks",
@@ -185,13 +201,6 @@ export const appsDirectory = [
         "label": "Webhooks",
         "pro": true,
         "description": "Incoming events"
-      },
-      {
-        "id": "plugins",
-        "icon": "fas fa-puzzle-piece",
-        "label": "Plugins",
-        "screen": "PluginsScreen",
-        "description": "Installed app extensions"
       }
     ]
   }

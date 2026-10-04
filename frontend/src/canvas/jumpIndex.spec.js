@@ -31,9 +31,10 @@ describe('jumpIndex', () => {
     expect(goto.find((i) => i.action.screen === 'ToolsScreen').label).toBe('Tools');
     expect(goto.find((i) => i.action.screen === 'ArtifactsScreen').label).toBe('Files');
     expect(goto.find((i) => i.action.screen === 'TracesScreen').label).toBe('Activity');
+    // Widgets and Skills are rows of their own now, so they read as themselves.
+    expect(goto.find((i) => i.action.screen === 'WidgetManagerScreen').label).toBe('Widgets');
+    expect(goto.find((i) => i.action.screen === 'SkillsScreen').label).toBe('Skills');
     // Later tabs are qualified by their row so the palette reads like the rail.
-    expect(goto.find((i) => i.action.screen === 'WidgetManagerScreen').label).toBe('Tools › Widgets');
-    expect(goto.find((i) => i.action.screen === 'SkillsScreen').label).toBe('Agents › Skills');
     expect(goto.find((i) => i.action.screen === 'MemoryScreen').label).toBe('Agents › Memory');
     expect(goto.find((i) => i.action.screen === 'WorkspaceScreen').label).toBe('Chat › Canvas');
   });
@@ -52,7 +53,7 @@ describe('jumpIndex', () => {
     // Naming the section matters as much as naming the screen: Connections
     // opens on API / OAuth by default, so a bare screen jump would land one
     // click away from the thing the verb promised.
-    expect(b.groups.find((g) => g.id === 'do').items[0].action).toMatchObject({ screen: 'ConnectorsScreen', opts: { section: 'providers' } });
+    expect(b.groups.find((g) => g.id === 'do').items[0].action).toMatchObject({ screen: 'SettingsScreen', opts: { section: 'providers' } });
   });
 
   it('falls through to Annie when nothing matches, and never when something does', () => {

@@ -47,9 +47,20 @@ describe('navigationOnion', () => {
     const { state, announced } = evaluateUnlocks(busy, known(), emptyOnionState());
     expect(announced).toEqual([]);
     expect(state.fresh).toEqual([]);
-    for (const id of ['apps', 'artifacts', 'traces', 'goals', 'workflows', 'agents', 'tools', 'store', 'library', 'teams', 'dashboard']) {
+    for (const id of ['apps', 'artifacts', 'traces', 'goals', 'workflows', 'agents', 'tools', 'skills', 'store', 'teams', 'dashboard']) {
       expect(isUnlocked(id, state)).toBe(true);
     }
+    // No widgets yet, so no Widgets row.
+    expect(isUnlocked('widgets', state)).toBe(false);
+  });
+
+  it('a row added to the rail later (Skills, Widgets) appears silently for an account that already has the thing', () => {
+    // An account seeded before these rows existed has every OTHER rule seeded.
+    const before = { version: 1, unlocked: ['tools'], seeded: ['apps', 'artifacts', 'traces', 'goals', 'workflows', 'agents', 'tools', 'store', 'teams', 'dashboard'], fresh: [] };
+    const { state, announced } = evaluateUnlocks({ ...nothing, skills: [{}], widgets: [{}] }, known(), before);
+    expect(isUnlocked('skills', state)).toBe(true);
+    expect(isUnlocked('widgets', state)).toBe(true);
+    expect(announced).toEqual([]);
   });
 
   it('announces a row the moment its thing first exists — and only once', () => {

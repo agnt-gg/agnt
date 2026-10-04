@@ -38,6 +38,9 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => fs.readFileSync(path.resolve(DIR, rel), 'utf8');
 
 const CONNECTORS = read('./Connectors.vue');
+// The page itself lives in Settings › AI Models: models are not apps, so the
+// Apps screen (Connectors.vue) no longer draws it.
+const SETTINGS = read('../Settings/Settings.vue');
 const PROVIDER = read('../Settings/components/ProviderSelector/ProviderSelector.vue');
 const FALLBACK = read('./components/FallbackProviders.vue');
 const BEHAVIOR = read('./components/ChatBehaviorSettings.vue');
@@ -77,18 +80,20 @@ const decl = (block, prop) => {
 };
 
 describe('the page is laid out the way every other settings page is', () => {
-  it('renders its sections inside .connectors-grid, like every other section', () => {
-    // .connectors-content (max-width 1048px, margin 0 auto) + .connectors-grid
-    // (flex column, gap 16px) is what gives every other page its margins. An
-    // earlier version used a bespoke .provider-settings-stack, which dropped
-    // the 24px section padding and made the page run edge to edge.
-    const grid = CONNECTORS.match(/<div class="connectors-grid">\s*<ProviderSelector[\s\S]*?<\/div>/);
-    expect(grid, 'sections are not inside .connectors-grid').toBeTruthy();
-    expect(CONNECTORS, 'the bespoke stack wrapper is back').not.toMatch(/provider-settings-stack/);
+  it('renders its sections inside the house grid, like every other section', () => {
+    // .settings-grid (the same flex column as .connectors-grid, gap 16px) is
+    // what gives every other page its margins. An earlier version used a
+    // bespoke .provider-settings-stack, which dropped the 24px section padding
+    // and made the page run edge to edge.
+    const grid = SETTINGS.match(/<div class="settings-grid">\s*<ProviderSelector[\s\S]*?<\/div>/);
+    expect(grid, 'sections are not inside .settings-grid').toBeTruthy();
+    for (const [name, src] of [['Settings', SETTINGS], ['Connectors', CONNECTORS]]) {
+      expect(src, `${name}: the bespoke stack wrapper is back`).not.toMatch(/provider-settings-stack/);
+    }
   });
 
   it('renders the sections in order: model, fallback, behaviour', () => {
-    const stack = CONNECTORS.match(/<div class="connectors-grid">([\s\S]*?)<\/div>/);
+    const stack = SETTINGS.match(/<div class="settings-grid">\s*(<ProviderSelector[\s\S]*?)<\/div>/);
     const order = ['ProviderSelector', 'FallbackProviders', 'ChatBehaviorSettings']
       .map((c) => stack[1].indexOf(`<${c}`));
 

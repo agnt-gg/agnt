@@ -5,16 +5,25 @@ export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
 export const PERSONAL_GROUP = 'PERSONAL';
 
-// Rail rows that are MODES rather than routed screens: Library browses every
-// asset you own, Teams opens the shared workspace. They own no screen, so they
-// cannot live in MAIN_SECTIONS — but they are destinations the user sees on the
-// rail, and a row you can see is a row you must be able to hide, reorder and
-// regroup. CanvasScreen.openPrimary(id) knows how to open them.
+// Rail rows that are MODES rather than routed screens: Members opens the shared
+// space. It owns no screen, so it cannot live in MAIN_SECTIONS — but it is a
+// destination the user sees on the rail, and a row you can see is a row you
+// must be able to hide, reorder and regroup. CanvasScreen.openPrimary(id)
+// knows how to open it.
+//
+// Library is not a rail row in Studio: BUILD already lists every kind of thing
+// you made, one row each, so a second browser of the same things was a
+// duplicate. Focused keeps its Library page.
 export const VIRTUAL_SECTIONS = [
-  { id: 'library', group: 'ASSETS', icon: 'fas fa-book-open', label: 'Library' },
   // The id stays 'teams' so saved rail layouts keep this row; the word users read is Members.
-  { id: 'teams', group: 'ASSETS', icon: 'fas fa-users', label: 'Members' },
+  { id: 'teams', group: 'SYSTEM', icon: 'fas fa-users', label: 'Members' },
 ];
+
+// Captions the rail used before WORK · PLAN · BUILD · SYSTEM. A saved layout
+// stores the whole caption list, so without this the old names would linger
+// as empty groups and push the new ones out of order. Groups a person made
+// themselves are kept, after the built-in ones.
+const LEGACY_GROUPS = new Set(['TODAY', 'ASSETS', 'CONNECTORS']);
 
 // The single registry behind BOTH the rail and Settings → Navigation. The rail
 // renders exactly this list filtered by `visible`; the only rows it hardcodes
@@ -54,17 +63,39 @@ function emptyPreferences() {
   return { version: 1, groups: [...DEFAULT_GROUPS, PERSONAL_GROUP], items: {} };
 }
 
+/**
+ * A layout saved under the old captions, moved onto the current ones. Pure and
+ * idempotent: a layout with no legacy caption comes back unchanged, so this is
+ * safe to run on every load and never needs a version bump.
+ */
+export function migrateLegacyGroups(preferences) {
+  if (!preferences.groups.some((group) => LEGACY_GROUPS.has(group))) return preferences;
+  const custom = preferences.groups.filter((group) => !LEGACY_GROUPS.has(group) && !DEFAULT_GROUPS.includes(group) && group !== PERSONAL_GROUP);
+  const items = {};
+  for (const [key, item] of Object.entries(preferences.items)) {
+    if (!item || typeof item !== 'object') continue;
+    // Saved orders are positions inside the OLD groups, which no longer exist;
+    // kept, they would interleave rows at random. Visibility, and any group the
+    // person chose that still exists, are kept. A row parked under an old
+    // caption returns to its built-in group.
+    const { order: _order, ...rest } = item;
+    if (LEGACY_GROUPS.has(cleanGroup(rest.group))) delete rest.group;
+    items[key] = rest;
+  }
+  return { ...preferences, groups: [...DEFAULT_GROUPS, PERSONAL_GROUP, ...custom], items };
+}
+
 export function loadNavigationPreferences() {
   try {
     const parsed = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY) || 'null');
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.groups) || !parsed.items || Array.isArray(parsed.items)) {
       return emptyPreferences();
     }
-    return {
+    return migrateLegacyGroups({
       version: 1,
       groups: [...new Set(parsed.groups.map((group) => cleanGroup(group)).filter(Boolean))],
       items: { ...parsed.items },
-    };
+    });
   } catch {
     return emptyPreferences();
   }

@@ -36,13 +36,14 @@ export const FOCUSED_PAGES = Object.freeze({
     sub: 'Everything you\u2019ve made with AGNT. Open anything to read or change it, or ask in chat.',
     icon: 'fas fa-book',
   },
-  // Connections to outside apps and AI models (the appAuth catalogue). NOT
-  // plugins: a plugin is code installed into AGNT (PluginsScreen), and has
-  // no Focused page, so it opens in borrowed Studio.
+  // Apps: one card per thing you connect (services/appCards, shared with
+  // Studio). A plugin and the sign-in it needs are ONE card; AI models are not
+  // apps and live in Settings. The page id stays 'connectors' because it is
+  // the ConnectorsScreen route (focusedRoutes) and saved links use it.
   connectors: {
-    title: 'Connectors',
-    sub: 'Apps and AI models AGNT can use for you. It asks before sending, buying or changing anything.',
-    icon: 'fas fa-plug',
+    title: 'Apps',
+    sub: 'Everything AGNT can use for you. Connect a service once and every app that uses it is on. AGNT asks before sending, buying or changing anything.',
+    icon: 'fas fa-cube',
   },
   scheduled: {
     title: 'Scheduled',
@@ -192,14 +193,11 @@ export function recentConversations(outputs, query = '', limit = 60, subChatIds 
 
 // ── Connectors ─────────────────────────────────────────────────────────────
 
-const providerKey = (p) => String((typeof p === 'string' ? p : p?.id) || '').toLowerCase();
-
 /**
  * Providers signed in through a local CLI (device codes, local files). Their
- * connect flows are multi-step and live in Studio's Connectors; Focused shows
- * their status and can disconnect them (CLI_DISCONNECT_ACTIONS).
+ * connect flows are multi-step and live in Studio's Apps › Keys & Sign-ins;
+ * Focused can disconnect them with their dedicated store actions.
  */
-export const CLI_PROVIDERS = new Set(['claude-code', 'openai-codex', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli']);
 export const CLI_DISCONNECT_ACTIONS = Object.freeze({
   'claude-code': 'appAuth/disconnectClaudeCode',
   'openai-codex': 'appAuth/logoutCodex',
@@ -311,91 +309,8 @@ export function brandHue(name) {
   return n % 360;
 }
 
-/** One card by id, for the connection page (null when it is not known). */
-export function connectorCard(allProviders, connectedApps, id) {
-  const key = String(id || '').toLowerCase();
-  const { connected, available } = connectorCards(allProviders, connectedApps);
-  return [...connected, ...available].find((c) => c.id === key) || null;
-}
-
-/**
- * The remote catalogue (/auth/providers) is snake_case and stores categories
- * as a JSON string; the local CLI rows are camelCase with an array. Read both,
- * or every remote app looks like it has no way to connect.
- */
-function connectionTypeOf(p) {
-  return String(p?.connectionType || p?.connection_type || '');
-}
-function categoriesOf(p) {
-  let raw = p?.categories;
-  if (typeof raw === 'string') {
-    try {
-      raw = JSON.parse(raw);
-    } catch {
-      raw = raw.split(',');
-    }
-  }
-  return (Array.isArray(raw) ? raw : []).map((c) => String(c || '').trim()).filter(Boolean);
-}
-// The catalogue's categories are free text in mixed case ("ai", "AI",
-// "Web Scraping", "data-science"), so they are shown in one sentence case.
-const CATEGORY_LABELS = Object.freeze({ ai: 'AI', vps: 'VPS', crm: 'CRM' });
-export function categoryLabel(c) {
-  const k = String(c || '').trim().toLowerCase().replace(/[-_]+/g, ' ');
-  return CATEGORY_LABELS[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : '');
-}
-
-/**
- * Connected first (what AGNT can already use), then everything it could.
- * connectedApps is a list of provider ids; allProviders carries the names.
- */
-export function connectorCards(allProviders, connectedApps, query = '') {
-  const connected = new Set((Array.isArray(connectedApps) ? connectedApps : []).map(providerKey).filter(Boolean));
-  const seen = new Set();
-  const cards = [];
-  for (const p of Array.isArray(allProviders) ? allProviders : []) {
-    const id = providerKey(p);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const type = connectionTypeOf(p);
-    const instructions = String(p.instructions || p.custom_prompt || '');
-    cards.push({
-      id,
-      providerId: String(p.id),
-      name: id === 'agnt' ? 'AGNT Flash' : String(p.name || p.id),
-      icon: typeof p.icon === 'string' ? p.icon : '',
-      connectionType: CLI_PROVIDERS.has(id) ? 'cli' : type,
-      instructions,
-      description: instructions,
-      category: categoryLabel(categoriesOf(p)[0]),
-      connected: connected.has(id),
-      status: connected.has(id) ? (type === 'apikey' ? 'API key' : 'Connected') : 'Not connected',
-    });
-  }
-  // A connection the catalogue does not list (local CLI providers, custom
-  // keys) is still connected and still belongs on this page.
-  for (const id of connected) {
-    if (seen.has(id)) continue;
-    cards.push({
-      id,
-      providerId: id,
-      name: id === 'agnt' ? 'AGNT Flash' : id,
-      icon: id === 'agnt' ? 'fas fa-bolt' : '',
-      connectionType: id === 'agnt' ? 'account' : CLI_PROVIDERS.has(id) ? 'cli' : '',
-      instructions: '',
-      description: '',
-      category: '',
-      connected: true,
-      status: 'Connected',
-    });
-  }
-  const filtered = cards.filter((c) => matches(query, c.name, c.id, c.description, c.category));
-  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-  return {
-    connected: filtered.filter((c) => c.connected).sort(byName),
-    available: filtered.filter((c) => !c.connected).sort(byName),
-  };
-}
+// The card list and lookup live in services/appCards (buildAppCards /
+// findAppCard), shared with Studio's Apps view so the two never disagree.
 
 // ── Scheduled ──────────────────────────────────────────────────────────────
 

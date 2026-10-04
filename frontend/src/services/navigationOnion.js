@@ -53,7 +53,7 @@ export const UNLOCK_RULES = [
     needs: ['connectedApps'],
     when: (f) => countUserConnections(f.connectedApps) > 0,
     title: 'Apps',
-    message: 'Your first connection. Everything you connect — AI models included — lives here.',
+    message: 'Your first connection. Everything AGNT can use for you lives here — connect a service once and every app that uses it is on.',
   },
   {
     id: 'artifacts',
@@ -92,10 +92,24 @@ export const UNLOCK_RULES = [
   },
   {
     id: 'tools',
-    needs: ['tools', 'widgets'],
-    when: (f) => count(f.tools) + count(f.widgets) > 0,
+    needs: ['tools'],
+    when: (f) => count(f.tools) > 0,
     title: 'Tools',
-    message: 'Tools and widgets you build live here.',
+    message: 'Tools you build live here. Agents and workflows both use them.',
+  },
+  {
+    id: 'skills',
+    needs: ['skills'],
+    when: (f) => count(f.skills) > 0,
+    title: 'Skills',
+    message: 'What your agents know how to do. Apps can bring their own.',
+  },
+  {
+    id: 'widgets',
+    needs: ['widgets'],
+    when: (f) => count(f.widgets) > 0,
+    title: 'Widgets',
+    message: 'Things you can see: put them on the Dashboard, a Canvas or a page.',
   },
   {
     id: 'store',
@@ -105,18 +119,11 @@ export const UNLOCK_RULES = [
     message: 'Ready-made agents, workflows and plugins — install one, or publish yours.',
   },
   {
-    id: 'library',
-    needs: ['skills', 'agents', 'workflows', 'tools'],
-    when: (f) => count(f.skills) > 0 || count(f.agents) + count(f.workflows) + count(f.tools) >= 3,
-    title: 'Library',
-    message: 'Everything you have built, in one place.',
-  },
-  {
     id: 'teams',
     needs: ['teams'],
     when: (f) => count(f.teams) > 0,
-    title: 'Teams',
-    message: 'Shared spaces with the people you work with.',
+    title: 'Members',
+    message: 'Team spaces you share with the people you work with.',
   },
   {
     // An overview earns its place once there is enough to overview.

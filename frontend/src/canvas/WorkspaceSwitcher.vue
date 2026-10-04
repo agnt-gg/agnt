@@ -23,11 +23,15 @@
 <script setup>
 /**
  * The space picker. Two kinds of space, and nothing else:
- *   Personal    your home: this computer, or your own personal cloud instance.
- *   Workspaces  one per shared cloud instance you belong to.
+ *   Personal     your home: this computer, or your own personal cloud instance.
+ *   Team spaces  one per shared cloud instance you belong to.
  * Choosing one switches the whole app to it. It says who you are signed in as,
  * because each instance is its own site and an account mismatch is otherwise
- * invisible. The last entry opens workspace management rather than a space.
+ * invisible. The last entry opens space management rather than a space.
+ *
+ * The UI never says "workspace": a SPACE is personal or team (this picker), a
+ * CANVAS is an arranged layout (Chat › Canvas). Code identifiers keep their
+ * old names; only what a person reads changed.
  */
 import { computed, nextTick, ref } from 'vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
@@ -45,7 +49,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['select', 'refresh']);
 const select = ref(null);
-const label = computed(() => props.teams.find(team => team.id === props.modelValue)?.name || (props.modelValue ? 'Workspace' : 'Personal'));
+const label = computed(() => props.teams.find(team => team.id === props.modelValue)?.name || (props.modelValue ? 'Team space' : 'Personal'));
 // Section rows are disabled options: CustomSelect skips them for selection.
 const heading = (value, text) => ({ value, label: text, disabled: true, class: 'ws-heading' });
 const detail = team => {
@@ -63,9 +67,9 @@ const options = computed(() => [
   ...(props.account ? [{ value: '__account', label: 'Signed in as ' + props.account, disabled: true, class: 'ws-account' }] : []),
   heading('__personal', 'Personal'),
   { value: '', label: withUnread('', 'Personal' + (props.personalHint ? ' · ' + props.personalHint : '')) },
-  ...(props.teams.length ? [heading('__workspaces', 'Workspaces')] : []),
+  ...(props.teams.length ? [heading('__workspaces', 'Team spaces')] : []),
   ...props.teams.map(team => ({ value: team.id, label: withUnread(team.id, team.name + detail(team)) })),
-  { value: MANAGE_TEAMS, label: props.teams.length ? 'Manage workspaces…' : 'Join or create a workspace…' },
+  { value: MANAGE_TEAMS, label: props.teams.length ? 'Manage spaces…' : 'Join or create a team space…' },
 ]);
 async function open() {
   emit('refresh');

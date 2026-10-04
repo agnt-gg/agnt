@@ -45,7 +45,11 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
 
   it('connectors, scheduled, memory, settings', () => {
     expect(via('ConnectorsScreen', { select: { kind: 'provider', id: 'slack' } })).toEqual({ page: 'connectors', item: 'slack' });
-    expect(via('ConnectorsScreen', { section: 'providers' })).toEqual({ page: 'connectors', item: null });
+    // "Which model" is Settings in both shells, never an app.
+    expect(via('ConnectorsScreen', { section: 'providers' })).toEqual({ page: 'settings' });
+    expect(via('ConnectorsScreen', {})).toEqual({ page: 'connectors', item: null });
+    // An app with no sign-in of its own is addressed by its appCards id.
+    expect(via('ConnectorsScreen', { select: { kind: 'app', id: 'figma-bridge' } })).toEqual({ page: 'connectors', item: 'app:figma-bridge' });
     expect(via('AutonomyScreen', { section: 'schedules' })).toEqual({ page: 'scheduled', item: null, isNew: false });
     expect(via('AutonomyScreen', { select: { kind: 'schedule', id: 's1' } })).toMatchObject({ page: 'scheduled', item: 's1' });
     expect(via('MemoryScreen', { newGoal: true })).toEqual({ page: 'memory', item: null, isNew: true });
@@ -92,6 +96,7 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'library', tab: 'files', item: 'a/b.md', dir: '' },
     { page: 'library', tab: 'files', item: null, dir: 'a/b' },
     { page: 'connectors', item: 'slack' },
+    { page: 'connectors', item: 'app:figma-bridge' },
     { page: 'connectors', item: null },
     { page: 'library', tab: 'agents', item: null, isNew: true },
     { page: 'library', tab: 'workflows', item: null, isNew: true },

@@ -2,7 +2,7 @@
   <section class="team-workspace main-panel" :class="'team-panel'">
     <header class="team-header">
       <div class="title">
-        <h2>{{ currentTeam ? currentTeam.name : 'Workspaces' }}</h2>
+        <h2>{{ currentTeam ? currentTeam.name : 'Team spaces' }}</h2>
         <p v-if="currentTeam">{{ roleLabel(currentTeam.role) }} · <a :href="currentTeam.tenantUrl" target="_blank" rel="noopener">{{ host(currentTeam.tenantUrl) }}</a></p>
       </div>
       <div class="actions">

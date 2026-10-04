@@ -20,6 +20,7 @@ import agents from './features/agents';
 import tools from './features/tools';
 import workflows from './features/workflows';
 import marketplace from './features/marketplace';
+import apps from './features/apps';
 // import market from './features/market';
 // import map from './features/_map';
 import songPlayer from './app/songPlayer';
@@ -236,6 +237,8 @@ const store = createStore({
     executionHistory,
     // missions,
     marketplace,
+    // Installed plugins as Apps cards need them. Machine-scoped, not user-scoped.
+    apps,
     // market,
     // map,
     songPlayer,

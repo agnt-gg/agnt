@@ -1,7 +1,7 @@
 <template>
   <div class="connectors-panel">
     <div class="panel-header">
-      <h2 class="title">/ Connectors</h2>
+      <h2 class="title">/ Apps</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-shield-alt"></i>
@@ -11,10 +11,11 @@
     </div>
 
     <div class="connectors-nav">
-      <div class="nav-section">
+      <div v-for="group in APP_GROUPS" :key="group.label" class="nav-section" :data-section="group.label.toLowerCase()">
+        <h4 v-if="group.label !== APP_GROUPS[0].label">{{ group.label }}</h4>
         <div class="nav-items">
           <button
-            v-for="item in CONNECT_ITEMS"
+            v-for="item in group.items"
             :key="item.id"
             class="nav-item"
             :class="{ active: isActive(item) }"
@@ -75,20 +76,17 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 
-// Everything this screen can show, in order — the nav for the single Connect
-// row in the sidebar. Both this panel and the screen read and write ONE shared
-// value, so they cannot disagree about which view is showing.
+// Everything the Apps row can show, in order. Both this panel and the screen
+// read and write ONE shared value, so they cannot disagree about which view is
+// showing.
 //
-// AI Providers leads, because "which model does Annie think with" is the most
-// touched setup decision in the app and it is one more thing you connect — the
-// toolbar's "no provider" pill and the first-run card both land on it. It had a
-// CONNECT rail row of its own for a while; a whole row for one view of one
-// screen said it was a bigger idea than it is.
-//
-// Plugins is the one row that opens its own screen (item.screen): it is a
-// separate screen that shares this sidebar, so the nav stays put when you move
-// between connecting a service and installing a plugin.
-const CONNECT_ITEMS = appsDirectory[0].items;
+// Your apps leads: a plugin and the sign-in it needs are one card there. AI
+// models are not apps (Settings › AI Models). App Forge is the one row that
+// opens its own screen (item.screen), PluginsScreen, which shares this sidebar
+// so the nav stays put between using apps and building one. The second group
+// (Advanced) is the raw plumbing: every stored key, inboxes, webhooks.
+const APP_GROUPS = appsDirectory;
+const DEFAULT_SECTION = APP_GROUPS[0].items[0].id;
 
 export default {
   name: 'ConnectorsPanel',
@@ -101,7 +99,7 @@ export default {
     const store = useStore();
     // Not local state: reading the shared value is what keeps this panel in
     // step with the sidebar when navigation starts from the rail.
-    const activeSection = computed(() => activeInnerSection.value === 'api-keys' ? 'oauth' : activeInnerSection.value || 'oauth');
+    const activeSection = computed(() => (activeInnerSection.value === 'api-keys' ? 'oauth' : activeInnerSection.value || DEFAULT_SECTION));
 
     const totalSecrets = computed(() => {
       const secrets = store.getters['connectors/allSecrets'] || [];
@@ -133,7 +131,7 @@ export default {
       isActive,
       handleNavClick,
       totalSecrets,
-      CONNECT_ITEMS,
+      APP_GROUPS,
     };
   },
 };

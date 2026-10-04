@@ -5,7 +5,7 @@ import {
 
 export const JUMP_CATEGORIES = [{
     id: 'conversation',
-    label: 'Conversations & spaces',
+    label: 'Chats & canvases',
     screens: ['ChatScreen', 'WorkspaceScreen']
   },
   {
@@ -25,12 +25,12 @@ export const JUMP_CATEGORIES = [{
   },
   {
     id: 'connections',
-    label: 'Connections & control',
+    label: 'Apps',
     screens: ['ConnectorsScreen', 'PluginsScreen']
   },
   {
     id: 'workspace',
-    label: 'Workspace & account',
+    label: 'Market & settings',
     screens: ['MarketplaceScreen', 'SettingsScreen']
   },
 ];
@@ -138,7 +138,7 @@ export function buildJumpCatalog(src) {
         }
       }
     });
-  resources.push({id:'team-library',label:'Personal & team workspaces',icon:'fas fa-users',hint:'shared library',screen:'WorkspaceScreen',action:{type:'teams'}});
+  resources.push({id:'team-library',label:'Personal & team spaces',icon:'fas fa-users',hint:'members and shared library',screen:'WorkspaceScreen',action:{type:'teams'}});
   // Saved outputs that are not conversations are NOT browse rows. They are old
   // untitled HTML snapshots (no conversation, tool or workflow recorded), so a
   // row can only read "Output"; listing them made unlabelled rows appear a few

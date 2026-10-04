@@ -13,32 +13,19 @@
       <MobileDirectory v-if="mobileView" v-show="mobileDirectoryOpen" title="Apps" view-id="apps" :groups="appsDirectory" @select="mobileSelectSection" />
       <div v-show="!mobileView || !mobileDirectoryOpen" class="mobile-section-body">
       <button v-if="mobileView" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Apps</button>
-      <!-- Providers Section -->
-      <div v-if="activeSection === 'providers'" class="connectors-content">
-        <div class="content-header">
-          <h2 class="content-title">Default AI Provider</h2>
-          <p class="content-subtitle">
-            The model Annie uses everywhere she isn't told otherwise — and what happens when it's unavailable.
-          </p>
-        </div>
-        <!--
-          ORDERED BY HOW OFTEN EACH ONE IS ACTUALLY TOUCHED, not by how new or
-          interesting the feature is:
-
-            01 Model        daily          ← the reason anyone opens this page
-            02 Fallback     a few × / year
-            03 Instructions monthly
-            04 Limits       once, ever     ← collapsed, values shown in header
-
-          Dynamic routing is deliberately NOT a fifth card. It is the second
-          answer to "which model", so it lives inside 01 as a mode — putting it
-          on top would place the rarest decision above the most common one.
-        -->
-        <div class="connectors-grid">
-          <ProviderSelector />
-          <FallbackProviders />
-          <ChatBehaviorSettings />
-        </div>
+      <!-- Your apps: one card per thing you connect (services/appCards). The
+           default view. AI models are not apps; they live in Settings › AI
+           Models, and ?section=providers is redirected there (showSection). -->
+      <div v-if="activeSection === 'apps'" class="connectors-content">
+        <AppsSection
+          @connect="connectAppCard"
+          @reconnect="reconnectAppCard"
+          @disconnect="disconnectAppCard"
+          @open-app="(name) => emit('screen-change', 'PluginsScreen', { select: { kind: 'plugin', id: name } })"
+          @open-widget="(id) => emit('screen-change', 'WidgetManagerScreen', { select: { kind: 'widget', id } })"
+          @build-app="emit('screen-change', 'PluginsScreen')"
+          @add-account="openAddProviderModal"
+        />
       </div>
 
       <!-- OAuth Connections Section -->
@@ -848,11 +835,10 @@ import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import providerAuthService from '@/services/providerAuthService.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
+import { describeApps } from '@/services/appCards.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
-import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
-import FallbackProviders from './components/FallbackProviders.vue';
-import ChatBehaviorSettings from './components/ChatBehaviorSettings.vue';
+import AppsSection from './components/AppsSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -873,9 +859,7 @@ export default {
     SimpleModal,
     ConnectorsPanel,
     PopupTutorial,
-    ProviderSelector,
-    FallbackProviders,
-    ChatBehaviorSettings,
+    AppsSection,
     Webhooks,
     EmailServer,
     Tooltip,
@@ -908,9 +892,8 @@ export default {
       }).catch((err) => console.warn('[Connectors] notify-changed failed:', err));
     }
     const terminalLines = ref(['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.']);
-    // Opens on the first row of the panel's nav. It was 'plugins' until that
-    // view left for its own screen.
-    const activeSection = ref('oauth');
+    // Opens on the first row of the panel's nav: Your apps.
+    const activeSection = ref('apps');
     watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
     const searchQuery = ref('');
     const selectedSecret = ref(null);
@@ -1246,10 +1229,10 @@ export default {
       }
     }
 
-    async function disconnectApp(app) {
+    async function disconnectApp(app, { alsoStops = '' } = {}) {
       const confirmDisconnect = await modalRef.value?.showModal({
         title: 'Confirm Disconnection',
-        message: `Are you sure you want to disconnect from ${app.name}?`,
+        message: `Are you sure you want to disconnect from ${app.name}?${alsoStops ? ` ${alsoStops} will stop working until you connect again.` : ''}`,
         confirmText: 'Disconnect',
         cancelText: 'Cancel',
         confirmClass: 'btn-danger',
@@ -1646,6 +1629,32 @@ export default {
       }
     }
 
+    // ── Your apps (AppsSection) → the flows above ──
+    // A card names a provider; the flows want this screen's provider row (it
+    // carries connectionType, instructions and health), so resolve it here.
+    function providerRowFor(card) {
+      const wanted = String(card?.providerId || '').toLowerCase();
+      const row = oauthProviders.value.find((p) => String(p.id || '').toLowerCase() === wanted);
+      if (!row) showAlert('Not available', `${card?.name || 'This app'} has no sign-in AGNT knows how to start. Ask in chat to connect it.`);
+      return row || null;
+    }
+    function connectAppCard(card) {
+      const row = providerRowFor(card);
+      if (row && !row.connected) handleOAuthAppClick(row);
+    }
+    // Reconnect starts a fresh sign-in even though a (failing) credential
+    // exists; handleOAuthAppClick would read "connected" and disconnect instead.
+    function reconnectAppCard(card) {
+      const row = providerRowFor(card);
+      if (!row) return;
+      if (row.connectionType === 'apikey') promptApiKey(row);
+      else connectOAuthApp(row);
+    }
+    function disconnectAppCard(card) {
+      const row = providerRowFor(card);
+      if (row) disconnectApp(row, { alsoStops: describeApps(card) });
+    }
+
     function handleOAuthAppClick(app) {
       const appId = (app.id || '').toLowerCase();
       if (app.connected) {
@@ -1772,7 +1781,18 @@ export default {
       //   }, 2000);
       // }
     }
+    // AI models are not apps. Every old way in (?section=providers from the
+    // "no provider" pill, Jump, saved links) lands on Settings › AI Models.
+    function openAiModels() {
+      emit('screen-change', 'SettingsScreen', { section: 'providers' });
+    }
+
     function showSection(next) {
+      if (next === 'providers') {
+        setInnerSection('apps');
+        openAiModels();
+        return;
+      }
       activeSection.value = next === 'api-keys' ? 'oauth' : next;
       resetForm();
       selectedSecret.value = null;
@@ -2453,6 +2473,11 @@ export default {
       connectOAuthApp,
       disconnectApp,
       handleOAuthAppClick,
+      connectAppCard,
+      reconnectAppCard,
+      disconnectAppCard,
+      openAiModels,
+      emit,
       isLoadingProviders,
       connectionHealth,
       refreshingHealth,

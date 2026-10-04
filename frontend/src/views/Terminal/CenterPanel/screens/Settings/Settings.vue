@@ -71,7 +71,7 @@
              lays out identically. -->
         <div v-else-if="activeSection === 'providers'" class="settings-content" data-section="providers">
           <div class="content-header">
-            <h2 class="content-title">Default AI Provider</h2>
+            <h2 class="content-title">AI Models</h2>
             <p class="content-subtitle">
               The model Annie uses everywhere she isn't told otherwise — and what happens when it's unavailable.
             </p>

@@ -85,7 +85,10 @@ const router = createRouter({
       meta: { terminalScreen: 'SettingsScreen' },
     },
     {
+      // The Apps screen. /connectors stays canonical (saved links, the mobile
+      // shell, SCREEN_ROUTES); /apps is the name people read on the rail.
       path: '/connectors',
+      alias: '/apps',
       name: 'TerminalConnectors',
       component: Terminal,
       meta: { requiresAuth: true, terminalScreen: 'ConnectorsScreen' },
@@ -97,11 +100,11 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'PluginsScreen' },
     },
     {
-      // AI Providers went back to being a view inside Connections. Kept as a
-      // redirect rather than deleted: the path shipped, and a bookmark that
-      // lands on the right page beats one that 404s.
+      // AI models are Settings › AI Models. Kept as a redirect rather than
+      // deleted: the path shipped, and a bookmark that lands on the right page
+      // beats one that 404s.
       path: '/providers',
-      redirect: { path: '/connectors', query: { section: 'providers' } },
+      redirect: { path: '/settings', query: { section: 'providers' } },
     },
     {
       path: '/agents',

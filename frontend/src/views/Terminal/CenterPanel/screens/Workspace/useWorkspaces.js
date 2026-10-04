@@ -484,7 +484,10 @@ const panelScopes = new Map();
 
 const persisted = load();
 
-const workspaces = ref(persisted?.workspaces || [blankWorkspace('Workspace 1', { bootShell: true })]);
+// New canvases are named "Canvas N": "workspace" now means a personal or team
+// space. Existing names are the user's and are never rewritten; stock-shell
+// detection compares against `defaultName`, not this literal.
+const workspaces = ref(persisted?.workspaces || [blankWorkspace('Canvas 1', { bootShell: true })]);
 const activeId = ref(
   persisted?.activeId && workspaces.value.some((w) => w.id === persisted.activeId)
     ? persisted.activeId
@@ -909,7 +912,7 @@ export function useWorkspaces() {
   }
 
   function createWorkspace(name) {
-    const ws = blankWorkspace(name || `Workspace ${workspaces.value.length + 1}`);
+    const ws = blankWorkspace(name || `Canvas ${workspaces.value.length + 1}`);
     workspaces.value.push(ws);
     activeId.value = ws.id;
     save();

@@ -345,7 +345,6 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
 import { BOTTOM_SECTIONS, ALL_SECTIONS, visibleTabs } from './sections.js';
-import { setInnerSection } from './innerSection.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
@@ -774,15 +773,13 @@ export default {
       onCustomPage.value = false;
       emit('screen-change', 'TracesScreen', { status: 'running' });
     }
-    // AI Providers is a view INSIDE Connections, so landing on it means naming
-    // the view as well as the screen. Both halves are needed and neither is
-    // redundant: the shared ref moves a Connections that is ALREADY mounted
-    // (KeepAlive means initializeScreen will not run again), and ?section=
-    // survives a reload so the pill produces a link someone can send.
+    // AI models are Settings › AI Models, not an app. Settings re-reads
+    // ?section= on every activation (initializeScreen), so this lands on the
+    // right view even when Settings is already mounted, and the link survives
+    // a reload.
     function goProviders() {
       onCustomPage.value = false;
-      setInnerSection('providers');
-      emit('screen-change', 'ConnectorsScreen', { section: 'providers' });
+      emit('screen-change', 'SettingsScreen', { section: 'providers' });
     }
     function goAbout() {
       onCustomPage.value = false;

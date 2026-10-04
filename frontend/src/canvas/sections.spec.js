@@ -148,33 +148,31 @@ describe('canvas sections registry', () => {
       expect(rows[0].startsGroup).toBe(true);
     });
 
-    it('renders the four intended main groups in order (today · work · assets · connectors)', () => {
-      // Four single-noun captions, in the order of the delegation chain a
-      // business user already understands: land and talk → what I want done
-      // and what came of it → the things I built that do it → the outside
-      // world they reach.
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['TODAY', 'WORK', 'ASSETS', 'CONNECTORS']);
+    it('renders the three main groups in order (work · plan · build)', () => {
+      // Three plain words a business user already does with a team: talk and
+      // get more (WORK) → see what is going on (PLAN) → the things that do
+      // the work (BUILD). SYSTEM (Members, the gear) sits below them.
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD']);
       // Same part of speech throughout: one noun each, no verbs, no "my".
       for (const caption of new Set(MAIN_SECTIONS.map((s) => s.group))) expect(caption).toMatch(/^[A-Z]+$/);
     });
 
-    it('the rail reads as ten plain nouns, in order', () => {
+    it('the rail reads as twelve plain nouns, in order', () => {
       // The whole point of the grouping: cover the captions, read the rows
       // aloud, and a first-time user can say what each one holds. No verbs,
       // no engineering words (runs, traces, artifacts, library, plugins,
-      // workspaces).
+      // workspaces, connectors).
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
-        'Chat', 'Dashboard',
-        'Goals', 'Activity', 'Files',
-        'Agents', 'Workflows', 'Tools',
-        'Apps', 'Market',
+        'Chat', 'Market',
+        'Dashboard', 'Goals', 'Activity', 'Files',
+        'Apps', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
-        'chat', 'dashboard',
-        'goals', 'traces', 'artifacts',
-        'agents', 'workflows', 'tools',
-        'apps', 'store',
+        'chat', 'store',
+        'dashboard', 'goals', 'traces', 'artifacts',
+        'apps', 'agents', 'workflows', 'tools', 'skills', 'widgets',
       ]);
+      for (const label of MAIN_SECTIONS.map((s) => s.label)) expect(label).not.toMatch(/plugin|connector|workspace|library/i);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -189,58 +187,55 @@ describe('canvas sections registry', () => {
     // conversation than to anything else on the rail. "Workspace" now means
     // only a shared cloud instance, so the tab is not called that.
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
-    expect(chat.group).toBe('TODAY');
+    expect(chat.group).toBe('WORK');
     expect(visibleTabs(chat, 'ChatScreen').map((t) => t.label)).toEqual(['CHAT', 'CANVAS']);
     expect(MAIN_SECTIONS.some((s) => s.id === 'workspaces')).toBe(false);
   });
 
-  it('Files (ArtifactsScreen) is a WORK row beside Activity, not a Chat tab', () => {
+  it('Files (ArtifactsScreen) is a PLAN row beside Activity, not a Chat tab', () => {
     // Runs, goals, agents and chats all produce files; only one of those is
     // a conversation, so a Chat tab was the wrong owner. The Chat inspector
     // keeps the provenance link (its Artifacts section ⇧-clicks here).
     const outputs = MAIN_SECTIONS.find((s) => s.id === 'artifacts');
-    expect(outputs?.group).toBe('WORK');
+    expect(outputs?.group).toBe('PLAN');
     expect(outputs.label).toBe('Files');
     expect(outputs.screens).toEqual([{ screen: 'ArtifactsScreen', label: 'FILES' }]);
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
     expect(chat.screens.some((t) => t.screen === 'ArtifactsScreen')).toBe(false);
   });
 
-  it('ASSETS is three rows — Agents · Workflows · Tools — the delegation chain', () => {
-    // An agent decides for itself; a workflow runs the same steps every time;
-    // tools are what both of them call. Three different things, three rows.
-    // A process is not staff and a tool has two callers, so none of the three
-    // may be a tab of another.
-    const assets = MAIN_SECTIONS.filter((s) => s.group === 'ASSETS');
-    expect(assets.map((s) => s.id)).toEqual(['agents', 'workflows', 'tools']);
+  it('BUILD is Apps first, then one row per kind of thing that does the work', () => {
+    // An app is the box the rest arrive in (a plugin and its sign-in are one
+    // app), so it leads. Then: an agent decides for itself; a workflow runs
+    // the same steps every time; tools are what both call; skills are what
+    // agents know; widgets show things. None may be a tab of another.
+    const build = MAIN_SECTIONS.filter((s) => s.group === 'BUILD');
+    expect(build.map((s) => s.id)).toEqual(['apps', 'agents', 'workflows', 'tools', 'skills', 'widgets']);
   });
 
-  it('Agents owns Skills and Memory as tabs, forge contextual; Approvals is not here', () => {
-    // Skills and Memory are properties of an agent and of nothing else.
-    // Approvals is a rule you set once, so it lives behind Settings.
+  it('Agents owns Memory as a tab; Skills is its own row; Approvals is not here', () => {
+    // Memory is a property of an agent and of nothing else. Skills are shared
+    // between agents and shipped by apps, so they are a row. Approvals is a
+    // rule you set once, so it lives behind Settings.
     const agents = MAIN_SECTIONS.find((s) => s.id === 'agents');
     expect(agents.screens[0].screen).toBe('AgentsScreen');
     // No AGENT FORGE: a new agent is a modal on the Agents page itself.
-    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY']);
+    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'MEMORY']);
+    expect(MAIN_SECTIONS.find((s) => s.id === 'skills').screens).toEqual([{ screen: 'SkillsScreen', label: 'SKILLS' }]);
     expect(agents.screens.some((t) => t.screen === 'AgentForgeScreen')).toBe(false);
     expect(agents.screens.some((t) => t.screen === 'LearningScreen')).toBe(false);
   });
 
-  it('Workflows is its own row paired with its forge; Tools owns Widgets as a tab', () => {
-    const workflows = MAIN_SECTIONS.find((s) => s.id === 'workflows');
-    expect(visibleTabs(workflows, 'WorkflowsScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
-    expect(visibleTabs(workflows, 'WorkflowForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
-
-    // Widgets have the shape of tools: made here, used elsewhere.
-    const tools = MAIN_SECTIONS.find((s) => s.id === 'tools');
-    expect(tools.screens[0].screen).toBe('ToolsScreen');
-    // Each forge trails its own page, so the strip pairs them: Tools | Tool
-    // Forge, then Widgets | Widget Forge. Same order from anywhere in the row.
-    const toolsStrip = ['TOOLS', 'TOOL FORGE', 'WIDGETS', 'WIDGET FORGE'];
-    expect(visibleTabs(tools, 'ToolsScreen').map((t) => t.label)).toEqual(toolsStrip);
-    expect(visibleTabs(tools, 'ToolForgeScreen').map((t) => t.label)).toEqual(toolsStrip);
-    expect(visibleTabs(tools, 'WidgetForgeScreen').map((t) => t.label)).toEqual(toolsStrip);
-    for (const id of ['automations', 'library', 'skills', 'widgets', 'marketplace', 'connect', 'plugins']) {
+  it('Workflows, Tools and Widgets are each a row paired with their forge', () => {
+    const strip = (id, screen) => visibleTabs(MAIN_SECTIONS.find((s) => s.id === id), screen).map((t) => t.label);
+    expect(strip('workflows', 'WorkflowsScreen')).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
+    expect(strip('workflows', 'WorkflowForgeScreen')).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
+    // A tool does something; a widget shows something. Not one row.
+    expect(strip('tools', 'ToolsScreen')).toEqual(['TOOLS', 'TOOL FORGE']);
+    expect(strip('tools', 'ToolForgeScreen')).toEqual(['TOOLS', 'TOOL FORGE']);
+    expect(strip('widgets', 'WidgetManagerScreen')).toEqual(['WIDGETS', 'WIDGET FORGE']);
+    expect(strip('widgets', 'WidgetForgeScreen')).toEqual(['WIDGETS', 'WIDGET FORGE']);
+    for (const id of ['automations', 'library', 'marketplace', 'connect', 'connectors', 'plugins']) {
       expect(MAIN_SECTIONS.some((s) => s.id === id)).toBe(false);
     }
   });
@@ -352,70 +347,62 @@ describe('canvas sections registry', () => {
       expect(sectionIds.filter((id) => !branches.has(id))).toEqual([]);
     });
 
-    it('the AI Provider page still renders all three cards, on both surfaces', () => {
+    it('AI Models lives in Settings only, with all three cards', () => {
       // It was briefly reduced to ProviderSelector alone while moving screens
       // between surfaces. Fallback and chat behaviour are the other two thirds
-      // of that page and vanished silently, because a missing card looks like
-      // a page that simply has less on it.
-      //
-      // Two surfaces draw it — Connections › AI Providers is where the rail,
-      // the "no provider" pill and the Jump palette all land, and Settings ›
-      // AI Provider is where anyone who looks in Settings first ends up. They
-      // import the same components, so the risk is not that a card renders
-      // differently but that one surface quietly stops listing it.
-      const blocks = {
-        Settings: settingsScreenSrc,
-        Connections: connectorsScreenSrc,
-      };
-      for (const [surface, src] of Object.entries(blocks)) {
-        const providerBlock = src.split("activeSection === 'providers'")[1]?.split('activeSection ===')[0] ?? '';
-        for (const card of ['<ProviderSelector />', '<FallbackProviders />', '<ChatBehaviorSettings />']) {
-          expect(providerBlock, `${surface} → ${card}`).toContain(card);
-        }
+      // of that page and vanish silently, because a missing card looks like a
+      // page that simply has less on it.
+      const providerBlock = settingsScreenSrc.split("activeSection === 'providers'")[1]?.split('activeSection ===')[0] ?? '';
+      for (const card of ['<ProviderSelector />', '<FallbackProviders />', '<ChatBehaviorSettings />']) {
+        expect(providerBlock, `Settings → ${card}`).toContain(card);
       }
+      expect(settingsDirectory[0].items.find((i) => i.id === 'providers').label).toBe('AI Models');
+      // AI models are not apps: the Apps screen draws no model page, and every
+      // old way in (?section=providers) is sent on to Settings.
+      expect(connectorsScreenSrc).not.toMatch(/activeSection === 'providers'/);
+      expect(connectorsScreenSrc).toMatch(/next === 'providers'[\s\S]{0,120}openAiModels\(\)/);
+      expect(connectorsScreenSrc).toMatch(/emit\('screen-change', 'SettingsScreen', \{ section: 'providers' \}\)/);
+      expect(canvasSrc).toMatch(/function goProviders\(\)[\s\S]{0,120}'SettingsScreen', \{ section: 'providers' \}/);
     });
   });
 
-  it('CONNECTORS is Apps (Apps · Plugins) then Store, last in the main rail; Settings is the foot alone', () => {
-    // To a business user "connect Slack" and "install the Slack plugin" are
-    // one intent, so Connections and Plugins are two tabs of one row. "Which
-    // model" is one more thing you connect, so it is a view inside Apps
-    // rather than a rail row of its own.
-    const connectors = MAIN_SECTIONS.filter((s) => s.group === 'CONNECTORS');
-    expect(connectors.map((s) => s.id)).toEqual(['apps', 'store']);
-    const apps = connectors[0];
-    // "Add-on" is not a thing AGNT has. The unit is a plugin, everywhere the
-    // user can read one: this tab, the mobile heading, and the system counts.
-    // Plugins is a row of the Apps sidebar, not a toolbar tab, but the row
-    // still owns the screen so the rail stays highlighted on it.
+  it('Apps leads BUILD (Your apps · App Forge); Market is WORK; Settings is the foot alone', () => {
+    // A plugin and the sign-in it needs are ONE app, so connecting and
+    // installing are one row. App Forge (PluginsScreen) is a row of the Apps
+    // sidebar, not a toolbar tab, but the row still owns the screen so the
+    // rail stays highlighted on it.
+    const apps = MAIN_SECTIONS.find((s) => s.id === 'apps');
+    expect(apps.group).toBe('BUILD');
+    expect(MAIN_SECTIONS.filter((s) => s.group === 'BUILD')[0].id).toBe('apps');
     expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS']);
     expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['APPS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
-    expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'MARKET' }]);
-    expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECTORS', 'CONNECTORS']);
+    const market = MAIN_SECTIONS.find((s) => s.id === 'store');
+    expect(market.group).toBe('WORK');
+    expect(market.screens).toEqual([{ screen: 'MarketplaceScreen', label: 'MARKET' }]);
     expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['settings']);
     // The attention badge rides the Apps row, and the canvas paints it as a warning there.
     expect(apps.badge).toBe('connect');
     expect(canvasSrc).toMatch(/'is-warn': item\.id === 'apps'/);
   });
 
-  it('AI Providers leads the Connect nav instead of taking a row; Plugins is its last row', () => {
+  it('the Apps nav leads with Your apps; App Forge opens its own screen; the plumbing is under Advanced', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    const items = appsDirectory.flatMap(g => g.items);
-    const connectNavIds = items.map(i => i.id);
-    expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
-    // Plugins is listed beside the connections, and opens its OWN screen
-    // rather than a section of Connectors (which has no plugins branch).
-    expect(connectNavIds.at(-1)).toBe('plugins');
-    expect(items.find(i => i.id === 'plugins').screen).toBe('PluginsScreen');
+    expect(appsDirectory.map((g) => g.label)).toEqual(['Apps', 'Advanced']);
+    const [main, advanced] = appsDirectory;
+    // Your apps is the default view (one card per thing you connect).
+    expect(main.items.map((i) => i.id)).toEqual(['apps', 'plugins', 'mcp-servers']);
+    expect(main.items.find((i) => i.id === 'plugins')).toMatchObject({ label: 'App Forge', screen: 'PluginsScreen' });
+    expect(advanced.items.map((i) => i.id)).toEqual(['oauth', 'email-server', 'webhooks']);
+    expect(connectorsScreenSrc).toMatch(/const activeSection = ref\('apps'\)/);
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
 
-    // Providers is the FIRST row of that nav, not a rail row. Ordering is the
-    // whole point of the row — it is the most-touched setup decision in the
-    // app — so assert the position, not merely that it is listed somewhere.
-    expect(connectNavIds[0]).toBe('providers');
+    // Models are not a row of the Apps nav, and no screen of its own.
+    const items = appsDirectory.flatMap((g) => g.items);
+    expect(items.some((i) => i.id === 'providers')).toBe(false);
     expect(MAIN_SECTIONS.some((s) => s.screens.some((t) => t.screen === 'ProvidersScreen'))).toBe(false);
+    for (const item of items) expect(item.label).not.toMatch(/plugin|connector/i);
   });
 
   it('every view the Connect panel lists has a branch on the Connect screen', () => {

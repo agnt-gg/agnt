@@ -6,19 +6,22 @@
 // Moving a screen between surfaces is therefore a re-parent in THIS file,
 // nothing else.
 //
-// THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Four captions, each a
-// single plain noun (TODAY · WORK · ASSETS · CONNECTORS); every row one plain
-// noun; nothing on the rail is a word only an engineer uses (runs, traces,
-// artifacts, library, plugins). Route names and screen names keep their old
-// identifiers — this file is about what a person READS, not what the code is
-// called.
+// THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Captions are single
+// plain words (WORK · PLAN · BUILD, then SYSTEM for Members and the gear);
+// every row is one plain noun; nothing on the rail is a word only an engineer
+// uses (runs, traces, artifacts, library, plugins). Route names and screen
+// names keep their old identifiers — this file is about what a person READS,
+// not what the code is called.
 //
-// The four captions follow the delegation chain a business user already
-// understands: you land and talk (TODAY), you say what you want done and see
-// what came of it (WORK), you build the things that do it — agents that decide
-// for themselves, workflows that run the same steps every time, and the tools
-// both of them call (ASSETS) — and you plug in the outside world (CONNECTORS).
-// ASSETS is the group that makes an account THEIRS: it is what they built.
+// The captions are three verbs a business user already does with a team:
+//   WORK  — talk to Annie, and get more from the Market.
+//   PLAN  — see what is going on: the overview, goals, what happened, files.
+//   BUILD — the things that do the work. Apps first, because an app is the
+//           box the rest arrive in: a plugin and the sign-in it needs are ONE
+//           app (services/appCards), and an app can carry agents, workflows,
+//           tools, skills and widgets. Then each of those on its own row.
+// AI models are not apps: "which model Annie thinks with" is Settings › AI
+// Models.
 //
 // GROUPS. Every main section declares a `group`. Sections are rendered in
 // array order and a caption + divider is emitted whenever the group changes,
@@ -50,14 +53,14 @@
 // you which of the hand-maintained lists you forgot.
 
 export const MAIN_SECTIONS = [
-  // ── TODAY ── where you land: talk, or see what is going on.
+  // ── WORK ── where you land: talk, or get more.
   {
     // Canvas is a tab of Chat, not a row: a chat with a custom canvas around
     // it — the same conversation, arranged — so it lives one tab to the right
-    // of the thread. It was labelled WORKSPACES until "workspace" came to mean
-    // one thing only: a shared cloud instance (the space switcher).
+    // of the thread. Not "workspace": that word is gone from the UI. The
+    // personal/team switcher is a SPACE; an arranged layout is a CANVAS.
     id: 'chat',
-    group: 'TODAY',
+    group: 'WORK',
     icon: 'fas fa-comments',
     label: 'Chat',
     screens: [
@@ -66,17 +69,27 @@ export const MAIN_SECTIONS = [
     ],
   },
   {
+    // One word everyone already understands. It sells apps, agents,
+    // workflows, tools and widgets, so it is where you get more of anything
+    // rather than a tab of any one thing.
+    id: 'store',
+    group: 'WORK',
+    icon: 'fas fa-store',
+    label: 'Market',
+    screens: [{ screen: 'MarketplaceScreen', label: 'MARKET' }],
+  },
+
+  // ── PLAN ── the overview, what I asked for, what happened, what came of it.
+  {
     id: 'dashboard',
-    group: 'TODAY',
+    group: 'PLAN',
     icon: 'fas fa-th-large',
     label: 'Dashboard',
     screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }],
   },
-
-  // ── WORK ── what I asked for, what happened, what came out of it.
   {
     id: 'goals',
-    group: 'WORK',
+    group: 'PLAN',
     icon: 'fas fa-bullseye',
     label: 'Goals',
     badge: 'goals',
@@ -87,7 +100,7 @@ export const MAIN_SECTIONS = [
     // uses for "what happened" (Slack, GitHub, their bank). "Runs" was the
     // engineer's word; "Traces" is what engineers call the record of one.
     id: 'traces',
-    group: 'WORK',
+    group: 'PLAN',
     icon: 'fas fa-stream',
     label: 'Activity',
     badge: 'traces',
@@ -100,25 +113,39 @@ export const MAIN_SECTIONS = [
     // the place, not the direction of flow. ("Artifacts" is the route and the
     // store; nobody says artifact.)
     id: 'artifacts',
-    group: 'WORK',
+    group: 'PLAN',
     icon: 'fas fa-folder',
     label: 'Files',
     screens: [{ screen: 'ArtifactsScreen', label: 'FILES' }],
   },
 
-  // ── ASSETS ── the things they built. This is what makes the account theirs.
+  // ── BUILD ── the things that do the work. This is what makes the account theirs.
   {
-    // An agent decides for itself. Skills (what it knows) and Memory (what it
-    // remembers) are properties of an agent and of nothing else, so they are
-    // its tabs. Approvals — what it may do without asking — is a rule you set
-    // once, so it lives behind Settings, not here.
+    // An app is a plugin and the sign-in it needs, as ONE card: connect
+    // Google once and Gmail, Sheets, Drive … are all on. It leads BUILD
+    // because an app is the box agents, workflows, tools, skills and widgets
+    // arrive in. App Forge (PluginsScreen) is a row of the Apps sidebar
+    // (appsDirectory), listed here unlabelled only so this row stays lit on it.
+    id: 'apps',
+    group: 'BUILD',
+    icon: 'fas fa-cube',
+    label: 'Apps',
+    badge: 'connect',
+    screens: [
+      { screen: 'ConnectorsScreen', label: 'APPS' },
+      { screen: 'PluginsScreen', label: 'APP FORGE', tab: false },
+    ],
+  },
+  {
+    // An agent decides for itself. Memory (what it remembers) is a property
+    // of an agent and of nothing else, so it is its tab. Approvals — what it
+    // may do without asking — is a rule you set once, so it is behind Settings.
     id: 'agents',
-    group: 'ASSETS',
+    group: 'BUILD',
     icon: 'fas fa-robot',
     label: 'Agents',
     screens: [
       { screen: 'AgentsScreen', label: 'AGENTS' },
-      { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'MemoryScreen', label: 'MEMORY' },
     ],
   },
@@ -126,7 +153,7 @@ export const MAIN_SECTIONS = [
     // A workflow runs the same steps every time — the procedure, not the
     // person. It is its own row, not a tab of Agents: a process is not staff.
     id: 'workflows',
-    group: 'ASSETS',
+    group: 'BUILD',
     icon: 'fas fa-project-diagram',
     label: 'Workflows',
     screens: [
@@ -136,51 +163,36 @@ export const MAIN_SECTIONS = [
   },
   {
     // Tools are called by agents AND by workflows, so neither may own them.
-    // Widgets have the same shape — made here, used on Home, in Workspaces
-    // and on custom pages — so they ride this row as a tab: a tool does
-    // something, a widget shows something.
     id: 'tools',
-    group: 'ASSETS',
+    group: 'BUILD',
     icon: 'fas fa-wrench',
     label: 'Tools',
     screens: [
       { screen: 'ToolsScreen', label: 'TOOLS' },
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
+    ],
+  },
+  {
+    // What an agent knows how to do. Its own row because a skill is shared:
+    // many agents use one, and apps ship them.
+    id: 'skills',
+    group: 'BUILD',
+    icon: 'fas fa-graduation-cap',
+    label: 'Skills',
+    screens: [{ screen: 'SkillsScreen', label: 'SKILLS' }],
+  },
+  {
+    // A tool does something; a widget SHOWS something — made here, used on
+    // the Dashboard, in a Canvas and on custom pages. Not a tool, so not a
+    // tab of Tools.
+    id: 'widgets',
+    group: 'BUILD',
+    icon: 'fas fa-shapes',
+    label: 'Widgets',
+    screens: [
       { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
-  },
-
-  // ── CONNECTORS ── the outside world, and where more of it comes from.
-  {
-    // To a business user "connect Slack" and "install the Slack plugin" are
-    // the same intent, so Plugins lives in the Apps sidebar beside AI
-    // Providers, API / OAuth and the rest (appsDirectory), not as a tab.
-    // PluginsScreen stays a separate screen the sidebar opens; it is listed
-    // here, unlabelled, only so the rail row stays highlighted on it.
-    // AI Providers is deliberately not a row either: "which model" is one more
-    // thing you connect, so it is the first view INSIDE Apps — see
-    // CONNECT_ITEMS in LeftPanel/ConnectorsPanel. MCP servers stay there for
-    // the same reason.
-    id: 'apps',
-    group: 'CONNECTORS',
-    icon: 'fas fa-plug',
-    label: 'Apps',
-    badge: 'connect',
-    screens: [
-      { screen: 'ConnectorsScreen', label: 'APPS' },
-      { screen: 'PluginsScreen', label: 'PLUGINS', tab: false },
-    ],
-  },
-  {
-    // One word everyone already understands. It sells agents, workflows,
-    // tools, widgets and plugins, so it is procurement for everything above
-    // rather than a tab of any one thing.
-    id: 'store',
-    group: 'CONNECTORS',
-    icon: 'fas fa-store',
-    label: 'Market',
-    screens: [{ screen: 'MarketplaceScreen', label: 'MARKET' }],
   },
 ];
 

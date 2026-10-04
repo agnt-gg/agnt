@@ -7,23 +7,23 @@
 // the assistant from triggering `simulateClick` on destructive controls.
 // `screen: null` means "visible on every screen" (e.g. sidebar, chrome).
 export const TOUR_TARGETS = [
-  // ── Sidebar: TODAY (global — always visible) ───────────────────────
-  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Workspaces)', safeToSimulate: true },
+  // ── Sidebar: WORK ──────────────────────────────────────────────────────────
+  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Canvas)', safeToSimulate: true },
+  { id: 'sidebar.store',            screen: null, description: 'Sidebar button: Market (get more apps, agents, workflows, tools and widgets)', safeToSimulate: true },
+
+  // ── Sidebar: PLAN ──────────────────────────────────────────────────────────
   { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Dashboard', safeToSimulate: true },
-
-  // ── Sidebar: WORK ──────────────────────────────────────────────────
-  { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
+  { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals', safeToSimulate: true },
   { id: 'sidebar.traces',           screen: null, description: 'Sidebar button: Activity (every workflow, goal and agent run)', safeToSimulate: true },
-  { id: 'sidebar.artifacts',         screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
+  { id: 'sidebar.artifacts',        screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
-  // ── Sidebar: ASSETS ────────────────────────────────────────────────
-  { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Skills, Memory)', safeToSimulate: true },
-  { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows', safeToSimulate: true },
-  { id: 'sidebar.tools',            screen: null, description: 'Sidebar button: Tools (tabs: Tools, Widgets)', safeToSimulate: true },
-
-  // ── Sidebar: CONNECTORS ────────────────────────────────────────────
-  { id: 'sidebar.apps',             screen: null, description: 'Sidebar button: Apps (tabs: Apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
-  { id: 'sidebar.store',            screen: null, description: 'Sidebar button: Store (the marketplace)', safeToSimulate: true },
+  // ── Sidebar: BUILD ─────────────────────────────────────────────────────────
+  { id: 'sidebar.apps',             screen: null, description: 'Sidebar button: Apps (Your apps — one card per connected service with the apps it turns on; App Forge; MCP Servers; Advanced — Keys & Sign-ins, Email Inbox, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Memory)', safeToSimulate: true },
+  { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows (tabs: Workflows, Workflow Forge)', safeToSimulate: true },
+  { id: 'sidebar.tools',            screen: null, description: 'Sidebar button: Tools (tabs: Tools, Tool Forge)', safeToSimulate: true },
+  { id: 'sidebar.skills',           screen: null, description: 'Sidebar button: Skills', safeToSimulate: true },
+  { id: 'sidebar.widgets',          screen: null, description: 'Sidebar button: Widgets (tabs: Widgets, Widget Forge)', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
   { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Approvals, Improvements)', safeToSimulate: true },

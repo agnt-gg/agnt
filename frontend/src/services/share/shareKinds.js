@@ -11,7 +11,8 @@ export const SHARE_KINDS = Object.freeze({
   skill: { label: 'Skill', icon: 'fas fa-brain', route: '/skills' },
   widget: { label: 'Widget', icon: 'fas fa-th-large', route: '/widget-manager' },
   goal: { label: 'Goal', icon: 'fas fa-bullseye', route: '/goals' },
-  workspace: { label: 'Workspace', icon: 'fas fa-columns', route: '/workspace' },
+  // The kind id is the backend's; people call an arranged layout a Canvas.
+  workspace: { label: 'Canvas', icon: 'fas fa-columns', route: '/workspace' },
   conversation: { label: 'Conversation', icon: 'fas fa-comments', route: '/chat' },
 });
 

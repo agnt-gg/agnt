@@ -54,13 +54,16 @@ describe('Settings → Navigation', () => {
     const listed = wrapper.findAll('.nav-row .item-copy strong').map((node) => node.text());
     const everyRow = groupedNavigation(PAGES.slice(0, 2), { includeHidden: true }).flatMap((group) => group.items);
     expect(listed).toEqual(everyRow.map((item) => item.label));
-    // Library and Members open a panel rather than a screen, but the user sees
-    // them on the rail, so they are configured here like anything else.
-    expect(listed).toContain('Library');
+    // Members opens a panel rather than a screen, but the user sees it on the
+    // rail, so it is configured here like anything else. Library is no longer
+    // a Studio row (BUILD lists every kind of thing you made).
     expect(listed).toContain('Members');
-    const library = everyRow.find((item) => item.id === 'library');
-    expect(wrapper.findAll('.nav-row').at(listed.indexOf('Library')).text()).toContain('Built-in page');
-    expect(library.key).toBe('virtual:library');
+    expect(listed).not.toContain('Library');
+    const members = everyRow.find((item) => item.id === 'teams');
+    expect(wrapper.findAll('.nav-row').at(listed.indexOf('Members')).text()).toContain('Built-in page');
+    expect(members.key).toBe('virtual:teams');
+    // Every BUILD row is configurable, Skills and Widgets included.
+    for (const label of ['Apps', 'Skills', 'Widgets']) expect(listed).toContain(label);
   });
 
   it('a toggle here changes what the rail will render', () => {

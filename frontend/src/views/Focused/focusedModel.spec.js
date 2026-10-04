@@ -8,9 +8,6 @@ import {
   isIconClass,
   glyphKind,
   recentConversations,
-  connectorCards,
-  connectorCard,
-  categoryLabel,
   CLI_DISCONNECT_ACTIONS,
   logoSlug,
   logoUrl,
@@ -200,76 +197,8 @@ describe('recents', () => {
   });
 });
 
-describe('connectors', () => {
-  const providers = [
-    { id: 'Slack', name: 'Slack', connectionType: 'oauth' },
-    { id: 'openai', name: 'OpenAI', connectionType: 'apikey', instructions: 'Paste a key from platform.openai.com' },
-    { id: 'notion', name: 'Notion', connectionType: 'oauth' },
-    { id: 'slack', name: 'Slack dup' },
-    { id: 'claude-code', name: 'Claude Code', connectionType: 'oauth' },
-  ];
-
-  it('splits connected from available, case-insensitively, without duplicates', () => {
-    const { connected, available } = connectorCards(providers, ['SLACK', 'openai']);
-    expect(connected.map((c) => [c.id, c.status])).toEqual([
-      ['openai', 'API key'],
-      ['slack', 'Connected'],
-    ]);
-    expect(available.map((c) => c.id)).toEqual(['claude-code', 'notion']);
-  });
-
-  it('says how each one connects, and keeps the catalogue\u2019s own id and instructions', () => {
-    const { connected, available } = connectorCards(providers, ['openai']);
-    expect(connected[0]).toMatchObject({ providerId: 'openai', connectionType: 'apikey', instructions: 'Paste a key from platform.openai.com' });
-    expect(available.find((c) => c.id === 'claude-code').connectionType).toBe('cli');
-    expect(available.find((c) => c.id === 'slack').providerId).toBe('Slack');
-  });
-
-  it('account-native AGNT is named clearly and does not ask for a key', () => {
-    const card = connectorCard([], ['agnt'], 'agnt');
-    expect(card).toMatchObject({ name: 'AGNT Flash', connectionType: 'account', connected: true });
-  });
-
-  it('keeps a connection the catalogue does not list', () => {
-    const { connected } = connectorCards([], ['gemini-cli']);
-    expect(connected[0]).toMatchObject({ id: 'gemini-cli', connected: true, connectionType: 'cli' });
-  });
-
-  it('connectorCard finds one by id, any case', () => {
-    expect(connectorCard(providers, ['openai'], 'OpenAI').name).toBe('OpenAI');
-    expect(connectorCard(providers, [], 'nope')).toBeNull();
-  });
-
-  // The remote catalogue (/auth/providers) is snake_case with categories as a
-  // JSON string. Reading only connectionType made every remote app look like
-  // it had no way to connect, so its page offered "Ask in chat" instead of
-  // Connect.
-  it('reads the remote catalogue\u2019s snake_case rows', () => {
-    const remote = [
-      { id: 'slack', name: 'Slack', connection_type: 'oauth', categories: '["communication","messaging"]', instructions: 'Send messages and manage channels.' },
-      { id: 'deepseek', name: 'DeepSeek', connection_type: 'apikey', categories: '["ai"]', instructions: 'Enter your DeepSeek API key.' },
-    ];
-    const { connected, available } = connectorCards(remote, ['deepseek']);
-    expect(available[0]).toMatchObject({ id: 'slack', connectionType: 'oauth', category: 'Communication', description: 'Send messages and manage channels.' });
-    expect(connected[0]).toMatchObject({ id: 'deepseek', connectionType: 'apikey', category: 'AI', status: 'API key' });
-  });
-
-  it('tolerates a malformed categories string', () => {
-    const [card] = connectorCards([{ id: 'x', name: 'X', categories: 'crm, sales' }], []).available;
-    expect(card.category).toBe('CRM');
-    expect(connectorCards([{ id: 'y', name: 'Y', categories: null }], []).available[0].category).toBe('');
-  });
-
-  it('names the catalogue\u2019s mixed-case categories one way', () => {
-    expect(['ai', 'AI', 'vps', 'Web Scraping', 'social media', 'data-science', 'Payments', '', null].map(categoryLabel))
-      .toEqual(['AI', 'AI', 'VPS', 'Web scraping', 'Social media', 'Data science', 'Payments', '', '']);
-  });
-
-  it('search matches what a card says, not just its name', () => {
-    const remote = [{ id: 'slack', name: 'Slack', categories: '["messaging"]', instructions: 'Send messages' }, { id: 'notion', name: 'Notion' }];
-    expect(connectorCards(remote, [], 'messaging').available.map((c) => c.id)).toEqual(['slack']);
-  });
-
+// Card lists are services/appCards (appCards.spec.js); logos stay Focused's.
+describe('connector logos', () => {
   it('logos: the Simple Icons slug for each provider, mapped where the id differs', () => {
     expect(logoSlug('slack')).toBe('slack');
     expect(logoSlug('Google-Drive')).toBe('googledrive');

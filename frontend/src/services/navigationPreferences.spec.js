@@ -4,7 +4,9 @@ import {
   addNavigationGroup,
   groupedNavigation,
   loadNavigationPreferences,
+  migrateLegacyGroups,
   navigationItemKey,
+  NAVIGATION_STORAGE_KEY,
   renameNavigationGroup,
   reorderNavigationItem,
   resetNavigationPreferences,
@@ -30,8 +32,9 @@ describe('navigation preferences', () => {
   it('puts a row on the rail once the account unlocks it, in its registry group and order', () => {
     unlock('apps', 'workflows');
     const items = groupedNavigation().flatMap((group) => group.items);
-    expect(items.map((item) => item.id)).toEqual(['chat', 'workflows', 'apps']);
-    expect(groupedNavigation().map((g) => g.name)).toEqual(['TODAY', 'ASSETS', 'CONNECTORS']);
+    // Apps leads BUILD: it is the box the rest arrive in.
+    expect(items.map((item) => item.id)).toEqual(['chat', 'apps', 'workflows']);
+    expect(groupedNavigation().map((g) => g.name)).toEqual(['WORK', 'BUILD']);
   });
 
   it('lets an explicit choice in Settings beat the onion in both directions', () => {
@@ -51,12 +54,14 @@ describe('navigation preferences', () => {
     expect(groupedNavigation().flatMap((group) => group.items).map((item) => item.id)).toEqual(['chat']);
   });
 
-  it('lists Library and Teams as configurable rows, not rail hardcoding', () => {
-    // They own no screen, so they are not in MAIN_SECTIONS — but they are rows
+  it('lists Members as a configurable SYSTEM row, and Library not at all', () => {
+    // Members owns no screen, so it is not in MAIN_SECTIONS — but it is a row
     // the user sees, and the rail may not carry a row Settings cannot reach.
+    // Library duplicated the BUILD rows, so Studio's rail no longer has it.
     unlock('library', 'teams');
-    const library = groupedNavigation([], { includeHidden: true }).flatMap((group) => group.items).find((item) => item.id === 'library');
-    expect(library).toMatchObject({ type: 'virtual', key: 'virtual:library', group: 'ASSETS', label: 'Library' });
+    const all = groupedNavigation([], { includeHidden: true }).flatMap((group) => group.items);
+    expect(all.find((item) => item.id === 'teams')).toMatchObject({ type: 'virtual', key: 'virtual:teams', group: 'SYSTEM', label: 'Members' });
+    expect(all.some((item) => item.id === 'library')).toBe(false);
 
     updateNavigationItem('virtual:teams', { visible: false, group: 'Focus' });
     const visible = groupedNavigation().flatMap((group) => group.items);
@@ -68,7 +73,7 @@ describe('navigation preferences', () => {
     // The old bug was the reverse of a fallback: the rail dropped chat, goals
     // and artifacts unconditionally, so the three default-visible rows could
     // never appear and Settings described a sidebar nobody had.
-    for (const key of ['section:chat', 'section:goals', 'section:artifacts', 'virtual:library', 'virtual:teams']) {
+    for (const key of ['section:chat', 'section:goals', 'section:artifacts', 'virtual:teams']) {
       updateNavigationItem(key, { visible: false });
     }
     expect(groupedNavigation().flatMap((group) => group.items)).toEqual([]);
@@ -98,6 +103,45 @@ describe('navigation preferences', () => {
     renameNavigationGroup('FOCUS', 'Daily');
     expect(loadNavigationPreferences().groups).toContain('DAILY');
     expect(groupedNavigation().find((group) => group.name === 'DAILY').items[0].id).toBe('chat');
+  });
+
+  describe('layouts saved under the old captions (TODAY · ASSETS · CONNECTORS)', () => {
+    const legacy = {
+      version: 1,
+      groups: ['TODAY', 'WORK', 'ASSETS', 'CONNECTORS', 'PERSONAL', 'FOCUS'],
+      items: {
+        'section:tools': { visible: true, order: 2 },
+        'section:goals': { visible: false, order: 0 },
+        'section:store': { group: 'CONNECTORS', order: 1 },
+        'section:chat': { group: 'FOCUS', order: 0 },
+      },
+    };
+
+    it('moves onto the new captions, keeping visibility and the groups the person made', () => {
+      localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(legacy));
+      const prefs = loadNavigationPreferences();
+      expect(prefs.groups).toEqual(['WORK', 'PLAN', 'BUILD', 'SYSTEM', 'PERSONAL', 'FOCUS']);
+      expect(prefs.items['section:goals']).toEqual({ visible: false });
+      // Parked under an old caption → back to its built-in group.
+      expect(prefs.items['section:store']).toEqual({});
+      // A group the person made survives; old within-group orders do not.
+      expect(prefs.items['section:chat']).toEqual({ group: 'FOCUS' });
+    });
+
+    it('renders the rail in the new order, with no empty legacy caption', () => {
+      localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(legacy));
+      unlock('apps', 'tools', 'store', 'dashboard');
+      const names = groupedNavigation().map((g) => g.name);
+      expect(names).toEqual(['WORK', 'PLAN', 'BUILD', 'FOCUS']);
+      expect(groupedNavigation().find((g) => g.name === 'BUILD').items.map((i) => i.id)).toEqual(['apps', 'tools']);
+    });
+
+    it('is idempotent: a migrated or new layout is returned unchanged', () => {
+      const once = migrateLegacyGroups(legacy);
+      expect(migrateLegacyGroups(once)).toBe(once);
+      const fresh = { version: 1, groups: ['WORK', 'PERSONAL'], items: { 'section:chat': { order: 3 } } };
+      expect(migrateLegacyGroups(fresh)).toBe(fresh);
+    });
   });
 
   it('recovers from corrupt storage and notifies the live rail on reset', () => {
