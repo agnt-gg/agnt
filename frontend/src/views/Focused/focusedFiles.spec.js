@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortFileItems, FILE_SORTS } from './focusedFiles.js';
+import { sortFileItems, FILE_SORTS, newFilePath } from './focusedFiles.js';
 
 const listing = [
   { name: 'b.md', type: 'file', modifiedAt: '2026-01-02T00:00:00Z' },
@@ -32,5 +32,19 @@ describe('Files sort', () => {
   it('is safe on nothing', () => {
     expect(sortFileItems(null)).toEqual([]);
     expect(sortFileItems([null, { name: 'x', type: 'file' }])).toHaveLength(1);
+  });
+});
+
+describe('New file', () => {
+  it('lands in the folder the user is in', () => {
+    expect(newFilePath('', 'notes.md')).toBe('notes.md');
+    expect(newFilePath('reports/q3', ' plan.md ')).toBe('reports/q3/plan.md');
+    expect(newFilePath('/reports//q3/', 'plan.md')).toBe('reports/q3/plan.md');
+  });
+  it('takes a file name, never a path out of the folder', () => {
+    expect(() => newFilePath('a', '')).toThrow('Give the file a name.');
+    expect(() => newFilePath('a', '   ')).toThrow('Give the file a name.');
+    for (const bad of ['../x.md', 'b/x.md', 'b\\x.md', '..', '.']) expect(() => newFilePath('a', bad), bad).toThrow('Use a file name, not a folder path.');
+    for (const bad of ['a:b', 'x?.md', 'x*.md', 'x|y', 'x<y', 'x"y']) expect(() => newFilePath('', bad), bad).toThrow(/can.t contain/);
   });
 });

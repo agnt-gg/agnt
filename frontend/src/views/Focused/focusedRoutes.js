@@ -65,24 +65,30 @@ export function focusedLocation(screen, query = {}) {
   if (str(query.studio) === '1') return null;
   const isNew = str(query.new) === '1';
 
+  // `?new=1` on a Library screen opens Focused's own blank editor for that
+  // kind. Creating never detours through the chat.
+  const item = (tab, kind) => {
+    const id = selected(query, kind);
+    return id ? library(tab, id) : isNew ? library(tab, null, { isNew: true }) : library(tab);
+  };
+
   switch (screen) {
     case 'AgentsScreen':
-      // "New agent" is a request to Annie in Focused (as in the demo), so a
-      // bare ?new=1 still lands on the list; the button seeds the chat.
-      return library('agents', selected(query, 'agent'));
+      return item('agents', 'agent');
     case 'WorkflowsScreen':
-      return library('workflows', selected(query, 'workflow'));
+      return item('workflows', 'workflow');
     case 'WorkflowForgeScreen':
-      // An existing workflow opens in Focused; the blank canvas is Studio's.
-      return str(query.id) ? library('workflows', str(query.id)) : null;
+      // An existing workflow opens in Focused, and so does a new one (a bare
+      // forge is "New workflow"). "Open the full editor" sends ?studio=1.
+      return str(query.id) ? library('workflows', str(query.id)) : library('workflows', null, { isNew: true });
     case 'ToolsScreen':
-      return library('tools', selected(query, 'tool'));
+      return item('tools', 'tool');
     case 'ToolForgeScreen':
-      return str(query['tool-id']) ? library('tools', str(query['tool-id'])) : null;
+      return str(query['tool-id']) ? library('tools', str(query['tool-id'])) : library('tools', null, { isNew: true });
     case 'SkillsScreen':
-      return library('skills', selected(query, 'skill'));
+      return item('skills', 'skill');
     case 'WidgetManagerScreen':
-      return library('widgets', selected(query, 'widget'));
+      return item('widgets', 'widget');
     case 'ArtifactsScreen':
       // Files: `artifact:` opens a file (same intent Studio's Files reads),
       // `dir:` a folder. Both are resolved against the workspace by the page.
@@ -121,6 +127,7 @@ export function routeFor(loc) {
   if (loc.page === 'library') {
     const screen = LIBRARY_TAB_SCREENS[loc.tab] || LIBRARY_TAB_SCREENS.agents;
     if (loc.item) return [screen, { select: { kind: LIBRARY_ITEM_KIND[loc.tab] || 'agent', id: loc.item } }];
+    if (loc.isNew && loc.tab !== 'files') return [screen, { newGoal: true }]; // changeScreen's `new=1`
     if (loc.tab === 'files' && loc.dir) return [screen, { select: { kind: 'dir', id: loc.dir } }];
     return [screen, {}];
   }

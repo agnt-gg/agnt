@@ -44,7 +44,7 @@
     action-label="New file"
     v-model:query="query"
     :search-placeholder="`Search ${dir ? baseName(dir) : 'files'}`"
-    @action="nav.ask(createAsk('file', { within: dir }))"
+    @action="newFile"
   >
     <template #tabs><slot name="tabs" /></template>
 
@@ -96,9 +96,9 @@ import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue'
 import FocusedEditor from './FocusedEditor.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import PdfFrame from '@/views/_components/common/PdfFrame.vue';
-import { FOCUSED_PAGES, createAsk, editAsk } from './focusedModel.js';
+import { FOCUSED_PAGES, editAsk } from './focusedModel.js';
 import { ago } from './focusedEditors.js';
-import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf, FILE_SORTS, sortFileItems } from './focusedFiles.js';
+import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf, FILE_SORTS, sortFileItems, newFilePath } from './focusedFiles.js';
 import { getTree, getFile, saveFile, rawFileUrl } from '@/services/fileSystemService.js';
 import { getWorkspaceRoot, artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { openLocalPath } from '@/utils/openLocalFile.js';
@@ -159,6 +159,25 @@ async function loadDir() {
 }
 const openDir = (path) => nav.go({ page: 'library', tab: 'files', dir: path });
 const openFile = (path) => nav.go({ page: 'library', tab: 'files', item: path });
+
+// New file: named here, created empty in this folder, then opened to write.
+async function newFile() {
+  const name = await nav.prompt({
+    title: 'New file',
+    message: props.dir ? `In ${props.dir}` : 'In your workspace',
+    placeholder: 'notes.md',
+    confirmText: 'Create',
+  });
+  if (name === null) return;
+  try {
+    const path = newFilePath(props.dir, name);
+    if (items.value.some((i) => i.path === path || i.name === baseName(path))) throw new Error(`\u201c${baseName(path)}\u201d already exists here.`);
+    await saveFile(path, '');
+    openFile(path);
+  } catch (e) {
+    nav.toast(e?.message || String(e));
+  }
+}
 
 // ── File ───────────────────────────────────────────────────────────────────
 // The intent may be an absolute file:/// URL (chat links) or a relative path;

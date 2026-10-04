@@ -1,14 +1,14 @@
 <template>
   <FocusedEditor
-    v-if="agent && loaded"
+    v-if="(agent || isNew) && loaded"
     kind-label="Agents"
     back-label="Agents"
     v-model:name="v.name"
     v-model:description="v.description"
     name-placeholder="Agent name"
     description-placeholder="What this agent does"
-    :chat-ask="editAsk('agent', v.name || agent.name)"
-    delete-label="Delete agent"
+    :chat-ask="isNew ? '' : editAsk('agent', v.name || agent.name)"
+    :delete-label="isNew ? '' : 'Delete agent'"
     :meta="lastUsed"
     :dirty="dirty"
     :saving="saving"
@@ -112,12 +112,14 @@ import { agentValues, agentPayload, cleanIcon, ago } from './focusedEditors.js';
 import { editAsk } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 
-const props = defineProps({ agentId: { type: String, required: true } });
+// No agentId = a new agent: a blank form, created on Save.
+const props = defineProps({ agentId: { type: String, default: null } });
 const store = useStore();
 const nav = inject('focusedNav');
 
+const isNew = computed(() => !props.agentId);
 const loadingAgents = ref(false);
-const agent = computed(() => (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(props.agentId)) || null);
+const agent = computed(() => (isNew.value ? null : (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(props.agentId)) || null));
 
 const v = reactive(agentValues({}));
 const tools = reactive({ open: false, chosen: [] });
@@ -196,7 +198,16 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
-    const payload = { ...agentPayload(agent.value, v), toolAccessMode: tools.open ? 'open' : 'restricted', assignedTools: [...tools.chosen] };
+    const payload = { ...agentPayload(agent.value || {}, v), toolAccessMode: tools.open ? 'open' : 'restricted', assignedTools: [...tools.chosen] };
+    if (isNew.value) {
+      const res = await store.dispatch('agents/createAgent', payload);
+      const id = res?.agentId || res?.agent?.id;
+      if (!id) throw new Error('AGNT didn\u2019t return the new agent.');
+      baseline.value = snapshot(); // nothing left unsaved: leave without asking
+      nav.toast('Agent created.');
+      nav.go({ page: 'library', tab: 'agents', item: String(id) });
+      return;
+    }
     await store.dispatch('agents/updateAgent', payload);
     load({ ...agent.value, ...payload });
     nav.toast('Agent saved.');
@@ -207,7 +218,7 @@ async function save() {
   }
 }
 function discard() {
-  if (agent.value) load(agent.value);
+  load(agent.value || {});
   error.value = '';
 }
 async function back() {
@@ -226,7 +237,9 @@ async function remove() {
 }
 
 onMounted(async () => {
-  if (!agent.value) {
+  if (isNew.value) {
+    load({});
+  } else if (!agent.value) {
     loadingAgents.value = true;
     // fetchAgents returns at once when a boot fetch is already running; the
     // watch below loads the agent when that one lands.
@@ -241,6 +254,6 @@ onMounted(async () => {
 // Arrived late, or saved elsewhere (Annie, Studio) while open and untouched
 // here: follow it.
 watch(agent, (a) => {
-  if (a && (!loaded.value || !dirty.value)) load(a);
+  if (a && !isNew.value && (!loaded.value || !dirty.value)) load(a);
 });
 </script>

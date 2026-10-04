@@ -14,7 +14,8 @@
     :read-only="readOnly"
     :note="note"
     :meta="edited"
-    :chat-ask="readOnly ? '' : editAsk(tab.noun, v.name)"
+    :name-placeholder="isNew ? `Name your ${tab.noun}` : 'Name'"
+    :chat-ask="readOnly || isNew ? '' : editAsk(tab.noun, v.name)"
     :delete-label="deleteLabel"
     :dirty="dirty"
     :saving="saving"
@@ -35,7 +36,7 @@
         <h3>Steps</h3>
         <span class="focused-edit-hint">{{ v.nodes.length }} step{{ v.nodes.length === 1 ? '' : 's' }} · runs top to bottom</span>
       </div>
-      <p v-if="!v.nodes.length" class="focused-empty">No steps yet. Ask in chat to add some.</p>
+      <p v-if="!v.nodes.length" class="focused-empty">{{ isNew ? 'No steps yet. Save it, then open the full editor to add steps.' : 'No steps yet. Open the full editor to add some.' }}</p>
       <div class="focused-step-list">
         <details v-for="(id, i) in stepOrder" :key="id" class="focused-step-card" :open="i === 0">
           <summary class="focused-step-sum">
@@ -200,14 +201,17 @@ import {
   skillPayload,
   widgetValues,
   widgetUpdates,
+  blankRecord,
   humanKey,
   ago,
 } from './focusedEditors.js';
 
 const props = defineProps({
   kind: { type: String, required: true }, // workflows | tools | skills | widgets
-  itemId: { type: String, required: true },
+  // No itemId = a new one: a blank record of its kind, created on Save.
+  itemId: { type: String, default: null },
 });
+const isNew = computed(() => !props.itemId);
 const store = useStore();
 const nav = inject('focusedNav');
 const tab = computed(() => libraryTab(props.kind));
@@ -232,11 +236,12 @@ const note = computed(() => {
   if (props.kind === 'workflows' && isRunningStatus(raw.value.status)) return 'This workflow is running. Saving restarts it with your changes.';
   return '';
 });
-const deleteLabel = computed(() => (readOnly.value || props.kind === 'tools' ? '' : `Delete ${tab.value.noun}`));
-const fullEditor = computed(() => ['workflows', 'tools'].includes(props.kind));
+const deleteLabel = computed(() => (isNew.value || readOnly.value || props.kind === 'tools' ? '' : `Delete ${tab.value.noun}`));
+const fullEditor = computed(() => !isNew.value && ['workflows', 'tools'].includes(props.kind));
 
 // ── Loading, through the shared stores ─────────────────────────────────────
 async function fetchRaw() {
+  if (isNew.value) return blankRecord(props.kind);
   if (props.kind === 'workflows') return store.dispatch('workflows/fetchWorkflowById', props.itemId);
   if (props.kind === 'tools') return store.dispatch('tools/fetchCustomTool', props.itemId);
   if (props.kind === 'widgets') {
@@ -328,6 +333,15 @@ watch(
 );
 
 // ── Saving, through the shared stores ──────────────────────────────────────
+/** Creates the new item and returns its id. */
+async function create() {
+  const blank = blankRecord(props.kind);
+  if (props.kind === 'workflows') return (await store.dispatch('workflows/createWorkflow', workflowPayload(blank, v.value)))?.id;
+  if (props.kind === 'tools') return (await store.dispatch('tools/createTool', toolPayload(blank, v.value)))?.id;
+  if (props.kind === 'skills') return (await store.dispatch('skills/createSkill', skillPayload(v.value)))?.skill?.id;
+  const widget = await store.dispatch('widgetDefinitions/createDefinition', { ...widgetUpdates(widgetValues({}), v.value), widget_type: blank.widget_type });
+  return widget?.id;
+}
 async function persist() {
   if (props.kind === 'workflows') {
     const fresh = await store.dispatch('workflows/fetchWorkflowById', props.itemId);
@@ -357,6 +371,14 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
+    if (isNew.value) {
+      const id = await create();
+      if (!id) throw new Error('AGNT didn\u2019t return the new item.');
+      baseline.value = JSON.stringify(v.value); // nothing left unsaved
+      nav.toast(`${tab.value.noun.charAt(0).toUpperCase() + tab.value.noun.slice(1)} created.`);
+      nav.go({ page: 'library', tab: props.kind, item: String(id) });
+      return;
+    }
     apply(await persist());
     nav.toast('Saved.');
   } catch (e) {

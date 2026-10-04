@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { reactive } from 'vue';
 
 const dispatch = vi.fn(() => Promise.resolve());
@@ -17,8 +17,9 @@ const catalogue = Array.from({ length: 15 }, (_, i) => ({
   categories: '["productivity"]',
   instructions: `Does thing ${i}`,
 }));
-function mountPage() {
+function mountPage(opts = {}) {
   return mount(FocusedConnectors, {
+    ...opts,
     props: { item: null },
     global: { provide: { focusedNav: nav }, stubs: { FocusedConnectorLogo: true, FocusedConnection: true } },
   });
@@ -69,12 +70,22 @@ describe('Focused Connectors', () => {
     w.unmount();
   });
 
-  it('a card opens its connection page; Add asks in chat', async () => {
+  it('a card opens its connection page', async () => {
     const w = mountPage();
     await w.find('.focused-connector-card').trigger('click');
     expect(nav.go).toHaveBeenCalledWith({ page: 'connectors', item: 'app00' });
+    w.unmount();
+  });
+
+  it('Add shows every connector to pick from, here, never the chat', async () => {
+    getters['appAuth/connectedApps'] = ['app03'];
+    const w = mountPage({ attachTo: document.body });
     await w.find('.focused-primary').trigger('click');
-    expect(nav.ask).toHaveBeenCalledWith('Connect AGNT to ');
+    await flushPromises();
+    expect(nav.ask).not.toHaveBeenCalled();
+    expect(tabLabels(w)[1]).toEqual(['Discover', true]);
+    expect(w.findAll('.focused-connector-card')).toHaveLength(15); // uncapped
+    expect(document.activeElement).toBe(w.find('input[type="search"]').element);
     w.unmount();
   });
 

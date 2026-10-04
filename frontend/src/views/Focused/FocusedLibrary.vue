@@ -1,9 +1,10 @@
 <template>
-  <!-- An open item: Focused's own editor for its kind. -->
-  <FocusedAgentEditor v-if="location.item && tab.id === 'agents'" :key="'a:' + location.item" :agent-id="location.item" />
+  <!-- An open item, or a new one (blank, created on Save): Focused's own
+       editor for its kind. -->
+  <FocusedAgentEditor v-if="(location.item || location.isNew) && tab.id === 'agents'" :key="'a:' + (location.item || 'new')" :agent-id="location.item" />
   <FocusedAssetEditor
-    v-else-if="location.item && tab.id !== 'files'"
-    :key="tab.id + ':' + location.item"
+    v-else-if="(location.item || location.isNew) && tab.id !== 'files'"
+    :key="tab.id + ':' + (location.item || 'new')"
     :kind="tab.id"
     :item-id="location.item"
   />
@@ -19,7 +20,7 @@
     :action-label="'New ' + tab.noun"
     v-model:query="query"
     :search-placeholder="`Search ${(counts[tab.id] ?? '').toLocaleString()} ${tab.label.toLowerCase()}`.replace('  ', ' ')"
-    @action="nav.ask(createAsk(tab.noun))"
+    @action="nav.go({ page: 'library', tab: tab.id, isNew: true })"
   >
     <template #tabs><LibraryTabs :tabs="tabs" :current="tab.id" :counts="counts" @select="selectTab" /></template>
 
@@ -56,7 +57,7 @@ import FocusedAssetEditor from './FocusedAssetEditor.vue';
 import FocusedFiles from './FocusedFiles.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows, createAsk } from './focusedModel.js';
+import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows } from './focusedModel.js';
 import { isRunningStatus } from './focusedEditors.js';
 
 const props = defineProps({ location: { type: Object, required: true } });

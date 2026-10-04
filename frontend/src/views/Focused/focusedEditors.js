@@ -245,6 +245,20 @@ export function widgetUpdates(base, values) {
   return updates;
 }
 
+// ── New items ─────────────────────────────────────────────────────────────
+
+/**
+ * The stored record a new item starts from, so the same xValues/xPayload
+ * pair edits it and the create action saves it. A new tool is a prompt (AI)
+ * tool: the no-code kind this editor can complete on its own.
+ */
+export function blankRecord(kind) {
+  if (kind === 'workflows') return { name: '', description: '', nodes: [], edges: [] };
+  if (kind === 'tools') return { title: '', description: '', category: 'custom', base: 'AI', code: '', parameters: { instructions: '', provider: '', model: '' }, isShareable: false };
+  if (kind === 'widgets') return { name: '', description: '', widget_type: 'html', source_code: '' };
+  return { name: '', description: '', instructions: '', category: 'general' };
+}
+
 // ── Workflow step settings ─────────────────────────────────────────────────
 
 /** "maxRetries" / "max_retries" → "Max retries". */

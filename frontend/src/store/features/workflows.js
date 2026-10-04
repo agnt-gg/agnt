@@ -283,7 +283,10 @@ export default {
         commit('SET_LOADING', false);
       }
     },
-    async createWorkflow({ commit, state }, workflow) {
+    // The server has no POST /workflows/ — creating is the same upsert as
+    // saving (/workflows/save), which answers { workflowId }. The id is minted
+    // here so the new row is in the store, whole, the moment it exists.
+    async createWorkflow({ commit }, workflow) {
       commit('SET_LOADING', true);
       try {
         const token = localStorage.getItem('token');
@@ -291,14 +294,15 @@ export default {
           throw new Error('No authentication token found');
         }
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/`, {
+        const draft = { nodes: [], edges: [], ...workflow, id: workflow.id || crypto.randomUUID() };
+        const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/save`, {
           method: 'POST',
           credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(workflow),
+          body: JSON.stringify({ workflow: draft }),
         });
 
         if (!response.ok) {
@@ -306,8 +310,9 @@ export default {
         }
 
         const data = await response.json();
-        commit('ADD_WORKFLOW', data.workflow);
-        return data.workflow;
+        const created = { ...draft, id: data.workflowId || draft.id };
+        commit('ADD_WORKFLOW', created);
+        return created;
       } catch (error) {
         commit('SET_ERROR', error.message);
         throw error;

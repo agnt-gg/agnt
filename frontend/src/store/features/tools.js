@@ -334,36 +334,18 @@ export default {
       return saved;
     },
 
-    async createTool({ commit, state }, tool) {
+    // The server has no POST /custom-tools/ — creating is the same upsert
+    // Tool Forge saves with (saveTool, no id → /custom-tools/save), which
+    // answers { toolId }. Never sends an id: that would update, not create.
+    async createTool({ commit, dispatch }, tool) {
       commit('SET_LOADING', true);
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-
-        const response = await fetch(`${API_CONFIG.BASE_URL}/custom-tools/`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(tool),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const newTool = {
-          ...data.tool,
-          title: data.tool.title || data.tool.name,
-          is_builtin: false,
-        };
-
+        const { id: _ignored, ...fresh } = tool || {};
+        const saved = await saveTool(fresh);
+        if (!saved?.id) throw new Error('AGNT did not return the new tool\u2019s id.');
+        const newTool = { ...fresh, id: saved.id, title: fresh.title || fresh.name, is_builtin: false };
         commit('ADD_TOOL', newTool);
+        await dispatch('fetchTools').catch(() => {});
         return newTool;
       } catch (error) {
         commit('SET_ERROR', error.message);

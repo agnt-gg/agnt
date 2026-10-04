@@ -22,9 +22,20 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('ToolForgeScreen', { toolId: 't9' })).toMatchObject({ page: 'library', tab: 'tools', item: 't9' });
   });
 
-  it('a forge with nothing to open is Studio\'s (the blank canvas)', () => {
-    expect(via('WorkflowForgeScreen', { workflowId: null })).toBeNull();
-    expect(via('ToolForgeScreen', {})).toBeNull();
+  // "New X" in Focused used to seed the chat, and /agents?new=1 landed on the
+  // list. Creating opens Focused's own blank editor, from any entry point.
+  it('New on every Library kind opens Focused\'s blank editor, never the chat', () => {
+    for (const [screen, tab] of [['AgentsScreen', 'agents'], ['WorkflowsScreen', 'workflows'], ['ToolsScreen', 'tools'], ['SkillsScreen', 'skills'], ['WidgetManagerScreen', 'widgets']]) {
+      expect(via(screen, { newAgent: true }), screen).toEqual({ page: 'library', tab, item: null, isNew: true });
+      expect(via(screen, {}), screen).toEqual({ page: 'library', tab, item: null });
+    }
+  });
+
+  it('a bare forge is "New workflow" / "New tool", in Focused', () => {
+    expect(via('WorkflowForgeScreen', { workflowId: null })).toEqual({ page: 'library', tab: 'workflows', item: null, isNew: true });
+    expect(via('ToolForgeScreen', {})).toEqual({ page: 'library', tab: 'tools', item: null, isNew: true });
+    // "Open the full editor" still reaches Studio's canvas.
+    expect(focusedLocation('WorkflowForgeScreen', { studio: '1' })).toBeNull();
   });
 
   it('files and folders', () => {
@@ -82,6 +93,9 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'library', tab: 'files', item: null, dir: 'a/b' },
     { page: 'connectors', item: 'slack' },
     { page: 'connectors', item: null },
+    { page: 'library', tab: 'agents', item: null, isNew: true },
+    { page: 'library', tab: 'workflows', item: null, isNew: true },
+    { page: 'library', tab: 'widgets', item: null, isNew: true },
     { page: 'scheduled', item: 's1', isNew: false },
     { page: 'scheduled', item: null, isNew: true },
     { page: 'memory', item: 'm1', isNew: false },

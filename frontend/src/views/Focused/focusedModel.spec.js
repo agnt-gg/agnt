@@ -24,7 +24,6 @@ import {
   isCron,
   memoryRows,
   initialOf,
-  createAsk,
   editAsk,
   billingSummary,
 } from './focusedModel.js';
@@ -51,20 +50,15 @@ describe('screens and pages', () => {
   });
 });
 
-describe('asking in chat', () => {
-  it('every create and edit seed is one phrasing, naming what and which, cursor after it', () => {
-    expect(createAsk('plugin')).toBe('Create a plugin that ');
-    expect(createAsk('agent')).toBe('Create an agent that ');
-    expect(createAsk('file', { within: 'reports/q3' })).toBe('Create a file in reports/q3 that ');
-    expect(createAsk('file', { within: '' })).toBe('Create a file that ');
+describe('editing in chat', () => {
+  it('every edit seed is one phrasing, naming what and which, cursor after it', () => {
     expect(editAsk('plugin', 'Gmail')).toBe('Edit the Gmail plugin to ');
     expect(editAsk('workflow', '  Nightly backup ')).toBe('Edit the Nightly backup workflow to ');
     expect(editAsk('skill', '')).toBe('Edit this skill to ');
   });
 
-  it('every Library tab has a seed for New and for Edit', () => {
+  it('every Library tab has an Edit seed', () => {
     for (const t of LIBRARY_TABS) {
-      expect(createAsk(t.noun), t.id).toMatch(/^Create an? \w+ that $/);
       expect(editAsk(t.noun, 'X'), t.id).toBe(`Edit the X ${t.noun} to `);
     }
   });

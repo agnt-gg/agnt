@@ -20,9 +20,9 @@
       <div class="focused-connectors-actions">
         <label class="focused-page-search focused-market-search">
           <i class="fas fa-search" aria-hidden="true"></i>
-          <input v-model="query" type="search" placeholder="Search connectors" aria-label="Search connectors" />
+          <input ref="searchEl" v-model="query" type="search" placeholder="Search connectors" aria-label="Search connectors" />
         </label>
-        <button type="button" class="focused-primary" @click="nav.ask('Connect AGNT to ')">
+        <button type="button" class="focused-primary" @click="addConnector">
           <i class="fas fa-plus" aria-hidden="true"></i>Add
         </button>
       </div>
@@ -67,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, watch, onMounted } from 'vue';
+import { ref, computed, inject, watch, onMounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import FocusedConnection from './FocusedConnection.vue';
 import FocusedConnectorLogo from './FocusedConnectorLogo.vue';
@@ -104,6 +104,15 @@ function byline(c) {
 function selectTab(id) {
   chosenTab.value = id;
   showAll.value = false;
+}
+// Add = pick one to connect: every connector, search ready. Each card opens
+// its own connect page here, so adding never leaves for the chat.
+const searchEl = ref(null);
+async function addConnector() {
+  selectTab('discover');
+  showAll.value = true;
+  await nextTick();
+  searchEl.value?.focus();
 }
 watch(query, () => (showAll.value = false));
 

@@ -42,6 +42,20 @@ export function parentDir(path) {
   return parts.slice(0, -1).join('/');
 }
 
+/**
+ * The workspace path for a new file named `name` in folder `dir`. Throws a
+ * plain-language error the page shows: a name is one file name, never a path
+ * (no folders, no `..`), so a new file can only land where the user is.
+ */
+export function newFilePath(dir, name) {
+  const n = String(name || '').trim();
+  if (!n) throw new Error('Give the file a name.');
+  if (/[\\/]/.test(n) || n === '.' || n === '..') throw new Error('Use a file name, not a folder path.');
+  if (/[<>:"|?*\u0000-\u001f]/.test(n)) throw new Error('File names can\u2019t contain < > : " | ? or *.');
+  const folder = String(dir || '').split('/').filter(Boolean).join('/');
+  return folder ? `${folder}/${n}` : n;
+}
+
 /** 'a/b' → [{ name: 'a', path: 'a' }, { name: 'b', path: 'a/b' }]. */
 export function crumbsOf(dir) {
   const parts = String(dir || '').split('/').filter(Boolean);

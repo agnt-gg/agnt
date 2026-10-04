@@ -65,20 +65,12 @@ export function isFocusedPage(page) {
   return Object.prototype.hasOwnProperty.call(FOCUSED_PAGES, page);
 }
 
-// ── Asking in chat ─────────────────────────────────────────────────────────
+// ── Editing in chat ────────────────────────────────────────────────────────
 //
-// Creating or editing anything through Annie seeds the composer with ONE
-// phrasing, wherever it starts (every Library tab, Files, Connectors), so the
-// request always names what and which. Each ends in a space: the cursor
-// lands where the user finishes the sentence.
-
-const article = (noun) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
-
-/** "Create a workflow that " — or "Create a file in reports that ". */
-export function createAsk(noun, { within = '' } = {}) {
-  const where = String(within || '').trim();
-  return `Create ${article(noun)} ${noun}${where ? ` in ${where}` : ''} that `;
-}
+// "Edit in chat" on an open item seeds the composer with ONE phrasing that
+// names what and which, ending in a space so the cursor lands where the user
+// finishes the sentence. Creating NEVER goes through the chat: every New
+// opens Focused's own blank editor (focusedRoutes `isNew`).
 
 /** "Edit the Nightly backup workflow to " ("Edit this workflow to " unnamed). */
 export function editAsk(noun, name) {
@@ -91,8 +83,8 @@ export function editAsk(noun, name) {
 /**
  * One tab per kind of thing a user makes. `getter`/`fetch` name the shared
  * store; `catalogKey` is the buildJumpCatalog source key, so opening a row is
- * exactly what opening it from Ctrl+K does. `noun` names it in the chat
- * seeds (createAsk/editAsk) — creation goes through Annie, as in the demo.
+ * exactly what opening it from Ctrl+K does. `noun` names it in labels and
+ * the Edit-in-chat seed (editAsk).
  */
 export const LIBRARY_TABS = Object.freeze([
   { id: 'agents', label: 'Agents', icon: 'fas fa-robot', getter: 'agents/allAgents', fetch: 'agents/fetchAgents', catalogKey: 'agents', prefix: 'agent:', noun: 'agent' },

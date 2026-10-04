@@ -14,6 +14,9 @@ import {
   isReadOnlySkill,
   skillPayload,
   widgetUpdates,
+  widgetValues,
+  skillValues,
+  blankRecord,
   humanKey,
   paramKind,
   ago,
@@ -172,5 +175,29 @@ describe('helpers', () => {
     expect(ago('2026-10-01T11:30:00Z', now)).toBe('30 min ago');
     expect(ago('2026-09-30T12:00:00Z', now)).toBe('1 day ago');
     expect(ago(null, now)).toBe('');
+  });
+});
+
+describe('new items (blankRecord)', () => {
+  // A new item is edited by the same values/payload pair as a stored one, so
+  // what Save creates is exactly what the editor showed.
+  it('a new workflow is named, empty, and valid for the engine', () => {
+    const v = workflowValues(blankRecord('workflows'));
+    v.name = ' Morning digest ';
+    expect(workflowPayload(blankRecord('workflows'), v)).toEqual({ name: 'Morning digest', description: '', nodes: [], edges: [] });
+  });
+  it('a new tool is a prompt (AI) tool with its model fields', () => {
+    const v = toolValues(blankRecord('tools'));
+    expect(v).toMatchObject({ name: '', isAI: true, instructions: '', inputs: [], category: 'custom' });
+    Object.assign(v, { name: 'Summarize', instructions: 'Summarize {{text}}' });
+    v.inputs.push({ key: 'text', label: 'Text', type: 'textarea', required: true });
+    const p = toolPayload(blankRecord('tools'), v);
+    expect(p).toMatchObject({ title: 'Summarize', base: 'AI', isShareable: false, parameters: { text: { type: 'textarea', required: true }, instructions: 'Summarize {{text}}' } });
+    expect(p.id).toBeUndefined();
+  });
+  it('a new skill and widget start blank', () => {
+    expect(skillValues(blankRecord('skills'))).toEqual({ name: '', description: '', instructions: '', category: 'general' });
+    expect(widgetValues(blankRecord('widgets'))).toEqual({ name: '', description: '', source_code: '' });
+    expect(blankRecord('widgets').widget_type).toBe('html');
   });
 });

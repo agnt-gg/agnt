@@ -239,9 +239,11 @@ export default {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
 
-        // Add the agent from server response to store
+        // Add the agent from server response to store. /agents/save answers
+        // { agentId } (no agent), so the id it minted must be put on the row,
+        // or the store holds a new agent whose id is undefined.
         const serverAgent = {
-          ...(data.agent || agent),
+          ...(data.agent || { ...agent, id: data.agentId || agent.id }),
           avatar: (data.agent && data.agent.icon) || agent.icon || null,
           category: (data.agent && data.agent.category) || agent.category || '',
           assignedTools: (data.agent && data.agent.assignedTools) || agent.assignedTools || [],
