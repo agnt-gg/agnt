@@ -153,6 +153,7 @@ export function consolePassthroughFromEnv(value = process.env.AGNT_CONSOLE_PASST
  * @param {string}  [opts.bootId]
  * @param {string}  [opts.level]
  * @param {boolean} [opts.bridgeConsole=true]
+ * @param {boolean|'warn'} [opts.passthrough]  console passthrough; defaults to AGNT_CONSOLE_PASSTHROUGH
  * @param {'exit'|'stay'} [opts.fatalPolicy='stay']
  * @param {() => object} [opts.getState]    cheap high-signal snapshot for crash records
  */
@@ -162,6 +163,7 @@ export function installDiagnostics({
   bootId,
   level,
   bridgeConsole = true,
+  passthrough = consolePassthroughFromEnv(),
   fatalPolicy = 'stay',
   getState = () => ({}),
 }) {
@@ -172,7 +174,7 @@ export function installDiagnostics({
 
   const recorder = new Recorder({ dir, proc, bootId: resolvedBoot, level });
   const uninstallBridge = bridgeConsole
-    ? installConsoleBridge(recorder, { passthrough: consolePassthroughFromEnv() })
+    ? installConsoleBridge(recorder, { passthrough })
     : () => {};
 
   attachStdioPipeGuards();

@@ -5,8 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
 
-// DEBUG: Show which main.js is being loaded
-console.log('=== LOADING MAIN.JS FROM:', import.meta.url, '===');
 // http/https are no longer imported here: the only consumer was the inline
 // health poller, which now lives in electron/backendHealth.js.
 import dotenv from 'dotenv';
@@ -21,7 +19,7 @@ const __dirname = path.dirname(__filename);
 // the workflow child inherit it. Every record from every process then shares
 // a correlation key with no IPC required.
 import { randomUUID, randomBytes } from 'crypto';
-import { installDiagnostics, diagnosticsDir } from './backend/src/diagnostics/install.js';
+import { installDiagnostics, diagnosticsDir, consolePassthroughFromEnv } from './backend/src/diagnostics/install.js';
 import { installElectronCrashHooks } from './backend/src/diagnostics/electronHooks.js';
 import {
   resolveConnection,
@@ -31,6 +29,7 @@ import {
 import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
 import { localFilePathFromUrl } from './electron/localFileLink.js';
 import { SCHEME, parseDeepLink, deepLinkFromArgv, intentToUrl } from './electron/deepLink.js';
+import { checkForUpdate } from './electron/updateCheck.js';
 import { SpaceRegistry } from './electron/spaces/SpaceRegistry.js';
 import { SpaceViews } from './electron/spaces/SpaceViews.js';
 import { installSpaceIpc, hardenSpaceView } from './electron/spaces/spaceIpc.js';
@@ -38,10 +37,17 @@ import { installSpaceIpc, hardenSpaceView } from './electron/spaces/spaceIpc.js'
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
 
+// THE TERMINAL IS FOR PROBLEMS. Every console line from this process is
+// recorded in full to the diagnostics directory; only warnings and errors are
+// also printed, as the backend already does (see ECHO_BACKEND_LOGS). A
+// terminal that prints every routine step hides the one line that matters.
+// AGNT_CONSOLE_PASSTHROUGH=all prints everything again.
+const DIAGNOSTICS_DIR = diagnosticsDir(app.getPath('userData'));
 const { recorder } = installDiagnostics({
   proc: 'main',
-  dir: diagnosticsDir(app.getPath('userData')),
+  dir: DIAGNOSTICS_DIR,
   bootId: BOOT_ID,
+  passthrough: consolePassthroughFromEnv(process.env.AGNT_CONSOLE_PASSTHROUGH ?? 'warn'),
   getState: () => ({
     backendPid: backendProcess?.pid,
     supervisorState: supervisor?.state,
@@ -91,6 +97,18 @@ if (process.env.AGNT_DISABLE_GPU === '1') {
   console.log('[GPU] Hardware acceleration disabled via AGNT_DISABLE_GPU=1');
   app.disableHardwareAcceleration();
 }
+
+// Chromium's own logging goes straight to stderr from native code, so the
+// console bridge cannot filter it, and at its default level it prints
+// internal assertions such as "Hit debug scenario: 4" (electron/electron#44368)
+// hundreds of times a session. Fatal only. The failures that matter are
+// reported through Electron's events instead (render-process-gone,
+// child-process-gone, unresponsive: see installElectronCrashHooks), and those
+// print. AGNT_CHROMIUM_LOG_LEVEL=0 restores Chromium's full output.
+const CHROMIUM_LOG_LEVEL = /^[0-3]$/.test(process.env.AGNT_CHROMIUM_LOG_LEVEL ?? '')
+  ? process.env.AGNT_CHROMIUM_LOG_LEVEL
+  : '3';
+if (!app.commandLine.hasSwitch('log-level')) app.commandLine.appendSwitch('log-level', CHROMIUM_LOG_LEVEL);
 
 // Register custom protocol for serving local files into the renderer.
 // Rendered HTML (e.g. LLM-generated chat messages) uses agnt-file:// URLs
@@ -455,7 +473,16 @@ async function startLocalBoot() {
       console.log(`[boot] backend answered at ${process.uptime().toFixed(1)}s; loading the app`);
       loadActiveTarget();
       mainWindow?.webContents.once('did-finish-load', () => {
-        console.log(`[boot] app loaded at ${process.uptime().toFixed(1)}s`);
+        const loadedAt = process.uptime().toFixed(1);
+        console.log(`[boot] app loaded at ${loadedAt}s`);
+        // The one routine line the terminal keeps: with info lines recorded
+        // rather than printed, a silent terminal must still say it is up and
+        // where the full record is. Written past the console filter on purpose.
+        try {
+          process.stdout.write(`AGNT ready in ${loadedAt}s. Full log: ${DIAGNOSTICS_DIR}\n`);
+        } catch {
+          /* a closed stdout must not break startup */
+        }
       });
     },
   });
@@ -830,80 +857,7 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
 const packageJsonPath = path.join(__dirname, 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 const APP_VERSION = packageJson.version;
-const UPDATE_CHECK_URL = 'https://agnt.gg/api/updates/check';
 
-console.log(`[Update] App version from package.json: ${APP_VERSION}`);
-
-/**
- * Get the platform identifier for update checks
- */
-function getPlatformId() {
-  const platform = process.platform;
-  const arch = process.arch;
-
-  if (platform === 'win32') {
-    return 'win';
-  } else if (platform === 'darwin') {
-    return arch === 'arm64' ? 'mac-arm' : 'mac-intel';
-  } else if (platform === 'linux') {
-    return 'linux-appimage'; // Default to AppImage for GNU/Linux
-  }
-  return 'win'; // Fallback
-}
-
-/**
- * Check for updates from agnt.gg
- */
-function checkForUpdates() {
-  return new Promise((resolve, reject) => {
-    const platform = getPlatformId();
-    const url = `${UPDATE_CHECK_URL}?version=${APP_VERSION}&platform=${platform}`;
-
-    console.log(`[Update] Checking for updates: ${url}`);
-
-    https
-      .get(url, (res) => {
-        let data = '';
-
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        res.on('end', () => {
-          try {
-            const updateInfo = JSON.parse(data);
-            console.log('[Update] Response:', updateInfo);
-
-            if (updateInfo.updateAvailable) {
-              console.log(`[Update] New version available: ${updateInfo.latestVersion}`);
-            } else {
-              console.log('[Update] App is up to date');
-            }
-
-            resolve(updateInfo);
-          } catch (error) {
-            console.error('[Update] Failed to parse response:', error);
-            reject(error);
-          }
-        });
-      })
-      .on('error', (error) => {
-        console.error('[Update] Check failed:', error);
-        reject(error);
-      });
-  });
-}
-
-/**
- * Send update info to renderer process
- */
-function notifyRendererOfUpdate(updateInfo) {
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-available', updateInfo);
-  }
-}
-
-// IPC handlers for update system
 // ─────────────────── Browser widget: CDP bridge lifecycle ───────────────────
 // The Browser widget renders a real Chromium surface inside AGNT and lets an
 // agent drive it. The agent is a separate Python process, so it needs a CDP
@@ -962,12 +916,16 @@ app.on('before-quit', () => {
 // installs the self-updater does not serve: dev checkouts, deb/rpm, and any
 // build where the updater failed to arm. Where it IS armed, answering here too
 // would put a "Download" button beside a download already in progress.
+// A failure is LOGGED, not only returned: returning it alone is how this check
+// failed on every call for two months without anyone knowing.
 ipcMain.handle('check-for-updates', async () => {
   if (autoUpdateArmed) return { updateAvailable: false, managedBy: 'auto-update' };
   try {
-    const updateInfo = await checkForUpdates();
+    const updateInfo = await checkForUpdate({ fetch: net.fetch, version: APP_VERSION });
+    if (updateInfo.updateAvailable) console.log(`[Update] New version available: ${updateInfo.latestVersion}`);
     return updateInfo;
   } catch (error) {
+    console.warn(`[Update] ${error.message}`);
     return { error: error.message };
   }
 });

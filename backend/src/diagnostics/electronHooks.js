@@ -15,14 +15,31 @@
  */
 
 /**
+ * Every death mode is also PRINTED, one line, straight to stderr. A crash
+ * record alone is a file nobody is watching, and Chromium's own stderr is
+ * turned down to fatal-only (see main.js), so without this a renderer crash or
+ * a frozen window would leave the terminal silent. stderr directly, not
+ * console.error: dumpCrash already writes the record, so the console bridge
+ * would only duplicate it.
+ */
+export function printToTerminal(line) {
+  try {
+    process.stderr.write(`${line}\n`);
+  } catch {
+    /* a closed stderr must not turn a crash report into a second crash */
+  }
+}
+
+/**
  * @param {import('./Recorder.js').Recorder} recorder
  * @param {object}   deps
  * @param {object}   deps.app             Electron app
  * @param {object}  [deps.crashReporter]  Electron crashReporter
  * @param {() => object} [deps.getState]
+ * @param {(line: string) => void} [deps.print]  terminal sink, for tests
  * @returns {() => void} uninstall
  */
-export function installElectronCrashHooks(recorder, { app, crashReporter, getState = () => ({}) }) {
+export function installElectronCrashHooks(recorder, { app, crashReporter, getState = () => ({}), print = printToTerminal }) {
   const safeState = () => {
     try {
       return getState() || {};
@@ -53,12 +70,14 @@ export function installElectronCrashHooks(recorder, { app, crashReporter, getSta
 
   const onRenderGone = (_event, webContents, details) => {
     const err = new Error(`renderer gone: ${details?.reason} (exitCode ${details?.exitCode})`);
-    recorder.dumpCrash('render-process-gone', err, {
+    const url = safeUrl(webContents);
+    const file = recorder.dumpCrash('render-process-gone', err, {
       ...safeState(),
       reason: details?.reason,
       exitCode: details?.exitCode,
-      url: safeUrl(webContents),
+      url,
     });
+    print(`[crash] ${err.message}${url ? ` at ${url}` : ''}${recordNote(file)}`);
   };
 
   const onChildGone = (_event, details) => {
@@ -67,15 +86,17 @@ export function installElectronCrashHooks(recorder, { app, crashReporter, getSta
     const err = new Error(`child process gone: ${details?.type} ${details?.reason} (exitCode ${details?.exitCode})`);
     const fatal = details?.type !== 'GPU'; // a GPU crash is recoverable
     if (fatal) {
-      recorder.dumpCrash('child-process-gone', err, { ...safeState(), ...details });
+      const file = recorder.dumpCrash('child-process-gone', err, { ...safeState(), ...details });
+      print(`[crash] ${err.message}${recordNote(file)}`);
     } else {
       recorder.warn('diagnostics', 'gpu process crashed', { err, data: details });
+      print(`[crash] ${err.message} (Chromium restarts the GPU process; rendering may stutter)`);
     }
   };
 
   // Every window, automatically. Hooking a specific window at a specific call
   // site means the next window someone adds is silently unmonitored.
-  const onWindowCreated = (_event, win) => watchWindow(recorder, win, getState);
+  const onWindowCreated = (_event, win) => watchWindow(recorder, win, getState, print);
 
   app.on('render-process-gone', onRenderGone);
   app.on('child-process-gone', onChildGone);
@@ -89,7 +110,7 @@ export function installElectronCrashHooks(recorder, { app, crashReporter, getSta
 }
 
 /** Attach unresponsive/responsive to one window. */
-export function watchWindow(recorder, win, getState = () => ({})) {
+export function watchWindow(recorder, win, getState = () => ({}), print = printToTerminal) {
   if (!win || typeof win.on !== 'function') return;
   win.on('unresponsive', () => {
     let state = {};
@@ -98,9 +119,17 @@ export function watchWindow(recorder, win, getState = () => ({})) {
     } catch {
       /* ignore */
     }
-    recorder.dumpCrash('unresponsive', new Error('main window stopped responding'), state);
+    const file = recorder.dumpCrash('unresponsive', new Error('main window stopped responding'), state);
+    print(`[crash] main window stopped responding${recordNote(file)}`);
   });
-  win.on('responsive', () => recorder.warn('diagnostics', 'main window responsive again'));
+  win.on('responsive', () => {
+    recorder.warn('diagnostics', 'main window responsive again');
+    print('[crash] main window responsive again');
+  });
+}
+
+function recordNote(file) {
+  return file ? `\n  crash record: ${file}` : '';
 }
 
 function tryPath(app, name) {

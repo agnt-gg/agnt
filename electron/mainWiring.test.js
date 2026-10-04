@@ -892,6 +892,42 @@ describe('local boot: a window from t≈0, and a backend that cannot be frozen b
   });
 });
 
+describe('the terminal shows problems, not routine', () => {
+  it("prints only this process's warnings and errors unless told otherwise", () => {
+    const install = blockAfter(code, 'installDiagnostics(');
+    expect(install).toMatch(/passthrough: consolePassthroughFromEnv\(process\.env\.AGNT_CONSOLE_PASSTHROUGH \?\? 'warn'\)/);
+  });
+
+  it("turns Chromium's native stderr down to fatal before the app is ready", () => {
+    // A switch appended after 'ready' does not reach Chromium's logging.
+    const at = code.indexOf("app.commandLine.appendSwitch('log-level', CHROMIUM_LOG_LEVEL)");
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(code.indexOf('app.whenReady()'));
+    expect(code).toMatch(/if \(!app\.commandLine\.hasSwitch\('log-level'\)\)/);
+    expect(code).toMatch(/\/\^\[0-3\]\$\/\.test\(process\.env\.AGNT_CHROMIUM_LOG_LEVEL \?\? ''\)[\s\S]{0,80}: '3';/);
+  });
+
+  it('says once that the app is up, and where the full log is', () => {
+    expect(code).toMatch(/process\.stdout\.write\(`AGNT ready in \$\{loadedAt\}s\. Full log: \$\{DIAGNOSTICS_DIR\}\\n`\)/);
+  });
+
+  it('logs a failed update check instead of only returning it', () => {
+    // Returning `{ error }` alone hid a ReferenceError on every check for two months.
+    const handler = blockAfter(code, "ipcMain.handle('check-for-updates'");
+    expect(handler).toMatch(/checkForUpdate\(\{ fetch: net\.fetch, version: APP_VERSION \}\)/);
+    expect(blockAfter(handler, 'catch (error)')).toMatch(/console\.warn\(/);
+  });
+
+  it('imports every node network module it calls', () => {
+    // main.js once dropped `import https` while still calling https.get.
+    for (const mod of ['http', 'https']) {
+      if (new RegExp(`\\b${mod}\\s*\\.\\s*(get|request)\\b`).test(code)) {
+        expect(code, `main.js calls ${mod} without importing it`).toMatch(new RegExp(`^import .*\\b${mod}\\b.* from '(node:)?${mod}'`, 'm'));
+      }
+    }
+  });
+});
+
 describe('electron-builder packaging', () => {
   // main.js imports ./electron/connectionConfig.js and loadFile() for connection-error.html.
   // electron-builder uses an explicit allowlist (build.files) — if electron/ is missing,
