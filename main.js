@@ -543,7 +543,7 @@ async function replaceLocalBackend() {
 
   occupant = null;
   connectPhase = 'starting';
-  pushConnectionState({ phase: 'starting', detail: 'Starting AGNT on this computer…' });
+  pushConnectionState({ phase: 'starting', detail: 'Loading your agents, tools and plugins' });
   localBackendSpawned = true;
   startBackend();
   healthPoll = pollBackendHealth({
@@ -671,7 +671,7 @@ async function startLocalSessionFallback(why) {
   activeMode = 'local';
   fellBack = true;
   connectPhase = 'starting';
-  pushConnectionState({ phase: 'starting', detail: 'Starting AGNT on this computer…' });
+  pushConnectionState({ phase: 'starting', detail: 'Loading your agents, tools and plugins' });
   // 'occupied' means the status page is now asking which backend to use, and
   // the poll below must not run: it would succeed instantly against the
   // occupant and answer the question on the user's behalf.

@@ -1,96 +1,122 @@
 <!DOCTYPE html>
 <!--
-  Remote-connection STATUS page (two phases: connecting → failed).
+  Startup and remote-connection STATUS page: starting → connecting → failed,
+  plus 'occupied' (a backend already holds the local port).
 
   It used to be a failure page only, shown after the health poll gave up. That
   was the wrong shape: until it appeared, the app had no window at all, so an
   unresponsive server looked exactly like a hang (measured: up to 366s of
-  nothing). Now main.js shows this page the instant remote mode is detected and
-  streams `connection:state` into it, so:
+  nothing). Now main.js shows this page the instant the app starts and streams
+  `connection:state` into it, so:
 
     - there is always a window, from t≈0
     - the way out is on screen BEFORE anything has failed
     - "Use this computer" is per-session and does NOT rewrite connection.json,
       so a transient outage cannot silently cost the user their remote setting
 
-  The filename is historical; it serves both phases.
+  It is the first thing anyone sees, so it carries the brand: the AGNT mark in
+  a progress ring, the wordmark, everything on one centred column. The logo is
+  inline SVG and the font falls back to the system's, so it renders offline
+  and before anything else has loaded. The filename is historical.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AGNT — connecting</title>
+    <title>AGNT — starting</title>
     <style>
-      :root { color-scheme: dark; }
+      :root {
+        color-scheme: dark;
+        --bg: #12121c; --line: #3a4063; --green: #19ef83; --pink: #e53d8f; --amber: #ffd166;
+        --text: #e0e0e0; --muted: #8b93a7; --meta: #9aa1b4; --faint: #4f5669;
+      }
       * { box-sizing: border-box; }
       body {
-        margin: 0; min-height: 100vh;
+        margin: 0; min-height: 100vh; overflow: hidden;
         display: flex; align-items: center; justify-content: center;
-        background: #12121c; color: #e0e0e0;
-        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-        padding: 32px;
+        background: var(--bg); color: var(--text);
+        font-family: 'League Spartan', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        padding: 32px 24px 56px;
+      }
+      /* One deliberate light source behind the emblem, not a wash. */
+      body::before {
+        content: ''; position: fixed; left: 50%; top: 42%; width: 640px; height: 640px;
+        transform: translate(-50%, -50%); pointer-events: none;
+        background: radial-gradient(circle, rgba(229, 61, 143, 0.13) 0%, rgba(229, 61, 143, 0.04) 38%, transparent 62%);
       }
       .card {
-        width: 100%; max-width: 460px;
-        background: #1b1b2b; border: 1px solid #2e3350; border-radius: 16px;
-        padding: 32px;
+        position: relative; width: 100%; max-width: 440px;
+        display: flex; flex-direction: column; align-items: center; text-align: center;
       }
-      .mark {
-        width: 56px; height: 56px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 26px; margin-bottom: 20px;
+      /* The AGNT mark inside a progress ring. Only the ring changes by state. */
+      .emblem { position: relative; width: 104px; height: 104px; display: grid; place-items: center; margin-bottom: 26px; }
+      .emblem .track, .emblem .arc { position: absolute; inset: 0; border-radius: 50%; }
+      .emblem .track { border: 2px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle, #1a1b2a 0%, #151623 70%); }
+      .emblem .arc {
+        border: 2px solid transparent; border-top-color: var(--green); border-right-color: rgba(25, 239, 131, 0.35);
+        animation: spin 1.15s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite;
       }
-      .mark.wait { background: rgba(25, 239, 131, 0.12); color: #19ef83; }
-      .mark.bad  { background: rgba(255, 215, 0, 0.14); color: #ffd700; }
-      .spinner {
-        width: 22px; height: 22px; border-radius: 50%;
-        border: 2px solid rgba(25, 239, 131, 0.25); border-top-color: #19ef83;
-        animation: spin 0.8s linear infinite;
+      .mark { position: relative; z-index: 1; width: 46px; height: 46px; overflow: visible; }
+      .mark circle { fill: var(--pink); animation: dot 1.8s ease-in-out infinite; animation-delay: calc(var(--i) * 0.14s); }
+      .emblem.bad .arc { animation: none; border-color: rgba(255, 209, 102, 0.85); }
+      .emblem.bad .mark circle { animation: none; opacity: 0.7; }
+      .wordmark { height: 24px; width: auto; margin-bottom: 26px; }
+      .wordmark path { fill: #fff; }
+      h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+      p { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+      .meta { margin: 14px 0 0; font-size: 12.5px; color: var(--meta); font-variant-numeric: tabular-nums; min-height: 18px; }
+      /* The address is read-only: a quiet pill, not a field. */
+      .addr {
+        display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin-top: 18px;
+        padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05);
+        font: 12.5px ui-monospace, Menlo, Consolas, monospace; color: #c3c8d6;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
-      p { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #8b93a7; }
-      code {
-        display: block; padding: 10px 12px; margin-bottom: 8px;
-        background: #12121c; border: 1px solid #2e3350; border-radius: 8px;
-        font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
-        color: #e0e0e0; word-break: break-all;
-      }
-      .meta {
-        margin: 0 0 20px; font-size: 12px; color: #6b7285;
-        font-variant-numeric: tabular-nums; min-height: 18px;
-      }
-      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .addr #url { overflow-wrap: anywhere; }
+      .addr .dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 1.2s ease-in-out infinite; }
+      .emblem.bad ~ .addr .dot { background: var(--amber); animation: none; }
+      .addr + .meta { margin-top: 10px; }
+      .row { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; width: 100%; margin-top: 18px; }
       button {
-        flex: 1 1 auto; min-height: 42px; min-width: 130px;
-        padding: 10px 18px; border-radius: 10px; border: 1px solid #2e3350;
-        background: #12121c; color: #e0e0e0;
-        font-family: inherit; font-size: 14px; cursor: pointer;
+        min-width: 160px; min-height: 42px; padding: 10px 18px; border-radius: 10px;
+        border: 1px solid var(--line); background: rgba(255, 255, 255, 0.02); color: var(--text);
+        font-family: inherit; font-size: 14.5px; cursor: pointer;
       }
-      button:hover:not(:disabled) { border-color: #19ef83; }
+      button:hover:not(:disabled) { border-color: var(--green); }
+      button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
-      button.primary { background: #19ef83; border-color: #19ef83; color: #04120a; font-weight: 600; }
-      .linkrow { margin: 14px 0 0; text-align: center; }
+      button.primary { background: var(--green); border-color: var(--green); color: #04120a; font-weight: 600; }
+      .linkrow { margin: 12px 0 0; }
       .link {
         background: none; border: none; padding: 6px; min-height: 32px; min-width: 0;
-        color: #6b7285; font-size: 12px; text-decoration: underline; cursor: pointer;
+        color: var(--meta); font-size: 12.5px; text-decoration: underline; cursor: pointer;
       }
-      .link:hover { color: #8b93a7; border-color: transparent; }
-      .hint { margin: 18px 0 0; font-size: 12px; color: #6b7285; line-height: 1.6; }
-      .hint b { color: #8b93a7; font-weight: 600; }
+      .link:hover { color: var(--text); border-color: transparent; }
+      .hint { margin: 18px 0 0; max-width: 400px; font-size: 12.5px; color: var(--meta); line-height: 1.6; }
+      .hint b { color: var(--text); font-weight: 600; }
+      .hint code { font: 12px ui-monospace, Menlo, Consolas, monospace; background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
+      .version { position: fixed; bottom: 18px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--faint); letter-spacing: 0.1em; }
       [hidden] { display: none !important; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes dot { 0%, 100% { opacity: 0.4; } 40% { opacity: 1; } }
+      @keyframes blink { 50% { opacity: 0.3; } }
+      @media (prefers-reduced-motion: reduce) {
+        .emblem .arc, .mark circle, .addr .dot { animation: none !important; }
+        .mark circle { opacity: 1; }
+      }
     </style>
   </head>
   <body>
-    <div class="card">
-      <div class="mark wait" id="mark"><div class="spinner"></div></div>
+    <main class="card" aria-live="polite">
+      <div class="emblem wait" id="emblem" aria-hidden="true">
+        <span class="track"></span><span class="arc"></span>
+        <svg class="mark" viewBox="0 0 37 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="18.77" cy="4.5" r="4.5" style="--i:0"/><circle cx="12.02" cy="18" r="4.5" style="--i:1"/><circle cx="25.52" cy="18" r="4.5" style="--i:2"/><circle cx="5.27" cy="31.5" r="4.5" style="--i:3"/><circle cx="18.77" cy="31.5" r="4.5" style="--i:4"/><circle cx="32.27" cy="31.5" r="4.5" style="--i:5"/></svg>
+      </div>
+      <svg class="wordmark" viewBox="0.77 0 162.44 60" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AGNT"><path d="M37.7991 33.7119C37.7991 34.8369 37.6012 36.0557 37.2053 37.3682C36.8095 38.6598 36.1637 39.8682 35.2678 40.9932C34.3928 42.0973 33.2366 43.0244 31.7991 43.7744C30.3824 44.5244 28.6532 44.8994 26.6116 44.8994H11.9553C10.8303 44.8994 9.61157 44.7015 8.29907 44.3057C7.00741 43.9098 5.79907 43.2744 4.67407 42.3994C3.56991 41.5036 2.64282 40.3473 1.89282 38.9307C1.14282 37.4932 0.767822 35.7536 0.767822 33.7119C0.767822 32.5869 0.965739 31.3682 1.36157 30.0557C1.75741 28.7432 2.39282 27.5348 3.26782 26.4307C4.16366 25.3057 5.31991 24.3682 6.73657 23.6182C8.17407 22.8682 9.91366 22.4932 11.9553 22.4932H26.6116V30.2432H11.9553C10.8512 30.2432 9.99699 30.5869 9.39282 31.2744C8.78866 31.9411 8.48657 32.7744 8.48657 33.7744C8.48657 34.8369 8.83032 35.6702 9.51782 36.2744C10.2262 36.8577 11.0595 37.1494 12.0178 37.1494H26.6116C27.7157 37.1494 28.5699 36.8161 29.1741 36.1494C29.7782 35.4827 30.0803 34.6494 30.0803 33.6494V22.3057C30.0803 21.2432 29.747 20.3994 29.0803 19.7744C28.4345 19.1494 27.6116 18.8369 26.6116 18.8369H8.76782V11.1182H26.6116C27.7366 11.1182 28.9449 11.3161 30.2366 11.7119C31.5491 12.1077 32.7574 12.7536 33.8616 13.6494C34.9866 14.5244 35.9241 15.6807 36.6741 17.1182C37.4241 18.5348 37.7991 20.264 37.7991 22.3057V33.7119Z" fill="white"/><path d="M81.4866 48.1494C81.4866 49.5452 81.3095 50.7952 80.9553 51.8994C80.6012 53.0244 80.1324 54.0036 79.5491 54.8369C78.9657 55.6911 78.2887 56.4098 77.5178 56.9932C76.747 57.5973 75.9345 58.0869 75.0803 58.4619C74.247 58.8369 73.3928 59.1077 72.5178 59.2744C71.6637 59.4619 70.8512 59.5557 70.0803 59.5557H55.4241V51.4307H70.0803C71.1845 51.4307 72.0074 51.1494 72.5491 50.5869C73.0907 50.0244 73.3616 49.2119 73.3616 48.1494V22.4932C73.3616 21.4307 73.0907 20.6286 72.5491 20.0869C72.0074 19.5244 71.1845 19.2432 70.0803 19.2432H55.4241C54.4241 19.2432 53.6324 19.5557 53.0491 20.1807C52.4657 20.7848 52.1741 21.5557 52.1741 22.4932V33.4932C52.1741 34.5557 52.4553 35.3682 53.0178 35.9307C53.5803 36.4932 54.4032 36.7744 55.4866 36.7744H70.0803V44.8994H55.4241C54.6532 44.8994 53.8407 44.8161 52.9866 44.6494C52.1324 44.4619 51.2782 44.1807 50.4241 43.8057C49.5907 43.4307 48.7887 42.9515 48.0178 42.3682C47.247 41.764 46.5699 41.0452 45.9866 40.2119C45.4032 39.3577 44.9345 38.3786 44.5803 37.2744C44.2262 36.1494 44.0491 34.889 44.0491 33.4932V22.4932C44.0491 21.7223 44.1324 20.9098 44.2991 20.0557C44.4866 19.2015 44.7678 18.3577 45.1428 17.5244C45.5178 16.6702 45.997 15.8577 46.5803 15.0869C47.1845 14.3161 47.9032 13.639 48.7366 13.0557C49.5907 12.4723 50.5699 12.0036 51.6741 11.6494C52.7782 11.2952 54.0282 11.1182 55.4241 11.1182H70.0803C70.8512 11.1182 71.6637 11.2119 72.5178 11.3994C73.3928 11.5661 74.247 11.8369 75.0803 12.2119C75.9345 12.5869 76.747 13.0765 77.5178 13.6807C78.2887 14.264 78.9657 14.9827 79.5491 15.8369C80.1324 16.6702 80.6012 17.639 80.9553 18.7432C81.3095 19.8473 81.4866 21.0973 81.4866 22.4932V48.1494Z" fill="white"/><path d="M126.362 44.8994H118.237V26.1494C118.237 25.0869 118.049 24.139 117.674 23.3057C117.32 22.4515 116.83 21.7223 116.205 21.1182C115.58 20.514 114.841 20.0557 113.987 19.7432C113.153 19.4098 112.247 19.2432 111.268 19.2432H97.0491V44.8994H88.9241V15.1494C88.9241 14.5869 89.0282 14.0661 89.2366 13.5869C89.4449 13.0869 89.7366 12.6598 90.1116 12.3057C90.4866 11.9307 90.9241 11.639 91.4241 11.4307C91.9241 11.2223 92.4553 11.1182 93.0178 11.1182H111.33C112.351 11.1182 113.424 11.2327 114.549 11.4619C115.695 11.6911 116.82 12.0661 117.924 12.5869C119.049 13.0869 120.112 13.7327 121.112 14.5244C122.132 15.2952 123.028 16.2432 123.799 17.3682C124.591 18.4723 125.216 19.7536 125.674 21.2119C126.132 22.6702 126.362 24.3161 126.362 26.1494V44.8994Z" fill="white"/><path d="M163.205 19.2432H149.018V44.8994H140.799V19.2432H130.237V11.1182H140.799V0.0869141H149.018V11.1182H163.205V19.2432Z" fill="white"/></svg>
 
-      <h1 id="title">Connecting to your AGNT server…</h1>
-      <p id="blurb">
-        This app is set to use a remote backend. Getting hold of it now.
-      </p>
+      <h1 id="title">Connecting to your AGNT server</h1>
+      <p id="blurb">This app is set to use a remote backend. Getting hold of it now.</p>
 
-      <code id="url">—</code>
+      <div class="addr" id="addr"><span class="dot" aria-hidden="true"></span><span id="url">—</span></div>
       <p class="meta" id="meta"></p>
 
       <div class="row" id="remoteRow">
@@ -119,7 +145,8 @@
         your remote setting alone — the next launch will try the server again. Change it
         for good in <b>Settings → Connection</b>.
       </p>
-    </div>
+    </main>
+    <div class="version" id="version" hidden></div>
 
     <script>
       // The preload rides the BrowserWindow, not the origin, so window.electron
@@ -127,7 +154,11 @@
       // is the entire reason this page can offer a way out.
       const api = window.electron?.connection;
       const el = (id) => document.getElementById(id);
-      const mark = el('mark');
+      const emblem = el('emblem');
+      const addr = el('addr');
+      const setEmblem = (state) => { emblem.className = 'emblem ' + state; };
+      // A boot update may carry only the elapsed time; keep the last message.
+      let lastDetail = '';
       const title = el('title');
       const blurb = el('blurb');
       const meta = el('meta');
@@ -157,18 +188,19 @@
         // Local boot: this computer's own backend is starting. Nothing has
         // failed and there is nothing to choose, so no buttons — only progress.
         const starting = phase === 'starting';
-        el('url').hidden = starting;
+        addr.hidden = starting;
         hint.hidden = starting;
         if (starting) {
           remoteRow.hidden = true;
           occupiedRow.hidden = true;
           linkRow.hidden = true;
-          mark.className = 'mark wait';
-          mark.innerHTML = '<div class="spinner"></div>';
-          title.textContent = 'Starting AGNT…';
-          blurb.textContent = state.detail || 'Loading your agents, tools and plugins.';
+          setEmblem('wait');
+          title.textContent = 'Starting up';
+          if (state.detail) lastDetail = state.detail;
+          blurb.textContent = lastDetail || 'Loading your agents, tools and plugins';
+          // A normal start is quiet. Only a slow one says so, and how long.
           const secs = Math.round((state.elapsedMs || 0) / 1000);
-          meta.textContent = secs >= 3 ? `${secs}s` : '';
+          meta.textContent = secs >= 10 ? `Taking a little longer than usual · ${secs}s` : '';
           document.title = 'AGNT — starting';
           return;
         }
@@ -176,8 +208,7 @@
         if (phase === 'occupied') {
           const port = state.port || state.localPort || 3333;
           const isAgnt = state.occupiedBy !== 'unknown';
-          mark.className = 'mark bad';
-          mark.textContent = '!';
+          setEmblem('bad');
           el('url').textContent = `http://localhost:${port}`;
           // The remote escape hatches are meaningless here: this IS this
           // computer, and the question is which backend on it to talk to.
@@ -233,8 +264,7 @@
         hint.innerHTML = REMOTE_HINT;
 
         if (phase === 'failed') {
-          mark.className = 'mark bad';
-          mark.textContent = '!';
+          setEmblem('bad');
           title.textContent = "Can't reach that AGNT server";
           blurb.textContent =
             state.detail ||
@@ -248,9 +278,8 @@
           return;
         }
 
-        mark.className = 'mark wait';
-        mark.innerHTML = '<div class="spinner"></div>';
-        title.textContent = 'Connecting to your AGNT server…';
+        setEmblem('wait');
+        title.textContent = 'Connecting to your AGNT server';
         blurb.textContent = 'This app is set to use a remote backend. Getting hold of it now.';
         retryBtn.hidden = true;
         // Deliberately live: "attempt 3, 5s" is the difference between a user
@@ -258,6 +287,9 @@
         const secs = Math.round((state.elapsedMs || 0) / 1000);
         meta.textContent = state.attempt ? `Attempt ${state.attempt} · ${secs}s` : '';
       }
+
+      // The version, quietly, at the foot. Absent outside the desktop app.
+      window.electron?.getAppVersion?.().then((v) => { if (v) { el('version').textContent = 'v' + v; el('version').hidden = false; } }).catch(() => {});
 
       api?.onState?.(render);
       api?.get?.().then((cfg) => render({ ...(cfg || {}), phase: cfg?.phase || 'connecting' }));

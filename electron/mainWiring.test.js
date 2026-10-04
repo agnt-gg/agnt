@@ -863,6 +863,18 @@ describe('local boot: a window from t≈0, and a backend that cannot be frozen b
     expect(blockAfter(code, 'function loadActiveTarget')).toMatch(/takePendingIntent\(\)/);
   });
 
+  // The first thing anyone sees. The brand must render offline at first paint
+  // (inline SVG, no network font), and a normal start must stay quiet.
+  it('the startup screen is branded, self-contained and quiet on a normal start', () => {
+    expect(html).toMatch(/<svg class="mark"[^>]*>(\s*<circle [^>]*\/>){6}/);
+    expect(html).toMatch(/<svg class="wordmark"/);
+    expect(html, 'no external image or stylesheet: the page renders before anything loads').not.toMatch(/<img |<link [^>]*stylesheet|fonts\.googleapis/);
+    const starting = blockAfter(script, 'if (starting)');
+    expect(starting).toMatch(/title\.textContent = 'Starting up'/);
+    expect(starting, 'the elapsed counter only appears on a slow start').toMatch(/secs >= 10 \?/);
+    expect(code).toMatch(/phase: 'starting', detail: 'Loading your agents, tools and plugins'/);
+  });
+
   it('renders a local starting phase with no remote controls', () => {
     expect(script).toMatch(/phase === 'starting'/);
     const starting = blockAfter(script, 'if (starting)');
