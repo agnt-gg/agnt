@@ -37,7 +37,7 @@ export const LIBRARY_ITEM_KIND = Object.freeze({
 });
 
 export const PAGE_SCREENS = Object.freeze({
-  plugins: 'ConnectorsScreen',
+  connectors: 'ConnectorsScreen',
   scheduled: 'GoalsScreen',
   memory: 'MemoryScreen',
   settings: 'SettingsScreen',
@@ -88,8 +88,10 @@ export function focusedLocation(screen, query = {}) {
       // `dir:` a folder. Both are resolved against the workspace by the page.
       return library('files', selected(query, 'artifact'), { dir: selected(query, 'dir') || '' });
     case 'ConnectorsScreen':
-    case 'PluginsScreen':
-      return { page: 'plugins', item: selected(query, 'provider') };
+      return { page: 'connectors', item: selected(query, 'provider') };
+    // PluginsScreen is NOT here on purpose: plugins are code installed into
+    // AGNT, not connections to outside apps, and Focused has no page for them.
+    // Folding it into Connectors made /plugins show the wrong list.
     case 'GoalsScreen':
     case 'AutonomyScreen': {
       // Autonomy also hosts approvals and limits, which are Studio's. Only
@@ -122,7 +124,7 @@ export function routeFor(loc) {
     if (loc.tab === 'files' && loc.dir) return [screen, { select: { kind: 'dir', id: loc.dir } }];
     return [screen, {}];
   }
-  if (loc.page === 'plugins') return [PAGE_SCREENS.plugins, loc.item ? { select: { kind: 'provider', id: loc.item } } : {}];
+  if (loc.page === 'connectors') return [PAGE_SCREENS.connectors, loc.item ? { select: { kind: 'provider', id: loc.item } } : {}];
   if (loc.page === 'scheduled') {
     const opts = { section: 'schedules' };
     if (loc.item) opts.select = { kind: 'schedule', id: loc.item };

@@ -36,8 +36,11 @@ export const FOCUSED_PAGES = Object.freeze({
     sub: 'Everything you\u2019ve made with AGNT. Open anything to read or change it, or ask in chat.',
     icon: 'fas fa-book',
   },
-  plugins: {
-    title: 'Plugins',
+  // Connections to outside apps and AI models (the appAuth catalogue). NOT
+  // plugins: a plugin is code installed into AGNT (PluginsScreen), and has
+  // no Focused page, so it opens in borrowed Studio.
+  connectors: {
+    title: 'Connectors',
     sub: 'Apps and AI models AGNT can use for you. It asks before sending, buying or changing anything.',
     icon: 'fas fa-plug',
   },
@@ -65,7 +68,7 @@ export function isFocusedPage(page) {
 // ── Asking in chat ─────────────────────────────────────────────────────────
 //
 // Creating or editing anything through Annie seeds the composer with ONE
-// phrasing, wherever it starts (every Library tab, Files, Plugins), so the
+// phrasing, wherever it starts (every Library tab, Files, Connectors), so the
 // request always names what and which. Each ends in a space: the cursor
 // lands where the user finishes the sentence.
 
@@ -195,7 +198,7 @@ export function recentConversations(outputs, query = '', limit = 60, subChatIds 
   return limit > 0 ? rows.slice(0, limit) : rows;
 }
 
-// ── Plugins ────────────────────────────────────────────────────────────────
+// ── Connectors ─────────────────────────────────────────────────────────────
 
 const providerKey = (p) => String((typeof p === 'string' ? p : p?.id) || '').toLowerCase();
 
@@ -214,7 +217,7 @@ export const CLI_DISCONNECT_ACTIONS = Object.freeze({
   'cursor-cli': 'appAuth/disconnectCursor',
 });
 
-// ── Plugin logos ─────────────────────────────────────────────────────────────
+// ── Connector logos ──────────────────────────────────────────────────────────
 //
 // Brand-colored marks from Simple Icons, as the AGNT One demo drew them. A
 // provider whose id is not its Simple Icons slug is mapped here; anything the
@@ -309,7 +312,7 @@ export function logoUrl(id) {
   return slug ? `https://cdn.simpleicons.org/${slug}` : '';
 }
 
-/** A stable hue (0-359) for a name: the same plugin is always the same color. */
+/** A stable hue (0-359) for a name: the same connector is always the same color. */
 export function brandHue(name) {
   let n = 0;
   for (const ch of String(name || '')) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
@@ -317,17 +320,44 @@ export function brandHue(name) {
 }
 
 /** One card by id, for the connection page (null when it is not known). */
-export function pluginCard(allProviders, connectedApps, id) {
+export function connectorCard(allProviders, connectedApps, id) {
   const key = String(id || '').toLowerCase();
-  const { connected, available } = pluginCards(allProviders, connectedApps);
+  const { connected, available } = connectorCards(allProviders, connectedApps);
   return [...connected, ...available].find((c) => c.id === key) || null;
+}
+
+/**
+ * The remote catalogue (/auth/providers) is snake_case and stores categories
+ * as a JSON string; the local CLI rows are camelCase with an array. Read both,
+ * or every remote app looks like it has no way to connect.
+ */
+function connectionTypeOf(p) {
+  return String(p?.connectionType || p?.connection_type || '');
+}
+function categoriesOf(p) {
+  let raw = p?.categories;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = raw.split(',');
+    }
+  }
+  return (Array.isArray(raw) ? raw : []).map((c) => String(c || '').trim()).filter(Boolean);
+}
+// The catalogue's categories are free text in mixed case ("ai", "AI",
+// "Web Scraping", "data-science"), so they are shown in one sentence case.
+const CATEGORY_LABELS = Object.freeze({ ai: 'AI', vps: 'VPS', crm: 'CRM' });
+export function categoryLabel(c) {
+  const k = String(c || '').trim().toLowerCase().replace(/[-_]+/g, ' ');
+  return CATEGORY_LABELS[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : '');
 }
 
 /**
  * Connected first (what AGNT can already use), then everything it could.
  * connectedApps is a list of provider ids; allProviders carries the names.
  */
-export function pluginCards(allProviders, connectedApps, query = '') {
+export function connectorCards(allProviders, connectedApps, query = '') {
   const connected = new Set((Array.isArray(connectedApps) ? connectedApps : []).map(providerKey).filter(Boolean));
   const seen = new Set();
   const cards = [];
@@ -335,15 +365,19 @@ export function pluginCards(allProviders, connectedApps, query = '') {
     const id = providerKey(p);
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    const type = connectionTypeOf(p);
+    const instructions = String(p.instructions || p.custom_prompt || '');
     cards.push({
       id,
       providerId: String(p.id),
       name: id === 'agnt' ? 'AGNT Flash' : String(p.name || p.id),
       icon: typeof p.icon === 'string' ? p.icon : '',
-      connectionType: CLI_PROVIDERS.has(id) ? 'cli' : String(p.connectionType || ''),
-      instructions: String(p.instructions || p.custom_prompt || ''),
+      connectionType: CLI_PROVIDERS.has(id) ? 'cli' : type,
+      instructions,
+      description: instructions,
+      category: categoryLabel(categoriesOf(p)[0]),
       connected: connected.has(id),
-      status: connected.has(id) ? (p.connectionType === 'apikey' ? 'API key' : 'Connected') : 'Not connected',
+      status: connected.has(id) ? (type === 'apikey' ? 'API key' : 'Connected') : 'Not connected',
     });
   }
   // A connection the catalogue does not list (local CLI providers, custom
@@ -357,11 +391,13 @@ export function pluginCards(allProviders, connectedApps, query = '') {
       icon: id === 'agnt' ? 'fas fa-bolt' : '',
       connectionType: id === 'agnt' ? 'account' : CLI_PROVIDERS.has(id) ? 'cli' : '',
       instructions: '',
+      description: '',
+      category: '',
       connected: true,
       status: 'Connected',
     });
   }
-  const filtered = cards.filter((c) => matches(query, c.name, c.id));
+  const filtered = cards.filter((c) => matches(query, c.name, c.id, c.description, c.category));
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   return {
     connected: filtered.filter((c) => c.connected).sort(byName),

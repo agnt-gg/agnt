@@ -22,7 +22,7 @@
 
         <ul class="try-focused-points">
           <li><i class="fas fa-comment" aria-hidden="true"></i>Just ask. Steps fold into one line.</li>
-          <li><i class="fas fa-book" aria-hidden="true"></i>Agents, workflows, tools and plugins in one library.</li>
+          <li><i class="fas fa-book" aria-hidden="true"></i>Agents, workflows, tools and skills in one library.</li>
           <li><i class="fas fa-th-large" aria-hidden="true"></i>Open any Studio screen in full when you need it.</li>
         </ul>
 

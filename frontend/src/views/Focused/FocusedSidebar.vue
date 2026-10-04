@@ -155,7 +155,7 @@ const router = useRouter();
 const pageItems = [
   { id: 'scheduled', label: FOCUSED_PAGES.scheduled.title, icon: FOCUSED_PAGES.scheduled.icon },
   { id: 'library', label: FOCUSED_PAGES.library.title, icon: FOCUSED_PAGES.library.icon },
-  { id: 'plugins', label: FOCUSED_PAGES.plugins.title, icon: FOCUSED_PAGES.plugins.icon },
+  { id: 'connectors', label: FOCUSED_PAGES.connectors.title, icon: FOCUSED_PAGES.connectors.icon },
   { id: 'market', label: 'Market', icon: 'fas fa-store' },
 ];
 

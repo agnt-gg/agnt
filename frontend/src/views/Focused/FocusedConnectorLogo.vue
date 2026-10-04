@@ -1,11 +1,11 @@
 <template>
   <!-- The brand's own colored mark, on no background. -->
-  <span v-if="src && !failed" class="focused-plugin-logo" aria-hidden="true">
+  <span v-if="src && !failed" class="focused-connector-logo" aria-hidden="true">
     <img :src="src" alt="" loading="lazy" referrerpolicy="no-referrer" :class="tone" @error="failed = true" />
   </span>
   <!-- No brand mark (unknown to Simple Icons, or offline): the app's icon in
        the brand's color, or a color of its own, also on no background. -->
-  <span v-else class="focused-plugin-logo fallback" :style="tint" aria-hidden="true">
+  <span v-else class="focused-connector-logo fallback" :style="tint" aria-hidden="true">
     <SvgIcon v-if="icon" :name="icon" />
     <template v-else>{{ initialOf(name) }}</template>
   </span>

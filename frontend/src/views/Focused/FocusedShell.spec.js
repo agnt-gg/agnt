@@ -60,7 +60,7 @@ function mountShell(screenName = 'ChatScreen', query = {}) {
       stubs: {
         FocusedSidebar: { props: ['open', 'activePage', 'onChat'], template: '<aside class="sidebar-stub" />' },
         FocusedLibrary: stub('FocusedLibrary'),
-        FocusedPlugins: stub('FocusedPlugins'),
+        FocusedConnectors: stub('FocusedConnectors'),
         FocusedScheduled: stub('FocusedScheduled'),
         FocusedMemory: stub('FocusedMemory'),
         FocusedSettings: stub('FocusedSettings'),
@@ -145,7 +145,7 @@ describe('FocusedShell', () => {
 
   it.each([
     ['AgentsScreen', { select: 'agent:a1' }, 'FocusedLibrary'],
-    ['ConnectorsScreen', {}, 'FocusedPlugins'],
+    ['ConnectorsScreen', {}, 'FocusedConnectors'],
     ['AutonomyScreen', { section: 'schedules' }, 'FocusedScheduled'],
     ['MemoryScreen', {}, 'FocusedMemory'],
     ['SettingsScreen', {}, 'FocusedSettings'],
@@ -154,6 +154,13 @@ describe('FocusedShell', () => {
     const w = mountShell(screen, query);
     expect(w.findComponent({ name: page }).exists()).toBe(true);
     expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('Plugins is borrowed from Studio, never the Connectors page', () => {
+    const w = mountShell('PluginsScreen');
+    expect(w.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(false);
+    expect(w.find('.focused-borrowed-bar').exists()).toBe(true);
     w.unmount();
   });
 

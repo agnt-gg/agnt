@@ -1,17 +1,17 @@
 <template>
-  <section class="focused-page focused-editor" :aria-label="card ? card.name : 'Plugin'">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Plugins</button>
+  <section class="focused-page focused-editor" :aria-label="card ? card.name : 'Connector'">
+    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Connectors</button>
 
-    <p v-if="!card" class="focused-empty">{{ loading ? 'Loading…' : 'This plugin isn’t available.' }}</p>
+    <p v-if="!card" class="focused-empty">{{ loading ? 'Loading…' : 'This connector isn’t available.' }}</p>
     <template v-else>
       <header class="focused-edit-head">
-        <FocusedPluginLogo :provider-id="card.providerId" :name="card.name" :icon="card.icon" />
+        <FocusedConnectorLogo :provider-id="card.providerId" :name="card.name" :icon="card.icon" />
         <div class="focused-edit-names">
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.connected }">{{ card.connected ? card.status : 'Not connected' }}</span>
         </div>
-        <button type="button" class="focused-btn" @click="nav.ask(editAsk('plugin', card.name))">
-          <i class="fas fa-comment-dots" aria-hidden="true"></i>Edit plugin
+        <button type="button" class="focused-btn" @click="nav.ask(editAsk('connector', card.name))">
+          <i class="fas fa-comment-dots" aria-hidden="true"></i>Edit connector
         </button>
       </header>
 
@@ -72,8 +72,8 @@
 <script setup>
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
-import FocusedPluginLogo from './FocusedPluginLogo.vue';
-import { pluginCard, CLI_DISCONNECT_ACTIONS, editAsk } from './focusedModel.js';
+import FocusedConnectorLogo from './FocusedConnectorLogo.vue';
+import { connectorCard, CLI_DISCONNECT_ACTIONS, editAsk } from './focusedModel.js';
 
 const props = defineProps({ providerId: { type: String, required: true } });
 const store = useStore();
@@ -83,9 +83,9 @@ const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
 const apiKey = ref('');
-const card = computed(() => pluginCard(store.state.appAuth?.allProviders, store.getters['appAuth/connectedApps'], props.providerId));
+const card = computed(() => connectorCard(store.state.appAuth?.allProviders, store.getters['appAuth/connectedApps'], props.providerId));
 
-const back = () => nav.go({ page: 'plugins' });
+const back = () => nav.go({ page: 'connectors' });
 
 // OAuth opens the provider's consent page in a popup (as Connectors does) and
 // re-reads the connections once it closes. The interval is cleared on close

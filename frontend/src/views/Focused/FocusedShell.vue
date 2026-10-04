@@ -41,7 +41,7 @@
       </div>
 
       <FocusedLibrary v-if="page === 'library'" :location="location" />
-      <FocusedPlugins v-else-if="page === 'plugins'" :item="location.item" />
+      <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" />
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" />
@@ -81,7 +81,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import FocusedSidebar from './FocusedSidebar.vue';
 import FocusedLibrary from './FocusedLibrary.vue';
-import FocusedPlugins from './FocusedPlugins.vue';
+import FocusedConnectors from './FocusedConnectors.vue';
 import FocusedScheduled from './FocusedScheduled.vue';
 import FocusedMemory from './FocusedMemory.vue';
 import FocusedSettings from './FocusedSettings.vue';
@@ -158,7 +158,7 @@ function openPage(id) {
   if (id === 'market') { pushScreen('MarketplaceScreen'); return; }
   if (id === 'library') go({ page: 'library', tab: 'agents' });
   else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
-  else if (['plugins', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
+  else if (['connectors', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
 }
 function backToChat() {
   // Plain /chat: the conversation Chat is holding stays open (no reload).

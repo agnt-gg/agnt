@@ -32,14 +32,20 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('ArtifactsScreen', { select: { kind: 'dir', id: 'reports' } })).toMatchObject({ tab: 'files', item: null, dir: 'reports' });
   });
 
-  it('plugins, scheduled, memory, settings', () => {
-    expect(via('ConnectorsScreen', { select: { kind: 'provider', id: 'slack' } })).toEqual({ page: 'plugins', item: 'slack' });
-    expect(via('ConnectorsScreen', { section: 'providers' })).toEqual({ page: 'plugins', item: null });
-    expect(via('PluginsScreen', {})).toEqual({ page: 'plugins', item: null });
+  it('connectors, scheduled, memory, settings', () => {
+    expect(via('ConnectorsScreen', { select: { kind: 'provider', id: 'slack' } })).toEqual({ page: 'connectors', item: 'slack' });
+    expect(via('ConnectorsScreen', { section: 'providers' })).toEqual({ page: 'connectors', item: null });
     expect(via('AutonomyScreen', { section: 'schedules' })).toEqual({ page: 'scheduled', item: null, isNew: false });
     expect(via('AutonomyScreen', { select: { kind: 'schedule', id: 's1' } })).toMatchObject({ page: 'scheduled', item: 's1' });
     expect(via('MemoryScreen', { newGoal: true })).toEqual({ page: 'memory', item: null, isNew: true });
     expect(via('SettingsScreen', { section: 'billing' })).toEqual({ page: 'settings' });
+  });
+
+  // Plugins are code installed into AGNT; connectors are connections to
+  // outside apps. /plugins used to land on the connections list.
+  it('Plugins is not Connectors: it opens the real Plugins screen', () => {
+    expect(via('PluginsScreen', {})).toBeNull();
+    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toBeNull();
   });
 
   it('Market has its own Focused storefront, including item deep links', () => {
@@ -74,8 +80,8 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'library', tab: 'widgets', item: null },
     { page: 'library', tab: 'files', item: 'a/b.md', dir: '' },
     { page: 'library', tab: 'files', item: null, dir: 'a/b' },
-    { page: 'plugins', item: 'slack' },
-    { page: 'plugins', item: null },
+    { page: 'connectors', item: 'slack' },
+    { page: 'connectors', item: null },
     { page: 'scheduled', item: 's1', isNew: false },
     { page: 'scheduled', item: null, isNew: true },
     { page: 'memory', item: 'm1', isNew: false },
@@ -100,6 +106,8 @@ describe('routeFor is the inverse of focusedLocation', () => {
     const studioOnly = new Set([
       'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen',
       'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
+      // Installed plugins. Not Connectors (connections to outside apps).
+      'PluginsScreen',
     ]);
     for (const screen of SECTION_ROUTES) {
       if (studioOnly.has(screen)) continue;
