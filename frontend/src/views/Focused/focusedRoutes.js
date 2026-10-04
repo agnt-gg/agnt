@@ -41,6 +41,7 @@ export const PAGE_SCREENS = Object.freeze({
   scheduled: 'GoalsScreen',
   memory: 'MemoryScreen',
   settings: 'SettingsScreen',
+  market: 'MarketplaceScreen',
 });
 
 const str = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? String(v[0] ?? '') : '');
@@ -101,6 +102,8 @@ export function focusedLocation(screen, query = {}) {
       return { page: 'memory', item: selected(query, 'memory'), isNew };
     case 'SettingsScreen':
       return { page: 'settings' };
+    case 'MarketplaceScreen':
+      return { page: 'market', item: str(query.item) || selected(query, 'marketplace') || null };
     default:
       return null;
   }
@@ -133,6 +136,7 @@ export function routeFor(loc) {
     return [PAGE_SCREENS.memory, opts];
   }
   if (loc.page === 'settings') return [PAGE_SCREENS.settings, {}];
+  if (loc.page === 'market') return [PAGE_SCREENS.market, loc.item ? { select: { kind: 'marketplace', id: loc.item } } : {}];
   return ['ChatScreen', {}];
 }
 

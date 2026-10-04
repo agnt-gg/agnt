@@ -106,6 +106,8 @@
 .ui-focused .focused-sidebar {
   width: 260px;
   flex: 0 0 260px;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -251,12 +253,21 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+}
+.ui-focused .focused-recents > li {
+  min-width: 0;
 }
 .ui-focused .focused-recent {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: stretch;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
   min-height: 34px;
   padding: 0 10px;
   border: none;
@@ -271,6 +282,8 @@
 .ui-focused .focused-recent-title,
 .ui-focused .focused-recent-status {
   display: block;
+  width: 100%;
+  box-sizing: border-box;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -746,16 +759,18 @@
  * rules only change its SIZE and PLACE — never which elements exist — so
  * nothing a Studio chat can do is lost here.                                 */
 
-/* One readable column, centred, like the demo. */
+/* One column contract for the transcript AND the actual composer border.
+   Every intermediate wrapper must preserve its parent's width. */
+.ui-focused .chat-screen-wrapper {
+  --focused-chat-column-width: min(768px, calc(100% - 32px));
+}
 .ui-focused .chat-screen-wrapper .conversation-container,
-.ui-focused .chat-screen-wrapper .input-container,
 .ui-focused .chat-screen-wrapper .focused-starters,
-.ui-focused .chat-screen-wrapper .chat-actions-bar {
-  width: 100%;
-  /* The demo's --column. */
-  max-width: 768px;
-  margin-left: auto;
-  margin-right: auto;
+.ui-focused .chat-screen-wrapper .input-container {
+  width: var(--focused-chat-column-width);
+  max-width: none;
+  min-width: 0;
+  margin-inline: auto;
   box-sizing: border-box;
 }
 .ui-focused .chat-screen-wrapper .input-container {
@@ -768,7 +783,16 @@
    Both now occupy the same border-box, including the scroll gutter. */
 .ui-focused .chat-screen-wrapper .scrollable-content {
   box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   padding: 0;
+  overflow: hidden;
+}
+.ui-focused .chat-screen-wrapper .automation-interface,
+.ui-focused .chat-screen-wrapper .conversation-canvas-wrapper {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .ui-focused .chat-screen-wrapper .conversation-canvas {
   box-sizing: border-box;
@@ -778,9 +802,27 @@
   overflow-y: auto !important;
   scrollbar-width: none !important;
 }
-.ui-focused .chat-screen-wrapper .conversation-container,
-.ui-focused .chat-screen-wrapper .input-container {
-  width: min(768px, calc(100% - 32px));
+/* Chat's scoped WebKit rule otherwise forces a 10px gutter on this sibling
+   alone, even when scrollbar-width is none. Wheel/key/touch scrolling stays. */
+.ui-focused .chat-screen-wrapper .conversation-canvas::-webkit-scrollbar {
+  width: 0 !important;
+  display: none !important;
+}
+.ui-focused .chat-screen-wrapper .message-flow {
+  --chat-avatar-gutter: 0px;
+  --chat-body-width: 100%;
+  margin-inline: 0;
+  width: 100%;
+}
+.ui-focused .chat-screen-wrapper .message-wrapper.assistant {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+.ui-focused .chat-screen-wrapper .input-line {
+  width: 100%;
+  box-sizing: border-box;
+  margin-inline: 0;
 }
 .ui-focused .focused-row-icon img,
 .ui-focused .focused-edit-icon img,
@@ -943,9 +985,18 @@
   line-height: 1.55;
 }
 /* Light themes: the demo's ink bubble, near-black with white text. */
-.ui-focused:not(:where(.dark *)) .chat-screen-wrapper .message-wrapper.user .message-card {
+.ui-focused:where(body:not(.dark) *) .chat-screen-wrapper .message-wrapper.user .message-card {
   background: var(--text-primary);
   color: var(--color-background);
+}
+/* MessageItem's inner text declares its own primary colour; the bubble's
+   inverse foreground must reach that element, not just its outer card. */
+.ui-focused .chat-screen-wrapper .message-wrapper.user .message-text {
+  color: inherit;
+}
+.ui-focused .chat-screen-wrapper .message-wrapper.user .message-text strong,
+.ui-focused .chat-screen-wrapper .message-wrapper.user .message-text b {
+  color: inherit;
 }
 /* No avatar column: the reply text, the user bubble and the composer share
    one left edge, as in the demo. Group-chat speakers are still named by the
@@ -1089,7 +1140,9 @@
 }
 .ui-focused .focused-home-hero h1 {
   margin: 0;
-  font-size: 28px;
+  max-width: none;
+  white-space: nowrap;
+  font-size: clamp(16px, 4.5vw, 28px);
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -1101,6 +1154,241 @@
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+/* ── Market: a quiet storefront, not Studio's three-panel workbench ─────── */
+.ui-focused .focused-market {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 40px max(24px, calc((100% - 1040px) / 2)) 64px;
+}
+.ui-focused .focused-market-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: transparent;
+  border: 0;
+  margin-bottom: 28px;
+}
+.ui-focused .focused-market-head h1 {
+  margin: 0 0 6px;
+  font-size: 32px;
+  letter-spacing: -0.04em;
+}
+.ui-focused .focused-market-head p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.ui-focused .focused-market-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 22px;
+}
+.ui-focused .focused-market-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ui-focused .focused-market-search {
+  width: 240px;
+  flex: 0 1 240px;
+  margin: 0;
+}
+.ui-focused .focused-market-spotlight {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 24px;
+  background: var(--color-darker-0);
+  overflow: hidden;
+  margin-bottom: 36px;
+}
+.ui-focused .focused-market-spotlight-copy {
+  min-width: 0;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+}
+.ui-focused .focused-market-kind {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-market-spotlight h2 {
+  margin: 0;
+  max-width: none;
+  font-size: clamp(24px, 2.5vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.ui-focused .focused-market-spotlight p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ui-focused .focused-market-spotlight-art,
+.ui-focused .focused-market-detail-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text-on-scrim);
+  font-size: 84px;
+}
+.ui-focused .focused-market-spotlight-art { cursor: pointer; }
+.ui-focused .focused-market-spotlight-art img,
+.ui-focused .focused-market-detail-art img {
+  width: 100%;
+  height: 100%;
+  max-height: 380px;
+  object-fit: cover;
+}
+.ui-focused .focused-market-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.ui-focused .focused-market-section-head h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.ui-focused .focused-market-section-head > span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.ui-focused .focused-market-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+}
+.ui-focused .focused-market-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.ui-focused .focused-market-card-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-focused .focused-market-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 62px;
+  height: 62px;
+  border-radius: 15px;
+  overflow: hidden;
+  font-size: 25px;
+}
+.ui-focused .focused-market-tile img { width: 100%; height: 100%; object-fit: cover; }
+.ui-focused .focused-market-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ui-focused .focused-market-card-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-focused .focused-market-card-copy > span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.ui-focused .focused-market-card-copy small {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-focused .focused-market-get {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ui-focused .focused-market-get:hover:not(:disabled) { background: var(--surface-hover); }
+.ui-focused .focused-market-get:disabled { color: var(--text-tertiary); cursor: default; }
+.ui-focused .focused-market-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 24px;
+}
+.ui-focused .focused-market-detail-art { border-radius: 24px; align-self: start; }
+.ui-focused .focused-market-detail-body { min-width: 0; }
+.ui-focused .focused-market-detail h2 { max-width: none; font-size: 30px; margin: 10px 0; overflow-wrap: anywhere; }
+.ui-focused .focused-market-detail p { font-size: 14px; line-height: 1.65; }
+.ui-focused .focused-market-author,
+.ui-focused .focused-market-meta { color: var(--text-secondary); }
+.ui-focused .focused-market-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; margin: 20px 0; }
+.ui-focused .focused-market-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .ui-focused .focused-market-controls { flex-wrap: wrap; }
+  .ui-focused .focused-market-search { width: 100%; flex-basis: 100%; }
+  .ui-focused .focused-market-spotlight-copy { padding: 28px; }
+  .ui-focused .focused-market-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .ui-focused .focused-market-spotlight,
+  .ui-focused .focused-market-detail { grid-template-columns: minmax(0, 1fr); }
+  .ui-focused .focused-market-spotlight-art { min-height: 160px; max-height: 200px; order: -1; font-size: 64px; }
+  .ui-focused .focused-market-head { align-items: flex-start; }
+  .ui-focused .focused-market-head .focused-link { max-width: 110px; }
 }
 
 /* ── Editors: the demo's item pages (agent, workflow, tool, skill, widget,
@@ -1889,7 +2177,7 @@
   padding: 20px 16px 32px;
 }
 .ui-focused.is-compact .focused-home-hero h1 {
-  font-size: 22px;
+  font-size: clamp(16px, 4.5vw, 22px);
 }
 /* Phone home: the hero fills the space, the composer docks at the bottom
    where the thumb is, suggestions sit just above it. Focused's top bar is the
@@ -1926,11 +2214,24 @@
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
-.ui-focused.is-compact .chat-screen-wrapper .conversation-container {
-  width: calc(100% - 24px);
-  margin-inline: auto;
+.ui-focused.is-compact .chat-screen-wrapper {
+  --focused-chat-column-width: min(768px, calc(100% - 2 * max(12px, env(safe-area-inset-left), env(safe-area-inset-right))));
 }
+/* Compact Studio declares padding AND margin with !important. Override
+   only these layout properties; keep its bottom safe-area clearance. */
 .ui-focused.is-compact .chat-screen-wrapper .input-container {
-  width: 100%;
-  max-width: none;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+/* Compact's global user-card fill is also !important. It must not put a
+   light backdrop under Focused's inverse foreground. */
+.ui-focused.is-compact .chat-screen-wrapper .message-wrapper.user .message-card {
+  background: var(--surface-active) !important;
+  color: var(--text-primary);
+}
+.ui-focused.is-compact:where(body:not(.dark) *) .chat-screen-wrapper .message-wrapper.user .message-card {
+  background: var(--text-primary) !important;
+  color: var(--color-background);
 }

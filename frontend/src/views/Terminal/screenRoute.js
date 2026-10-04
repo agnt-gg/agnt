@@ -73,7 +73,10 @@ export function screenRoute(screenName, options = {}) {
     // them: `select` opens an entity in the screen's inspector, `section`
     // picks a left-nav view, `status` presets a list filter, `newGoal` /
     // `newAgent` open a composer.
-    if (options.select) query.select = `${options.select.kind}:${options.select.id}`;
+    if (options.select) {
+      if (screenName === 'MarketplaceScreen' && options.select.kind === 'marketplace') query.item = options.select.id;
+      else query.select = `${options.select.kind}:${options.select.id}`;
+    }
     if (options.section) query.section = options.section;
     if (options.status) query.status = options.status;
     if (options.newGoal || options.newAgent) query.new = '1';

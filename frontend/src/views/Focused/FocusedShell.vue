@@ -45,6 +45,7 @@
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" />
+      <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
 
       <!-- The screen Terminal mounted. On a Focused page that is Chat, kept
            alive underneath (v-show) so a reply keeps streaming. -->
@@ -84,6 +85,7 @@ import FocusedPlugins from './FocusedPlugins.vue';
 import FocusedScheduled from './FocusedScheduled.vue';
 import FocusedMemory from './FocusedMemory.vue';
 import FocusedSettings from './FocusedSettings.vue';
+import FocusedMarket from './FocusedMarket.vue';
 import { screenTitle } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 import { focusedLocation, routeFor } from './focusedRoutes.js';

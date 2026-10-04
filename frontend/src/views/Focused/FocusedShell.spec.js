@@ -58,12 +58,13 @@ function mountShell(screenName = 'ChatScreen', query = {}) {
     global: {
       provide: { isMobile: ref(false) },
       stubs: {
-        FocusedSidebar: { template: '<aside class="sidebar-stub" />' },
+        FocusedSidebar: { props: ['open', 'activePage', 'onChat'], template: '<aside class="sidebar-stub" />' },
         FocusedLibrary: stub('FocusedLibrary'),
         FocusedPlugins: stub('FocusedPlugins'),
         FocusedScheduled: stub('FocusedScheduled'),
         FocusedMemory: stub('FocusedMemory'),
         FocusedSettings: stub('FocusedSettings'),
+        FocusedMarket: stub('FocusedMarket'),
         SimpleModal: { template: '<div />', methods: { showModal: () => Promise.resolve(true) } },
         JumpPalette: { name: 'JumpPalette', template: '<div class="jump-stub" />' },
       },
@@ -148,6 +149,7 @@ describe('FocusedShell', () => {
     ['AutonomyScreen', { section: 'schedules' }, 'FocusedScheduled'],
     ['MemoryScreen', {}, 'FocusedMemory'],
     ['SettingsScreen', {}, 'FocusedSettings'],
+    ['MarketplaceScreen', { item: 'asset-1' }, 'FocusedMarket'],
   ])('%s %j renders %s', (screen, query, page) => {
     const w = mountShell(screen, query);
     expect(w.findComponent({ name: page }).exists()).toBe(true);

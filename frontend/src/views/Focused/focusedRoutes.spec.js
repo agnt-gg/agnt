@@ -42,6 +42,12 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('SettingsScreen', { section: 'billing' })).toEqual({ page: 'settings' });
   });
 
+  it('Market has its own Focused storefront, including item deep links', () => {
+    expect(focusedLocation('MarketplaceScreen')).toEqual({ page: 'market', item: null });
+    expect(focusedLocation('MarketplaceScreen', { item: 'asset-1' })).toEqual({ page: 'market', item: 'asset-1' });
+    expect(focusedLocation('MarketplaceScreen', { studio: '1' })).toBeNull();
+  });
+
   it('Autonomy\'s approvals and limits stay Studio\'s', () => {
     expect(via('AutonomyScreen', {})).toBeNull();
     expect(via('AutonomyScreen', { section: 'approvals' })).toBeNull();
@@ -52,7 +58,7 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
   });
 
   it('Chat and Studio-only screens are not Focused pages', () => {
-    for (const s of ['ChatScreen', 'GoalsScreen', 'TracesScreen', 'DashboardScreen', 'WorkspaceScreen', 'MarketplaceScreen']) {
+    for (const s of ['ChatScreen', 'GoalsScreen', 'TracesScreen', 'DashboardScreen', 'WorkspaceScreen']) {
       expect(focusedLocation(s, {}), s).toBeNull();
     }
   });
@@ -75,6 +81,8 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'memory', item: 'm1', isNew: false },
     { page: 'memory', item: null, isNew: true },
     { page: 'settings' },
+    { page: 'market', item: null },
+    { page: 'market', item: 'asset-1' },
   ];
   it.each(locations.map((l) => [JSON.stringify(l), l]))('%s', (_, loc) => {
     const [screen, opts] = routeFor(loc);
@@ -90,7 +98,7 @@ describe('routeFor is the inverse of focusedLocation', () => {
     // Forges are listed bare: their blank build canvas is Studio's, while an
     // existing workflow/tool opens in Focused (tested above).
     const studioOnly = new Set([
-      'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen', 'MarketplaceScreen',
+      'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen',
       'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
     ]);
     for (const screen of SECTION_ROUTES) {
