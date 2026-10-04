@@ -26,10 +26,31 @@ class ConversationRoleModel {
     return row ? row.output_id : null;
   }
 
-  /** Make `outputId` the user's Main chat, replacing any previous one. */
-  static async setMain(userId, outputId) {
-    await run(`DELETE FROM conversation_roles WHERE user_id = ? AND role = 'main'`, [userId]);
-    await run(`INSERT OR REPLACE INTO conversation_roles (output_id, user_id, role, parent_output_id) VALUES (?, ?, 'main', NULL)`, [outputId, userId]);
+  /**
+   * Make `outputId` the user's Main chat, replacing any previous one.
+   *
+   * ONE statement. It was DELETE-then-INSERT, so a failed INSERT left the user
+   * with no Main chat at all. REPLACE resolves the one-main-per-user partial
+   * unique index by removing the old marker in the same write.
+   */
+  static setMain(userId, outputId) {
+    return run(`INSERT OR REPLACE INTO conversation_roles (output_id, user_id, role, parent_output_id) VALUES (?, ?, 'main', NULL)`, [outputId, userId]);
+  }
+
+  /**
+   * A Main chat row that lost (or never got) its marker: the system-named
+   * "Main chat" with no role. The newest, so the most recent one is adopted.
+   */
+  static async findUnmarkedMain(userId, title) {
+    const row = await get(
+      `SELECT co.id FROM content_outputs co
+       LEFT JOIN conversation_roles r ON r.output_id = co.id
+       WHERE co.user_id = ? AND co.title = ? AND co.title_source = 'system'
+         AND co.content_type = 'conversation' AND co.archived_at IS NULL AND r.output_id IS NULL
+       ORDER BY co.created_at DESC LIMIT 1`,
+      [userId, title],
+    );
+    return row ? row.id : null;
   }
 
   /** Record that `outputId` was started from `parentOutputId` (may be null). */

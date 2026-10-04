@@ -158,6 +158,44 @@ describe('the pinned Main chat', () => {
     expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [PIN_USER])).toHaveLength(1);
   });
 
+  // Reported: a second "Main chat" showed up as an ordinary conversation. The
+  // first one's marker write failed, so the next ask created another.
+  it('a failed marker write leaves no orphan row, and the next ask still finds one Main chat', async () => {
+    const uid = 'user-main-marker-fails';
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    const { vi } = await import('vitest');
+    const spy = vi.spyOn(ConversationRoleModel, 'setMain').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    await expect(MainChat.ensureMainChat(uid)).rejects.toThrow('SQLITE_BUSY');
+    spy.mockRestore();
+    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [uid])).toEqual([]);
+    const main = await MainChat.ensureMainChat(uid);
+    expect(await all(`SELECT id FROM content_outputs WHERE user_id = ?`, [uid])).toEqual([{ id: main.id }]);
+  });
+
+  it('an unmarked Main chat row already in the list is adopted, never duplicated', async () => {
+    const uid = 'user-main-orphan';
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    // The state the bug left behind: a system "Main chat" with no marker.
+    await ContentOutputModel.createOrUpdate('orphan-main', uid, null, null, JSON.stringify({ messages: [] }), false, 'conversation', 'conv-orphan', MainChat.MAIN_CHAT_TITLE, { titleSource: 'system' });
+    // A conversation the user merely named "Main chat" is theirs, not adopted.
+    await ContentOutputModel.createOrUpdate('named-by-user', uid, null, null, JSON.stringify({ messages: [] }), false, 'conversation', 'conv-named', MainChat.MAIN_CHAT_TITLE, { titleSource: 'user' });
+    const main = await MainChat.ensureMainChat(uid);
+    expect(main.id).toBe('orphan-main');
+    expect(await ConversationRoleModel.findMainOutputId(uid)).toBe('orphan-main');
+    expect((await all(`SELECT id FROM content_outputs WHERE user_id = ? ORDER BY id`, [uid])).map((r) => r.id)).toEqual(['named-by-user', 'orphan-main']);
+  });
+
+  it('replacing the Main chat swaps the marker in one write', async () => {
+    const uid = 'user-main-replace';
+    await run('INSERT INTO users (id, email) VALUES (?, ?)', [uid, `${uid}@test.local`]);
+    const first = await MainChat.ensureMainChat(uid);
+    await ContentOutputModel.createOrUpdate('second-main', uid, null, null, JSON.stringify({ messages: [] }), false, 'conversation', 'conv-second', 'x', { titleSource: 'system' });
+    await ConversationRoleModel.setMain(uid, 'second-main');
+    expect(await ConversationRoleModel.findMainOutputId(uid)).toBe('second-main');
+    expect(await all(`SELECT output_id FROM conversation_roles WHERE user_id = ? AND role = 'main'`, [uid])).toEqual([{ output_id: 'second-main' }]);
+    expect(first.id).not.toBe('second-main');
+  });
+
   it('a new conversation saved alongside it is its own row, never the Main chat', async () => {
     const { main } = await MainChat.getMainChatState(PIN_USER);
     const service = (await import('./RunService.js')).default;

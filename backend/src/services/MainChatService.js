@@ -67,13 +67,30 @@ export function ensureMainChat(userId) {
       const output = await ContentOutputModel.findMetaById(existingId);
       if (output) return output;
     }
+    // A Main chat row whose marker write failed is still the Main chat. Adopt
+    // it: creating another is how a second "Main chat" landed in the list.
+    const unmarkedId = await ConversationRoleModel.findUnmarkedMain(userId, MAIN_CHAT_TITLE);
+    if (unmarkedId) {
+      await ConversationRoleModel.setMain(userId, unmarkedId);
+      const output = await ContentOutputModel.findMetaById(unmarkedId);
+      if (output) {
+        announce(userId, RealtimeEvents.CONTENT_UPDATED, output);
+        return output;
+      }
+    }
     const outputId = randomUUID();
     const conversationId = randomUUID();
     await ContentOutputModel.createOrUpdate(
       outputId, userId, null, null, emptyTranscript(conversationId), false, 'conversation', conversationId, MAIN_CHAT_TITLE,
       { titleSource: 'system' },
     );
-    await ConversationRoleModel.setMain(userId, outputId);
+    try {
+      await ConversationRoleModel.setMain(userId, outputId);
+    } catch (error) {
+      // Never leave an unmarked, empty "Main chat" behind in the list.
+      await ContentOutputModel.delete(outputId, userId).catch(() => {});
+      throw error;
+    }
     const output = await ContentOutputModel.findMetaById(outputId);
     announce(userId, RealtimeEvents.CONTENT_CREATED, output);
     return output;
