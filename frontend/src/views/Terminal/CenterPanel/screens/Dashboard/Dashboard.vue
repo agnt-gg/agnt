@@ -55,7 +55,6 @@
                 :toolsData="toolsData"
                 :runsData="runsData"
                 :integrationsData="integrationsData"
-                :daysStreak="daysStreak"
                 :statusData="statusData"
               />
 
@@ -299,11 +298,6 @@ export default {
 
     // --- $AGNT Score - Read directly from state (calculated ONCE after all data loads) ---
     const agntScoreData = computed(() => store.state.userStats.agntScore);
-
-    // The ribbon declares a daysStreak prop but nothing ever bound it, so its
-    // streak section was v-if'd out permanently. Same source as the chart badge
-    // — one streak, one definition, two places it can appear.
-    const daysStreak = computed(() => store.getters['userStats/daysStreak']);
 
     const goalsMapData = computed(() => {
       const allGoals = store.getters['goals/allGoals'] || [];
@@ -651,7 +645,6 @@ export default {
       toolsData,
       runsData,
       integrationsData,
-      daysStreak,
       statusData,
       goalsMapData,
       agentsSwarmData,

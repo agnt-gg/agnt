@@ -1,5 +1,5 @@
 <template>
-  <div class="goal-panel">
+  <div ref="panelRoot" class="goal-panel">
     <div v-if="selectedGoal" class="goal-details">
       <!-- Header: title + close -->
       <div class="goal-header">
@@ -51,28 +51,86 @@
         </div>
       </div>
 
-      <!-- What it made: the same cards the chat shows for its outputs. -->
-      <section v-if="artifactSource.content" class="goal-section goal-results">
-        <h3>What it made</h3>
-        <ArtifactCards :content="artifactSource.content" :tool-calls="artifactSource.toolCalls" :message-id="'goal:' + selectedGoal.id" />
+      <!-- REVIEW. Answers, in order: did it pass, what did it make, and for
+           each check, where is the proof. Nothing here needs "Show the work". -->
+
+      <!-- 1. The verdict. Misses are named here, not left to be found. -->
+      <section v-if="checklist.items.length" class="goal-section">
+        <div v-if="verdict.evaluated" class="review-verdict" :class="verdict.missed.length ? 'has-missed' : 'all-met'" role="status">
+          <i :class="verdict.missed.length ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle'" aria-hidden="true"></i>
+          <div>
+            <strong>{{ verdict.met }} of {{ verdict.total }} checks met</strong><span v-if="evaluationScore !== null" class="review-score" v-tooltip="'The evaluator\'s weighted score for completeness and quality'"> · evaluator score {{ evaluationScore }}%</span>
+            <small v-if="verdict.missed.length">Not met: {{ verdict.missed.map((m) => m.text).join(' · ') }}</small>
+            <small v-else>Every check has the evaluator's evidence below.</small>
+          </div>
+        </div>
+        <div v-else class="review-verdict is-pending" role="status">
+          <i class="far fa-clock" aria-hidden="true"></i>
+          <div><strong>Not checked yet</strong><small>The evaluator checks each item when the work is evaluated.</small></div>
+        </div>
       </section>
 
-      <!-- The plan's acceptance checklist, checked by the evaluator. -->
+      <!-- 2. The deliverable: what the checklist asked for, readable right here. -->
+      <section v-if="deliverables.length" class="goal-section goal-deliverable">
+        <h3>Deliverable</h3>
+        <div v-for="file in deliverables" :key="file" class="review-file">
+          <i class="fas fa-file-alt" aria-hidden="true"></i>
+          <div class="review-file-name"><strong>{{ baseName(file) }}</strong><small v-tooltip="file">{{ file }}</small></div>
+          <button type="button" class="raw-toggle" @click="openFile(file)"><i class="fas fa-external-link-alt"></i> Open</button>
+        </div>
+        <details v-if="report.text" class="review-preview">
+          <summary>Read it here</summary>
+          <div class="output-rendered" v-html="renderMarkdown(report.text)"></div>
+        </details>
+        <p v-else-if="report.error" class="checklist-hint">Couldn't read the file: {{ report.error }}</p>
+      </section>
+
+      <!-- 3. Each check, with its proof: evidence, the task, the file, the section. -->
       <section v-if="checklist.items.length" class="goal-section goal-checklist">
         <h3>
           Checklist
           <span v-if="checklist.evaluated" class="checklist-count">{{ checklist.met }}/{{ checklist.items.length }} met</span>
         </h3>
         <ul>
-          <li v-for="item in checklist.items" :key="item.id" :class="item.met === true ? 'is-met' : item.met === false ? 'is-missed' : 'is-open'">
-            <i :class="item.met === true ? 'fas fa-check-circle' : item.met === false ? 'fas fa-times-circle' : 'far fa-circle'" aria-hidden="true"></i>
-            <span>
-              {{ item.text }}
-              <small v-if="item.evidence && item.evidence !== 'Not assessed'">{{ item.evidence }}</small>
-            </span>
+          <li v-for="item in reviewItems" :key="item.id" :class="item.met === true ? 'is-met' : item.met === false ? 'is-missed' : 'is-open'">
+            <i :class="item.met === true ? 'fas fa-check-circle' : item.met === false ? 'fas fa-times-circle' : 'far fa-circle'" :aria-label="item.met === true ? 'Met' : item.met === false ? 'Not met' : 'Not checked'"></i>
+            <div class="check-body">
+              <span class="check-text">{{ item.text }}</span>
+              <span v-if="item.met === false" class="check-tag">Not met</span>
+              <p v-if="item.evidence && item.evidence !== 'Not assessed'" class="check-evidence">{{ item.evidence }}</p>
+              <div v-if="item.proof.tasks.length || item.proof.files.length || item.proof.section" class="check-proof">
+                <button v-for="t in item.proof.tasks" :key="'t' + t.number" type="button" class="proof-chip" @click="showTask(t.number)">
+                  <i class="fas fa-tasks" aria-hidden="true"></i> Task {{ t.number }} · {{ t.title }}
+                </button>
+                <button v-for="f in item.proof.files" :key="f" type="button" class="proof-chip" @click="openFile(f)">
+                  <i class="fas fa-file-alt" aria-hidden="true"></i> {{ baseName(f) }}
+                </button>
+                <button v-if="item.proof.section" type="button" class="proof-chip" :class="{ active: openSections[item.id] }" :aria-expanded="openSections[item.id] ? 'true' : 'false'" @click="toggleExcerpt(item.id)">
+                  <i class="fas fa-paragraph" aria-hidden="true"></i> {{ item.proof.section.heading }} in the report
+                </button>
+              </div>
+              <div v-if="item.proof.section && openSections[item.id]" class="check-excerpt">
+                <div class="check-excerpt-head">
+                  <span>From {{ report.path ? baseName(report.path) : 'the report' }} · {{ item.proof.section.heading }}</span>
+                  <button type="button" class="detail-close-btn" aria-label="Close excerpt" @click="toggleExcerpt(item.id)"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="output-rendered" v-html="renderMarkdown(item.proof.section.body)"></div>
+              </div>
+            </div>
           </li>
         </ul>
-        <p v-if="!checklist.evaluated" class="checklist-hint">Checked automatically when the work is evaluated.</p>
+      </section>
+
+      <!-- 4. Everything else it wrote (scripts, scratch notes), out of the way. -->
+      <details v-if="otherFiles.length" class="goal-section review-other">
+        <summary>Other files it wrote · {{ otherFiles.length }}</summary>
+        <button v-for="f in otherFiles" :key="f" type="button" class="proof-chip" v-tooltip="f" @click="openFile(f)"><i class="fas fa-file" aria-hidden="true"></i> {{ baseName(f) }}</button>
+      </details>
+
+      <!-- No checklist (older goals): fall back to the chat's artifact cards. -->
+      <section v-if="!checklist.items.length && artifactSource.content" class="goal-section goal-results">
+        <h3>What it made</h3>
+        <ArtifactCards :content="artifactSource.content" :tool-calls="artifactSource.toolCalls" :message-id="'goal:' + selectedGoal.id" />
       </section>
 
       <!-- Sign-off: the reviewer accepts the result against the checklist. -->
@@ -84,13 +142,13 @@
       </div>
 
       <!-- Everything else is detail: tasks, tool calls, raw evaluation, iterations. -->
-      <details class="goal-work">
+      <details class="goal-work" :open="workOpen" @toggle="workOpen = $event.target.open">
         <summary>Show the work<span v-if="selectedGoal.tasks?.length"> · {{ selectedGoal.tasks.length }} task{{ selectedGoal.tasks.length === 1 ? '' : 's' }}</span></summary>
         <!-- Tasks list -->
         <div v-if="selectedGoal.tasks && selectedGoal.tasks.length > 0" class="goal-tasks">
           <h3>Tasks ({{ selectedGoal.tasks.length }})</h3>
           <div class="tasks-list">
-            <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="task-card" :class="(task.status || '').toLowerCase()">
+            <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="task-card" :class="(task.status || '').toLowerCase()" :data-review-task="index + 1">
               <div class="task-header">
                 <div class="task-info">
                   <span class="task-name">{{ task.title || 'Untitled Task' }}</span>
@@ -332,7 +390,7 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
 import DOMPurify from 'dompurify';
@@ -343,6 +401,9 @@ import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { goalArtifactSource } from '@/views/Terminal/CenterPanel/screens/Goals/goalArtifacts.js';
 import { reviewChecklist } from '@/views/Terminal/CenterPanel/screens/Goals/goalChecklist.js';
+import { baseName, deliverablesFor, reportSections, proofFor, reviewVerdict } from '@/views/Terminal/CenterPanel/screens/Goals/goalReview.js';
+import { getFile } from '@/services/fileSystemService.js';
+import { openLocalPath } from '@/utils/openLocalFile.js';
 import { getGoalStage } from '@/views/Terminal/CenterPanel/screens/Goals/goalBoard.js';
 
 const mdConverter = new showdown.Converter({
@@ -509,8 +570,73 @@ export default {
     });
 
     // Review: what the goal made, and its checklist as the evaluator left it.
-    const artifactSource = computed(() => goalArtifactSource(selectedGoal.value?.tasks || []));
-    const checklist = computed(() => reviewChecklist(selectedGoal.value));
+    //
+    // `selectedGoal` is a snapshot taken when the goal was opened. The
+    // evaluation is fetched AFTER that and the store saves it on a NEW goal
+    // object, so reading the snapshot alone never saw it: the checklist stayed
+    // unchecked ("Checked automatically when the work is evaluated") on goals
+    // that had been evaluated. Read the evaluation from the live record.
+    const liveGoal = computed(() => (selectedGoal.value ? store.getters['goals/getGoalById'](selectedGoal.value.id) : null));
+    const evaluation = computed(() => liveGoal.value?.evaluation || selectedGoal.value?.evaluation || null);
+    const reviewTasks = computed(() => (selectedGoal.value?.tasks?.length ? selectedGoal.value.tasks : liveGoal.value?.tasks) || []);
+    const artifactSource = computed(() => goalArtifactSource(reviewTasks.value));
+    const checklist = computed(() => reviewChecklist(selectedGoal.value ? { ...selectedGoal.value, evaluation: evaluation.value } : null));
+    const verdict = computed(() => reviewVerdict(checklist.value));
+    const evaluationScore = computed(() => {
+      const score = Number(evaluation.value?.overall_score ?? evaluation.value?.evaluation_data?.scores?.overall);
+      return Number.isFinite(score) ? Math.round(score) : null;
+    });
+
+    // The deliverable: the file(s) the checklist asks for. Its text is read so
+    // each check can show the section of it that proves the check.
+    const deliverables = computed(() => deliverablesFor(checklist.value.items, artifactSource.value.files));
+    const otherFiles = computed(() => artifactSource.value.files.filter((f) => !deliverables.value.includes(f)));
+    const report = ref({ path: '', text: '', error: '' });
+    const READABLE = /\.(md|markdown|txt)$/i;
+    watch(
+      () => deliverables.value.find((f) => READABLE.test(f)) || '',
+      async (path) => {
+        report.value = { path, text: '', error: '' };
+        if (!path) return;
+        try {
+          const file = await getFile(path);
+          if (report.value.path === path) report.value = { path, text: String(file?.content || '').slice(0, 200_000), error: '' };
+        } catch (error) {
+          if (report.value.path === path) report.value = { path, text: '', error: error.message };
+        }
+      },
+      { immediate: true },
+    );
+    const sections = computed(() => reportSections(report.value.text));
+    // Unmet checks first: they are what a reviewer has to decide about.
+    const rank = (item) => (item.met === false ? 0 : item.met === null ? 1 : 2);
+    const reviewItems = computed(() =>
+      checklist.value.items
+        .map((item, order) => ({ ...item, order, proof: proofFor(item, { tasks: reviewTasks.value, files: artifactSource.value.files, sections: sections.value }) }))
+        .sort((a, b) => rank(a) - rank(b) || a.order - b.order),
+    );
+
+    const openSections = ref({});
+    const toggleExcerpt = (id) => {
+      openSections.value = { ...openSections.value, [id]: !openSections.value[id] };
+    };
+    const openFile = (path) => openLocalPath(path);
+    // "Task 2" in the evidence opens the work and lands on that task's output.
+    const workOpen = ref(false);
+    const panelRoot = ref(null);
+    const showTask = async (number) => {
+      const task = reviewTasks.value[number - 1];
+      if (!task) return;
+      workOpen.value = true;
+      expandedNodeSections.value = { ...expandedNodeSections.value, [`${task.id}-output`]: true };
+      await nextTick();
+      // Scoped to this panel: another goal panel may be open on the canvas.
+      panelRoot.value?.querySelector(`[data-review-task="${number}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    watch(() => selectedGoal.value?.id, () => {
+      openSections.value = {};
+      workOpen.value = false;
+    });
     // Sign-off is for finished work awaiting a human: a result in review, or
     // one the loop completed but nobody has accepted yet.
     const canSignOff = computed(() => {
@@ -889,6 +1015,20 @@ ${goal.tasks
     return {
       artifactSource,
       checklist,
+      verdict,
+      evaluationScore,
+      deliverables,
+      otherFiles,
+      report,
+      reviewItems,
+      openSections,
+      toggleExcerpt,
+      openFile,
+      showTask,
+      workOpen,
+      panelRoot,
+      baseName,
+      renderMarkdown,
       canSignOff,
       summaryStats,
       selectedGoal,
@@ -981,7 +1121,9 @@ ${goal.tasks
   font-size: 12.5px;
   line-height: 1.4;
 }
-.goal-checklist li i {
+/* `> i`: the status icon only. A bare `i` also painted every chip and close
+   icon inside a missed row red. */
+.goal-checklist li > i {
   margin-top: 2px;
 }
 .goal-checklist li small {
@@ -989,15 +1131,127 @@ ${goal.tasks
   font-size: 11px;
   color: var(--color-text-muted);
 }
-.goal-checklist .is-met i {
+.goal-checklist .is-met > i {
   color: var(--color-green);
 }
-.goal-checklist .is-missed i {
+.goal-checklist .is-missed > i {
   color: var(--color-red);
 }
-.goal-checklist .is-open i {
+.goal-checklist .is-open > i {
   color: var(--color-text-muted);
 }
+/* ── Review: verdict, deliverable, proof per check. Built from this panel's
+   own rules: .task-card's border, .raw-toggle's chip, .goal-status colours. */
+.review-verdict {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.review-verdict > i { margin-top: 2px; font-size: 15px; }
+.review-verdict small { display: block; margin-top: 3px; font-size: 11.5px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.review-verdict.all-met { border-color: rgba(var(--green-rgb), 0.4); }
+.review-verdict.all-met > i { color: var(--color-green); }
+.review-verdict.has-missed { border-color: var(--color-yellow); }
+.review-verdict.has-missed > i { color: var(--color-yellow); }
+.review-verdict.is-pending > i { color: var(--color-text-muted); }
+.review-score { color: var(--color-text-muted); font-weight: 400; }
+.review-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+}
+.review-file > i { color: var(--color-primary); }
+.review-file-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.review-file-name strong { font-size: 13px; overflow-wrap: anywhere; }
+.review-file-name small { font-size: 10.5px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.review-preview { margin-top: 8px; border: 1px solid var(--terminal-border-color); border-radius: 6px; }
+.review-preview > summary,
+.review-other > summary { cursor: pointer; padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); user-select: none; }
+.review-preview > summary:hover,
+.review-other > summary:hover { color: var(--color-text); }
+.review-preview[open] > summary { border-bottom: 1px solid var(--terminal-border-color); }
+.review-other > summary { padding-left: 0; }
+.review-other[open] { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-other[open] > summary { width: 100%; }
+.check-body { flex: 1; min-width: 0; }
+.check-text { overflow-wrap: anywhere; }
+.check-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--on-fill-danger);
+  background: var(--color-red);
+  vertical-align: 1px;
+}
+.check-evidence { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--color-text); opacity: 0.78; overflow-wrap: anywhere; }
+.goal-checklist .is-missed .check-evidence { opacity: 1; }
+.goal-checklist li.is-missed {
+  padding: 10px 10px 10px 8px;
+  margin: 0 -10px 4px;
+  border-radius: 6px;
+  border-left: 3px solid var(--color-red);
+  background: rgba(var(--red-rgb), 0.1);
+}
+.check-proof { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.proof-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.proof-chip:hover,
+.proof-chip.active { border-color: rgba(var(--primary-rgb), 0.5); color: var(--color-text); }
+.proof-chip i { font-size: 0.85em; color: var(--color-primary); }
+.check-excerpt {
+  margin-top: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+}
+.check-excerpt .output-rendered { max-height: 320px; padding: 8px 12px; font-size: 12.5px; }
+.check-excerpt .output-rendered :deep(> :first-child) { margin-top: 0; }
+.check-excerpt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.detail-close-btn { background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 2px 4px; }
+.detail-close-btn:hover { color: var(--color-text); }
+.check-excerpt :deep(table),
+.review-preview :deep(table) { border-collapse: collapse; display: block; overflow-x: auto; font-size: 0.9em; }
+.check-excerpt :deep(th),
+.check-excerpt :deep(td),
+.review-preview :deep(th),
+.review-preview :deep(td) { border: 1px solid var(--terminal-border-color); padding: 3px 6px; white-space: nowrap; }
 .checklist-hint {
   margin: 8px 0 0;
   font-size: 11px;

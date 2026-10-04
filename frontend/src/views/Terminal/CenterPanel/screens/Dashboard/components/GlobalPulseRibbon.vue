@@ -37,10 +37,7 @@
       <span class="pulse-label">Integrations:</span>
       <span class="pulse-item clickable">[{{ integrationsData.count }}]</span>
     </div>
-    <div class="pulse-section" v-if="daysStreak > 0">
-      <span class="pulse-label">Streak:</span>
-      <span class="pulse-item clickable" style="color: var(--color-orange)">[{{ daysStreak }} days 🔥]</span>
-    </div>
+    <!-- No streak here: it is the credits chart's badge, right above. -->
     <!-- <div class="pulse-section status-section">
       <span class="pulse-label">Status:</span>
       <span :class="['status-indicator', statusClass]">{{ statusIcon }} {{ statusData.health }}</span>
@@ -82,10 +79,6 @@ export default {
     integrationsData: {
       type: Object,
       default: () => ({ count: 0 }),
-    },
-    daysStreak: {
-      type: Number,
-      default: 0,
     },
     statusData: {
       type: Object,

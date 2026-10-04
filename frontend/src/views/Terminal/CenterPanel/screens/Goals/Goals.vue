@@ -565,15 +565,23 @@ export default {
     // Navigation intents carried in the URL (AGNT One): ?new=1 opens the
     // composer (Traces' "New goal", Dashboard quick action, ⌘K); ?select=goal:ID
     // selects a goal (Jump palette, entity chips).
+    //
+    // Applied when the goals ARRIVE, not when this screen's fetch resolves:
+    // fetchGoals returns at once while another fetch (the boot one) is in
+    // flight, so a link opened at launch found no goals and was dropped. Each
+    // link opens its goal once; a new link (screen kept alive) opens the next.
+    let appliedSelect = '';
     const applyRouteIntents = () => {
       if (route.query?.new === '1') showCreateModal.value = true;
       const sel = typeof route.query?.select === 'string' ? route.query.select : '';
-      if (sel.startsWith('goal:')) {
-        const id = sel.slice(5);
-        const goal = (allGoals.value || []).find((g) => String(g.id) === id);
-        if (goal) handleGoalClick(goal);
-      }
+      if (!sel.startsWith('goal:') || sel === appliedSelect) return;
+      const id = sel.slice(5);
+      const goal = (allGoals.value || []).find((g) => String(g.id) === id);
+      if (!goal) return;
+      appliedSelect = sel;
+      handleGoalClick(goal);
     };
+    watch([() => route.query?.select, () => (allGoals.value || []).length], applyRouteIntents);
 
     const initializeScreen = () => {
       terminalLines.value.push('Loading goals...');

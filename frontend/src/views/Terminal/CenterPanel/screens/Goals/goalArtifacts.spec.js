@@ -5,6 +5,15 @@ import { collectChatArtifacts } from '@/utils/chatArtifacts.js';
 const task = (content, toolExecutions) => ({ output: JSON.stringify({ content, toolExecutions }) });
 
 describe('goal artifacts', () => {
+  // Real task outputs store the answer as content BLOCKS (thinking + text).
+  // Reading only string content dropped every file link they named.
+  it('reads file links from an answer stored as content blocks', () => {
+    const blocks = [{ type: 'thinking', thinking: '', signature: 'x' }, { type: 'text', text: 'Saved file:///C:/p/report.md' }];
+    const { content } = goalArtifactSource([task(blocks, [])]);
+    expect(content).toContain('file:///C:/p/report.md');
+    expect(goalArtifactSource([task([{ type: 'thinking' }], [])]).content).toBe('');
+  });
+
   it('counts writes, never reads, lists or runs', () => {
     expect(writtenPath({ name: 'file_operations', arguments: { operation: 'write', path: 'C:/p/report.html' } })).toBe('C:/p/report.html');
     expect(writtenPath({ name: 'file_operations', arguments: { operation: 'read', path: 'C:/p/in.md' } })).toBeNull();

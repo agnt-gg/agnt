@@ -58,9 +58,15 @@ export function goalArtifactSource(tasks = []) {
   for (const task of tasks) {
     const output = parseOutput(task?.output);
     if (!output) continue;
-    if (typeof output.content === 'string') {
-      texts.push(...(output.content.match(/file:\/\/\/[^\s)"'<>`]+|\{\{IMAGE_REF:[^}]+\}\}/g) || []));
-    }
+    // A task's answer is a string, or (from the Anthropic-style runtimes) an
+    // array of blocks. Reading only strings dropped every file link a final
+    // answer named in block form.
+    const answer = typeof output.content === 'string'
+      ? output.content
+      : Array.isArray(output.content)
+        ? output.content.filter((block) => block && typeof block.text === 'string').map((block) => block.text).join('\n')
+        : '';
+    texts.push(...(answer.match(/file:\/\/\/[^\s)"'<>`]+|\{\{IMAGE_REF:[^}]+\}\}/g) || []));
     for (const execution of output.toolExecutions || output.tool_executions || []) {
       toolCalls.push(execution);
       const path = writtenPath(execution);
