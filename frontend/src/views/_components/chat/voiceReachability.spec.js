@@ -34,6 +34,15 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import UnifiedChatContainer from './UnifiedChatContainer.vue';
 
+/** The whole runAgntForVoice function, start to end — never a fixed-width
+ * window, which silently cuts off when the function grows. */
+function runAgntForVoiceSource(source) {
+  const at = source.indexOf('const runAgntForVoice');
+  const end = source.indexOf('// ---- the natural engine', at);
+  if (at < 0 || end < 0) throw new Error('runAgntForVoice not found');
+  return source.slice(at, end);
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, '../../..');
 const BASE_SCREEN = path.join(SRC, 'views/Terminal/CenterPanel/BaseScreen.vue');
@@ -284,15 +293,13 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     expect(engines).toMatch(/onRunAgnt:\s*runAgntForVoice/);
     // runAgntForVoice must actually go through the host's send adapter, not
     // fabricate an answer or call some parallel API.
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2600);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/submit\(userMessage\)/);
     expect(body).toMatch(/resolve\(/);
   });
 
   it('completes on the stream ending, not on a timer', () => {
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2600);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/watch\(isStreaming/);
     expect(body).not.toMatch(/setTimeout/);
   });
@@ -345,8 +352,7 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     // silence for as long as the turn takes. The answer arrives progressively,
     // so it is emitted progressively.
     expect(engines).toMatch(/import\s*\{\s*createSentenceChunker\s*\}\s*from\s*'\.\.\/voice\/sentenceChunker\.js'/);
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2600);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/runAgntForVoice = \(userMessage, emit\)/);
     expect(body).toMatch(/chunker\.push\(/);
     expect(body).toMatch(/chunker\.flush\(\)/);
@@ -364,8 +370,7 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
      * prefix of the written answer, so the two cannot contradict.
      */
     expect(engines).toMatch(/import\s*\{\s*spokenRegister\s*\}\s*from\s*'\.\.\/voice\/voiceReplyPolicy\.js'/);
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2800);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/chunker\.push\(spokenRegister\(raw\)\)/);
   });
 
@@ -374,8 +379,7 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     // first; arming after triggerSubmit would mark the turn AFTER the one it
     // belongs to.
     expect(engines).toMatch(/import\s*\{\s*armVoiceTurn\s*\}\s*from\s*'\.\.\/services\/voiceTurn\.js'/);
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2800);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/armVoiceTurn\(userMessage\)/);
     expect(body.indexOf('armVoiceTurn(userMessage)')).toBeLessThan(body.indexOf('submit(userMessage)'));
   });
@@ -390,8 +394,7 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
   });
 
   it('tears BOTH watchers down before resolving', () => {
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2600);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/stopContent\(\);\s*\n\s*stopStream\(\);/);
     expect(body.indexOf('stopStream();')).toBeLessThan(body.indexOf('resolve(spokeSomething'));
   });
@@ -444,8 +447,7 @@ describe('the voice is locked to its conversation, like every other chat state',
   });
 
   it('an in-flight run is bound to the conversation it started in', () => {
-    const at = engines.indexOf('const runAgntForVoice');
-    const body = engines.slice(at, at + 2800);
+    const body = runAgntForVoiceSource(engines);
     expect(body).toMatch(/const epochAtStart = currentEpoch\(\)/);
     // BOTH watchers must check it: the content watcher (or it speaks another
     // chat's reply) and the completion watcher (or it resolves off one).
@@ -464,8 +466,7 @@ describe('the voice is locked to its conversation, like every other chat state',
      * of bug in this file (see chat/MIGRATE_CONVERSATION_ID above), hence a
      * guard rather than a comment.
      */
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2800);
+    const body = runAgntForVoiceSource(engines);
     expect(body).not.toMatch(/draftKey\.value/);
     expect(body).not.toMatch(/activeConversationId/);
   });

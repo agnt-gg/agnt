@@ -170,6 +170,32 @@ export function useVoiceEngines(options = {}) {
         }
       };
 
+      /**
+       * A BARGE-IN MUST NOT RESUME THE REPLY IT INTERRUPTED.
+       *
+       * When the user talks over a live turn, these words become a steer and
+       * the interrupted reply KEEPS STREAMING until the steer drains. On the
+       * main chat `streamingAnswer` is just "the last assistant message", so
+       * this run used to read that old reply from the top and speak it again —
+       * the user interrupted, and Annie carried straight on.
+       *
+       * So a run started mid-turn ignores the reply already on screen: while
+       * the answer is that same message growing (it extends what we last saw),
+       * it is not ours. Our answer begins when the transcript moves on — the
+       * steer bubble lands (the answer goes '') or a new bubble starts.
+       */
+      const interrupting = Boolean(isStreaming?.value);
+      let interruptedReply = interrupting ? streamingAnswer() : null;
+      const isInterruptedReply = (raw) => {
+        if (interruptedReply === null) return false;
+        if (raw && interruptedReply && raw.startsWith(interruptedReply)) {
+          interruptedReply = raw;
+          return true;
+        }
+        interruptedReply = null; // the transcript moved on; from here it is ours
+        return false;
+      };
+
       // Arm BEFORE submitting: the store consumes this on the very next send,
       // matched by text, so only this turn is marked as spoken.
       armVoiceTurn(userMessage);
@@ -177,11 +203,16 @@ export function useVoiceEngines(options = {}) {
 
       const stopContent = watch(streamingAnswer, (raw) => {
         if (currentEpoch() !== epochAtStart) return;
+        if (isInterruptedReply(raw)) return;
         // Only the spoken register. Once the blank line arrives this stops
         // growing, so the chunker naturally falls silent for the detail.
         speak(chunker.push(spokenRegister(raw)));
       });
 
+      // A steer that missed every tool seam needs no special case: the store
+      // re-sends it in the SAME tick the old turn ends (handleScopedStreamEvent
+      // -> drainPendingSteer -> SCOPED_SET_STREAMING), so this watcher never
+      // sees that edge and the run carries on into the follow-up's answer.
       const stopStream = watch(isStreaming, (streaming, was) => {
         if (!(was && !streaming)) return;
         // Both watchers are torn down BEFORE resolving: one left alive fires
