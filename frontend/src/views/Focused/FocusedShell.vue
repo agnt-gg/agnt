@@ -91,6 +91,7 @@ import { waitUntil } from './focusedTime.js';
 import { focusedLocation, routeFor } from './focusedRoutes.js';
 import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 import { useMainChat } from '@/composables/useMainChat.js';
+import { isUnstartedConversation } from '@/views/Terminal/CenterPanel/screens/Chat/chatHome.js';
 import { graduationUnlock, GRADUATION_COPY, GRADUATION_ASKED_KEY, readFlag, writeFlag } from '@/services/uiModeDefault.js';
 
 const props = defineProps({
@@ -138,10 +139,15 @@ const location = computed(() => focusedLocation(props.screenName, route.query));
 const page = computed(() => location.value?.page || null);
 const borrowed = computed(() => !page.value && props.screenName !== 'ChatScreen');
 const borrowedTitle = computed(() => screenTitle(props.screenName));
-// The open conversation's title. Empty on a new chat, so the home has no bar.
-const chatTitle = computed(() =>
-  !page.value && props.screenName === 'ChatScreen' ? String(store.state.chat?.savedOutputTitle || '').trim() : '',
-);
+// The open conversation's title. Empty while the chat is still at its home
+// (nobody has spoken yet), so the home has no bar. Keyed on the TITLE alone, a
+// blank Main chat (titled "Main chat") got a 48px bar and its home sat 24px
+// lower than a new chat's. Same rule Chat.vue uses to show the home.
+const chatTitle = computed(() => {
+  if (page.value || props.screenName !== 'ChatScreen') return '';
+  if (isUnstartedConversation(store.state.chat?.messages)) return '';
+  return String(store.state.chat?.savedOutputTitle || '').trim();
+});
 
 // ── Going places: every move is a route push (Back works, links work) ─────
 function pushScreen(screen, opts = {}) {

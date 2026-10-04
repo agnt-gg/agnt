@@ -198,10 +198,25 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
+  // A blank Main chat is titled "Main chat". Its bar took 48px off the
+  // centred home, so every element sat 24px lower than on a new chat.
+  it('a titled chat nobody has spoken in has no bar, exactly like a new chat', async () => {
+    storeState.chat.savedOutputTitle = 'Main chat';
+    storeState.chat.messages = [{ role: 'assistant', content: 'Hi! What can I help you build today?' }];
+    const w = mountShell('ChatScreen');
+    expect(w.find('.focused-topbar').exists()).toBe(false);
+    // The first message makes it a conversation: the title comes back.
+    storeState.chat.messages = [...storeState.chat.messages, { role: 'user', content: 'Plan my week' }];
+    await w.vm.$nextTick();
+    expect(w.find('.focused-chat-title').text()).toBe('Main chat');
+    w.unmount();
+  });
+
   it('shows the open conversation title only on Chat', async () => {
     const w = mountShell('ChatScreen');
     expect(w.find('.focused-chat-title').exists()).toBe(false);
     storeState.chat.savedOutputTitle = 'Q3 board report';
+    storeState.chat.messages = [{ role: 'assistant', content: 'Hi' }, { role: 'user', content: 'Draft it' }];
     await w.vm.$nextTick();
     expect(w.find('.focused-chat-title').text()).toBe('Q3 board report');
     w.unmount();

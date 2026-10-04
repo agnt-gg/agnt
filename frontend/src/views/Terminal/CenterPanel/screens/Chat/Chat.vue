@@ -314,6 +314,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import { createNewSessionLanding } from './newSessionLanding.js';
+import { isUnstartedConversation } from './chatHome.js';
 import { buildProviderGreeting, greetingNeedsReplacing } from './providerGreeting.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
@@ -424,11 +425,10 @@ export default {
     // bubble is the only message then, and the home replaces it. Never while
     // provider setup is pending: that card is the one thing a new user must
     // see, and hiding it would leave an input that cannot answer.
+    // The rule is shared with FocusedShell, which hides the title bar on it.
     const showFocusedHome = computed(() => {
       if (uiPresentation !== 'focused' || bulkLoading.value) return false;
-      const messages = store.state.chat.messages || [];
-      if (messages.some((m) => m.showProviderSetup)) return false;
-      return !messages.some((m) => m.role === 'user');
+      return isUnstartedConversation(store.state.chat.messages);
     });
 
     // Image cache from Vuex store
