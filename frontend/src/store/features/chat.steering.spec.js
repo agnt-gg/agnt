@@ -133,6 +133,17 @@ describe('mid-run steer splits the assistant turn (main chat / chat.js)', () => 
     vi.restoreAllMocks();
   });
 
+  it('retains saved human steers when a capped older replay omits steering_applied', () => {
+    runSteeredTurn();
+    const steerId = state.conversations[CONV].messages[2].id;
+    emit('run_resumed', { replayedMessageIds: ['A1', 'A2'], truncated: true });
+    emit('assistant_message', { id: 'A1', role: 'assistant', content: 'working' });
+    emit('assistant_message', { id: 'A2', role: 'assistant', content: 'rerouted' });
+    const messages = state.conversations[CONV].messages;
+    expect(messages.map(m => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(messages[2].id).toBe(steerId);
+  });
+
   it('marks the steer message so the UI can render the interruption seam', () => {
     runSteeredTurn();
     const steer = state.conversations[CONV].messages.find((m) => m.role === 'user' && m.steered);

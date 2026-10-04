@@ -34,6 +34,34 @@ export function repairLegacySteerReplayBlocks(messages = []) {
   return repaired;
 }
 
+/** Keep saved human interruptions when an older capped server replays only
+ * assistant segments. Anchors come from the saved order, never a timestamp. */
+export function captureReplaySteers(messages, firstIndex) {
+  const steers = [];
+  let anchorId = null;
+  for (let index = firstIndex; index < messages.length; index++) {
+    const message = messages[index];
+    if (message.role === 'assistant') anchorId = message.id;
+    else if (message.role === 'user' && (message.steered || isLegacySteer(message)) && anchorId) {
+      steers.push({ ...message, steered: true, steerAfterMessageId: message.steerAfterMessageId || anchorId });
+    }
+  }
+  return steers;
+}
+
+export function restoreReplaySteers(messages, steers, assistantMessageId) {
+  for (const message of steers || []) {
+    if (message.steerAfterMessageId !== assistantMessageId) continue;
+    applySteerToTranscript(messages, {
+      content: message.content,
+      assistantMessageId,
+      round: message.steerRound,
+      steerMessageId: message.id,
+      timestamp: message.timestamp,
+    });
+  }
+}
+
 /** Reconcile a saved transcript with local replay without moving steers to
  * the tail. Ordinary unsaved messages keep the existing id-based policy. */
 export function mergeSteeredTranscripts(stored, local) {

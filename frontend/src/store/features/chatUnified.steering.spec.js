@@ -123,6 +123,17 @@ describe('mid-run steer splits the assistant turn', () => {
     expect(messages().at(-1).id).toBe('A2');
   });
 
+  it('retains saved human steers when capped old-server replay omits steer events', () => {
+    emit('steering_applied', { assistantMessageId: 'A1', round: 1, content: 'nudge' });
+    emit('assistant_message', { id: 'A2', role: 'assistant', content: 'after nudge' });
+    const id = messages()[2].id;
+    emit('run_resumed', { replayedMessageIds: ['A1', 'A2'], truncated: true });
+    emit('assistant_message', { id: 'A1', role: 'assistant', content: 'before' });
+    emit('assistant_message', { id: 'A2', role: 'assistant', content: 'after' });
+    expect(messages().map(m => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(messages()[2].id).toBe(id);
+  });
+
   it('seals the outgoing bubble so it does not spin forever', () => {
     // Pre-condition: A1 is mid-flight with a live status.
     expect(state.messageStates[CHANNEL]?.A1).toBeTruthy();

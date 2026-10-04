@@ -43,6 +43,15 @@ for (const mode of ['focused', 'studio']) {
       for (const event of events) store.commit('chat/SCOPED_APPLY_STEER', { conversationId, event });
     }, CONV);
     await expect.poll(ids).toEqual(['u1', 'a1', 'msg-steer-100', 'a2', 'msg-steer-200', 'a3']);
+    await page.evaluate(conversationId => {
+      const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+      const snapshot = JSON.parse(JSON.stringify(store.state.chat.conversations[conversationId].messages));
+      store.commit('chat/SCOPED_TRUNCATE_FROM_REPLAYED_IDS', { conversationId, ids: ['a1', 'a2', 'a3'], preserveSteers: true });
+      // An old capped backend replays every assistant segment but NONE of
+      // the human steer events. The saved seam still has to survive.
+      for (const message of snapshot.filter(message => message.role === 'assistant')) store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId, message });
+    }, CONV);
+    await expect.poll(ids).toEqual(['u1', 'a1', 'msg-steer-100', 'a2', 'msg-steer-200', 'a3']);
     await page.evaluate(async mode => {
       const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
       await store.dispatch('theme/setUiMode', mode === 'focused' ? 'studio' : 'focused');

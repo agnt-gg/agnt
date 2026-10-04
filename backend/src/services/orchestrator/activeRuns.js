@@ -79,6 +79,8 @@ const REPLACE_LATEST = new Set(['context_status', 'context_manifest']);
 const NEVER_DROP = new Set([
   'conversation_started',
   'assistant_message',
+  // A steer is human transcript text, not a disposable tool payload.
+  'steering_applied',
   'content_delta',
   'reasoning_delta',
   'final_content',

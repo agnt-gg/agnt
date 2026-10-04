@@ -279,6 +279,8 @@ describe('the replay log is bounded', () => {
     // Text emitted AFTER the ceiling is reached must still survive.
     publish(run, 'assistant_message', { id: 'a1' });
     publish(run, 'content_delta', { assistantMessageId: 'a1', delta: 'the answer' });
+    publish(run, 'reasoning_delta', { assistantMessageId: 'a1', delta: megabyte.repeat(2) });
+    publish(run, 'steering_applied', { assistantMessageId: 'a1', round: 99, content: 'keep my late steer' });
 
     const res = makeRes();
     attachSubscriber(CONV, res, 'u1');
@@ -287,6 +289,7 @@ describe('the replay log is bounded', () => {
     expect(events[0].data.truncated).toBe(true);
     expect(events.filter((e) => e.eventName === 'tool_end').length).toBeLessThan(12);
     expect(events.find((e) => e.eventName === 'content_delta').data.delta).toBe('the answer');
+    expect(events.find((e) => e.eventName === 'steering_applied')?.data.content).toBe('keep my late steer');
   });
 });
 

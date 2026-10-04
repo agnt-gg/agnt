@@ -5,7 +5,7 @@
 
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
 import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
-import { applySteerToTranscript } from '@/services/steeredTranscript.js';
+import { applySteerToTranscript, captureReplaySteers, restoreReplaySteers, repairLegacySteerReplayBlocks } from '@/services/steeredTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
@@ -419,6 +419,9 @@ export default {
     ADD_MESSAGE(state, { channelKey, message }) {
       ensureChannel(state, channelKey);
       state.conversations[channelKey].messages.push(message);
+      if (message.role === 'assistant' && state.conversations[channelKey].replaySteers) {
+        restoreReplaySteers(state.conversations[channelKey].messages, state.conversations[channelKey].replaySteers, message.id);
+      }
       state.conversations[channelKey].lastUpdate = Date.now();
       persistConversations(state.conversations);
     },
@@ -472,12 +475,13 @@ export default {
      *
      * No match means this tab holds nothing from the turn — nothing to drop.
      */
-    TRUNCATE_FROM_REPLAYED_IDS(state, { channelKey, ids }) {
+    TRUNCATE_FROM_REPLAYED_IDS(state, { channelKey, ids, preserveSteers = false }) {
       const conv = state.conversations[channelKey];
       if (!conv || !Array.isArray(ids) || ids.length === 0) return;
       const replayed = new Set(ids);
       const firstIdx = conv.messages.findIndex((m) => replayed.has(m.id));
       if (firstIdx === -1) return;
+      conv.replaySteers = preserveSteers ? captureReplaySteers(repairLegacySteerReplayBlocks(conv.messages), firstIdx) : null;
       conv.messages = conv.messages.slice(0, firstIdx);
       conv.lastUpdate = Date.now();
       persistConversations(state.conversations);
@@ -1410,7 +1414,7 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
     case 'run_resumed': {
       // Order matters: clear this turn's partial output first, then make sure
       // the question is present, then let the replay rebuild the answer.
-      commit('TRUNCATE_FROM_REPLAYED_IDS', { channelKey, ids: data?.replayedMessageIds });
+      commit('TRUNCATE_FROM_REPLAYED_IDS', { channelKey, ids: data?.replayedMessageIds, preserveSteers: data?.truncated === true });
       // The id the sending client gave the bubble, when the server has it.
       const serverNamedId = typeof data?.userMessageId === 'string' && data.userMessageId
         ? data.userMessageId

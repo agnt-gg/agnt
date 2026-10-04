@@ -9,7 +9,7 @@ import { editableReplyId, closingText, applyReplyEdit } from '@/services/assista
 import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
-import { applySteerToTranscript, repairLegacySteerReplayBlocks, mergeSteeredTranscripts } from '@/services/steeredTranscript.js';
+import { applySteerToTranscript, repairLegacySteerReplayBlocks, mergeSteeredTranscripts, captureReplaySteers, restoreReplaySteers } from '@/services/steeredTranscript.js';
 import {
   anchorSuggestions,
   isAnchoredTo,
@@ -1317,6 +1317,9 @@ export default {
          */
         if (message.id && conv.messages.some((m) => m.id === message.id)) return;
         conv.messages.push(message);
+        if (message.role === 'assistant' && conv.replaySteers) {
+          restoreReplaySteers(conv.messages, conv.replaySteers, message.id);
+        }
         // Unread is no longer marked here — the autosave that follows an
         // assistant message bumps updated_at, and unread derives from that.
       }
@@ -1328,12 +1331,13 @@ export default {
      * about to replay on reattach. Everything after that point belongs to the
      * same turn, so the replay rebuilds it exactly rather than duplicating it.
      */
-    SCOPED_TRUNCATE_FROM_REPLAYED_IDS(state, { conversationId, ids }) {
+    SCOPED_TRUNCATE_FROM_REPLAYED_IDS(state, { conversationId, ids, preserveSteers = false }) {
       const conv = state.conversations[conversationId];
       if (!conv || !Array.isArray(ids) || ids.length === 0) return;
       const replayed = new Set(ids);
       const firstIdx = conv.messages.findIndex((m) => replayed.has(m.id));
       if (firstIdx === -1) return;
+      conv.replaySteers = preserveSteers ? captureReplaySteers(repairLegacySteerReplayBlocks(conv.messages), firstIdx) : null;
       conv.messages.splice(firstIdx, conv.messages.length - firstIdx);
     },
 
@@ -4667,6 +4671,7 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       commit('SCOPED_TRUNCATE_FROM_REPLAYED_IDS', {
         conversationId,
         ids: data?.replayedMessageIds,
+        preserveSteers: data?.truncated === true,
       });
       if (!data?.userMessage) break;
       const conv = state?.conversations?.[conversationId];
