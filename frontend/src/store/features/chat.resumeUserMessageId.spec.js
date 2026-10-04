@@ -119,6 +119,20 @@ describe('refresh mid-answer, then the refused-save reconcile', () => {
   });
 });
 
+describe('replayed steer merged with a stored transcript', () => {
+  it('adopts the original legacy steer ID instead of appending the replay copy beneath the answer', async () => {
+    const stored = [...STORED, { id: 'msg-steer-100', role: 'user', content: 'nudge', timestamp: 100 }, { id: 'a2', role: 'assistant', content: 'after nudge', timestamp: 101 }];
+    serveStoredRow(stored);
+    replay({ userMessageId: BUBBLE_ID });
+    event('steering_applied', { assistantMessageId: 'a1', round: 2, content: 'nudge' });
+    event('assistant_message', { id: 'a2', role: 'assistant', content: 'after nudge', timestamp: 101 });
+    await store.dispatch('chat/reconcileTruncatedConversation', { conversationId: CONV, outputId: 'out-1' });
+    expect(conv().messages.map(m => m.id)).toEqual(stored.map(m => m.id));
+    expect(conv().messages.filter(m => m.content === 'nudge')).toHaveLength(1);
+    expect(conv().messages[4].steerAfterMessageId).toBe('a1');
+  });
+});
+
 describe('rebuilding the question on run_resumed', () => {
   it('leaves a bubble this tab still holds untouched, attachments and all', () => {
     const files = [{ name: 'shot.png', type: 'image/png', dataUrl: 'data:image/png;base64,AAAA' }];

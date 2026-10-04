@@ -9,6 +9,7 @@ import { editableReplyId, closingText, applyReplyEdit } from '@/services/assista
 import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
+import { applySteerToTranscript, repairLegacySteerReplayBlocks, mergeSteeredTranscripts } from '@/services/steeredTranscript.js';
 import {
   anchorSuggestions,
   isAnchoredTo,
@@ -1292,6 +1293,11 @@ export default {
       }
     },
 
+    SCOPED_APPLY_STEER(state, { conversationId, event }) {
+      const conversation = state.conversations[conversationId];
+      if (conversation) applySteerToTranscript(conversation.messages, event);
+    },
+
     SCOPED_ADD_MESSAGE(state, { conversationId, message }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
@@ -1334,7 +1340,7 @@ export default {
     SCOPED_SET_MESSAGES(state, { conversationId, messages }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
-      const filtered = messages.filter(msg => msg && msg.role && msg.content !== undefined);
+      const filtered = repairLegacySteerReplayBlocks(messages.filter(msg => msg && msg.role && msg.content !== undefined));
       // Conversations saved before tool calls were settled on abort carry open
       // calls that will never resolve. Heal them on every load; the live
       // streaming message (if this load races one) is left alone.
@@ -2881,7 +2887,7 @@ export default {
       // live message to de-duplication would repeat the bug we are fixing.
       const unsaved = local.filter((m) => !m.id || !storedIds.has(m.id));
 
-      commit('SCOPED_SET_MESSAGES', { conversationId, messages: [...stored.messages, ...unsaved] });
+      commit('SCOPED_SET_MESSAGES', { conversationId, messages: mergeSteeredTranscripts(stored.messages, local) });
       commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId, id: outputId });
       if (row.title) commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId, title: row.title });
       // Adopt the stored suggestions only when this tab has none of its own
@@ -4471,16 +4477,7 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       // the tool-result content (Hermes pattern) and the user never sees
       // what they sent.
       if (data.content) {
-        commit('SCOPED_ADD_MESSAGE', {
-          conversationId,
-          message: {
-            id: `msg-steer-${Date.now()}`,
-            role: 'user',
-            content: data.content,
-            timestamp: Date.now(),
-            steered: true,
-          },
-        });
+        commit('SCOPED_APPLY_STEER', { conversationId, event: data });
       }
       break;
     case 'assistant_message':

@@ -50,6 +50,12 @@ describe('a saved transcript round-trips exactly', () => {
     expect(parsed.messages[1].reasoning).toBe('read the layout first');
   });
 
+  it('preserves steer identity across serialization and hydration', () => {
+    const steer = { id: 'msg-steer-a1-2', role: 'user', content: 'nudge', timestamp: 3, steered: true, steerAfterMessageId: 'a1', steerRound: 2 };
+    const parsed = parseTranscript(serializeTranscript({ conversationId: 'c1', messages: [...LIVE_TURN, steer] }));
+    expect(parsed.messages.at(-1)).toMatchObject(steer);
+  });
+
   it('preserves the text/tool ORDER, which is what makes an answer readable', () => {
     const parsed = parseTranscript(serializeTranscript({ conversationId: 'c1', messages: LIVE_TURN }));
     expect(parsed.messages[1].contentParts.map((p) => p.type)).toEqual([

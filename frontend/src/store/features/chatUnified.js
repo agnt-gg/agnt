@@ -5,6 +5,7 @@
 
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
 import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
+import { applySteerToTranscript } from '@/services/steeredTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
@@ -408,6 +409,12 @@ export default {
         }
         persistConversations(state.conversations);
       }
+    },
+    APPLY_STEER(state, { channelKey, event }) {
+      ensureChannel(state, channelKey);
+      applySteerToTranscript(state.conversations[channelKey].messages, event, { fallbackId: generateMessageId(channelKey) });
+      state.conversations[channelKey].lastUpdate = Date.now();
+      persistConversations(state.conversations);
     },
     ADD_MESSAGE(state, { channelKey, message }) {
       ensureChannel(state, channelKey);
@@ -1449,16 +1456,7 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
       // tool-result content (Hermes pattern) and the user never sees what
       // they sent.
       if (data.content) {
-        commit('ADD_MESSAGE', {
-          channelKey,
-          message: {
-            id: generateMessageId(channelKey),
-            role: 'user',
-            content: data.content,
-            timestamp: Date.now(),
-            steered: true,
-          },
-        });
+        commit('APPLY_STEER', { channelKey, event: data });
       }
       break;
 

@@ -31,6 +31,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { hydrateMessage } from './chatStreamReducer.js';
+import { repairLegacySteerReplayBlocks } from './steeredTranscript.js';
 import { normalizeStoredSuggestions } from './conversationSuggestions.js';
 
 const authHeaders = () => {
@@ -70,6 +71,10 @@ export function toStoredMessage(msg = {}) {
   // what the model is sent. Dropping it on save would silently un-compress
   // the conversation on reload.
   if (msg.compaction) stored.compaction = msg.compaction;
+  // Replay must recognize the same interruption after every save/load.
+  if (msg.steered) stored.steered = true;
+  if (msg.steerAfterMessageId) stored.steerAfterMessageId = msg.steerAfterMessageId;
+  if (Number.isInteger(msg.steerRound)) stored.steerRound = msg.steerRound;
   return stored;
 }
 
@@ -128,7 +133,7 @@ export function parseTranscript(raw) {
   return {
     conversationId: parsed.conversationId || null,
     title: parsed.title || null,
-    messages: messages.map(hydrateMessage),
+    messages: repairLegacySteerReplayBlocks(messages).map(hydrateMessage),
     // Validated, not trusted: null for transcripts saved before suggestions
     // were stored, and for anything malformed.
     suggestions: normalizeStoredSuggestions(parsed.suggestions),

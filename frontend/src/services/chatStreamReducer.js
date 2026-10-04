@@ -378,6 +378,9 @@ export function hydrateMessage(raw = {}) {
     timestamp: raw.timestamp || Date.now(),
   };
   if (raw.compaction && typeof raw.compaction === 'object') hydrated.compaction = raw.compaction;
+  if (raw.steered === true) hydrated.steered = true;
+  if (typeof raw.steerAfterMessageId === 'string') hydrated.steerAfterMessageId = raw.steerAfterMessageId;
+  if (Number.isInteger(raw.steerRound)) hydrated.steerRound = raw.steerRound;
   return hydrated;
 }
 

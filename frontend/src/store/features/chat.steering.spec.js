@@ -121,6 +121,18 @@ describe('mid-run steer splits the assistant turn (main chat / chat.js)', () => 
     expect(msgs.find((m) => m.id === 'A2').toolCalls[0].name).toBe('web_search');
   });
 
+  it('regression: replaying a steer against a saved complete transcript does not append a duplicate at the bottom', () => {
+    runSteeredTurn();
+    const messages = state.conversations[CONV].messages;
+    const originalId = messages[2].id;
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+    emit('steering_applied', { content: 'actually do it differently', round: 1, assistantMessageId: 'A1' });
+    expect(messages).toHaveLength(4);
+    expect(messages[2].id).toBe(originalId);
+    expect(messages.at(-1).id).toBe('A2');
+    vi.restoreAllMocks();
+  });
+
   it('marks the steer message so the UI can render the interruption seam', () => {
     runSteeredTurn();
     const steer = state.conversations[CONV].messages.find((m) => m.role === 'user' && m.steered);

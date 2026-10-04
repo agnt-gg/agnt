@@ -112,6 +112,17 @@ describe('mid-run steer splits the assistant turn', () => {
     expect(post.toolCalls.map((t) => t.name)).toEqual(['execute_python']);
   });
 
+  it('regression: repeated steer replay does not append a duplicate below the continuation', () => {
+    const steer = { content: 'nudge', round: 1, assistantMessageId: 'A1' };
+    emit('steering_applied', steer);
+    emit('assistant_message', { id: 'A2', role: 'assistant', content: '' });
+    const originalId = messages()[2].id;
+    emit('steering_applied', steer);
+    expect(messages()).toHaveLength(4);
+    expect(messages()[2].id).toBe(originalId);
+    expect(messages().at(-1).id).toBe('A2');
+  });
+
   it('seals the outgoing bubble so it does not spin forever', () => {
     // Pre-condition: A1 is mid-flight with a live status.
     expect(state.messageStates[CHANNEL]?.A1).toBeTruthy();
