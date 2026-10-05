@@ -48,8 +48,11 @@
       <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
 
       <!-- The screen Terminal mounted. On a Focused page that is Chat, kept
-           alive underneath (v-show) so a reply keeps streaming. -->
-      <div v-show="!page" class="focused-screen">
+           alive underneath (v-show) so a reply keeps streaming.
+           data-fullscreen-host: the one box a screen's "fullscreen" may fill
+           (the live browser card). Below the top bar, beside the sidebar;
+           without it the card falls back to covering the whole window. -->
+      <div v-show="!page" class="focused-screen" data-fullscreen-host>
         <slot />
       </div>
     </main>
