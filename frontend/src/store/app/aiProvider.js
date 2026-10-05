@@ -1335,13 +1335,16 @@ const aiProviderModule = {
     },
 
     /**
-     * Put the chat on AGNT Flash. Used for the first-run default above, and by
-     * the chat when the chosen provider is known not to work: a signed-in
-     * account always has Flash, so it is used before ever asking someone to
-     * connect a provider (views/.../Chat/chatProvider.js). Returns whether it
-     * switched.
+     * Put an account with NO default on AGNT Flash. Returns whether it switched.
+     *
+     * Invariant: a saved global default is the user's, and no automatic path
+     * may replace it. Only the user changes it (the pickers). An automatic
+     * "provider looks disconnected" switch used to persist AGNT over a working
+     * Claude-Code default on every restart (default_ai_changes source
+     * 'flash-fallback'), so this refuses whenever any provider is selected.
      */
-    async selectAgntFlash({ dispatch, state }, { source = 'flash-fallback' } = {}) {
+    async selectAgntFlash({ dispatch, state }, { source = 'included-default' } = {}) {
+      if (state.selectedProvider) return false;
       // The provider list holds display names ('AGNT'). A literal 'agnt'
       // lookup never matched it, so this default silently never applied.
       const agntProvider = canonicalizeProviderCase(state.providers, 'agnt');

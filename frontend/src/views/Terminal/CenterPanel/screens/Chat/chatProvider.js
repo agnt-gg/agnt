@@ -42,19 +42,3 @@ export function providerUsable({ provider, authenticated, connectedApps = [], cu
 export function chatHasModel(context) {
   return providerUsable(context) || !!context.authenticated;
 }
-
-/**
- * Move the chat onto AGNT Flash: signed in, and the chosen provider is KNOWN
- * not to work. "Known" matters: connections load after boot, and switching on
- * a list that has not arrived yet would throw away a working choice. Nothing
- * chosen at all also switches. A local server going away is handled where its
- * disconnect is detected (Chat.vue), not here, because "not running yet" at
- * boot is not "stopped".
- */
-export function shouldSwitchToFlash(context) {
-  if (!context.authenticated) return false;
-  const name = lower(context.provider);
-  if (name === 'agnt' || name === 'local') return false;
-  if (!name) return true;
-  return !!context.connectionsSettled && !providerUsable(context);
-}

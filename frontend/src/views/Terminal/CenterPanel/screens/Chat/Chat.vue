@@ -317,7 +317,7 @@ import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import { createNewSessionLanding } from './newSessionLanding.js';
 import { isUnstartedConversation } from './chatHome.js';
-import { chatHasModel, shouldSwitchToFlash } from './chatProvider.js';
+import { chatHasModel } from './chatProvider.js';
 import { buildProviderGreeting, greetingNeedsReplacing } from './providerGreeting.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
@@ -729,24 +729,10 @@ export default {
     }));
     const hasConnectedAIProvider = computed(() => chatHasModel(providerContext.value));
 
-    // The chosen provider is known not to work: use AGNT Flash rather than
-    // asking to connect one. One attempt per provider that needs it, so a
-    // Flash that cannot be selected never loops.
-    let flashTriedFor = null;
-    const switchToFlash = async (reason) => {
-      const from = store.state.aiProvider?.selectedProvider || '';
-      if (flashTriedFor === from) return;
-      flashTriedFor = from;
-      const switched = await store.dispatch('aiProvider/selectAgntFlash', { source: 'flash-fallback' });
-      if (switched) terminalLines.value.push(`[AGNT Flash] ${reason}`);
-    };
-    watch(
-      () => shouldSwitchToFlash(providerContext.value),
-      (needed) => {
-        if (needed) switchToFlash(`${providerContext.value.provider || 'No provider'} is not connected; using AGNT Flash.`);
-      },
-      { immediate: true },
-    );
+    // The chat never changes the global default on its own. A saved default is
+    // left alone even when it looks disconnected; an account with no default
+    // gets AGNT Flash once the server confirms that (aiProvider
+    // applyIncludedModelDefault).
 
     // Disable input when no provider connected
     const isInputDisabled = computed(() => !hasConnectedAIProvider.value);
@@ -2834,9 +2820,9 @@ export default {
       }
       // Server disconnected (true -> false) AND Local was the selected provider
       else if (!isRunning && wasRunning && selectedProvider?.toLowerCase() === 'local' && store.getters['userAuth/isAuthenticated']) {
-        // Signed in: AGNT Flash is right there. Keep the conversation and use
-        // it, rather than wiping the chat to ask for a provider.
-        await switchToFlash('Local AI server stopped; using AGNT Flash.');
+        // Signed in: keep the conversation and the user's chosen default.
+        // Local is their choice; it works again when the server restarts.
+        terminalLines.value.push('[Local] AI server stopped; your default model is unchanged.');
       }
       else if (!isRunning && wasRunning && selectedProvider?.toLowerCase() === 'local') {
         console.log('[Auto-Switch] Local server disconnected - switching to provider setup');

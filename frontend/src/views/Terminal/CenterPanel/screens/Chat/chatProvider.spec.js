@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { providerUsable, chatHasModel, shouldSwitchToFlash } from './chatProvider.js';
+import * as chatProvider from './chatProvider.js';
+
+const { providerUsable, chatHasModel } = chatProvider;
 
 const base = { authenticated: true, connectedApps: [], customProviders: [], localRunning: false, connectionsSettled: true };
 
@@ -31,20 +33,10 @@ describe('which provider can answer', () => {
   });
 });
 
-describe('switching to AGNT Flash', () => {
-  it('switches when the chosen provider is known not to work, or none is chosen', () => {
-    expect(shouldSwitchToFlash({ ...base, provider: 'OpenAI' })).toBe(true);
-    expect(shouldSwitchToFlash({ ...base, provider: null })).toBe(true);
-  });
-
-  it('never throws away a choice before connections have loaded', () => {
-    expect(shouldSwitchToFlash({ ...base, provider: 'OpenAI', connectionsSettled: false })).toBe(false);
-  });
-
-  it('leaves a working choice, Flash itself, Local, and signed-out installs alone', () => {
-    expect(shouldSwitchToFlash({ ...base, provider: 'OpenAI', connectedApps: ['openai'] })).toBe(false);
-    expect(shouldSwitchToFlash({ ...base, provider: 'AGNT' })).toBe(false);
-    expect(shouldSwitchToFlash({ ...base, provider: 'Local' })).toBe(false);
-    expect(shouldSwitchToFlash({ ...base, authenticated: false, provider: 'OpenAI' })).toBe(false);
+describe('the chat never decides the global default', () => {
+  // Reported: an automatic "provider looks disconnected" switch saved AGNT
+  // Flash over a working Claude-Code default on every restart.
+  it('offers no automatic provider switch', () => {
+    expect(chatProvider.shouldSwitchToFlash).toBeUndefined();
   });
 });

@@ -63,20 +63,29 @@ describe('applyIncludedModelDefault', () => {
   });
 });
 
-// The chat uses this when the chosen provider is known not to work, so a
-// signed-in account gets Flash instead of the connect card.
 describe('selectAgntFlash', () => {
-  it('moves the chat onto AGNT Flash and says it did', async () => {
-    const h = harness({ selectedProvider: 'OpenAI', isAuthenticated: true });
-    expect(await selectAgntFlash(h.context, { source: 'flash-fallback' })).toBe(true);
+  // Reported: every restart replaced a saved Claude-Code default with AGNT
+  // Flash (default_ai_changes source 'flash-fallback'). A saved global default
+  // belongs to the user; no automatic caller may replace it.
+  for (const saved of ['Claude-Code', 'OpenAI', 'Local', 'custom-123']) {
+    it(`never replaces a saved ${saved} default`, async () => {
+      const h = harness({ selectedProvider: saved, isAuthenticated: true });
+      expect(await selectAgntFlash(h.context, { source: 'flash-fallback' })).toBe(false);
+      expect(h.dispatch).not.toHaveBeenCalled();
+    });
+  }
+
+  it('puts an account with no default on AGNT Flash and says it did', async () => {
+    const h = harness({ isAuthenticated: true });
+    expect(await selectAgntFlash(h.context)).toBe(true);
     expect(chose(h.dispatch)).toEqual([
       ['setProvider', { provider: 'AGNT', persist: false }],
-      ['setModel', { model: 'agnt-flash', source: 'flash-fallback' }],
+      ['setModel', { model: 'agnt-flash', source: 'included-default' }],
     ]);
   });
 
   it('reports false, changing nothing, when Flash has no model', async () => {
-    const h = harness({ selectedProvider: 'OpenAI', isAuthenticated: true, models: [] });
+    const h = harness({ isAuthenticated: true, models: [] });
     expect(await selectAgntFlash(h.context)).toBe(false);
     expect(chose(h.dispatch)).toEqual([]);
   });
