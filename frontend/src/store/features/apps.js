@@ -32,6 +32,7 @@ export default {
     installedAt: 0,
     availableAt: 0,
     error: null,
+    availableError: null,
   }),
   mutations: {
     SET_INSTALLED(state, plugins) {
@@ -45,12 +46,16 @@ export default {
     SET_ERROR(state, error) {
       state.error = error;
     },
+    SET_AVAILABLE_ERROR(state, error) {
+      state.availableError = error;
+    },
   },
   actions: {
     async fetchInstalled({ state, commit }, { force = false } = {}) {
       if (!force && state.installedAt && Date.now() - state.installedAt < STALE_MS) return state.installed;
       try {
         const data = await getJson('/plugins/installed');
+        if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid installed app response');
         commit('SET_INSTALLED', data.plugins);
         commit('SET_ERROR', null);
       } catch (error) {
@@ -64,10 +69,13 @@ export default {
       if (!force && state.availableAt && Date.now() - state.availableAt < STALE_MS) return state.available;
       try {
         const data = await getJson('/plugins/marketplace');
+        if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid marketplace response');
         commit('SET_AVAILABLE', data.plugins);
+        commit('SET_AVAILABLE_ERROR', null);
       } catch (error) {
-        // Suggestions are optional; the page works without them.
+        // Preserve cached packages, but do not present a failed catalog as an empty one.
         console.warn('[apps] could not load the plugin marketplace:', error);
+        commit('SET_AVAILABLE_ERROR', error.message || String(error));
       }
       return state.available;
     },

@@ -36,6 +36,7 @@ import {
   compareVersions,
 } from '../../plugins/lib/validate-core.js';
 import { grantedPermissionsForEntry, newlyRequestedPermissions } from './pluginPermissions.js';
+import { catalogPresentation } from './catalogPresentation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1940,6 +1941,9 @@ class PluginInstaller {
             icon: manifest.icon || metadata.icon || item.preview_image || 'custom',
             // Tools from manifest
             tools: manifest.tools || metadata.tools || [],
+            ...catalogPresentation(manifest),
+            price: item.price ?? 0,
+            marketplace_item_id: item.id,
             // trust system W1/W2/W3: trust fields served by the marketplace API
             // (dedicated columns first, metadata JSON as fallback)
             integrity: item.integrity || metadata.integrity || undefined,
@@ -2058,6 +2062,7 @@ class PluginInstaller {
             icon: manifest.icon || marketplacePlugin?.icon || 'custom',
             size,
             tools: Array.isArray(manifest.tools) ? manifest.tools : (marketplacePlugin?.tools || []),
+            ...catalogPresentation({ agents: [], widgets: [], skills: [], workflows: [], ...manifest }),
           };
         })
       );

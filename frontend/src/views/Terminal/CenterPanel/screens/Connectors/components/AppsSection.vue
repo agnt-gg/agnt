@@ -1,225 +1,350 @@
-<!-- AppsSection — Studio's "Your apps": one card per thing you connect.
-
-     Rendered from services/appCards (the same model Focused's Apps page uses):
-     plugins that share a sign-in are one card (Google = Gmail, Sheets, Drive …),
-     a plugin with no sign-in is its own card, and a sign-in with no plugin is
-     still listed because it is still something you connected.
-
-     This component never connects anything itself. Connect / Reconnect /
-     Disconnect are emitted to Connectors.vue, which runs the flows it already
-     owns (OAuth popup, API-key prompt, on-this-computer CLIs), so there is one
-     sign-in path in Studio, not two. -->
+<!-- Studio package browser. Credentials stay in Connectors' existing flows; Focused is unchanged. -->
 <template>
-  <div class="apps-section">
-    <div class="apps-head">
-      <div>
-        <h2 class="content-title">Your apps</h2>
-        <p class="content-subtitle">Everything AGNT can use for you. Connect a service once and every app that uses it is on.</p>
-      </div>
-      <div class="apps-actions">
-        <div class="apps-tabs" role="tablist" aria-label="Which apps">
-          <button
-            v-for="t in TABS"
-            :key="t.id"
-            type="button"
-            role="tab"
-            class="apps-tab"
-            :class="{ active: tab === t.id }"
-            :aria-selected="tab === t.id ? 'true' : 'false'"
-            @click="tab = t.id"
-          >
-            {{ t.label }} <span class="apps-count">{{ (t.id === 'yours' ? cards.yours : cards.discover).length }}</span>
-          </button>
-        </div>
-        <input v-model="query" class="apps-search" type="search" placeholder="Search apps" aria-label="Search apps" />
-        <button type="button" class="apps-btn" @click="$emit('build-app')"><i class="fas fa-hammer"></i> New app</button>
-        <button type="button" class="apps-btn quiet" @click="$emit('add-account')"><i class="fas fa-plus"></i> Custom sign-in</button>
+  <div class="apps-studio">
+    <SimpleModal ref="modal" />
+    <div class="apps-nav">
+      <nav aria-label="App library">
+        <button type="button" :class="{ active: tab === 'explore' }" @click="switchTab('explore')">Explore</button>
+        <button type="button" :class="{ active: tab === 'installed' }" @click="switchTab('installed')">Installed <span>{{ installedCount }}</span></button>
+      </nav>
+      <div class="apps-nav-actions">
+        <button type="button" @click="emit('build-app')"><AppsIcon name="plus" /> New app</button>
+        <button type="button" @click="emit('add-account')">Custom sign-in</button>
       </div>
     </div>
 
-    <p v-if="attention" class="apps-attention" role="status">
-      <i class="fas fa-exclamation-triangle"></i> {{ attention }}
-    </p>
+    <p v-if="error" class="apps-notice error" role="alert">{{ error }} <button type="button" @click="reload">Retry</button></p>
+    <p v-if="notice" class="apps-notice" role="status">{{ notice }}</p>
 
-    <p v-if="loading && !list.length" class="apps-empty">Loading apps…</p>
-    <p v-else-if="!list.length" class="apps-empty">
-      <template v-if="query">No apps match “{{ query }}”.</template>
-      <template v-else-if="tab === 'yours'">Nothing connected yet. <button type="button" class="apps-link" @click="tab = 'discover'">Discover apps</button></template>
-      <template v-else>Everything available is already yours.</template>
-    </p>
-
-    <div v-else class="apps-grid">
-      <article
-        v-for="card in list"
-        :key="card.id"
-        class="app-card"
-        :class="[`is-${card.status}`, { open: openId === card.id }]"
-        :data-app="card.id"
-      >
-        <button type="button" class="app-card-main" :aria-expanded="openId === card.id ? 'true' : 'false'" @click="toggle(card)">
-          <span class="app-icon"><SvgIcon :name="card.icon || 'custom'" /></span>
-          <span class="app-copy">
-            <strong class="app-name">{{ card.name }}</strong>
-            <small class="app-line">{{ summaryLine(card) }}</small>
-          </span>
-          <span class="app-status" :class="card.status">{{ STATUS_LABEL[card.status] }}</span>
-        </button>
-
-        <div v-if="card.apps.length > 1" class="app-chips">
-          <span v-for="app in card.apps.slice(0, 5)" :key="app.name" class="app-chip">{{ app.displayName }}</span>
-          <span v-if="card.apps.length > 5" class="app-chip more">+{{ card.apps.length - 5 }}</span>
+    <template v-if="!selected">
+      <div class="apps-heading">
+        <div><h1>A little more capable.</h1><p>Good tools. Great agents. Find your next app.</p></div>
+        <label class="apps-search"><AppsIcon name="search" /><input v-model="query" type="search" placeholder="Search apps" aria-label="Search apps" /></label>
+      </div>
+      <div class="apps-toolbar">
+        <div class="apps-categories" aria-label="Categories">
+          <button v-for="name in categories" :key="name" type="button" :aria-pressed="category === name" :class="{ active: category === name }" @click="category = name">{{ name }}</button>
         </div>
+        <span>{{ filtered.length }} apps</span>
+      </div>
 
-        <div class="app-card-actions">
-          <button v-if="card.status === 'connect' && card.providerId" type="button" class="apps-btn" @click="$emit('connect', card)">
-            {{ card.usesModelKey ? `Add ${providerName(card)} key` : 'Connect' }}
-          </button>
-          <button v-else-if="card.status === 'reconnect' && card.providerId" type="button" class="apps-btn warn" @click="$emit('reconnect', card)">Reconnect</button>
-          <button v-if="card.apps.length" type="button" class="apps-link" @click="toggle(card)">{{ openId === card.id ? 'Close' : 'What’s inside' }}</button>
-        </div>
+      <section v-if="featured && !query && category === 'All apps' && tab === 'explore'" class="apps-feature">
+        <div class="feature-copy"><span class="eyebrow">{{ featured.isPack ? 'MADE TO WORK TOGETHER' : 'EXTEND YOUR TOOLKIT' }}</span><h2>{{ featured.displayName }}.<br>A little more possibility.</h2><p>{{ featured.description || 'Explore what this app brings to AGNT.' }}</p><button type="button" @click="openPlugin(featured)">Explore {{ featured.isPack ? 'the pack' : 'the app' }} <AppsIcon name="arrow" /></button></div>
+        <div class="feature-art" aria-hidden="true"><div class="feature-orbit"></div><div class="feature-sheet"><span class="eyebrow">YOUR NEXT CAPABILITY</span><span class="app-logo feature-logo"><SvgIcon :name="featured.icon || 'puzzle-piece'" /></span><strong>{{ featured.displayName }}</strong><div class="feature-lines"><i></i><i></i></div><span class="feature-chip">{{ composition(featured) }}</span></div><span class="feature-float"><AppsIcon name="plugin" /> Built for AGNT</span></div>
+      </section>
 
-        <!-- Detail: what is inside, what else this sign-in can turn on, and the one destructive verb. -->
-        <div v-if="openId === card.id" class="app-detail">
-          <p v-if="card.description" class="app-desc">{{ card.description }}</p>
-          <!-- The key is shared with the models, so it is never disconnected from here. -->
-          <p v-if="card.usesModelKey" class="app-note">Uses your {{ providerName(card) }} key, the same one your AI models use.</p>
+      <div class="apps-section-label"><h2>{{ tab === 'installed' ? 'Installed apps' : category }}</h2><span>Pick a capability. Make it yours.</span></div>
+      <p v-if="loading && !catalog.length" class="apps-empty" role="status">Loading apps…</p>
+      <div v-else-if="!filtered.length" class="apps-empty"><AppsIcon name="search" /><h2>{{ query ? 'No matching apps' : 'No apps here yet' }}</h2><p>{{ query ? 'Try another name or category.' : 'Explore the catalog to add your first app.' }}</p><button type="button" class="apps-secondary" @click="resetFilters">{{ query ? 'Clear filters' : 'Explore apps' }}</button></div>
+      <div v-else class="apps-grid">
+        <article v-for="app in filtered" :key="app.name" class="apps-card" :data-app="app.name">
+          <div class="card-top"><span class="app-logo"><SvgIcon :name="app.icon || 'puzzle-piece'" /></span><span v-if="app.installed" class="card-status"><AppsIcon name="check" /> Installed</span><span v-else class="card-type">{{ app.isPack ? 'Capability pack' : app.category }}</span></div>
+          <h3><button type="button" class="card-title" @click="openPlugin(app)">{{ app.displayName }}</button></h3><p>{{ app.description || 'Explore this app’s capabilities.' }}</p>
+          <div class="card-bottom"><span>{{ composition(app) }}</span><AppsIcon name="arrow" /></div>
+        </article>
+      </div>
+    </template>
 
-          <ul v-if="card.apps.length" class="app-inside">
-            <li v-for="app in card.apps" :key="app.name">
-              <span class="inside-name">{{ app.displayName }}</span>
-              <span class="inside-meta">{{ plural(app.tools, 'tool') }}</span>
-              <button v-for="w in app.widgets" :key="w.id" type="button" class="apps-link" @click="$emit('open-widget', w.id)">
-                <i class="fas fa-shapes"></i> Open {{ w.name }}
-              </button>
-              <button type="button" class="apps-link quiet" @click="$emit('open-app', app.name)">Details</button>
-            </li>
-          </ul>
-
-          <div v-if="card.suggested.length" class="app-suggest">
-            <span>Also works with your {{ card.name }} account: {{ card.suggested.map((s) => s.displayName).join(', ') }}</span>
-            <button type="button" class="apps-btn" :disabled="installing === card.id" @click="addSuggested(card)">
-              {{ installing === card.id ? 'Adding…' : `Add ${card.suggested.length === 1 ? 'it' : `all ${card.suggested.length}`}` }}
-            </button>
-          </div>
-
-          <div v-if="card.status !== 'connect' && card.providerId && !card.usesModelKey" class="app-danger">
-            <button type="button" class="apps-btn danger" @click="$emit('disconnect', card)">Disconnect {{ card.name }}</button>
-            <small v-if="card.apps.length">{{ describeApps(card) }} will stop working until you connect again.</small>
+    <template v-else>
+      <button type="button" class="apps-back" @click="closePlugin"><AppsIcon name="back" /> All apps</button>
+      <div class="apps-detail-hero">
+        <span class="app-logo large"><SvgIcon :name="selected.icon || 'puzzle-piece'" /></span>
+        <div class="detail-identity"><span class="eyebrow">{{ selected.authorName ? `BY ${selected.authorName}` : 'APP' }} · {{ selected.category }}</span><h1 ref="detailHeading" tabindex="-1">{{ selected.displayName }}</h1><p>{{ selected.description || 'Explore the capabilities included in this app.' }}</p></div>
+        <div class="hero-action"><button v-if="!selected.installed" type="button" class="apps-primary" :disabled="!!installing" @click="install(selected)"><AppsIcon name="plus" /> {{ installing === selected.name ? 'Preparing…' : price(selected) ? 'Get app' : 'Install plugin' }}</button><button v-else type="button" class="apps-secondary" @click="emit('open-app', selected.name)"><AppsIcon name="check" /> Manage installed app</button><span>{{ selected.installed ? 'Installed' : price(selected) || 'Free' }}<template v-if="selected.version"> · v{{ selected.version }}</template></span></div>
+      </div>
+      <div class="apps-detail-columns">
+        <div>
+          <div class="apps-preview"><span class="eyebrow">{{ selected.isPack ? 'ONE PACK. CONNECTED CAPABILITIES.' : 'YOUR TOOLS. IN YOUR WORKSPACE.' }}</span><h2>Make it part of your toolkit.</h2><div class="preview-flow"><span><AppsIcon name="plugin" />Install the app</span><i></i><span><AppsIcon name="agent" />Give agents access</span><i></i><span><AppsIcon name="flow" />Put it to work</span></div></div>
+          <div class="apps-section-label contents-heading"><h2>What’s inside</h2><span>{{ capabilityCount }} listed capabilities</span></div>
+          <p v-if="detailLoading" class="detail-message" role="status">Loading installed contents…</p>
+          <p v-if="detailError" class="detail-message" role="alert">{{ detailError }} <button type="button" class="apps-link" @click="loadAssets(selected)">Retry</button></p>
+          <div class="apps-contents">
+            <details v-for="(group, index) in groups" :key="`${selected.name}:${group.key}`" class="asset-group" :open="index === firstPopulatedGroup">
+              <summary><span class="asset-type"><AppsIcon :name="group.icon" /></span><span class="asset-heading"><strong>{{ group.label }} <span>{{ group.known ? group.items.length : '—' }}</span></strong><small>{{ group.items.slice(0, 2).map((item) => item.name).join(' · ') || (group.known ? 'Not included' : 'Not listed by publisher') }}</small></span><AppsIcon class="expand" name="plus" /></summary>
+              <div class="asset-items"><p v-if="!group.items.length">{{ group.known ? 'This app does not include any ' + group.label.toLowerCase() + '.' : 'The catalog does not provide this inventory yet.' }}</p><div v-for="(item, index) in group.items" :key="item.id || index" class="asset-item"><span class="asset-dot"></span><div><strong>{{ item.name }}</strong><p v-if="item.description">{{ item.description }}</p></div><button v-if="group.key === 'widgets' && installedWidgetIds.has(item.id)" type="button" class="apps-link" @click="emit('open-widget', item.id)">Open</button></div></div>
+            </details>
           </div>
         </div>
-      </article>
-    </div>
+        <aside>
+          <div class="apps-setup"><h2><AppsIcon name="plugin" /> Make it yours</h2><p>Install the app. Connect the services its tools need.</p><span class="eyebrow">ACCOUNT CONNECTIONS</span>
+            <div v-for="connection in connections" :key="connection.providerId" class="app-connection"><span class="connection-logo"><SvgIcon :name="connection.icon" /></span><div><strong>{{ connection.name }}</strong><small>{{ connection.tools.slice(0, 2).join(', ') }}</small></div><span v-if="connection.status === 'connected'" class="connection-check" aria-label="Connected"><AppsIcon name="check" /><span class="sr-only">Connected</span></span><button v-else type="button" class="apps-small" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">{{ connection.known ? connection.status === 'reconnect' ? 'Reconnect' : 'Connect' : 'Unavailable' }}</button></div>
+            <p v-if="!connections.length" class="connection-note">No account connections declared by this app’s tools.</p><p v-else class="connection-note">These tools need a connected account to run.</p>
+            <p class="setup-note"><AppsIcon name="check" /> One app, all its included capabilities.</p>
+          </div>
+          <details class="apps-access"><summary><AppsIcon name="lock" /> Access & permissions <AppsIcon name="down" /></summary><p v-if="permissions.length">Declared access: {{ permissions.join(', ') }}.</p><p>Plugins run code with access to your device. Only install from publishers you trust.</p><p v-if="!selected.installed">We’ll inspect the package before asking you to confirm.</p></details>
+          <dl class="apps-package"><dt>Publisher</dt><dd>{{ selected.authorName || 'Not listed' }}</dd><dt>Version</dt><dd>{{ selected.version || 'Not listed' }}</dd><template v-if="selected.license"><dt>License</dt><dd>{{ selected.license }}</dd></template></dl>
+        </aside>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { useAppCards } from '@/composables/useAppCards.js';
-import { describeApps } from '@/services/appCards.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import AppsIcon from './AppsIcon.vue';
+import { API_CONFIG } from '@/tt.config.js';
+import { apiFetch } from '@/utils/apiFetch.js';
+import { studioCatalog, pluginContents, pluginConnections, installDisclosure, escapeDisclosure } from '@/services/studioApps.js';
 
-defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account']);
-
+const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account']);
 const store = useStore();
-const TABS = Object.freeze([
-  { id: 'yours', label: 'Yours' },
-  { id: 'discover', label: 'Discover' },
-]);
-const STATUS_LABEL = Object.freeze({ ready: 'Ready', connect: 'Connect', reconnect: 'Reconnect' });
-
+const modal = ref(null);
 const query = ref('');
-const tab = ref('yours');
-const openId = ref(null);
+const category = ref('All apps');
+const tab = ref('explore');
+const selectedName = ref(null);
+const detailHeading = ref(null);
 const installing = ref(null);
-const { cards, loading } = useAppCards(query);
-
-const list = computed(() => (tab.value === 'yours' ? cards.value.yours : cards.value.discover));
-const attention = computed(() => {
-  const broken = cards.value.yours.filter((c) => c.status === 'reconnect').length;
-  const waiting = cards.value.yours.filter((c) => c.status === 'connect').length;
-  const parts = [];
-  if (broken) parts.push(`${broken} sign-in${broken === 1 ? '' : 's'} stopped working`);
-  if (waiting) parts.push(`${waiting} installed app${waiting === 1 ? ' needs' : 's need'} a sign-in`);
-  return parts.join(' · ');
-});
-
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-function summaryLine(card) {
-  const parts = [];
-  if (card.apps.length > 1) parts.push(plural(card.apps.length, 'app'));
-  if (card.counts.tools) parts.push(plural(card.counts.tools, 'tool'));
-  if (card.counts.widgets) parts.push(plural(card.counts.widgets, 'widget'));
-  if (card.counts.skills) parts.push(plural(card.counts.skills, 'skill'));
-  if (!parts.length) parts.push(card.providerId ? 'Sign-in' : 'Installed');
-  return parts.join(' · ');
+const loading = ref(false);
+const error = ref('');
+const notice = ref('');
+const assets = ref([]);
+const detailLoading = ref(false);
+const detailError = ref('');
+let detailRequest = 0;
+let alive = true;
+const catalog = computed(() => studioCatalog(store.getters['apps/installed'], store.getters['apps/available']));
+const installedCount = computed(() => catalog.value.filter((app) => app.installed).length);
+const selected = computed(() => catalog.value.find((app) => app.name === selectedName.value));
+const categories = computed(() => ['All apps', ...new Set(catalog.value.map((app) => app.category))]);
+const filtered = computed(() => catalog.value.filter((app) => (tab.value !== 'installed' || app.installed) && (category.value === 'All apps' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
+const featured = computed(() => catalog.value.find((app) => app.isPack && !app.installed) || catalog.value.find((app) => app.isPack) || catalog.value.find((app) => !app.installed));
+const groups = computed(() => pluginContents(selected.value, assets.value));
+const capabilityCount = computed(() => groups.value.reduce((total, group) => total + group.items.length, 0));
+const firstPopulatedGroup = computed(() => groups.value.findIndex((group) => group.items.length));
+const connections = computed(() => pluginConnections(selected.value, store.state.appAuth?.allProviders, store.getters['appAuth/connectedApps'], store.state.appAuth?.connectionHealth?.providers));
+const installedWidgetIds = computed(() => new Set((store.getters['widgetDefinitions/allDefinitions'] || []).map((widget) => widget.id)));
+const permissions = computed(() => selected.value?.permissions?.capabilities || selected.value?.declaredPermissions || []);
+function composition(app) {
+  return app.groups.filter((group) => group.items.length).map((group) => `${group.items.length} ${group.items.length === 1 ? group.label.slice(0, -1) : group.label}`.toLowerCase()).slice(0, 3).join(' · ') || 'Explore what’s included';
 }
-function providerName(card) {
-  const entry = (store.state.appAuth?.allProviders || []).find((p) => String(p.id).toLowerCase() === card.providerId);
-  return entry?.name || card.providerId;
+function price(app) {
+  const amount = Number(app.price);
+  return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';
 }
-function toggle(card) {
-  openId.value = openId.value === card.id ? null : card.id;
+function switchTab(value) { tab.value = value; selectedName.value = null; detailRequest++; }
+function resetFilters() { query.value = ''; category.value = 'All apps'; tab.value = 'explore'; }
+async function openPlugin(app) {
+  selectedName.value = app.name;
+  notice.value = '';
+  loadAssets(app);
+  await nextTick();
+  detailHeading.value?.focus({ preventScroll: true });
+  detailHeading.value?.scrollIntoView?.({ block: 'nearest' });
 }
-
-async function addSuggested(card) {
-  installing.value = card.id;
+function closePlugin() { selectedName.value = null; detailRequest++; }
+async function loadAssets(app) {
+  const request = ++detailRequest;
+  assets.value = [];
+  detailError.value = '';
+  detailLoading.value = !!app.installed;
+  if (!app.installed) return;
   try {
-    const { failed } = await store.dispatch('apps/installMany', card.suggested.map((s) => s.name));
-    if (failed.length) console.error(`[AppsSection] could not add: ${failed.join(', ')}`);
+    const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/${encodeURIComponent(app.name)}/assets`);
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load installed contents.');
+    if (request === detailRequest && alive) assets.value = result.assets || [];
+  } catch (failure) {
+    if (request === detailRequest && alive) detailError.value = failure.message;
+    console.error('[AppsSection] contents:', failure);
   } finally {
-    installing.value = null;
+    if (request === detailRequest && alive) detailLoading.value = false;
   }
 }
+async function reload() {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = '';
+  try {
+    await Promise.all([
+      store.dispatch('apps/fetchInstalled', { force: true }),
+      store.dispatch('apps/fetchAvailable', { force: true }),
+      store.dispatch('appAuth/fetchAllProviders'),
+      store.dispatch('appAuth/fetchConnectedApps'),
+      store.dispatch('appAuth/checkConnectionHealth'),
+      store.dispatch('widgetDefinitions/fetchDefinitions'),
+    ]);
+    const loadError = store.state.apps?.error || store.state.apps?.availableError;
+    if (loadError) throw new Error(loadError);
+  } catch (failure) {
+    error.value = failure.message || 'Unable to load apps. Please retry.';
+    console.error('[AppsSection] catalog:', failure);
+  } finally { loading.value = false; }
+}
+async function install(app) {
+  if (installing.value || app.installed) return;
+  installing.value = app.name;
+  error.value = '';
+  notice.value = '';
+  try {
+    const itemId = app.marketplace_item_id || app.id;
+    if (price(app)) {
+      if (!itemId) throw new Error('This paid app has no marketplace purchase link.');
+      const purchased = await store.dispatch('marketplace/checkPurchaseStatus', itemId);
+      if (!purchased) {
+        const confirmed = await modal.value.showModal({ title: `Get ${app.displayName}`, message: `This app costs ${escapeDisclosure(price(app))}. Continue to checkout?`, confirmText: 'Continue to checkout', showCancel: true });
+        if (confirmed) await store.dispatch('marketplace/purchaseItem', { itemId });
+        return;
+      }
+    }
+    const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/inspect/${encodeURIComponent(app.name)}`);
+    const report = await response.json();
+    if (!response.ok) throw new Error(report.error || 'Unable to inspect this package. Please retry.');
+    const message = installDisclosure(report);
+    const confirmed = await modal.value.showModal({ title: `Install ${app.displayName}?`, message, confirmText: 'Install plugin', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-primary' });
+    if (!confirmed || !alive) return;
+    await store.dispatch('marketplace/installPlugin', { pluginName: app.name });
+    notice.value = `${app.displayName} installed.`;
+    await reload();
+    if (selectedName.value === app.name && selected.value?.installed) await loadAssets(selected.value);
+  } catch (failure) {
+    error.value = failure.message || 'Installation failed. Please retry.';
+    console.error('[AppsSection] install:', failure);
+  } finally { installing.value = null; }
+}
+onMounted(reload);
+onBeforeUnmount(() => { alive = false; detailRequest++; });
 </script>
 
 <style scoped>
-.apps-section { display: flex; flex-direction: column; gap: 14px; }
-.apps-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.apps-head .content-title { margin: 0 0 4px; }
-.apps-head .content-subtitle { margin: 0; color: var(--color-text-muted); font-size: 0.9em; }
-.apps-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.apps-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--terminal-border-color); border-radius: 8px; }
-.apps-tab { background: none; border: 0; color: var(--color-text-muted); padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 0.85em; }
-.apps-tab.active { background: rgba(var(--primary-rgb), 0.15); color: var(--color-text); }
-.apps-count { opacity: 0.6; margin-left: 2px; }
-.apps-search { background: var(--color-darker-0); border: 1px solid var(--terminal-border-color); color: var(--color-text); border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 0.85em; min-width: 180px; }
-.apps-btn { display: inline-flex; align-items: center; gap: 6px; background: rgba(var(--primary-rgb), 0.15); color: var(--color-primary); border: 1px solid rgba(var(--primary-rgb), 0.35); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 0.82em; white-space: nowrap; }
-.apps-btn:hover:not(:disabled) { background: rgba(var(--primary-rgb), 0.25); }
-.apps-btn:disabled { opacity: 0.6; cursor: default; }
-.apps-btn.quiet { background: none; color: var(--color-text-muted); border-color: var(--terminal-border-color); }
-.apps-btn.warn { color: var(--color-yellow, #ffb547); border-color: rgba(255, 181, 71, 0.45); background: rgba(255, 181, 71, 0.1); }
-.apps-btn.danger { color: var(--color-red, #ff5d73); border-color: rgba(255, 93, 115, 0.4); background: rgba(255, 93, 115, 0.08); }
-.apps-link { background: none; border: 0; padding: 0; color: var(--color-primary); cursor: pointer; font: inherit; font-size: 0.82em; }
-.apps-link.quiet { color: var(--color-text-muted); }
-.apps-attention { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 0.85em; color: var(--color-yellow, #ffb547); background: rgba(255, 181, 71, 0.08); border: 1px solid rgba(255, 181, 71, 0.25); }
-.apps-empty { color: var(--color-text-muted); font-size: 0.9em; }
-.apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; align-items: start; }
-.app-card { border: 1px solid var(--terminal-border-color); border-radius: 10px; background: var(--color-darker-0); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.app-card.is-reconnect { border-color: rgba(255, 181, 71, 0.45); }
-.app-card.open { grid-column: span 2; }
-.app-card-main { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; width: 100%; }
-.app-icon { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: 8px; background: rgba(var(--primary-rgb), 0.08); }
-.app-icon :deep(svg) { width: 18px; height: 18px; }
-.app-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.app-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-line { color: var(--color-text-muted); font-size: 0.78em; }
-.app-status { font-size: 0.72em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.app-status.ready { color: var(--color-green, #2fd6a0); background: rgba(47, 214, 160, 0.1); }
-.app-status.connect { color: var(--color-text-muted); background: rgba(127, 127, 160, 0.12); }
-.app-status.reconnect { color: var(--color-yellow, #ffb547); background: rgba(255, 181, 71, 0.12); }
-.app-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.app-chip { font-size: 0.72em; padding: 1px 7px; border-radius: 5px; background: rgba(var(--primary-rgb), 0.08); color: var(--color-text-muted); }
-.app-card-actions { display: flex; align-items: center; gap: 10px; min-height: 0; }
-.app-card-actions:empty { display: none; }
-.app-detail { border-top: 1px solid var(--terminal-border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 10px; font-size: 0.85em; }
-.app-desc, .app-note { margin: 0; color: var(--color-text-muted); }
-.app-inside { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.app-inside li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.inside-name { font-weight: 500; }
-.inside-meta { color: var(--color-text-muted); font-size: 0.9em; }
-.app-suggest { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; border-radius: 8px; background: rgba(var(--primary-rgb), 0.06); }
-.app-danger { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.app-danger small { color: var(--color-text-muted); }
-@media (max-width: 720px) { .app-card.open { grid-column: auto; } }
+.apps-studio { --apps-tint: color-mix(in srgb, var(--color-primary) 7%, var(--surface-raised)); --apps-border: var(--terminal-border-color); width: 100%; max-width: 1140px; margin: 0 auto; color: var(--text-primary); font-family: inherit; line-height: 1.4; container-type: inline-size; }
+.apps-studio *, .apps-studio *::before, .apps-studio *::after { box-sizing: border-box; }
+.apps-studio button, .apps-studio input { font: inherit; }
+.apps-studio button { cursor: pointer; }
+.apps-studio button:disabled { opacity: .6; cursor: default; }
+.apps-studio button:focus-visible, .apps-studio summary:focus-visible, .apps-studio input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; }
+.apps-studio h1, .apps-studio h2, .apps-studio h3 { color: var(--text-primary); font-weight: 600; line-height: 1.1; margin: 0; opacity: 1; }
+.apps-studio p { font-weight: 400; opacity: 1; }
+.apps-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--apps-border); margin-bottom: 34px; }
+.apps-nav nav, .apps-nav-actions { display: flex; align-items: center; gap: 22px; }
+.apps-nav button { background: none; border: 0; padding: 12px 0; color: var(--text-secondary); font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.apps-nav nav button { border-bottom: 2px solid transparent; }
+.apps-nav nav button.active { color: var(--text-primary); border-color: var(--color-primary); }
+.apps-nav nav span { border: 1px solid var(--apps-border); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+.apps-nav-actions button { font-size: 12px; }
+.apps-nav-actions :deep(svg) { width: 15px; height: 15px; }
+.apps-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.apps-heading h1 { font-size: clamp(28px, 3.4cqi, 38px); letter-spacing: -.9px; }
+.apps-heading p { margin: 9px 0 0; color: var(--text-secondary); font-size: 15px; }
+.apps-search { display: flex; align-items: center; gap: 10px; min-width: 220px; width: 280px; height: 44px; border: 1px solid var(--apps-border); border-radius: 8px; background: var(--surface-raised); padding: 0 13px; color: var(--text-secondary); }
+.apps-search input { width: 100%; min-width: 0; background: none; border: 0; color: var(--text-primary); padding: 0; font-size: 14px; }
+.apps-search input::placeholder { color: var(--text-tertiary); }
+.apps-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 23px; }
+.apps-toolbar > span { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
+.apps-categories { display: flex; flex-wrap: wrap; gap: 5px; }
+.apps-categories button { border: 1px solid transparent; border-radius: 6px; padding: 6px 10px; background: none; color: var(--text-secondary); font-size: 13px; }
+.apps-categories button.active { border-color: var(--apps-border); background: var(--surface-active); color: var(--text-primary); }
+.apps-feature { display: grid; grid-template-columns: 1.1fr 1fr; overflow: hidden; min-height: 252px; border: 1px solid color-mix(in srgb, var(--color-primary) 25%, var(--apps-border)); border-radius: 12px; background: linear-gradient(115deg, var(--apps-tint), color-mix(in srgb, var(--color-secondary) 10%, var(--surface-raised))); margin-bottom: 29px; }
+.feature-copy { padding: 28px 31px; z-index: 1; }
+.eyebrow { color: var(--text-secondary); font-size: 10px; letter-spacing: 1.4px; font-weight: 500; }
+.feature-copy h2 { font-size: 29px; font-weight: 500; letter-spacing: -.6px; margin-top: 14px; overflow-wrap: anywhere; }
+.feature-copy p { margin: 12px 0 20px; max-width: 390px; font-size: 14px; line-height: 1.4; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.feature-copy button { background: none; border: 0; color: var(--text-primary); padding: 0; display: flex; align-items: center; gap: 15px; font-size: 14px; }
+.feature-art { position: relative; display: grid; place-items: center; padding: 30px; isolation: isolate; }
+.feature-orbit { position: absolute; width: 330px; height: 250px; border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent); border-radius: 50%; transform: rotate(-20deg); z-index: -1; }
+.feature-sheet { width: 235px; max-width: 100%; padding: 19px 21px; background: var(--surface-raised); color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--apps-border)); border-radius: 10px; box-shadow: var(--shadow-lg); transform: rotate(6deg); }
+.feature-sheet > .eyebrow { font-size: 8px; }
+.feature-sheet > strong { display: block; font-size: 22px; line-height: 1.1; font-weight: 500; overflow-wrap: anywhere; margin-top: 10px; }
+.feature-logo { margin-top: 15px; }
+.feature-lines { display: flex; flex-direction: column; gap: 5px; margin: 14px 0; }
+.feature-lines i { height: 4px; background: var(--surface-active); width: 95%; border-radius: 2px; }
+.feature-lines i:last-child { width: 65%; }
+.feature-chip { font-size: 10px; color: var(--text-secondary); border-top: 1px solid var(--apps-border); padding-top: 8px; display: block; }
+.feature-float { position: absolute; bottom: 24px; left: 12%; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--surface-raised); border: 1px solid var(--apps-border); color: var(--text-primary); font-size: 11px; border-radius: 7px; transform: rotate(-5deg); box-shadow: var(--shadow-md); }
+.feature-float :deep(svg) { width: 15px; height: 15px; }
+.apps-section-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.apps-section-label h2 { font-size: 20px; letter-spacing: -.3px; }
+.apps-section-label > span { color: var(--text-tertiary); font-size: 12px; }
+.apps-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.apps-card { position: relative; min-width: 0; padding: 20px 20px 0; border: 1px solid var(--apps-border); border-radius: 10px; background: var(--surface-raised); transition: transform 150ms, border-color 150ms; }
+.apps-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--text-secondary) 60%, var(--apps-border)); }
+.card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 17px; }
+.app-logo { display: grid; place-items: center; width: 43px; height: 43px; flex: none; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--apps-border)); background: var(--apps-tint); }
+.app-logo :deep(svg) { width: 24px; height: 24px; }
+.card-status, .card-type { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
+.card-status :deep(svg) { width: 13px; height: 13px; }
+.apps-card h3 { font-size: 20px; letter-spacing: -.3px; }
+.card-title { padding: 0; background: none; border: 0; color: var(--text-primary); text-align: left; font-weight: 600 !important; }
+.card-title::after { content: ''; position: absolute; inset: 0; border-radius: 10px; }
+.apps-card p { font-size: 13px; line-height: 1.4; min-height: 37px; color: var(--text-secondary); margin: 8px 0 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 11px 0; border-top: 1px solid var(--apps-border); font-size: 11px; color: var(--text-tertiary); }
+.card-bottom :deep(svg) { width: 16px; height: 16px; }
+.apps-primary, .apps-secondary, .apps-small { border: 1px solid var(--apps-border); border-radius: 8px; padding: 11px 16px; display: inline-flex; justify-content: center; align-items: center; gap: 8px; background: var(--surface-raised); color: var(--text-primary); font-size: 14px !important; }
+.apps-primary { background: var(--fill-accent); color: var(--on-fill-accent); border-color: var(--fill-accent); font-weight: 600 !important; }
+.apps-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.apps-back { background: none; border: 0; padding: 0; margin: 0 0 27px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 8px; font-size: 14px !important; }
+.apps-detail-hero { display: flex; align-items: center; gap: 21px; margin-bottom: 33px; }
+.app-logo.large { width: 78px; height: 78px; border-radius: 18px; }
+.app-logo.large :deep(svg) { width: 43px; height: 43px; }
+.detail-identity { flex: 1; min-width: 0; }
+.detail-identity h1 { font-size: clamp(27px, 3.4cqi, 37px); letter-spacing: -.8px; margin: 7px 0; overflow-wrap: anywhere; }
+.detail-identity p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); max-width: 550px; }
+.hero-action { display: flex; flex-direction: column; gap: 8px; align-items: center; flex: none; }
+.hero-action > span { font-size: 12px; color: var(--text-tertiary); }
+.apps-detail-columns { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
+.apps-preview { padding: 25px; border-radius: 10px; background: var(--apps-tint); border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--apps-border)); }
+.apps-preview h2 { font-size: 26px; font-weight: 500; letter-spacing: -.5px; margin-top: 9px; }
+.preview-flow { display: flex; align-items: center; gap: 13px; margin-top: 25px; }
+.preview-flow > span { flex: 1; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; flex-direction: column; gap: 9px; text-align: center; }
+.preview-flow :deep(svg) { width: 38px; height: 38px; padding: 8px; border: 1px solid var(--apps-border); border-radius: 9px; background: var(--surface-raised); color: var(--text-primary); }
+.preview-flow > i { height: 1px; width: 28px; background: var(--apps-border); align-self: flex-start; margin-top: 19px; }
+.contents-heading { margin-top: 27px; }
+.apps-contents { border: 1px solid var(--apps-border); border-radius: 10px; overflow: hidden; background: var(--surface-raised); }
+.asset-group + .asset-group { border-top: 1px solid var(--apps-border); }
+.asset-group summary { display: flex; align-items: center; gap: 13px; padding: 16px 19px; min-height: 75px; list-style: none; cursor: pointer; }
+.asset-group summary::-webkit-details-marker, .apps-access summary::-webkit-details-marker { display: none; }
+.asset-group summary:hover { background: var(--surface-hover); }
+.asset-type { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--apps-border); background: var(--apps-tint); }
+.asset-type :deep(svg) { width: 18px; height: 18px; }
+.asset-heading { flex: 1; min-width: 0; }
+.asset-heading strong { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 500; }
+.asset-heading strong span { font-size: 11px; border: 1px solid var(--apps-border); background: var(--surface-active); border-radius: 4px; padding: 0 5px; color: var(--text-secondary); }
+.asset-heading small { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-group .expand { width: 16px; height: 16px; color: var(--text-secondary); }
+.asset-group[open] .expand { transform: rotate(45deg); }
+.asset-group[open] .asset-heading small { display: none; }
+.asset-items { padding: 0 19px 12px 31px; }
+.asset-items > p { color: var(--text-secondary); font-size: 13px; }
+.asset-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.asset-item > div { flex: 1; min-width: 0; }
+.asset-item strong { font-weight: 500; font-size: 14px; overflow-wrap: anywhere; }
+.asset-item p { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.asset-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--text-tertiary); }
+.apps-setup { padding: 22px; background: var(--surface-raised); border: 1px solid var(--apps-border); border-radius: 10px; }
+.apps-setup h2 { display: flex; align-items: center; gap: 9px; font-size: 19px; }
+.apps-setup > p { font-size: 14px; line-height: 1.4; color: var(--text-secondary); margin: 12px 0 26px; }
+.apps-setup .eyebrow { font-size: 9px; }
+.app-connection { display: flex; align-items: center; gap: 9px; padding: 14px 0; border-bottom: 1px solid var(--apps-border); }
+.connection-logo { width: 30px; height: 32px; border-radius: 7px; display: grid; place-items: center; border: 1px solid var(--apps-border); background: var(--surface-hover); flex: none; }
+.connection-logo :deep(svg) { width: 17px; height: 17px; }
+.app-connection > div { flex: 1; min-width: 0; }
+.app-connection strong { font-size: 14px; font-weight: 500; }
+.app-connection small { color: var(--text-secondary); display: block; font-size: 11px; overflow-wrap: anywhere; }
+.connection-check { color: var(--text-primary); }
+.apps-small { padding: 5px 8px; font-size: 12px !important; border-radius: 6px; }
+.apps-setup .connection-note { font-size: 11px; margin: 12px 0 20px; }
+.apps-setup .setup-note { display: flex; align-items: center; gap: 7px; padding-top: 17px; border-top: 1px solid var(--apps-border); font-size: 11px; margin-bottom: 0; }
+.setup-note :deep(svg) { width: 14px; height: 14px; }
+.apps-access { margin-top: 18px; }
+.apps-access summary { display: flex; align-items: center; gap: 7px; font-size: 12px; list-style: none; color: var(--text-secondary); cursor: pointer; }
+.apps-access summary :deep(svg) { width: 14px; height: 14px; }
+.apps-access summary :deep(svg:last-child) { margin-left: auto; }
+.apps-access p { color: var(--text-secondary); font-size: 12px; margin: 10px 0; }
+.apps-package { display: grid; grid-template-columns: 1fr auto; gap: 9px; border-top: 1px solid var(--apps-border); margin-top: 20px; padding-top: 17px; font-size: 12px; }
+.apps-package dt { color: var(--text-secondary); }
+.apps-package dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; text-align: right; }
+.apps-empty { text-align: center; color: var(--text-secondary); padding: 45px 15px; }
+.apps-empty h2 { margin: 15px 0 8px; font-size: 24px; }
+.apps-notice { padding: 12px 16px; border: 1px solid var(--apps-border); background: var(--apps-tint); border-radius: 8px; color: var(--text-primary); font-size: 14px; }
+.apps-notice.error { border-color: var(--color-red); }
+.apps-notice button, .apps-link { background: none; border: 0; text-decoration: underline; color: var(--text-primary); font-size: 12px; padding: 0; }
+.detail-message { color: var(--text-secondary); font-size: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@container (max-width: 850px) { .apps-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .apps-detail-columns { grid-template-columns: minmax(0, 1fr) 245px; gap: 20px; } .apps-setup { padding: 18px; } .feature-copy { padding: 25px; } .feature-copy h2 { font-size: 25px; } .feature-sheet { width: 210px; } .apps-heading h1 { font-size: 30px; } .app-logo.large { width: 62px; height: 62px; } .apps-detail-hero { flex-wrap: wrap; } .hero-action { margin-left: auto; } }
+@container (max-width: 620px) { .apps-heading { flex-direction: column; align-items: stretch; gap: 20px; } .apps-search { width: 100%; } .apps-heading h1 { font-size: 33px; } .apps-nav { flex-wrap: wrap; gap: 3px; } .apps-nav-actions { gap: 15px; } .apps-toolbar > span { display: none; } .apps-feature { grid-template-columns: 1.25fr .8fr; } .feature-art { padding: 20px 0; } .feature-sheet { margin-right: -60px; width: 190px; max-width: none; } .feature-float { display: none; } .feature-copy h2 { font-size: 25px; } .feature-copy .eyebrow { font-size: 8px; } .apps-section-label > span { display: none; } .apps-detail-columns { grid-template-columns: 1fr; } .apps-detail-hero { gap: 15px; } .hero-action { width: 100%; flex-direction: row; justify-content: space-between; } .detail-identity h1 { font-size: 30px; } .apps-card { padding: 16px 15px 0; } .card-type { display: none; } .apps-card h3 { font-size: 18px; } .apps-card p { font-size: 12px; min-height: 34px; } .card-bottom { font-size: 10px; } }
+@container (max-width: 360px) { .apps-grid { grid-template-columns: 1fr; } .apps-feature { grid-template-columns: 1fr; } .feature-art { display: none; } .apps-nav nav { gap: 16px; } .apps-preview { padding: 18px; } .preview-flow { gap: 5px; } .preview-flow > i { width: 15px; } .preview-flow > span { font-size: 10px; } }
+@media (prefers-reduced-motion: reduce) { .apps-card { transition: none; } }
 </style>
