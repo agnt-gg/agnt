@@ -25,10 +25,6 @@
     <template #tabs><LibraryTabs :tabs="tabs" :current="tab.id" :counts="counts" @select="selectTab" /></template>
 
     <UpgradePrompt compact title="Put your agents on a schedule" description="Upgrade to turn repeatable work into recurring goals." />
-    <!-- Above the list, not after it. After it, the shelf sat below every
-         item: 8,361px down on Agents (124 rows), so only short tabs showed it. -->
-    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" fallback-to-all @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
-
     <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
     <p v-else-if="!rows.length" class="focused-empty">
       {{ query ? `No ${tab.label.toLowerCase()} match “${query}”.` : `Nothing here yet. Ask in chat to make your first ${tab.noun}.` }}
@@ -49,6 +45,9 @@
     <p v-if="rows.length > shownRows.length" class="focused-foot-note">
       Showing {{ shownRows.length }} of {{ rows.length.toLocaleString() }}. Search to find the rest.
     </p>
+
+    <!-- Owned work first; discovery remains available after the list and its count. -->
+    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" fallback-to-all @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
   </FocusedPage>
 </template>
 
