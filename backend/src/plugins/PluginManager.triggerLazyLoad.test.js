@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+vi.mock('./PluginAccountStore.js', () => ({ default: { assert: vi.fn().mockResolvedValue() } }));
 import PluginManager from './PluginManager.js';
 import ToolConfig from '../tools/ToolConfig.js';
 

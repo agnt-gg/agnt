@@ -196,7 +196,7 @@ class NodeExecutor {
         if (!toolModule) {
           try {
             console.log(`[NodeExecutor] Trying plugin system for ${node.type}`);
-            toolModule = await PluginManager.loadTool(node.type);
+            toolModule = await PluginManager.loadTool(node.type, this.workflowEngine.userId || this.workflowEngine.user_id);
             loadedFrom = 'plugin';
             console.log(`✓ Loaded ${node.type} from plugin`);
           } catch (pluginError) {

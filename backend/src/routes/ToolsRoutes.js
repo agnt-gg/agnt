@@ -1,3 +1,4 @@
+import PluginAccounts from '../plugins/PluginAccountStore.js';
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
@@ -103,7 +104,7 @@ router.get('/workflow-tools', authenticateToken, async (req, res) => {
     // Get plugin tools from PluginManager
     let pluginSchemas = [];
     try {
-      pluginSchemas = PluginManager.getAllPluginSchemas();
+      pluginSchemas = await PluginAccounts.filter(PluginManager.getAllPluginSchemas(), req.user?.userId, row => row._plugin);
       console.log(`[ToolsRoutes] Loaded ${pluginSchemas.length} plugin schemas`);
     } catch (pluginError) {
       console.warn('[ToolsRoutes] Could not load plugin schemas:', pluginError.message);
@@ -189,9 +190,9 @@ router.get('/workflow-tools', authenticateToken, async (req, res) => {
  * GET /api/tools/plugins-only
  * Get only plugin tools (for real-time updates)
  */
-router.get('/plugins-only', async (req, res) => {
+router.get('/plugins-only', authenticateToken, async (req, res) => {
   try {
-    const pluginSchemas = PluginManager.getAllPluginSchemas();
+    const pluginSchemas = await PluginAccounts.filter(PluginManager.getAllPluginSchemas(), req.user?.userId, row => row._plugin);
 
     // Transform to frontend format with category mapping
     const pluginsByCategory = {

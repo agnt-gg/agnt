@@ -5023,7 +5023,9 @@ function injectAsyncParams(schema) {
   const appearanceToolSchemas = getAppearanceToolSchemas();
   const canvasToolSchemas = getCanvasToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
-  const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
+  const { default: PluginAccounts } = await import('../../plugins/PluginAccountStore.js');
+  const ownedPluginNames = new Set(await PluginAccounts.names(userId));
+  const pluginToolSchemas = toolRegistry.getAllPluginTools().filter(tool => ownedPluginNames.has(tool.pluginName)).map(tool => tool.openApiSchema);
 
   // User-authored Tool Forge tools, discoverable so the LLM can see and the
   // validator can check their args. Scoped to the requesting user; off when no

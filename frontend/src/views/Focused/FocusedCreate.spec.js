@@ -29,6 +29,7 @@ const getters = reactive({
   'aiProvider/filteredProviders': [],
 });
 const state = reactive({ aiProvider: { providers: [], allModels: {} } });
+vi.mock('@/components/UpgradeModal.vue', () => ({ default: { props: ['open'], template: '<div v-if="open" />' } }));
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters, state }) }));
 
 const files = vi.hoisted(() => ({

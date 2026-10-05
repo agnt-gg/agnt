@@ -116,7 +116,7 @@ class ToolRegistry {
           implementation: {
             execute: async (params, inputData, workflowEngine) => {
               // Load the actual tool module from the plugin
-              const toolModule = await PluginManager.loadTool(toolType);
+              const toolModule = await PluginManager.loadTool(toolType, workflowEngine?.userId || workflowEngine?.user_id);
               if (toolModule && toolModule.default && typeof toolModule.default.execute === 'function') {
                 return await toolModule.default.execute(params, inputData, workflowEngine);
               } else if (toolModule && typeof toolModule.execute === 'function') {

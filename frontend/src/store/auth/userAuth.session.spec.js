@@ -99,6 +99,19 @@ describe('verifySession — the only thing that may grant a session', () => {
     expect(url).not.toContain('api.agnt.gg');
   });
 
+  it('a delayed verification cannot revive an explicitly logged-out session', async () => {
+    let finish;
+    axios.get.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const h = harness();
+    const pending = verify(h);
+    userAuth.actions.logout(h);
+    finish(OK);
+    await pending;
+    expect(h.state.sessionState).toBe(SESSION.INVALID);
+    expect(h.state.user).toBeNull();
+    expect(h.state.token).toBeNull();
+  });
+
   it('grants VALID only on a positive confirmation', async () => {
     axios.get.mockResolvedValue(OK);
     const h = harness();

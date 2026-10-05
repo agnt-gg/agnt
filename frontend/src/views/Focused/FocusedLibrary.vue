@@ -24,9 +24,10 @@
   >
     <template #tabs><LibraryTabs :tabs="tabs" :current="tab.id" :counts="counts" @select="selectTab" /></template>
 
+    <UpgradePrompt compact title="Put your agents on a schedule" description="Upgrade to turn repeatable work into recurring goals." />
     <!-- Above the list, not after it. After it, the shelf sat below every
          item: 8,361px down on Agents (124 rows), so only short tabs showed it. -->
-    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" fallback-to-all @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
+    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" fallback-to-all @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
 
     <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
     <p v-else-if="!rows.length" class="focused-empty">
@@ -52,6 +53,7 @@
 </template>
 
 <script setup>
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, watch, inject, onMounted, defineComponent, h } from 'vue';
 import { useStore } from 'vuex';
 import FocusedPage from './FocusedPage.vue';

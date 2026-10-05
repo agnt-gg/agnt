@@ -277,3 +277,20 @@ describe('MarketplaceShelf — fetching', () => {
     expect(fetchShelfItems).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Required library shelves', () => {
+  it('renders real agent items despite an old per-type dismissal', async () => {
+    localStorage.setItem('marketplaceShelf.dismissed.agent', '1');
+    const { wrapper } = await mountShelf({ variant: 'strip', dismissible: false });
+    expect(wrapper.findAll('.ms-row')).toHaveLength(4);
+    expect(wrapper.text()).toContain('Koder Kai');
+    expect(wrapper.find('.ms-dismiss').exists()).toBe(false);
+  });
+  it('shows retry and marketplace navigation on an unavailable catalog', async () => {
+    const { wrapper } = await mountShelf({ variant: 'strip', dismissible: false }, { status: 'error', items: [] });
+    expect(wrapper.text()).toContain('could not load');
+    const retry = wrapper.findAll('button').find(b => b.text() === 'Retry');
+    await retry.trigger('click');
+    expect(fetchShelfItems.mock.calls.at(-1)[1]).toEqual({ force: true });
+  });
+});

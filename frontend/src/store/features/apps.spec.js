@@ -21,3 +21,16 @@ describe('App catalog loading', () => {
     expect(store.state.apps.available).toEqual([{ name: 'new' }]);
   });
 });
+
+it('ignores a prior account response that arrives after the token changes', async () => {
+  const store = createStore({ modules: { apps } });
+  localStorage.setItem('token', 'alice');
+  let finish;
+  vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(resolve => { finish = resolve; })));
+  const pending = store.dispatch('apps/fetchInstalled', { force: true });
+  localStorage.setItem('token', 'bob');
+  finish({ ok: true, json: async () => ({ success: true, plugins: [{ name: 'alice-private' }] }) });
+  await pending;
+  expect(store.state.apps.installed).toEqual([]);
+  localStorage.removeItem('token');
+});

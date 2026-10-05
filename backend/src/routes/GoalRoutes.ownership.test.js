@@ -8,6 +8,8 @@ import http from 'http';
 import express from 'express';
 import { randomUUID } from 'crypto';
 
+// These fixtures exercise ownership as paid accounts; billing denial is tested separately.
+vi.mock('../services/auth/planEntitlements.js', () => ({ requireScheduledGoals: (_req, _res, next) => next(), canRunScheduledGoals: async () => true }));
 vi.mock('./Middleware.js', () => ({
   authenticateToken: (req, res, next) => {
     const user = req.headers['x-test-user'];

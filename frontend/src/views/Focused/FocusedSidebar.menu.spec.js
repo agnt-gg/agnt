@@ -23,6 +23,7 @@ const getters = reactive({
   'userAuth/planType': 'free',
 });
 const store = { state, getters, commit: vi.fn(), dispatch: vi.fn(() => Promise.resolve()) };
+vi.mock('@/components/UpgradeModal.vue', () => ({ default: { props: ['open'], template: '<div v-if="open" />' } }));
 vi.mock('vuex', () => ({ useStore: () => store }));
 const route = reactive({ query: {}, path: '/chat' });
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace: vi.fn() }) }));

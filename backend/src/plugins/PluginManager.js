@@ -2,8 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ToolConfig from '../tools/ToolConfig.js';
+import PluginAccounts from './PluginAccountStore.js';
 import PluginAssetLoader from './PluginAssetLoader.js';
-import db from '../models/database/index.js';
 import { bindPluginSource, normalizeAuthDeclaration } from './pluginAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -291,17 +291,9 @@ class PluginManager {
 
       if (hasEcosystemAssets) {
         try {
-          // Bind plugin assets to the first user (single-user / family-shared model
-          // per CLAUDE.md). If multiple users exist they'll all see plugin assets
-          // because they were installed for the system, not bound to one user.
-          const owner = await new Promise((resolve, reject) => {
-            db.get(
-              'SELECT id FROM users ORDER BY created_at ASC LIMIT 1',
-              [],
-              (err, row) => (err ? reject(err) : resolve(row?.id || null))
-            );
-          });
-          if (owner) {
+          await PluginAccounts.adoptLegacy(pluginName);
+          const owners = await PluginAccounts.owners(pluginName);
+          for (const owner of owners) {
             const summary = await PluginAssetLoader.installAssets(
               pluginName,
               manifest.version || '1.0.0',
@@ -329,8 +321,6 @@ class PluginManager {
               }
             }
             this.plugins.get(pluginName).assetSummary = summary;
-          } else {
-            console.warn(`[PluginManager] ${pluginName}: no users in DB, skipping ecosystem-asset install`);
           }
         } catch (assetError) {
           console.error(`[PluginManager] ${pluginName}: ecosystem asset install failed:`, assetError);
@@ -391,7 +381,9 @@ class PluginManager {
   /**
    * Load and return a tool module from a plugin
    */
-  async loadTool(toolType) {
+  async loadTool(toolType, userId) {
+    const ownedPlugin = this.toolToPlugin.get(toolType);
+    if (ownedPlugin) await PluginAccounts.assert(ownedPlugin, userId);
     // Check if already loaded
     if (this.loadedTools.has(toolType)) {
       return this.loadedTools.get(toolType);
@@ -559,6 +551,7 @@ class PluginManager {
 
       // Setup function - called when workflow starts listening
       registration.setup = async (engine, node) => {
+        await PluginAccounts.assert(this.toolToPlugin.get(toolType), engine.userId || engine.user_id);
         const triggerInstance = await loadInstance();
         if (triggerInstance.setup) {
           // Auto-resolve auth for triggers that declare authProvider
@@ -592,6 +585,7 @@ class PluginManager {
 
       // Process function - transforms trigger data into outputs
       registration.process = async (inputData, engine) => {
+        await PluginAccounts.assert(this.toolToPlugin.get(toolType), engine?.userId || engine?.user_id);
         const triggerInstance = await loadInstance();
         if (triggerInstance.process) {
           return await triggerInstance.process(inputData, engine);

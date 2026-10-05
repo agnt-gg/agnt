@@ -7,7 +7,7 @@
  * fold every plugin that shares a sign-in into one card. /plugins/marketplace
  * supplies the plugins that sign-in could also turn on.
  *
- * Not user-scoped: plugins are installed on this computer, not into an account.
+ * Installed packages are account-scoped even when executable archives are cached on the host.
  * Both lists are read-only views of existing endpoints; installing goes through
  * marketplace/installPlugin so there is still exactly one install path.
  */
@@ -53,12 +53,15 @@ export default {
   actions: {
     async fetchInstalled({ state, commit }, { force = false } = {}) {
       if (!force && state.installedAt && Date.now() - state.installedAt < STALE_MS) return state.installed;
+      const token = localStorage.getItem('token');
       try {
         const data = await getJson('/plugins/installed');
+        if (localStorage.getItem('token') !== token) return [];
         if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid installed plugin response');
         commit('SET_INSTALLED', data.plugins);
         commit('SET_ERROR', null);
       } catch (error) {
+        if (localStorage.getItem('token') !== token) return [];
         // Keep the last good list: an empty Apps page would read as "everything was uninstalled".
         console.error('[apps] could not load installed plugins:', error);
         commit('SET_ERROR', error.message || String(error));
@@ -67,12 +70,15 @@ export default {
     },
     async fetchAvailable({ state, commit }, { force = false } = {}) {
       if (!force && state.availableAt && Date.now() - state.availableAt < STALE_MS) return state.available;
+      const token = localStorage.getItem('token');
       try {
         const data = await getJson('/plugins/marketplace');
+        if (localStorage.getItem('token') !== token) return [];
         if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid marketplace response');
         commit('SET_AVAILABLE', data.plugins);
         commit('SET_AVAILABLE_ERROR', null);
       } catch (error) {
+        if (localStorage.getItem('token') !== token) return [];
         // Preserve cached packages, but do not present a failed catalog as an empty one.
         console.warn('[apps] could not load the plugin marketplace:', error);
         commit('SET_AVAILABLE_ERROR', error.message || String(error));

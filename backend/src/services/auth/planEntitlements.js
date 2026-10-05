@@ -110,11 +110,11 @@ export function isEnforcing() {
  * null is meaningfully different from 'free': it means "do not know", and every
  * caller treats it as entitled. Only a definite 'free' denies.
  */
-export async function getPlanType({ force = false } = {}) {
+export async function getPlanType({ force = false, userId } = {}) {
   // A plan belongs to an account, and the install can switch accounts. Every
   // cached answer and in-flight lookup is for the account active right now, so
   // one account's plan is never reported for another.
-  const account = getSessionUserId();
+  const account = userId || getSessionUserId();
   const fresh = cached && cached.account === account && Date.now() - cached.at < PLAN_CACHE_MS;
   if (!force && fresh) return cached.planType;
 
@@ -204,4 +204,18 @@ export function requirePaidFeature(feature) {
 export function __resetPlanEntitlementsForTests() {
   cached = null;
   inFlight = null;
+}
+
+/** Scheduling spends resources without a request present: require a known paid plan
+ * for the schedule OWNER, never whichever account authenticated most recently. */
+export async function canRunScheduledGoals(userId) {
+  if (!userId) return false;
+  const plan = await getPlanType({ userId });
+  return PAID_PLANS.has(plan);
+}
+export async function requireScheduledGoals(req, res, next) {
+  // Downgraded accounts must still be able to stop or remove existing jobs.
+  if (req.method === 'DELETE' || (req.method === 'PATCH' && req.body?.enabled === false && Object.keys(req.body).every(k => k === 'enabled'))) return next();
+  if (await canRunScheduledGoals(req.user?.userId || req.user?.id)) return next();
+  return res.status(403).json({ error: 'Upgrade required', requiredFeature: 'scheduledGoals', message: 'Scheduled goals require a paid plan.' });
 }

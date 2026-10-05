@@ -16,8 +16,8 @@
   >
     <template #default="{ terminalLines }">
       <div class="agents-panel" :class="{ 'has-details': !!selectedAgent, expanded: isDetailsExpanded }" @click="onContentClick">
+<MarketplaceShelf v-if="mobileView" asset-type="agent" variant="strip" :dismissible="false" fallback-to-all @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
 <MobileCollection v-if="mobileView" v-show="!selectedAgent" view-id="agents" title="Agents" count-label="agents" :items="filteredAgentsGrid" :search="searchQuery" :tabs="[]" active="" :selected-id="selectedAgent?.id" create-label="Create agent" icon="fas fa-robot" @update:search="handleSearch" @select="selectMobileAgent" @create="openCreate()"><template #actions><button @click="triggerAgentImport">Import</button><button :disabled="!selectedAgent" @click="exportSelectedAgent">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Stats</button></template></MobileCollection>
-<MarketplaceShelf v-if="mobileView" asset-type="agent" variant="strip" @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
 
 <input
               ref="agentImportInput"
@@ -64,6 +64,15 @@
           <main v-else class="screen-main-content agents-main-content fade-in">
 
             <div class="category-cards-container">
+              <!-- Discovery stays visible before long owned-agent lists, including old dismissed preferences. -->
+              <MarketplaceShelf
+                v-if="!ownsNothing"
+                asset-type="agent"
+                variant="strip" :dismissible="false" fallback-to-all
+                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
+                @installed="onShelfInstalled"
+              />
+
               <!-- Nothing owned yet: the empty state IS the storefront. Create
                    stays first-class on top; real, type-scoped inventory sits
                    underneath. Degrades to Create alone if the catalogue is
@@ -72,6 +81,7 @@
                 v-if="ownsNothing"
                 asset-type="agent"
                 variant="full"
+                :dismissible="false"
                 :query="searchQuery"
                 create-label="Create Agent"
                 @create="openCreate()"
@@ -149,15 +159,6 @@
                   </div>
               </div>
 
-              <!-- Second run: the user's own work leads, the shelf steps aside
-                   into a compact, dismissible rail. -->
-              <MarketplaceShelf
-                v-if="!ownsNothing"
-                asset-type="agent"
-                variant="strip"
-                @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
-                @installed="onShelfInstalled"
-              />
             </div>
           </main>
         </div>

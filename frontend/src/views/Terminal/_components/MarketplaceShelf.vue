@@ -141,7 +141,7 @@
             <div class="ms-sub">{{ fallbackShelf ? 'Ready-made agents, workflows and tools to get started' : 'Most installed · install and make it yours' }}</div>
           </div>
           <button class="ms-all" @click="$emit('browse')">Browse all <i class="fas fa-arrow-right"></i></button>
-          <Tooltip text="Hide marketplace suggestions on this screen" width="auto">
+          <Tooltip v-if="dismissible" text="Hide marketplace suggestions on this screen" width="auto">
             <button class="ms-dismiss" @click="dismiss"><i class="fas fa-times"></i></button>
           </Tooltip>
         </div>
@@ -166,6 +166,12 @@
         </div>
       </div>
     </template>
+    <div v-else-if="!dismissible" class="ms-strip" role="status">
+      <div class="ms-strip-head"><div class="ms-head-txt"><div class="ms-title">From the marketplace</div>
+        <p class="ms-sub">{{ status === 'loading' || status === 'idle' ? 'Loading marketplace suggestions…' : status === 'error' ? 'Marketplace suggestions could not load.' : 'No suggestions available yet.' }}</p>
+      </div><button class="ms-all" @click="$emit('browse')">Browse marketplace <i class="fas fa-arrow-right"></i></button>
+      <button v-if="status === 'error'" class="ms-all" @click="retry">Retry</button></div>
+    </div>
   </div>
 </template>
 
@@ -217,6 +223,7 @@ export default {
     query: { type: String, default: '' },
     createLabel: { type: String, default: 'Create' },
     fallbackToAll: { type: Boolean, default: false },
+    dismissible: { type: Boolean, default: true },
     maxItems: { type: Number, default: 6 },
   },
   emits: ['create', 'browse', 'installed', 'availability', 'clear-search'],
@@ -244,7 +251,7 @@ export default {
       if (!isShelfEligible(props.assetType) && !props.fallbackToAll) return false;
       if (status.value === 'error' || status.value === 'loading' || status.value === 'idle') return false;
       if (!typeItems.value.length) return false;
-      if (props.variant === 'strip' && dismissed.value) return false;
+      if (props.dismissible && props.variant === 'strip' && dismissed.value) return false;
       return true;
     });
 
@@ -303,7 +310,7 @@ export default {
     watch(visibleItems, () => nextTick(measure));
 
     onMounted(async () => {
-      dismissed.value = localStorage.getItem(DISMISS_KEY(props.assetType)) === '1';
+      dismissed.value = props.dismissible && localStorage.getItem(DISMISS_KEY(props.assetType)) === '1';
       // Cached with a TTL in the store, so five screens cost one request.
       await store.dispatch('marketplace/fetchShelfItems');
       await nextTick();
@@ -344,6 +351,8 @@ export default {
 
     return {
       MARKETPLACE_ASSET_TYPES,
+      status,
+      retry: () => store.dispatch('marketplace/fetchShelfItems', { force: true }),
       simpleModal,
       gridEl,
       installingIds,
@@ -874,7 +883,7 @@ export default {
 }
 
 /* ── Strip variant ───────────────────────────────────────────────────────── */
-.ms-strip {
+.ms-root > .ms-strip {
   border-top: 1px solid var(--terminal-border-color);
   padding-top: var(--spacing-lg);
   margin-top: var(--spacing-sm);

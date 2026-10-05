@@ -1,23 +1,28 @@
 import express from 'express';
+import crypto from 'node:crypto';
+import { computeIntegrity, integrityMatches } from '../../plugins/lib/validate-core.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
+import PluginAccounts from '../plugins/PluginAccountStore.js';
+import { pluginAccountBoundary, accountPluginMutation } from '../plugins/pluginAccountRoutes.js';
 import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
 import { bundleSelection } from '../plugins/PluginBundler.js';
 import { packageInstalledPlugin } from '../plugins/packageInstalledPlugin.js';
 import reloadAllPlugins from '../plugins/reloadAllPlugins.js';
 import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
-import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
+import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+router.use(authenticateToken, pluginAccountBoundary);
 
 /**
  * Plugin API Routes
@@ -43,8 +48,8 @@ const router = express.Router();
  */
 router.get('/installed', async (req, res) => {
   try {
-    const installed = await PluginInstaller.getInstalledPlugins();
-    const stats = PluginManager.getStats();
+    const installed = await PluginAccounts.filter(await PluginInstaller.getInstalledPlugins(), req.user.userId);
+    const stats = { totalPlugins: installed.length };
 
     res.json({
       success: true,
@@ -238,7 +243,7 @@ router.get('/marketplace', async (req, res) => {
  *
  * Body: { name: string, version?: string }
  */
-router.post('/install', requireAuthHeader, async (req, res) => {
+router.post('/install', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name, version = 'latest' } = req.body;
 
@@ -253,17 +258,41 @@ router.post('/install', requireAuthHeader, async (req, res) => {
 
     // The token reaches the marketplace only if a paid package refuses the
     // download; free packages never trigger a capability request.
-    const result = await PluginInstaller.installFromMarketplace(name, version, {
-      authToken: req.headers.authorization || null,
-    });
+    // An existing host package can be activated for this account without replacing
+    // code another account already uses. Paid downloads still go through verification.
+    const existing = PluginManager.getPlugin(name);
+    const listing = (await PluginInstaller.getAvailablePlugins()).plugins?.find(p => p.name === name);
+    let result;
+    const installedRecord = (await PluginInstaller.getInstalledPlugins()).find(p => p.name === name);
+    const reusable = existing && listing && listing.integrity && installedRecord?.integrity === listing.integrity && existing.version === listing.version;
+    if (reusable) {
+      if (Number(listing.price) > 0) {
+        // Prove this account's own paid download entitlement before activating
+        // an archive already cached by somebody else. Never inherit their purchase.
+        const proofFile = path.join(PluginInstaller.tempDir, crypto.randomUUID() + '.agnt');
+        try {
+          await PluginInstaller.fetchMarketplaceArchive(listing, proofFile, { authToken: req.headers.authorization || null });
+          if (!integrityMatches(listing.integrity, await computeIntegrity(proofFile))) throw new Error('Package integrity mismatch');
+        } finally { await fs.unlink(proofFile).catch(() => {}); }
+      }
+      result = { success: true, pluginName: name, version: existing.version };
+    } else {
+      if ((await PluginAccounts.owners(name)).some(owner => owner !== req.user.userId)) {
+        return res.status(409).json({ success: false, error: 'This package is in use by another account; it cannot be replaced by this install.' });
+      }
+      result = await PluginInstaller.installFromMarketplace(name, version, {
+        authToken: req.headers.authorization || null,
+      });
+    }
 
     if (result.success) {
+      await PluginAccounts.add(name, req.user.userId);
       // Reload all plugin processes and wait for completion
       const reloadResults = await reloadAllPlugins();
       result.reloadStatus = reloadResults;
 
       // Broadcast plugin installed event to all connected clients
-      broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+      broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, {
         name,
         version,
         timestamp: new Date().toISOString(),
@@ -278,7 +307,7 @@ router.post('/install', requireAuthHeader, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * POST /api/plugins/install-file
@@ -286,7 +315,7 @@ router.post('/install', requireAuthHeader, async (req, res) => {
  *
  * Body: { name: string, fileData: string (base64) }
  */
-router.post('/install-file', requireAuthHeader, async (req, res) => {
+router.post('/install-file', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name, fileData, fileName } = req.body;
 
@@ -298,7 +327,7 @@ router.post('/install-file', requireAuthHeader, async (req, res) => {
     }
 
     // Save base64 data to temp file
-    const tempPath = path.join(PluginInstaller.tempDir, fileName || `${name}.tar.gz`);
+    const tempPath = path.join(PluginInstaller.tempDir, `${crypto.randomUUID()}-${path.basename(fileName || `${name}.tar.gz`)}`);
     const buffer = Buffer.from(fileData, 'base64');
     await fs.writeFile(tempPath, buffer);
 
@@ -311,6 +340,7 @@ router.post('/install-file', requireAuthHeader, async (req, res) => {
     } catch {}
 
     if (result.success) {
+      await PluginAccounts.add(name, req.user.userId);
       // Reload all plugin processes and wait for completion
       const reloadResults = await reloadAllPlugins();
       result.reloadStatus = reloadResults;
@@ -324,7 +354,7 @@ router.post('/install-file', requireAuthHeader, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * DELETE /api/plugins/:name?mode=clean|purge|detach
@@ -333,7 +363,7 @@ router.post('/install-file', requireAuthHeader, async (req, res) => {
  *   - purge: delete all plugin-installed assets regardless of modification
  *   - detach: keep all assets, just unregister the plugin
  */
-router.delete('/:name', requireAuthHeader, async (req, res) => {
+router.delete('/:name', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name } = req.params;
     const mode = (req.query.mode || 'clean').toString();
@@ -343,13 +373,15 @@ router.delete('/:name', requireAuthHeader, async (req, res) => {
     // Walk + clean up the ecosystem assets first
     let assetResult = null;
     try {
-      assetResult = await PluginAssetLoader.uninstallAssets(name, mode);
+      assetResult = await PluginAssetLoader.uninstallAssets(name, mode, req.user.userId);
     } catch (assetErr) {
       console.error('[PluginRoutes] Asset uninstall error:', assetErr);
       return res.status(400).json({ success: false, error: assetErr.message });
     }
 
-    const result = await PluginInstaller.uninstallPlugin(name);
+    const others = (await PluginAccounts.owners(name)).filter(owner => owner !== req.user.userId);
+    const result = others.length ? { success: true, name } : await PluginInstaller.uninstallPlugin(name);
+    if (result.success) await PluginAccounts.remove(name, req.user.userId);
     if (assetResult) result.assetResult = assetResult;
 
     if (result.success) {
@@ -366,7 +398,7 @@ router.delete('/:name', requireAuthHeader, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * GET /api/plugins/:name/assets
@@ -388,9 +420,9 @@ router.get('/:name/assets', authenticateToken, async (req, res) => {
                   WHEN 'widget' THEN (SELECT is_user_modified FROM widget_definitions WHERE id = a.local_id)
                   WHEN 'tool' THEN 0
                 END AS is_user_modified
-         FROM installed_plugin_assets a WHERE plugin_name = ?
+         FROM installed_plugin_assets a WHERE plugin_name = ? AND user_id = ?
          ORDER BY a.asset_type, a.asset_slug`,
-        [name],
+        [name, req.user.userId],
         (err, r) => (err ? reject(err) : resolve(r || []))
       );
     });
@@ -411,7 +443,7 @@ router.get('/:name/assets', authenticateToken, async (req, res) => {
  */
 router.get('/tools', async (req, res) => {
   try {
-    const schemas = PluginManager.getAllPluginSchemas();
+    const schemas = await PluginAccounts.filter(PluginManager.getAllPluginSchemas(), req.user.userId, row => row._plugin);
 
     res.json({
       success: true,
@@ -445,7 +477,7 @@ router.get('/tools', async (req, res) => {
  *
  * Body: { description: string, provider?: string, model?: string, options?: object }
  */
-router.post('/generate', authenticateToken, async (req, res) => {
+router.post('/generate', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { description, provider, model, options = {} } = req.body;
     const userId = req.user.id;
@@ -513,7 +545,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * POST /api/plugins/regenerate-file
@@ -521,7 +553,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
  *
  * Body: { fileName: string, instructions: string, currentManifest: object, currentCode: object, provider: string, model: string }
  */
-router.post('/regenerate-file', authenticateToken, async (req, res) => {
+router.post('/regenerate-file', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { fileName, instructions, currentManifest, currentCode, provider, model } = req.body;
     const userId = req.user.id;
@@ -556,7 +588,7 @@ router.post('/regenerate-file', authenticateToken, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * POST /api/plugins/regenerate
@@ -565,7 +597,7 @@ router.post('/regenerate-file', authenticateToken, async (req, res) => {
  *
  * Body: { instructions: string, currentManifest: object, currentCode: object, currentPackageJson: object, provider: string, model: string }
  */
-router.post('/regenerate', authenticateToken, async (req, res) => {
+router.post('/regenerate', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { instructions, currentManifest, currentCode, currentPackageJson, provider, model, conversationHistory = [] } = req.body;
     const userId = req.user.id;
@@ -648,7 +680,7 @@ router.post('/regenerate', authenticateToken, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 /**
  * POST /api/plugins/build-generated
@@ -656,7 +688,7 @@ router.post('/regenerate', authenticateToken, async (req, res) => {
  *
  * Body: { manifest: object, toolCode: object, packageJson: object, installAfterBuild?: boolean }
  */
-router.post('/build-generated', authenticateToken, async (req, res) => {
+router.post('/build-generated', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { manifest, toolCode, packageJson, installAfterBuild = true } = req.body;
     const userId = req.user.id;
@@ -774,6 +806,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
         installResult = await PluginInstaller.installFromFile(outputFile, pluginName);
 
         if (installResult.success) {
+          await PluginAccounts.add(pluginName, req.user.userId);
           // Reload all plugin processes and wait for completion
           reloadResults = await reloadAllPlugins();
           installResult.reloadStatus = reloadResults;
@@ -805,7 +838,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 // ============================================================================
 // ecosystem assets: BUNDLE-AS-PLUGIN AUTHORING
@@ -825,7 +858,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
  *
  * Returns a base64 .agnt archive plus the generated manifest.
  */
-router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
+router.post('/bundle-from-assets', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { pluginName, version = '1.0.0', description, author, icon, selection = {}, install = false } = req.body || {};
     if (!pluginName) {
@@ -848,6 +881,7 @@ router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
         icon,
         selection,
         outDir: tempDir,
+        userId: req.user.userId,
       });
 
       // Write a minimal package.json so PluginInstaller's ensureModuleType is happy
@@ -882,9 +916,10 @@ router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
       if (install) {
         installResult = await PluginInstaller.installFromFile(archivePath, pluginName);
         if (installResult.success) {
+          await PluginAccounts.add(pluginName, req.user.userId);
           reloadResults = await reloadAllPlugins();
           installResult.reloadStatus = reloadResults;
-          broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+          broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, {
             name: pluginName,
             version,
             timestamp: new Date().toISOString(),
@@ -909,7 +944,7 @@ router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
     console.error('[PluginRoutes] bundle-from-assets error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}));
 
 /**
  * POST /api/plugins/install-file/check-auth
@@ -919,7 +954,7 @@ router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
  *
  * Body: { fileData: string (base64) }
  */
-router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
+router.post('/install-file/check-auth', authenticateToken, accountPluginMutation(async (req, res) => {
   try {
     const { fileData } = req.body || {};
     if (!fileData) return res.status(400).json({ success: false, error: 'fileData is required' });
@@ -961,7 +996,7 @@ router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
     console.error('[PluginRoutes] check-auth error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}));
 
 // ============================================================================
 // PLUGIN RELOAD
@@ -1001,7 +1036,7 @@ router.get('/inspect/:name', requireAuthHeader, async (req, res) => {
  * permission-gated install path. Returns { requiresConfirmation } on a
  * moved repo and { requiresConsent } on permission escalation.
  */
-router.post('/install-github', requireAuthHeader, async (req, res) => {
+router.post('/install-github', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name, repo, mode, asset, subdir, ref, confirmRedirect, acceptedPermissions } = req.body || {};
     if (!name || !repo) {
@@ -1009,16 +1044,17 @@ router.post('/install-github', requireAuthHeader, async (req, res) => {
     }
     const result = await PluginInstaller.installFromGitHub(name, { repo, mode, asset, subdir, ref, confirmRedirect, acceptedPermissions });
     if (result.success) {
+      await PluginAccounts.add(name, req.user.userId);
       const reloadResults = await reloadAllPlugins();
       result.reloadStatus = reloadResults;
-      broadcast(RealtimeEvents.PLUGIN_INSTALLED, { name, version: result.version, source: 'github', timestamp: new Date().toISOString() });
+      broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, { name, version: result.version, source: 'github', timestamp: new Date().toISOString() });
     }
     res.json(result);
   } catch (error) {
     console.error('[PluginRoutes] GitHub install error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}));
 
 // ============================================================================
 // UPDATE STATUS & POLICY
@@ -1046,7 +1082,10 @@ router.get('/update-status', requireAuthHeader, async (req, res) => {
       const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
       PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
     }
-    res.json({ success: true, status: await PluginInstaller.updateScheduler.getStatus() });
+    const status = await PluginInstaller.updateScheduler.getStatus();
+    const owned = new Set(await PluginAccounts.names(req.user.userId));
+    if (status) for (const key of Object.keys(status)) if (Array.isArray(status[key])) status[key] = status[key].filter(p => owned.has(typeof p === 'string' ? p : p.name));
+    res.json({ success: true, status });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -1063,7 +1102,7 @@ router.get('/update-status', requireAuthHeader, async (req, res) => {
  * is the only opt-out, and it now lives in a per-plugin overflow menu instead
  * of a dropdown on every row.
  */
-router.post('/update-policy/:name', requireAuthHeader, async (req, res) => {
+router.post('/update-policy/:name', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name } = req.params;
     const { policy } = req.body || {};
@@ -1080,7 +1119,7 @@ router.post('/update-policy/:name', requireAuthHeader, async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}));
 
 // ============================================================================
 // UPDATES (trust system Layer 3)
@@ -1095,6 +1134,8 @@ router.post('/update-policy/:name', requireAuthHeader, async (req, res) => {
 router.get('/updates', async (req, res) => {
   try {
     const result = await PluginInstaller.checkForUpdates();
+    const owned = new Set(await PluginAccounts.names(req.user.userId));
+    for (const key of Object.keys(result)) if (Array.isArray(result[key])) result[key] = result[key].filter(p => owned.has(typeof p === 'string' ? p : p.name));
     res.json(result);
   } catch (error) {
     console.error('[PluginRoutes] Error checking for updates:', error);
@@ -1111,7 +1152,7 @@ router.get('/updates', async (req, res) => {
  *
  * Body: { acceptedPermissions?: boolean }
  */
-router.post('/update/:name', requireAuthHeader, async (req, res) => {
+router.post('/update/:name', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     const { name } = req.params;
     const { acceptedPermissions = false } = req.body || {};
@@ -1123,11 +1164,12 @@ router.post('/update/:name', requireAuthHeader, async (req, res) => {
     });
 
     if (result.success) {
+      await PluginAccounts.add(name, req.user.userId);
       // Reload all plugin processes and wait for completion
       const reloadResults = await reloadAllPlugins();
       result.reloadStatus = reloadResults;
 
-      broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+      broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, {
         name,
         version: result.version,
         updated: true,
@@ -1140,13 +1182,13 @@ router.post('/update/:name', requireAuthHeader, async (req, res) => {
     console.error('[PluginRoutes] Error updating plugin:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}));
 
 /**
  * POST /api/plugins/reload
  * Reload all plugins (useful after manual changes)
  */
-router.post('/reload', requireAuthHeader, async (req, res) => {
+router.post('/reload', requireAuthHeader, accountPluginMutation(async (req, res) => {
   try {
     console.log('[PluginRoutes] Reloading plugins...');
 
@@ -1155,7 +1197,7 @@ router.post('/reload', requireAuthHeader, async (req, res) => {
 
     // Reload all plugin processes and wait for completion
     const reloadResults = await reloadAllPlugins();
-    const stats = PluginManager.getStats();
+    const stats = { totalPlugins: (await PluginAccounts.names(req.user.userId)).length };
 
     // Re-sync registry.json from current manifest data so /installed list
     // matches what's actually on disk (manual edits to manifest.json/version
@@ -1168,7 +1210,7 @@ router.post('/reload', requireAuthHeader, async (req, res) => {
 
     // Notify connected clients so the Plugins UI re-fetches without a manual
     // refresh. Reuses plugin:installed since the frontend already handles it.
-    broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+    broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, {
       reloaded: true,
       timestamp: new Date().toISOString(),
     });
@@ -1186,6 +1228,6 @@ router.post('/reload', requireAuthHeader, async (req, res) => {
       error: error.message,
     });
   }
-});
+}));
 
 export default router;

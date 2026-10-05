@@ -1,3 +1,4 @@
+import { canRunScheduledGoals } from '../auth/planEntitlements.js';
 import ScheduleModel from '../../models/ScheduleModel.js';
 import { nextFireTime, isValidCron } from './cronParser.js';
 
@@ -172,6 +173,11 @@ class SchedulerService {
     const userId = this._userResolver
       ? await this._userResolver(schedule)
       : schedule.user_id;
+
+    if (schedule.target_type === 'goal' && !(await canRunScheduledGoals(userId))) {
+      await ScheduleModel.updateAfterRun(schedule.id, { lastRun: schedule.last_run, nextRun, status: 'upgrade_required', error: 'Scheduled goals require a paid plan.' });
+      return { fired: false, reason: 'upgrade_required' };
+    }
 
     // Persist next_run BEFORE firing — this is the idempotency guard. If the
     // process crashes during executor execution, we won't re-fire the same

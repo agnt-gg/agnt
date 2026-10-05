@@ -6,7 +6,7 @@ const inherited = {
 export const OWNERSHIP_INVENTORY = Object.freeze([
  ...personal.map(table=>({table,kind:'personal',ownerColumn:creatorOwned.has(table)?'created_by':'user_id'})),
  ...Object.entries(inherited).map(([table,[parentTable,parentColumn]])=>({table,kind:'inherited',parentTable,parentColumn})),
- ...['ownership_scopes','ownership_resource_types','scope_resource_owners','scope_api_audit','execution_principals','scoped_connections','execution_connection_grants','goal_lifecycle_versions','activation_milestone_outbox','users','estimate_calibration','model_metadata_cache','ledger_write_failures','installed_plugin_assets','schema_markers','trigger_cursors','learning_cursors','learning_health'].map(table=>({table,kind:'system'}))
+ ...['ownership_scopes','ownership_resource_types','scope_resource_owners','scope_api_audit','execution_principals','scoped_connections','execution_connection_grants','goal_lifecycle_versions','activation_milestone_outbox','users','estimate_calibration','model_metadata_cache','ledger_write_failures','installed_plugin_assets','plugin_account_installs','plugin_account_legacy_seen','schema_markers','trigger_cursors','learning_cursors','learning_health'].map(table=>({table,kind:'system'}))
 ].map(Object.freeze));
 /** Audit before migration. Unknown schemas stop migration rather than infer visibility. */
 export async function inspectOwnershipInventory(repository, { extensions = [] } = {}) {

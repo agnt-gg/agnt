@@ -1,0 +1,40 @@
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import sqlite3 from 'sqlite3';
+const fixture = vi.hoisted(() => ({ db: null }));
+vi.mock('../models/database/index.js', () => ({ dbReady: Promise.resolve(), default: { get: (...a)=>fixture.db.get(...a), all:(...a)=>fixture.db.all(...a), run:(...a)=>fixture.db.run(...a) } }));
+vi.mock('../models/AgentModel.js', () => ({default:{}}));
+vi.mock('../services/AgentImportService.js',()=>({parseAgentEnvelope:x=>x,importAgent:vi.fn()}));
+vi.mock('../services/WorkflowImportService.js',()=>({parseWorkflowEnvelope:x=>x,importWorkflow:vi.fn()}));
+vi.mock('../services/SkillService.js',()=>({importSkillFromMd:vi.fn()}));
+vi.mock('../services/WidgetDefinitionService.js',()=>({importWidgetEnvelope:vi.fn()}));
+import PluginAccounts from './PluginAccountStore.js';
+import loader from './PluginAssetLoader.js';
+beforeAll(async()=>{
+ fixture.db=new sqlite3.Database(':memory:');
+ await PluginAccounts.run('CREATE TABLE users(id TEXT PRIMARY KEY)');
+ await PluginAccounts.run('CREATE TABLE agents(id TEXT PRIMARY KEY,user_id TEXT,is_user_modified INTEGER,source_plugin TEXT,deleted_at TEXT)');
+ await PluginAccounts.run(`CREATE TABLE installed_plugin_assets(id INTEGER PRIMARY KEY,plugin_name TEXT,plugin_version TEXT,asset_type TEXT,asset_slug TEXT,local_id TEXT,installed_at TEXT,deprecated_at TEXT,UNIQUE(plugin_name,asset_type,asset_slug))`);
+ await PluginAccounts.ready();await PluginAccounts.add('pack','alice');await PluginAccounts.add('pack','bob');
+});
+afterAll(()=>new Promise((resolve,reject)=>fixture.db.close(e=>e?reject(e):resolve())));
+it('same tool pack installs independently for two accounts; updates and uninstall touch only the owner',async()=>{
+ const manifest={tools:[{type:'private-search'}]};
+ const alice=await loader.installAssets('pack','1',manifest,'.','alice');
+ const bob=await loader.installAssets('pack','1',manifest,'.','bob');
+ expect(alice.noop).toBe(false);expect(bob.noop).toBe(false);
+ expect((await loader.installAssets('pack','1',manifest,'.','alice')).noop).toBe(true);
+ await loader.installAssets('pack','2',{tools:[{type:'private-search'},{type:'extra'}]},'.','alice');
+ expect((await PluginAccounts.all('SELECT * FROM installed_plugin_assets WHERE user_id=?',['bob'])).map(r=>r.plugin_version)).toEqual(['1']);
+ await loader.uninstallAssets('pack','purge','alice');
+ expect(await PluginAccounts.all('SELECT * FROM installed_plugin_assets WHERE user_id=?',['alice'])).toEqual([]);
+ expect(await PluginAccounts.all('SELECT * FROM installed_plugin_assets WHERE user_id=?',['bob'])).toHaveLength(1);
+});
+it('modification decisions and orphan deletion use account identity',async()=>{
+ await PluginAccounts.run("INSERT INTO agents VALUES('alice-agent','alice',0,'pack',NULL),('bob-agent','bob',1,'pack',NULL)");
+ await loader._record('pack','1','agent','worker','alice-agent','alice');await loader._record('pack','1','agent','worker','bob-agent','bob');
+ expect(await loader._decideUpdate('pack','agent','worker','alice')).toEqual({action:'overwrite',localId:'alice-agent'});
+ expect(await loader._decideUpdate('pack','agent','worker','bob')).toEqual({action:'skip',localId:'bob-agent'});
+ await loader.uninstallAssets('pack','purge','alice');
+ expect((await PluginAccounts.get('SELECT * FROM agents WHERE id=?',['bob-agent'])).deleted_at).toBeNull();
+ await expect(loader.uninstallAssets('pack','purge','charlie')).rejects.toThrow('not installed');
+});

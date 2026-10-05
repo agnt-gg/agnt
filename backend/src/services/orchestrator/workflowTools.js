@@ -388,7 +388,7 @@ export const TOOLS = {
     execute: async ({}, authToken, context) => {
       try {
         const { loadAllNodeTypes } = await import('./nodeTypeCatalog.js');
-        const { categories } = await loadAllNodeTypes();
+        const { categories } = await loadAllNodeTypes(context?.userId);
 
         // Compact projection — NO parameters, NO outputs. Keeps list well under the
         // 100k-char context-protection cap even with dozens of plugin tools.
@@ -465,11 +465,11 @@ export const TOOLS = {
         }
 
         const { findNodeTypeByType, loadAllNodeTypes } = await import('./nodeTypeCatalog.js');
-        const match = await findNodeTypeByType(type);
+        const match = await findNodeTypeByType(type, context?.userId);
 
         if (!match) {
           // Provide a short list of available types to help the LLM self-correct.
-          const { categories } = await loadAllNodeTypes();
+          const { categories } = await loadAllNodeTypes(context?.userId);
           const availableTypes = Object.values(categories)
             .flat()
             .map((t) => t.type);

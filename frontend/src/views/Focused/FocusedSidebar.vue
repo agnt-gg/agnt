@@ -127,6 +127,7 @@
       <button type="button" role="menuitem" class="focused-menu-item danger" @click="deleteChat"><i class="fas fa-trash" aria-hidden="true"></i>Delete</button>
     </div>
 
+    <UpgradePrompt compact title="Get more from AGNT" description="Scheduled goals and paid services. Put your agents to work for you." />
     <div class="focused-menu-anchor focused-account-anchor">
       <button type="button" class="focused-account" :aria-expanded="accountOpen ? 'true' : 'false'" @click="accountOpen = !accountOpen">
         <span class="focused-avatar" aria-hidden="true">{{ initial }}</span>
@@ -154,6 +155,7 @@
 </template>
 
 <script setup>
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, nextTick, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
@@ -235,9 +237,8 @@ function switchToStudio() {
 // The same sign-out Studio's Settings uses (LoginSection.logout).
 async function logOut() {
   await store.dispatch('userAuth/logout');
-  // Settings is the public sign-in surface. Focused's settings editor contains
-  // account controls, not LoginSection, so explicitly borrow Studio here.
-  await router.replace({ path: '/settings', query: { studio: '1', section: 'login' } });
+  // Terminal tears down the entire shell as soon as the session is invalid.
+  await router.replace({ path: '/settings', query: { section: 'login' } });
 }
 
 // ── Right-click on a chat ──────────────────────────────────────────────────────

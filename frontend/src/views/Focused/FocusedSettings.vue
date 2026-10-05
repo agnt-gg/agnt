@@ -7,6 +7,7 @@
       </div>
     </header>
 
+    <UpgradePrompt title="Unlock more with AGNT Pro" description="Automate recurring goals and get the paid services included with your plan." />
     <UiModeSetting />
 
     <section class="focused-edit-block">
@@ -113,6 +114,7 @@
 </template>
 
 <script setup>
+import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
@@ -130,9 +132,8 @@ const nav = inject('focusedNav');
 // The same sign-out Studio's Settings uses (LoginSection.logout).
 async function logOut() {
   await store.dispatch('userAuth/logout');
-  // Settings is the public sign-in surface. Focused's settings editor contains
-  // account controls, not LoginSection, so explicitly borrow Studio here.
-  await router.replace({ path: '/settings', query: { studio: '1', section: 'login' } });
+  // Terminal tears down the entire shell as soon as the session is invalid.
+  await router.replace({ path: '/settings', query: { section: 'login' } });
 }
 const page = FOCUSED_PAGES.settings;
 

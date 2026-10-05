@@ -7,9 +7,11 @@
     <!-- The frame: Studio's canvas (rail, toolbar, panels) or Focused's
          (one input, recents, library). Same screens, same stores, same slot —
          the mode decides only what is around them. See services/uiMode.js. -->
+    <!-- The auth boundary owns the whole shell, not just the center screen. -->
+    <component v-if="!isAuthenticated" :is="signInComponent" @screen-change="changeScreen" />
     <component
       :is="frameComponent"
-      v-if="activeScreen !== 'BallJumperScreen'"
+      v-else-if="activeScreen !== 'BallJumperScreen'"
       :screenName="activeScreen"
       @screen-change="changeScreen"
     >
@@ -38,10 +40,10 @@
     />
 
     <!-- Studio users hear about Focused once (composables/useUiModeDefault.js). -->
-    <TryFocusedNote v-if="showTryFocused && !shouldShowOnboarding" @dismiss="dismissTryFocused" />
+    <TryFocusedNote v-if="isAuthenticated && showTryFocused && !shouldShowOnboarding" @dismiss="dismissTryFocused" />
 
     <!-- Onboarding Modal -->
-    <OnboardingModal v-if="shouldShowOnboarding" :show="shouldShowOnboarding" @complete="handleOnboardingComplete" @skip="handleOnboardingSkip" />
+    <OnboardingModal v-if="isAuthenticated && shouldShowOnboarding" :show="shouldShowOnboarding" @complete="handleOnboardingComplete" @skip="handleOnboardingSkip" />
   </TerminalLayout>
 </template>
 
@@ -133,6 +135,8 @@ export default {
     const router = useRouter();
     const store = useStore();
 
+    const isAuthenticated = computed(() => store.getters['userAuth/isAuthenticated'] === true);
+    const signInComponent = screenComponents.SettingsScreen;
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
     // markRaw: component definitions must not be made reactive.
@@ -142,7 +146,7 @@ export default {
     const { showTryFocused, dismissTryFocused } = useUiModeDefault(store);
 
     const onModeKey = (e) => {
-      if (!isUiModeToggleKey(e)) return;
+      if (!isAuthenticated.value || !isUiModeToggleKey(e)) return;
       e.preventDefault();
       store.dispatch('theme/toggleUiMode');
     };
@@ -178,6 +182,7 @@ export default {
     });
 
     const changeScreen = (requestedScreen, requestedOptions = {}) => {
+      if (!isAuthenticated.value && requestedScreen !== 'SettingsScreen') return;
       const [screenName, options] = normalizeScreen(requestedScreen, requestedOptions);
       const target = screenRoute(screenName, options);
       if (!target) {
@@ -271,6 +276,8 @@ export default {
     );
 
     return {
+      isAuthenticated,
+      signInComponent,
       mountedScreen,
       frameComponent,
       showTryFocused,

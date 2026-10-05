@@ -284,6 +284,16 @@ describe('a real store clears on session end', () => {
     expect(store.state.agents.agents).toEqual([]);
   });
 
+  it('clears per-account plugin installations, schedule state, and plugin builder drafts', async () => {
+    store.commit('apps/SET_INSTALLED', [{ name: 'private-alice-plugin' }]);
+    store.state.schedules.schedules = [{ id: 'private-schedule' }];
+    await store.dispatch('resetUserScopedData');
+    expect(store.state.apps.installed).toEqual([]);
+    expect(store.state.apps.installedAt).toBe(0);
+    expect(store.state.schedules.schedules).toEqual([]);
+    expect(store._mutations['pluginBuilder/' + RESET_MUTATION]).toBeDefined();
+  });
+
   it('every user-scoped module really has the reset mutation registered', () => {
     // Proves the wrapper reached the live store, not just the source text.
     const registered = Object.keys(store._mutations).filter((k) => k.endsWith(`/${RESET_MUTATION}`));

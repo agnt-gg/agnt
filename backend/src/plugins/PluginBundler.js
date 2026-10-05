@@ -49,7 +49,7 @@ function getRow(sql, params = []) {
  * @param {string} args.outDir            empty directory to write asset files into
  */
 export async function bundleSelection(args) {
-  const { pluginName, version, description, author, icon, selection, outDir } = args;
+  const { pluginName, version, description, author, icon, selection, outDir, userId } = args;
   if (!pluginName) throw new Error('bundleSelection requires pluginName');
   if (!version) throw new Error('bundleSelection requires version');
   if (!outDir) throw new Error('bundleSelection requires outDir');
@@ -96,9 +96,9 @@ export async function bundleSelection(args) {
     console.log(`[PluginBundler] tools selection: ${JSON.stringify(selection.toolIds)}`);
     for (const id of selection.toolIds) {
       // Try id first, then type
-      let tool = await getRow('SELECT * FROM tools WHERE id = ?', [id]);
+      let tool = await getRow('SELECT * FROM tools WHERE id = ?' + (userId ? ' AND created_by = ?' : ''), userId ? [id, userId] : [id]);
       if (!tool) {
-        tool = await getRow('SELECT * FROM tools WHERE type = ?', [id]);
+        tool = await getRow('SELECT * FROM tools WHERE type = ?' + (userId ? ' AND created_by = ?' : ''), userId ? [id, userId] : [id]);
         if (tool) console.log(`[PluginBundler] resolved tool by type "${id}" → row id ${tool.id}`);
       } else {
         console.log(`[PluginBundler] resolved tool by id "${id}" → type "${tool.type}"`);

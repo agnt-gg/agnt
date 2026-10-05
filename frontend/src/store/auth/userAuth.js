@@ -234,6 +234,7 @@ export const SESSION = Object.freeze({
  * be a gate that keeps saying "valid" after the session died.
  */
 let inFlightVerify = null;
+let inFlightVerifyIdentity = null;
 
 // Helper function to sync token with local backend
 const syncTokenWithBackend = async (token) => {
@@ -291,12 +292,14 @@ export default {
     // derived from the presence of a token, because a token you have not
     // checked is exactly what this state exists to stop trusting.
     sessionState: SESSION.UNKNOWN,
+    sessionGeneration: 0,
   },
   mutations: {
     SET_SESSION_STATE(state, next) {
       state.sessionState = next;
     },
     SET_TOKEN(state, token) {
+      state.sessionGeneration = (state.sessionGeneration || 0) + 1;
       const subjectChanged = authSubject(state.token) !== authSubject(token);
       state.token = token;
       localStorage.setItem('token', token);
@@ -331,6 +334,7 @@ export default {
       }
     },
     CLEAR_TOKEN(state) {
+      state.sessionGeneration = (state.sessionGeneration || 0) + 1;
       state.token = null;
       localStorage.removeItem('token');
       clearMediaCookie();
@@ -461,7 +465,10 @@ export default {
         commit('SET_SESSION_STATE', SESSION.INVALID);
         return SESSION.INVALID;
       }
-      if (inFlightVerify) return inFlightVerify;
+      const verifiedToken = state.token;
+      const generation = state.sessionGeneration;
+      if (inFlightVerify && inFlightVerifyIdentity?.token === verifiedToken && inFlightVerifyIdentity?.generation === generation) return inFlightVerify;
+      inFlightVerifyIdentity = { token: verifiedToken, generation };
 
       inFlightVerify = (async () => {
         try {
@@ -471,6 +478,7 @@ export default {
             timeout: 10000,
           });
 
+          if (state.token !== verifiedToken || state.sessionGeneration !== generation) return state.sessionState;
           if (response.data?.isAuthenticated && response.data.user) {
             // THE STORED TOKEN IS NEVER SWAPPED HERE, AND THAT IS LOAD-BEARING.
             //
@@ -502,6 +510,7 @@ export default {
           commit('SET_SESSION_STATE', SESSION.INVALID);
           return SESSION.INVALID;
         } catch (error) {
+          if (state.token !== verifiedToken || state.sessionGeneration !== generation) return state.sessionState;
           const failure = classifyAuthError(error);
           commit('SET_AUTH_FAILURE', failure);
 
@@ -518,13 +527,12 @@ export default {
         }
       })();
 
+      const request = inFlightVerify;
       try {
-        return await inFlightVerify;
+        return await request;
       } finally {
-        // Cleared unconditionally: if this leaked on a rejection, the gate
-        // would answer every future call from a settled promise — a cache,
-        // and a permanent one.
-        inFlightVerify = null;
+        // Only retire this request; a newer account may already be verifying.
+        if (inFlightVerify === request) { inFlightVerify = null; inFlightVerifyIdentity = null; }
       }
     },
 

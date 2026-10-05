@@ -44,7 +44,7 @@ function isWorkflowNode(tool) {
  * Each entry carries the full parameter and output schema, so callers that need
  * the compact list must project the fields they want themselves.
  */
-export async function loadAllNodeTypes() {
+export async function loadAllNodeTypes(userId = null) {
   const rawToolLibrary = await fs.readFile(TOOL_LIBRARY_PATH, 'utf-8');
   const toolLibraryData = JSON.parse(rawToolLibrary);
 
@@ -71,7 +71,8 @@ export async function loadAllNodeTypes() {
       await PluginManager.initialize();
     }
 
-    const pluginSchemas = PluginManager.getAllPluginSchemas();
+    const { default: PluginAccounts } = await import('../../plugins/PluginAccountStore.js');
+    const pluginSchemas = await PluginAccounts.filter(PluginManager.getAllPluginSchemas(), userId, schema => schema._plugin);
 
     for (const schema of pluginSchemas) {
       const category = schema.category || 'action';
@@ -109,7 +110,7 @@ export async function loadAllNodeTypes() {
  * Look up a single node type by its `type` identifier. Returns the full schema
  * entry, or null if not found.
  */
-export async function findNodeTypeByType(type) {
-  const { flat } = await loadAllNodeTypes();
+export async function findNodeTypeByType(type, userId = null) {
+  const { flat } = await loadAllNodeTypes(userId);
   return flat.find((tool) => tool.type === type) || null;
 }

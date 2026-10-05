@@ -3,9 +3,11 @@ import ScheduleModel from '../models/ScheduleModel.js';
 import SchedulerService from '../services/scheduler/SchedulerService.js';
 import { isValidCron, nextFireTime } from '../services/scheduler/cronParser.js';
 import { authenticateToken } from './Middleware.js';
+import { requireScheduledGoals } from '../services/auth/planEntitlements.js';
 import { findOwnedGoal } from './goalOwnership.js';
 
 const ScheduleRoutes = express.Router();
+ScheduleRoutes.use(authenticateToken, requireScheduledGoals);
 
 // GET /api/schedules
 ScheduleRoutes.get('/', authenticateToken, async (req, res) => {

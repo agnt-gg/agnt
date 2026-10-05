@@ -69,6 +69,9 @@ const USER_SCOPED_MODULES = {
   skills,
   memory,
   appAuth,
+  apps,
+  schedules,
+  pluginBuilder,
 };
 
 const resettableModules = Object.fromEntries(
@@ -228,7 +231,6 @@ const store = createStore({
     ...resettableModules,
     chat,
     chatUnified,
-    pluginBuilder,
     canvas,
     theme,
     userAuth,
@@ -237,8 +239,6 @@ const store = createStore({
     executionHistory,
     // missions,
     marketplace,
-    // Installed plugins as Apps cards need them. Machine-scoped, not user-scoped.
-    apps,
     // market,
     // map,
     songPlayer,
@@ -252,7 +252,6 @@ const store = createStore({
     skillforge,
     experiments,
     insights,
-    schedules,
     wallets,
     contracts,
     mutations,

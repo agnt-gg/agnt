@@ -21,6 +21,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import db from '../models/database/index.js';
+import PluginAccounts from './PluginAccountStore.js';
 import AgentModel from '../models/AgentModel.js';
 import { parseAgentEnvelope, importAgent } from '../services/AgentImportService.js';
 import { parseWorkflowEnvelope, importWorkflow } from '../services/WorkflowImportService.js';
@@ -31,14 +32,14 @@ import { resolveRefList, makeSlugRef } from '../utils/pluginSlugResolver.js';
 /**
  * Helper: lookup a previously-installed plugin asset by (plugin, type, slug).
  */
-function lookupInstalledFactory() {
+function lookupInstalledFactory(userId) {
   return (pluginName, assetType, slug) =>
     new Promise((resolve, reject) => {
       db.get(
         `SELECT local_id FROM installed_plugin_assets
-         WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ?
+         WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ? AND user_id = ?
          AND deprecated_at IS NULL`,
-        [pluginName, assetType, slug],
+        [pluginName, assetType, slug, userId],
         (err, row) => (err ? reject(err) : resolve(row?.local_id || null))
       );
     });
@@ -71,6 +72,8 @@ class PluginAssetLoader {
    * @returns {Promise<{ installed: object, skipped: object[], deprecated: object[], errors: string[] }>}
    */
   async installAssets(pluginName, pluginVersion, manifest, pluginDir, userId) {
+    if (!userId) throw new Error('Plugin assets require an account');
+    await PluginAccounts.ready();
     const summary = {
       installed: { agents: [], workflows: [], skills: [], widgets: [], tools: [] },
       skipped: [],     // user-modified assets we did not overwrite during update
@@ -84,8 +87,8 @@ class PluginAssetLoader {
     // (which would otherwise reset metadata and risk overwriting unmodified
     // assets during normal startup).
     const existingVersionRow = await getRow(
-      `SELECT plugin_version FROM installed_plugin_assets WHERE plugin_name = ? LIMIT 1`,
-      [pluginName]
+      `SELECT plugin_version FROM installed_plugin_assets WHERE plugin_name = ? AND user_id = ? LIMIT 1`,
+      [pluginName, userId]
     );
     if (existingVersionRow && existingVersionRow.plugin_version === pluginVersion) {
       summary.noop = true;
@@ -94,7 +97,7 @@ class PluginAssetLoader {
 
     // bundleMap: in-bundle resolution `<plugin>/<type>/<slug>` -> local id
     const bundleMap = new Map();
-    const lookupInstalled = lookupInstalledFactory();
+    const lookupInstalled = lookupInstalledFactory(userId);
     const resolveCtx = { bundleMap, lookupInstalled };
 
     // 1) Skills first (no cross-dependencies among bundled skills)
@@ -105,7 +108,7 @@ class PluginAssetLoader {
           const filePath = path.join(pluginDir, entry.source.replace(/^\.\//, ''));
           const content = await fs.readFile(filePath, 'utf-8');
 
-          const decision = await this._decideUpdate(pluginName, 'skill', slug);
+          const decision = await this._decideUpdate(pluginName, 'skill', slug, userId);
           if (decision.action === 'skip') {
             summary.skipped.push({ kind: 'skill', slug, reason: 'is_user_modified' });
             bundleMap.set(`${pluginName}/skill/${slug}`, decision.localId);
@@ -122,7 +125,7 @@ class PluginAssetLoader {
           });
           bundleMap.set(`${pluginName}/skill/${slug}`, result.id);
           summary.installed.skills.push({ slug, id: result.id });
-          await this._record(pluginName, pluginVersion, 'skill', slug, result.id);
+          await this._record(pluginName, pluginVersion, 'skill', slug, result.id, userId);
         } catch (e) {
           summary.errors.push(`skill ${entry.slug}: ${e.message}`);
         }
@@ -138,7 +141,7 @@ class PluginAssetLoader {
           const raw = await fs.readFile(filePath, 'utf-8');
           const envelope = JSON.parse(raw);
 
-          const decision = await this._decideUpdate(pluginName, 'widget', slug);
+          const decision = await this._decideUpdate(pluginName, 'widget', slug, userId);
           if (decision.action === 'skip') {
             summary.skipped.push({ kind: 'widget', slug, reason: 'is_user_modified' });
             bundleMap.set(`${pluginName}/widget/${slug}`, decision.localId);
@@ -151,7 +154,7 @@ class PluginAssetLoader {
           const result = await importWidgetEnvelope(envelope, userId, { sourcePlugin: pluginName });
           bundleMap.set(`${pluginName}/widget/${slug}`, result.id);
           summary.installed.widgets.push({ slug, id: result.id });
-          await this._record(pluginName, pluginVersion, 'widget', slug, result.id);
+          await this._record(pluginName, pluginVersion, 'widget', slug, result.id, userId);
         } catch (e) {
           summary.errors.push(`widget ${entry.slug}: ${e.message}`);
         }
@@ -168,7 +171,7 @@ class PluginAssetLoader {
           const envelope = JSON.parse(raw);
           const payload = parseWorkflowEnvelope(envelope);
 
-          const decision = await this._decideUpdate(pluginName, 'workflow', slug);
+          const decision = await this._decideUpdate(pluginName, 'workflow', slug, userId);
           if (decision.action === 'skip') {
             summary.skipped.push({ kind: 'workflow', slug, reason: 'is_user_modified' });
             bundleMap.set(`${pluginName}/workflow/${slug}`, decision.localId);
@@ -183,7 +186,7 @@ class PluginAssetLoader {
           summary.installed.workflows.push({
             slug, id: result.id, missingToolTypes: result.missingToolTypes,
           });
-          await this._record(pluginName, pluginVersion, 'workflow', slug, result.id);
+          await this._record(pluginName, pluginVersion, 'workflow', slug, result.id, userId);
         } catch (e) {
           summary.errors.push(`workflow ${entry.slug}: ${e.message}`);
         }
@@ -200,7 +203,7 @@ class PluginAssetLoader {
           const envelope = JSON.parse(raw);
           const payload = parseAgentEnvelope(envelope);
 
-          const decision = await this._decideUpdate(pluginName, 'agent', slug);
+          const decision = await this._decideUpdate(pluginName, 'agent', slug, userId);
           if (decision.action === 'skip') {
             summary.skipped.push({ kind: 'agent', slug, reason: 'is_user_modified' });
             bundleMap.set(`${pluginName}/agent/${slug}`, decision.localId);
@@ -218,7 +221,7 @@ class PluginAssetLoader {
           summary.installed.agents.push({
             slug, id: result.id, missingRefs: result.missingRefs,
           });
-          await this._record(pluginName, pluginVersion, 'agent', slug, result.id);
+          await this._record(pluginName, pluginVersion, 'agent', slug, result.id, userId);
         } catch (e) {
           summary.errors.push(`agent ${entry.slug}: ${e.message}`);
         }
@@ -235,7 +238,7 @@ class PluginAssetLoader {
           if (!tool || !tool.type) continue;
           const slug = tool.type;
           const localId = tool.type; // no DB row; type is the runtime identifier
-          await this._record(pluginName, pluginVersion, 'tool', slug, localId);
+          await this._record(pluginName, pluginVersion, 'tool', slug, localId, userId);
           summary.installed.tools.push({ slug, id: localId, entryPoint: tool.entryPoint });
           bundleMap.set(`${pluginName}/tool/${slug}`, localId);
         } catch (e) {
@@ -245,12 +248,12 @@ class PluginAssetLoader {
     }
 
     // 6) Mark removed-in-this-version slugs as deprecated
-    await this._markDeprecatedSlugs(pluginName, manifest, summary);
+    await this._markDeprecatedSlugs(pluginName, manifest, summary, userId);
 
     // 6) Bump plugin_version on all rows we visited
     await runSql(
-      `UPDATE installed_plugin_assets SET plugin_version = ? WHERE plugin_name = ?`,
-      [pluginVersion, pluginName]
+      `UPDATE installed_plugin_assets SET plugin_version = ? WHERE plugin_name = ? AND user_id = ?`,
+      [pluginVersion, pluginName, userId]
     );
 
     return summary;
@@ -262,12 +265,12 @@ class PluginAssetLoader {
    *   - 'overwrite' → existing row, NOT user-modified, replace
    *   - 'skip'      → existing row IS user-modified, leave alone
    */
-  async _decideUpdate(pluginName, assetType, slug) {
+  async _decideUpdate(pluginName, assetType, slug, userId) {
     const row = await getRow(
       `SELECT local_id FROM installed_plugin_assets
-       WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ?
+       WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ? AND user_id = ?
        AND deprecated_at IS NULL`,
-      [pluginName, assetType, slug]
+      [pluginName, assetType, slug, userId]
     );
     if (!row) return { action: 'install' };
 
@@ -290,8 +293,8 @@ class PluginAssetLoader {
     const assetRow = await getRow(`SELECT is_user_modified FROM ${table} WHERE id = ?`, [row.local_id]);
     if (!assetRow) {
       // The asset was deleted out from under us; clean up the registry row
-      await runSql(`DELETE FROM installed_plugin_assets WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ?`,
-        [pluginName, assetType, slug]);
+      await runSql(`DELETE FROM installed_plugin_assets WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ? AND user_id = ?`,
+        [pluginName, assetType, slug, userId]);
       return { action: 'install' };
     }
     if (assetRow.is_user_modified) {
@@ -300,16 +303,16 @@ class PluginAssetLoader {
     return { action: 'overwrite', localId: row.local_id };
   }
 
-  async _record(pluginName, pluginVersion, assetType, slug, localId) {
+  async _record(pluginName, pluginVersion, assetType, slug, localId, userId) {
     await runSql(
-      `INSERT INTO installed_plugin_assets (plugin_name, plugin_version, asset_type, asset_slug, local_id, installed_at, deprecated_at)
-       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
-       ON CONFLICT(plugin_name, asset_type, asset_slug) DO UPDATE SET
+      `INSERT INTO installed_plugin_assets (plugin_name, plugin_version, asset_type, asset_slug, local_id, installed_at, deprecated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, ?)
+       ON CONFLICT(plugin_name, asset_type, asset_slug, user_id) DO UPDATE SET
          plugin_version = excluded.plugin_version,
          local_id = excluded.local_id,
          installed_at = CURRENT_TIMESTAMP,
          deprecated_at = NULL`,
-      [pluginName, pluginVersion, assetType, slug, localId]
+      [pluginName, pluginVersion, assetType, slug, localId, userId]
     );
   }
 
@@ -318,7 +321,7 @@ class PluginAssetLoader {
    * a deprecated_at timestamp. The asset row stays in place — user can clean
    * up manually via uninstall mode 'purge' or 'clean'.
    */
-  async _markDeprecatedSlugs(pluginName, manifest, summary) {
+  async _markDeprecatedSlugs(pluginName, manifest, summary, userId) {
     const declared = new Set();
     const declare = (arr, kind) => {
       if (!Array.isArray(arr)) return;
@@ -338,8 +341,8 @@ class PluginAssetLoader {
     const rows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT asset_type, asset_slug, local_id FROM installed_plugin_assets
-         WHERE plugin_name = ? AND deprecated_at IS NULL`,
-        [pluginName],
+         WHERE plugin_name = ? AND user_id = ? AND deprecated_at IS NULL`,
+        [pluginName, userId],
         (err, r) => (err ? reject(err) : resolve(r || []))
       );
     });
@@ -349,8 +352,8 @@ class PluginAssetLoader {
       if (!declared.has(key)) {
         await runSql(
           `UPDATE installed_plugin_assets SET deprecated_at = CURRENT_TIMESTAMP
-           WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ?`,
-          [pluginName, r.asset_type, r.asset_slug]
+           WHERE plugin_name = ? AND asset_type = ? AND asset_slug = ? AND user_id = ?`,
+          [pluginName, r.asset_type, r.asset_slug, userId]
         );
         summary.deprecated.push({ kind: r.asset_type, slug: r.asset_slug, localId: r.local_id });
       }
@@ -363,7 +366,9 @@ class PluginAssetLoader {
    *   - 'purge': delete all rows regardless
    *   - 'detach': leave rows in place; just clear source_plugin
    */
-  async uninstallAssets(pluginName, mode = 'clean') {
+  async uninstallAssets(pluginName, mode = 'clean', userId) {
+    if (!userId) throw new Error('Plugin removal requires an account');
+    await PluginAccounts.assert(pluginName, userId);
     const validModes = ['clean', 'purge', 'detach'];
     if (!validModes.includes(mode)) {
       throw new Error(`Invalid uninstall mode "${mode}"; expected one of ${validModes.join(', ')}`);
@@ -374,8 +379,8 @@ class PluginAssetLoader {
     const rows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT asset_type, asset_slug, local_id FROM installed_plugin_assets
-         WHERE plugin_name = ?`,
-        [pluginName],
+         WHERE plugin_name = ? AND user_id = ?`,
+        [pluginName, userId],
         (err, r) => (err ? reject(err) : resolve(r || []))
       );
     });
@@ -448,7 +453,7 @@ class PluginAssetLoader {
     }
 
     // Always clear the registry
-    await runSql(`DELETE FROM installed_plugin_assets WHERE plugin_name = ?`, [pluginName]);
+    await runSql(`DELETE FROM installed_plugin_assets WHERE plugin_name = ? AND user_id = ?`, [pluginName, userId]);
 
     return result;
   }
