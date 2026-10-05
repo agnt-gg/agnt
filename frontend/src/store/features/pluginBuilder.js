@@ -25,6 +25,8 @@ const saveState = (state) => {
       generatedPackageJson: state.generatedPackageJson,
       conversation: state.conversation,
       pluginDescription: state.pluginDescription,
+      installedHash: state.installedHash,
+      builtPluginNames: state.builtPluginNames,
     };
     localStorage.setItem('pluginBuilderState', JSON.stringify(stateToSave));
   } catch (error) {
@@ -33,6 +35,27 @@ const saveState = (state) => {
 };
 
 const persistedState = loadPersistedState();
+
+/**
+ * Cheap, stable fingerprint of the draft's files (djb2).
+ *
+ * The Forge has to answer one question on every keystroke: is what I am
+ * looking at what is installed? Comparing fingerprints answers it without
+ * keeping a second copy of every file in localStorage.
+ */
+export function fingerprint(text) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  return (hash >>> 0).toString(36);
+}
+
+/** One line the chat can show after a build: what exists now. */
+function describeBuild(manifest, verb) {
+  const tools = manifest?.tools || [];
+  const names = tools.map((tool) => tool.schema?.title || tool.type).filter(Boolean);
+  const count = `${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}`;
+  return `${verb} ${manifest?.name || 'the plugin'}: ${count}${names.length ? ` (${names.join(', ')})` : ''}.`;
+}
 
 export default {
   namespaced: true,
@@ -63,6 +86,14 @@ export default {
     // Preview/Edit state
     activePreviewFile: null, // Which file is being previewed/edited
     editedFiles: {}, // Track user edits: { 'manifest.json': '...', 'tool.js': '...' }
+
+    // Fingerprint of the files last installed from (or loaded into) the Forge.
+    // null means this draft has never been installed.
+    installedHash: persistedState?.installedHash || null,
+    // Plugins built in the Forge on this machine — the "My builds" view.
+    builtPluginNames: persistedState?.builtPluginNames || [],
+    // Session-only: last Test-tab run per `${plugin}:${toolType}`.
+    testResults: {},
   },
 
   mutations: {
@@ -170,6 +201,21 @@ export default {
       state.editedFiles = {};
     },
 
+    SET_INSTALLED_HASH(state, hash) {
+      state.installedHash = hash;
+      saveState(state);
+    },
+
+    ADD_BUILT_PLUGIN_NAME(state, name) {
+      if (!name || state.builtPluginNames.includes(name)) return;
+      state.builtPluginNames = [...state.builtPluginNames, name];
+      saveState(state);
+    },
+
+    SET_TEST_RESULT(state, { pluginName, toolType, result }) {
+      state.testResults = { ...state.testResults, [`${pluginName}:${toolType}`]: result };
+    },
+
     RESET_GENERATION(state) {
       state.generatedManifest = null;
       state.generatedCode = {};
@@ -199,7 +245,9 @@ export default {
       state.isStreaming = false;
       state.activePreviewFile = null;
       state.editedFiles = {};
-      localStorage.removeItem('pluginBuilderState');
+      state.installedHash = null;
+      // builtPluginNames is history, not draft state: it survives Start over.
+      saveState(state);
     },
   },
 
@@ -252,6 +300,23 @@ export default {
     pluginTools: (state) => {
       return state.generatedManifest?.tools || [];
     },
+
+    // Fingerprint of the effective files (user edits included), or null.
+    draftHash: (state, getters) => {
+      if (!getters.isGenerationComplete) return null;
+      const files = {};
+      for (const name of getters.generatedFiles.map((file) => file.name).sort()) {
+        files[name] = getters.getFileContent(name);
+      }
+      return fingerprint(JSON.stringify(files));
+    },
+
+    // True when the draft has work that exists nowhere but this browser.
+    hasUninstalledWork: (state, getters) => {
+      return getters.isGenerationComplete && getters.draftHash !== state.installedHash;
+    },
+
+    testResultFor: (state) => (pluginName, toolType) => state.testResults[`${pluginName}:${toolType}`] || null,
   },
 
   actions: {
@@ -272,6 +337,12 @@ export default {
 
       commit('SET_GENERATING', true);
       commit('RESET_GENERATION');
+      commit('ADD_CONVERSATION_MESSAGE', {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: pluginDescription,
+        timestamp: new Date().toISOString(),
+      });
 
       try {
         const token = localStorage.getItem('token');
@@ -349,10 +420,22 @@ export default {
         }
 
         commit('SET_GENERATING', false);
+        commit('ADD_CONVERSATION_MESSAGE', {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: describeBuild(state.generatedManifest, 'Built'),
+          timestamp: new Date().toISOString(),
+        });
         return { success: true };
       } catch (error) {
         console.error('Plugin generation error:', error);
         commit('SET_GENERATION_ERROR', error.message);
+        commit('ADD_CONVERSATION_MESSAGE', {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `Generation failed: ${error.message}`,
+          timestamp: new Date().toISOString(),
+        });
         return { success: false, error: error.message };
       }
     },
@@ -415,9 +498,15 @@ export default {
         }
 
         const result = await response.json();
+        if (result && result.success === false) {
+          throw new Error(result.error || 'Build failed');
+        }
 
         commit('SET_BUILD_PROGRESS', 'complete');
         commit('SET_BUILD_RESULT', result);
+        // What is installed now is exactly what was just sent.
+        commit('SET_INSTALLED_HASH', getters.draftHash);
+        commit('ADD_BUILT_PLUGIN_NAME', manifest.name);
 
         // Refresh the tools store to pick up new plugin tools
         await dispatch('tools/fetchTools', { force: true }, { root: true });
@@ -435,6 +524,11 @@ export default {
      */
     updateFile({ commit }, { fileName, content }) {
       commit('SET_EDITED_FILE', { fileName, content });
+    },
+
+    /** Remember the last Test-tab run of one tool (session only). */
+    recordTestResult({ commit }, { pluginName, toolType, result }) {
+      commit('SET_TEST_RESULT', { pluginName, toolType, result });
     },
 
     /**
@@ -475,7 +569,7 @@ export default {
     /**
      * Load an installed plugin for editing
      */
-    async loadPluginForEditing({ commit, dispatch }, pluginName) {
+    async loadPluginForEditing({ commit, getters }, pluginName) {
       commit('RESET_ALL'); // Start fresh
 
       try {
@@ -515,6 +609,8 @@ export default {
 
         // Set state to "complete" so preview shows up
         commit('SET_GENERATION_PROGRESS', 'complete');
+        // Loaded from the installed copy, so it IS the installed copy.
+        commit('SET_INSTALLED_HASH', getters.draftHash);
 
         return { success: true };
       } catch (error) {
@@ -657,7 +753,7 @@ export default {
         commit('ADD_CONVERSATION_MESSAGE', {
           id: `msg-${Date.now()}`,
           role: 'assistant',
-          content: 'Plugin regenerated successfully.',
+          content: describeBuild(state.generatedManifest, 'Updated'),
           timestamp: new Date().toISOString(),
         });
 

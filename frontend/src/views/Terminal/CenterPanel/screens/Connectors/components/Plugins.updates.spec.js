@@ -47,6 +47,10 @@ let installed; // what GET /plugins/installed returns
 
 vi.mock('@/utils/apiFetch.js', () => ({
   apiFetch: vi.fn(async (url, options = {}) => {
+    // The two list reads are authenticated calls too; answer them first so a
+    // test that replaces `replies` wholesale still has plugins on screen.
+    if (url.endsWith('/plugins/installed')) return { ok: true, status: 200, json: async () => ({ success: true, plugins: installed }) };
+    if (url.endsWith('/plugins/marketplace')) return { ok: true, status: 200, json: async () => ({ success: true, plugins: [] }) };
     requested.push({ url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
     for (const [fragment, reply] of replies) {
       if (url.includes(fragment)) {
@@ -104,10 +108,9 @@ function setStatus(status) {
 }
 
 beforeEach(() => {
-  // fetchInstalledPlugins/fetchMarketplacePlugins call the global fetch
-  // directly rather than apiFetch. Left unmocked they reach for a real socket,
-  // isLoading never clears, and the tab body never renders — so every
-  // assertion below would fail for a reason unrelated to updates.
+  // The list reads go through apiFetch (answered in the mock above). The
+  // global fetch stays stubbed so nothing can reach for a real socket, leave
+  // isLoading set, and fail every assertion for a reason unrelated to updates.
   installed = [
     { name: 'weather', version: '1.4.0', description: 'w' },
     { name: 'scraper', version: '2.0.0', description: 's' },
@@ -141,7 +144,7 @@ describe('the controls that are gone', () => {
     expect(tabs.some((t) => /Updates/i.test(t))).toBe(false);
     // The tabs that remain are still there — this is not passing by rendering nothing.
     expect(tabs.some((t) => /Installed/.test(t))).toBe(true);
-    expect(tabs.some((t) => /Marketplace/.test(t))).toBe(true);
+    expect(tabs.some((t) => /Discover/.test(t))).toBe(true);
     wrapper.unmount();
   });
 

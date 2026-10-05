@@ -1,18 +1,20 @@
-<!-- Plugins.vue — the Plugins screen.
+<!-- Plugins.vue — the Plugin Forge screen.
 
      Plugins was one of six views inside Connectors, reached only from that
      screen's left-panel nav. It is an ASSET rather than a connection — a thing
      you install and own, the same kind of thing as an agent, a tool or a
-     skill — so it now has its own BUILD row and its own route.
+     skill — so it has its own BUILD row and its own route.
 
-     The page itself is unchanged: same header, same copy, same component, in
-     the same wrapper markup and styles Connectors gave it.
+     PluginManager owns the whole page: its own single header (this screen
+     used to stack three titles), the library views, and the Forge. While the
+     Forge is open it takes the full height of the scroll area so the chat
+     composer is always on screen, which is why the marketplace shelf and the
+     page padding step aside in that mode.
 
      PluginManager still lives in the Connectors directory beside the two
      siblings it imports relatively (PluginBuilder, PackStudio). It is imported
      from there rather than copied so there stays exactly one implementation;
-     moving all three is a mechanical rename worth doing on its own, not
-     inside a navigation change. -->
+     moving all three is a mechanical rename worth doing on its own. -->
 <template>
   <BaseScreen
     ref="baseScreenRef"
@@ -26,19 +28,14 @@
       <SimpleModal ref="modalRef" />
       <!-- Click-away clears the selection, which is what closes the detail
            panel on the right. Carried over from Connectors unchanged. -->
-      <div class="plugins-content" @click="handlePluginAreaClick">
-        <div v-if="!mobileView" class="content-header">
-          <h2 class="content-title">Plugin Forge</h2>
-          <p class="content-subtitle">
-            Build, bundle and manage plugins for AGNT.
-          </p>
-        </div>
-        <div class="plugins-grid">
-          <div class="plugins-section">
-            <PluginManager @show-alert="showAlert" />
-            <MarketplaceShelf asset-type="plugin" variant="strip" @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })" />
-          </div>
-        </div>
+      <div class="plugins-content" :class="{ 'is-forge': isForgeMode }" @click="handlePluginAreaClick">
+        <PluginManager @show-alert="showAlert" />
+        <MarketplaceShelf
+          v-if="!isForgeMode"
+          asset-type="plugin"
+          variant="strip"
+          @browse="listing => emit('screen-change', 'MarketplaceScreen', { listing })"
+        />
       </div>
     </template>
   </BaseScreen>
@@ -59,6 +56,10 @@ const baseScreenRef = ref(null);
 const modalRef = ref(null);
 watch(() => store.getters['connectors/selectedPlugin'], plugin => { if (mobileView.value && plugin) baseScreenRef.value?.openMobilePanel('right'); });
 
+// Library views; anything else is a Forge mode (builder, pack-studio).
+const LIBRARY_VIEWS = ['installed', 'marketplace', 'mine'];
+const isForgeMode = computed(() => !LIBRARY_VIEWS.includes(store.getters['connectors/activeTab']));
+
 // The right panel is ConnectorsPanel in both states: a selected plugin shows
 // its detail; nothing selected shows the plugins summary (context: 'plugins').
 // News & updates moved to Settings › About.
@@ -77,57 +78,19 @@ function handlePluginAreaClick(event) {
 </script>
 
 <style scoped>
-/* Copied from Connectors.vue's scoped block so the page renders identically
-   to the view it was lifted out of. */
 .plugins-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-lg);
   width: 100%;
-  max-width: 1048px;
+  max-width: 1200px;
   margin: 0 auto;
-  align-items: flex-start;
 }
 
-.content-header {
-  padding: 0;
-  border-bottom: 1px solid var(--terminal-border-color);
-  padding-bottom: 16px;
-  width: 100%;
-  max-width: 1048px;
-}
-
-.content-title {
-  font-size: 1.8em;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.content-subtitle {
-  color: var(--color-light-med-navy);
-  font-size: 1em;
-  margin: 0;
-  opacity: 0.8;
-  line-height: 1.4;
-}
-
-.plugins-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-  margin: 0;
-}
-
-.plugins-section {
-  background: transparent;
-  border: none;
-  padding: 24px;
-  width: 100%;
-  transition: all 0.3s ease;
-  border-radius: 16px;
+/* Fill the scroll area exactly; the Forge scrolls inside itself. */
+.plugins-content.is-forge {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
 }
 </style>

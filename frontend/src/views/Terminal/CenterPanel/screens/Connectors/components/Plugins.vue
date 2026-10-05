@@ -1,133 +1,137 @@
 <template>
-  <div class="plugins-container">
-    <!-- PRO Badge Header -->
-    <div v-if="!mobileView" class="plugins-header">
-      <h3>
-        Plugin Manager
-        <span v-if="!isPro" class="pro-badge-label"> <i class="fas fa-lock"></i> PRO </span>
-      </h3>
-      <p class="subtitle">Install and manage plugins to extend AGNT functionality</p>
+  <div class="plugins-container" :class="{ 'is-forge': isForgeMode }">
+    <!-- ═══ FORGE: building a plugin ═══ -->
+    <PluginBuilder
+      v-if="activeTab === 'builder'"
+      :installed-names="installedNames"
+      @back="openLibrary()"
+      @open-pack="activeTab = 'pack-studio'"
+      @publish="openPublishByName"
+      @show-alert="(title, msg) => emit('show-alert', title, msg)"
+      @plugin-installed="onPluginInstalled"
+    />
+
+    <!-- ═══ FORGE: composing a pack ═══ -->
+    <div v-else-if="activeTab === 'pack-studio'" class="pack-shell">
+      <header class="pack-bar">
+        <button class="crumb-back" @click="openLibrary()">
+          <i class="fas fa-arrow-left"></i>
+          <span>Plugin Forge</span>
+        </button>
+        <span class="crumb-sep">/</span>
+        <span class="crumb-current">New pack</span>
+      </header>
+      <div class="pack-body">
+        <PackStudio @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
+      </div>
     </div>
 
-    <!-- Manual Install Section (Collapsible) - Only for PRO -->
-    <div v-if="isPro" class="manual-install-section" :class="{ collapsed: isManualInstallCollapsed }">
-      <div class="section-header" @click="isManualInstallCollapsed = !isManualInstallCollapsed">
-        <h4><i class="fas fa-upload"></i> Manual Installation</h4>
-        <i class="fas" :class="isManualInstallCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
-      </div>
-      <div v-if="!isManualInstallCollapsed" class="section-content">
-        <p>Install a plugin from a .agnt file</p>
-        <div class="upload-area" @click="triggerFileUpload" @dragover.prevent @drop.prevent="handleFileDrop">
-          <input type="file" ref="fileInput" accept=".agnt,.tar.gz,.tgz" @change="handleFileSelect" style="display: none" />
-          <i class="fas fa-cloud-upload-alt"></i>
-          <span>Click or drag & drop .agnt plugin file here</span>
+    <!-- ═══ LIBRARY ═══ -->
+    <template v-else>
+      <header class="library-bar">
+        <h2 v-if="!mobileView" class="library-title">Plugin Forge</h2>
+        <span class="bar-spacer"></span>
+        <div v-if="!mobileView" class="library-search">
+          <BaseInput v-model="searchQuery" :placeholder="activeTab === 'marketplace' ? 'Search marketplace' : 'Search plugins'" :clearable="true" />
         </div>
-      </div>
-    </div>
+        <BaseButton class="btn-compact" variant="secondary" v-tooltip="'Install a .agnt file. You can also drop one anywhere on this page.'" @click="triggerFileUpload">
+          <i class="fas fa-file-import"></i> Install file
+        </BaseButton>
+        <BaseButton class="btn-compact" variant="primary" @click="newPlugin"> <i class="fas fa-plus"></i> New plugin </BaseButton>
+        <input ref="fileInput" type="file" accept=".agnt,.tar.gz,.tgz" class="file-input" @change="handleFileSelect" />
+      </header>
 
-    <!-- Controls Bar - Only for PRO -->
-    <div v-if="isPro && !mobileView" class="controls-bar">
-      <div class="search-wrapper">
-        <BaseInput v-model="searchQuery" placeholder="Search plugins..." :clearable="true" />
-      </div>
-    </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab" :class="{ active: activeTab === 'installed' }" role="tab" @click="activeTab = 'installed'">
+          Installed <span class="tab-count">{{ installedPlugins.length }}</span><!--
+          The only badge left on this screen, and it counts one thing: updates
+          held back because they asked for more than the installed version had.
+          --><span v-if="reviewCount > 0" class="review-count">{{ reviewCount }}</span>
+        </button>
+        <button class="tab" :class="{ active: activeTab === 'marketplace' }" role="tab" @click="activeTab = 'marketplace'">
+          Discover <span class="tab-count">{{ marketplacePlugins.length }}</span>
+        </button>
+        <button class="tab" :class="{ active: activeTab === 'mine' }" role="tab" @click="activeTab = 'mine'">
+          My builds <span class="tab-count">{{ myBuildCount }}</span>
+        </button>
+      </nav>
 
-    <!-- Tabs - Only for PRO -->
-    <div v-if="isPro" class="tabs">
-      <button class="tab" :class="{ active: activeTab === 'installed' }" @click="activeTab = 'installed'">
-        <i class="fas fa-check-circle"></i> Installed ({{ installedPlugins.length }})<!--
-        The only badge left on this screen, and it counts one thing: updates
-        held back because they asked for more than the installed version had.
-        --><span v-if="reviewCount > 0" class="review-count">{{ reviewCount }}</span>
-      </button>
-      <button class="tab" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
-        <i class="fas fa-store"></i> Marketplace ({{ marketplacePlugins.length }})
-      </button>
-      <button class="tab" :class="{ active: activeTab === 'builder' }" @click="activeTab = 'builder'">
-        <i class="fas fa-magic"></i> Build Plugin
-      </button>
-      <button class="tab" :class="{ active: activeTab === 'pack-studio' }" @click="activeTab = 'pack-studio'">
-        <i class="fas fa-box-open"></i> Pack Studio
-      </button>
-      <button class="tab" :class="{ active: activeTab === 'publish' }" @click="activeTab = 'publish'">
-        <i class="fas fa-cloud-upload-alt"></i> Publish
-      </button>
-    </div>
-
-<MobileCollection v-if="mobileView && isPro && (activeTab === 'installed' || activeTab === 'marketplace')" view-id="plugins" :title="activeTab === 'installed' ? 'Plugins' : 'Plugin Marketplace'" count-label="plugins" :items="activeTab === 'installed' ? filteredInstalledPlugins : filteredMarketplacePlugins" v-model:search="searchQuery" :selected-id="selectedPlugin?.name" icon="fas fa-plug" @select="selectPlugin"><template #item="{item}"><span class="m-plugin-version">v{{item.version}} · {{item.trustTier || 'Trust not reported'}}</span><button v-if="activeTab === 'installed'" @click="togglePin(item)">{{isPinned(item) ? 'Allow automatic updates' : 'Pin version'}}</button><button v-if="pluginNotices[item.name]?.needsReview" @click="reviewUpdate(item)">Review update</button><button @click="selectPlugin(item)">Details & tools</button></template></MobileCollection><template v-if="!mobileView || !isPro">    <!-- Example plugins for non-pro users -->
-    <div v-if="!isPro" class="plugins-list locked">
-      <div v-for="i in 3" :key="'example-' + i" class="plugin-card locked">
-        <div class="plugin-header">
-          <div class="plugin-icon">
-            <i class="fas fa-puzzle-piece"></i>
-          </div>
-          <div class="plugin-info">
-            <h3 class="plugin-name">Example Plugin {{ i }}</h3>
-            <span class="plugin-version">v1.0.0</span>
-          </div>
-          <div class="plugin-status">
-            <span class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
-          </div>
+      <div class="library-body" :class="{ 'is-dropping': isDropping }" @dragover.prevent="isDropping = true" @dragleave.self="isDropping = false" @drop.prevent="onDrop">
+        <div v-if="activeTab === 'installed' && reviewCount > 0 && firstReviewPlugin" class="review-banner">
+          <i class="fas fa-shield-alt"></i>
+          <span>
+            <b>{{ reviewCount === 1 ? '1 update needs review.' : `${reviewCount} updates need review.` }}</b>
+            {{ getDisplayName(firstReviewPlugin) }} asks for new permissions.
+          </span>
+          <span class="bar-spacer"></span>
+          <BaseButton class="btn-compact review-action" variant="secondary" :disabled="updatingName === firstReviewPlugin.name" @click="reviewUpdate(firstReviewPlugin)">Review</BaseButton>
         </div>
-        <p class="plugin-description">This is an example plugin that extends AGNT with additional functionality.</p>
-        <div class="plugin-tools">
-          <span class="tools-label">Tools:</span>
-          <div class="tools-list">
-            <span class="tool-badge">Example Tool</span>
-            <span class="tool-badge">Another Tool</span>
-          </div>
-        </div>
-        <div class="plugin-meta">
-          <span class="meta-item"> <i class="fas fa-user"></i> Developer </span>
-          <span class="meta-item"> <i class="fas fa-file"></i> 2.5 MB </span>
-        </div>
-      </div>
-      <div class="locked-overlay">
-        <i class="fas fa-lock"></i>
-        <p>Upgrade to unlock</p>
-      </div>
-    </div>
 
-    <!-- Loading State -->
-    <div v-else-if="isLoading" class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading plugins...</div>
-
-    <!-- Installed Plugins Tab -->
-    <div v-else-if="activeTab === 'installed'" class="plugins-list">
-      <div v-if="filteredInstalledPlugins.length === 0" class="empty-state">
-        <i class="fas fa-puzzle-piece"></i>
-        <p>No plugins installed yet.</p>
-        <BaseButton variant="primary" @click="activeTab = 'marketplace'">Browse Marketplace</BaseButton>
-      </div>
-
-      <div v-else class="plugins-grid" @click.self="deselectPlugin">
-        <div
-          v-for="plugin in filteredInstalledPlugins"
-          :key="plugin.name"
-          class="plugin-card installed"
-          :class="{ selected: selectedPlugin?.name === plugin.name }"
-          @click="selectPlugin(plugin)"
+        <MobileCollection
+          v-if="mobileView"
+          view-id="plugins"
+          :title="mobileTitle"
+          count-label="plugins"
+          :items="mobileItems"
+          v-model:search="searchQuery"
+          :selected-id="selectedPlugin?.name"
+          icon="fas fa-plug"
+          @select="selectPlugin"
         >
-          <div class="plugin-header">
-            <div class="plugin-icon">
-              <SvgIcon :name="plugin.icon || 'custom'" />
+          <template #item="{ item }">
+            <span class="m-plugin-version">v{{ item.version }} · {{ item.trustTier || 'Trust not reported' }}</span>
+            <button v-if="activeTab === 'installed'" @click="togglePin(item)">{{ isPinned(item) ? 'Allow automatic updates' : 'Pin version' }}</button>
+            <button v-if="pluginNotices[item.name]?.needsReview" @click="reviewUpdate(item)">Review update</button>
+            <button v-if="activeTab === 'marketplace' && !isPluginInstalled(item.name)" @click="installPlugin(item)">{{ item.price > 0 ? `Buy $${item.price.toFixed(2)}` : 'Install' }}</button>
+            <button v-if="activeTab === 'mine'" @click="openInForge(item)">Open in Forge</button>
+            <button @click="selectPlugin(item)">Details & tools</button>
+          </template>
+        </MobileCollection>
+
+        <div v-else-if="isLoading" class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading plugins…</div>
+
+        <!-- Installed -->
+        <div v-else-if="activeTab === 'installed'" class="plugins-grid" @click.self="deselectPlugin">
+          <div
+            v-for="plugin in filteredInstalledPlugins"
+            :key="plugin.name"
+            class="plugin-card installed"
+            :class="{ selected: selectedPlugin?.name === plugin.name }"
+            @click="selectPlugin(plugin)"
+          >
+            <div class="plugin-header">
+              <div class="plugin-icon"><SvgIcon :name="plugin.icon || 'custom'" /></div>
+              <div class="plugin-info">
+                <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
+                <span class="plugin-version">v{{ plugin.version }}<template v-if="plugin.author"> · {{ plugin.author }}</template></span>
+              </div>
+              <div class="plugin-status">
+                <div class="card-menu" v-click-outside="() => closeMenu(plugin.name)">
+                  <button class="card-menu-btn" aria-label="More actions" @click.stop="toggleMenu(plugin.name)">
+                    <i class="fas fa-ellipsis-h"></i>
+                  </button>
+                  <div v-if="openMenuFor === plugin.name" class="card-menu-items">
+                    <button class="card-menu-item" @click.stop="togglePin(plugin)">
+                      <i class="fas" :class="isPinned(plugin) ? 'fa-unlock' : 'fa-thumbtack'"></i>
+                      {{ isPinned(plugin) ? 'Allow automatic updates' : 'Pin to v' + plugin.version }}
+                    </button>
+                    <button class="card-menu-item" @click.stop="openInForge(plugin)"><i class="fas fa-pen"></i> Open in Forge</button>
+                    <button class="card-menu-item" @click.stop="openPublish(plugin)"><i class="fas fa-cloud-upload-alt"></i> Publish…</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="plugin-info">
-              <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
-              <span class="plugin-version">v{{ plugin.version }}</span>
-              <!-- trust system Layer 6: display-only trust badge (0.6.0 ladder) -->
-              <Tooltip
-                v-if="plugin.trustTier"
-                :title="trustTierLabel(plugin.trustTier)"
-                :text="trustTooltipText(plugin)"
-                position="top"
-                width="300px"
-              >                <span class="trust-badge" :class="'trust-' + plugin.trustTier">
-                  <span class="trust-dot"></span>
-                  {{ plugin.trustTier }}
-                </span>
-              </Tooltip>
-            </div>
-            <div class="plugin-status">
+
+            <p class="plugin-description">{{ plugin.description || 'No description available' }}</p>
+
+            <div class="plugin-footer">
+              <span class="footer-meta">
+                <span class="meta-tag">{{ toolCount(plugin) }}</span>
+                <!-- trust system Layer 6: display-only trust badge (0.6.0 ladder) -->
+                <Tooltip v-if="plugin.trustTier" :title="trustTierLabel(plugin.trustTier)" :text="trustTooltipText(plugin)" position="top" width="300px">
+                  <span class="trust-badge" :class="'trust-' + plugin.trustTier"><span class="trust-dot"></span>{{ plugin.trustTier }}</span>
+                </Tooltip>
+              </span>
               <!-- At most one chip, and it is only actionable for a refused update. -->
               <button
                 v-if="pluginNotices[plugin.name]?.needsReview"
@@ -138,273 +142,223 @@
                 <i class="fas fa-shield-alt"></i>
                 {{ updatingName === plugin.name ? 'Updating…' : 'Update needs review' }}
               </button>
-              <span
-                v-else-if="pluginNotices[plugin.name]"
-                class="notice-chip"
-                :class="pluginNotices[plugin.name].kind"
-                v-tooltip="pluginNotices[plugin.name].detail"
-              >
+              <span v-else-if="pluginNotices[plugin.name]" class="notice-chip" :class="pluginNotices[plugin.name].kind" v-tooltip="pluginNotices[plugin.name].detail">
                 <i :class="pluginNotices[plugin.name].icon"></i> {{ pluginNotices[plugin.name].label }}
               </span>
               <span v-else class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
+            </div>
+          </div>
 
-              <div class="card-menu" v-click-outside="() => closeMenu(plugin.name)">
-                <button class="card-menu-btn" aria-label="More actions" @click.stop="toggleMenu(plugin.name)">
-                  <i class="fas fa-ellipsis-h"></i>
-                </button>
-                <div v-if="openMenuFor === plugin.name" class="card-menu-items">
-                  <button class="card-menu-item" @click.stop="togglePin(plugin)">
-                    <i class="fas" :class="isPinned(plugin) ? 'fa-unlock' : 'fa-thumbtack'"></i>
-                    {{ isPinned(plugin) ? 'Allow automatic updates' : 'Pin to v' + plugin.version }}
-                  </button>
+          <p v-if="searchQuery && filteredInstalledPlugins.length === 0" class="grid-note">No installed plugins match “{{ searchQuery }}”.</p>
+
+          <button class="new-card" @click="newPlugin">
+            <i class="fas fa-plus"></i>
+            <b>Build a plugin</b>
+            <span>Describe it, the Forge writes it</span>
+          </button>
+        </div>
+
+        <!-- Discover -->
+        <template v-else-if="activeTab === 'marketplace'">
+          <div v-if="discoverCategories.length > 1" class="category-row">
+            <button class="category" :class="{ active: !categoryFilter }" @click="categoryFilter = null">All</button>
+            <button v-for="category in discoverCategories" :key="category" class="category" :class="{ active: categoryFilter === category }" @click="categoryFilter = category">
+              {{ category }}
+            </button>
+          </div>
+
+          <div v-if="discoverPlugins.length === 0" class="empty-state">
+            <i class="fas fa-store"></i>
+            <p>{{ searchQuery ? `Nothing in the marketplace matches “${searchQuery}”.` : 'No plugins in the marketplace yet.' }}</p>
+          </div>
+
+          <div v-else class="plugins-grid" @click.self="deselectPlugin">
+            <div
+              v-for="plugin in discoverPlugins"
+              :key="plugin.name"
+              class="plugin-card"
+              :class="{ selected: selectedPlugin?.name === plugin.name }"
+              @click="selectPlugin(plugin)"
+            >
+              <div class="plugin-header">
+                <div class="plugin-icon"><SvgIcon :name="plugin.icon || 'puzzle-piece'" /></div>
+                <div class="plugin-info">
+                  <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
+                  <span class="plugin-version">v{{ plugin.version }}<template v-if="plugin.author"> · {{ plugin.author }}</template></span>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <p class="plugin-description">{{ plugin.description || 'No description available' }}</p>
+              <p class="plugin-description">{{ plugin.description || 'No description available' }}</p>
 
-          <div class="plugin-tools" v-if="plugin.tools && plugin.tools.length">
-            <span class="tools-label">Tools:</span>
-            <div class="tools-list">
-              <span v-for="tool in plugin.tools" :key="tool.type" class="tool-badge">
-                {{ tool.schema?.title || tool.type }}
-              </span>
-            </div>
-          </div>
-
-          <div class="plugin-meta">
-            <span v-if="plugin.author" class="meta-item"> <i class="fas fa-user"></i> {{ plugin.author }} </span>
-            <span v-if="plugin.size" class="meta-item"> <i class="fas fa-file"></i> {{ formatSize(plugin.size) }} </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Marketplace Tab -->
-    <div v-else-if="activeTab === 'marketplace'" class="plugins-list">
-      <div v-if="filteredMarketplacePlugins.length === 0" class="empty-state">
-        <i class="fas fa-store"></i>
-        <p>No plugins available in marketplace.</p>
-        <p class="hint">Check back later or install plugins manually.</p>
-      </div>
-
-      <div v-else class="plugins-grid" @click.self="deselectPlugin">
-        <div
-          v-for="plugin in filteredMarketplacePlugins"
-          :key="plugin.name"
-          class="plugin-card"
-          :class="{ selected: selectedPlugin?.name === plugin.name }"
-          @click="selectPlugin(plugin)"
-        >
-          <div class="plugin-header">
-            <div class="plugin-icon">
-              <SvgIcon :name="plugin.icon || 'puzzle-piece'" />
-            </div>            <div class="plugin-info">
-              <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
-              <span class="plugin-version">v{{ plugin.version }}</span>
-              <!-- trust system Layer 6: pre-install trust badge (from stamped marketplace record) -->
-              <Tooltip
-                v-if="plugin.trustTier"
-                :title="trustTierLabel(plugin.trustTier)"
-                :text="trustTooltipText(plugin, true)"
-                position="top"
-                width="300px"
-              >
-                <span class="trust-badge" :class="'trust-' + plugin.trustTier">
-                  <span class="trust-dot"></span>
-                  {{ plugin.trustTier }}
+              <div class="plugin-footer">
+                <span class="footer-meta">
+                  <span class="meta-tag">{{ plugin.price > 0 ? `$${plugin.price.toFixed(2)}` : 'Free' }}</span>
+                  <!-- trust system Layer 6: pre-install trust badge (from stamped marketplace record) -->
+                  <Tooltip v-if="plugin.trustTier" :title="trustTierLabel(plugin.trustTier)" :text="trustTooltipText(plugin, true)" position="top" width="300px">
+                    <span class="trust-badge" :class="'trust-' + plugin.trustTier"><span class="trust-dot"></span>{{ plugin.trustTier }}</span>
+                  </Tooltip>
                 </span>
-              </Tooltip>
+                <span v-if="isPluginInstalled(plugin.name)" class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
+                <BaseButton v-else variant="primary" class="btn-compact" :disabled="installingPlugin === plugin.name" @click.stop="installPlugin(plugin)">
+                  <i v-if="installingPlugin === plugin.name" class="fas fa-spinner fa-spin"></i>
+                  {{ installingPlugin === plugin.name ? 'Installing…' : plugin.price > 0 ? `Buy $${plugin.price.toFixed(2)}` : 'Install' }}
+                </BaseButton>
+              </div>
             </div>
-            <div class="plugin-status">
-              <span v-if="isPluginInstalled(plugin.name)" class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
-              <span v-else-if="plugin.price > 0" class="status-badge paid">${{ plugin.price.toFixed(2) }}</span>
-              <span v-else class="status-badge free">FREE</span>
+          </div>
+        </template>
+
+        <!-- My builds -->
+        <div v-else-if="activeTab === 'mine'" class="plugins-grid" @click.self="deselectPlugin">
+          <div v-if="forgeDraft" class="plugin-card draft-card" @click="continueDraft">
+            <div class="plugin-header">
+              <div class="plugin-icon"><i class="fas fa-magic"></i></div>
+              <div class="plugin-info">
+                <h3 class="plugin-name">{{ forgeDraft.title }}</h3>
+                <span class="plugin-version">Unfinished in the Forge</span>
+              </div>
+              <div class="plugin-status"><span class="status-badge draft">Draft</span></div>
+            </div>
+            <p class="plugin-description">{{ forgeDraft.description }}</p>
+            <div class="plugin-footer">
+              <span class="meta-tag">{{ forgeDraft.detail }}</span>
+              <BaseButton variant="primary" class="btn-compact" @click.stop="continueDraft">Continue</BaseButton>
             </div>
           </div>
 
-          <p class="plugin-description">{{ plugin.description || 'No description available' }}</p>
-
-          <div class="plugin-tools" v-if="plugin.tools && plugin.tools.length">
-            <span class="tools-label">Tools:</span>
-            <div class="tools-list">
-              <span v-for="tool in plugin.tools" :key="tool.type" class="tool-badge">
-                {{ tool.schema?.title || tool.type }}
-              </span>
+          <div
+            v-for="plugin in myBuildPlugins"
+            :key="plugin.name"
+            class="plugin-card"
+            :class="{ selected: selectedPlugin?.name === plugin.name }"
+            @click="selectPlugin(plugin)"
+          >
+            <div class="plugin-header">
+              <div class="plugin-icon"><SvgIcon :name="plugin.icon || 'custom'" /></div>
+              <div class="plugin-info">
+                <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
+                <span class="plugin-version">v{{ plugin.version }}</span>
+              </div>
+              <div class="plugin-status">
+                <span v-if="publishedListingFor(plugin)" class="status-badge published">Published v{{ publishedListingFor(plugin).current_version }}</span>
+                <span v-else class="status-badge private">Only on this machine</span>
+              </div>
+            </div>
+            <p class="plugin-description">{{ plugin.description || 'No description available' }}</p>
+            <div class="plugin-footer">
+              <button class="text-link" @click.stop="openPublish(plugin)">{{ publishedListingFor(plugin) ? 'Publish update…' : 'Publish…' }}</button>
+              <BaseButton variant="secondary" class="btn-compact" @click.stop="openInForge(plugin)"><i class="fas fa-pen"></i> Open in Forge</BaseButton>
             </div>
           </div>
 
-          <div class="plugin-meta">
-            <span v-if="plugin.author" class="meta-item"> <i class="fas fa-user"></i> {{ plugin.author }} </span>
-            <span v-if="plugin.size" class="meta-item"> <i class="fas fa-file"></i> {{ formatSize(plugin.size) }} </span>
-          </div>
+          <p v-if="!forgeDraft && myBuildPlugins.length === 0" class="grid-note">
+            {{ searchQuery ? `None of your builds match “${searchQuery}”.` : 'Plugins you build in the Forge or publish show up here.' }}
+          </p>
+
+          <button class="new-card" @click="newPlugin">
+            <i class="fas fa-plus"></i>
+            <b>Build a plugin</b>
+            <span>Describe it, the Forge writes it</span>
+          </button>
         </div>
       </div>
-    </div>
+    </template>
 
-</template>    <!-- Plugin Builder Tab -->
-    <div v-if="isPro && activeTab === 'builder'" class="plugins-list">
-      <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
-    </div>
+    <!-- ═══ PUBLISH: a side sheet over whatever is open ═══ -->
+    <Teleport to="body">
+      <div v-if="publishSelectedPlugin" class="publish-scrim" @click.self="closePublish">
+        <aside class="publish-sheet" role="dialog" aria-modal="true" :aria-label="`Publish ${getDisplayName(publishSelectedPlugin)}`">
+          <header class="sheet-head">
+            <h3>{{ isUpdateMode ? 'Publish update' : 'Publish' }} · {{ getDisplayName(publishSelectedPlugin) }}</h3>
+            <button class="icon-button" aria-label="Close" @click="closePublish"><i class="fas fa-times"></i></button>
+          </header>
 
-    <!-- Pack Studio Tab — no-code ecosystem-pack composer -->
-    <div v-else-if="activeTab === 'pack-studio'" class="plugins-list">
-      <PackStudio @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
-    </div>
-
-    <!-- Publish Tab -->
-    <div v-else-if="activeTab === 'publish'" class="plugins-list">
-      <div class="publish-section">
-        <div class="publish-header">
-          <h3><i class="fas fa-cloud-upload-alt"></i> Publish to Marketplace</h3>
-          <p>Share your plugins with the AGNT community</p>
-        </div>
-
-        <!-- Select Plugin to Publish -->
-        <div class="publish-step">
-          <div class="step-header">
-            <span class="step-badge">1</span>
-            <h4>Select Plugin</h4>
-          </div>
-          <div class="plugin-select-grid">
-            <div
-              v-for="plugin in sortedInstalledPlugins"
-              :key="plugin.name"
-              class="plugin-select-card"
-              :class="{ selected: publishSelectedPlugin?.name === plugin.name }"
-              @click="selectPluginToPublish(plugin)"
-            >
-              <div class="plugin-select-icon">
-                <SvgIcon :name="plugin.icon || 'custom'" />
-              </div>
-              <div class="plugin-select-info">
-                <span class="plugin-select-name">{{ getDisplayName(plugin) }}</span>
-                <span class="plugin-select-version">
-                  v{{ plugin.version }}
-                  <span v-if="publishedListingFor(plugin)" class="published-chip">
-                    published v{{ publishedListingFor(plugin).current_version }}
-                  </span>
+          <div class="sheet-body">
+            <!-- Update mode: listing copy is edited from the marketplace panel;
+                 here we only ship the new package + changelog. -->
+            <template v-if="isUpdateMode">
+              <div class="version-summary" :class="{ blocked: !versionCanPublish }">
+                <i class="fas" :class="versionCanPublish ? 'fa-arrow-up' : 'fa-exclamation-triangle'"></i>
+                <span v-if="versionCanPublish">
+                  v{{ selectedPublishedListing.current_version }} → <b>v{{ publishSelectedPlugin.version }}</b>
                 </span>
+                <span v-else>{{ versionBlockReason }}</span>
               </div>
-              <i v-if="publishSelectedPlugin?.name === plugin.name" class="fas fa-check-circle selected-check"></i>
-            </div>
-          </div>
-          <div v-if="sortedInstalledPlugins.length === 0" class="empty-state small">
-            <i class="fas fa-puzzle-piece"></i>
-            <p>No plugins to publish. Build one first!</p>
-            <BaseButton variant="primary" size="small" @click="activeTab = 'builder'"> <i class="fas fa-magic"></i> Build Plugin </BaseButton>
-          </div>
-        </div>
-
-        <!-- Plugin Details -->
-        <div v-if="publishSelectedPlugin" class="publish-step">
-          <div class="step-header">
-            <span class="step-badge">2</span>
-            <h4>{{ isUpdateMode ? 'Release Notes' : 'Plugin Details' }}</h4>
-          </div>
-
-          <!-- Update mode: listing copy is edited from the marketplace panel;
-               here we only ship the new package + changelog. -->
-          <div v-if="isUpdateMode" class="publish-form">
-            <div class="version-summary" :class="{ blocked: !versionCanPublish }">
-              <i class="fas" :class="versionCanPublish ? 'fa-arrow-up' : 'fa-exclamation-triangle'"></i>
-              <span v-if="versionCanPublish">
-                Publishing <b>v{{ selectedPublishedListing.current_version }}</b> &rarr; <b>v{{ publishSelectedPlugin.version }}</b>
-              </span>
-              <span v-else>{{ versionBlockReason }}</span>
-            </div>
-            <div class="form-row">
-              <label>Changelog</label>
-              <textarea v-model="publishForm.changelog" placeholder="What changed in this version?" rows="3"></textarea>
-            </div>
-          </div>
-
-          <div v-else>
-          <div class="publish-form">
-            <div class="form-row">
-              <label>Display Name</label>
-              <BaseInput v-model="publishForm.displayName" placeholder="My Awesome Plugin" />
-            </div>
-            <div class="form-row">
-              <label>Description</label>
-              <textarea v-model="publishForm.description" placeholder="Describe what your plugin does..." rows="3"></textarea>
-            </div>
-            <div class="form-row">
-              <label>Category</label>
-              <BaseSelect
-                v-model="publishForm.category"
-                :options="[
-                  { value: 'integration', label: 'Integration' },
-                  { value: 'utility', label: 'Utility' },
-                  { value: 'ai', label: 'AI/ML' },
-                  { value: 'data', label: 'Data' },
-                  { value: 'communication', label: 'Communication' },
-                  { value: 'other', label: 'Other' },
-                ]"
-              />
-            </div>
-            <div class="form-row">
-              <label>Tags (comma-separated)</label>
-              <BaseInput v-model="publishForm.tags" placeholder="api, automation, productivity" />
-            </div>
-            <div class="form-row checkbox-row">
-              <label>
-                <input type="checkbox" v-model="publishForm.isFree" />
-                <span>Free Plugin</span>
+              <label class="form-row">
+                <span>Changelog</span>
+                <textarea v-model="publishForm.changelog" class="form-textarea" placeholder="What changed in this version?" rows="4"></textarea>
               </label>
-            </div>
-            <div v-if="!publishForm.isFree" class="form-row">
-              <label>Price (USD)</label>
-              <BaseInput v-model="publishForm.price" type="number" placeholder="9.99" />
-            </div>
+            </template>
 
-            <!-- Revenue Info (when price > 0) -->
-            <div v-if="!publishForm.isFree && parseFloat(publishForm.price) > 0" class="revenue-info">
-              <div class="revenue-main">
-                <i class="fas fa-info-circle"></i>
-                <span>{{ getRevenueMainText() }}</span>
+            <template v-else>
+              <div class="form-row">
+                <span>Name</span>
+                <BaseInput v-model="publishForm.displayName" placeholder="My Awesome Plugin" />
               </div>
-              <div class="revenue-comparison">{{ getRevenueComparisonText() }}</div>
-            </div>
+              <label class="form-row">
+                <span>Description</span>
+                <textarea v-model="publishForm.description" class="form-textarea" placeholder="Describe what your plugin does…" rows="3"></textarea>
+              </label>
+              <div class="form-row">
+                <span>Category</span>
+                <BaseSelect v-model="publishForm.category" :options="categoryOptions" />
+              </div>
+              <div class="form-row">
+                <span>Tags</span>
+                <BaseInput v-model="publishForm.tags" placeholder="api, automation, productivity" />
+              </div>
+              <div class="form-row">
+                <span>Price</span>
+                <div class="price-toggle" role="radiogroup">
+                  <button class="price-option" :class="{ active: publishForm.isFree }" role="radio" :aria-checked="publishForm.isFree" @click="publishForm.isFree = true">Free</button>
+                  <button class="price-option" :class="{ active: !publishForm.isFree }" role="radio" :aria-checked="!publishForm.isFree" @click="publishForm.isFree = false">Paid</button>
+                </div>
+              </div>
+              <div v-if="!publishForm.isFree" class="form-row">
+                <span>Price (USD)</span>
+                <BaseInput v-model="publishForm.price" type="number" placeholder="9.99" />
+              </div>
 
-            <!-- Stripe Connect Warning -->
-            <div v-if="!publishForm.isFree && parseFloat(publishForm.price) > 0 && !stripeConnected" class="stripe-warning">
-              <i class="fas fa-exclamation-triangle"></i>
-              <p>You need to set up Stripe Connect to sell paid plugins.</p>
-              <button type="button" class="setup-stripe-btn" @click="setupStripe">
-                <i class="fas fa-credit-card"></i>
-                Set Up Payments
-              </button>
-            </div>
-          </div>
-          </div>
-        </div>
+              <!-- Revenue Info (when price > 0) -->
+              <div v-if="!publishForm.isFree && parseFloat(publishForm.price) > 0" class="sheet-note">
+                <i class="fas fa-info-circle"></i>
+                <span>{{ getRevenueMainText() }} <span class="muted">{{ getRevenueComparisonText() }}</span></span>
+              </div>
 
-        <!-- Publish Button -->
-        <div v-if="publishSelectedPlugin" class="publish-step">
-          <div class="step-header">
-            <span class="step-badge">3</span>
-            <h4>{{ isUpdateMode ? 'Ship Update' : 'Publish' }}</h4>
-          </div>
-          <div class="publish-actions">
-            <p class="publish-note">
-              <i class="fas fa-info-circle"></i>
-              <span v-if="isUpdateMode">
-                The new package is re-scanned on upload. Users on an older version see it via plugin updates.
+              <!-- Stripe Connect Warning -->
+              <div v-if="!publishForm.isFree && parseFloat(publishForm.price) > 0 && !stripeConnected" class="sheet-note warn">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>You need Stripe Connect to sell paid plugins.</span>
+                <button class="text-link" @click="setupStripe">Set up payments</button>
+              </div>
+            </template>
+
+            <div class="checklist">
+              <b>Before you publish</b>
+              <span v-for="check in publishChecks" :key="check.label" class="check" :class="check.state">
+                <i class="fas" :class="check.state === 'ok' ? 'fa-check' : check.state === 'bad' ? 'fa-times' : 'fa-minus'"></i>
+                {{ check.label }}
               </span>
-              <span v-else>Your plugin will be reviewed before appearing in the marketplace.</span>
+            </div>
+
+            <p class="sheet-note">
+              <i class="fas fa-info-circle"></i>
+              <span v-if="isUpdateMode">The new package is re-scanned on upload. People on an older version get it as an update.</span>
+              <span v-else>Your plugin is reviewed before it appears in the marketplace.</span>
             </p>
-            <BaseButton variant="primary" @click="publishPlugin" :disabled="isPublishing || (isUpdateMode && !versionCanPublish)">
-              <i class="fas" :class="isPublishing ? 'fa-spinner fa-spin' : isUpdateMode ? 'fa-arrow-up' : 'fa-cloud-upload-alt'"></i>
-              <template v-if="isPublishing">{{ isUpdateMode ? 'Publishing update...' : 'Publishing...' }}</template>
-              <template v-else-if="isUpdateMode">Publish v{{ publishSelectedPlugin.version }}</template>
-              <template v-else>Publish to Marketplace</template>
-            </BaseButton>
           </div>
-        </div>
+
+          <footer class="sheet-foot">
+            <BaseButton class="btn-compact" variant="secondary" @click="closePublish">Cancel</BaseButton>
+            <BaseButton class="btn-compact" variant="primary" :disabled="isPublishing || !canPublish" @click="publishPlugin">
+              <i class="fas" :class="isPublishing ? 'fa-spinner fa-spin' : isUpdateMode ? 'fa-arrow-up' : 'fa-cloud-upload-alt'"></i>
+              <template v-if="isPublishing">Publishing…</template>
+              <template v-else>Publish v{{ publishSelectedPlugin.version }}</template>
+            </BaseButton>
+          </footer>
+        </aside>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Simple Modal for Confirmations -->
     <SimpleModal ref="modalRef" />
@@ -426,7 +380,18 @@ import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { checkPluginVersionPublishable } from '@/utils/pluginVersion.js';
 import { apiFetch } from '@/utils/apiFetch.js';
-import { useLicense } from '@/composables/useLicense';
+
+/** Library views; every other activeTab value is a Forge mode. */
+const LIBRARY_VIEWS = ['installed', 'marketplace', 'mine'];
+
+const CATEGORY_OPTIONS = [
+  { value: 'integration', label: 'Integration' },
+  { value: 'utility', label: 'Utility' },
+  { value: 'ai', label: 'AI/ML' },
+  { value: 'data', label: 'Data' },
+  { value: 'communication', label: 'Communication' },
+  { value: 'other', label: 'Other' },
+];
 
 /** Close an open card menu on any click that lands outside it. */
 const clickOutside = {
@@ -481,12 +446,9 @@ export default {
     const installingPlugin = ref(null);
     const uninstallingPlugin = ref(null);
     const fileInput = ref(null);
-    const isManualInstallCollapsed = ref(true);
+    const isDropping = ref(false);
+    const categoryFilter = ref(null);
     const playSound = inject('playSound', () => {});
-
-    // Plugins are now free for all users
-    const { isPremium, hasPlugins, maxPlugins } = useLicense();
-    const isPro = computed(() => true);
 
     // Publish tab state
     const publishSelectedPlugin = ref(null);
@@ -562,6 +524,131 @@ export default {
     });
 
     const selectedPlugin = computed(() => store.getters['connectors/selectedPlugin']);
+
+    // ============ Views: a library, and the Forge ============
+    //
+    // Five peer tabs used to mix browsing (Installed, Marketplace) with
+    // making (Build, Pack Studio, Publish). Browsing is now three views of
+    // one library; making is the Forge, a separate full-height screen that
+    // the library opens and returns from. Publish is a sheet, not a place.
+    const isForgeMode = computed(() => !LIBRARY_VIEWS.includes(activeTab.value));
+    const lastLibraryView = ref(LIBRARY_VIEWS.includes(activeTab.value) ? activeTab.value : 'installed');
+    watch(activeTab, (tab) => {
+      if (LIBRARY_VIEWS.includes(tab)) lastLibraryView.value = tab;
+    });
+
+    function openLibrary(view = lastLibraryView.value) {
+      activeTab.value = view;
+    }
+
+    const installedNames = computed(() => installedPlugins.value.map((plugin) => plugin.name));
+
+    const builder = computed(() => store.state.pluginBuilder || {});
+    const hasUninstalledWork = computed(() => Boolean(store.getters['pluginBuilder/hasUninstalledWork']));
+
+    /** The Forge's current draft, when it holds work that is not installed. */
+    const forgeDraft = computed(() => {
+      const state = builder.value;
+      const manifest = state.generatedManifest;
+      if (manifest && hasUninstalledWork.value) {
+        const tools = manifest.tools?.length || 0;
+        return {
+          title: getDisplayName({ name: manifest.name || 'new-plugin', displayName: manifest.displayName }),
+          description: manifest.description || state.pluginDescription || '',
+          detail: `${tools} ${tools === 1 ? 'tool' : 'tools'} · not installed`,
+        };
+      }
+      if (!manifest && state.conversation?.length) {
+        return { title: 'New plugin', description: state.pluginDescription || '', detail: 'Not generated yet' };
+      }
+      return null;
+    });
+
+    /** Installed plugins this user made: built in the Forge here, or published. */
+    const myBuildPlugins = computed(() => {
+      const built = new Set(builder.value.builtPluginNames || []);
+      const query = searchQuery.value.toLowerCase();
+      return sortedInstalledPlugins.value.filter(
+        (plugin) =>
+          (built.has(plugin.name) || publishedListingFor(plugin)) &&
+          (!query || plugin.name.toLowerCase().includes(query) || (plugin.description || '').toLowerCase().includes(query)),
+      );
+    });
+    const myBuildCount = computed(() => myBuildPlugins.value.length + (forgeDraft.value ? 1 : 0));
+
+    /** Categories the marketplace data actually carries; the row hides below two. */
+    const discoverCategories = computed(() =>
+      [...new Set(marketplacePlugins.value.map((plugin) => plugin.category).filter((value) => typeof value === 'string' && value))].sort(),
+    );
+    const discoverPlugins = computed(() =>
+      filteredMarketplacePlugins.value.filter((plugin) => !categoryFilter.value || plugin.category === categoryFilter.value),
+    );
+
+    const firstReviewPlugin = computed(() => installedPlugins.value.find((plugin) => pluginNotices.value[plugin.name]?.needsReview) || null);
+
+    const mobileTitle = computed(() => ({ installed: 'Plugins', marketplace: 'Discover', mine: 'My builds' })[activeTab.value] || 'Plugins');
+    const mobileItems = computed(() => {
+      if (activeTab.value === 'marketplace') return discoverPlugins.value;
+      if (activeTab.value === 'mine') return myBuildPlugins.value;
+      return filteredInstalledPlugins.value;
+    });
+
+    function toolCount(plugin) {
+      const count = plugin.tools?.length || 0;
+      return `${count} ${count === 1 ? 'tool' : 'tools'}`;
+    }
+
+    /**
+     * Opening the Forge for something else replaces the draft. Ask first when
+     * the draft holds work that exists nowhere else. Resolves to whether the
+     * caller may go ahead.
+     */
+    async function confirmReplaceDraft(nextLabel) {
+      if (!hasUninstalledWork.value) return true;
+      return Boolean(
+        await modalRef.value?.showModal({
+          title: 'Replace your unfinished plugin?',
+          message: `“${forgeDraft.value?.title || 'Your draft'}” has changes that are not installed. ${nextLabel} discards them.`,
+          confirmText: 'Discard draft',
+          cancelText: 'Keep it',
+          showCancel: true,
+          confirmClass: 'btn-danger',
+        }),
+      );
+    }
+
+    /** New plugin: an unfinished draft is offered back rather than silently dropped. */
+    async function newPlugin() {
+      if (forgeDraft.value) {
+        const startFresh = await modalRef.value?.showModal({
+          title: 'You have an unfinished plugin',
+          message: `Continue “${forgeDraft.value.title}”, or start a new one? Starting a new one discards it.`,
+          confirmText: 'Start new',
+          cancelText: 'Continue draft',
+          showCancel: true,
+          confirmClass: 'btn-danger',
+        });
+        if (startFresh) store.dispatch('pluginBuilder/resetAll');
+      } else if (builder.value.generatedManifest) {
+        // The Forge still shows an installed plugin; a new one starts clean.
+        store.dispatch('pluginBuilder/resetAll');
+      }
+      activeTab.value = 'builder';
+    }
+
+    function continueDraft() {
+      activeTab.value = 'builder';
+    }
+
+    async function openInForge(plugin) {
+      openMenuFor.value = null;
+      const alreadyOpen = builder.value.generatedManifest?.name === plugin.name;
+      if (!alreadyOpen && !(await confirmReplaceDraft(`Opening “${getDisplayName(plugin)}”`))) return;
+      activeTab.value = 'builder';
+      if (alreadyOpen) return;
+      const result = await store.dispatch('pluginBuilder/loadPluginForEditing', plugin.name);
+      if (!result?.success) emit('show-alert', 'Could not open plugin', result?.error || 'Its source could not be loaded.');
+    }
 
     // Stripe Connect status from store
     const stripeConnected = computed(() => store.getters['userAuth/stripeConnected'] || false);
@@ -897,18 +984,12 @@ export default {
 
     async function fetchInstalledPlugins() {
       try {
-        console.log('[Plugins] Fetching installed plugins...');
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/installed`);
+        // apiFetch, not fetch: the route is account-scoped and a bare call 401s.
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/installed`);
         const data = await response.json();
-        console.log('[Plugins] API response:', data.success, 'plugins:', data.plugins?.length);
         if (data.success) {
           // Sanitize plugin data to remove large base64 strings
-          const sanitized = (data.plugins || []).map(sanitizePluginData);
-          console.log(
-            '[Plugins] Setting installed plugins:',
-            sanitized.map((p) => p.name),
-          );
-          installedPlugins.value = sanitized;
+          installedPlugins.value = (data.plugins || []).map(sanitizePluginData);
         } else {
           console.error('[Plugins] API returned success=false:', data.error);
         }
@@ -927,7 +1008,7 @@ export default {
         }
 
         // Fetch from local backend (has full plugin manifest data with icons, tools, etc.)
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/marketplace`);
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/marketplace`);
         const data = await response.json();
         if (data.success) {
           const localPlugins = data.plugins || [];
@@ -1047,7 +1128,7 @@ export default {
 
         const validLine = report.valid
           ? ''
-          : `<br><span style="color:#ff6b6b;">⚠️ Package validation problems: ${(report.validationErrors || []).join('; ')}</span>`;
+          : `<br><span style="color:var(--color-red);">⚠️ Package validation problems: ${(report.validationErrors || []).join('; ')}</span>`;
 
         const confirmed = await modalRef.value.showModal({
           title: `Install "${getDisplayName(plugin)}" v${report.version || plugin.version || '?'}?`,
@@ -1232,9 +1313,11 @@ export default {
       event.target.value = '';
     }
 
-    async function handleFileDrop(event) {
-      const file = event.dataTransfer.files[0];
-      if (file && (file.name.endsWith('.agnt') || file.name.endsWith('.tar.gz') || file.name.endsWith('.tgz'))) {
+    async function onDrop(event) {
+      isDropping.value = false;
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (file.name.endsWith('.agnt') || file.name.endsWith('.tar.gz') || file.name.endsWith('.tgz')) {
         await uploadPluginFile(file);
       } else {
         emit('show-alert', 'Error', 'Please drop a .agnt plugin file');
@@ -1341,6 +1424,68 @@ export default {
     }
 
     // Publish functions
+    function openPublish(plugin) {
+      openMenuFor.value = null;
+      selectPluginToPublish(plugin);
+    }
+
+    /** From the Forge, which only knows the plugin's name. */
+    function openPublishByName(name) {
+      const plugin = installedPlugins.value.find((candidate) => candidate.name === name);
+      if (!plugin) {
+        emit('show-alert', 'Install it first', `"${name}" is not installed yet, so there is no package to publish.`);
+        return;
+      }
+      selectPluginToPublish(plugin);
+    }
+
+    function closePublish() {
+      if (!isPublishing.value) publishSelectedPlugin.value = null;
+    }
+
+    function closePublishOnEscape(event) {
+      if (event.key === 'Escape' && publishSelectedPlugin.value) closePublish();
+    }
+
+    /**
+     * What is known about this package before it ships. Only `bad` blocks:
+     * an untested tool is information, not a gate, because Test runs real
+     * side effects and some tools cannot be exercised safely.
+     */
+    const publishChecks = computed(() => {
+      const plugin = publishSelectedPlugin.value;
+      if (!plugin) return [];
+      const checks = [];
+      if (isUpdateMode.value) {
+        checks.push({
+          state: versionCanPublish.value ? 'ok' : 'bad',
+          label: versionCanPublish.value ? `v${plugin.version} is newer than the published version` : 'Bump the version before publishing',
+        });
+      } else {
+        const complete = Boolean(publishForm.value.displayName.trim() && publishForm.value.description.trim());
+        checks.push({ state: complete ? 'ok' : 'bad', label: complete ? 'Name and description filled in' : 'Add a name and description' });
+        if (!publishForm.value.isFree) {
+          const priced = parseFloat(publishForm.value.price) > 0;
+          checks.push({ state: priced ? 'ok' : 'bad', label: priced ? 'Price set' : 'Set a price above $0' });
+          if (priced) checks.push({ state: stripeConnected.value ? 'ok' : 'bad', label: stripeConnected.value ? 'Payments set up' : 'Set up Stripe payments' });
+        }
+      }
+      const tools = plugin.tools || [];
+      if (tools.length) {
+        const results = tools.map((tool) => store.getters['pluginBuilder/testResultFor']?.(plugin.name, tool.type)).filter(Boolean);
+        const passed = results.filter((result) => result.ok).length;
+        checks.push({
+          gate: false,
+          state: results.length === tools.length && passed === tools.length ? 'ok' : results.some((result) => !result.ok) ? 'bad' : 'unknown',
+          label: results.length ? `${passed} of ${tools.length} tools passed in Test` : 'Tools not tested this session',
+        });
+      }
+      return checks;
+    });
+
+    // A failed Test run is shown, not enforced (see publishChecks).
+    const canPublish = computed(() => publishChecks.value.every((check) => check.gate === false || check.state !== 'bad'));
+
     function selectPluginToPublish(plugin) {
       const listing = publishedListingFor(plugin);
       if (listing) {
@@ -1554,24 +1699,27 @@ export default {
         document.head.appendChild(script);
       }
 
-      if (isPro.value) {
-        refreshPlugins();
-        // Needed before the Publish tab can tell create from update.
-        fetchMyPublishedPlugins();
-        // Drives the review badge — the only thing on this screen still
-        // allowed to ask for attention.
-        loadUpdateStatus();
-      }
+      // 'publish' was a tab; it is a sheet now, so a saved value lands on the library.
+      if (activeTab.value === 'publish') activeTab.value = 'installed';
+
+      refreshPlugins();
+      // Needed before the publish sheet can tell create from update.
+      fetchMyPublishedPlugins();
+      // Drives the review badge — the only thing on this screen still
+      // allowed to ask for attention.
+      loadUpdateStatus();
 
       // Listen for realtime plugin events
       window.addEventListener('plugin-installed', handlePluginInstalled);
       window.addEventListener('plugin-uninstalled', handlePluginUninstalled);
+      window.addEventListener('keydown', closePublishOnEscape);
     });
 
     onUnmounted(() => {
       // Clean up event listeners
       window.removeEventListener('plugin-installed', handlePluginInstalled);
       window.removeEventListener('plugin-uninstalled', handlePluginUninstalled);
+      window.removeEventListener('keydown', closePublishOnEscape);
     });
 
     return { mobileView,
@@ -1589,7 +1737,7 @@ export default {
       installingPlugin,
       uninstallingPlugin,
       fileInput,
-      isManualInstallCollapsed,
+      isDropping,
       publishSelectedPlugin,
       isPublishing,
       publishForm,
@@ -1620,15 +1768,35 @@ export default {
       deselectPlugin,
       triggerFileUpload,
       handleFileSelect,
-      handleFileDrop,
+      onDrop,
       onPluginInstalled,
-      selectPluginToPublish,
+      openPublish,
+      openPublishByName,
+      closePublish,
+      publishChecks,
+      canPublish,
+      categoryOptions: CATEGORY_OPTIONS,
       publishPlugin,
       stripeConnected,
       getRevenueMainText,
       getRevenueComparisonText,
       setupStripe,
-      isPro,
+      isForgeMode,
+      openLibrary,
+      installedNames,
+      forgeDraft,
+      myBuildPlugins,
+      myBuildCount,
+      categoryFilter,
+      discoverCategories,
+      discoverPlugins,
+      firstReviewPlugin,
+      mobileTitle,
+      mobileItems,
+      toolCount,
+      newPlugin,
+      continueDraft,
+      openInForge,
     };
   },
 };
@@ -1638,271 +1806,474 @@ export default {
 .plugins-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
+  width: 100%;
 }
 
-/* PRO Badge Header */
-.plugins-header {
-  margin-bottom: 8px;
+/* The Forge owns the whole screen height so its composer is never below the fold. */
+.plugins-container.is-forge {
+  flex: 1;
+  min-height: 0;
 }
 
-.plugins-header h3 {
-  margin: 0 0 8px 0;
-  font-size: 1.5em;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* ── shared bits ── */
+.bar-spacer {
+  flex: 1;
 }
 
-.pro-badge-label {
+.crumb-back,
+.text-link,
+.icon-button {
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.crumb-back {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.5em;
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.15);
-  padding: 4px 12px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 215, 0, 0.4);
-  font-weight: 600;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
 }
 
-.subtitle {
-  margin: 0;
-  color: var(--color-light-med-navy);
-  font-size: 0.9em;
+.crumb-back:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 
-/* Locked State */
-.plugins-list.locked {
-  position: relative;
-  pointer-events: none;
-  user-select: none;
+.crumb-sep {
+  color: var(--text-quaternary);
+}
+
+.crumb-current {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.text-link {
+  padding: 0;
+  color: var(--color-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  color: var(--text-tertiary);
+}
+
+.file-input {
+  display: none;
+}
+
+/* ── pack shell ── */
+.pack-shell {
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-content: flex-start;
-  justify-content: flex-start;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.plugin-card.locked {
-  filter: grayscale(100%);
-  opacity: 0.5;
-}
-
-.locked-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 24px 32px;
-  border-radius: 12px;
-  border: 2px solid var(--color-yellow);
-  pointer-events: all;
-  z-index: 10;
-}
-
-.locked-overlay i {
-  font-size: 2.5em;
-  color: var(--color-yellow);
-  margin-bottom: 12px;
-  display: block;
-}
-
-.locked-overlay p {
-  margin: 0;
-  color: var(--text-on-scrim);
-  font-weight: 600;
-  font-size: 1.1em;
-}
-
-.controls-bar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.search-wrapper {
+  flex-direction: column;
   flex: 1;
+  min-height: 0;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.pack-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-height: 60px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.pack-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+}
+
+/* ── library header + tabs ── */
+.library-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.library-title {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+
+.library-search {
+  width: 260px;
 }
 
 .tabs {
   display: flex;
-  gap: 0;
-  border-bottom: 2px solid var(--terminal-border-color);
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 .tab {
-  background: transparent;
-  border: none;
-  padding: 12px 24px;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  font-weight: 500;
-  font-size: 0.95em;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  transition: all 0.2s ease;
+  gap: var(--spacing-sm);
+  font: inherit;
+  background: none;
+  border: none;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  margin-bottom: -1px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
 .tab:hover {
-  color: var(--color-text);
-  background: rgba(var(--green-rgb), 0.05);
+  color: var(--text-primary);
 }
 
 .tab.active {
-  color: var(--color-green);
-  border-bottom-color: var(--color-green);
+  color: var(--text-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.tab-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.review-count {
+  min-width: 18px;
+  padding: 0 var(--spacing-xs);
+  border-radius: var(--border-radius-md);
+  background: var(--fill-warning);
+  color: var(--on-fill-warning);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-align: center;
+}
+
+/* ── library body ── */
+.library-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  border-radius: var(--border-radius-lg);
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+  transition: outline-color var(--transition-fast);
+}
+
+.library-body.is-dropping {
+  outline-color: var(--color-primary);
+}
+
+.review-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-yellow) 40%, transparent);
+  background: color-mix(in srgb, var(--color-yellow) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.review-banner > i,
+.review-banner b {
+  color: var(--status-amber-text);
+}
+
+.review-action,
+.review-action:hover {
+  border-color: var(--color-yellow);
+  color: var(--status-amber-text);
+}
+
+.category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.category {
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-transform: capitalize;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.category:hover {
+  color: var(--text-primary);
+}
+
+.category.active {
+  border-color: var(--color-primary);
+  color: var(--text-primary);
 }
 
 .loading-state,
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xxl) var(--spacing-md);
+  color: var(--text-tertiary);
   text-align: center;
-  padding: 48px 24px;
-  color: var(--color-text-muted);
 }
 
 .empty-state i {
-  font-size: 3em;
-  margin-bottom: 16px;
-  opacity: 0.5;
+  font-size: var(--font-size-xxl);
+  opacity: 0.6;
 }
 
 .empty-state p {
-  margin: 0 0 16px 0;
+  margin: 0;
 }
 
-.empty-state .hint {
-  font-size: 0.9em;
-  opacity: 0.7;
-}
-
+/* ── cards ── */
 .plugins-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.grid-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
 }
 
 .plugin-card {
-  background: transparent;
-  border: 2px solid var(--terminal-border-color);
-  border-radius: 12px;
-  padding: 16px;
-  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-raised);
   cursor: pointer;
-}
-
-body.dark .plugin-card {
-  background: transparent;
-  border-color: var(--terminal-border-color);
+  transition: border-color var(--transition-fast);
 }
 
 .plugin-card:hover {
-  border-color: var(--color-green);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.1);
-  transform: translateY(-2px);
+  border-color: var(--border-strong);
 }
 
 .plugin-card.selected {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
-  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
-}
-
-button.base-button.primary.refresh {
-  padding: 7px 12px;
-  border-radius: 8px;
-}
-
-.plugin-card.installed {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.03);
+  border-color: var(--color-primary);
+  box-shadow: var(--glow-ring);
 }
 
 .plugin-header {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .plugin-icon {
-  width: 48px;
-  height: 48px;
-  background: rgba(var(--green-rgb), 0.1);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5em;
-  color: var(--color-green);
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-}
-
-.plugin-icon :deep(svg) {
-  width: 32px;
-  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
 }
 
 .plugin-info {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .plugin-name {
-  margin: 0 0 4px 0;
-  font-size: 1.1em;
-  font-weight: 600;
-  color: var(--color-text);
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plugin-version {
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-  background: rgba(127, 129, 147, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Updates surface: one chip per card, and the overflow that holds the pin. */
-.review-count {
-  background: var(--color-yellow);
-  color: var(--color-bg, #111);
-  border-radius: 10px;
-  padding: 0 7px;
-  margin-left: 6px;
-  font-size: 0.75em;
-  font-weight: 700;
+.plugin-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.plugin-description {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plugin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  min-height: 32px;
+}
+
+.meta-tag {
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-darker-0);
+  color: var(--text-secondary);
+}
+
+/* BaseButton is width:100% by design (forms); in a row it must size to its label. */
+.btn-compact {
+  width: auto;
+  flex: 0 0 auto;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+}
+
+.btn-compact.primary,
+.btn-compact.primary:hover,
+.btn-compact.primary:focus {
+  background: var(--fill-accent);
+  border-color: var(--fill-accent);
+  color: var(--on-fill-accent);
+}
+
+/* A dimmed fill still reads as live; an unavailable primary drops fill AND ink together. */
+.btn-compact.primary.is-disabled {
+  background: transparent;
+  border-color: var(--terminal-border-color);
+  color: var(--text-tertiary);
+}
+
+.footer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.new-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-height: 150px;
+  padding: var(--spacing-md);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.new-card i {
+  font-size: var(--font-size-xxl);
+  color: var(--color-primary);
+}
+
+.new-card b {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+}
+
+.new-card:hover {
+  border-color: var(--color-primary);
+  color: var(--text-secondary);
+}
+
+.draft-card {
+  border-style: dashed;
+  border-color: var(--color-secondary);
+}
+
+/* ── status chips ── */
+.status-badge,
+.notice-chip,
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.status-badge.installed {
+  color: var(--status-green-text);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.status-badge.published {
+  color: var(--status-blue-text);
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+}
+
+.status-badge.private {
+  color: var(--text-tertiary);
+  background: var(--color-darker-0);
+}
+
+.status-badge.draft {
+  color: var(--status-blue-text);
+  border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
 }
 
 .notice-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75em;
-  padding: 3px 9px;
-  border-radius: 4px;
-  white-space: nowrap;
-  border: 1px solid transparent;
-  background: rgba(127, 129, 147, 0.15);
-  color: var(--color-text-muted);
+  color: var(--text-tertiary);
+  background: var(--color-darker-0);
+  font: inherit;
+  font-size: var(--font-size-xs);
 }
 
 .notice-chip.review {
-  color: var(--color-yellow);
+  color: var(--status-amber-text);
   background: color-mix(in srgb, var(--color-yellow) 14%, transparent);
   border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent);
-  font-weight: 600;
   cursor: pointer;
 }
 
@@ -1916,7 +2287,7 @@ button.base-button.primary.refresh {
 }
 
 .notice-chip.updated {
-  color: var(--color-green);
+  color: var(--status-green-text);
   background: color-mix(in srgb, var(--color-green) 12%, transparent);
   cursor: help;
 }
@@ -1931,95 +2302,28 @@ button.base-button.primary.refresh {
   cursor: help;
 }
 
-.card-menu {
-  position: relative;
-  display: inline-flex;
-}
-
-.card-menu-btn {
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 3px 7px;
-  border-radius: 4px;
-  line-height: 1;
-}
-
-.card-menu-btn:hover {
-  color: var(--color-text);
-  background: rgba(127, 129, 147, 0.18);
-}
-
-.card-menu-items {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 20;
-  min-width: 195px;
-  padding: 4px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  /* A floating layer must OCCLUDE what it covers. --color-darker-0 is a 10%
-     tint meant for recessed wells, so it let the card read straight through
-     the menu. --color-popup is the surface token for anything that floats. */
-  background: var(--color-popup);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-}
-
-.card-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--color-text);
-  font-size: 0.85em;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.card-menu-item:hover {
-  background: rgba(127, 129, 147, 0.18);
-}
-
 /* trust system Layer 6: trust tier badge (display-only — never affects loading) */
 .trust-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75em;
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-left: 0;
-  white-space: nowrap;
+  text-transform: capitalize;
   cursor: help;
 }
 
 .trust-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: currentColor;
   flex-shrink: 0;
 }
 
-.trust-badge.trust-official {
-  color: var(--color-green);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
-}
-
+.trust-badge.trust-official,
 .trust-badge.trust-community {
-  color: var(--color-green);
+  color: var(--status-green-text);
   background: color-mix(in srgb, var(--color-green) 12%, transparent);
 }
 
 .trust-badge.trust-unverified {
-  color: var(--color-yellow);
+  color: var(--status-amber-text);
   background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
 }
 
@@ -2028,523 +2332,227 @@ button.base-button.primary.refresh {
   background: color-mix(in srgb, var(--color-red) 12%, transparent);
 }
 
-.plugin-status {
-  flex-shrink: 0;
+/* ── overflow menu ── */
+.card-menu {
+  position: relative;
+  display: inline-flex;
 }
 
-.status-badge {
-  font-size: 0.8em;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.status-badge.installed {
-  background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
-}
-
-.status-badge.paid {
-  background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
-  font-weight: 700;
-}
-
-.status-badge.free {
-  background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
-}
-
-.plugin-description {
-  font-size: 0.9em;
-  color: var(--color-text-muted);
-  margin: 0 0 12px 0;
-  line-height: 1.5;
-}
-
-.plugin-tools {
-  margin-bottom: 12px;
-  margin-top: auto;
-}
-
-.tools-label {
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-  margin-right: 8px;
-}
-
-.tools-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.tool-badge {
-  font-size: 0.8em;
-  padding: 3px 8px;
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  border-radius: 4px;
-  color: var(--color-green);
-}
-
-.plugin-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  /* margin-bottom: 12px; */
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-}
-
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.plugin-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--terminal-border-color);
-  min-height: 40px; /* Keep space if empty */
-}
-
-/* Manual Install Section */
-.manual-install-section {
-  margin-bottom: 8px;
-  padding: 20px;
-  /* background: var(--color-ultra-light-navy); */
-  border: 2px dashed var(--terminal-border-color);
-  border-radius: 12px;
-}
-
-body.dark .manual-install-section {
-  background: rgba(0, 0, 0, 10%);
-  border-color: var(--terminal-border-color);
-}
-
-.manual-install-section h4 {
-  margin: 0 0 8px 0;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.manual-install-section p {
-  margin: 0 0 16px 0;
-  color: var(--color-text-muted);
-  font-size: 0.9em;
-}
-
-.upload-area {
-  padding: 32px;
-  border: 2px dashed var(--terminal-border-color);
-  border-radius: 8px;
-  text-align: center;
+.card-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--color-text-muted);
+  line-height: 1;
 }
 
-.upload-area:hover {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
-  color: var(--color-green);
+.card-menu-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 
-.upload-area i {
-  font-size: 2em;
-  margin-bottom: 8px;
-  display: block;
+.card-menu-items {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  right: 0;
+  z-index: var(--z-index-dropdown);
+  min-width: 210px;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--color-popup);
+  box-shadow: var(--shadow-lg);
 }
 
-/* Collapsible Section */
-.manual-install-section .section-header {
+.card-menu-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
   cursor: pointer;
-  margin-bottom: 0;
 }
 
-.manual-install-section .section-header h4 {
-  margin: 0;
+.card-menu-item:hover {
+  background: var(--surface-hover);
 }
 
-.manual-install-section.collapsed {
-  padding: 16px 20px;
+.m-plugin-version {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
 }
 
-.manual-install-section.collapsed .section-header {
-  margin-bottom: 0;
-}
-
-.manual-install-section .section-content {
-  margin-top: 16px;
-}
-
-.manual-install-section .section-content p {
-  margin: 0 0 16px 0;
-}
-
-/* Already-published marker in the plugin picker */
-.published-chip {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  background: rgba(18, 224, 255, 0.12);
-  color: var(--color-blue, #12e0ff);
-  border: 1px solid rgba(18, 224, 255, 0.3);
-}
-
-/* Update-mode version banner */
-.version-summary {
+/* ── publish sheet ── */
+.publish-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-index-modal-backdrop);
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  background: rgba(25, 239, 131, 0.08);
-  border: 1px solid rgba(25, 239, 131, 0.28);
-  color: var(--color-text, #e0e0e0);
+  justify-content: flex-end;
+  background: var(--scrim);
 }
 
-.version-summary.blocked {
-  background: rgba(255, 149, 0, 0.08);
-  border-color: rgba(255, 149, 0, 0.32);
-}
-
-.version-summary i {
-  color: var(--color-green, #19ef83);
-}
-
-.version-summary.blocked i {
-  color: var(--status-amber-text);
-}
-
-/* Publish Section Styles */
-.publish-section {
+.publish-sheet {
+  width: min(460px, 100%);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--terminal-border-color);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text-primary);
 }
 
-.publish-header {
-  padding-bottom: 16px;
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
-.publish-header h3 {
-  margin: 0 0 8px 0;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.publish-header h3 i {
-  color: var(--color-green);
-}
-
-.publish-header p {
+.sheet-head h3 {
   margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.9em;
+  font-size: var(--font-size-lg);
 }
 
-.publish-step {
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  padding: 20px;
+.icon-button {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-tertiary);
 }
 
-.publish-step .step-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.publish-step .step-header h4 {
-  margin: 0;
-  color: var(--color-text);
-}
-
-.step-badge {
-  width: 28px;
-  height: 28px;
-  background: var(--color-green);
+.icon-button:hover {
+  background: var(--surface-hover);
   color: var(--text-primary);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.9em;
-  flex-shrink: 0;
 }
 
-/* Plugin Select Grid */
-.plugin-select-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.plugin-select-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: var(--color-popup);
-  border: 2px solid var(--terminal-border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.plugin-select-card:hover {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
-}
-
-.plugin-select-card.selected {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.1);
-}
-
-.plugin-select-icon {
-  width: 40px;
-  height: 40px;
-  background: rgba(var(--green-rgb), 0.1);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-green);
-  flex-shrink: 0;
-}
-
-.plugin-select-icon :deep(svg) {
-  width: 24px;
-  height: 24px;
-}
-
-.plugin-select-info {
+.sheet-body {
   flex: 1;
-  min-width: 0;
-}
-
-.plugin-select-name {
-  display: block;
-  font-weight: 500;
-  color: var(--color-text);
-  font-size: 0.9em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.plugin-select-version {
-  font-size: 0.8em;
-  color: var(--color-text-muted);
-}
-
-.selected-check {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  color: var(--color-green);
-  font-size: 1.1em;
-}
-
-/* Publish Form */
-.publish-form {
+  overflow-y: auto;
+  padding: var(--spacing-lg);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .form-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
-.form-row label {
-  font-size: 0.9em;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.form-row textarea {
-  width: 100%;
-  padding: 12px;
-  border: 2px solid var(--terminal-border-color);
-  border-radius: 8px;
+.form-textarea {
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal);
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--terminal-border-color);
   background: var(--color-darker-0);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 0.95em;
+  color: var(--text-primary);
   resize: vertical;
-  min-height: 80px;
-  transition: border-color 0.2s ease;
-}
-
-.form-row textarea:focus {
   outline: none;
-  border-color: var(--color-green);
 }
 
-.form-row textarea::placeholder {
-  color: var(--color-text-muted);
+.form-textarea:focus {
+  border-color: var(--color-primary);
 }
 
-.checkbox-row label {
+.price-toggle {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: var(--spacing-xs);
+}
+
+.price-option {
+  flex: 1;
+  font: inherit;
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
-  flex-direction: row;
 }
 
-.checkbox-row input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--color-green);
+.price-option.active {
+  border-color: var(--color-primary);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
-/* Publish Actions */
-.publish-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.publish-note {
+.version-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  color: var(--status-green-text);
+  background: color-mix(in srgb, var(--color-green) 10%, transparent);
+  font-size: var(--font-size-sm);
+}
+
+.version-summary.blocked {
+  color: var(--status-amber-text);
+  background: color-mix(in srgb, var(--color-yellow) 10%, transparent);
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-tertiary);
+}
+
+.check.ok {
+  color: var(--status-green-text);
+}
+
+.check.bad {
+  color: var(--color-red);
+}
+
+.sheet-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
   margin: 0;
-  padding: 12px 16px;
-  background: rgba(var(--green-rgb), 0.05);
-  border: 1px solid rgba(var(--green-rgb), 0.2);
-  border-radius: 8px;
-  color: var(--color-text-muted);
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
-.publish-note i {
-  color: var(--color-green);
+.sheet-note.warn > i {
+  color: var(--status-amber-text);
 }
 
-/* Empty state small variant */
-.empty-state.small {
-  padding: 24px 16px;
-}
-
-.empty-state.small i {
-  font-size: 2em;
-  margin-bottom: 12px;
-}
-
-.empty-state.small p {
-  margin: 0 0 12px 0;
-  font-size: 0.9em;
-}
-
-/* Revenue Info Styles */
-.revenue-info {
-  margin-top: 8px;
-  padding: 10px 12px;
-  background: rgba(var(--green-rgb), 0.1);
-  border-radius: 6px;
+.sheet-foot {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.revenue-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-green);
-}
-
-.revenue-main i {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.revenue-comparison {
-  font-size: 10px;
-  color: var(--color-green);
-  opacity: 0.7;
-  line-height: 1.4;
-  padding-left: 22px;
-}
-
-/* Stripe Connect Warning Styles */
-.stripe-warning {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 8px;
-  padding: 16px;
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.stripe-warning > i {
-  font-size: 20px;
-  color: var(--color-yellow);
-}
-
-.stripe-warning p {
-  font-size: 13px;
-  color: var(--color-text);
-  margin: 0;
-}
-
-.setup-stripe-btn {
-  padding: 10px 16px;
-  background: var(--color-yellow);
-  border: 1px solid var(--color-yellow);
-  color: var(--on-fill-warning);
-  font-weight: 600;
-  font-size: 13px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.setup-stripe-btn:hover {
-  background: rgba(245, 158, 11, 0.9);
-  transform: translateY(-1px);
-}
-
-.setup-stripe-btn i {
-  color: var(--color-darker-3);
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: 1px solid var(--terminal-border-color);
 }
 </style>
