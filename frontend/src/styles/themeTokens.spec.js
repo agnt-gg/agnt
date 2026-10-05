@@ -88,6 +88,8 @@ describe('theme tokens: nothing references a token that does not exist', () => {
   const RUNTIME_DEFINED = new Set([
     '--i', '--steps', '--bg-blur', '--bg-opacity', '--rotation', '--delay', '--index',
     '--progress', '--angle', '--scale', '--duration', '--x', '--y', '--w', '--h',
+    // Workflow Forge dot grid: set on #canvas-container by Canvas.updateGrid.
+    '--grid-spacing', '--grid-dot', '--grid-x', '--grid-y',
   ]);
 
   it('every var(--x) in a stylesheet resolves to a declared token', () => {
