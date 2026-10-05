@@ -3433,29 +3433,20 @@ export default {
   color: var(--color-primary);
 }
 
+/* No visible scrollbar: the conversation scrolls by wheel, keys and touch,
+   with the scroll controls for jumping. It used to force one on
+   (`overflow-y: scroll`, a 10px bar on a filled track) even with nothing to
+   scroll. Focused already did this (focused.css); now every chat does. */
 .conversation-canvas {
   flex: 1;
-  overflow-y: scroll !important;
+  overflow-y: auto !important;
   padding: 48px 16px 32px 16px;
-  scrollbar-width: thin !important;
+  scrollbar-width: none !important;
 }
 
 .conversation-canvas::-webkit-scrollbar {
-  width: 10px !important;
-  display: block !important;
-}
-
-.conversation-canvas::-webkit-scrollbar-track {
-  background: var(--color-darker-2) !important;
-}
-
-.conversation-canvas::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.4) !important;
-  border-radius: 4px;
-}
-
-.conversation-canvas::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.6) !important;
+  width: 0 !important;
+  display: none !important;
 }
 
 .conversation-container {
