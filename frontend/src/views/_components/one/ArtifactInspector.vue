@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   min-width: 0;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   color: var(--color-text)
 }
 

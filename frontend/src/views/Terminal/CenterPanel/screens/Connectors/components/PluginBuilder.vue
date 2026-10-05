@@ -1076,7 +1076,7 @@ export default {
 .tool-row {
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-md);
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   padding: var(--spacing-sm) var(--spacing-md);
   margin-bottom: var(--spacing-sm);
 }

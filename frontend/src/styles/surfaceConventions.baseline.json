@@ -46,7 +46,6 @@
   "views/Terminal/CenterPanel/screens/Connectors/components/FallbackProviders.vue": 2,
   "views/Terminal/CenterPanel/screens/Connectors/components/PackStudio/LibrarySection.vue": 1,
   "views/Terminal/CenterPanel/screens/Connectors/components/PackStudio/PackSection.vue": 6,
-  "views/Terminal/CenterPanel/screens/Connectors/components/PluginBuilder.vue": 1,
   "views/Terminal/CenterPanel/screens/Connectors/components/Webhooks.vue": 7,
   "views/Terminal/CenterPanel/screens/Dashboard/components/ActiveMissions.vue": 5,
   "views/Terminal/CenterPanel/screens/Dashboard/components/AgentActivity.vue": 3,

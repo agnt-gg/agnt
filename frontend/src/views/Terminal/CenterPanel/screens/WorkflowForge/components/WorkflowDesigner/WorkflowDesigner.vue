@@ -2874,7 +2874,7 @@ export default {
   padding: 14px 16px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   text-align: left;

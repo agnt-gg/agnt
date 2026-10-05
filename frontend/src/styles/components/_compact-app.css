@@ -559,7 +559,7 @@
   }
   body .agents-panel.has-details > .agent-details-section,
   body .goal-detail-view {
-    background:var(--color-popup) !important;
+    background:var(--color-darker-0) !important;
     isolation:isolate;
   }
   body .goal-detail-body { padding:16px; box-sizing:border-box; }

@@ -2406,7 +2406,7 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface-raised);
+  background: var(--color-popup);
   border-left: 1px solid var(--terminal-border-color);
   box-shadow: var(--shadow-overlay);
   color: var(--text-primary);

@@ -198,7 +198,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
 }
 
 .live-header {

@@ -265,7 +265,7 @@ onBeforeUnmount(() => { alive = false; detailRequest++; });
 .feature-copy button { background: none; border: 0; color: var(--text-primary); padding: 0; display: flex; align-items: center; gap: 15px; font-size: 14px; }
 .feature-art { position: relative; display: grid; place-items: center; padding: 30px; isolation: isolate; }
 .feature-orbit { position: absolute; width: 330px; height: 250px; border: 1px solid rgba(var(--primary-rgb), 0.22); border-radius: 50%; transform: rotate(-20deg); z-index: -1; }
-.feature-sheet { width: 235px; max-width: 100%; padding: 19px 21px; background: var(--surface-raised); color: var(--text-primary); border: 1px solid rgba(var(--primary-rgb), 0.18); border-radius: 10px; box-shadow: var(--shadow-lg); transform: rotate(6deg); }
+.feature-sheet { width: 235px; max-width: 100%; padding: 19px 21px; background: var(--color-popup); color: var(--text-primary); border: 1px solid rgba(var(--primary-rgb), 0.18); border-radius: 10px; box-shadow: var(--shadow-lg); transform: rotate(6deg); }
 .feature-sheet > .eyebrow { font-size: 8px; }
 .feature-sheet > strong { display: block; font-size: 22px; line-height: 1.1; font-weight: 500; overflow-wrap: anywhere; margin-top: 10px; }
 .feature-logo { margin-top: 15px; }
@@ -273,7 +273,7 @@ onBeforeUnmount(() => { alive = false; detailRequest++; });
 .feature-lines i { height: 4px; background: var(--surface-active); width: 95%; border-radius: 2px; }
 .feature-lines i:last-child { width: 65%; }
 .feature-chip { font-size: 10px; color: var(--text-secondary); border-top: 1px solid var(--apps-border); padding-top: 8px; display: block; }
-.feature-float { position: absolute; bottom: 24px; left: 12%; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--surface-raised); border: 1px solid var(--apps-border); color: var(--text-primary); font-size: 11px; border-radius: 7px; transform: rotate(-5deg); box-shadow: var(--shadow-md); }
+.feature-float { position: absolute; bottom: 24px; left: 12%; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--color-popup); border: 1px solid var(--apps-border); color: var(--text-primary); font-size: 11px; border-radius: 7px; transform: rotate(-5deg); box-shadow: var(--shadow-md); }
 .feature-float :deep(svg) { width: 15px; height: 15px; }
 .apps-section-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .apps-section-label h2 { font-size: 20px; letter-spacing: -.3px; }

@@ -53,7 +53,7 @@ function setMode(id) {
   margin-bottom: 16px;
   border-radius: 12px;
   border: 1px solid var(--terminal-border-color);
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
 }
 h3 {
   margin: 0 0 4px;

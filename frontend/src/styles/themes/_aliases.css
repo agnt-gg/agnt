@@ -54,7 +54,7 @@ body {
   --color-background-primary: var(--surface-canvas);
   --color-bg: var(--surface-canvas);
   --color-bg-secondary: var(--color-darker-0);
-  --color-bg-dark-navy: var(--surface-raised);
+  --color-bg-dark-navy: var(--color-darker-0);
   --color-background-hover: var(--surface-hover);
   /* Used as a background on 8 of 11 sites; the 3 `color:` uses were migrated
      to --on-fill-success, which is what they actually meant. */

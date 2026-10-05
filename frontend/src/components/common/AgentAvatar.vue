@@ -97,7 +97,7 @@ const avatarStyle = computed(() => {
   position: relative;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   color: var(--color-text);
   line-height: 1;
   /* The ring is the ROW's background colour, not a colour of its own: it is

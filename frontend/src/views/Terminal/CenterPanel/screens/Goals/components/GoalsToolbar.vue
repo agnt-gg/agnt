@@ -331,7 +331,7 @@ export default {
 }
 
 .sort-select {
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   color: var(--color-text);

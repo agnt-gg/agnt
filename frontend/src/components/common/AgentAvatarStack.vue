@@ -174,7 +174,7 @@ defineExpose({ ANNIE_ID });
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   color: var(--color-text-secondary);
   font-weight: 700;
   line-height: 1;

@@ -125,7 +125,7 @@ defineExpose({ tick, moreIdeas });
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .focused-starter:hover {
-  background: var(--surface-raised);
+  background: var(--surface-hover);
   border-color: rgba(var(--green-rgb), 0.3);
   box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.1);
 }

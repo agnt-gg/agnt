@@ -16,6 +16,8 @@
  *   text on an accent    -> var(--text-on-fill) / var(--on-fill-<role>)
  *   plain text           -> var(--text-primary … --text-quaternary)
  *   card / section / well-> var(--color-darker-0..3)   (house convention)
+ *   floating layer       -> var(--color-popup)  (modals, menus, dropdowns ONLY)
+ *   --surface-raised     -> removed; never reintroduce it
  *   hover / pressed      -> var(--surface-hover) / var(--surface-active)
  *   hue tint             -> rgba(var(--<hue>-rgb), a)
  *
@@ -85,7 +87,7 @@ export function inkOffenders(css, file = '<inline>') {
 // page ends up as white cards on a white canvas (AppsSection, 2026-10-05).
 const CARDISH = /(card|tile|item|section|row|shelf|setup|contents|stat)\b/i;
 const FLOATING = /menu|dropdown|popover|popup|modal|dialog|flyout|toast|tooltip|sheet|float|sticky|header|toolbar|overlay/i;
-const OPAQUE_SURFACE = /^var\(--(?:surface-raised|surface-canvas|color-(?:navy|dark-navy|ultra-dark-navy|black-navy))\)$/;
+const OPAQUE_SURFACE = /^var\(--(?:surface-canvas|color-(?:navy|dark-navy|ultra-dark-navy|black-navy))\)$/;
 const subjectOf = (sel) => sel.split(',').map((s) => s.trim().split(/[\s>+~]+/).pop()).join(',');
 
 /** Background values outside the token system. */
@@ -105,6 +107,24 @@ export function offConventionBackgrounds(css) {
   return count;
 }
 
+// --color-popup is for things that FLOAT: modals, dialogs, menus, dropdowns,
+// popovers, toasts, full-screen takeovers. A page, panel, card or detail view
+// painted with it is a popup pretending to be a surface (Goals .goal-detail-view,
+// 2026-10-05). Floating = a floating selector name, or the rule positions it.
+const FLOAT_SEL = /modal|dialog|menu|dropdown|popover|popup|tooltip|toast|flyout|palette|overlay|lightbox|picker|suggest|autocomplete|sheet|drawer|options|listbox|catalog|jump|\boption\b|^\.jp$|navigation-open|mobile-presentation|mobile-close-button|mcp-server-form|try-focused|fullscreen|full-screen/i;
+const FLOAT_BODY = /position\s*:\s*(absolute|fixed)|z-index\s*:/i;
+
+// --surface-raised was removed 2026-10-05: not part of the house system. Cards
+// and sections take --color-darker-N; floating layers take --color-popup.
+export const usesRemovedToken = (text) => /var\(\s*--surface-raised\b/.test(text);
+
+/** In-flow rules that paint a popup background. */
+export function popupOnSurface(css, file = '<inline>') {
+  return rulesOf(css)
+    .filter(({ sel, body }) => /background(?:-color)?\s*:\s*var\(--color-popup/.test(body) && !FLOAT_SEL.test(sel) && !FLOAT_BODY.test(body))
+    .map(({ sel }) => `${file}  ${sel.slice(0, 70)}  {background: var(--color-popup)} -> var(--color-darker-0)`);
+}
+
 const FILES = walk(SRC).filter((f) => !SKIP.test(rel(f)));
 
 describe('surface + ink conventions', () => {
@@ -115,6 +135,16 @@ describe('surface + ink conventions', () => {
   it('no text uses a raw hue, a pale palette name, or the canvas as ink', () => {
     const offenders = FILES.flatMap((f) => inkOffenders(styleOf(f), rel(f)));
     expect(offenders, `\nUse the role token named on each line:\n${offenders.join('\n')}\n`).toEqual([]);
+  });
+
+  it('--surface-raised is gone and stays gone', () => {
+    const offenders = FILES.filter((f) => usesRemovedToken(fs.readFileSync(f, 'utf8'))).map(rel);
+    expect(offenders, `\n--surface-raised is not a house style. Cards/sections: var(--color-darker-0). Floating: var(--color-popup).\n${offenders.join('\n')}\n`).toEqual([]);
+  });
+
+  it('--color-popup paints only floating layers, never a page, panel or card', () => {
+    const offenders = FILES.flatMap((f) => popupOnSurface(styleOf(f), rel(f)));
+    expect(offenders, `\nPopups are for floating modals and dropdowns only:\n${offenders.join('\n')}\n`).toEqual([]);
   });
 
   it('no inline style="…" attribute paints text in a raw hue either', () => {
@@ -160,7 +190,10 @@ describe('surface + ink conventions', () => {
     expect(offConventionBackgrounds('.c { background: rgba(255, 255, 255, 0.03); }')).toBe(1);
     expect(offConventionBackgrounds('.c { background: color-mix(in srgb, var(--color-green) 12%, transparent); }')).toBe(1);
     expect(offConventionBackgrounds('.c { background: var(--color-darker-0); } .t { background: rgba(var(--green-rgb), 0.1); } .f { background: var(--x, #fff); }')).toBe(0);
-    expect(offConventionBackgrounds('.apps-card { background: var(--surface-raised); }')).toBe(1);
-    expect(offConventionBackgrounds('.feature-sheet { background: var(--surface-raised); } .menu-item { background: var(--color-popup); }')).toBe(0);
+    expect(offConventionBackgrounds('.apps-card { background: var(--color-navy); }')).toBe(1);
+    expect(usesRemovedToken('.feature-sheet { background: var(--surface-raised); }')).toBe(true);
+    expect(popupOnSurface('.goal-detail-view { display: flex; background: var(--color-popup); }')).toHaveLength(1);
+    expect(popupOnSurface('.modal-content { background: var(--color-popup); } .x { position: absolute; background: var(--color-popup); }')).toHaveLength(0);
+    expect(offConventionBackgrounds('.feature-sheet { background: var(--color-popup); } .menu-item { background: var(--color-popup); }')).toBe(0);
   });
 });

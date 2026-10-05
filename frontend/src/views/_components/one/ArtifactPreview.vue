@@ -205,7 +205,7 @@ export default {
   height: min(86vh, 100%);
   display: flex;
   flex-direction: column;
-  background: var(--surface-raised);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);

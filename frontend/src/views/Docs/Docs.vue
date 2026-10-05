@@ -416,7 +416,7 @@ body[data-page='docs'] .content.markdown-body {
   max-width: 800px;
   min-height: 100%;
   /* Same inversion as .sidebar above — see note there. */
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   border-left: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }

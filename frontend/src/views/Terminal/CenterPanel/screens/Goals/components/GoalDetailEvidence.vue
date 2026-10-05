@@ -63,7 +63,7 @@ defineExpose({ previewFile, showSection, showTask });
   min-width: 0;
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   overflow: hidden;
 }
 .gd-tabs {

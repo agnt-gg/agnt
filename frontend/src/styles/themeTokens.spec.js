@@ -338,7 +338,7 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
    */
   it('the light block still declares its whole token set', () => {
     const REQUIRED = [
-      '--surface-canvas', '--surface-raised',
+      '--surface-canvas',
       '--text-primary', '--text-secondary', '--text-tertiary', '--text-quaternary',
       '--fill-accent', '--on-fill-accent',
       '--canvas-grid-dot', '--gradient-wash', '--border-strong',
@@ -466,11 +466,11 @@ describe('theme tokens: form fields are inset in every theme', () => {
   const over = (fg, bg) => (fg.a >= 0.999 ? fg.rgb : fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a)));
 
   for (const theme of ['light', 'dark']) {
-    it(`${theme}: --color-darker-0 composites DARKER than --surface-raised`, () => {
+    it(`${theme}: --color-darker-0 composites DARKER than --color-navy (the panel)`, () => {
       const map = MAPS[theme];
-      const raised = resolve('var(--surface-raised)', map);
+      const raised = resolve('var(--color-navy)', map);
       const field = resolve('var(--color-darker-0)', map);
-      expect(raised, `${theme}: --surface-raised did not resolve`).toBeTruthy();
+      expect(raised, `${theme}: --color-navy did not resolve`).toBeTruthy();
       expect(field, `${theme}: --color-darker-0 did not resolve`).toBeTruthy();
 
       expect(
@@ -484,7 +484,7 @@ describe('theme tokens: form fields are inset in every theme', () => {
 
     it(`${theme}: text on a field still clears AA`, () => {
       const map = MAPS[theme];
-      const field = over(resolve('var(--color-darker-0)', map), resolve('var(--surface-raised)', map).rgb);
+      const field = over(resolve('var(--color-darker-0)', map), resolve('var(--color-navy)', map).rgb);
       const text = resolve('var(--text-primary)', map);
       expect(text, `${theme}: --text-primary did not resolve`).toBeTruthy();
       expect(ratio(over(text, field), field)).toBeGreaterThanOrEqual(4.5);
@@ -495,7 +495,7 @@ describe('theme tokens: form fields are inset in every theme', () => {
     expect(resolve('var(--color-darker-0)', MAPS.light)).toBeTruthy();
     expect(resolve('var(--color-darker-0)', MAPS.dark)).toBeTruthy();
     // Negative control: a field that IS the raised surface must not be darker.
-    const raised = resolve('var(--surface-raised)', MAPS.light);
+    const raised = resolve('var(--color-navy)', MAPS.light);
     expect(lum(over(raised, raised.rgb))).toBe(lum(raised.rgb));
   });
 });

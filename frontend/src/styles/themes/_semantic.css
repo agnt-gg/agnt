@@ -48,7 +48,6 @@
 :root,
 body {
   --surface-canvas: var(--color-black-navy);
-  --surface-raised: var(--color-navy);
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 
@@ -267,10 +266,6 @@ body:not(.dark) {
      transfer — hence 10,407 borders currently painted the same colour as the
      page background, doing no work at all. */
   --surface-canvas: var(--color-background); /* tinted page background   */
-  --surface-raised: #ffffff; /* opaque layers only: a panel that must hide
-     what is under it. NOT for cards or sections: those take --color-darker-0,
-     the house convention on Agents/Workflows/Tools/Chat (guarded by
-     surfaceConventions.spec.js). */
   /* Wells/tracks take --color-darker-0 — see the note in the block above. */
   --surface-hover: rgba(16, 24, 40, 0.04);
   --surface-active: rgba(16, 24, 40, 0.07);
@@ -407,7 +402,6 @@ body.rose {
 /* ── DARK FAMILY ──────────────────────────────────────────────────────────── */
 body.dark {
   --surface-canvas: var(--color-black-navy);
-  --surface-raised: var(--color-navy);
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 

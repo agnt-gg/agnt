@@ -303,7 +303,7 @@ body:not(.dark) tr:last-child {
 /* ═══════════════════ PANELS & CONTAINERS ═══════════════════ */
 
 body:not(.dark) .panel-body {
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
 }
 

@@ -483,7 +483,7 @@ inner-editor-area {
   height: 100%;
   min-height: 240px;
   padding: 32px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 16px 16px 0 0;
   user-select: all;
@@ -494,7 +494,7 @@ inner-editor-area {
 
 body[data-page='terminal-chat'] inner-editor-area {
   width: calc(800px - 32px);
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   /* border-bottom: none !important; */
 }
 

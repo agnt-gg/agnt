@@ -125,7 +125,7 @@ function cancelEditing() {
   gap: 6px;
   padding: 5px 7px;
   border-bottom: 1px solid var(--terminal-border-color);
-  background: var(--color-popup);
+  background: var(--color-darker-0);
 }
 
 .nav-buttons {
