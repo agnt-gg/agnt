@@ -60,11 +60,14 @@ export class PluginAccountStore {
       // Before accounts, every account on this host could use every package. A migration
       // must not silently revoke that: a single-user desktop DB routinely holds stale and
       // test rows, and a "sole account" rule stranded whole plugin libraries.
-      const accounts = (await this.all('SELECT id FROM users WHERE id IS NOT NULL')).map(row => row.id);
+      // One set-based statement: first boot adopts every package, so per-row commits are
+      // a boot-time cost multiplied by plugins x accounts.
+      const granted = await this.run(`INSERT OR IGNORE INTO plugin_account_installs(plugin_name,user_id)
+        SELECT ?, id FROM users WHERE id IS NOT NULL`, [pluginName]);
       // No account yet: defer the decision rather than recording an ownerless verdict.
-      if (!accounts.length) return;
-      for (const account of accounts) await this.add(pluginName, account);
-      if (accounts.length === 1) await this.run('UPDATE installed_plugin_assets SET user_id=? WHERE plugin_name=? AND user_id IS NULL', [accounts[0], pluginName]);
+      if (!granted) return;
+      if (granted === 1) await this.run(`UPDATE installed_plugin_assets SET user_id=(SELECT user_id FROM plugin_account_installs WHERE plugin_name=?)
+        WHERE plugin_name=? AND user_id IS NULL`, [pluginName, pluginName]);
     }
     // Marked last, so an interrupted adoption is retried; every write above is idempotent.
     await this.run('INSERT OR IGNORE INTO plugin_account_legacy_seen(plugin_name) VALUES(?)', [pluginName]);
