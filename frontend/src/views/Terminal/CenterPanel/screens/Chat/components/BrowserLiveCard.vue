@@ -20,8 +20,8 @@
 
     It moves into the screen's fullscreen HOST (CanvasScreen's content box),
     not <body>. That box is below the top bar and beside the sidebar, so the
-    expanded browser cannot cover either, whatever the layout does. <body> is
-    only the fallback for a surface with no app chrome at all.
+    expanded browser cannot cover either, whatever the layout does. If the
+    surface has no host, keep the browser inline rather than cover app chrome.
   -->
   <Teleport :to="fullscreenHost || 'body'" :disabled="!fullscreen">
   <div
@@ -29,7 +29,7 @@
     v-show="live || showing"
     ref="cardRef"
     class="browser-live-card"
-    :class="{ 'is-fullscreen': fullscreen, 'is-window-fullscreen': fullscreen && !fullscreenHost }"
+    :class="{ 'is-fullscreen': fullscreen }"
     :role="fullscreen ? 'dialog' : undefined"
     :aria-modal="fullscreen ? 'true' : undefined"
     aria-label="Live browser"
@@ -141,7 +141,12 @@ const fullscreen = ref(false);
 const fullscreenHost = ref(null);
 
 function enterFullscreen() {
-  fullscreenHost.value = cardRef.value?.closest?.('[data-fullscreen-host]') || null;
+  const host = cardRef.value?.closest?.('[data-fullscreen-host]');
+  if (!host) {
+    console.warn('[BrowserLiveCard] No fullscreen host; keeping the browser inline.');
+    return;
+  }
+  fullscreenHost.value = host;
   fullscreen.value = true;
 }
 function exitFullscreen() { fullscreen.value = false; }
@@ -290,14 +295,11 @@ onBeforeUnmount(() => {
   border-radius: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-darkest, #0b0b14);
-}
-
-/* Fallback only: a surface with no fullscreen host has no app chrome to
-   protect, so the whole window is the right box. */
-.browser-live-card.is-window-fullscreen {
-  position: fixed;
-  z-index: 10000;
+  /* This covers live UI, not wallpaper. --color-darkest is a translucent
+     tint (10% in dark, 2.4% in light), and --color-background can inherit
+     wallpaper opacity. RGB channels retain the theme without its alpha. */
+  background: rgb(var(--color-background-rgb, 21, 21, 31));
+  -webkit-app-region: no-drag;
 }
 
 /* Exit sits at the far LEFT in fullscreen, the opposite end of the window

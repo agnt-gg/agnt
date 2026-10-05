@@ -102,11 +102,18 @@ describe('fullscreen', () => {
     expect(seen.setups).toBe(before);
   });
 
-  it('falls back to the whole window only where there is no app chrome', async () => {
-    await mountCard(true, {}, { host: null });
-    await toggle(); await flushPromises();
-    expect(card()?.parentElement).toBe(document.body);
-    expect(card().classList.contains('is-window-fullscreen')).toBe(true);
+  it('stays inline when its surface has no fullscreen host, never covering app chrome', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await mountCard(true, {}, { host: null });
+      const parent = card().parentElement;
+      await toggle(); await flushPromises();
+      expect(isFullscreen()).toBe(false);
+      expect(card().parentElement).toBe(parent);
+      expect(card().parentElement).not.toBe(document.body);
+      expect(seen.props.highQuality).toBe(false);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('fullscreen host'));
+    } finally { warning.mockRestore(); }
   });
 
   it('leaves on Escape even when the page has focus and swallows the key', async () => {
