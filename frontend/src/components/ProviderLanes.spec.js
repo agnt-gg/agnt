@@ -327,11 +327,28 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.panel-input').element.value).toBe('');
   });
 
-  it('says nothing to do when the provider is already connected', async () => {
-    const wrapper = mountLanes({ connectedIds: ['claude-code'] });
+  // Reported: a fresh install with ChatGPT already signed in had to open a
+  // drawer that said "already connected", then press "Use", then dismiss a
+  // popup. The tap on a connected tile is the whole choice.
+  it('uses an already-connected provider in one tap, with no drawer', async () => {
+    const wrapper = mountLanes({ connectedIds: ['openai-codex'] });
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.emitted('connect')).toHaveLength(1);
+    expect(wrapper.emitted('connect')[0][0].id).toBe('openai-codex');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+  });
+
+  it('still opens the drawer for a provider that is not connected', async () => {
+    const wrapper = mountLanes({ connectedIds: ['openai-codex'] });
     await openTile(wrapper, 'Claude Code');
-    expect(wrapper.text()).toContain('Already connected');
-    expect(wrapper.find('.panel-input').exists()).toBe(false);
+    expect(wrapper.emitted('connect')).toBeUndefined();
+    expect(wrapper.find('.provider-drawer').exists()).toBe(true);
+  });
+
+  it('keeps the tile of the provider in use lit, whatever its casing', () => {
+    const wrapper = mountLanes({ connectedIds: ['openai-codex', 'claude-code'], activeId: 'OpenAI-Codex' });
+    const lit = wrapper.findAll('.provider-tile.selected').map((t) => t.text().trim());
+    expect(lit).toEqual(['ChatGPT']);
   });
 
   it('never navigates away from the list to show one provider', async () => {

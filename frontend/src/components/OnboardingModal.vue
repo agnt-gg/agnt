@@ -96,28 +96,39 @@
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
               </div>
-              <h2>Connect an AI</h2>
-              <p class="subtitle">Pick whichever you already have.</p>
+              <h2>{{ providerHeading.title }}</h2>
+              <p class="subtitle">{{ providerHeading.subtitle }}</p>
 
-              <!-- ask-billing-first: this is where the plan-vs-key distinction
-                   gets taught, and where there is room to teach it. The chat
-                   card renders both lanes at once instead, because a user who
-                   hit "no model found" mid-task is not here to be taught. -->
-              <ProviderLanes
+              <!-- Nothing to decide, or one thing: the choice the store already
+                   made, shown as a fact. Continue is the only button. -->
+              <ProviderReady
+                v-if="!showProviderList"
                 :providers="allProviders"
                 :connected-ids="connectedApps"
-                :codex-status="codexStatus"
-                ask-billing-first
+                :active-id="selectedProvider || ''"
+                :checking="providerChecking"
                 @connect="handleProviderClick"
-                @submit-credential="saveApiKey"
+                @more="providerListOpen = true"
               />
 
-              <p v-if="hasAnyProviderConnected" class="hint success" style="margin-top: 16px; text-align: center">
-                Provider connected! You can add more providers later in Settings.
-              </p>
-              <p v-else class="hint" style="margin-top: 16px; text-align: center">
-                Connect at least one AI provider to power your agents and chat.
-              </p>
+              <template v-else>
+                <button v-if="selectedProvider" type="button" class="btn-text provider-back" @click="providerListOpen = false">
+                  ← Back
+                </button>
+                <!-- ask-billing-first: this is where the plan-vs-key distinction
+                     gets taught, and where there is room to teach it. The chat
+                     card renders both lanes at once instead, because a user who
+                     hit "no model found" mid-task is not here to be taught. -->
+                <ProviderLanes
+                  :providers="allProviders"
+                  :connected-ids="connectedApps"
+                  :codex-status="codexStatus"
+                  :active-id="selectedProvider || ''"
+                  ask-billing-first
+                  @connect="handleProviderClick"
+                  @submit-credential="saveApiKey"
+                />
+              </template>
             </div>
 
             <!-- Step 5: Workspace Folder -->
@@ -208,7 +219,7 @@
           <button v-if="currentStep < finalStep" @click="handleSkip" class="btn-text">Skip Tour</button>
 
           <button v-if="currentStep < finalStep" @click="nextStep" class="btn-primary">
-            {{ currentStep === totalSteps - 1 ? 'Finish' : 'Continue' }} →
+            {{ continueLabel }} →
           </button>
           <button v-else @click="complete" class="btn-primary btn-large">Start Building</button>
         </div>
@@ -218,16 +229,20 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ProviderLanes from '@/components/ProviderLanes.vue';
+import ProviderReady from '@/components/ProviderReady.vue';
 import WorkspacePicker from '@/components/WorkspacePicker.vue';
 import HarnessImport from '@/components/HarnessImport.vue';
 import { useHarnessImport } from '@/composables/useHarnessImport.js';
 import { API_CONFIG } from '@/tt.config.js';
 import {
   PROVIDER_FETCH_ACTIONS,
+  detectedSubscriptions,
+  providerLabel,
+  providerStoreName,
   resolveProviderKey,
 } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
@@ -238,6 +253,7 @@ export default {
   components: {
     SimpleModal,
     ProviderLanes,
+    ProviderReady,
     WorkspacePicker,
     HarnessImport,
   },
@@ -324,6 +340,67 @@ export default {
     // Check if at least one AI provider is connected
     const hasAnyProviderConnected = computed(() => {
       return (connectedApps.value || []).length > 0;
+    });
+
+    // The provider in use. The store picks it on first run (a subscription
+    // found on this machine, else AGNT Flash; see applyIncludedModelDefault),
+    // so this step shows a choice already made instead of asking for one.
+    const selectedProvider = computed(() => store.state.aiProvider.selectedProvider);
+    const activeProviderLabel = computed(() => {
+      const key = resolveProviderKey(selectedProvider.value || '');
+      if (!key) return '';
+      if (key === 'agnt') return 'AGNT Flash';
+      const record = allProviders.value.find((p) => resolveProviderKey(String(p.id || '')) === key);
+      return providerLabel(record || selectedProvider.value);
+    });
+    // Counted the way ProviderReady lists them: only seats with a record to show.
+    const detectedCount = computed(
+      () =>
+        detectedSubscriptions(connectedApps.value).filter((key) =>
+          allProviders.value.some((p) => resolveProviderKey(String(p.id || '')) === key),
+        ).length,
+    );
+    const connectionsSettled = computed(() => !!store.state.appAuth.connectedAppsSettled);
+
+    // "Checking" ends when the connection list and the first-run pick are in,
+    // or after CHECK_TIMEOUT_MS regardless: a list that never settles (offline,
+    // remote lane down) must not leave the user staring at a skeleton.
+    const CHECK_TIMEOUT_MS = 8000;
+    const checkTimedOut = ref(false);
+    let checkTimer = null;
+    const providerChecking = computed(
+      () => !checkTimedOut.value && (!connectionsSettled.value || !!store.state.aiProvider.firstRunDefaultPending),
+    );
+
+    // The full list (ProviderLanes): on request, or when there is no choice to
+    // show (signed out, or checking gave up with nothing selected).
+    const providerListOpen = ref(false);
+    const showProviderList = computed(
+      () => providerListOpen.value || (!providerChecking.value && !selectedProvider.value),
+    );
+
+    const providerHeading = computed(() => {
+      if (showProviderList.value) {
+        return { title: 'Choose an AI', subtitle: 'Already pay for one? Sign in and AGNT will use it.' };
+      }
+      if (providerChecking.value) {
+        return { title: 'Setting up your AI', subtitle: 'Checking for an AI you already use on this computer…' };
+      }
+      if (detectedCount.value > 1) {
+        return { title: 'Which AI should AGNT use?', subtitle: `We found ${detectedCount.value} on this computer. You can change this any time.` };
+      }
+      if (resolveProviderKey(selectedProvider.value || '') === 'agnt') {
+        return { title: "You're ready", subtitle: 'AGNT comes with its own AI, included with your account. Nothing to set up.' };
+      }
+      return { title: "You're ready", subtitle: `AGNT will use ${activeProviderLabel.value}. You can change this any time.` };
+    });
+
+    const continueLabel = computed(() => {
+      if (currentStep.value === totalSteps.value - 1) return 'Finish';
+      if (currentStepId.value === 'provider' && !showProviderList.value && !providerChecking.value && activeProviderLabel.value) {
+        return `Continue with ${activeProviderLabel.value}`;
+      }
+      return 'Continue';
     });
 
     /**
@@ -485,21 +562,7 @@ export default {
       }, 500); // 500ms debounce
     };
 
-    // Map provider ID to the correct case used in the store
-    const getProviderCase = (providerId) => {
-      const providerMap = {
-        anthropic: 'Anthropic',
-        openai: 'OpenAI',
-        'openai-codex': 'OpenAI-Codex',
-        gemini: 'Gemini',
-        grokai: 'GrokAI',
-        groq: 'Groq',
-        local: 'Local',
-        openrouter: 'OpenRouter',
-        togetherai: 'TogetherAI',
-      };
-      return providerMap[providerId.toLowerCase()] || providerId;
-    };
+    const getProviderCase = providerStoreName;
 
     const showAlert = async (title, message) => {
       await modal.value.showModal({
@@ -529,6 +592,13 @@ export default {
 
     const selectProvider = async (provider) => {
       const correctCase = getProviderCase(provider.id);
+      // Back to the ready screen, which now shows this choice as the one in use.
+      providerListOpen.value = false;
+      // Provider and model saved together in one write. The old path saved the
+      // provider beside the PREVIOUS model (e.g. OpenAI-Codex + agnt-flash).
+      if (correctCase !== 'Local' && (await store.dispatch('aiProvider/useProvider', { provider: correctCase, source: 'onboarding' }))) {
+        return;
+      }
       await store.dispatch('aiProvider/setProvider', correctCase);
 
       // Fetch models so the store auto-selects the first one
@@ -544,9 +614,10 @@ export default {
 
     const handleProviderClick = async (provider) => {
       // Local provider doesn't require authentication - just set it directly
+      // Success is shown on the step itself ("Using X"); a popup to confirm it
+      // is one more click between the user and a working chat.
       if (provider.id.toLowerCase() === 'local') {
         await selectProvider(provider);
-        await showAlert('Success', `${provider.name} provider selected successfully!`);
         return;
       }
 
@@ -560,7 +631,6 @@ export default {
       // If already connected, just select it.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.`);
         return;
       }
 
@@ -622,10 +692,6 @@ export default {
         const status = await store.dispatch('appAuth/fetchCodexStatus');
         if (status?.available && (isCliProvider || status?.apiUsable)) {
           await selectProvider(provider);
-          const readyMessage = isCliProvider
-            ? 'OpenAI Codex is already connected on this machine.'
-            : 'OpenAI Codex is already connected and API access is available.';
-          await showAlert('Provider Ready', readyMessage);
           return;
         }
 
@@ -673,8 +739,6 @@ export default {
 
           if (isReady) {
             await selectProvider(provider);
-            const successMessage = isCliProvider ? 'OpenAI Codex connected successfully.' : 'OpenAI Codex connected successfully.';
-            await showAlert('Success', successMessage);
             return;
           }
 
@@ -721,8 +785,6 @@ export default {
 
         const result = await response.json();
         if (result.success) {
-          await showAlert('Success', `API key for ${provider.name} saved successfully!`);
-
           // Update connected apps
           await store.dispatch('appAuth/fetchConnectedApps');
 
@@ -776,6 +838,8 @@ export default {
       { immediate: true },
     );
 
+    onBeforeUnmount(() => clearTimeout(checkTimer));
+
     // Fetch referrer info if has bonus
     onMounted(async () => {
       // Deliberately NOT awaited. This looks at the disk for other AI tools and
@@ -790,37 +854,19 @@ export default {
         await store.dispatch('appAuth/fetchAllProviders');
       }
 
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(() => {
+        checkTimedOut.value = true;
+      }, CHECK_TIMEOUT_MS);
+
       // Fetch connected apps to check provider status
       await store.dispatch('appAuth/fetchConnectedApps');
 
-      // Auto-select provider and model if connected but not yet selected
-      const currentProvider = store.state.aiProvider.selectedProvider;
-      const currentModel = store.state.aiProvider.selectedModel;
-      if (!currentProvider || !currentModel) {
-        const connected = (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || [];
-        if (connected.length > 0) {
-          // Find the first connected AI provider
-          const providerToSelect = connected.find((appId) => {
-            const correctCase = getProviderCase(appId);
-            return !!PROVIDER_FETCH_ACTIONS[correctCase];
-          });
-          if (providerToSelect) {
-            const correctCase = getProviderCase(providerToSelect);
-            if (!currentProvider) {
-              await store.dispatch('aiProvider/setProvider', correctCase);
-            }
-            // Fetch models to trigger auto-select of first model
-            const fetchAction = PROVIDER_FETCH_ACTIONS[correctCase];
-            if (fetchAction) {
-              try {
-                await store.dispatch(fetchAction);
-              } catch (error) {
-                console.error(`Failed to auto-fetch models for ${correctCase}:`, error);
-              }
-            }
-          }
-        }
-      }
+      // No provider is picked here. The store makes the first-run pick once
+      // the server confirms the account has no default (loadUserSettings).
+      // This used to pick too, from whatever loaded first: it lost to an
+      // earlier AGNT Flash save on fresh installs, and could overwrite an
+      // existing account's default before its settings had arrived.
 
       // Fetch workspace settings so the workspace step shows the user's
       // current root (or the platform default if they've never changed it).
@@ -876,6 +922,13 @@ export default {
       allProviders,
       connectedApps,
       codexStatus,
+      selectedProvider,
+      activeProviderLabel,
+      providerChecking,
+      providerListOpen,
+      showProviderList,
+      providerHeading,
+      continueLabel,
       currentTheme,
       availableThemes,
       workspaceRoot,
@@ -1098,6 +1151,13 @@ export default {
 .status-indicator.taken {
   background: rgba(255, 0, 0, 0.2);
   color: var(--color-red);
+}
+
+/* Provider step: the way back from the full list to the ready screen. */
+.provider-back {
+  display: block;
+  margin: 8px auto -8px;
+  padding: 6px 10px;
 }
 
 .hint {

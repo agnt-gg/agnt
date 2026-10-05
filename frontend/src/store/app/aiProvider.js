@@ -307,6 +307,33 @@ export const SUBSCRIPTION_PROVIDER_IDS = new Set([
   'cursor-cli',
 ]);
 
+/**
+ * Subscriptions a first run uses without asking, best first. Every
+ * SUBSCRIPTION_PROVIDER_IDS entry appears exactly once (pinned by
+ * aiProvider.firstRunDefault.spec.js), so a new seat cannot be silently
+ * skipped by first-run detection.
+ */
+export const FIRST_RUN_SUBSCRIPTION_ORDER = Object.freeze([
+  'openai-codex',
+  'claude-code',
+  'gemini-cli',
+  'antigravity',
+  'grok-build',
+  'cursor-cli',
+  'kimi-code',
+]);
+
+/**
+ * The subscriptions already usable on this account, in first-run order.
+ * AGNT itself is never in the result: the connectedApps getter always adds it
+ * for a signed-in account, which is exactly why "anything connected?" could
+ * never tell a ready ChatGPT seat from nothing at all.
+ */
+export function detectedSubscriptions(connectedIds = []) {
+  const connected = new Set((connectedIds || []).map((id) => String(id).toLowerCase()));
+  return FIRST_RUN_SUBSCRIPTION_ORDER.filter((id) => connected.has(id));
+}
+
 /** Accepts an id string or any provider record shape. */
 export function isSubscriptionProvider(provider) {
   const id = typeof provider === 'string' ? provider : provider?.id;
@@ -490,6 +517,20 @@ export function resolveProviderKey(identifier) {
 }
 
 // Single source of truth for AI providers that require API keys (excludes 'Local')
+/**
+ * The name the store keys a provider by ('claude-code' -> 'Claude-Code',
+ * 'cursor-cli' -> 'Cursor'), from any identifier a screen holds. Unknown ids
+ * (custom providers) come back unchanged.
+ *
+ * Replaces a hand-written map that each connect screen kept for itself. The
+ * copies drifted: onboarding's had no subscription entries at all, so picking
+ * Claude Code there fetched models under 'claude-code', a key nothing reads.
+ */
+export function providerStoreName(identifier) {
+  const key = resolveProviderKey(String(identifier || ''));
+  return BUILT_IN_PROVIDERS.find((p) => p.key === key)?.displayName || identifier;
+}
+
 export const AI_PROVIDERS_WITH_API = BUILT_IN_PROVIDERS.filter((p) => p.key !== 'local').map((p) => p.key);
 
 // Mapping of provider display names to their fetch action names (auto-generated)
@@ -784,6 +825,32 @@ const INITIAL_REASONING_VALUE = STORED_REASONING_VALUE !== 'default'
   ? STORED_REASONING_VALUE
   : (localStorage.getItem('reasoningEnabled') === 'true' ? 'on' : 'default');
 
+// One first-run decision at a time: two concurrent runs would both see "no
+// provider" and could save two different defaults.
+let _firstRunDefaultInFlight = null;
+
+/** See the applyIncludedModelDefault action. */
+async function applyFirstRunDefault({ dispatch, state, rootState, rootGetters }) {
+  if (state.selectedProvider) return;
+  if (!rootGetters['userAuth/isPremium'] && !rootGetters['userAuth/isAuthenticated']) return;
+
+  if (!rootState?.appAuth?.connectedAppsSettled) {
+    try {
+      await dispatch('appAuth/fetchConnectedApps', undefined, { root: true });
+    } catch (error) {
+      console.warn('[aiProvider] Connections unavailable for the first-run default:', error?.message || error);
+    }
+  }
+  // The user may have picked something while the list loaded; that wins.
+  if (state.selectedProvider) return;
+
+  for (const key of detectedSubscriptions(rootState?.appAuth?.connectedApps)) {
+    const provider = state.providers.find((name) => resolveProviderKey(name) === key);
+    if (provider && (await dispatch('useProvider', { provider, source: 'detected-default' }))) return;
+  }
+  await dispatch('selectAgntFlash', { source: 'included-default' });
+}
+
 const aiProviderModule = {
   namespaced: true,
   state: {
@@ -798,6 +865,9 @@ const aiProviderModule = {
     modelListing: {},
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
+    // True while the first-run default is being decided. Onboarding shows
+    // "checking" instead of an empty choice it is about to make for the user.
+    firstRunDefaultPending: false,
     reasoningValue: INITIAL_REASONING_VALUE,
     reasoningEnabled: isReasoningEnabledValue(INITIAL_REASONING_VALUE),
     customInstructions: localStorage.getItem('customInstructions') || '',
@@ -842,6 +912,9 @@ const aiProviderModule = {
       // Anything unrecognised means OFF. A typo must never enable routing.
       state.routingMode = mode === 'dynamic' ? 'dynamic' : 'static';
       localStorage.setItem('routingMode', state.routingMode);
+    },
+    SET_FIRST_RUN_DEFAULT_PENDING(state, pending) {
+      state.firstRunDefaultPending = !!pending;
     },
     SET_ROUTING_POLICY(state, policy) {
       state.routingPolicy = ['save', 'balanced', 'quality'].includes(policy) ? policy : 'balanced';
@@ -1321,17 +1394,55 @@ const aiProviderModule = {
     },
 
     /**
-     * A signed-in account with no provider chosen starts on AGNT Flash: paid
-     * plans include it, and free accounts get one-time trial credits so a first
-     * run works before any key is connected. Runs once per install (the choice
-     * is persisted like any other) and never overrides a selection the user
-     * made. When the trial is spent, models.agnt.gg says so in the chat, with
-     * the upgrade and bring-your-own-key options.
+     * The first-run default for a signed-in account with no provider chosen.
+     *
+     * 1. A subscription already usable on this machine (ChatGPT, Claude, ...)
+     *    is used as-is: the user paid for it and AGNT already found it, so
+     *    making them click through a connect screen to say so loses them.
+     * 2. Otherwise AGNT Flash: paid plans include it, and free accounts get
+     *    one-time trial credits, so a first run works before anything else is
+     *    connected.
+     *
+     * Waits for the authoritative connection list first. Picking before it
+     * arrives is how a ready ChatGPT seat lost to Flash: Flash was saved
+     * while "not connected" still only meant "not loaded yet", and from then
+     * on the account had a default nothing may replace.
+     *
+     * Only called once the server has CONFIRMED there is no default (see
+     * loadUserSettings), and never overrides a selection the user made.
      */
-    async applyIncludedModelDefault({ dispatch, state, rootGetters }) {
-      if (state.selectedProvider) return;
-      if (!rootGetters['userAuth/isPremium'] && !rootGetters['userAuth/isAuthenticated']) return;
-      await dispatch('selectAgntFlash', { source: 'included-default' });
+    async applyIncludedModelDefault(context) {
+      if (!_firstRunDefaultInFlight) {
+        context.commit('SET_FIRST_RUN_DEFAULT_PENDING', true);
+        _firstRunDefaultInFlight = applyFirstRunDefault(context).finally(() => {
+          _firstRunDefaultInFlight = null;
+          context.commit('SET_FIRST_RUN_DEFAULT_PENDING', false);
+        });
+      }
+      return _firstRunDefaultInFlight;
+    },
+
+    /**
+     * Make `provider` the saved default with its first model, in one write of
+     * the complete pair. Returns whether it switched. Unlike selectAgntFlash
+     * this is not guarded against an existing default: callers are the
+     * first-run path above (already guarded) and explicit user picks.
+     */
+    async useProvider({ dispatch, state }, { provider, source = 'provider-pick' } = {}) {
+      if (!provider) return false;
+      try {
+        await dispatch('fetchProviderModels', { provider });
+      } catch (error) {
+        console.warn(`[aiProvider] ${provider} models unavailable:`, error?.message || error);
+        return false;
+      }
+      const models = state.allModels[provider] || [];
+      const keepCurrent = state.selectedProvider === provider && models.includes(state.selectedModel);
+      const model = keepCurrent ? state.selectedModel : models[0];
+      if (!model) return false;
+      await dispatch('setProvider', { provider, persist: false });
+      await dispatch('setModel', { model, source });
+      return true;
     },
 
     /**

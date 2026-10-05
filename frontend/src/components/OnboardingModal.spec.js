@@ -110,6 +110,8 @@ describe('OnboardingModal', () => {
               { id: 'local', name: 'Local', icon: 'custom', categories: ['AI'], connectionType: 'local' },
             ],
             connectedApps: overrides.connectedApps || [],
+            // Settled by default: the state onboarding normally opens into.
+            connectedAppsSettled: overrides.connectedAppsSettled ?? true,
           },
           actions: {
             fetchAllProviders: vi.fn(),
@@ -130,9 +132,12 @@ describe('OnboardingModal', () => {
           namespaced: true,
           state: {
             currentProvider: overrides.currentProvider || null,
+            selectedProvider: overrides.selectedProvider || null,
+            firstRunDefaultPending: overrides.firstRunDefaultPending || false,
           },
           actions: {
             setProvider: vi.fn(),
+            useProvider: vi.fn(() => true),
           },
         },
       },
@@ -713,6 +718,98 @@ describe('OnboardingModal', () => {
       await flushPromises();
 
       expect(wrapper.vm.currentStep).toBe(5);
+    });
+  });
+
+  /**
+   * The provider step as a new user sees it. The store has already chosen
+   * (aiProvider.firstRunDefault.spec.js); this screen shows that choice and
+   * keeps every other option one link away.
+   */
+  describe('Provider Step: the ready screen', () => {
+    const SEATS = [
+      { id: 'openai-codex', name: 'OpenAI Codex', icon: 'openai', categories: ['AI'], connectionType: 'oauth' },
+      { id: 'claude-code', name: 'Claude Code', icon: 'anthropic', categories: ['AI'], connectionType: 'oauth' },
+      { id: 'gemini-cli', name: 'Gemini CLI', icon: 'gemini', categories: ['AI'], connectionType: 'oauth' },
+      { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
+    ];
+    const open = async (overrides) => {
+      wrapper = createWrapper({}, { allProviders: SEATS, ...overrides });
+      await goto(wrapper, 'provider');
+    };
+    const continueButton = () => wrapper.find('.modal-actions .btn-primary');
+
+    it('shows the AI found on this computer as in use, with Continue as the only action', async () => {
+      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      expect(wrapper.find('h2').text()).toBe("You're ready");
+      expect(wrapper.find('[data-testid="provider-in-use"]').text()).toContain('ChatGPT');
+      expect(continueButton().text()).toBe('Continue with ChatGPT →');
+      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(false);
+    });
+
+    it('advances with one click when an AI was found', async () => {
+      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      const step = wrapper.vm.currentStep;
+      await continueButton().trigger('click');
+      await flushPromises();
+      expect(wrapper.vm.currentStep).toBe(step + 1);
+    });
+
+    it('asks one question when several are found, with the store pick checked', async () => {
+      await open({ connectedApps: ['claude-code', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      expect(wrapper.find('h2').text()).toBe('Which AI should AGNT use?');
+      const options = wrapper.findAll('[role="radio"]');
+      expect(options.map((o) => o.text())).toEqual([expect.stringContaining('ChatGPT'), expect.stringContaining('Claude')]);
+      expect(options[0].attributes('aria-checked')).toBe('true');
+      expect(options[1].attributes('aria-checked')).toBe('false');
+    });
+
+    it('switches in one tap from the several-found question', async () => {
+      await open({ connectedApps: ['claude-code', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      await wrapper.findAll('[role="radio"]')[1].trigger('click');
+      await flushPromises();
+      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/useProvider', { provider: 'Claude-Code', source: 'onboarding' });
+    });
+
+    it('on AGNT Flash, says so and offers the subscriptions it could use instead', async () => {
+      await open({ connectedApps: ['agnt'], selectedProvider: 'AGNT' });
+      expect(wrapper.find('[data-testid="provider-in-use"]').text()).toContain('AGNT Flash');
+      expect(continueButton().text()).toBe('Continue with AGNT Flash →');
+      expect(wrapper.findAll('.pr-tile').map((t) => t.text())).toEqual([
+        expect.stringContaining('ChatGPT'),
+        expect.stringContaining('Claude'),
+        expect.stringContaining('Gemini'),
+      ]);
+    });
+
+    it('shows checking, not an empty choice, until the connection list settles', async () => {
+      await open({ connectedApps: [], connectedAppsSettled: false });
+      expect(wrapper.find('.pr-skeleton').exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(false);
+      expect(continueButton().text()).toBe('Continue →');
+    });
+
+    it('shows checking while the first-run pick is still being made', async () => {
+      await open({ connectedApps: ['openai-codex'], firstRunDefaultPending: true });
+      expect(wrapper.find('.pr-skeleton').exists()).toBe(true);
+    });
+
+    it('stops checking after a timeout, so a list that never settles cannot strand the user', async () => {
+      await open({ connectedApps: [], connectedAppsSettled: false });
+      await flushPromises();
+      vi.advanceTimersByTime(8000);
+      await flushPromises();
+      expect(wrapper.find('.pr-skeleton').exists()).toBe(false);
+      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(true);
+    });
+
+    it('opens the full list on request, and Back returns to the ready screen', async () => {
+      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      await wrapper.find('.pr-link').trigger('click');
+      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(true);
+      expect(wrapper.find('h2').text()).toBe('Choose an AI');
+      await wrapper.find('.provider-back').trigger('click');
+      expect(wrapper.find('[data-testid="provider-in-use"]').exists()).toBe(true);
     });
   });
 

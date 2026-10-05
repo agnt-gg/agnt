@@ -49,8 +49,9 @@
             :key="provider.id"
             type="button"
             class="provider-tile"
-            :class="{ connected: isConnected(provider), selected: isSelected(provider) }"
-            :aria-label="`Connect to ${label(provider)}`"
+            :class="{ connected: isConnected(provider), selected: isSelected(provider) || isActive(provider) }"
+            :aria-label="isConnected(provider) ? `Use ${label(provider)}` : `Connect to ${label(provider)}`"
+            :aria-pressed="isActive(provider)"
             :aria-expanded="isSelected(provider)"
             @click="open(provider)"
           >
@@ -104,17 +105,7 @@
 
           <p v-if="siblingWarning" class="panel-warn">{{ siblingWarning }}</p>
 
-          <template v-if="isConnected(selected)">
-            <p class="drawer-line">
-              <strong>Already connected.</strong>
-              AGNT found your {{ label(selected) }} credentials and is using them.
-            </p>
-            <button type="button" class="btn-primary panel-action" @click="$emit('connect', selected)">
-              Use {{ label(selected) }}
-            </button>
-          </template>
-
-          <template v-else-if="selectedTakesPastedKey">
+          <template v-if="selectedTakesPastedKey">
             <!-- Same field and same source as the bare password prompt this
                  replaced, on one row with the button it feeds. -->
             <div class="drawer-key">
@@ -180,6 +171,7 @@ import {
   isSubscriptionProvider,
   providerLabel,
   providerLanes,
+  resolveProviderKey,
 } from '@/store/app/aiProvider.js';
 import { CLI_PROVIDER_IDS } from '@/store/auth/appAuth.js';
 
@@ -222,6 +214,8 @@ export default {
      * connect is one click.
      */
     askBillingFirst: { type: Boolean, default: false },
+    /** The provider in use right now (any casing); its tile stays lit. */
+    activeId: { type: String, default: '' },
   },
   emits: ['connect', 'submit-credential'],
   setup(props, { emit }) {
@@ -262,6 +256,9 @@ export default {
     };
 
     const label = (provider) => providerLabel(provider);
+
+    const isActive = (provider) =>
+      !!props.activeId && resolveProviderKey(String(provider?.id || '')) === resolveProviderKey(props.activeId);
 
     /**
      * Which lane a provider is actually in — read back off the split, never
@@ -337,6 +334,14 @@ export default {
 
     const open = (provider) => {
       keyInput.value = '';
+      // Already connected: the tap IS the choice. The drawer used to open here
+      // only to say "already connected" above a "Use" button, an extra click
+      // between a user and a subscription AGNT had already found.
+      if (isConnected(provider)) {
+        selected.value = null;
+        emit('connect', provider);
+        return;
+      }
       // The lit tile is a toggle, so the drawer can be dismissed by the same
       // control that opened it.
       if (isSelected(provider)) {
@@ -384,6 +389,7 @@ export default {
       localProvider,
       isConnected,
       isSelected,
+      isActive,
       selectedLaneKey,
       selectedIsSubscription,
       selectedIsLocalCli,
@@ -777,7 +783,6 @@ export default {
   color: var(--color-text);
 }
 
-.drawer-line,
 .panel-warn,
 .panel-fine,
 .panel-instructions {
@@ -787,7 +792,6 @@ export default {
   color: var(--color-text-muted);
 }
 
-.drawer-line strong,
 .panel-fine strong {
   color: var(--color-text);
   font-weight: 600;

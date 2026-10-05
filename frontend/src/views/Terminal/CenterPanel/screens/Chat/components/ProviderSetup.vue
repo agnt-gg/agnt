@@ -20,6 +20,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import {
   PROVIDER_FETCH_ACTIONS,
+  providerStoreName,
   resolveProviderKey,
 } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
@@ -85,37 +86,7 @@ export default {
       `;
     };
 
-    // Map provider ID to the correct case used in the store
-    const getProviderCase = (providerId) => {
-      const providerMap = {
-        anthropic: 'Anthropic',
-        'claude-code': 'Claude-Code',
-        openai: 'OpenAI',
-        'openai-codex': 'OpenAI-Codex',
-        chutes: 'Chutes',
-        gemini: 'Gemini',
-        grokai: 'GrokAI',
-        groq: 'Groq',
-        local: 'Local',
-        openrouter: 'OpenRouter',
-        togetherai: 'TogetherAI',
-      };
-      return providerMap[providerId.toLowerCase()] || providerId;
-    };
-
-    /**
-     * "Already connected" is not one thing. It can mean the user connected here,
-     * or that AGNT discovered the CLI's own session on this machine. Saying which
-     * is the difference between a mysterious green light and an explained one —
-     * and it tells the user whether Disconnect will actually end that session.
-     */
-    const connectionDetail = (providerId) => {
-      const status = store.state.appAuth?.cliProviderStatuses?.[providerId];
-      if (!status?.sourceLabel) return '';
-      return status.ownedByAgnt
-        ? `\n\nSource: ${status.sourceLabel}.`
-        : `\n\nSource: ${status.sourceLabel}. AGNT is using the session your CLI created — disconnecting here removes AGNT's access, not the CLI's.`;
-    };
+    const getProviderCase = providerStoreName;
 
     const isProviderConnected = (providerId) => {
       const providerKey = resolveProviderKey(providerId);
@@ -124,6 +95,11 @@ export default {
 
     const selectProvider = async (provider) => {
       const correctCase = getProviderCase(provider.id);
+      // Provider and model saved together in one write (see useProvider).
+      if (correctCase !== 'Local' && (await store.dispatch('aiProvider/useProvider', { provider: correctCase, source: 'chat-setup' }))) {
+        emit('provider-connected', provider);
+        return;
+      }
       await store.dispatch('aiProvider/setProvider', correctCase);
 
       // Fetch models so the store auto-selects the first one
@@ -166,10 +142,10 @@ export default {
         return;
       }
 
-      // If already connected, just select it.
+      // If already connected, just select it. No "Provider Ready" popup: the
+      // card closing into a working chat is the confirmation.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.${connectionDetail(provider.id)}`);
         return;
       }
 
@@ -227,7 +203,6 @@ export default {
       // Already connected on this machine? Just select it.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.${connectionDetail(provider.id)}`);
         return;
       }
 
@@ -290,10 +265,6 @@ export default {
         const status = await store.dispatch('appAuth/fetchCodexStatus');
         if (status?.available && (isCliProvider || status?.apiUsable)) {
           await selectProvider(provider);
-          const readyMessage = isCliProvider
-            ? 'OpenAI Codex is already connected on this machine.'
-            : 'OpenAI Codex is already connected and API access is available.';
-          await showAlert('Provider Ready', `${readyMessage}${getCodexWorkdirHtml(status)}`);
           return;
         }
 
@@ -371,7 +342,6 @@ export default {
       const status = await store.dispatch('appAuth/fetchClaudeCodeStatus');
       if (status?.available && status?.apiUsable) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', 'Claude Code is already connected on this machine.');
         return;
       }
 
