@@ -18,6 +18,45 @@
  *     graph's start, top-left, where the flow begins. Ignored when `fit`.
  * @returns {{zoom:number, offsetX:number, offsetY:number} | null} null when there is nothing to centre on
  */
+/**
+ * The dot grid for the current pan/zoom, painted on the viewport itself.
+ *
+ * The dots used to be a background on a 300%-sized layer INSIDE the
+ * transformed canvas. A finite layer that scales with zoom has edges: at the
+ * 0.2 zoom floor it covered 60% of the viewport, and any long pan walked off
+ * it. Painting on the untransformed viewport and moving the pattern instead is
+ * infinite by construction.
+ *
+ * Dots sit on canvas points that are multiples of `base` (the 16px node snap
+ * grid), using the same mapping as centeredView: canvas point p lands on
+ * screen at c + o + z·(p − c). When they would crowd closer than
+ * `minSpacing` screen pixels, the step doubles (16 → 32 → 64 … canvas px),
+ * so zooming out never turns the grid into a grey wash.
+ *
+ * @returns {{ spacing:number, dot:number, x:number, y:number }} screen px:
+ *   tile size, dot radius, and the background-position that puts a dot
+ *   centre on every grid point.
+ */
+export function gridLayout({ width, height, offsetX = 0, offsetY = 0, zoom = 1, base = 16, minSpacing = 12 }) {
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  let step = base;
+  while (step * z < minSpacing) step *= 2;
+  const spacing = step * z;
+  const mod = (n) => ((n % spacing) + spacing) % spacing;
+  // Screen position of canvas point 0, then back half a tile: a radial
+  // gradient's dot sits at the centre of its tile.
+  const originX = (width / 2) * (1 - z) + offsetX;
+  const originY = (height / 2) * (1 - z) + offsetY;
+  return {
+    spacing,
+    // As before at 1x (1px, scaling up to 2px), but never below 1px when
+    // zoomed out, where a sub-pixel dot simply vanished.
+    dot: Math.max(1, Math.min(2, z)),
+    x: mod(originX - spacing / 2),
+    y: mod(originY - spacing / 2),
+  };
+}
+
 export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom = 0.2, maxZoom = 1, padding = 48, readableZoom = 0 } = {}) {
   if (!boxes?.length || !(viewport?.width > 0) || !(viewport?.height > 0)) return null;
   const minX = Math.min(...boxes.map((b) => b.x));

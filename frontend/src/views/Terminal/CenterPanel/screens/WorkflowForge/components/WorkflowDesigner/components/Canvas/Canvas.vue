@@ -1,5 +1,27 @@
 <template>
-  <div id="canvas-container" @pointerdown="onTouchStart" @pointermove="onTouchMove" @pointerup="onTouchEnd" @pointercancel="onTouchEnd" @lostpointercapture="onTouchEnd">
+  <div
+    id="canvas-container"
+    @pointerdown="onTouchStart"
+    @pointermove="onTouchMove"
+    @pointerup="onTouchEnd"
+    @pointercancel="onTouchEnd"
+    @lostpointercapture="onTouchEnd"
+    @mousedown.self.prevent="startPanning"
+    @mousemove.self="handleCanvasMouseMove"
+    @mouseup.self="handleCanvasMouseUp"
+    @click.self="handleCanvasClick"
+    @wheel.self="handleZoom"
+    @dragenter.self="handleCanvasDragEnter"
+    @dragover.self.prevent="handleCanvasDragOver"
+    @dragleave.self="handleCanvasDragLeave"
+    @drop.self="handleDrop"
+  >
+    <!-- The container always fills the viewport and is never transformed, so
+         it carries the dot grid (infinite by construction) and catches the
+         pointer anywhere the zoomed-out #canvas does not reach. `.self`: only
+         those bare areas; everything over the canvas is handled there.
+         (This comment lives INSIDE the root: one at template top level makes
+         the component a fragment, and this.$el stops being an element.) -->
     <div
       id="canvas"
       class="tiny-nodes"
@@ -76,7 +98,7 @@
 <script>
 import Node from './components/Node/Node.vue';
 import Edge from './components/Edge/Edge.vue';
-import { centeredView } from './canvasView.js';
+import { centeredView, gridLayout } from './canvasView.js';
 
 export default {
   name: 'Canvas',
@@ -159,8 +181,18 @@ export default {
       };
     },
   },
+  mounted() {
+    this.updateCanvasTransform();
+    // The grid's alignment depends on the viewport size (the transform origin
+    // is its centre), so a resize re-places it.
+    if (typeof ResizeObserver !== 'undefined') {
+      this._gridObserver = new ResizeObserver(() => this.updateGrid());
+      this._gridObserver.observe(this.$el);
+    }
+  },
   beforeUnmount() {
     this._centerObserver?.disconnect();
+    this._gridObserver?.disconnect();
   },
   methods: {
     /**
@@ -671,7 +703,26 @@ export default {
     },
     updateCanvasTransform() {
       const canvas = this.$refs.canvas;
-      canvas.style.transform = `translate(${this.canvasOffsetX}px, ${this.canvasOffsetY}px) scale(${this.zoomLevel})`;
+      if (canvas) canvas.style.transform = `translate(${this.canvasOffsetX}px, ${this.canvasOffsetY}px) scale(${this.zoomLevel})`;
+      this.updateGrid();
+    },
+    // Every pan and zoom goes through updateCanvasTransform, so the grid
+    // always moves with the canvas (canvasView.gridLayout).
+    updateGrid() {
+      const el = this.$el;
+      if (!el?.style) return;
+      const grid = gridLayout({
+        width: el.clientWidth,
+        height: el.clientHeight,
+        offsetX: this.canvasOffsetX,
+        offsetY: this.canvasOffsetY,
+        zoom: this.zoomLevel,
+        base: this.gridSize || 16,
+      });
+      el.style.setProperty('--grid-spacing', `${grid.spacing}px`);
+      el.style.setProperty('--grid-dot', `${grid.dot}px`);
+      el.style.setProperty('--grid-x', `${grid.x}px`);
+      el.style.setProperty('--grid-y', `${grid.y}px`);
     },
     selectNode(index) {
       if (this.selectedEdgeId) {
@@ -906,7 +957,17 @@ export default {
   height: 100vh;
   overflow: hidden;
   position: relative;
-  /* background-color: var(--color-bright-light-navy); */
+  /* The dot grid, on the untransformed viewport: infinite at any pan or zoom.
+     Spacing, dot size and position are set by updateGrid (gridLayout).
+     --canvas-grid-dot carries the FINAL colour and alpha (_semantic.css). */
+  background-image: radial-gradient(circle, var(--canvas-grid-dot) var(--grid-dot, 1px), transparent var(--grid-dot, 1px));
+  background-size: var(--grid-spacing, 16px) var(--grid-spacing, 16px);
+  background-position: var(--grid-x, 0px) var(--grid-y, 0px);
+  cursor: grab;
+}
+
+#canvas-container.grabbed {
+  cursor: grabbing;
 }
 
 #canvas {
@@ -918,20 +979,15 @@ export default {
   background-color: transparent;
 }
 
+/* The grab surface over the canvas. It draws nothing: the dots are on
+   #canvas-container, where they cannot run out. */
 .grid-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-size: 16px 16px;
-  /* The token carries the FINAL colour and alpha — see --canvas-grid-dot in
-     _semantic.css. `opacity` stays 1 on purpose: dimming here as well is what
-     made the dot strength a product of two numbers in two files, and left the
-     grid invisible in the light and hacker themes. */
-  background-image: radial-gradient(circle, var(--canvas-grid-dot) 1px, transparent 1px);
-  background-position: center;
-  opacity: 1;
+  background: transparent;
   z-index: 0;
   width: 300%;
   height: 300%;

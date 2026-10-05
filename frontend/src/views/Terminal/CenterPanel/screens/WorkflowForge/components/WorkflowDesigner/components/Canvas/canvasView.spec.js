@@ -1,9 +1,46 @@
 import { describe, it, expect } from 'vitest';
-import { centeredView } from './canvasView.js';
+import { centeredView, gridLayout } from './canvasView.js';
 
 // Screen position of canvas point p under translate(o) scale(z) about centre c.
 const onScreen = (p, c, o, z) => c + o + z * (p - c);
 const viewport = { width: 1000, height: 600 };
+
+// Reported: the grid's dots ran out. They were drawn on a finite (300%)
+// layer inside the zoomed canvas; at the 0.2 zoom floor (lowered from 0.5 on
+// 2026-09-25) that layer covered only 60% of the viewport.
+describe('gridLayout (the dot grid is infinite)', () => {
+  const vp = { width: 1000, height: 600 };
+  // Screen x of the dot centred in the tile at column k.
+  const dotX = (g, k) => g.x + g.spacing / 2 + k * g.spacing;
+
+  it('puts a dot on every 16px canvas point, wherever the canvas is panned or zoomed', () => {
+    for (const [zoom, offsetX] of [[1, 0], [1, 37], [0.5, -900], [2, 12345], [0.75, -3.5]]) {
+      const g = gridLayout({ ...vp, zoom, offsetX });
+      // Canvas point 0 lands on screen at c + o + z·(0 − c).
+      const origin = vp.width / 2 + offsetX - zoom * (vp.width / 2);
+      const k = Math.round((origin - dotX(g, 0)) / g.spacing);
+      expect(dotX(g, k)).toBeCloseTo(origin, 6);
+      expect(g.x).toBeGreaterThanOrEqual(0);
+      expect(g.x).toBeLessThan(g.spacing);
+    }
+  });
+
+  it('spaces dots at 16px × zoom, doubling the step instead of crowding when zoomed out', () => {
+    expect(gridLayout({ ...vp, zoom: 1 }).spacing).toBe(16);
+    expect(gridLayout({ ...vp, zoom: 2 }).spacing).toBe(32);
+    expect(gridLayout({ ...vp, zoom: 0.5 }).spacing).toBe(16); // 32 canvas px
+    expect(gridLayout({ ...vp, zoom: 0.2 }).spacing).toBeCloseTo(12.8); // 64 canvas px
+    for (const zoom of [0.2, 0.3, 0.5, 1, 2]) expect(gridLayout({ ...vp, zoom }).spacing).toBeGreaterThanOrEqual(12);
+  });
+
+  it('keeps dots visible at every zoom, and survives a bad zoom', () => {
+    expect(gridLayout({ ...vp, zoom: 1 }).dot).toBe(1);
+    expect(gridLayout({ ...vp, zoom: 0.2 }).dot).toBe(1);
+    expect(gridLayout({ ...vp, zoom: 2 }).dot).toBe(2);
+    expect(gridLayout({ ...vp, zoom: 0 }).spacing).toBe(16);
+    expect(gridLayout({ ...vp, zoom: NaN }).spacing).toBe(16);
+  });
+});
 
 describe('centeredView', () => {
   it('puts the middle of the graph at the middle of the viewport, at any zoom', () => {
