@@ -27,11 +27,22 @@ describe('Per-account plugin installation registry', () => {
     expect((await store.all('SELECT * FROM installed_plugin_assets')).length).toBe(2);
     await store.remove('pack','alice');expect(await store.has('pack','bob')).toBe(true);expect(await store.names('alice')).toEqual([]);
   });
-  it('leaves ambiguous legacy packages unassigned rather than exposing them to all users', async () => {
+  it('keeps a legacy package visible to every account that already existed, never to later accounts', async () => {
     await store.run("INSERT INTO users VALUES('alice'),('bob')");await store.adoptLegacy('old-pack');
-    expect(await store.owners('old-pack')).toEqual([]);
-    await store.run("DELETE FROM users WHERE id='bob'");await store.adoptLegacy('old-pack');
-    expect(await store.owners('old-pack')).toEqual([]);
+    expect((await store.owners('old-pack')).sort()).toEqual(['alice','bob']);
+    await store.run("INSERT INTO users VALUES('carol')");await store.adoptLegacy('old-pack');
+    expect(await store.has('old-pack','carol')).toBe(false);
+  });
+  it('adopts for the real account when the users table also holds id-less rows', async () => {
+    // Regression: a desktop DB with one account plus junk rows stranded every tool-only plugin.
+    await store.run("INSERT INTO users VALUES('nathan'),(NULL),(NULL)");await store.adoptLegacy('gmail-plugin');
+    expect(await store.owners('gmail-plugin')).toEqual(['nathan']);
+    await expect(store.assert('gmail-plugin','nathan')).resolves.toBeUndefined();
+  });
+  it('defers adoption while no account exists instead of recording an ownerless verdict', async () => {
+    await store.adoptLegacy('early-pack');expect(await store.owners('early-pack')).toEqual([]);
+    await store.run("INSERT INTO users VALUES('alice')");await store.adoptLegacy('early-pack');
+    expect(await store.owners('early-pack')).toEqual(['alice']);
   });
   it('adopts sole-account legacy packages once, but never resurrects an uninstalled entitlement', async () => {
     await store.run("INSERT INTO users VALUES('alice')");await store.adoptLegacy('old-pack');

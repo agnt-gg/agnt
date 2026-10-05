@@ -1,8 +1,9 @@
 import db, { dbReady } from '../models/database/index.js';
 
 /** Installation is an account entitlement; the executable package is only a host cache.
- * Legacy ownership comes from asset rows, or the sole existing account. Ambiguous
- * multi-account installs are never handed to whichever user happens to sign in. */
+ * Legacy ownership comes from asset rows; otherwise a pre-account package keeps the
+ * visibility it already had: every account that existed when it was first seen.
+ * Accounts created later never inherit it. */
 export class PluginAccountStore {
   constructor(database, databaseReady = Promise.resolve()) { this.db = database; this.databaseReady = databaseReady; this.initializing = null; }
   get(sql, params = []) { return new Promise((resolve, reject) => this.db.get(sql, params, (e, row) => e ? reject(e) : resolve(row))); }
@@ -55,12 +56,18 @@ export class PluginAccountStore {
   async adoptLegacy(pluginName) {
     await this.ready();
     if (await this.get('SELECT plugin_name FROM plugin_account_legacy_seen WHERE plugin_name=?', [pluginName])) return;
+    if (!(await this.owners(pluginName)).length) {
+      // Before accounts, every account on this host could use every package. A migration
+      // must not silently revoke that: a single-user desktop DB routinely holds stale and
+      // test rows, and a "sole account" rule stranded whole plugin libraries.
+      const accounts = (await this.all('SELECT id FROM users WHERE id IS NOT NULL')).map(row => row.id);
+      // No account yet: defer the decision rather than recording an ownerless verdict.
+      if (!accounts.length) return;
+      for (const account of accounts) await this.add(pluginName, account);
+      if (accounts.length === 1) await this.run('UPDATE installed_plugin_assets SET user_id=? WHERE plugin_name=? AND user_id IS NULL', [accounts[0], pluginName]);
+    }
+    // Marked last, so an interrupted adoption is retried; every write above is idempotent.
     await this.run('INSERT OR IGNORE INTO plugin_account_legacy_seen(plugin_name) VALUES(?)', [pluginName]);
-    if ((await this.owners(pluginName)).length) return;
-    const users = await this.all('SELECT id FROM users LIMIT 2');
-    if (users.length !== 1) return;
-    await this.add(pluginName, users[0].id);
-    await this.run('UPDATE installed_plugin_assets SET user_id=? WHERE plugin_name=? AND user_id IS NULL', [users[0].id, pluginName]);
   }
   async owners(pluginName) { await this.ready(); return (await this.all('SELECT user_id FROM plugin_account_installs WHERE plugin_name=?', [pluginName])).map(r => r.user_id); }
   async names(userId) { await this.ready(); if (!userId) return []; return (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [userId])).map(r => r.plugin_name); }
