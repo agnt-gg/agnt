@@ -147,18 +147,16 @@ export const settingsDirectory = [
 // The page Settings opens on: the first row of its nav (AI Models).
 export const DEFAULT_SETTINGS_SECTION = settingsDirectory[0].items[0].id;
 
-// Apps: one flat list, no "Advanced". Email and Webhooks are headline
-// features, so they sit directly under Your apps, never behind a caption.
-// A plugin and the sign-in it needs are ONE card in "Your apps"
-// (services/appCards); AI models are not apps and live in Settings › AI Models.
+// Plugins: catalog, forge and connection services share one navigation list.
+// Persisted section IDs stay unchanged; model connections live in Settings.
 export const appsDirectory = [
   {
-    "label": "Apps",
+    "label": "Plugins",
     "items": [
       {
         "id": "apps",
         "icon": "fas fa-th-large",
-        "label": "Your apps",
+        "label": "Your plugins",
         "description": "Everything you installed and connected"
       },
       {
@@ -179,14 +177,14 @@ export const appsDirectory = [
         "id": "mcp-servers",
         "icon": "fas fa-server",
         "label": "MCP Servers",
-        "description": "Apps that run as MCP servers"
+        "description": "Tools supplied by MCP servers"
       },
       {
         "id": "plugins",
         "icon": "fas fa-hammer",
-        "label": "App Forge",
+        "label": "Plugin Forge",
         "screen": "PluginsScreen",
-        "description": "Build, bundle or install an app"
+        "description": "Build, bundle or install a plugin"
       },
       {
         "id": "oauth",

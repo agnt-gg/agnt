@@ -157,12 +157,12 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
-  it('Plugins renders the shared catalog in Focused, with Studio only when explicitly requested', () => {
-    const w = mountShell('PluginsScreen');
+  it('Plugins renders the shared catalog and Plugin Forge borrows the full builder', () => {
+    const w = mountShell('ConnectorsScreen');
     expect(w.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(true);
     expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
     w.unmount();
-    const advanced = mountShell('PluginsScreen', { studio: '1' });
+    const advanced = mountShell('PluginsScreen');
     expect(advanced.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(false);
     expect(advanced.find('.focused-borrowed-bar').exists()).toBe(true);
     advanced.unmount();

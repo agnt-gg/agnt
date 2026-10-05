@@ -6,7 +6,7 @@
     :return-item="lastPlugin ? `app:${lastPlugin}` : null"
   />
   <!-- Keep the catalog mounted during sign-in, preserving search, tab and selection. -->
-  <section v-show="!providerId" class="focused-page focused-apps" aria-label="Apps">
+  <section v-show="!providerId" class="focused-page focused-apps" aria-label="Plugins">
     <AppsSection
       :selected-plugin="selectedPlugin"
       @select-app="openPlugin"

@@ -55,7 +55,7 @@ export default {
       if (!force && state.installedAt && Date.now() - state.installedAt < STALE_MS) return state.installed;
       try {
         const data = await getJson('/plugins/installed');
-        if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid installed app response');
+        if (!data.success || !Array.isArray(data.plugins)) throw new Error(data.error || 'Invalid installed plugin response');
         commit('SET_INSTALLED', data.plugins);
         commit('SET_ERROR', null);
       } catch (error) {

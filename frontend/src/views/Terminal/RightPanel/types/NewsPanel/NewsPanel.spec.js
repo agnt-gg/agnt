@@ -39,7 +39,7 @@ describe('AGNT News', () => {
     const w = mount(NewsPanel);
     const index = NEWS_ITEMS.findIndex((n) => n.id === 'mail-webhooks');
     await w.findAll('.news-item')[index].find('.news-action').trigger('click');
-    expect(push).toHaveBeenCalledWith({ path: '/connectors', query: { section: 'email-server' } });
+    expect(push).toHaveBeenCalledWith({ path: '/plugins', query: { section: 'email-server' } });
   });
 
   it('dates are calendar days, not shifted by time zone', () => {

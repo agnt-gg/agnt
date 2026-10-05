@@ -229,7 +229,7 @@ describe('createAuthGuard', () => {
     await guard(makeRoute({ path: '/settings', fullPath: '/settings?code=oauth-abc&state=xyz&scope=read+write', query, meta: {} }), {}, next);
 
     expect(next).toHaveBeenCalledOnce();
-    expect(next).toHaveBeenCalledWith({ path: '/connectors', query });
+    expect(next).toHaveBeenCalledWith({ path: '/plugins', query });
     expect(dispatchEventSpy).not.toHaveBeenCalled();
     expect(store.commit).not.toHaveBeenCalled();
   });

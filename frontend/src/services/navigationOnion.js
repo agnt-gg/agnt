@@ -52,8 +52,8 @@ export const UNLOCK_RULES = [
     id: 'apps',
     needs: ['connectedApps'],
     when: (f) => countUserConnections(f.connectedApps) > 0,
-    title: 'Apps',
-    message: 'Your first connection. Everything AGNT can use for you lives here — connect a service once and every app that uses it is on.',
+    title: 'Plugins',
+    message: 'Your first connection. Everything AGNT can use for you lives here — connect a service once and every plugin that uses it can use the connection.',
   },
   {
     id: 'artifacts',
@@ -102,7 +102,7 @@ export const UNLOCK_RULES = [
     needs: ['skills'],
     when: (f) => count(f.skills) > 0,
     title: 'Skills',
-    message: 'What your agents know how to do. Apps can bring their own.',
+    message: 'What your agents know how to do. Plugins can bring their own.',
   },
   {
     id: 'widgets',

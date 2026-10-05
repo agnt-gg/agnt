@@ -87,9 +87,9 @@ const categories = computed(() => {
 
 const categoryHeading = computed(() => {
   if (selectedCategory.value === 'All') {
-    return 'All Apps';
+    return 'All connections';
   } else {
-    return `${selectedCategory.value} Apps`;
+    return `${selectedCategory.value} connections`;
   }
 });
 

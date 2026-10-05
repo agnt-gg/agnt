@@ -1,17 +1,17 @@
 <template>
-  <section class="focused-page focused-editor" :aria-label="card ? card.name : 'App'">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Apps</button>
+  <section class="focused-page focused-editor" :aria-label="card ? card.name : 'Connection'">
+    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Plugins</button>
 
     <!-- An old link to an AI model (models are not apps). -->
     <section v-if="!card && isModelProvider" class="focused-edit-block">
       <div class="focused-edit-card">
         <div class="focused-edit-row column">
-          <span class="focused-edit-hint">AI models aren’t apps any more. Choose which model AGNT uses in Settings.</span>
+          <span class="focused-edit-hint">AI model connections live in Settings. Choose which model AGNT uses in Settings.</span>
           <button type="button" class="focused-primary" @click="nav.go({ page: 'settings' })">Open Settings</button>
         </div>
       </div>
     </section>
-    <p v-else-if="!card" class="focused-empty">{{ loading ? 'Loading…' : 'This app isn’t available.' }}</p>
+    <p v-else-if="!card" class="focused-empty">{{ loading ? 'Loading…' : 'This connection isn’t available.' }}</p>
 
     <template v-else>
       <header class="focused-edit-head">
@@ -20,8 +20,8 @@
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.status === 'ready' }">{{ STATUS_WORD[card.status] }}</span>
         </div>
-        <button type="button" class="focused-btn" @click="nav.ask(editAsk('app', card.name))">
-          <i class="fas fa-comment-dots" aria-hidden="true"></i>Ask about this app
+        <button type="button" class="focused-btn" @click="nav.ask(editAsk('connection', card.name))">
+          <i class="fas fa-comment-dots" aria-hidden="true"></i>Ask about this connection
         </button>
       </header>
 
@@ -50,7 +50,7 @@
             <span class="focused-edit-label">Sign-in</span>
             <span class="focused-edit-hint" :class="{ ok: card.status === 'ready' }">
               Uses your {{ providerName }} key, the same one your AI models use.
-              <template v-if="card.status !== 'ready'"> Add it below to turn this app on.</template>
+              <template v-if="card.status !== 'ready'"> Add it below to use this plugin.</template>
             </span>
           </div>
           <form v-if="card.status !== 'ready'" class="focused-edit-row" @submit.prevent="saveKey">
@@ -264,7 +264,7 @@ async function addSuggested() {
   try {
     const { failed } = await store.dispatch('apps/installMany', names);
     if (failed.length) error.value = `Couldn’t add ${failed.join(', ')}.`;
-    else nav.toast(names.length === 1 ? 'App added.' : `${names.length} apps added.`);
+    else nav.toast(names.length === 1 ? 'Plugin added.' : `${names.length} plugins added.`);
   } finally {
     busy.value = false;
   }

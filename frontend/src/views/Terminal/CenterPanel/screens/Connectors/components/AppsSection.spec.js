@@ -42,7 +42,7 @@ describe('Studio Apps catalog and detail', () => {
   it('shows uninstalled no-auth packages, filters, resets empty search and switches Installed', async () => {
     setup({ installed: [available[1]] }); await flushPromises();
     expect(wrapper.findAll('.apps-card')).toHaveLength(2);
-    await wrapper.find('input').setValue('nothing-matches'); expect(wrapper.text()).toContain('No matching apps');
+    await wrapper.find('input').setValue('nothing-matches'); expect(wrapper.text()).toContain('No matching plugins');
     await wrapper.find('.apps-empty button').trigger('click'); expect(wrapper.findAll('.apps-card')).toHaveLength(2);
     await wrapper.findAll('.apps-nav nav button')[1].trigger('click'); expect(wrapper.findAll('.apps-card')).toHaveLength(1);
     expect(wrapper.find('.apps-card').text()).toContain('Calculator');
@@ -61,7 +61,7 @@ describe('Studio Apps catalog and detail', () => {
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('full access'), confirmText: 'Install plugin' }));
     expect(dispatch.mock.calls.filter(([a]) => a === 'marketplace/installPlugin')).toEqual([['marketplace/installPlugin', { pluginName: 'research' }]]);
     expect(wrapper.text()).toContain('Research installed.');
-    expect(wrapper.text()).toContain('Manage installed app');
+    expect(wrapper.text()).toContain('Manage installed plugin');
   });
   it('admits only one install while an inspection is pending', async () => {
     let resolveInspection;

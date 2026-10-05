@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="builder-header">
       <div class="header-content">
-        <h3><i class="fas fa-magic"></i> AI Plugin Builder</h3>
+        <h3><i class="fas fa-magic"></i> Plugin Forge</h3>
         <p>Describe your plugin and let AI generate it for you</p>
       </div>
       <div class="header-actions">

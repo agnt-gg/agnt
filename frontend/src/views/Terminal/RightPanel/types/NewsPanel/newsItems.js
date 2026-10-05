@@ -50,7 +50,7 @@ export const NEWS_ITEMS = Object.freeze([
   {
     id: 'mail-webhooks',
     date: '2026-09-30',
-    tag: 'Apps',
+    tag: 'Plugins',
     title: 'Mail and Webhooks on every paid plan',
     body: 'Give your agents their own inbox and trigger them from any service with a webhook, included with AGNT Pro.',
     action: { label: 'Open Email Inbox', screen: 'ConnectorsScreen', opts: { section: 'email-server' } },

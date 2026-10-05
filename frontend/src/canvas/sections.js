@@ -16,12 +16,9 @@
 // The captions are three verbs a business user already does with a team:
 //   WORK  — talk to Annie, and get more from the Market.
 //   PLAN  — see what is going on: the overview, goals, what happened, files.
-//   BUILD — the things that do the work. Apps first, because an app is the
-//           box the rest arrive in: a plugin and the sign-in it needs are ONE
-//           app (services/appCards), and an app can carry agents, workflows,
-//           tools, skills and widgets. Then each of those on its own row.
-// AI models are not apps: "which model Annie thinks with" is Settings › AI
-// Models.
+//   BUILD — plugins bundle agents, workflows, tools, skills and widgets.
+//           Each capability also has its own row. Model connections live
+//           separately in Settings › AI Models.
 //
 // GROUPS. Every main section declares a `group`. Sections are rendered in
 // array order and a caption + divider is emitted whenever the group changes,
@@ -121,19 +118,16 @@ export const MAIN_SECTIONS = [
 
   // ── BUILD ── the things that do the work. This is what makes the account theirs.
   {
-    // An app is a plugin and the sign-in it needs, as ONE card: connect
-    // Google once and Gmail, Sheets, Drive … are all on. It leads BUILD
-    // because an app is the box agents, workflows, tools, skills and widgets
-    // arrive in. App Forge (PluginsScreen) is a row of the Apps sidebar
-    // (appsDirectory), listed here unlabelled only so this row stays lit on it.
+    // Plugins leads BUILD. The saved 'apps' id stays stable for user nav settings.
+    // Plugin Forge is a sidebar entry, not a toolbar tab; both share this row.
     id: 'apps',
     group: 'BUILD',
     icon: 'fas fa-cube',
-    label: 'Apps',
+    label: 'Plugins',
     badge: 'connect',
     screens: [
-      { screen: 'ConnectorsScreen', label: 'APPS' },
-      { screen: 'PluginsScreen', label: 'APP FORGE', tab: false },
+      { screen: 'ConnectorsScreen', label: 'PLUGINS' },
+      { screen: 'PluginsScreen', label: 'PLUGIN FORGE', tab: false },
     ],
   },
   {

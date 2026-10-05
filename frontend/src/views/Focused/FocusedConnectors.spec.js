@@ -85,7 +85,7 @@ describe('Focused shared plugin catalog', () => {
   });
   it('opens direct and browser-back plugin links, including packages loaded after mount', async () => {
     getters['apps/available'] = []; mountPage('app:research'); await flushPromises();
-    expect(wrapper.text()).toContain('This app isn’t available');
+    expect(wrapper.text()).toContain('This plugin isn’t available');
     getters['apps/available'] = [pack, gmail]; await flushPromises();
     expect(wrapper.find('.detail-identity h1').text()).toBe('Research');
     await wrapper.setProps({ item: 'app:gmail-plugin' }); await flushPromises();

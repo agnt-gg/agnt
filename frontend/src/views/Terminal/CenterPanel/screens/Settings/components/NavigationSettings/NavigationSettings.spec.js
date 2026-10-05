@@ -63,7 +63,7 @@ describe('Settings → Navigation', () => {
     expect(wrapper.findAll('.nav-row').at(listed.indexOf('Members')).text()).toContain('Built-in page');
     expect(members.key).toBe('virtual:teams');
     // Every BUILD row is configurable, Skills and Widgets included.
-    for (const label of ['Apps', 'Skills', 'Widgets']) expect(listed).toContain(label);
+    for (const label of ['Plugins', 'Skills', 'Widgets']) expect(listed).toContain(label);
   });
 
   it('a toggle here changes what the rail will render', () => {

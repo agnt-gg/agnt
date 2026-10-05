@@ -36,13 +36,10 @@ export const FOCUSED_PAGES = Object.freeze({
     sub: 'Everything you\u2019ve made with AGNT. Open anything to read or change it, or ask in chat.',
     icon: 'fas fa-book',
   },
-  // Apps: one card per thing you connect (services/appCards, shared with
-  // Studio). A plugin and the sign-in it needs are ONE card; AI models are not
-  // apps and live in Settings. The page id stays 'connectors' because it is
-  // the ConnectorsScreen route (focusedRoutes) and saved links use it.
+  // Both modes use the shared plugin catalog. Keep the internal page id for saved links.
   connectors: {
-    title: 'Apps',
-    sub: 'Everything AGNT can use for you. Connect a service once and every app that uses it is on. AGNT asks before sending, buying or changing anything.',
+    title: 'Plugins',
+    sub: 'Browse and install plugins. See their agents, tools, workflows, widgets and skills, and connect the accounts they need.',
     icon: 'fas fa-cube',
   },
   scheduled: {

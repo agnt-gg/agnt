@@ -10,14 +10,15 @@
     @base-mounted="initializeScreen"
   >
     <template #default>
-      <MobileDirectory v-if="mobileView" v-show="mobileDirectoryOpen" title="Apps" view-id="apps" :groups="appsDirectory" @select="mobileSelectSection" />
+      <MobileDirectory v-if="mobileView" v-show="mobileDirectoryOpen" title="Plugins" view-id="apps" :groups="appsDirectory" @select="mobileSelectSection" />
       <div v-show="!mobileView || !mobileDirectoryOpen" class="mobile-section-body">
-      <button v-if="mobileView" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Apps</button>
-      <!-- Your apps: one card per thing you connect (services/appCards). The
-           default view. AI models are not apps; they live in Settings › AI
-           Models, and ?section=providers is redirected there (showSection). -->
+      <button v-if="mobileView" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Plugins</button>
+      <!-- Plugin catalog shared by both modes. Model credentials stay in Settings. -->
       <div v-if="activeSection === 'apps'" class="connectors-content">
         <AppsSection
+          :selected-plugin="selectedCatalogPlugin"
+          @select-app="openCatalogPlugin"
+          @close-app="closeCatalogPlugin"
           @connect="connectAppCard"
           @reconnect="reconnectAppCard"
           @disconnect="disconnectAppCard"
@@ -868,6 +869,18 @@ export default {
     const store = useStore();
     const route = useRoute();
     const router = useRouter();
+    // /plugins is the catalog in both modes. Saved app: links remain readable.
+    const selectedCatalogPlugin = computed(() => {
+      const value = Array.isArray(route.query.select) ? route.query.select[0] : route.query.select;
+      const match = typeof value === 'string' && value.match(/^(?:plugin|app):(.+)$/);
+      return match ? match[1] : null;
+    });
+    function openCatalogPlugin(name) {
+      emit('screen-change', 'ConnectorsScreen', { section: 'apps', select: { kind: 'plugin', id: name } });
+    }
+    function closeCatalogPlugin() {
+      if (selectedCatalogPlugin.value) emit('screen-change', 'ConnectorsScreen', { section: 'apps' });
+    }
     const baseScreenRef = ref(null);
     const mobileView = inject('isMobile', ref(false));
     const mobileDirectoryOpen = ref(!route?.query?.section);
@@ -1812,6 +1825,23 @@ export default {
       { immediate: true },
     );
 
+    // Route-driven details must work after a same-screen navigation and on reload,
+    // not only after initializeScreen. Keep the sidebar in sync as well.
+    watch([() => route.query.section, selectedCatalogPlugin], ([section, plugin]) => {
+      if (plugin) {
+        mobileDirectoryOpen.value = false;
+        setInnerSection('apps');
+        showSection('apps');
+      } else if (typeof section === 'string' && section) {
+        mobileDirectoryOpen.value = false;
+        setInnerSection(section === 'api-keys' ? 'oauth' : section);
+        showSection(section);
+      } else {
+        setInnerSection('apps');
+        showSection('apps');
+      }
+    }, { immediate: true });
+
     function handlePanelAction(action, payload) {
       if (action === 'save') {
         saveSecret();
@@ -2453,6 +2483,9 @@ export default {
       showAlert,
       terminalLines,
       activeSection,
+      selectedCatalogPlugin,
+      openCatalogPlugin,
+      closeCatalogPlugin,
       tableColumns,
       filteredSecrets,
       selectSecret,

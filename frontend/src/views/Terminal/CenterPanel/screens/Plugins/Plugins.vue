@@ -28,9 +28,9 @@
            panel on the right. Carried over from Connectors unchanged. -->
       <div class="plugins-content" @click="handlePluginAreaClick">
         <div v-if="!mobileView" class="content-header">
-          <h2 class="content-title">My Plugins</h2>
+          <h2 class="content-title">Plugin Forge</h2>
           <p class="content-subtitle">
-            Extend AGNT with community plugins. Install tools like Discord, Slack, GitHub and more without bloating your app.
+            Build, bundle and manage plugins for AGNT.
           </p>
         </div>
         <div class="plugins-grid">

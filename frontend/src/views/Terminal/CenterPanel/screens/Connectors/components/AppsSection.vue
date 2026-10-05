@@ -3,12 +3,12 @@
   <div class="apps-studio">
     <SimpleModal ref="modal" />
     <div class="apps-nav">
-      <nav aria-label="App library">
+      <nav aria-label="Plugin library">
         <button type="button" :class="{ active: tab === 'explore' }" @click="switchTab('explore')">Explore</button>
         <button type="button" :class="{ active: tab === 'installed' }" @click="switchTab('installed')">Installed <span>{{ installedCount }}</span></button>
       </nav>
       <div class="apps-nav-actions">
-        <button type="button" @click="emit('build-app')"><AppsIcon name="plus" /> New app</button>
+        <button type="button" @click="emit('build-app')"><AppsIcon name="plus" /> New plugin</button>
         <button type="button" @click="emit('add-account')">Custom sign-in</button>
       </div>
     </div>
@@ -17,64 +17,64 @@
     <p v-if="notice" class="apps-notice" role="status">{{ notice }}</p>
 
     <div v-if="selectedName && !selected" class="apps-empty" role="status">
-      <h2>{{ loading ? 'Loading app…' : 'This app isn’t available' }}</h2>
-      <p v-if="!loading">It may no longer be in the catalog. Your other apps are still here.</p>
-      <button type="button" class="apps-secondary" @click="closePlugin">All apps</button>
+      <h2>{{ loading ? 'Loading plugin…' : 'This plugin isn’t available' }}</h2>
+      <p v-if="!loading">It may no longer be in the catalog. Your other plugins are still here.</p>
+      <button type="button" class="apps-secondary" @click="closePlugin">All plugins</button>
     </div>
     <template v-else-if="!selected">
       <div class="apps-heading">
-        <div><h1>A little more capable.</h1><p>Good tools. Great agents. Find your next app.</p></div>
-        <label class="apps-search"><AppsIcon name="search" /><input v-model="query" type="search" placeholder="Search apps" aria-label="Search apps" /></label>
+        <div><h1>A little more capable.</h1><p>Good tools. Great agents. Find your next plugin.</p></div>
+        <label class="apps-search"><AppsIcon name="search" /><input v-model="query" type="search" placeholder="Search plugins" aria-label="Search plugins" /></label>
       </div>
       <div class="apps-toolbar">
         <div class="apps-categories" aria-label="Categories">
           <button v-for="name in categories" :key="name" type="button" :aria-pressed="category === name" :class="{ active: category === name }" @click="category = name">{{ name }}</button>
         </div>
-        <span>{{ filtered.length }} apps</span>
+        <span>{{ filtered.length }} {{ filtered.length === 1 ? 'plugin' : 'plugins' }}</span>
       </div>
 
-      <section v-if="featured && !query && category === 'All apps' && tab === 'explore'" class="apps-feature">
-        <div class="feature-copy"><span class="eyebrow">{{ featured.isPack ? 'MADE TO WORK TOGETHER' : 'EXTEND YOUR TOOLKIT' }}</span><h2>{{ featured.displayName }}.<br>A little more possibility.</h2><p>{{ featured.description || 'Explore what this app brings to AGNT.' }}</p><button type="button" @click="openPlugin(featured)">Explore {{ featured.isPack ? 'the pack' : 'the app' }} <AppsIcon name="arrow" /></button></div>
+      <section v-if="featured && !query && category === 'All plugins' && tab === 'explore'" class="apps-feature">
+        <div class="feature-copy"><span class="eyebrow">{{ featured.isPack ? 'MADE TO WORK TOGETHER' : 'EXTEND YOUR TOOLKIT' }}</span><h2>{{ featured.displayName }}.<br>A little more possibility.</h2><p>{{ featured.description || 'Explore what this plugin brings to AGNT.' }}</p><button type="button" @click="openPlugin(featured)">Explore {{ featured.isPack ? 'the pack' : 'the plugin' }} <AppsIcon name="arrow" /></button></div>
         <div class="feature-art" aria-hidden="true"><div class="feature-orbit"></div><div class="feature-sheet"><span class="eyebrow">YOUR NEXT CAPABILITY</span><span class="app-logo feature-logo"><SvgIcon :name="featured.icon || 'puzzle-piece'" /></span><strong>{{ featured.displayName }}</strong><div class="feature-lines"><i></i><i></i></div><span class="feature-chip">{{ composition(featured) }}</span></div><span class="feature-float"><AppsIcon name="plugin" /> Built for AGNT</span></div>
       </section>
 
-      <div class="apps-section-label"><h2>{{ tab === 'installed' ? 'Installed apps' : category }}</h2><span>Pick a capability. Make it yours.</span></div>
-      <p v-if="loading && !catalog.length" class="apps-empty" role="status">Loading apps…</p>
-      <div v-else-if="!filtered.length" class="apps-empty"><AppsIcon name="search" /><h2>{{ query ? 'No matching apps' : 'No apps here yet' }}</h2><p>{{ query ? 'Try another name or category.' : 'Explore the catalog to add your first app.' }}</p><button type="button" class="apps-secondary" @click="resetFilters">{{ query ? 'Clear filters' : 'Explore apps' }}</button></div>
+      <div class="apps-section-label"><h2>{{ tab === 'installed' ? 'Installed plugins' : category }}</h2><span>Pick a capability. Make it yours.</span></div>
+      <p v-if="loading && !catalog.length" class="apps-empty" role="status">Loading plugins…</p>
+      <div v-else-if="!filtered.length" class="apps-empty"><AppsIcon name="search" /><h2>{{ query ? 'No matching plugins' : 'No plugins here yet' }}</h2><p>{{ query ? 'Try another name or category.' : 'Explore the catalog to add your first plugin.' }}</p><button type="button" class="apps-secondary" @click="resetFilters">{{ query ? 'Clear filters' : 'Explore plugins' }}</button></div>
       <div v-else class="apps-grid">
         <article v-for="app in filtered" :key="app.name" class="apps-card" :data-app="app.name">
           <div class="card-top"><span class="app-logo"><SvgIcon :name="app.icon || 'puzzle-piece'" /></span><span v-if="app.installed" class="card-status"><AppsIcon name="check" /> Installed</span><span v-else class="card-type">{{ app.isPack ? 'Capability pack' : app.category }}</span></div>
-          <h3><button type="button" class="card-title" @click="openPlugin(app)">{{ app.displayName }}</button></h3><p>{{ app.description || 'Explore this app’s capabilities.' }}</p>
+          <h3><button type="button" class="card-title" @click="openPlugin(app)">{{ app.displayName }}</button></h3><p>{{ app.description || 'Explore this plugin’s capabilities.' }}</p>
           <div class="card-bottom"><span>{{ composition(app) }}</span><AppsIcon name="arrow" /></div>
         </article>
       </div>
     </template>
 
     <template v-else>
-      <button type="button" class="apps-back" @click="closePlugin"><AppsIcon name="back" /> All apps</button>
+      <button type="button" class="apps-back" @click="closePlugin"><AppsIcon name="back" /> All plugins</button>
       <div class="apps-detail-hero">
         <span class="app-logo large"><SvgIcon :name="selected.icon || 'puzzle-piece'" /></span>
-        <div class="detail-identity"><span class="eyebrow">{{ selected.authorName ? `BY ${selected.authorName}` : 'APP' }} · {{ selected.category }}</span><h1 ref="detailHeading" tabindex="-1">{{ selected.displayName }}</h1><p>{{ selected.description || 'Explore the capabilities included in this app.' }}</p></div>
-        <div class="hero-action"><button v-if="!selected.installed" type="button" class="apps-primary" :disabled="!!installing" @click="install(selected)"><AppsIcon name="plus" /> {{ installing === selected.name ? 'Preparing…' : price(selected) ? 'Get app' : 'Install plugin' }}</button><button v-else type="button" class="apps-secondary" @click="emit('open-app', selected.name)"><AppsIcon name="check" /> Manage installed app</button><span>{{ selected.installed ? 'Installed' : price(selected) || 'Free' }}<template v-if="selected.version"> · v{{ selected.version }}</template></span></div>
+        <div class="detail-identity"><span class="eyebrow">{{ selected.authorName ? `BY ${selected.authorName}` : 'PLUGIN' }} · {{ selected.category }}</span><h1 ref="detailHeading" tabindex="-1">{{ selected.displayName }}</h1><p>{{ selected.description || 'Explore the capabilities included in this plugin.' }}</p></div>
+        <div class="hero-action"><button v-if="!selected.installed" type="button" class="apps-primary" :disabled="!!installing" @click="install(selected)"><AppsIcon name="plus" /> {{ installing === selected.name ? 'Preparing…' : price(selected) ? 'Get plugin' : 'Install plugin' }}</button><button v-else type="button" class="apps-secondary" @click="emit('open-app', selected.name)"><AppsIcon name="check" /> Manage installed plugin</button><span>{{ selected.installed ? 'Installed' : price(selected) || 'Free' }}<template v-if="selected.version"> · v{{ selected.version }}</template></span></div>
       </div>
       <div class="apps-detail-columns">
         <div>
-          <div class="apps-preview"><span class="eyebrow">{{ selected.isPack ? 'ONE PACK. CONNECTED CAPABILITIES.' : 'YOUR TOOLS. IN YOUR WORKSPACE.' }}</span><h2>Make it part of your toolkit.</h2><div class="preview-flow"><span><AppsIcon name="plugin" />Install the app</span><i></i><span><AppsIcon name="agent" />Give agents access</span><i></i><span><AppsIcon name="flow" />Put it to work</span></div></div>
+          <div class="apps-preview"><span class="eyebrow">{{ selected.isPack ? 'ONE PACK. CONNECTED CAPABILITIES.' : 'YOUR TOOLS. IN YOUR WORKSPACE.' }}</span><h2>Make it part of your toolkit.</h2><div class="preview-flow"><span><AppsIcon name="plugin" />Install the plugin</span><i></i><span><AppsIcon name="agent" />Give agents access</span><i></i><span><AppsIcon name="flow" />Put it to work</span></div></div>
           <div class="apps-section-label contents-heading"><h2>What’s inside</h2><span>{{ capabilityCount }} listed capabilities</span></div>
           <p v-if="detailLoading" class="detail-message" role="status">Loading installed contents…</p>
           <p v-if="detailError" class="detail-message" role="alert">{{ detailError }} <button type="button" class="apps-link" @click="loadAssets(selected)">Retry</button></p>
           <div class="apps-contents">
             <details v-for="(group, index) in groups" :key="`${selected.name}:${group.key}`" class="asset-group" :open="index === firstPopulatedGroup">
               <summary><span class="asset-type"><AppsIcon :name="group.icon" /></span><span class="asset-heading"><strong>{{ group.label }} <span>{{ group.known ? group.items.length : '—' }}</span></strong><small>{{ group.items.slice(0, 2).map((item) => item.name).join(' · ') || (group.known ? 'Not included' : 'Not listed by publisher') }}</small></span><AppsIcon class="expand" name="plus" /></summary>
-              <div class="asset-items"><p v-if="!group.items.length">{{ group.known ? 'This app does not include any ' + group.label.toLowerCase() + '.' : 'The catalog does not provide this inventory yet.' }}</p><div v-for="(item, index) in group.items" :key="item.id || index" class="asset-item"><span class="asset-dot"></span><div><strong>{{ item.name }}</strong><p v-if="item.description">{{ item.description }}</p></div><button v-if="group.key === 'widgets' && installedWidgetIds.has(item.id)" type="button" class="apps-link" @click="emit('open-widget', item.id)">Open</button></div></div>
+              <div class="asset-items"><p v-if="!group.items.length">{{ group.known ? 'This plugin does not include any ' + group.label.toLowerCase() + '.' : 'The catalog does not provide this inventory yet.' }}</p><div v-for="(item, index) in group.items" :key="item.id || index" class="asset-item"><span class="asset-dot"></span><div><strong>{{ item.name }}</strong><p v-if="item.description">{{ item.description }}</p></div><button v-if="group.key === 'widgets' && installedWidgetIds.has(item.id)" type="button" class="apps-link" @click="emit('open-widget', item.id)">Open</button></div></div>
             </details>
           </div>
         </div>
         <aside>
-          <div class="apps-setup"><h2><AppsIcon name="plugin" /> Make it yours</h2><p>Install the app. Connect the services its tools need.</p><span class="eyebrow">ACCOUNT CONNECTIONS</span>
+          <div class="apps-setup"><h2><AppsIcon name="plugin" /> Make it yours</h2><p>Install the plugin. Connect the services its tools need.</p><span class="eyebrow">ACCOUNT CONNECTIONS</span>
             <div v-for="connection in connections" :key="connection.providerId" class="app-connection"><span class="connection-logo"><SvgIcon :name="connection.icon" /></span><div><strong>{{ connection.name }}</strong><small>{{ connection.tools.slice(0, 2).join(', ') }}</small></div><span v-if="connection.status === 'connected'" class="connection-check" aria-label="Connected"><AppsIcon name="check" /><span class="sr-only">Connected</span></span><button v-else type="button" class="apps-small" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">{{ connection.known ? connection.status === 'reconnect' ? 'Reconnect' : 'Connect' : 'Unavailable' }}</button></div>
-            <p v-if="!connections.length" class="connection-note">No account connections declared by this app’s tools.</p><p v-else class="connection-note">These tools need a connected account to run.</p>
-            <p class="setup-note"><AppsIcon name="check" /> One app, all its included capabilities.</p>
+            <p v-if="!connections.length" class="connection-note">No account connections declared by this plugin’s tools.</p><p v-else class="connection-note">These tools need a connected account to run.</p>
+            <p class="setup-note"><AppsIcon name="check" /> One plugin, all its included capabilities.</p>
           </div>
           <details class="apps-access"><summary><AppsIcon name="lock" /> Access & permissions <AppsIcon name="down" /></summary><p v-if="permissions.length">Declared access: {{ permissions.join(', ') }}.</p><p>Plugins run code with access to your device. Only install from publishers you trust.</p><p v-if="!selected.installed">We’ll inspect the package before asking you to confirm.</p></details>
           <dl class="apps-package"><dt>Publisher</dt><dd>{{ selected.authorName || 'Not listed' }}</dd><dt>Version</dt><dd>{{ selected.version || 'Not listed' }}</dd><template v-if="selected.license"><dt>License</dt><dd>{{ selected.license }}</dd></template></dl>
@@ -100,7 +100,7 @@ const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'ope
 const store = useStore();
 const modal = ref(null);
 const query = ref('');
-const category = ref('All apps');
+const category = ref('All plugins');
 const tab = ref('explore');
 const selectedName = ref(null);
 const detailHeading = ref(null);
@@ -116,8 +116,8 @@ let alive = true;
 const catalog = computed(() => studioCatalog(store.getters['apps/installed'], store.getters['apps/available']));
 const installedCount = computed(() => catalog.value.filter((app) => app.installed).length);
 const selected = computed(() => catalog.value.find((app) => app.name === selectedName.value));
-const categories = computed(() => ['All apps', ...new Set(catalog.value.map((app) => app.category))]);
-const filtered = computed(() => catalog.value.filter((app) => (tab.value !== 'installed' || app.installed) && (category.value === 'All apps' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
+const categories = computed(() => ['All plugins', ...new Set(catalog.value.map((app) => app.category))]);
+const filtered = computed(() => catalog.value.filter((app) => (tab.value !== 'installed' || app.installed) && (category.value === 'All plugins' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
 const featured = computed(() => catalog.value.find((app) => app.isPack && !app.installed) || catalog.value.find((app) => app.isPack) || catalog.value.find((app) => !app.installed));
 const groups = computed(() => pluginContents(selected.value, assets.value));
 const capabilityCount = computed(() => groups.value.reduce((total, group) => total + group.items.length, 0));
@@ -133,7 +133,7 @@ function price(app) {
   return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';
 }
 function switchTab(value) { tab.value = value; closePlugin(); }
-function resetFilters() { query.value = ''; category.value = 'All apps'; tab.value = 'explore'; }
+function resetFilters() { query.value = ''; category.value = 'All plugins'; tab.value = 'explore'; }
 async function openPlugin(app) {
   selectedName.value = app.name;
   notice.value = '';
@@ -191,7 +191,7 @@ async function reload() {
     const loadError = store.state.apps?.error || store.state.apps?.availableError;
     if (loadError) throw new Error(loadError);
   } catch (failure) {
-    error.value = failure.message || 'Unable to load apps. Please retry.';
+    error.value = failure.message || 'Unable to load plugins. Please retry.';
     console.error('[AppsSection] catalog:', failure);
   } finally { loading.value = false; }
 }
@@ -203,10 +203,10 @@ async function install(app) {
   try {
     const itemId = app.marketplace_item_id || app.id;
     if (price(app)) {
-      if (!itemId) throw new Error('This paid app has no marketplace purchase link.');
+      if (!itemId) throw new Error('This paid plugin has no marketplace purchase link.');
       const purchased = await store.dispatch('marketplace/checkPurchaseStatus', itemId);
       if (!purchased) {
-        const confirmed = await modal.value.showModal({ title: `Get ${app.displayName}`, message: `This app costs ${escapeDisclosure(price(app))}. Continue to checkout?`, confirmText: 'Continue to checkout', showCancel: true });
+        const confirmed = await modal.value.showModal({ title: `Get ${app.displayName}`, message: `This plugin costs ${escapeDisclosure(price(app))}. Continue to checkout?`, confirmText: 'Continue to checkout', showCancel: true });
         if (confirmed) await store.dispatch('marketplace/purchaseItem', { itemId });
         return;
       }

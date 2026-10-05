@@ -56,11 +56,14 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('SettingsScreen', { section: 'billing' })).toEqual({ page: 'settings' });
   });
 
-  it('Plugins opens the shared package catalog and its selected detail in Focused', () => {
-    expect(via('PluginsScreen', {})).toEqual({ page: 'connectors', item: null });
-    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toEqual({ page: 'connectors', item: 'app:figma-bridge' });
-    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' }, studio: true })).toBeNull();
-    expect(via('PluginsScreen', { studio: true })).toBeNull();
+  it('Plugins uses the canonical catalog route; Plugin Forge remains the full builder', () => {
+    expect(screenRoute('ConnectorsScreen').path).toBe('/plugins');
+    expect(via('ConnectorsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toEqual({ page: 'connectors', item: 'app:figma-bridge' });
+    const [screen, options] = routeFor({ page: 'connectors', item: 'app:figma-bridge' });
+    expect(screenRoute(screen, options)).toMatchObject({ path: '/plugins', query: { select: 'plugin:figma-bridge' } });
+    expect(screenRoute('PluginsScreen').path).toBe('/plugin-forge');
+    expect(via('PluginsScreen', {})).toBeNull();
+    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toBeNull();
   });
 
   it('Market has its own Focused storefront, including item deep links', () => {
@@ -124,7 +127,7 @@ describe('routeFor is the inverse of focusedLocation', () => {
     // existing workflow/tool opens in Focused (tested above).
     const studioOnly = new Set([
       'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen',
-      'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
+      'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen', 'PluginsScreen',
     ]);
     for (const screen of SECTION_ROUTES) {
       if (studioOnly.has(screen)) continue;

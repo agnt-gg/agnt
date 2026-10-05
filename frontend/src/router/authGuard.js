@@ -49,11 +49,11 @@ import { isDefinitiveAuthRejection, SESSION } from '@/store/auth/userAuth.js';
 
 export function createAuthGuard(storeInstance) {
   return async (to, from, next) => {
-    // OAuth callback to /settings — handoff to /connectors with code intact
+    // OAuth callback to /settings — handoff to /plugins with code intact
     if (to.path === '/settings' && to.query.code) {
       console.log('OAuth callback detected, redirecting to settings page');
       next({
-        path: '/connectors',
+        path: '/plugins',
         query: to.query,
       });
       return;

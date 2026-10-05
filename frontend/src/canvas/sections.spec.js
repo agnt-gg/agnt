@@ -20,6 +20,7 @@ import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroup
 import { TOUR_TARGETS } from '@/views/_components/utility/tourTargets.js';
 import { RAIL_BADGE_READERS } from './railBadges.js';
 import { SCREEN_ROUTES } from '@/views/Terminal/screenRoute.js';
+import { pluginRouteRecords } from '@/router/pluginRoutes.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const terminalSrc = read('../views/Terminal/Terminal.vue');
@@ -47,7 +48,7 @@ const resolvableScreens = [...lazyMapScreens, ...eagerScreens];
 const screenRouteScreens = Object.keys(SCREEN_ROUTES);
 
 // router/index.js: meta: { ..., terminalScreen: 'XScreen' }
-const routerScreens = [...routerSrc.matchAll(/terminalScreen:\s*'(\w+Screen)'/g)].map((m) => m[1]);
+const routerScreens = [...routerSrc.matchAll(/terminalScreen:\s*'(\w+Screen)'/g)].map((m) => m[1]).concat(pluginRouteRecords(null).map(r => r.meta?.terminalScreen).filter(Boolean));
 
 describe('canvas sections registry', () => {
   it('parsed the hand-maintained lists (guards against silent regex rot)', () => {
@@ -165,14 +166,14 @@ describe('canvas sections registry', () => {
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
         'Chat', 'Market',
         'Dashboard', 'Goals', 'Activity', 'Files',
-        'Apps', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
+        'Plugins', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
         'chat', 'store',
         'dashboard', 'goals', 'traces', 'artifacts',
         'apps', 'agents', 'workflows', 'tools', 'skills', 'widgets',
       ]);
-      for (const label of MAIN_SECTIONS.map((s) => s.label)) expect(label).not.toMatch(/plugin|connector|workspace|library/i);
+      for (const label of MAIN_SECTIONS.map((s) => s.label)) expect(label).not.toMatch(/connector|workspace|library/i);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -366,16 +367,16 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('Apps leads BUILD (Your apps · App Forge); Market is WORK; Settings is the foot alone', () => {
+  it('Apps leads BUILD (Your plugins · Plugin Forge); Market is WORK; Settings is the foot alone', () => {
     // A plugin and the sign-in it needs are ONE app, so connecting and
-    // installing are one row. App Forge (PluginsScreen) is a row of the Apps
+    // installing are one row. Plugin Forge (PluginsScreen) is a row of the Apps
     // sidebar, not a toolbar tab, but the row still owns the screen so the
     // rail stays highlighted on it.
     const apps = MAIN_SECTIONS.find((s) => s.id === 'apps');
     expect(apps.group).toBe('BUILD');
     expect(MAIN_SECTIONS.filter((s) => s.group === 'BUILD')[0].id).toBe('apps');
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS']);
-    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['APPS']);
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['PLUGINS']);
+    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['PLUGINS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
     const market = MAIN_SECTIONS.find((s) => s.id === 'store');
     expect(market.group).toBe('WORK');
@@ -389,14 +390,14 @@ describe('canvas sections registry', () => {
   // Email and Webhooks are headline features: they were buried under an
   // "Advanced" caption. There is no Advanced group on Apps; Advanced is a
   // Settings group (navigation, remote access, backup, reset).
-  it('the Apps nav is one list: Your apps, then Email and Webhooks; App Forge opens its own screen', () => {
+  it('the Apps nav is one list: Your plugins, then Email and Webhooks; Plugin Forge opens its own screen', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    expect(appsDirectory.map((g) => g.label)).toEqual(['Apps']);
+    expect(appsDirectory.map((g) => g.label)).toEqual(['Plugins']);
     const [main] = appsDirectory;
-    // Your apps is the default view (one card per thing you connect).
+    // Your plugins is the default view (one card per thing you connect).
     expect(main.items.map((i) => i.id)).toEqual(['apps', 'email-server', 'webhooks', 'mcp-servers', 'plugins', 'oauth']);
-    expect(main.items.find((i) => i.id === 'plugins')).toMatchObject({ label: 'App Forge', screen: 'PluginsScreen' });
+    expect(main.items.find((i) => i.id === 'plugins')).toMatchObject({ label: 'Plugin Forge', screen: 'PluginsScreen' });
     expect(appsDirectory.flatMap((g) => g.items).map((i) => i.label).join(' ')).not.toMatch(/advanced/i);
     expect(connectorsScreenSrc).toMatch(/const activeSection = ref\('apps'\)/);
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
@@ -405,7 +406,7 @@ describe('canvas sections registry', () => {
     const items = appsDirectory.flatMap((g) => g.items);
     expect(items.some((i) => i.id === 'providers')).toBe(false);
     expect(MAIN_SECTIONS.some((s) => s.screens.some((t) => t.screen === 'ProvidersScreen'))).toBe(false);
-    for (const item of items) expect(item.label).not.toMatch(/plugin|connector/i);
+    for (const item of items) expect(item.label).not.toMatch(/app|connector/i);
   });
 
   it('every view the Connect panel lists has a branch on the Connect screen', () => {

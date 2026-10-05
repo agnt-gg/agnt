@@ -97,16 +97,13 @@ export function focusedLocation(screen, query = {}) {
       // AI models are not apps: the old ?section=providers link (pill, Jump,
       // bookmarks) means "which model", which is Settings in both shells.
       if (str(query.section) === 'providers') return { page: 'settings' };
-      // Package details use app:<name>; provider links keep their account setup page.
-      const app = selected(query, 'app');
-      return { page: 'connectors', item: selected(query, 'provider') || (app ? `app:${app}` : null) };
+      // Public deep links use plugin:<name>; accept saved app:<name> links too.
+      const plugin = selected(query, 'plugin') || selected(query, 'app');
+      return { page: 'connectors', item: selected(query, 'provider') || (plugin ? `app:${plugin}` : null) };
     }
-    case 'PluginsScreen': {
-      // Focused now renders the real shared package catalog, including plugin deep links.
-      // Explicit ?studio=1 still borrows the advanced manager/builder above.
-      const plugin = selected(query, 'plugin');
-      return { page: 'connectors', item: plugin ? `app:${plugin}` : null };
-    }
+    // Plugin Forge is the advanced builder in both modes; the catalog lives on ConnectorsScreen.
+    case 'PluginsScreen':
+      return null;
     case 'GoalsScreen':
     case 'AutonomyScreen': {
       // Autonomy also hosts approvals and limits, which are Studio's. Only
@@ -143,7 +140,7 @@ export function routeFor(loc) {
   if (loc.page === 'connectors') {
     if (!loc.item) return [PAGE_SCREENS.connectors, {}];
     const app = String(loc.item).startsWith('app:') ? String(loc.item).slice(4) : null;
-    return [PAGE_SCREENS.connectors, { select: app ? { kind: 'app', id: app } : { kind: 'provider', id: loc.item } }];
+    return [PAGE_SCREENS.connectors, { select: app ? { kind: 'plugin', id: app } : { kind: 'provider', id: loc.item } }];
   }
   if (loc.page === 'scheduled') {
     const opts = { section: 'schedules' };

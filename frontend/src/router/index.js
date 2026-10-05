@@ -10,6 +10,7 @@ const MobilePair = () => import('@/views/MobileLite/MobilePair.vue');
 const MobileChat = () => import('@/views/MobileLite/MobileChat.vue');
 import store from '@/store/state';
 import { createAuthGuard } from './authGuard.js';
+import { pluginRouteRecords } from './pluginRoutes.js';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -84,21 +85,7 @@ const router = createRouter({
       component: Terminal,
       meta: { terminalScreen: 'SettingsScreen' },
     },
-    {
-      // The Apps screen. /connectors stays canonical (saved links, the mobile
-      // shell, SCREEN_ROUTES); /apps is the name people read on the rail.
-      path: '/connectors',
-      alias: '/apps',
-      name: 'TerminalConnectors',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'ConnectorsScreen' },
-    },
-    {
-      path: '/plugins',
-      name: 'TerminalPlugins',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'PluginsScreen' },
-    },
+    ...pluginRouteRecords(Terminal),
     {
       // AI models are Settings › AI Models. Kept as a redirect rather than
       // deleted: the path shipped, and a bookmark that lands on the right page

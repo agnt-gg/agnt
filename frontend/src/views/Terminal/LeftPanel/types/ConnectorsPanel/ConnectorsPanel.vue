@@ -1,7 +1,7 @@
 <template>
   <div class="connectors-panel">
     <div class="panel-header">
-      <h2 class="title">/ Apps</h2>
+      <h2 class="title">/ Plugins</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-shield-alt"></i>
@@ -76,15 +76,8 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 
-// Everything the Apps row can show, in order. Both this panel and the screen
-// read and write ONE shared value, so they cannot disagree about which view is
-// showing.
-//
-// Your apps leads: a plugin and the sign-in it needs are one card there. AI
-// models are not apps (Settings › AI Models). App Forge is the one row that
-// opens its own screen (item.screen), PluginsScreen, which shares this sidebar
-// so the nav stays put between using apps and building one. The second group
-// (Advanced) is the raw plumbing: every stored key, inboxes, webhooks.
+// Catalog and Plugin Forge share this sidebar and its section selection.
+// appsDirectory keeps its saved IDs while labels and URLs use Plugins.
 const APP_GROUPS = appsDirectory;
 const DEFAULT_SECTION = APP_GROUPS[0].items[0].id;
 
@@ -114,7 +107,7 @@ export default {
     const handleNavClick = (item) => {
       // The { screen } form: BaseScreen turns it into a screen change for any
       // screen. A bare string is left to each screen's own handler, and the
-      // Apps screen has none, so the click went nowhere.
+      // Plugins screen has none, so the click went nowhere.
       if (item.screen) {
         emit('panel-action', 'navigate', { screen: item.screen });
         return;
