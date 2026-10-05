@@ -17,7 +17,7 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import CategoryNavPanel from '@/views/Terminal/_components/panels/CategoryNavPanel.vue';
 import { capitalizedMainCategories, uniqueCategories } from '@/views/Terminal/_components/panels/categoryDerivations.js';
-import { getAllWidgets } from '@/canvas/widgetRegistry.js';
+import { getWidgetsOnly } from '@/canvas/widgetRegistry.js';
 
 export default {
   name: 'WidgetManagerPanel',
@@ -27,9 +27,10 @@ export default {
     const store = useStore();
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions'] || []);
 
-    // Registry widgets plus the user's saved definitions.
+    // Registry widgets plus the user's saved definitions. Never AGNT's own
+    // pages: those are not widgets (widgetRegistry isAppPage).
     const allWidgetItems = computed(() => {
-      const builtIn = getAllWidgets()
+      const builtIn = getWidgetsOnly()
         .filter((w) => !w.isCustomWidget)
         .map((w) => ({ ...w, category: w.category || 'other' }));
 

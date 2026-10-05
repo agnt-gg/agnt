@@ -96,11 +96,10 @@ export function resolvePanel(propValue, screenId, slot) {
 }
 
 /**
- * Per-screen right-panel collapse. Most screens follow the ONE global
- * theme/rightPanelCollapsed setting. A screen that declares
- * `rightCollapsedDefault` keeps its own remembered state instead (the global
- * toggle never touches it), starting from that default. Returns
- * `undefined` when the screen has no such preference.
+ * The right panel's collapse state for a screen that has never been toggled.
+ * Every screen remembers its own choice after that (panelCollapse.js); this is
+ * only where a screen starts. Returns `undefined` when the screen has no such
+ * preference.
  */
 export function rightCollapsedDefault(screenId) {
   const entry = SCREEN_DEFAULTS[screenId];

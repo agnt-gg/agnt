@@ -93,7 +93,9 @@
           :class="{ active: onChat && c.id === activeConversationId, unread: c.unread, working: c.working }"
           :aria-busy="c.working ? 'true' : undefined"
           v-tooltip="c.title"
+          aria-haspopup="menu"
           @click="$emit('open-conversation', c.id)"
+          @contextmenu.prevent="openChatMenu(c, $event)"
         >
           <span class="focused-recent-title">
             <span v-if="c.working" class="focused-working-dot" aria-hidden="true"></span>
@@ -105,6 +107,25 @@
       </li>
       <li v-if="!recents.length" class="focused-recents-empty">{{ query ? 'No chats match.' : 'Your chats show up here.' }}</li>
     </ul>
+
+    <!-- Right-click on a chat: the same actions as Studio's chat list, run by
+         the same code (services/conversationActions.js). -->
+    <div
+      v-if="chatMenu"
+      class="focused-menu focused-context-menu"
+      role="menu"
+      :aria-label="`Actions for ${chatMenu.title}`"
+      :style="{ left: chatMenu.x + 'px', top: chatMenu.y + 'px' }"
+      @keydown.esc="closeChatMenu"
+    >
+      <button type="button" role="menuitem" class="focused-menu-item" @click="renameChat"><i class="fas fa-pen" aria-hidden="true"></i>Rename</button>
+      <button type="button" role="menuitem" class="focused-menu-item" @click="toggleChatRead">
+        <i :class="chatMenu.unread ? 'fas fa-envelope-open' : 'fas fa-envelope'" aria-hidden="true"></i>{{ chatMenu.unread ? 'Mark as read' : 'Mark as unread' }}
+      </button>
+      <button type="button" role="menuitem" class="focused-menu-item" @click="archiveChat"><i class="fas fa-archive" aria-hidden="true"></i>Archive</button>
+      <div class="focused-menu-sep"></div>
+      <button type="button" role="menuitem" class="focused-menu-item danger" @click="deleteChat"><i class="fas fa-trash" aria-hidden="true"></i>Delete</button>
+    </div>
 
     <div class="focused-menu-anchor focused-account-anchor">
       <button type="button" class="focused-account" :aria-expanded="accountOpen ? 'true' : 'false'" @click="accountOpen = !accountOpen">
@@ -133,20 +154,22 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { FOCUSED_PAGES, recentConversations, initialOf } from './focusedModel.js';
 import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
+import { renameConversation, setConversationRead, setConversationArchived, deleteConversation } from '@/services/conversationActions.js';
 
 defineProps({
   open: { type: Boolean, default: true },
   activePage: { type: String, default: null },
   onChat: { type: Boolean, default: false },
 });
-defineEmits(['close', 'new-chat', 'open-page', 'open-conversation', 'open-main', 'clear-main']);
+const emit = defineEmits(['close', 'new-chat', 'open-page', 'open-conversation', 'open-main', 'clear-main']);
 
 const store = useStore();
+const nav = inject('focusedNav', null);
 const route = useRoute();
 const router = useRouter();
 
@@ -217,19 +240,81 @@ async function logOut() {
   await router.replace({ path: '/settings', query: { studio: '1', section: 'login' } });
 }
 
+// ── Right-click on a chat ──────────────────────────────────────────────────────
+const chatMenu = ref(null);
+const MENU_W = 200;
+const MENU_H = 180;
+const outputOf = (id) => (store.getters['contentOutputs/outputs'] || []).find((o) => o.id === id) || null;
+
+function openChatMenu(chat, event) {
+  // Kept inside the window, wherever the click was.
+  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - MENU_W - 8));
+  const y = Math.max(8, Math.min(event.clientY, window.innerHeight - MENU_H - 8));
+  chatMenu.value = { id: chat.id, title: chat.title, unread: chat.unread, x, y };
+  nextTick(() => document.querySelector('.focused-context-menu .focused-menu-item')?.focus());
+}
+function closeChatMenu() {
+  chatMenu.value = null;
+}
+const failed = (what) => (error) => {
+  console.error(`[Focused] ${what} failed:`, error);
+  nav?.toast?.(`Couldn't ${what} that chat.`);
+};
+
+async function renameChat() {
+  const target = chatMenu.value;
+  closeChatMenu();
+  const output = outputOf(target?.id);
+  if (!output || !nav?.prompt) return;
+  const title = await nav.prompt({ title: 'Rename chat', message: target.title, placeholder: 'Chat title', confirmText: 'Rename' });
+  if (title === null) return;
+  renameConversation(store, output, title).catch(failed('rename'));
+}
+function toggleChatRead() {
+  const target = chatMenu.value;
+  closeChatMenu();
+  setConversationRead(store, target?.id, target?.unread).catch(failed(target?.unread ? 'mark read' : 'mark unread'));
+}
+function archiveChat() {
+  const target = chatMenu.value;
+  closeChatMenu();
+  if (!target) return;
+  // Archived chats leave Recents; open a new chat if this one was showing.
+  if (target.id === activeConversationId.value) emit('new-chat');
+  setConversationArchived(store, target.id, true).catch(failed('archive'));
+}
+async function deleteChat() {
+  const target = chatMenu.value;
+  closeChatMenu();
+  const output = outputOf(target?.id);
+  if (!output) return;
+  const ok = await nav?.confirm?.({ title: 'Delete chat', message: `Delete “${target.title}”? This can't be undone.`, confirmText: 'Delete', danger: true });
+  if (!ok) return;
+  if (target.id === activeConversationId.value) emit('new-chat');
+  deleteConversation(store, output).catch(failed('delete'));
+}
+
 // Menus close on any click outside them.
 function onDocClick(e) {
   if (!e.target.closest?.('.focused-menu-anchor')) {
     moreOpen.value = false;
     accountOpen.value = false;
   }
+  if (chatMenu.value && !e.target.closest?.('.focused-context-menu')) closeChatMenu();
+}
+function onKey(e) {
+  if (e.key === 'Escape' && chatMenu.value) closeChatMenu();
 }
 onMounted(() => {
   document.addEventListener('click', onDocClick, true);
+  document.addEventListener('keydown', onKey);
   // The list is normally loaded at boot (initializeStore); this only covers a
   // cold mount that beat it.
   if (!store.getters['contentOutputs/outputs']?.length) store.dispatch('contentOutputs/fetchOutputs').catch(() => {});
   if (!mainChatId.value) store.dispatch('contentOutputs/fetchMainChat');
 });
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick, true);
+  document.removeEventListener('keydown', onKey);
+});
 </script>

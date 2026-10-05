@@ -315,7 +315,8 @@ import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
-import { resolvePanel, resolveInput, rightCollapsedDefault } from './screenRegistry.js';
+import { resolvePanel, resolveInput } from './screenRegistry.js';
+import { isPanelCollapsed, setPanelCollapsed } from './panelCollapse.js';
 
 export default {
   name: 'BaseScreen',
@@ -677,22 +678,10 @@ export default {
     const artifactTarget = computed(() => props.screenId === 'ChatScreen' && (!store.getters['shell/inspect']?.screen || store.getters['shell/inspect']?.screen==='ChatScreen') && ['artifact','agent','workflow','goal','trace','execution','memory','running','autonomy'].includes(store.getters['shell/inspect']?.kind));
     const artifactExpanded = ref(false);
     const showRightPanel = computed(() => (isMobile.value || showRightPanelSetting.value || artifactTarget.value) && rightPanelEnabled.value);
-    const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
-    // A screen may own its right-panel collapse state (screenRegistry
-    // `rightCollapsedDefault`): it starts from that default and remembers the
-    // user's last choice under its own key, independent of the global toggle.
-    const screenRightCollapsedDefault = rightCollapsedDefault(props.screenId);
-    const screenRightCollapsedKey = `rightPanelCollapsed:${props.screenId}`;
-    const initialRightCollapsed = () => {
-      if (screenRightCollapsedDefault === undefined) return store.getters['theme/rightPanelCollapsed'];
-      try {
-        const saved = localStorage.getItem(screenRightCollapsedKey);
-        return saved === null ? screenRightCollapsedDefault : saved === 'true';
-      } catch {
-        return screenRightCollapsedDefault;
-      }
-    };
-    const rightPanelCollapsed = ref(scopeGet('rightCollapsed', initialRightCollapsed()));
+    // Collapse is remembered per screen (panelCollapse.js): closing a panel on
+    // one page never closes it on another.
+    const leftPanelCollapsed = ref(scopeGet('leftCollapsed', isPanelCollapsed('left', props.screenId)));
+    const rightPanelCollapsed = ref(scopeGet('rightCollapsed', isPanelCollapsed('right', props.screenId)));
 
     // Inspection temporarily borrows the panel. Capture once, not when switching artifacts.
     let panelBeforeInspection = null;
@@ -757,19 +746,11 @@ export default {
     };
     const persistLeftCollapsed = (v) => {
       if (panelWidthScope) return panelWidthScope.set('leftCollapsed', v);
-      return store.dispatch('theme/setLeftPanelCollapsed', v);
+      return setPanelCollapsed('left', props.screenId, v);
     };
     const persistRightCollapsed = (v) => {
       if (panelWidthScope) return panelWidthScope.set('rightCollapsed', v);
-      if (screenRightCollapsedDefault !== undefined) {
-        try {
-          localStorage.setItem(screenRightCollapsedKey, String(v));
-        } catch {
-          // Private mode / quota: the session still toggles, it just is not remembered.
-        }
-        return undefined;
-      }
-      return store.dispatch('theme/setRightPanelCollapsed', v);
+      return setPanelCollapsed('right', props.screenId, v);
     };
     const persistLeftUserSized = (v) => {
       isLeftPanelUserSized.value = v;
@@ -1713,24 +1694,9 @@ export default {
     watch(currentUserInput, autoResizeTextarea);
 
 
-    // Watch store state changes to make them reactive immediately
-    watch(
-      () => store.getters['theme/leftPanelCollapsed'],
-      (newValue) => {
-        leftPanelCollapsed.value = newValue;
-        calculateMainContentWidth();
-      },
-    );
-
-    watch(
-      () => store.getters['theme/rightPanelCollapsed'],
-      (newValue) => {
-        // A screen with its own remembered state ignores the global toggle.
-        if (screenRightCollapsedDefault !== undefined) return;
-        rightPanelCollapsed.value = newValue;
-        calculateMainContentWidth();
-      },
-    );
+    // No watch on an app-wide collapse value: there is none. Each screen
+    // remembers its own (panelCollapse.js); watching a shared value is what
+    // made closing a panel on one page close it on every kept-alive page.
 
     watch(
       () => store.getters['theme/showLeftPanel'],

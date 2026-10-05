@@ -58,7 +58,7 @@
 <script>
 import { ref, computed, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import { getAllWidgets, getWidget } from './widgetRegistry.js';
+import { getWidgetsOnly, getWidget } from './widgetRegistry.js';
 
 export default {
   name: 'WidgetCatalog',
@@ -81,15 +81,15 @@ export default {
       // Depend on both the store definitions and refreshKey to ensure recompute
       const defs = customDefinitions.value;
       const _ = refreshKey.value;
-      // Build list from registry (includes both built-in and custom widgets)
-      const widgets = getAllWidgets().filter((w) => !w.isScreenWidget);
-      return widgets;
+      // Built-in and custom widgets; never AGNT's own pages (isAppPage).
+      return getWidgetsOnly();
     });
 
     const categories = computed(() => {
-      // Match left panel: derive categories from ALL built-in widgets (including screen widgets)
+      // From the widgets this catalog actually offers. Reading every registry
+      // entry listed page-only categories (Home, System) as empty tabs.
       const seen = new Set();
-      for (const w of getAllWidgets()) {
+      for (const w of allCatalogWidgets.value) {
         if (w.category && !w.isCustomWidget) seen.add(w.category);
       }
       const sorted = Array.from(seen).sort();

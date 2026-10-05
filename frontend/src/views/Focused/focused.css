@@ -474,6 +474,20 @@
   margin: 6px 4px;
   background: var(--terminal-border-color);
 }
+/* A chat's right-click menu: the menu above, placed at the cursor. */
+.ui-focused .focused-context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+}
+.ui-focused .focused-menu-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.ui-focused .focused-menu-item.danger,
+.ui-focused .focused-menu-item.danger i {
+  color: var(--fill-danger);
+}
 .ui-focused .focused-menu-note {
   padding: 6px 10px;
   font-size: 12px;

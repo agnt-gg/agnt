@@ -2377,13 +2377,18 @@ describe('BaseScreen panel geometry (source guards)', () => {
       ['setActualLeftPanelWidth', 'persistLeftWidth'],
       ['setThreePanelWidths', 'persistRightWidth'],
       ['setMainContentWidth', 'persistMainWidth'],
-      ['setLeftPanelCollapsed', 'persistLeftCollapsed'],
-      ['setRightPanelCollapsed', 'persistRightCollapsed'],
     ]) {
       const hits = src.match(new RegExp(`store\\.dispatch\\('theme/${action}'`, 'g')) || [];
       expect(hits.length, `${action} must be dispatched from one place only`).toBe(1);
       expect(src, `${helper} missing`).toContain(`const ${helper} = `);
     }
+    // Collapse is per screen, never app-wide (panelCollapse.js): one seam
+    // each, and no dispatch of the old shared value at all.
+    for (const [side, helper] of [['left', 'persistLeftCollapsed'], ['right', 'persistRightCollapsed']]) {
+      expect(src.match(new RegExp(`setPanelCollapsed\\('${side}', props\\.screenId`, 'g')) || [], `${helper} is the one writer`).toHaveLength(1);
+      expect(src, `${helper} missing`).toContain(`const ${helper} = `);
+    }
+    expect(src).not.toMatch(/theme\/set(Left|Right)PanelCollapsed/);
   });
 
   it('takes an injectable panelWidthScope and defaults to global', () => {
@@ -2391,11 +2396,18 @@ describe('BaseScreen panel geometry (source guards)', () => {
     expect(src).toContain("inject('panelWidthScope', null)");
     // Every seam must fall through to the store when no scope is supplied,
     // so standalone behaviour is unchanged.
-    for (const helper of ['persistLeftWidth', 'persistRightWidth', 'persistMainWidth', 'persistLeftCollapsed', 'persistRightCollapsed']) {
+    const bodyOf = (helper) => {
       const i = src.indexOf(`const ${helper} = `);
-      const body = src.slice(i, src.indexOf('\n    };', i));
-      expect(body, `${helper} must honour the scope`).toContain('if (panelWidthScope) return panelWidthScope.set(');
-      expect(body, `${helper} must fall back to the store`).toContain("store.dispatch('theme/");
+      return src.slice(i, src.indexOf('\n    };', i));
+    };
+    for (const helper of ['persistLeftWidth', 'persistRightWidth', 'persistMainWidth']) {
+      expect(bodyOf(helper), `${helper} must honour the scope`).toContain('if (panelWidthScope) return panelWidthScope.set(');
+      expect(bodyOf(helper), `${helper} must fall back to the store`).toContain("store.dispatch('theme/");
+    }
+    // Collapse falls back to the screen's OWN memory, never an app-wide value.
+    for (const helper of ['persistLeftCollapsed', 'persistRightCollapsed']) {
+      expect(bodyOf(helper), `${helper} must honour the scope`).toContain('if (panelWidthScope) return panelWidthScope.set(');
+      expect(bodyOf(helper), `${helper} must fall back to the screen's own state`).toContain('setPanelCollapsed(');
     }
   });
 

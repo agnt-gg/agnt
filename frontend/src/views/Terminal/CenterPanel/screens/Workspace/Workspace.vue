@@ -291,7 +291,7 @@ import {
 } from '@/canvas/surfaceFederation.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
+import { getWidget, getAllWidgets, isAppPage } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
 import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor, flushSync } from './useWorkspaces.js';
 import { openShare } from '@/composables/useShare.js';
@@ -1138,7 +1138,11 @@ export default {
         // "Chat". On this canvas, chat means a workspace conversation.
         .filter((w) => !w.isCustomWidget && w.id !== 'chat' && match(w.name))
         .slice(0, 40)
-        .map((w) => ({ key: w.id, widgetId: w.id, name: w.name, icon: w.icon || 'fas fa-square' }));
+        .map((w) => ({ key: w.id, widgetId: w.id, name: w.name, icon: w.icon || 'fas fa-square', page: isAppPage(w) }));
+      // AGNT's own pages open here as windows, but they are not widgets: they
+      // get their own heading rather than being listed as "Widgets".
+      const pages = builtIn.filter((w) => w.page);
+      const widgets = builtIn.filter((w) => !w.page);
 
       const registryCustom = all
         .filter((w) => w.isCustomWidget && match(w.name))
@@ -1164,8 +1168,9 @@ export default {
         }));
 
       return [
-        { label: 'Widgets', items: builtIn },
+        { label: 'Widgets', items: widgets },
         { label: 'Your widgets', items: [...registryCustom, ...storeCustom] },
+        { label: 'Pages', items: pages },
         { label: 'Your workflows', items: workflows },
       ];
     });

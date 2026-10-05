@@ -262,7 +262,7 @@
 <script>
 import { ref, computed, onMounted, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
-import { getAllWidgets } from '@/canvas/widgetRegistry.js';
+import { getWidgetsOnly } from '@/canvas/widgetRegistry.js';
 import { captureWidgetThumbnail } from '@/utils/widgetThumbnail.js';
 import { API_CONFIG } from '@/tt.config.js';
 import MobileCollection from '@/mobile/MobileCollection.vue';
@@ -329,17 +329,19 @@ export default {
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);
 
     // Combine built-in widgets with custom definitions
-    // getAllWidgets() includes custom widgets registered in the registry,
+    // getWidgetsOnly() includes custom widgets registered in the registry,
     // so we split them out to avoid duplicates and enrich custom ones with _definition
     const allWidgets = computed(() => {
       const customIds = new Set(customDefinitions.value.map((d) => d.id));
 
-      const builtIn = getAllWidgets()
+      // Widgets only: AGNT's own pages (Chat, Dashboard…) are registered so
+      // the Workspace can open them as windows, but they are not widgets.
+      const builtIn = getWidgetsOnly()
         .filter((w) => !w.isCustomWidget)
         .map((w) => ({
           ...w,
           _isCustom: false,
-          widget_type: w.isScreenWidget ? 'screen' : 'dashboard',
+          widget_type: 'dashboard',
         }));
 
       const custom = customDefinitions.value.map((d) => ({

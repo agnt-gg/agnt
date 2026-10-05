@@ -166,8 +166,9 @@
               </div>
             </template>
 
-            <!-- Ungrouped Section (only when groups exist) -->
-            <div class="group-section ungrouped-section" v-if="viewMode === 'groups' && groups.length > 0">
+            <!-- Ungrouped: always in Groups view. It used to need a group to
+                 exist first, so a new account's Groups view showed no chats. -->
+            <div class="group-section ungrouped-section" v-if="viewMode === 'groups'">
               <div
                 class="group-header ungrouped-header"
                 @click="toggleGroup('__ungrouped__')"
@@ -408,6 +409,7 @@ import { groupUnreadCount, notifiableUnreadIds, formatListDate } from '@/utils/c
 import ConversationMetaLine from './ConversationMetaLine.vue';
 import { openShare } from '@/composables/useShare.js';
 import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
+import { renameConversation, setConversationRead, setConversationArchived, deleteConversation } from '@/services/conversationActions.js';
 
 export default {
   name: 'OutputList',
@@ -842,15 +844,11 @@ export default {
     // Search still reaches into it — archived means done, not deleted.
     const archivedList = computed(() => filterAndSort(archivedOutputs.value));
 
-    // Displayed ungrouped outputs (capped by limit when groups exist)
-    const ungroupedOutputs = computed(() => {
-      if (groups.value.length === 0) return allUngroupedOutputs.value;
-      return allUngroupedOutputs.value.slice(0, ungroupedDisplayLimit.value);
-    });
+    // Displayed ungrouped outputs, a page at a time whether or not groups
+    // exist: the list can hold thousands of chats.
+    const ungroupedOutputs = computed(() => allUngroupedOutputs.value.slice(0, ungroupedDisplayLimit.value));
 
-    const hasMoreUngrouped = computed(() => {
-      return groups.value.length > 0 && allUngroupedOutputs.value.length > ungroupedDisplayLimit.value;
-    });
+    const hasMoreUngrouped = computed(() => allUngroupedOutputs.value.length > ungroupedDisplayLimit.value);
 
     function showMoreUngrouped() {
       ungroupedDisplayLimit.value += 20;
@@ -1323,11 +1321,7 @@ export default {
     function toggleUnread(outputId) {
       if (!outputId) return;
       activeMenu.value = null;
-      if (unreadOutputIds.value.has(outputId)) {
-        store.dispatch('contentOutputs/markRead', outputId).catch(() => {});
-      } else {
-        store.dispatch('contentOutputs/markUnread', outputId).catch(() => {});
-      }
+      setConversationRead(store, outputId, unreadOutputIds.value.has(outputId)).catch(() => {});
     }
 
     // Archive / unarchive from the context menu. Optimistic in the store;
@@ -1340,10 +1334,7 @@ export default {
       const output = getOutputById(outputId);
       if (!output) return;
       playSound('buttonClick');
-      store.dispatch('contentOutputs/setArchived', {
-        outputId,
-        archived: !output.archived_at,
-      }).catch(async () => {
+      setConversationArchived(store, outputId, !output.archived_at).catch(async () => {
         await simpleModal.value.showModal({
           title: 'Error',
           message: `Failed to ${output.archived_at ? 'unarchive' : 'archive'} chat`,
@@ -1501,16 +1492,15 @@ export default {
       // in the background; only surface an error modal if it fails.
       // The item vanishing from the list is the confirmation — no
       // "Success" modal to click through.
-      const removedSnapshot = outputs.value.find((o) => o.id === outputId);
-      store.commit('contentOutputs/REMOVE_OUTPUT', outputId);
+      const removedSnapshot = outputs.value.find((o) => o.id === outputId) || { id: outputId };
+      const deleting = deleteConversation(store, removedSnapshot);
       if (wasActive) {
         router.push('/chat');
         window.dispatchEvent(new CustomEvent('trigger-new-chat'));
       }
 
-      store.dispatch('contentOutputs/deleteOutput', outputId).catch(async (error) => {
+      deleting.catch(async (error) => {
         console.error('Error deleting output:', error);
-        if (removedSnapshot) store.commit('contentOutputs/ADD_OUTPUT', removedSnapshot);
         await simpleModal.value.showModal({
           title: 'Error',
           message: 'Failed to delete chat',
@@ -1554,22 +1544,11 @@ export default {
         return;
       }
 
-      const trimmedTitle = newTitle.trim();
-      // Optimistic: flip the title locally so the sidebar updates the
-      // moment the modal closes. Fire the PATCH in the background; revert
-      // and surface an error modal only if the server rejects it. No
-      // "Success" modal — the visible title change is the confirmation,
-      // and no refreshOutputs — updateConversationTitle patches the
-      // outputs list in place.
-      const originalTitle = output.title;
-      store.commit('contentOutputs/PATCH_OUTPUT', { id: output.id, updates: { title: trimmedTitle } });
-
-      store.dispatch('chat/updateConversationTitle', {
-        outputId: output.id,
-        title: trimmedTitle,
-      }).catch(async (error) => {
+      // Optimistic and shared with Focused (services/conversationActions.js):
+      // the title changes the moment the modal closes; a failure restores it.
+      // No "Success" modal — the visible title change is the confirmation.
+      renameConversation(store, output, newTitle).catch(async (error) => {
         console.error('Error renaming conversation:', error);
-        store.commit('contentOutputs/PATCH_OUTPUT', { id: output.id, updates: { title: originalTitle } });
         await simpleModal.value.showModal({
           title: 'Error',
           message: 'Failed to rename chat',

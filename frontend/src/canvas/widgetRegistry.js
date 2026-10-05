@@ -70,6 +70,19 @@ export function getAllWidgets() {
 }
 
 /**
+ * A built-in AGNT page (Chat, Dashboard, Agents…) registered so it can open
+ * as a window on the Workspace canvas. A page is NOT a widget: it never
+ * belongs in a widgets list or picker. Only the Workspace offers pages, under
+ * their own heading.
+ */
+export const isAppPage = (definition) => definition?.isScreenWidget === true;
+
+/** Real widgets only: built-in and custom, never an app page. */
+export function getWidgetsOnly() {
+  return getAllWidgets().filter((w) => !isAppPage(w));
+}
+
+/**
  * Get widgets filtered by category.
  */
 export function getWidgetsByCategory(category) {

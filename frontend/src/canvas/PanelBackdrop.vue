@@ -28,6 +28,7 @@
 import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { resolvePanel } from '@/views/Terminal/CenterPanel/screenRegistry.js';
+import { isPanelCollapsed } from '@/views/Terminal/CenterPanel/panelCollapse.js';
 
 const COLLAPSED_PX = 16;
 const HANDLE_PX = 8;
@@ -50,8 +51,9 @@ export default {
 
     // Width includes the 8px resize handle beside each panel so the main
     // surface starts exactly where BaseScreen's .main-panel will.
-    const leftWidth = computed(() => (g('leftPanelCollapsed') ? COLLAPSED_PX : Number(g('actualLeftPanelWidth')) || 384) + HANDLE_PX);
-    const rightWidth = computed(() => (g('rightPanelCollapsed') ? COLLAPSED_PX : Number(g('rightPanelWidth')) || 384) + HANDLE_PX);
+    // Collapse is per screen, so ask for THIS screen's (panelCollapse.js).
+    const leftWidth = computed(() => (isPanelCollapsed('left', props.screenName) ? COLLAPSED_PX : Number(g('actualLeftPanelWidth')) || 384) + HANDLE_PX);
+    const rightWidth = computed(() => (isPanelCollapsed('right', props.screenName) ? COLLAPSED_PX : Number(g('rightPanelWidth')) || 384) + HANDLE_PX);
 
     return { showLeft, showRight, leftWidth, rightWidth };
   },

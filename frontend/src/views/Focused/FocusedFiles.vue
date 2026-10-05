@@ -69,6 +69,9 @@
       </div>
     </div>
 
+    <!-- Above the list, like every Library tab (FocusedLibrary.vue). -->
+    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="listing => nav.openScreen('MarketplaceScreen', { listing })" />
+
     <p v-if="loading" class="focused-empty">Loading…</p>
     <p v-else-if="listError" class="focused-empty">{{ listError }}</p>
     <p v-else-if="!rows.length" class="focused-empty">{{ query ? `Nothing here matches “${query}”.` : 'This folder is empty.' }}</p>
@@ -84,7 +87,6 @@
         </button>
       </li>
     </ul>
-    <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="listing => nav.openScreen('MarketplaceScreen', { listing })" />
     <p v-if="rows.length > CAP" class="focused-foot-note">Showing {{ CAP }} of {{ rows.length.toLocaleString() }}. Search to find the rest.</p>
   </FocusedPage>
 </template>
