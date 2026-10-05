@@ -48,7 +48,7 @@ export function runJumpAction(action, { store, router, navigate, onError = () =>
       router.push({ path: '/marketplace', query: { item: a.assetId } });
       return true;
     case 'teams':
-      window.dispatchEvent(new CustomEvent('agnt:open-team-workspace'));
+      navigate('SettingsScreen', { section: 'members' });
       return true;
     case 'page':
       window.dispatchEvent(new CustomEvent('agnt:open-page', { detail: { pageId: a.id } }));

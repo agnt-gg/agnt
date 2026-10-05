@@ -14,8 +14,11 @@
       <div v-show="!mobileView || !isLoggedIn || !mobileDirectoryOpen" class="mobile-section-body">
       <button v-if="mobileView && isLoggedIn" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Settings</button>
       <template v-if="isLoggedIn">
+        <div v-if="activeSection === 'members'" class="settings-content" data-section="members">
+          <MembersSettings @open-billing="handlePanelAction('settings-nav', 'billing')" @close="handlePanelAction('settings-nav', 'profile')" />
+        </div>
         <!-- General Settings Section -->
-        <div v-if="activeSection === 'general'" class="settings-content" data-section="general">
+        <div v-else-if="activeSection === 'general'" class="settings-content" data-section="general">
           <div class="content-header">
             <h2 class="content-title">General Settings</h2>
             <p class="content-subtitle">Configure your basic system preferences</p>
@@ -302,6 +305,7 @@ import MobileDirectory from '@/mobile/MobileDirectory.vue';
 import { settingsDirectory, DEFAULT_SETTINGS_SECTION } from '@/mobile/sectionDirectories.js';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
+import MembersSettings from './components/MembersSettings.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
 import ProviderSelector from './components/ProviderSelector/ProviderSelector.vue';
 // Owned by the Connectors screen directory, which is where this page lived
@@ -340,6 +344,7 @@ export default {
     BaseScreen,
     TerminalHeader,
     LoginSection,
+    MembersSettings,
     ProviderSelector,
     FallbackProviders,
     ChatBehaviorSettings,
@@ -457,6 +462,7 @@ export default {
       if (action === 'settings-nav') {
         mobileDirectoryOpen.value = false;
         activeSection.value = payload;
+        emit('screen-change', 'SettingsScreen', { section: payload });
       } else if (action === 'settings-goto') {
         // A SYSTEM row that is a whole screen (Memory / Evolution / Autonomy)
         // rather than a section of this one.

@@ -436,3 +436,12 @@ describe('createAuthGuard', () => {
     expect(payload).toMatchObject({ reason: 'http_401', status: 401 });
   });
 });
+
+describe('Members legacy entry', () => {
+  it('redirects the old team panel into Settings, preserving other query values', async () => {
+    const store = makeStore({ sessionState: SESSION.VALID });
+    const next = vi.fn();
+    await createAuthGuard(store)({ path: '/chat', query: { 'teams-panel': '', keep: 'yes' }, hash: '#member', meta: { requiresAuth: true } }, {}, next);
+    expect(next).toHaveBeenCalledWith({ path: '/settings', query: { keep: 'yes', section: 'members' }, hash: '#member' });
+  });
+});

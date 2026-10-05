@@ -47,7 +47,7 @@ describe('navigationOnion', () => {
     const { state, announced } = evaluateUnlocks(busy, known(), emptyOnionState());
     expect(announced).toEqual([]);
     expect(state.fresh).toEqual([]);
-    for (const id of ['apps', 'artifacts', 'traces', 'goals', 'workflows', 'agents', 'tools', 'skills', 'store', 'teams', 'dashboard']) {
+    for (const id of ['apps', 'artifacts', 'traces', 'goals', 'workflows', 'agents', 'tools', 'skills', 'store', 'dashboard']) {
       expect(isUnlocked(id, state)).toBe(true);
     }
     // No widgets yet, so no Widgets row.
@@ -116,6 +116,14 @@ describe('navigationOnion', () => {
     const fifth = evaluateUnlocks({ ...facts, workflows: [{}] }, known(), state);
     // workflows + store both open here, so the overview crosses the bar in the same pass.
     expect(fifth.announced).toEqual(expect.arrayContaining(['workflows', 'store', 'dashboard']));
+  });
+
+  it('does not announce the retired Members row or count it toward unlocking Dashboard', () => {
+    const old = { version: 1, unlocked: ['teams'], seeded: ['teams'], fresh: ['teams'] };
+    const { state, announced } = evaluateUnlocks({ ...nothing, teams: [{}] }, known(), old);
+    expect(state.unlocked).not.toContain('teams');
+    expect(state.fresh).not.toContain('teams');
+    expect(announced).not.toContain('teams');
   });
 
   it('clears the new-marker when the row is visited', () => {

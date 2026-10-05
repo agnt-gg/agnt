@@ -1,5 +1,10 @@
 <template>
   <section class="focused-page" :aria-label="page.title">
+    <template v-if="section === 'members'">
+      <button type="button" class="focused-page-back" @click="nav.go({ page: 'settings' })"><i class="fas fa-arrow-left" aria-hidden="true"></i>Settings</button>
+      <MembersSettings @open-billing="nav.studio('SettingsScreen', { section: 'billing' })" @close="nav.go({ page: 'settings' })" />
+    </template>
+    <template v-else>
     <header class="focused-page-head">
       <div>
         <h1>{{ page.title }}</h1>
@@ -53,6 +58,10 @@
       <div class="focused-edit-card">
         <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
         <div class="focused-edit-row"><span class="focused-edit-label">Email</span><span>{{ userEmail || '—' }}</span></div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">Members</span>
+          <button type="button" class="focused-btn" @click="nav.go({ page: 'settings', section: 'members' })"><i class="fas fa-users" aria-hidden="true"></i>Manage members</button>
+        </div>
         <div class="focused-edit-row">
           <span class="focused-edit-label">Session</span>
           <button type="button" class="focused-btn" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
@@ -110,10 +119,13 @@
       <span class="focused-flex"></span>
       <button type="button" class="focused-btn" @click="nav.studio('SettingsScreen')">All settings</button>
     </div>
+    </template>
   </section>
 </template>
 
 <script setup>
+defineProps({ section: { type: String, default: null } });
+import MembersSettings from '@/views/Terminal/CenterPanel/screens/Settings/components/MembersSettings.vue';
 import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';

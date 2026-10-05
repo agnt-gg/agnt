@@ -65,17 +65,18 @@ describe('runJumpAction', () => {
     expect(c.router.push).toHaveBeenCalledWith({ path: '/marketplace', query: { item: 'asset-1' } });
   });
 
-  it('teams and page dispatch their window events', () => {
+  it('teams navigates to Settings and custom pages still dispatch their event', () => {
     const seen = [];
     const on = (e) => seen.push([e.type, e.detail ?? null]);
     window.addEventListener('agnt:open-team-workspace', on);
     window.addEventListener('agnt:open-page', on);
-    runJumpAction({ type: 'teams' }, ctx());
+    const c = ctx();
+    runJumpAction({ type: 'teams' }, c);
+    expect(c.navigate).toHaveBeenCalledWith('SettingsScreen', { section: 'members' });
     runJumpAction({ type: 'page', id: 'p1' }, ctx());
     window.removeEventListener('agnt:open-team-workspace', on);
     window.removeEventListener('agnt:open-page', on);
     expect(seen).toEqual([
-      ['agnt:open-team-workspace', null],
       ['agnt:open-page', { pageId: 'p1' }],
     ]);
   });

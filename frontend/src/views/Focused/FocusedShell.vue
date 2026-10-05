@@ -44,7 +44,7 @@
       <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" />
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
-      <FocusedSettings v-else-if="page === 'settings'" />
+      <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />
       <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
 
       <!-- The screen Terminal mounted. On a Focused page that is Chat, kept

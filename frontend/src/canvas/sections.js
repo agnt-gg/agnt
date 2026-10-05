@@ -7,7 +7,7 @@
 // nothing else.
 //
 // THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Captions are single
-// plain words (WORK · PLAN · BUILD, then SYSTEM for Members and the gear);
+// plain words (WORK · PLAN · BUILD, with Settings at the foot);
 // every row is one plain noun; nothing on the rail is a word only an engineer
 // uses (runs, traces, artifacts, library, plugins). Route names and screen
 // names keep their old identifiers — this file is about what a person READS,

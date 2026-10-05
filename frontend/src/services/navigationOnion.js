@@ -119,13 +119,6 @@ export const UNLOCK_RULES = [
     message: 'Ready-made agents, workflows and plugins — install one, or publish yours.',
   },
   {
-    id: 'teams',
-    needs: ['teams'],
-    when: (f) => count(f.teams) > 0,
-    title: 'Members',
-    message: 'Team spaces you share with the people you work with.',
-  },
-  {
     // An overview earns its place once there is enough to overview.
     id: 'dashboard',
     needs: [],
@@ -143,7 +136,7 @@ export function emptyOnionState() {
 }
 
 function cleanIds(value) {
-  return Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id))] : [];
+  return Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id && id !== 'teams'))] : [];
 }
 
 export function loadOnionState(storage = globalThis.localStorage) {
@@ -185,9 +178,9 @@ export function isUnlocked(id, state = loadOnionState()) {
  *          UI should celebrate. Silent seeds never appear in it.
  */
 export function evaluateUnlocks(facts, known, state, { quiet = () => false } = {}) {
-  const unlocked = new Set(state.unlocked);
-  const seeded = new Set(state.seeded);
-  const fresh = new Set(state.fresh);
+  const unlocked = new Set(cleanIds(state.unlocked));
+  const seeded = new Set(cleanIds(state.seeded));
+  const fresh = new Set(cleanIds(state.fresh));
   const announced = [];
 
   const judge = (rule) => {

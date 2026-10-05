@@ -5,6 +5,7 @@ import {
   groupedNavigation,
   loadNavigationPreferences,
   migrateLegacyGroups,
+  migrateMembersNavigation,
   navigationItemKey,
   NAVIGATION_STORAGE_KEY,
   renameNavigationGroup,
@@ -54,19 +55,25 @@ describe('navigation preferences', () => {
     expect(groupedNavigation().flatMap((group) => group.items).map((item) => item.id)).toEqual(['chat']);
   });
 
-  it('lists Members as a configurable SYSTEM row, and Library not at all', () => {
-    // Members owns no screen, so it is not in MAIN_SECTIONS — but it is a row
-    // the user sees, and the rail may not carry a row Settings cannot reach.
-    // Library duplicated the BUILD rows, so Studio's rail no longer has it.
+  it('Members no longer occupies a rail row even with saved visibility or unlocks', () => {
     unlock('library', 'teams');
-    const all = groupedNavigation([], { includeHidden: true }).flatMap((group) => group.items);
-    expect(all.find((item) => item.id === 'teams')).toMatchObject({ type: 'virtual', key: 'virtual:teams', group: 'SYSTEM', label: 'Members' });
-    expect(all.some((item) => item.id === 'library')).toBe(false);
+    updateNavigationItem('virtual:teams', { visible: true, group: 'SYSTEM' });
+    const groups = groupedNavigation([], { includeHidden: true });
+    expect(groups.flatMap(g => g.items).some(i => ['library', 'teams'].includes(i.id))).toBe(false);
+    expect(groups.map(g => g.name)).not.toContain('SYSTEM');
+    expect(loadNavigationPreferences().items['virtual:teams']).toBeUndefined();
+  });
 
-    updateNavigationItem('virtual:teams', { visible: false, group: 'Focus' });
-    const visible = groupedNavigation().flatMap((group) => group.items);
-    expect(visible.some((item) => item.id === 'teams')).toBe(false);
-    expect(groupedNavigation([], { includeHidden: true }).find((group) => group.name === 'FOCUS').items.map((item) => item.id)).toEqual(['teams']);
+  it('migration removes only the retired Members row, preserving custom group order and items', () => {
+    const before = { version: 1, groups: ['WORK', 'SYSTEM', 'FOCUS'], items: { 'virtual:teams': { visible: true }, 'section:goals': { group: 'FOCUS', order: 7, visible: false } } };
+    const after = migrateMembersNavigation(before);
+    expect(after.groups).toEqual(['WORK', 'FOCUS']);
+    expect(after.items).toEqual({ 'section:goals': { group: 'FOCUS', order: 7, visible: false } });
+    expect(migrateMembersNavigation(after)).toBe(after);
+    expect(before.items['virtual:teams']).toBeDefined();
+    const custom = { ...before, items: { ...before.items, 'page:mine': { group: 'SYSTEM', order: 3 } } };
+    expect(migrateMembersNavigation(custom).groups).toContain('SYSTEM');
+    expect(migrateMembersNavigation(custom).items['page:mine']).toEqual({ group: 'SYSTEM', order: 3 });
   });
 
   it('hiding every row leaves an empty rail rather than a silent fallback', () => {
@@ -120,7 +127,7 @@ describe('navigation preferences', () => {
     it('moves onto the new captions, keeping visibility and the groups the person made', () => {
       localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify(legacy));
       const prefs = loadNavigationPreferences();
-      expect(prefs.groups).toEqual(['WORK', 'PLAN', 'BUILD', 'SYSTEM', 'PERSONAL', 'FOCUS']);
+      expect(prefs.groups).toEqual(['WORK', 'PLAN', 'BUILD', 'PERSONAL', 'FOCUS']);
       expect(prefs.items['section:goals']).toEqual({ visible: false });
       // Parked under an old caption → back to its built-in group.
       expect(prefs.items['section:store']).toEqual({});

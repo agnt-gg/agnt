@@ -5,19 +5,9 @@ export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
 export const PERSONAL_GROUP = 'PERSONAL';
 
-// Rail rows that are MODES rather than routed screens: Members opens the shared
-// space. It owns no screen, so it cannot live in MAIN_SECTIONS — but it is a
-// destination the user sees on the rail, and a row you can see is a row you
-// must be able to hide, reorder and regroup. CanvasScreen.openPrimary(id)
-// knows how to open it.
-//
-// Library is not a rail row in Studio: BUILD already lists every kind of thing
-// you made, one row each, so a second browser of the same things was a
-// duplicate. Focused keeps its Library page.
-export const VIRTUAL_SECTIONS = [
-  // The id stays 'teams' so saved rail layouts keep this row; the word users read is Members.
-  { id: 'teams', group: 'SYSTEM', icon: 'fas fa-users', label: 'Members' },
-];
+// Members is Settings → Account → Members, not a separate rail mode.
+// Keep the registry export for readers that compose navigation dynamically.
+export const VIRTUAL_SECTIONS = [];
 
 // Captions the rail used before WORK · PLAN · BUILD · SYSTEM. A saved layout
 // stores the whole caption list, so without this the old names would linger
@@ -85,17 +75,26 @@ export function migrateLegacyGroups(preferences) {
   return { ...preferences, groups: [...DEFAULT_GROUPS, PERSONAL_GROUP, ...custom], items };
 }
 
+/** Retire only the built-in Members row and its now-empty SYSTEM caption.
+ * Custom pages or rows deliberately assigned to SYSTEM remain untouched. */
+export function migrateMembersNavigation(preferences) {
+  const { ['virtual:teams']: retired, ...items } = preferences.items;
+  const systemInUse = Object.values(items).some(item => item && typeof item === 'object' && cleanGroup(item.group) === 'SYSTEM');
+  if (!retired && (systemInUse || !preferences.groups.includes('SYSTEM'))) return preferences;
+  return { ...preferences, items, groups: preferences.groups.filter(group => group !== 'SYSTEM' || systemInUse) };
+}
+
 export function loadNavigationPreferences() {
   try {
     const parsed = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY) || 'null');
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.groups) || !parsed.items || Array.isArray(parsed.items)) {
       return emptyPreferences();
     }
-    return migrateLegacyGroups({
+    return migrateMembersNavigation(migrateLegacyGroups({
       version: 1,
       groups: [...new Set(parsed.groups.map((group) => cleanGroup(group)).filter(Boolean))],
       items: { ...parsed.items },
-    });
+    }));
   } catch {
     return emptyPreferences();
   }

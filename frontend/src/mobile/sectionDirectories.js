@@ -53,6 +53,12 @@ export const settingsDirectory = [
         "description": "Your profile and AGNT score"
       },
       {
+        "id": "members",
+        "icon": "fas fa-users",
+        "label": "Members",
+        "description": "Team access, invitations and roles"
+      },
+      {
         "id": "billing",
         "icon": "fas fa-wallet",
         "label": "Billing",

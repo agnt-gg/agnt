@@ -115,7 +115,7 @@ export function focusedLocation(screen, query = {}) {
     case 'MemoryScreen':
       return { page: 'memory', item: selected(query, 'memory'), isNew };
     case 'SettingsScreen':
-      return { page: 'settings' };
+      return { page: 'settings', ...(str(query.section) === 'members' ? { section: 'members' } : {}) };
     case 'MarketplaceScreen':
       return { page: 'market', item: str(query.item) || selected(query, 'marketplace') || null };
     default:
@@ -154,7 +154,7 @@ export function routeFor(loc) {
     if (loc.isNew) opts.newGoal = true;
     return [PAGE_SCREENS.memory, opts];
   }
-  if (loc.page === 'settings') return [PAGE_SCREENS.settings, {}];
+  if (loc.page === 'settings') return [PAGE_SCREENS.settings, loc.section === 'members' ? { section: 'members' } : {}];
   if (loc.page === 'market') return [PAGE_SCREENS.market, loc.item ? { select: { kind: 'marketplace', id: loc.item } } : {}];
   return ['ChatScreen', {}];
 }

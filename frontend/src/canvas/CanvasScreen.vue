@@ -5,13 +5,13 @@
       <button v-if="compactLayout" type="button" class="cv-mobile-menu" aria-label="Open navigation" :aria-expanded="!!navigationOpen" @click="openMobileNavigation"><i class="fas fa-bars"></i></button>
       <div v-if="compactLayout" class="cv-mobile-identity"><h1>{{ mobileTitle }}</h1></div>
       <button v-if="compactLayout && mobilePanels.left" class="cv-mobile-icon cv-mobile-browse" type="button" data-mobile-panel="left" :aria-label="screenName === 'ChatScreen' ? 'Saved chats' : 'Browse ' + mobileTitle" @click="requestMobilePanel('left')"><i :class="screenName === 'ChatScreen' ? 'fas fa-history' : 'fas fa-columns'" aria-hidden="true"></i></button>
-      <button v-if="compactLayout && screenName === 'ChatScreen' && !showLibrary && !showTeamWorkspace && !onCustomPage" class="cv-mobile-icon cv-mobile-new-chat" type="button" aria-label="New chat" @click="requestMobileNewChat"><i class="fas fa-edit" aria-hidden="true"></i></button>
+      <button v-if="compactLayout && screenName === 'ChatScreen' && !showLibrary && !onCustomPage" class="cv-mobile-icon cv-mobile-new-chat" type="button" aria-label="New chat" @click="requestMobileNewChat"><i class="fas fa-edit" aria-hidden="true"></i></button>
       <button v-if="compactLayout && mobilePanels.right" class="cv-mobile-icon cv-mobile-inspector" type="button" data-mobile-panel="right" :aria-label="screenName === 'ChatScreen' ? 'This chat' : 'Inspector'" @click="requestMobilePanel('right')"><i class="fas fa-info-circle" aria-hidden="true"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
-        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : 'Members' }}</span></template>
+        <template v-if="showLibrary"><span class="cv-page-title">Library</span></template>
         <template v-else-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
@@ -185,7 +185,7 @@
           <Tooltip v-for="section in bottomSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button
               class="cv-sb-page"
-              :class="{ active: !showLibrary && !showTeamWorkspace && !onCustomPage && activeSection && activeSection.id === section.id }"
+              :class="{ active: !showLibrary && !onCustomPage && activeSection && activeSection.id === section.id }"
               :data-tour-id="`sidebar.${section.id}`"
               @click="navigateMobileSection(section)"
             >
@@ -235,12 +235,11 @@
              two nothing opaque covers this box (transparent under custom-bg).
              See PanelBackdrop.vue. -->
         <LibraryHome v-if="showLibrary" @navigate="onJumpNavigate" @teams="openPrimary('teams')" />
-        <TeamWorkspace v-if="showTeamWorkspace" :selected-team-id="selectedTeamId" :initial-tab="teamNavigationTab" :hide-scope-selector="true" @update:selected-team-id="syncTeamSelection" @teams-loaded="syncWorkspaceTeams" @close="openPrimary('chat')" @open-billing="$emit('screen-change', 'SettingsScreen', { section: 'billing' })" />
         <PanelBackdrop v-if="showPanelBackdrop" :screen-name="screenName" />
 
         <!-- Custom pages: full widget canvas system -->
         <WidgetCanvas
-          v-if="!showLibrary && !showTeamWorkspace && onCustomPage && activePageId"
+          v-if="!showLibrary && onCustomPage && activePageId"
           :pageId="activePageId"
           :isCustomPage="true"
           @open-catalog="showCatalog = true"
@@ -256,13 +255,13 @@
         <!-- data-fullscreen-host: the one box a screen's "fullscreen" may fill.
              It is below the top bar and beside the sidebar by construction, so
              nothing expanded inside a screen can cover the app's own chrome. -->
-        <div v-else v-show="!showLibrary && !showTeamWorkspace" class="cv-personal-content" data-fullscreen-host><slot /></div>
+        <div v-else v-show="!showLibrary" class="cv-personal-content" data-fullscreen-host><slot /></div>
       </div>
     </div>
 
     <nav v-if="isAuthenticated && compactLayout" class="mobile-destinations" aria-label="Primary navigation" :inert="navigationOpen ? true : undefined">
       <button v-for="destination in mobileDestinations" :key="destination.screen" type="button"
-        :aria-current="!showLibrary && !showTeamWorkspace && !onCustomPage && screenName === destination.screen ? 'page' : undefined"
+        :aria-current="!showLibrary && !onCustomPage && screenName === destination.screen ? 'page' : undefined"
         @click="openMobileDestination(destination.screen)">
         <i :class="destination.icon" aria-hidden="true"></i><span>{{ destination.label }}</span>
       </button>
@@ -359,7 +358,6 @@ import { BOTTOM_SECTIONS, ALL_SECTIONS, visibleTabs } from './sections.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
-import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
 import { currentTeamScope, homeOrigin, onTeamInstance, openPersonal, openTeam } from '@/composables/useSpaces.js';
 import { rememberInstanceTeam } from '@/utils/teamScopeTransport.js';
 import { teamRequest } from '@/utils/teamClient.js';
@@ -409,7 +407,7 @@ const marqueeDirective = {
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette, PanelBackdrop, TeamWorkspace, LibraryHome, WorkspaceSwitcher },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette, PanelBackdrop, LibraryHome, WorkspaceSwitcher },
   directives: { marquee: marqueeDirective },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
@@ -525,10 +523,8 @@ export default {
 
     // The space this page RUNS in is fixed for its lifetime: a team page is a
     // different session (desktop) or a different page load (browser), never a
-    // relabelled personal page. selectedTeamId is only which team the Teams
-    // management panel is showing.
+    // relabelled personal page. Membership management lives in Settings.
     const activeTeamId = ref(currentTeamScope()?.teamId || '');
-    const selectedTeamId = ref(activeTeamId.value);
     const workspaceTeams = ref([]);
     const workspaceError = ref('');
     // Teams is an onion fact too; it is only known once this canvas' own team
@@ -542,7 +538,6 @@ export default {
       teamsKnown: teamsLoaded,
       canAnnounce: computed(() => !compactLayout.value && !store.getters['userAuth/shouldShowOnboarding']),
     });
-    const teamNavigationTab = ref('Members');
     // Who is signed in HERE: each instance is its own site, so a mismatch is otherwise invisible.
     const accountEmail = computed(() => store.state.userAuth?.userEmail || '');
     // Where Personal leads from a workspace: the instance this tab came from, by name.
@@ -551,8 +546,7 @@ export default {
     let workspaceGeneration = 0;
     let workspaceRequest = null;
     const showLibrary = ref(false);
-    const showTeamWorkspace = ref(new URLSearchParams(window.location.search).has('teams-panel'));
-    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=activeTeamId.value; });
+    watch(() => props.screenName, () => { showLibrary.value=false; });
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -619,17 +613,16 @@ export default {
 
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
-    // Library and Teams are panels laid OVER the screen rather than screens of
-    // their own, so they are lit by their open state. Every other row is a real
+    // Library is a panel laid over the screen, so its state determines whether
+    // it is active. Every other row is a real
     // destination and lights itself from activeSection / activePageId.
     const primaryActive = computed(() => {
-      if(showTeamWorkspace.value)return teamNavigationTab.value==='Members'?'teams':'library';
       if(showLibrary.value)return 'library';
       return '';
     });
     function isNavigationItemActive(item) {
       if (item.type === 'virtual') return primaryActive.value === item.id;
-      if (showLibrary.value || showTeamWorkspace.value) return false;
+      if (showLibrary.value) return false;
       if (item.type === 'page') return onCustomPage.value && item.id === activePageId.value;
       return !onCustomPage.value && activeSection.value?.id === item.id;
     }
@@ -653,7 +646,7 @@ export default {
       const own=teams.find(t=>{try{return Boolean(t.tenantUrl)&&new URL(t.tenantUrl).origin===window.location.origin}catch{return false}});
       if(own){
         rememberInstanceTeam(own);
-        if(activeTeamId.value!==own.id){activeTeamId.value=own.id;selectedTeamId.value=own.id;}
+        if(activeTeamId.value!==own.id)activeTeamId.value=own.id;
       } else if(onTeamInstance()){
         // No longer on that team: stop labelling this page as it. The server refuses its data anyway.
         rememberInstanceTeam(null);
@@ -664,12 +657,10 @@ export default {
     function syncWorkspaceTeams(teams) {
       workspaceTeams.value=teams;workspaceError.value='';teamsLoaded.value=true;
       adoptInstanceTeam(teams);
-      if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
       // The desktop keeps one space per team; this list is the full membership, so a removed team's space closes.
       window.electron?.spaces?.syncTeams(teams.filter(t=>t.tenantUrl).map(t=>({id:t.id,name:t.name,tenantUrl:t.tenantUrl})),{replace:true})
         .catch(error=>console.warn('[spaces] sync:',error.message));
     }
-    function syncTeamSelection(id) { selectedTeamId.value=id; }
     async function loadWorkspaceTeams() {
       if(!isAuthenticated.value)return;
       const generation=workspaceGeneration;
@@ -692,7 +683,7 @@ export default {
      */
     async function selectWorkspace(id) {
       if(id==='__manage'){openPrimary('teams');return;}
-      if(id===activeTeamId.value){showTeamWorkspace.value=false;showLibrary.value=false;return;}
+      if(id===activeTeamId.value){showLibrary.value=false;return;}
       try {
         if(!id){if(!(await openPersonal()))workspaceError.value=NO_PERSONAL_SPACE;return;}
         const team=workspaceTeams.value.find(t=>t.id===id);if(!team)return;
@@ -708,21 +699,20 @@ export default {
       { screen: 'GoalsScreen', label: 'Goals', icon: 'fas fa-bullseye' },
       { screen: 'TracesScreen', label: 'Activity', icon: 'fas fa-bolt' },
     ];
-    const onMobileDestination = computed(() => !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value
+    const onMobileDestination = computed(() => !showLibrary.value && !onCustomPage.value
       && mobileDestinations.some((destination) => destination.screen === props.screenName));
     // The phone header names the page you are on (the approved atlas: Skills,
     // not Agents, while the Skills tab is open). The section's sibling pages
     // sit beneath it as chips; pages render no second title of their own.
     const mobileTitle = computed(() => {
       if (showLibrary.value) return 'Library';
-      if (showTeamWorkspace.value) return 'Members';
       if (onCustomPage.value && activePage.value?.name) return activePage.value.name;
       if (untabbedScreenLabel.value) return untabbedScreenLabel.value;
       return titleCase(activeSectionTabs.value.find((tab) => tab.screen === props.screenName)?.label || activeSection.value?.label || 'AGNT');
     });
     const mobilePanels = computed(() => {
       const panels = store.getters['shell/screenPanels'] || {};
-      const onScreen = !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value && panels.screenId === props.screenName;
+      const onScreen = !showLibrary.value && !onCustomPage.value && panels.screenId === props.screenName;
       return { left: onScreen && panels.left, right: onScreen && panels.right };
     });
     const requestMobilePanel = (side) => window.dispatchEvent(new CustomEvent(side === 'left' ? 'agnt:toggle-left-panel' : 'agnt:toggle-right-panel'));
@@ -730,20 +720,23 @@ export default {
     function openMobileDestination(screen) {
       closeMobileNavigation({ restoreFocus: false });
       showLibrary.value = false;
-      showTeamWorkspace.value = false;
       onCustomPage.value = false;
       emit('screen-change', screen, {});
     }
     function openPrimary(id) {
-      if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
+      if(id==='teams'){
+        showLibrary.value=false;onCustomPage.value=false;
+        closeMobileNavigation({ restoreFocus: false });
+        emit('screen-change','SettingsScreen',{section:'members'});
+        return;
+      }
       // Library is always this space's library: every API it calls is already scoped to the space.
-      if(id==='library'){onCustomPage.value=false;showTeamWorkspace.value=false;showLibrary.value=true;return}
-      selectedTeamId.value=activeTeamId.value;showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
+      if(id==='library'){onCustomPage.value=false;showLibrary.value=true;return}
+      showLibrary.value=false;onCustomPage.value=false;
       emit('screen-change','ChatScreen',{});
     }
     watch(() => [isAuthenticated.value,store.state.userAuth?.token], () => {
-      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value=isAuthenticated.value?activeTeamId.value:'';workspaceError.value='';
-      showTeamWorkspace.value=isAuthenticated.value&&new URLSearchParams(window.location.search).has('teams-panel');
+      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];workspaceError.value='';
       if(isAuthenticated.value)loadWorkspaceTeams();
     }, {immediate:true});
 
@@ -801,7 +794,7 @@ export default {
     // and MUST show the wallpaper between widgets — a backdrop there filled
     // the gaps in. One predicate drives both the component and the body class
     // that makes the frame's panels transparent, so they can never disagree.
-    const showPanelBackdrop = computed(() => !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value && screenHasFrame(props.screenName));
+    const showPanelBackdrop = computed(() => !showLibrary.value && !onCustomPage.value && screenHasFrame(props.screenName));
     function syncBackdropClass() {
       document.body.classList.toggle('has-panel-backdrop', showPanelBackdrop.value);
     }
@@ -815,9 +808,8 @@ export default {
       store.dispatch('shell/openJump');
     }
     function onJumpNavigate(screen, opts) {
-      selectedTeamId.value='';
       showLibrary.value=false;
-      showTeamWorkspace.value=false;
+
       onCustomPage.value = false;
       emit('screen-change', screen, opts || {});
     }
@@ -1008,9 +1000,8 @@ export default {
     }
 
     function switchToPage(pageId) {
-      selectedTeamId.value='';
       showLibrary.value=false;
-      showTeamWorkspace.value=false;
+
       onCustomPage.value = true;
       store.dispatch('widgetLayout/setActivePage', pageId);
     }
@@ -1023,9 +1014,8 @@ export default {
     }
 
     function navigateToSection(section) {
-      selectedTeamId.value='';
       showLibrary.value=false;
-      showTeamWorkspace.value=false;
+
       onCustomPage.value = false;
       emit('screen-change', section.screens[0].screen);
     }
@@ -1104,6 +1094,7 @@ export default {
       syncBackdropClass();
       window.addEventListener('agnt:open-page', onOpenPageEvent);
       window.addEventListener('agnt:open-team-workspace',onOpenTeamWorkspace);
+      window.addEventListener('agnt:team-membership-changed',loadWorkspaceTeams);
       window.addEventListener('agnt:new-page', startAddPage);
       window.addEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
 
@@ -1134,6 +1125,7 @@ export default {
       document.body.classList.remove('has-panel-backdrop');
       window.removeEventListener('agnt:open-page', onOpenPageEvent);
       window.removeEventListener('agnt:open-team-workspace',onOpenTeamWorkspace);
+      window.removeEventListener('agnt:team-membership-changed',loadWorkspaceTeams);
       window.removeEventListener('agnt:new-page', startAddPage);
       window.removeEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
@@ -1144,7 +1136,7 @@ export default {
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryActive, openPrimary, isNavigationItemActive, mobileDestinations, openMobileDestination, onMobileDestination, mobileTitle, mobilePanels, requestMobilePanel, requestMobileNewChat, titleCase,
-      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,accountEmail,personalHint,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
+      activeTeamId,spaceUnread,workspaceTeams,workspaceError,accountEmail,personalHint,selectWorkspace,syncWorkspaceTeams,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,
@@ -1174,7 +1166,6 @@ export default {
       jumpKey,
       jumpHint,
       openJump,
-      showTeamWorkspace,
       showLibrary,
       onJumpNavigate,
       ctxMenu,

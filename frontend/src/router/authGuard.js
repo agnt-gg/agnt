@@ -59,6 +59,13 @@ export function createAuthGuard(storeInstance) {
       return;
     }
 
+    // Old Members overlay links now land in Settings in either presentation mode.
+    if (Object.prototype.hasOwnProperty.call(to.query || {}, 'teams-panel')) {
+      const { ['teams-panel']: legacy, ...query } = to.query;
+      next({ path: '/settings', query: { ...query, section: 'members' }, hash: to.hash });
+      return;
+    }
+
     if (to.meta.requiresAuth && storeInstance.state.userAuth.sessionState !== SESSION.VALID) {
       try {
         await storeInstance.dispatch('userAuth/verifySession');
