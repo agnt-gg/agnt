@@ -278,7 +278,7 @@ export default {
 .main-category.selected,
 .sub-category.selected {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .main-category {
@@ -297,7 +297,7 @@ export default {
 }
 
 .sub-category.selected {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .category-name {

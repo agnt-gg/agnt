@@ -448,7 +448,7 @@ export default {
   color: var(--color-text-muted);
 }
 .needs-empty i {
-  color: var(--color-green);
+  color: var(--text-green);
   margin-right: 6px;
 }
 .needs-row {
@@ -699,7 +699,7 @@ h3 {
 
 .tool-connect-btn.connected {
   background: rgba(34, 197, 94, 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(34, 197, 94, 0.4);
 }
 

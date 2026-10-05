@@ -2694,7 +2694,7 @@ export default {
 }
 
 .ce-save-btn:hover:not(:disabled) {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 
@@ -3517,7 +3517,7 @@ export default {
   gap: 20px;
 }
 .share-modal-success .success-message {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1em;
   font-weight: 500;
   margin: 0;
@@ -3563,7 +3563,7 @@ export default {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -3594,12 +3594,12 @@ export default {
   transition: all 0.2s ease;
 }
 .share-action-btn.view-btn {
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--blue-rgb), 0.1);
   border: 1px solid rgba(18, 224, 255, 0.3);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 .share-action-btn.view-btn:hover {
-  background: rgba(18, 224, 255, 0.2);
+  background: rgba(var(--blue-rgb), 0.2);
   border-color: var(--color-blue);
 }
 .share-action-btn.edit-btn {

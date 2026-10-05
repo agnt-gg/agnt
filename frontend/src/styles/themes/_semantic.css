@@ -248,6 +248,15 @@ body {
   --status-amber-text: #f59e0b;
   --status-green-text: #22c55e;
   --status-yellow-text: #facc15;
+
+  /* Hue used as TEXT. Every theme renders its own hue unchanged; _light.css
+     points these at the AA status inks, because the shared neon hues cannot be
+     read on white. Use these for `color:`; keep --color-<hue> for fills. */
+  --text-green: var(--color-green);
+  --text-blue: var(--color-blue);
+  --text-info: var(--color-secondary);
+  --text-yellow: var(--color-yellow);
+  --text-orange: var(--color-orange);
 }
 
 /* ── LIGHT + ROSE ─────────────────────────────────────────────────────────── */
@@ -258,7 +267,10 @@ body:not(.dark) {
      transfer — hence 10,407 borders currently painted the same colour as the
      page background, doing no work at all. */
   --surface-canvas: var(--color-background); /* tinted page background   */
-  --surface-raised: #ffffff; /* cards, panels, popovers  */
+  --surface-raised: #ffffff; /* opaque layers only: a panel that must hide
+     what is under it. NOT for cards or sections: those take --color-darker-0,
+     the house convention on Agents/Workflows/Tools/Chat (guarded by
+     surfaceConventions.spec.js). */
   /* Wells/tracks take --color-darker-0 — see the note in the block above. */
   --surface-hover: rgba(16, 24, 40, 0.04);
   --surface-active: rgba(16, 24, 40, 0.07);

@@ -115,7 +115,7 @@ export default {
 }
 
 .toggle-button:hover:not(.active) {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.05);
   opacity: 1;
 }
@@ -165,7 +165,7 @@ button.tab-button:last-child {
 }
 
 .tab-button:hover:not(.active) {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.05);
   opacity: 1;
 }

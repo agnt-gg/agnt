@@ -1509,7 +1509,7 @@ export default {
    a child component's root element carries this file's scope id too. */
 
 .text-bright-green {
-  color: var(--color-green);
+  color: var(--text-green);
   text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
@@ -1669,7 +1669,7 @@ export default {
 .collapse-toggle {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-green);
+  color: var(--text-green);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -1725,7 +1725,7 @@ export default {
   background: var(--color-darker-0);
   font-weight: 700;
   font-size: 12px;
-  color: var(--color-secondary);
+  color: var(--text-info);
   border: 1px solid var(--terminal-border-color);
   opacity: 0.5;
 }
@@ -1836,14 +1836,14 @@ export default {
   font-size: 11px;
   font-weight: 600;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .agent-status.active {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .agent-status.inactive {
@@ -1909,7 +1909,7 @@ export default {
 .tool-icon-small :deep(svg) {
   width: 10px;
   height: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tools-overflow {
@@ -1924,7 +1924,7 @@ export default {
 }
 
 .tools-count {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -2162,7 +2162,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 24px;
   opacity: 0.5;
   border-radius: 50%;
@@ -2227,7 +2227,7 @@ export default {
 
 .meta-item i {
   font-size: 11px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .meta-item.category i {
@@ -2235,7 +2235,7 @@ export default {
 }
 
 .meta-item .fa-star {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .meta-count {
@@ -2249,13 +2249,13 @@ export default {
   font-size: 12px;
   font-weight: 700;
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   flex-shrink: 0;
 }
 
 .item-price.free {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .item-publisher {
@@ -2277,7 +2277,7 @@ export default {
   width: 100%;
   padding: 10px 16px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid transparent;
   font-weight: 700;
   font-size: 12px;

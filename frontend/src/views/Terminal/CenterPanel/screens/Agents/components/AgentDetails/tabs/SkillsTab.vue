@@ -73,7 +73,7 @@ h3.section-title {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .skills-grid {
@@ -138,7 +138,7 @@ h3.section-title {
 
 .instructions-label {
   font-size: 0.75em;
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

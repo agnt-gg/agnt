@@ -335,7 +335,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -360,7 +360,7 @@ export default {
   padding: 0;
   opacity: 0.5;
   transition: opacity 0.3s ease;
-  color: var(--color-green);
+  color: var(--text-green);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -442,7 +442,7 @@ body.tool-editor-fullscreen {
   padding: 3px 8px;
   border: 1px solid var(--color-red);
   border-radius: 8px;
-  background: rgba(254, 78, 78, 0.1);
+  background: rgba(var(--red-rgb), 0.1);
   overflow-wrap: anywhere;
 }
 </style>

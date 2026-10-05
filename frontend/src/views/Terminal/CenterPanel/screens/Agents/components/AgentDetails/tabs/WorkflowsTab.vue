@@ -43,7 +43,7 @@ h3.section-title {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state {

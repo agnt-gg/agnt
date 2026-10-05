@@ -364,7 +364,7 @@ body.dark .terms-modal {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-active);
   color: var(--color-text);
 }
 
@@ -392,11 +392,11 @@ body.dark .terms-modal {
 
 .tab-btn:hover {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .tab-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-bottom-color: var(--color-green);
 }
 
@@ -459,7 +459,7 @@ body.dark .terms-modal {
 }
 
 .content-text a {
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: none;
 }
 
@@ -511,7 +511,7 @@ body.dark .terms-modal {
 }
 
 .license-text :deep(a) {
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: none;
 }
 
@@ -543,7 +543,7 @@ body.dark .terms-modal {
 
 .license-text :deep(th) {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
 }
 
 /* Special Content Styles */
@@ -565,7 +565,7 @@ body.dark .terms-modal {
 
 .warning-box strong {
   display: block;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 1.1em;
   margin-bottom: 8px;
 }
@@ -586,7 +586,7 @@ body.dark .terms-modal {
 
 .manifesto-intro strong {
   display: block;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.1em;
   margin-bottom: 8px;
 }
@@ -629,7 +629,7 @@ body.dark .terms-modal {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
-  color: var(--color-ultra-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   padding: 12px 32px;
   border-radius: 999px;

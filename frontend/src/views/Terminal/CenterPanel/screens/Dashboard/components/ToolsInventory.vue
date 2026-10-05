@@ -202,11 +202,11 @@ export default {
 }
 
 .tool-icon.status-healthy {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-icon.status-warning {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .tool-icon.status-error {

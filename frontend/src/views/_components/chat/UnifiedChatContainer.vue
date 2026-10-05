@@ -884,7 +884,7 @@ export default {
 
 .chat-voice-btn.voice-on {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 /*
@@ -895,23 +895,23 @@ export default {
  */
 .chat-voice-btn.voice-connecting {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .chat-voice-btn.voice-listening,
 .chat-voice-btn.voice-reopen {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .chat-voice-btn.voice-thinking {
   background: rgba(var(--yellow-rgb), 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .chat-voice-btn.voice-speaking {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 /* Mic level, so "is it hearing me?" is answerable at a glance. */
@@ -1069,7 +1069,7 @@ export default {
 .empty-state i {
   font-size: 2.5em;
   opacity: 0.5;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state p {
@@ -1122,7 +1122,7 @@ export default {
   background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
   border: 1px solid rgba(var(--green-rgb, 18, 224, 255), 0.25);
   border-radius: 999px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.78em;
   line-height: 1.2;
   max-width: 100%;
@@ -1151,7 +1151,7 @@ export default {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -1194,7 +1194,7 @@ export default {
   justify-content: center;
   gap: 12px;
   background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.95em;
   pointer-events: none;
 }

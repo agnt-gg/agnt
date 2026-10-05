@@ -50,7 +50,7 @@
         </div>
         <div class="score-header">
           <div class="score-main">
-            <span class="score-label"><span style="color: var(--color-green)">AGNT</span> XP</span>
+            <span class="score-label"><span style="color: var(--text-green)">AGNT</span> XP</span>
             <span class="score-value">{{ formattedScore }}</span>
             <span class="score-tier">{{ scoreTier }}</span>
           </div>
@@ -580,7 +580,7 @@ export default {
 }
 
 .edit-icon-button:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
 }
 
@@ -654,7 +654,7 @@ export default {
 
 .plan-badge.pro-plan {
   background: rgba(var(--yellow-rgb), 0.15);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid rgba(var(--yellow-rgb), 0.4);
   /* box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3); */
 }
@@ -667,7 +667,7 @@ export default {
 
 .tier-badge.pro-tier {
   background: rgba(var(--yellow-rgb), 0.15);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid rgba(var(--yellow-rgb), 0.4);
   /* box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3); */
 }
@@ -778,7 +778,7 @@ export default {
 }
 
 .stat-value.positive {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .stat-value.negative {
@@ -849,7 +849,7 @@ export default {
   background: var(--gradient-brand);
   border-radius: 12px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 2%;
+  min-width: 3.5em; /* room for the label: a sliver of fill pushed it onto the track */
   position: relative;
   overflow: hidden;
   display: flex;

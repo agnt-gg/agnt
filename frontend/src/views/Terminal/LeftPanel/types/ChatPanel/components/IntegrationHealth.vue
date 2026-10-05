@@ -207,11 +207,11 @@ export default {
 }
 
 .health-status.status-healthy {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .health-status.status-degraded {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .health-status.status-critical {
@@ -240,7 +240,7 @@ export default {
 
 .refresh-button:hover:not(:disabled) {
   border-color: var(--color-blue);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .refresh-button:disabled {

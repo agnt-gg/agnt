@@ -113,7 +113,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   font-size: 28px;
-  background: color-mix(in srgb, #19ef83 15%, transparent);
+  background: color-mix(in srgb, var(--color-green) 15%, transparent);
   color: #19ef83;
 }
 .ml-card h1 {
@@ -131,7 +131,7 @@ onMounted(async () => {
   padding: 12px 24px;
   border: none;
   border-radius: 10px;
-  background: #19ef83;
+  background: var(--color-green);
   color: #04120a;
   font-weight: 600;
   font-size: 15px;

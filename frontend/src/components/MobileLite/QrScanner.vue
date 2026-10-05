@@ -275,7 +275,7 @@ onBeforeUnmount(stop);
   min-height: 52px;
   border: none;
   border-radius: 12px;
-  background: #19ef83;
+  background: var(--color-green);
   color: #0b0b12;
   font-size: 16px;
   font-weight: 700;

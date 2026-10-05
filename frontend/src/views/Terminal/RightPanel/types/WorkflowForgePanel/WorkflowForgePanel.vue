@@ -355,14 +355,14 @@ export default {
   bottom: 18px;
   width: 2px;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--color-green), rgba(18, 224, 255, 0.55));
+  background: linear-gradient(180deg, var(--color-green), rgba(var(--blue-rgb), 0.55));
 }
 .wf-step {
   position: relative;
   display: block;
   width: 100%;
   text-align: left;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 6px 10px;
@@ -437,7 +437,7 @@ export default {
 }
 .wf-run-st.st-completed,
 .wf-run-st.st-success {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 .wf-run-st.st-failed,
@@ -446,7 +446,7 @@ export default {
   border-color: rgba(254, 78, 78, 0.3);
 }
 .wf-run-st.st-running {
-  color: var(--color-blue, #12e0ff);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.3);
 }
 .wf-run-when {
@@ -536,7 +536,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -575,7 +575,7 @@ export default {
   padding: 0;
   opacity: 0.5;
   transition: opacity 0.3s ease;
-  color: var(--color-green);
+  color: var(--text-green);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -656,7 +656,7 @@ body.workflow-editor-fullscreen {
   padding: 3px 8px;
   border: 1px solid var(--color-red);
   border-radius: 8px;
-  background: rgba(254, 78, 78, 0.1);
+  background: rgba(var(--red-rgb), 0.1);
   overflow-wrap: anywhere;
 }
 

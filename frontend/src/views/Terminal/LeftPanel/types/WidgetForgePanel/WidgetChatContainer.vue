@@ -617,7 +617,7 @@ export default {
 .empty-state i {
   font-size: 2.5em;
   opacity: 0.5;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state p {
@@ -742,7 +742,7 @@ export default {
   border-radius: 20px;
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   cursor: pointer;
   display: flex;
   align-items: center;

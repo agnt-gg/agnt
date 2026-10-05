@@ -178,7 +178,7 @@ return {
 }
 
 .hint i {
-  color: var(--color-green, #4a9eff);
+  color: var(--text-green);
 }
 
 /* CodeMirror specific styles */
@@ -283,7 +283,7 @@ body.dark .editor-footer {
 }
 
 .ͼp {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 300;
 }
 
@@ -303,7 +303,7 @@ body.dark .editor-footer {
 }
 
 .ͼu {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 300;
 }
 

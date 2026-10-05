@@ -118,7 +118,7 @@ onMounted(load);
 /* An anchor dressed as the dialog's buttons (team.css styles <button> only). */
 .link-share .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font: inherit; color: var(--color-text); border: 1px solid var(--terminal-border-color); border-radius: 6px; background: var(--color-darker-0); padding: 8px 10px; }
 .link-share .btn:hover { color: var(--color-primary); border-color: rgba(var(--primary-rgb), .35); }
-.link-share .warn { color: var(--color-yellow, #ffd700); }
-.link-share .ok { color: var(--color-green, #19ef83); font-size: 14px; }
+.link-share .warn { color: var(--text-yellow); }
+.link-share .ok { color: var(--text-green); font-size: 14px; }
 .link-share .error { padding: 10px 12px; border-radius: 6px; }
 </style>

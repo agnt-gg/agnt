@@ -103,10 +103,10 @@ export default {
 }
 
 .tone-good .stat-value {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .tone-warn .stat-value {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .tone-bad .stat-value {
   color: var(--color-red);

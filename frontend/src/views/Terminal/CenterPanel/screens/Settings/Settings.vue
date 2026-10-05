@@ -562,7 +562,7 @@ body.dark .settings-section.full-width {
 }
 
 .text-bright-green {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .font-bold {
   font-weight: bold;
@@ -599,7 +599,7 @@ body.dark .settings-section.full-width {
 }
 
 .content-title {
-  /* color: var(--color-green); */
+  /* color: var(--text-green); */
   font-size: 1.8em;
   font-weight: 600;
   margin: 0 0 8px 0;

@@ -104,7 +104,7 @@ export default {
 }
 
 .autosave-status.saving {
-  background: rgba(18, 224, 255, 0.15);
+  background: rgba(var(--blue-rgb), 0.15);
   border-color: rgba(18, 224, 255, 0.3);
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -132,11 +132,11 @@ export default {
 }
 
 .autosave-status.saving .status-text {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .autosave-status.saved .status-text {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .autosave-status.error .status-text {

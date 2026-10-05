@@ -68,7 +68,7 @@ defineProps({ dimensions: { type: Array, required: true, default: () => [] } });
 }
 
 .dim-delta.positive {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .dim-delta.negative {

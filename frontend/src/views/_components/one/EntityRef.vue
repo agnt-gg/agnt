@@ -91,7 +91,7 @@ export default {
   font-family: inherit;
   font-size: 0.92em;
   line-height: 1.3;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb, 25, 239, 131), 0.09);
   border: 0;
   border-bottom: 1px dotted rgba(var(--green-rgb, 25, 239, 131), 0.5);
@@ -104,24 +104,24 @@ export default {
 .entity-ref:hover,
 .entity-ref-btn:hover {
   background: rgba(var(--green-rgb, 25, 239, 131), 0.18);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .entity-ref[data-kind='workflow'],
 .entity-ref-btn.kind-workflow {
-  color: var(--color-blue);
-  background: rgba(18, 224, 255, 0.09);
+  color: var(--text-blue);
+  background: rgba(var(--blue-rgb), 0.09);
   border-bottom-color: rgba(18, 224, 255, 0.5);
 }
 .entity-ref[data-kind='goal'],
 .entity-ref-btn.kind-goal {
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.09);
+  color: var(--text-yellow);
+  background: rgba(var(--yellow-rgb), 0.09);
   border-bottom-color: rgba(255, 215, 0, 0.5);
 }
 .entity-ref[data-kind='memory'],
 .entity-ref-btn.kind-memory {
   color: var(--color-pink);
-  background: rgba(229, 61, 143, 0.1);
+  background: rgba(var(--pink-rgb), 0.1);
   border-bottom-color: rgba(229, 61, 143, 0.5);
 }
 .entity-ref[data-kind='trace'],
@@ -129,7 +129,7 @@ export default {
 .entity-ref-btn.kind-trace,
 .entity-ref-btn.kind-execution {
   color: var(--color-indigo);
-  background: rgba(125, 61, 229, 0.12);
+  background: rgba(var(--indigo-rgb), 0.12);
   border-bottom-color: rgba(125, 61, 229, 0.5);
 }
 .entity-ref.is-selected,

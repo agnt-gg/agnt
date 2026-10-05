@@ -567,7 +567,7 @@ h3.section-title {
   border-bottom: none; /* Let header-bar handle this */
 }
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .empty-state {
   display: flex;
@@ -669,23 +669,23 @@ h3.section-title {
 /* Generic active first — equal specificity, source order decides. */
 .chat-voice-button.voice-on {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .chat-voice-button.voice-listening,
 .chat-voice-button.voice-reopen {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .chat-voice-button.voice-thinking {
   background: rgba(var(--yellow-rgb), 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .chat-voice-button.voice-speaking {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .chat-voice-button:disabled {
@@ -787,7 +787,7 @@ h3.section-title {
   border-radius: 50%;
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   cursor: pointer;
   display: flex;
   align-items: center;

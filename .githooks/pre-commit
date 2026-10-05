@@ -1,0 +1,24 @@
+#!/bin/sh
+# Run the theme/style guards before any commit that touches frontend styling.
+# See .githooks/README.md ("pre-commit").
+#
+# Why here and not only in CI: CI runs on push, and long-lived local branches
+# can collect hundreds of commits before their first push. Light-mode
+# regressions landed exactly that way — every guard in frontend/src/styles was
+# red or blind, and nothing ran it. ~15s, and only when styling is staged.
+ROOT="$(git rev-parse --show-toplevel)"
+
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR -- 'frontend/src/*.vue' 'frontend/src/*.css' 'frontend/src/styles/*')"
+[ -z "$STAGED" ] && exit 0
+
+echo "pre-commit: styling staged; running frontend/src/styles guards..."
+cd "$ROOT/frontend" || exit 1
+if npx vitest run src/styles --reporter=dot; then
+  exit 0
+fi
+
+echo ""
+echo "pre-commit: a theme/style guard failed. Each failure names the file, the"
+echo "rule and the token to use instead. Fix the CSS rather than the guard."
+echo "(Emergency only: git commit --no-verify.)"
+exit 1

@@ -188,12 +188,12 @@ export default {
 
 .workflow-status.running {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-status.listening {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .workflow-status.error {
@@ -225,12 +225,12 @@ export default {
 
 .workflow-status-text.running {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-status-text.listening {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .workflow-status-text.error {

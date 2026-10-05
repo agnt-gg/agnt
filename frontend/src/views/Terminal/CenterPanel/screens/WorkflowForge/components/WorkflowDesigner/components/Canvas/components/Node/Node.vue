@@ -1010,7 +1010,7 @@ body.dark .node.has-error.has-output {
 }
 
 .html-preview-container.drag-hover .html-placeholder span {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 

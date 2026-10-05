@@ -246,13 +246,13 @@ export default {
 }
 
 .mode-auto {
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--blue-rgb), 0.1);
   border: 1px solid rgba(18, 224, 255, 0.25);
-  color: var(--cyan, #12e0ff);
+  color: var(--text-blue);
 }
 
 .mode-custom {
-  background: rgba(229, 61, 143, 0.1);
+  background: rgba(var(--pink-rgb), 0.1);
   border: 1px solid rgba(229, 61, 143, 0.25);
   color: var(--pink, #e53d8f);
 }
@@ -269,13 +269,13 @@ export default {
 }
 
 .manifest-alert.ok {
-  background: rgba(25, 239, 131, 0.06);
+  background: rgba(var(--green-rgb), 0.06);
   border-color: var(--green, #19ef83);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .manifest-alert.warn {
-  background: rgba(255, 149, 0, 0.07);
+  background: rgba(var(--orange-rgb), 0.07);
   border-color: var(--gold, #ff9500);
   color: var(--status-amber-text);
 }
@@ -294,7 +294,7 @@ export default {
 }
 
 .group-head:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .group-arrow {
@@ -304,7 +304,7 @@ export default {
 }
 
 .group-head:hover .group-arrow {
-  color: var(--cyan, #12e0ff);
+  color: var(--text-blue);
 }
 
 .group-dot {
@@ -314,10 +314,10 @@ export default {
   flex-shrink: 0;
 }
 
-.dot-system { background: var(--cyan, #12e0ff); }
-.dot-tools { background: var(--purple, #7d3de5); }
-.dot-messages { background: var(--green, #19ef83); }
-.dot-hidden { background: rgba(255, 255, 255, 0.25); }
+.dot-system { background: var(--cyan, var(--color-blue)); }
+.dot-tools { background: var(--purple, var(--color-indigo)); }
+.dot-messages { background: var(--green, var(--color-green)); }
+.dot-hidden { background: var(--color-duller-navy); }
 
 .group-name {
   flex: 1;
@@ -376,12 +376,12 @@ export default {
 }
 
 .group-count.capped {
-  color: var(--gold, #ff9500);
+  color: var(--text-yellow);
 }
 
 .sort-toggle:hover,
 .show-more:hover {
-  color: var(--cyan, #12e0ff);
+  color: var(--text-blue);
 }
 
 .show-more {
@@ -424,7 +424,7 @@ export default {
   font-size: 9.5px;
   padding: 0 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-1);
 }
 
 .why {
@@ -436,27 +436,27 @@ export default {
 }
 
 .why-default {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-1);
   color: var(--text-tertiary);
 }
 
 .why-group {
-  background: rgba(125, 61, 229, 0.2);
+  background: rgba(var(--indigo-rgb), 0.2);
   color: var(--status-purple-text);
 }
 
 .why-discovered {
-  background: rgba(25, 239, 131, 0.14);
-  color: var(--green, #19ef83);
+  background: rgba(var(--green-rgb), 0.14);
+  color: var(--text-green);
 }
 
 .why-frozen {
-  background: rgba(18, 224, 255, 0.12);
-  color: var(--cyan, #12e0ff);
+  background: rgba(var(--blue-rgb), 0.12);
+  color: var(--text-blue);
 }
 
 .why-deny {
-  background: rgba(229, 61, 143, 0.15);
+  background: rgba(var(--pink-rgb), 0.15);
   color: var(--pink, #e53d8f);
 }
 </style>

@@ -543,7 +543,7 @@ export default {
 
 .wm-badge-plugin {
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wm-badge-pro {
@@ -587,7 +587,7 @@ export default {
 }
 
 .text-bright-green {
-  color: var(--color-green);
+  color: var(--text-green);
   text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
@@ -701,7 +701,7 @@ export default {
 
 .main-category {
   font-weight: bold;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.07);
 }
 
@@ -712,7 +712,7 @@ export default {
 
 .all-tools {
   font-weight: bold;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.13);
   border-radius: 4px;
   margin-bottom: 4px;
@@ -724,7 +724,7 @@ export default {
   text-align: center;
   margin-right: 4px;
   cursor: pointer;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .subcategory {
@@ -805,7 +805,7 @@ export default {
 .collapse-toggle {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-green);
+  color: var(--text-green);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -861,7 +861,7 @@ export default {
   background: var(--color-darker-0);
   font-weight: 700;
   font-size: 12px;
-  color: var(--color-secondary);
+  color: var(--text-info);
   border: 1px solid var(--terminal-border-color);
   opacity: 0.5;
 }
@@ -925,7 +925,7 @@ export default {
 .tool-icon {
   width: 18px;
   height: 18px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-icon-placeholder {
@@ -964,8 +964,8 @@ export default {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(255, 215, 0, 0.15);
-  color: var(--color-yellow);
+  background: rgba(var(--yellow-rgb), 0.15);
+  color: var(--text-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   text-transform: uppercase;
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
@@ -991,19 +991,19 @@ export default {
   font-size: 11px;
   font-weight: 600;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .tool-source.custom {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-source.system {
   background: rgba(156, 163, 175, 0.2);
-  color: var(--color-secondary);
+  color: var(--text-info);
 }
 
 .tool-auth-badge {
@@ -1031,7 +1031,7 @@ export default {
 
 .tool-auth-badge.connected {
   background: rgba(34, 197, 94, 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(34, 197, 94, 0.4);
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.3);
 }
@@ -1218,8 +1218,8 @@ export default {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(255, 215, 0, 0.15);
-  color: var(--color-yellow);
+  background: rgba(var(--yellow-rgb), 0.15);
+  color: var(--text-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
 }
 
@@ -1229,7 +1229,7 @@ export default {
   font-size: 11px;
   font-weight: 600;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
 }
 
@@ -1267,7 +1267,7 @@ export default {
 
 .marketplace-stats .stat i {
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .install-btn {
@@ -1352,7 +1352,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 24px;
   opacity: 0.5;
   border-radius: 50%;
@@ -1417,7 +1417,7 @@ export default {
 
 .meta-item i {
   font-size: 11px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .meta-item.category i {
@@ -1425,7 +1425,7 @@ export default {
 }
 
 .meta-item .fa-star {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .meta-count {
@@ -1439,13 +1439,13 @@ export default {
   font-size: 12px;
   font-weight: 700;
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   flex-shrink: 0;
 }
 
 .item-price.free {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .item-publisher {
@@ -1467,7 +1467,7 @@ export default {
   width: 100%;
   padding: 10px 16px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid transparent;
   font-weight: 700;
   font-size: 12px;

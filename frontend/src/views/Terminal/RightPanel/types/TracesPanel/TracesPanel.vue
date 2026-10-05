@@ -1494,7 +1494,7 @@ ${execution.log}
 }
 
 .selected-execution-header h2 {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.1em;
   margin: 0;
 }
@@ -1539,7 +1539,7 @@ ${execution.log}
 }
 
 .detail-section h4 {
-  color: var(--color-green);
+  color: var(--text-green);
   margin: 0 0 12px 0;
   font-size: 1.1em;
   border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
@@ -1580,16 +1580,16 @@ ${execution.log}
   text-transform: uppercase;
   background: rgba(var(--blue-rgb), 0.12);
   border: 1px solid rgba(var(--blue-rgb), 0.3);
-  color: var(--color-blue);
+  color: var(--text-blue);
   vertical-align: middle;
 }
 
 .cost-saved {
-  color: var(--color-green) !important;
+  color: var(--text-green) !important;
 }
 
 .cost-unpriced {
-  color: var(--color-yellow) !important;
+  color: var(--text-yellow) !important;
 }
 
 .run-tree {
@@ -1676,12 +1676,12 @@ ${execution.log}
 .status-badge.running,
 .status-badge.started {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .status-badge.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-badge.failed,
@@ -1769,7 +1769,7 @@ ${execution.log}
 }
 
 .task-agent-info i {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-size: 0.9em;
 }
 
@@ -1779,7 +1779,7 @@ ${execution.log}
 }
 
 .agent-name {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 
@@ -1822,12 +1822,12 @@ ${execution.log}
 }
 
 .tools-header i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 0.9em;
 }
 
 .executed-tools .tools-header i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tools-list {
@@ -1850,13 +1850,13 @@ ${execution.log}
 .tool-badge.required {
   background: rgba(255, 193, 7, 0.15);
   border: 1px solid rgba(255, 193, 7, 0.3);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .tool-badge.executed {
   background: rgba(34, 197, 94, 0.15);
   border: 1px solid rgba(34, 197, 94, 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-badge.executed i {
@@ -1906,7 +1906,7 @@ ${execution.log}
 .node-status.running,
 .node-status.started {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .agent-prompt-section,
@@ -1916,7 +1916,7 @@ ${execution.log}
 
 .node-status.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .node-status.failed,
@@ -2122,7 +2122,7 @@ ${execution.log}
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Recent Runs */
@@ -2187,12 +2187,12 @@ ${execution.log}
 
 .run-status.running {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .run-status.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .run-status.failed {
@@ -2207,12 +2207,12 @@ ${execution.log}
 
 .run-status.pending {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .run-status.started {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .run-status i {
@@ -2220,7 +2220,7 @@ ${execution.log}
 }
 
 .run-duration {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -2358,7 +2358,7 @@ ${execution.log}
 }
 
 .input-hint i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.9em;
 }
 
@@ -2395,7 +2395,7 @@ ${execution.log}
 
 .action-button.edit {
   border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .action-button.edit:hover {
@@ -2524,7 +2524,7 @@ ${execution.log}
   color: var(--color-text-muted);
 }
 
-.output-rendered :deep(a) { color: var(--color-green); }
+.output-rendered :deep(a) { color: var(--text-green); }
 
 .output-rendered :deep(hr) {
   border: none;
@@ -2571,7 +2571,7 @@ ${execution.log}
 
 .tool-exec-detail-header i {
   font-size: 0.75em;
-  color: var(--color-green);
+  color: var(--text-green);
   transition: transform 0.2s ease;
 }
 
@@ -2594,7 +2594,7 @@ ${execution.log}
 
 .tool-exec-detail-badge.badge-ok {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-exec-detail-badge.badge-error {
@@ -2718,7 +2718,7 @@ ${execution.log}
   font-weight: 500;
 }
 .insight-status-badge.pending { background: rgba(245,158,11,0.15); color: var(--status-amber-text); }
-.insight-status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
+.insight-status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--text-green); }
 .insight-status-badge.rejected { background: rgba(239,68,68,0.15); color: var(--color-red); }
 .insight-status-badge.superseded { background: rgba(150,150,150,0.15); color: var(--color-text-muted); }
 .insight-confidence {

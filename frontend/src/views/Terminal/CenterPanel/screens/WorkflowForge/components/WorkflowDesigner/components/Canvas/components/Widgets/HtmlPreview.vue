@@ -202,7 +202,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 16px;
@@ -227,7 +227,7 @@ export default {
   z-index: 10;
   border-radius: 4px;
   backdrop-filter: blur(2px);
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 14px;
@@ -254,7 +254,7 @@ export default {
 }
 
 .html-preview-container.drag-hover .html-placeholder span {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 

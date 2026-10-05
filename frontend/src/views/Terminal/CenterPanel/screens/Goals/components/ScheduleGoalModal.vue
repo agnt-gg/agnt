@@ -196,7 +196,7 @@ export default {
 
 <style scoped>
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 100;
+  position: fixed; inset: 0; background: var(--scrim); z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .modal-card {
@@ -232,7 +232,7 @@ export default {
 .ex-meta { display: flex; gap: 12px; color: var(--color-text-muted); margin-left: auto; }
 .link-btn { background: transparent; border: none; color: var(--color-primary); cursor: pointer; font-size: 0.85em; padding: 4px 8px; }
 .link-btn.danger { color: var(--color-red); }
-.off-chip { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; background: rgba(127,127,127,0.15); color: var(--color-text-muted); }
+.off-chip { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; background: var(--color-darker-1); color: var(--color-text-muted); }
 
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .preset {

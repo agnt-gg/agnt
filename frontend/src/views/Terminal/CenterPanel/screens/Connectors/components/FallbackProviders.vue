@@ -438,7 +438,7 @@ export default {
   border: 1px solid rgba(var(--green-rgb), 0.45);
   border-radius: 8px;
 }
-.fb-managed i { color: var(--color-green); margin-top: 2px; }
+.fb-managed i { color: var(--text-green); margin-top: 2px; }
 .fb-managed strong { display: block; font-size: 0.85em; font-weight: 600; color: var(--color-text); }
 .fb-managed p { margin: 4px 0 0; font-size: 0.78em; line-height: 1.5; color: var(--color-text-muted); }
 
@@ -459,7 +459,7 @@ export default {
   width: 26px; height: 26px; flex: 0 0 auto;
   border-radius: 50%;
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   display: flex; align-items: center; justify-content: center;
   font-weight: 600; font-size: 0.85rem;
 }
@@ -493,7 +493,7 @@ export default {
   font-size: 0.9rem; transition: all 0.2s ease;
   flex: 0 0 auto;
 }
-.fb-add:hover:not(:disabled) { border-color: var(--color-green); color: var(--color-green); }
+.fb-add:hover:not(:disabled) { border-color: var(--color-green); color: var(--text-green); }
 .fb-add:disabled { opacity: 0.4; cursor: not-allowed; }
 .fb-max-note { font-size: 0.85rem; color: var(--color-text-muted); }
 
@@ -514,7 +514,7 @@ export default {
 .fb-status.ok {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .fb-status.err {
   background: rgba(255, 107, 107, 0.1);

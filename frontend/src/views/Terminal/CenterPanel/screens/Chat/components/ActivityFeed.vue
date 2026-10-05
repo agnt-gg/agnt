@@ -180,7 +180,7 @@ export default {
 }
 
 .activity-item.context {
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
   border: 1px solid rgba(18, 224, 255, 0.1);
 }
 
@@ -240,20 +240,20 @@ export default {
 }
 
 .activity-item.context .activity-text {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .activity-item.tool .activity-text {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .activity-item.error .activity-text,
 .activity-item.recovery .activity-text {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .activity-item.success .activity-text {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state {

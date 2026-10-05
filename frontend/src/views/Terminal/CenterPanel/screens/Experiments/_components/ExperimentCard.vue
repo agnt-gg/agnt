@@ -121,7 +121,7 @@ const progressWidth = computed(() => {
 }
 .status-badge.completed {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .status-badge.failed {
   background: rgba(239, 68, 68, 0.15);
@@ -135,7 +135,7 @@ const progressWidth = computed(() => {
 }
 .delta-badge.positive {
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .delta-badge.negative {
   background: rgba(239, 68, 68, 0.1);
@@ -150,7 +150,7 @@ const progressWidth = computed(() => {
 }
 .decision-badge.keep {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .decision-badge.discard {
   background: rgba(239, 68, 68, 0.15);

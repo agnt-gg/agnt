@@ -254,7 +254,7 @@ export default {
 }
 .api-status.is-new {
   border-color: rgba(var(--green-rgb), 0.35);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .api-status.is-new .api-status-dot {
   background: var(--color-green);
@@ -309,7 +309,7 @@ export default {
   color: var(--text-primary);
 }
 .api-callout-warn i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .api-card-actions {
@@ -351,7 +351,7 @@ export default {
 .api-btn-primary {
   border-color: rgba(var(--green-rgb), 0.25);
   background: rgba(var(--green-rgb), 0.06);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .api-btn-primary:hover:not(:disabled) {
   background: rgba(var(--green-rgb), 0.12);
@@ -423,7 +423,7 @@ export default {
   width: 16px;
   margin-top: 3px;
   text-align: center;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .api-facts strong {
   color: var(--text-primary);

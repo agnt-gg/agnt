@@ -329,11 +329,11 @@ export default {
   height: 100%;
 }
 
-.cwr-markdown h1 { font-size: 18px; color: var(--color-green); margin-bottom: 8px; }
-.cwr-markdown h2 { font-size: 15px; color: var(--color-green); margin-bottom: 6px; }
-.cwr-markdown h3 { font-size: 13px; color: var(--color-green); margin-bottom: 4px; }
+.cwr-markdown h1 { font-size: 18px; color: var(--text-green); margin-bottom: 8px; }
+.cwr-markdown h2 { font-size: 15px; color: var(--text-green); margin-bottom: 6px; }
+.cwr-markdown h3 { font-size: 13px; color: var(--text-green); margin-bottom: 4px; }
 .cwr-markdown code {
-  background: rgba(255,255,255,0.05);
+  background: var(--color-darker-0);
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 12px;
@@ -373,7 +373,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.3);
+  background: var(--color-darker-2);
   z-index: 5;
 }
 

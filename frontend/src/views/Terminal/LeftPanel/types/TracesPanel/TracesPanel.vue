@@ -312,7 +312,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -365,7 +365,7 @@ export default {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Trace Statistics */
@@ -402,7 +402,7 @@ export default {
 
 .stat-label {
   font-size: 0.8em;
-  color: var(--color-secondary);
+  color: var(--text-info);
   text-transform: uppercase;
 }
 
@@ -467,7 +467,7 @@ export default {
 .filter-item.active {
   background: rgba(var(--green-rgb), 0.15);
   border-color: rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .filter-item i {
@@ -483,7 +483,7 @@ export default {
 
 .filter-count {
   background: var(--color-darker-0);
-  color: var(--color-secondary);
+  color: var(--text-info);
   padding: 2px 6px;
   border-radius: 10px;
   font-size: 0.8em;
@@ -491,7 +491,6 @@ export default {
   min-width: 20px;
   text-align: center;
   border: 2px solid var(--terminal-border-color);
-  opacity: 0.5;
 }
 
 .filter-item.active .filter-count {
@@ -567,12 +566,12 @@ export default {
 
 .run-status.running {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .run-status.completed {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .run-status.failed {
@@ -587,12 +586,12 @@ export default {
 
 .run-status.pending {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .run-status.started {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .run-status i {
@@ -600,7 +599,7 @@ export default {
 }
 
 .run-duration {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 

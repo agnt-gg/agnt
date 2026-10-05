@@ -168,7 +168,7 @@ function cancelEditing() {
 }
 
 .address-security.is-https {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .address-input {

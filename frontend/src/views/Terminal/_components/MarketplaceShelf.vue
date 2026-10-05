@@ -609,7 +609,7 @@ export default {
   overflow: hidden;
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-lg);
-  background: var(--color-navy);
+  background: var(--color-darker-0);
   cursor: pointer;
   transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color var(--transition-fast), box-shadow var(--transition-fast);
   animation: msCardRise 300ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
@@ -679,7 +679,7 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-on-scrim);
-  background: rgba(7, 7, 16, 0.55);
+  background: var(--scrim);
   border: 1px solid rgba(255, 255, 255, 0.13);
 }
 /* FILL / ON-FILL PAIRS (see styles/themes/_semantic.css).
@@ -715,7 +715,7 @@ export default {
      shared 0.55 scrim left it at 4.23:1 — under AA. 0.72 measures 7.08:1 at the
      worst hue of all four asset types. */
   color: var(--color-green);
-  background: rgba(7, 7, 16, 0.72);
+  background: var(--scrim);
   border-color: rgba(var(--green-rgb), 0.35);
 }
 .ms-card-icon {
@@ -799,7 +799,7 @@ export default {
   font-weight: var(--font-weight-medium);
 }
 .ms-m-star i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .ms-card-foot {
   display: flex;
@@ -940,7 +940,7 @@ export default {
   padding: 11px 13px;
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-lg);
-  background: var(--color-navy);
+  background: var(--color-darker-0);
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }

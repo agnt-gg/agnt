@@ -55,6 +55,20 @@ body:not(.dark):not(.rose) {
      #70707d already fails at 4.49:1. Anything quieter than this must be
      expressed with size, weight and whitespace, not less contrast. */
   --color-text-dull: #6f6f7c; /* 4.83:1 canvas, 4.56:1 on sunken — the floor */
+  --color-light-green: var(--color-text); /* documented above; dropped by the
+     08-03 palette sweep, which painted 118 text sites neon #19ef83 (1.2-1.5:1). */
+
+  /* ── HUE AS TEXT ─────────────────────────────────────────────────────────
+     The brand hues below stay ONE palette for fills, tints and borders. TEXT in
+     a hue reads them through --text-<hue> (_semantic.css), which in light mode
+     resolves to the existing AA status inks rather than the neon fill value
+     (#19ef83 / #12e0ff / #ffd700 on white measure 1.2-1.6:1). Nathan, 2026-10-05:
+     fix light-mode contrast with the existing token system. */
+  --text-green: var(--status-green-text);
+  --text-blue: var(--status-blue-text);
+  --text-info: var(--status-blue-text);
+  --text-yellow: var(--status-yellow-text);
+  --text-orange: var(--status-amber-text);
 
   /* ── BRAND HUES: NOT OVERRIDDEN HERE ─────────────────────────────────────
      ONE palette. Green, blue, pink, yellow, red, orange, indigo and violet are

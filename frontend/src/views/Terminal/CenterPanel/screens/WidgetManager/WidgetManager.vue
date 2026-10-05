@@ -503,9 +503,9 @@ export default {
         return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: 'JetBrains Mono', monospace; background: #0c0c18; color: var(--text-secondary); padding: 12px; overflow: hidden; font-size: 13px; line-height: 1.5; }
-          h1, h2, h3 { color: var(--color-green); margin-bottom: 4px; }
+          h1, h2, h3 { color: var(--text-green); margin-bottom: 4px; }
           h1 { font-size: 18px; } h2 { font-size: 15px; } h3 { font-size: 13px; }
-          code { background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; }
+          code { background: var(--color-darker-0); padding: 1px 4px; border-radius: 3px; }
           strong { color: var(--text-primary); }
         </style></head><body>${rendered}</body></html>`;
       }
@@ -747,7 +747,7 @@ export default {
 }
 
 .wm-btn-create {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -874,7 +874,7 @@ export default {
 }
 
 .wm-list-row.wm-custom .wm-list-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wm-list-name {
@@ -929,7 +929,7 @@ export default {
 }
 
 .wm-list-actions button:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.15);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -1035,7 +1035,7 @@ export default {
 }
 
 .wm-card.wm-custom .wm-card-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wm-card-badges {
@@ -1054,7 +1054,7 @@ export default {
 
 .wm-badge-custom {
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wm-badge-builtin {
@@ -1119,7 +1119,7 @@ export default {
 }
 
 .wm-card-actions button:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.15);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -1161,7 +1161,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 3000;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -1188,7 +1188,7 @@ export default {
 .wm-modal-title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -1254,7 +1254,7 @@ export default {
 }
 
 .wm-dropzone-icon-ready {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wm-dropzone-text {
@@ -1265,7 +1265,7 @@ export default {
 
 .wm-dropzone-filename {
   font-size: 12px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: 'JetBrains Mono', monospace;
   letter-spacing: 0.5px;
 }

@@ -116,7 +116,7 @@ export default {
   font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -153,7 +153,7 @@ export default {
 .ct-bar-track {
   flex: 1;
   height: 14px;
-  background: rgba(255,255,255,0.04);
+  background: var(--color-darker-0);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -204,7 +204,7 @@ export default {
 
 .ct-progress-track {
   height: 6px;
-  background: rgba(255,255,255,0.04);
+  background: var(--color-darker-0);
   border-radius: 3px;
   overflow: hidden;
 }

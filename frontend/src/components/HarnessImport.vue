@@ -255,7 +255,7 @@ function sum(importer, kind, pick) {
 
 .hi-already .hi-tick {
   margin-top: 0.2em;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* ── one row per tool ── */
@@ -363,7 +363,7 @@ function sum(importer, kind, pick) {
 .hi-offer.on .hi-box {
   border-color: var(--color-green);
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .hi-box :deep(.svg-icon),
@@ -440,7 +440,7 @@ function sum(importer, kind, pick) {
 .hi-done-line .hi-tick {
   width: 1.1em;
   height: 1.1em;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Aligned to the text beside the tick, not to the container. Starting at the

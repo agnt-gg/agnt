@@ -148,12 +148,12 @@ const runGoal = () => perform('goals/executeGoalAutonomous',{goalId:props.goalId
 .gd-pill.good {
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-pill.warn {
   border-color: rgba(var(--orange-rgb), 0.4);
   background: rgba(var(--orange-rgb), 0.12);
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 .gd-pill.bad {
   border-color: rgba(var(--red-rgb), 0.4);
@@ -164,7 +164,7 @@ const runGoal = () => perform('goals/executeGoalAutonomous',{goalId:props.goalId
   margin: 8px 0 6px;
   font-size: 1.5em;
   line-height: 1.15;
-  color: var(--color-ultra-light-navy);
+  color: var(--text-primary);
 }
 .gd-desc {
   margin: 0;
@@ -185,7 +185,7 @@ const runGoal = () => perform('goals/executeGoalAutonomous',{goalId:props.goalId
   padding: 7px 10px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
 }
 .gd-meta dt {
   display: flex;
@@ -216,7 +216,7 @@ const runGoal = () => perform('goals/executeGoalAutonomous',{goalId:props.goalId
 .gd-description p { white-space: pre-wrap; max-height: 160px; overflow: auto; }
 .gd-message { padding: 9px 12px; margin: 0; border: 1px solid var(--terminal-border-color); border-radius: 7px; font-size: .85em; }
 .gd-message.error { color: var(--color-red); }
-.gd-message.success { color: var(--color-green); }
+.gd-message.success { color: var(--text-green); }
 .gd-message button { margin-left: 12px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 4px; cursor: pointer; }
 @media (max-width: 900px) {
   .gd-root { flex: 0 0 auto; width: 100%; }

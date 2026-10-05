@@ -1207,7 +1207,7 @@ export default {
 
 .cv-mobile-menu, .cv-mobile-nav-close { border: 0; background: transparent; color: var(--color-text); min-width: 44px; min-height: 44px; cursor: pointer; -webkit-app-region: no-drag; }
 .cv-mobile-nav-close { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; width: 100%; border-bottom: 1px solid var(--terminal-border-color); }
-.cv-nav-scrim { position: fixed; inset: 0; height: var(--app-height); border: 0; background: rgba(0,0,0,.5); z-index: 1200; }
+.cv-nav-scrim { position: fixed; inset: 0; height: var(--app-height); border: 0; background: var(--scrim); z-index: 1200; }
 .cv-root.cv-compact .cv-sidebar { box-sizing: border-box; align-items: stretch; position: fixed; top: 0; left: 0; width: min(340px, 100%); min-width: 0; height: var(--app-height); z-index: 1201; background: var(--color-background); transform: translateX(-100%); visibility: hidden; }
 .cv-root.cv-compact .cv-sidebar.cv-navigation-open { transform: none; visibility: visible; }
 .cv-root.cv-compact .cv-sidebar.expanded .cv-sb-label, .cv-root.cv-compact .cv-sidebar .cv-sb-label, .cv-root.cv-compact .cv-sb-cap-text { display: block; opacity: 1; width: auto; }
@@ -1322,9 +1322,9 @@ export default {
 /* Contextual tab: an editor you are inside right now. Amber so it reads as
    "where you are", not "where you can go". */
 .cv-pbtn.ctx.on {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
   border-color: rgba(255, 215, 0, 0.22);
-  background: rgba(255, 215, 0, 0.05);
+  background: rgba(var(--yellow-rgb), 0.05);
 }
 
 /* ── Jump (⌘K) ── */
@@ -1341,7 +1341,7 @@ export default {
   padding: 0 8px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   color: var(--color-text-dull, #767888);
   font-family: inherit;
   font-size: 11.5px;
@@ -1393,7 +1393,7 @@ export default {
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   font-family: inherit;
   font-size: 10px;
   letter-spacing: 0.3px;
@@ -1421,12 +1421,12 @@ export default {
   box-shadow: 0 0 6px var(--color-green);
 }
 .cv-pill-dot.is-live {
-  background: var(--color-blue, #12e0ff);
+  background: var(--color-blue, var(--color-blue));
   box-shadow: 0 0 6px var(--color-blue, #12e0ff);
   animation: cv-pill-pulse 1.8s infinite;
 }
 .cv-pill-dot.is-red {
-  background: #fe4e4e;
+  background: var(--color-red);
   box-shadow: 0 0 6px #fe4e4e;
 }
 @keyframes cv-pill-pulse {
@@ -1495,7 +1495,6 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
-  opacity: 0.7;
 }
 .cv-global-model i {
   font-size: 10px;
@@ -1540,7 +1539,7 @@ export default {
 }
 
 .cv-btn:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
 }
 
@@ -1791,13 +1790,13 @@ export default {
 .cv-sb-upgrade {
   background: rgba(212, 175, 55, 0.14);
   border-color: rgba(212, 175, 55, 0.42);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .cv-sb-upgrade:hover {
   background: rgba(212, 175, 55, 0.2);
   border-color: rgba(212, 175, 55, 0.6);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .cv-sb-upgrade:focus-visible {
@@ -1826,7 +1825,7 @@ export default {
   flex-shrink: 0;
 }
 .cv-sb-badge.is-warn {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
 }
 /* A row the account just unlocked: a 6px dot in the live-count slot, so the
    label is never truncated and the rail never reflows; blue, so it is never
@@ -1836,7 +1835,7 @@ export default {
   height: 6px;
   padding: 0;
   border-radius: 50%;
-  background: var(--color-blue, #12e0ff);
+  background: var(--color-blue, var(--color-blue));
   flex-shrink: 0;
 }
 .cv-sidebar.expanded .cv-sb-badge {
@@ -1946,7 +1945,7 @@ export default {
 }
 
 .cv-sb-add:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 
@@ -2065,7 +2064,7 @@ export default {
 
 .cv-ctx-item:hover {
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .cv-ctx-item.cv-ctx-danger:hover {
@@ -2100,7 +2099,7 @@ export default {
   font-size: 12px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   margin-bottom: 12px;
   font-weight: 600;
 }
@@ -2160,7 +2159,7 @@ export default {
 
 .cv-modal-ok {
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
 }
 
@@ -2210,7 +2209,7 @@ export default {
 }
 
 .cv-icon-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.08);
 }

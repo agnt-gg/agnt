@@ -191,7 +191,7 @@ h4.section-title {
   margin-bottom: 12px;
 }
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .empty-state {
   display: flex;
@@ -231,7 +231,7 @@ h4.section-title {
 
 .action-button.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
 }
 
@@ -413,17 +413,17 @@ h4.section-title {
 
 .goal-status.executing {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .goal-status.paused {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .goal-status.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .goal-status.failed {
@@ -453,12 +453,12 @@ h4.section-title {
 
 .goal-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .goal-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .goal-priority.urgent {
@@ -496,7 +496,7 @@ h4.section-title {
 }
 
 .current-task-label {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.8em;
   font-weight: bold;
   margin-bottom: 4px;

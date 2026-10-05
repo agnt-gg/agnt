@@ -409,7 +409,7 @@ export default defineComponent({
 }
 
 #editor-panel .right-tabs button i {
-  color: var(--color-dark-navy);
+  color: var(--text-primary);
   font-size: 17px;
   opacity: 0.75;
 }

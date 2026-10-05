@@ -115,7 +115,7 @@ export default {
 }
 
 .value.clickable {
-  color: var(--color-green);
+  color: var(--text-green);
   background: var(--color-darker-1);
   padding: 2px 4px;
   border-radius: 2px;
@@ -146,7 +146,7 @@ export default {
 }
 
 .incident-link {
-  color: var(--color-green);
+  color: var(--text-green);
   background: var(--color-darker-1);
   padding: 1px 4px;
   border-radius: 2px;
@@ -174,7 +174,7 @@ export default {
 }
 
 .status-resolved {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-monitoring {

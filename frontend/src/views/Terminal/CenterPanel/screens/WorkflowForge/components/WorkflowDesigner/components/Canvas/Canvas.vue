@@ -1050,7 +1050,7 @@ div#canvas:focus {
   padding: 8px 16px;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 8px;
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 </style>

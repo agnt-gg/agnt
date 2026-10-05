@@ -103,7 +103,7 @@ export default {
 }
 
 .wm-tab.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }

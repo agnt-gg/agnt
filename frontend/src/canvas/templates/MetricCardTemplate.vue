@@ -96,7 +96,7 @@ export default {
 }
 
 .mt-trend-up {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.08);
 }
 

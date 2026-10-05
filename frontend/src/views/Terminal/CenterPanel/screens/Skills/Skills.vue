@@ -193,7 +193,7 @@
             </div>
             <div class="detail-meta">
               <span><strong>Source:</strong> {{ selectedDiscoveredSkill.scope }} / {{ selectedDiscoveredSkill.client }}</span>
-              <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--color-green)"></i> Trusted</span>
+              <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--text-green)"></i> Trusted</span>
               <span v-else><i class="fas fa-exclamation-triangle" style="color: var(--status-amber-text)"></i> Untrusted (project-level)</span>
             </div>
           </div>
@@ -758,7 +758,7 @@ onMounted(() => {
 .view-tab.active {
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .tab-count {
   background: var(--color-darker-0);
@@ -842,7 +842,7 @@ onMounted(() => {
   justify-content: center;
   border-radius: 6px;
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   flex-shrink: 0;
 }
 .card-title-block {
@@ -921,7 +921,7 @@ onMounted(() => {
 }
 .instructions-label {
   font-size: 0.7em;
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -952,7 +952,7 @@ onMounted(() => {
   line-height: 1.4;
 }
 .discovered-label strong {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .discovered-actions {
   flex-shrink: 0;
@@ -978,7 +978,7 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .source-badge.user {
   background: rgba(100, 149, 237, 0.1);
@@ -1010,7 +1010,7 @@ onMounted(() => {
   color: var(--status-amber-text);
 }
 .card-btn.import:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.2);
 }
@@ -1034,7 +1034,7 @@ onMounted(() => {
   gap: 8px;
 }
 .detail-header h4 i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .detail-meta {
   display: flex;
@@ -1047,7 +1047,7 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 0.9em;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* SkillForge tabs */
@@ -1075,7 +1075,7 @@ onMounted(() => {
   color: var(--color-text);
 }
 .sf-tab.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-bottom-color: var(--color-green);
 }
 .sf-content {
@@ -1126,7 +1126,7 @@ onMounted(() => {
   margin: 0;
 }
 .section-header h3 i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .leaderboard-list {
   display: flex;
@@ -1175,7 +1175,7 @@ onMounted(() => {
   font-size: 0.9em;
 }
 .lb-metric.positive {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .lb-metric.negative {
   color: var(--color-red);
@@ -1221,7 +1221,7 @@ onMounted(() => {
 }
 .eval-decision.kept,
 .eval-decision.promoted {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .eval-decision.discarded {
   color: var(--color-red);
@@ -1250,7 +1250,7 @@ onMounted(() => {
   color: var(--color-text);
 }
 .metric-value.positive {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .metric-value.negative {
   color: var(--color-red);
@@ -1272,7 +1272,7 @@ onMounted(() => {
   margin: 0 0 4px;
 }
 .forge-section h3 i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .forge-desc {
   font-size: 0.8em;
@@ -1301,7 +1301,7 @@ onMounted(() => {
   transition: all 0.15s;
 }
 .filter-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
 }
 .loading-state {
@@ -1349,7 +1349,7 @@ onMounted(() => {
   border-radius: 4px;
 }
 .badge.eligible {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
 }
 .badge.ineligible {
@@ -1406,7 +1406,7 @@ onMounted(() => {
 }
 .forge-btn.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   font-weight: 600;
 }
@@ -1429,7 +1429,7 @@ onMounted(() => {
   gap: 8px;
 }
 .result-panel h4 i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .analysis-meta {
   display: flex;
@@ -1443,7 +1443,7 @@ onMounted(() => {
   font-size: 0.75em;
   font-weight: 500;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .meta-info {
   font-size: 0.8em;
@@ -1514,7 +1514,7 @@ onMounted(() => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1617,7 +1617,7 @@ onMounted(() => {
   color: var(--color-text);
 }
 .icon-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.08);
 }
@@ -1644,7 +1644,7 @@ onMounted(() => {
 }
 .modal-btn.save {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   font-weight: 600;
 }

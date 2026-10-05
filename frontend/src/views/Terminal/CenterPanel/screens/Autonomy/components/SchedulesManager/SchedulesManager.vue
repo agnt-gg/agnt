@@ -127,7 +127,7 @@ export default {
 .row-meta i { margin-right: 4px; opacity: 0.7; }
 .tz { font-family: var(--font-family-mono); opacity: 0.7; }
 .status-chip { padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
-.status-chip.completed { color: var(--color-green); background: rgba(var(--green-rgb), 0.1); }
+.status-chip.completed { color: var(--text-green); background: rgba(var(--green-rgb), 0.1); }
 .status-chip.failed { color: var(--color-red); background: rgba(var(--red-rgb), 0.1); }
 .status-chip.cron_invalid { color: var(--color-red); background: rgba(var(--red-rgb), 0.1); }
 .row-actions { display: flex; gap: 6px; }

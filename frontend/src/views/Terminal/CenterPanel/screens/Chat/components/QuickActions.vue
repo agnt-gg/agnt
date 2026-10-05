@@ -87,7 +87,7 @@ i.suggestion-icon {
   text-align: center;
 }
 .suggestion-card:hover i.suggestion-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .suggestion-text {

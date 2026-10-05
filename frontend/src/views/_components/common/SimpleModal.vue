@@ -205,7 +205,7 @@ export default {
   bottom: 0;
   /* The scrim stays a black wash: a backdrop's job is to darken what is
      behind it, which is the opposite of a surface. */
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -232,13 +232,13 @@ export default {
 }
 
 .modal-message :deep(a) {
-  color: var(--color-blue);
+  color: var(--text-blue);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .modal-message :deep(a:hover) {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .modal-actions {
@@ -275,7 +275,7 @@ textarea {
 
 .btn-secondary {
   /* background-color: var(--color-dull-navy); */
-  color: var(--color-dull-navy);
+  color: var(--text-primary);
 }
 
 body.dark .btn-secondary {
@@ -284,6 +284,6 @@ body.dark .btn-secondary {
 
 .btn-primary {
   /* background-color: var(--color-green); */
-  color: var(--color-green) !important;
+  color: var(--text-green) !important;
 }
 </style>

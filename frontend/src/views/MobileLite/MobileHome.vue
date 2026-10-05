@@ -503,7 +503,7 @@ html.mobile-lite-shell #app {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: #19ef83;
+  background: var(--color-green);
   color: #04120a;
   font-weight: 800;
   font-size: 22px;
@@ -611,7 +611,7 @@ html.mobile-lite-shell #app {
   cursor: not-allowed;
 }
 .ml-btn-primary {
-  background: #19ef83;
+  background: var(--color-green);
   color: #04120a;
 }
 .ml-btn-ghost {

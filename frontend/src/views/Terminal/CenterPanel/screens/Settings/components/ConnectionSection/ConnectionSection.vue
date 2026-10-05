@@ -384,7 +384,7 @@ onBeforeUnmount(() => stopState?.());
   cursor: not-allowed;
 }
 .conn-btn-primary {
-  background: var(--color-primary, #19ef83);
+  background: var(--color-primary, var(--color-green));
   border-color: var(--color-primary, #19ef83);
   color: var(--on-fill-accent);
   font-weight: 600;
@@ -407,7 +407,7 @@ onBeforeUnmount(() => stopState?.());
 }
 .conn-note-warn {
   border-color: color-mix(in srgb, #ffd700 40%, transparent);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .conn-note-error {
   border-color: color-mix(in srgb, #e53d8f 50%, transparent);

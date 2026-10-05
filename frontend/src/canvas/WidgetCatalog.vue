@@ -187,7 +187,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-start;
@@ -218,7 +218,7 @@ export default {
 .wc-title {
   font-size: var(--font-size-xs, 11px);
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -292,7 +292,7 @@ export default {
 }
 
 .wc-tab.active {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* ── Body ── */
@@ -310,7 +310,7 @@ export default {
 
 .wc-card {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   cursor: pointer;
@@ -321,7 +321,7 @@ export default {
 
 .wc-card:hover {
   border-color: rgba(var(--green-rgb), 0.3);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
 }
 
 .wc-card.wc-active {
@@ -340,7 +340,7 @@ export default {
 }
 
 .wc-card.wc-active .wc-card-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wc-card-name {
@@ -380,7 +380,7 @@ export default {
 
 .wc-on {
   background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wc-free {

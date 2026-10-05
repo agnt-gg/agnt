@@ -117,8 +117,8 @@ export default {
 .card-item {
   /* background: linear-gradient(
     135deg,
-    rgba(18, 224, 255, 0.05) 0%,
-    rgba(18, 224, 255, 0.02) 100%
+    rgba(var(--blue-rgb), 0.05) 0%,
+    rgba(var(--blue-rgb), 0.02) 100%
   ); */
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
@@ -171,7 +171,7 @@ export default {
 .card-header {
   font-size: 1.1em;
   font-weight: 500;
-  color: var(--color-green);
+  color: var(--text-green);
   border-bottom: 1px solid rgba(18, 224, 255, 0.1);
   padding-bottom: 10px;
   padding-right: 60px;
@@ -225,14 +225,14 @@ export default {
 }
 .status-indicator.new,
 .status-indicator.available {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .status-indicator.active,
 .status-indicator.running {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .status-indicator.completed {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 .status-indicator.stopped {
   color: var(--color-text-muted);

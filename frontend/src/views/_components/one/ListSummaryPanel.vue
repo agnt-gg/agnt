@@ -69,7 +69,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -110,7 +110,7 @@ export default {
   padding: 0 11px;
   border-radius: 7px;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   font-size: 11.5px;

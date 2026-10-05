@@ -240,7 +240,7 @@ export default {
   width: 80px;
   height: 80px;
   background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
-  color: var(--color-ultra-dark-navy);
+  color: var(--text-on-fill);
   border-radius: 50%;
   display: flex;
   align-items: center;

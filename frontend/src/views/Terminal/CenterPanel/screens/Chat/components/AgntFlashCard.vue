@@ -229,12 +229,12 @@ export default {
 .afc-lane-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .afc-lane-head h4 { margin: 0; font-size: 13.5px; color: var(--color-text); }
 .afc-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
-.afc-tag.pink { color: var(--color-pink); background: rgba(229, 61, 143, 0.12); }
-.afc-tag.blue { color: var(--color-blue); background: rgba(18, 224, 255, 0.1); }
-.afc-tag.green { color: var(--color-green); background: rgba(25, 239, 131, 0.1); }
+.afc-tag.pink { color: var(--color-pink); background: rgba(var(--pink-rgb), 0.12); }
+.afc-tag.blue { color: var(--text-blue); background: rgba(var(--blue-rgb), 0.1); }
+.afc-tag.green { color: var(--text-green); background: rgba(var(--green-rgb), 0.1); }
 .afc-plans { display: flex; flex-direction: column; gap: 5px; }
 .afc-plan { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; text-align: left; border: 1px solid var(--terminal-border-color); border-radius: 8px; padding: 6px 9px; background: transparent; color: inherit; cursor: pointer; }
-.afc-plan.selected { border-color: var(--color-pink); background: rgba(229, 61, 143, 0.06); }
+.afc-plan.selected { border-color: var(--color-pink); background: rgba(var(--pink-rgb), 0.06); }
 .afc-plan-name { font-weight: 650; font-size: 12.5px; }
 .afc-plan-credits { grid-row: 2; font-size: 11px; color: var(--color-text-secondary); }
 .afc-plan-price { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-weight: 700; font-size: 14px; }
@@ -242,16 +242,16 @@ export default {
 .afc-interval { font-size: 11.5px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
 .afc-btn { border: 0; border-radius: 7px; padding: 9px 12px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
 .afc-btn:disabled { opacity: 0.6; cursor: default; }
-.afc-btn.primary { margin-top: auto; background: var(--color-pink); color: var(--color-background); }
+.afc-btn.primary { margin-top: auto; background: var(--color-pink); color: var(--text-on-fill); }
 .afc-topups { display: flex; flex-direction: column; gap: 6px; }
 .afc-btn.topup { display: flex; justify-content: space-between; align-items: center; background: transparent; border: 1px solid var(--terminal-border-color); color: var(--color-text); }
 .afc-btn.topup:hover:not(:disabled) { border-color: var(--color-blue); }
 .afc-btn.topup small { font-weight: 400; color: var(--color-text-secondary); }
 .afc-providers { max-height: 260px; overflow: auto; }
 .afc-wait { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; padding: 8px 10px; border: 1px dashed var(--terminal-border-color); border-radius: 8px; font-size: 12px; color: var(--color-text-secondary); }
-.afc-link { background: none; border: 0; color: var(--color-blue); cursor: pointer; font: inherit; font-size: 12px; }
+.afc-link { background: none; border: 0; color: var(--text-blue); cursor: pointer; font: inherit; font-size: 12px; }
 .afc-ready { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--color-green); border-radius: 8px; font-size: 13px; color: var(--color-text); }
-.afc-ready i { color: var(--color-green); margin-right: 6px; }
+.afc-ready i { color: var(--text-green); margin-right: 6px; }
 .afc-error { margin: 10px 0 0; font-size: 12.5px; color: var(--color-red); }
 @media (max-width: 900px) { .afc-lanes, .afc-lanes.two-up { grid-template-columns: 1fr; } }
 </style>

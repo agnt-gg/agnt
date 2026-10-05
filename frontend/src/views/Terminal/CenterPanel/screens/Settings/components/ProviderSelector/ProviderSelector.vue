@@ -717,7 +717,7 @@ export default {
 
 .mode-title i {
   font-size: 0.8em;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .mode-hint {
@@ -801,7 +801,7 @@ export default {
 .btn-add-provider {
   padding: 6px 12px;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px dashed rgba(var(--green-rgb), 0.4);
   border-radius: 5px;
   font-family: inherit;
@@ -853,7 +853,7 @@ export default {
 }
 
 .btn-delete-provider:hover {
-  background: rgba(254, 78, 78, 0.15);
+  background: rgba(var(--red-rgb), 0.15);
   color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.5);
 }
@@ -863,14 +863,14 @@ export default {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 14px;
-  background: rgba(255, 215, 0, 0.08);
+  background: rgba(var(--yellow-rgb), 0.08);
   border: 1px solid rgba(255, 215, 0, 0.3);
   border-radius: 6px;
   font-size: 0.85em;
 }
 
 .tool-support-warning i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -946,7 +946,7 @@ export default {
 }
 
 .stat-value.is-good {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .stat-label {
@@ -1001,7 +1001,7 @@ export default {
 }
 
 .pin-note i {
-  color: var(--color-green);
+  color: var(--text-green);
   flex-shrink: 0;
   margin-top: 2px;
 }

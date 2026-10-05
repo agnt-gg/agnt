@@ -573,7 +573,7 @@ export default {
 .currency-symbol {
   font-size: 16px;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .currency-symbol.disabled {
@@ -606,7 +606,7 @@ export default {
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .revenue-main i {
@@ -616,7 +616,7 @@ export default {
 
 .revenue-comparison {
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
   opacity: 0.7;
   line-height: 1.4;
   padding-left: 22px;
@@ -636,13 +636,13 @@ export default {
 }
 
 .pro-upgrade-prompt i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .upgrade-link {
   background: transparent;
   border: none;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
@@ -668,7 +668,7 @@ export default {
 
 .stripe-warning i {
   font-size: 20px;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .stripe-warning .setup-stripe-btn i {
@@ -718,7 +718,7 @@ export default {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 12px;
   font-size: 11px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tag i {
@@ -761,7 +761,7 @@ export default {
 }
 
 .cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
   border-color: var(--color-text);
   color: var(--color-text);
 }

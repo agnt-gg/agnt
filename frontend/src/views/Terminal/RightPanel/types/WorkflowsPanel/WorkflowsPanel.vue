@@ -754,11 +754,11 @@ export default {
 }
 
 .workflow-status.listening {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .workflow-status.queued {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .workflow-description {
@@ -962,7 +962,7 @@ h3 {
 }
 
 .run-status-badge.completed {
-  color: var(--color-green, #4caf50);
+  color: var(--text-green);
   background: rgba(76, 175, 80, 0.1);
 }
 
@@ -978,7 +978,7 @@ h3 {
 }
 
 .run-status-badge.stopped {
-  color: var(--color-yellow, #ffc107);
+  color: var(--text-yellow);
   background: rgba(255, 193, 7, 0.1);
 }
 

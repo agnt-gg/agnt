@@ -132,7 +132,7 @@ export default {
   place-items: center;
 }
 .insp-x:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
   color: var(--color-text);
 }
 .insp-head {
@@ -153,7 +153,7 @@ export default {
   place-items: center;
   flex: 0 0 auto;
   font-size: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
 }
@@ -186,39 +186,39 @@ export default {
   border-radius: 4px;
   border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-darker-0);
   white-space: nowrap;
   flex: 0 0 auto;
 }
 .tone-green {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
   background: rgba(var(--green-rgb), 0.1);
 }
 .tone-blue {
-  color: var(--color-blue, #12e0ff);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.3);
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--blue-rgb), 0.1);
 }
 .tone-yellow {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
   border-color: rgba(255, 215, 0, 0.3);
-  background: rgba(255, 215, 0, 0.09);
+  background: rgba(var(--yellow-rgb), 0.09);
 }
 .tone-red {
   color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.3);
-  background: rgba(254, 78, 78, 0.1);
+  background: rgba(var(--red-rgb), 0.1);
 }
 .tone-pink {
   color: var(--color-pink);
   border-color: rgba(229, 61, 143, 0.3);
-  background: rgba(229, 61, 143, 0.1);
+  background: rgba(var(--pink-rgb), 0.1);
 }
 .tone-indigo {
   color: var(--color-indigo);
   border-color: rgba(125, 61, 229, 0.35);
-  background: rgba(125, 61, 229, 0.14);
+  background: rgba(var(--indigo-rgb), 0.14);
 }
 .insp-tabs {
   display: flex;
@@ -227,7 +227,7 @@ export default {
   padding: 3px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -248,7 +248,7 @@ export default {
   white-space: nowrap;
 }
 .insp-tab.on {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.14);
 }
 .insp-tab-count {

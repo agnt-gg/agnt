@@ -213,11 +213,11 @@ export default {
 
 .ps-page:hover {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .ps-page.active {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.06);
   box-shadow: inset 2px 0 0 var(--color-green);
 }
@@ -251,7 +251,7 @@ export default {
 }
 
 .ps-add:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 
@@ -278,7 +278,7 @@ export default {
 
 .ctx-item:hover {
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .ctx-item.ctx-danger:hover {

@@ -80,7 +80,7 @@ export default {
 
 .activity-feed h3 {
   margin: 0 0 16px 0;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.1em;
   display: flex;
   align-items: center;
@@ -127,7 +127,7 @@ export default {
 }
 
 .activity-icon i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .activity-content {
@@ -138,7 +138,7 @@ export default {
 }
 
 .agent-name {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: bold;
 }
 
@@ -152,7 +152,7 @@ export default {
 }
 
 .activity-tokens {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: bold;
   font-size: 1.1em;
   padding-right: 16px;
@@ -213,7 +213,7 @@ export default {
 }
 
 .info-icon:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Scrollbar styling */

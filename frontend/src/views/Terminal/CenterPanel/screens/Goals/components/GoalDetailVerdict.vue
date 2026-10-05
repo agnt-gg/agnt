@@ -361,10 +361,10 @@ export default {
 .gd-block-count {
   font-family: var(--font-family-mono);
   letter-spacing: 0;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-block-count.has-missed {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 .gd-checks {
   flex: 1 1 auto;
@@ -389,7 +389,7 @@ export default {
   font-size: 0.85em;
 }
 .gd-check.is-met > i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-check.is-missed > i {
   color: var(--color-red);
@@ -408,7 +408,7 @@ export default {
   color: var(--color-text);
 }
 .gd-check.is-missed .gd-check-text {
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
 }
 .gd-proof-toggle {
   display: inline-flex;
@@ -477,7 +477,7 @@ export default {
   flex: 0 0 auto;
   padding: 12px 16px 14px;
   border-top: 1px solid var(--terminal-border-color);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--color-darker-1);
 }
 .gd-action-row {
   display: flex;
@@ -535,7 +535,7 @@ export default {
   padding: 8px 10px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: var(--color-dark-navy);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   font-size: 0.8em;

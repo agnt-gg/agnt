@@ -349,7 +349,7 @@ export default {
 }
 
 .section-header h3 {
-  color: var(--color-green);
+  color: var(--text-green);
   margin: 0;
   font-size: 1.2em;
   display: flex;
@@ -358,7 +358,7 @@ export default {
 }
 
 .close-button {
-  background: rgba(255,255,255,0.05);
+  background: var(--color-darker-0);
   border: 1px solid rgba(255,255,255,0.1);
   color: var(--color-grey-light);
   cursor: pointer;
@@ -369,7 +369,7 @@ export default {
 }
 
 .close-button:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
@@ -406,7 +406,7 @@ export default {
 }
 
 .detail-block-title i {
-  color: var(--color-green);
+  color: var(--text-green);
   opacity: 0.8;
 }
 
@@ -474,7 +474,7 @@ export default {
 }
 
 .objective-status i {
-  color: var(--color-green);
+  color: var(--text-green);
   width: 16px;
   font-size: 1.1em;
 }
@@ -484,7 +484,7 @@ export default {
 }
 
 .objective-card.in-progress .objective-status i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .objective-content {
@@ -532,7 +532,7 @@ export default {
 
 .priority-medium {
   background: rgba(251, 191, 36, 0.15);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .priority-low {
@@ -592,7 +592,7 @@ export default {
 }
 
 .subtasks-title i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.9em;
 }
 
@@ -617,7 +617,7 @@ export default {
 }
 
 .subtask-status i {
-  color: var(--color-green);
+  color: var(--text-green);
   margin-top: 2px;
 }
 
@@ -663,7 +663,7 @@ export default {
 
 .progress-value {
   font-size: 0.8em;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -698,13 +698,13 @@ export default {
 
 .status-badge.status-active, .status-badge.status-processing {
   background: rgba(251, 191, 36, 0.15);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .status-badge.status-completed {
   background: rgba(34, 197, 94, 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
@@ -757,14 +757,14 @@ export default {
   align-items: center;
   gap: 8px;
   color: var(--color-grey-light);
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--color-darker-0);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 0.9em;
 }
 
 .reward-item-detail i {
-  color: var(--color-green);
+  color: var(--text-green);
   width: 16px;
 }
 

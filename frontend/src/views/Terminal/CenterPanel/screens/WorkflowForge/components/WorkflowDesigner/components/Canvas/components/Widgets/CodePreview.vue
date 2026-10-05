@@ -259,7 +259,7 @@ export default {
 
 .language-selector select {
   padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-darker-0);
   color: #d4d4d4;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
@@ -268,7 +268,7 @@ export default {
 }
 
 .language-selector select:hover {
-  background: rgba(0, 0, 0, 0.9);
+  background: var(--color-darker-0);
 }
 
 /* Code-specific drag & drop styles */
@@ -304,7 +304,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 16px;
@@ -329,7 +329,7 @@ export default {
   z-index: 10;
   border-radius: 4px;
   backdrop-filter: blur(2px);
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 14px;
@@ -356,7 +356,7 @@ export default {
 }
 
 .code-preview-container.drag-hover .code-placeholder span {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 

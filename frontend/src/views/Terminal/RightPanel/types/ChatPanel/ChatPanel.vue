@@ -291,7 +291,7 @@ export default {
   font-size: 12px;
 }
 .card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 10px;
@@ -300,7 +300,7 @@ export default {
 }
 .card.is-live {
   border-color: rgba(18, 224, 255, 0.3);
-  background: linear-gradient(180deg, rgba(18, 224, 255, 0.06), rgba(18, 224, 255, 0.015));
+  background: linear-gradient(180deg, rgba(var(--blue-rgb), 0.06), rgba(var(--blue-rgb), 0.015));
 }
 .row {
   display: flex;
@@ -336,7 +336,7 @@ export default {
   border-bottom: 0;
 }
 .li:hover .nm {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 /* Small "go to Outputs" affordance on artifact rows; the row itself previews. */
 .li-go {
@@ -355,7 +355,7 @@ export default {
 }
 .li-go:hover {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
 }
 .t {
   font-size: 10px;
@@ -375,20 +375,20 @@ export default {
   place-items: center;
   font-size: 11px;
   flex: 0 0 auto;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
 }
 .k-agent {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.28);
 }
 .k-workflow {
-  color: var(--color-blue, #12e0ff);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.26);
 }
 .k-goal {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
   border-color: rgba(255, 215, 0, 0.26);
 }
 .k-trace {
@@ -400,14 +400,14 @@ export default {
   border-color: rgba(229, 61, 143, 0.26);
 }
 .k-artifact {
-  color: var(--color-orange);
+  color: var(--text-orange);
   border-color: rgba(255, 143, 90, 0.3);
 }
 .pulse {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-blue, #12e0ff);
+  background: var(--color-blue, var(--color-blue));
   box-shadow: 0 0 6px var(--color-blue, #12e0ff);
   flex: 0 0 auto;
 }
@@ -441,7 +441,7 @@ export default {
   padding: 0 10px;
   border-radius: 6px;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   font-size: 11px;

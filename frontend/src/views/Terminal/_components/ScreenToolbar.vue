@@ -126,7 +126,7 @@ export default {
 .wm-title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -180,7 +180,7 @@ export default {
   border-radius: 6px;
   background: rgba(var(--blue-rgb), 0.12);
   border: 1px solid rgba(var(--blue-rgb), 0.35);
-  color: var(--color-secondary);
+  color: var(--text-info);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -231,7 +231,7 @@ export default {
 }
 
 .wm-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -269,7 +269,7 @@ export default {
 }
 
 .wm-btn-create {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }

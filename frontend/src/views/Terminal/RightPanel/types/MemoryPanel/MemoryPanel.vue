@@ -276,7 +276,7 @@ export default {
   gap: 6px;
 }
 .sub-section h3 i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.9em;
 }
 

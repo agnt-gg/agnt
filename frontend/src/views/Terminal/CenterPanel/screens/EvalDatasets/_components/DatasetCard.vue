@@ -85,7 +85,7 @@ const formatDate = (d) => {
 }
 .stat-value {
   font-size: 0.7em;
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;

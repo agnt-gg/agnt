@@ -1289,7 +1289,7 @@ export default {
   padding: 10px 12px;
   border: 1px solid var(--color-red);
   border-radius: var(--border-radius-md, 8px);
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  background: rgba(var(--red-rgb), 0.12);
   color: var(--color-text);
   font-size: 0.78rem;
   line-height: 1.45;
@@ -1541,7 +1541,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;

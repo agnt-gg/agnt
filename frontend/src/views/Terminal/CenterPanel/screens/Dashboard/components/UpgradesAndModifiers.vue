@@ -155,7 +155,7 @@ export default {
   /* Removed: text-shadow */
 }
 .section-title i {
-  color: var(--color-green); /* Standard icon color */
+  color: var(--text-green); /* Standard icon color */
   font-size: 1.1em; /* Adjusted icon size */
   /* Removed: text-shadow */
 }
@@ -200,7 +200,7 @@ export default {
   background-color: var(--color-primary-transparent-light);
 }
 .tab-button.active {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 700;
   background: var(--color-accent);
   box-shadow: 0 0 8px rgba(var(--color-accent-rgb, 0, 255, 157), 0.3); /* Simplified shadow */
@@ -318,12 +318,12 @@ export default {
 }
 .active-badge {
   background-color: var(--color-yellow);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   text-shadow: none; /* Removed text-shadow for flatness */
 }
 .purchased-badge {
   background-color: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   text-shadow: none; /* Removed text-shadow */
 }
 .purchased-badge i {
@@ -356,12 +356,12 @@ export default {
   color: var(--color-grey-light);
 }
 .modifier-card.active .item-status {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-weight: bold;
   text-shadow: 0 0 4px rgba(var(--color-yellow-rgb, 241, 196, 15), 0.4); /* Subtle shadow */
 }
 .upgrade-card.purchased .item-status {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: bold;
   text-shadow: 0 0 4px rgba(var(--color-green-rgb, 46, 204, 113), 0.4); /* Subtle shadow */
 }
@@ -389,7 +389,7 @@ export default {
 .activate-button {
   background-color: var(--color-green); /* Use main accent color */
   border-color: var(--color-green);
-  color: var(--color-dark-navy); /* Dark text for contrast on green */
+  color: var(--text-on-fill); /* Dark text for contrast on green */
 }
 .activate-button:hover:not(:disabled) {
   background-color: var(--color-accent-light); /* Lighter accent for hover */
@@ -420,7 +420,7 @@ export default {
 .action-button.active-button {
   background-color: var(--color-yellow);
   border-color: var(--color-yellow-dark);
-  color: var(--color-dark-navy); /* Ensure this is a very dark, neutral color for contrast */
+  color: var(--text-on-fill); /* Ensure this is a very dark, neutral color for contrast */
   /* Fallback if --color-dark-navy is not sufficiently dark or has a tint: */
   /* color: #1a202c; /* Example: A very dark grey/blue */
   cursor: default;

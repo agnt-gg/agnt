@@ -1954,23 +1954,23 @@ export default {
 }
 
 .trust-badge.trust-official {
-  color: var(--color-green);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  color: var(--text-green);
+  background: rgba(var(--green-rgb), 0.12);
 }
 
 .trust-badge.trust-community {
-  color: var(--color-green);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  color: var(--text-green);
+  background: rgba(var(--green-rgb), 0.12);
 }
 
 .trust-badge.trust-unverified {
-  color: var(--color-yellow);
-  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  color: var(--text-yellow);
+  background: rgba(var(--yellow-rgb), 0.12);
 }
 
 .trust-badge.trust-unaudited {
   color: var(--color-red);
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  background: rgba(var(--red-rgb), 0.12);
 }
 
 .marketplace-panel {
@@ -2083,7 +2083,7 @@ body.dark .view-toggle {
 
 .view-btn.active {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 
 .view-btn:not(:last-child) {
@@ -2153,7 +2153,7 @@ body.dark .view-btn:not(:last-child) {
 }
 
 .section-title i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 16px;
 }
 
@@ -2163,7 +2163,7 @@ body.dark .view-btn:not(:last-child) {
 
 .table-install-button:disabled {
   background: transparent;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border-color: var(--color-yellow);
 }
 
@@ -2179,12 +2179,12 @@ body.dark .view-btn:not(:last-child) {
 
 .price-badge.paid {
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .price-badge.free {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .rating-display {
@@ -2196,7 +2196,7 @@ body.dark .view-btn:not(:last-child) {
 }
 
 .rating-display i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 11px;
 }
 
@@ -2215,7 +2215,7 @@ body.dark .view-btn:not(:last-child) {
 }
 
 .downloads-display i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 11px;
 }
 
@@ -2274,7 +2274,7 @@ body.dark .view-btn:not(:last-child) {
 }
 
 .earnings-title i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 22px;
 }
 
@@ -2314,7 +2314,7 @@ body.dark .view-btn:not(:last-child) {
 
 .earnings-card-icon i {
   font-size: 20px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .earnings-card-content {
@@ -2399,7 +2399,7 @@ body.dark .view-btn:not(:last-child) {
 }
 
 .breakdown-item.net .breakdown-value {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .earnings-section {
@@ -2522,7 +2522,7 @@ body.dark .view-btn:not(:last-child) {
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  color: var(--color-secondary);
+  color: var(--text-info);
   font-family: var(--font-family-primary);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-xs);
@@ -2713,7 +2713,7 @@ body.dark .view-btn:not(:last-child) {
 .mk-hero-cta.done,
 .mk-hero-cta:disabled {
   background: rgba(var(--green-rgb), 0.16);
-  color: var(--color-green);
+  color: var(--text-green);
   cursor: default;
   transform: none;
   box-shadow: none;
@@ -2856,7 +2856,7 @@ body.dark .view-btn:not(:last-child) {
 .mk-spacer { flex: 1 1 auto; }
 .mk-count { font-size: var(--font-size-xs); color: var(--color-text-muted); }
 .mk-count b { color: var(--color-text); font-family: var(--font-family-mono); }
-.mk-count-note { opacity: 0.65; }
+.mk-count-note { color: var(--text-tertiary); }
 .mk-tb-label {
   flex: 0 0 auto;
   font-size: 10px;
@@ -2953,7 +2953,7 @@ body.dark .view-btn:not(:last-child) {
   border-color: rgba(var(--primary-rgb), 0.45);
   background: rgba(var(--primary-rgb), 0.1);
 }
-.mk-chip-n { font-family: var(--font-family-mono); font-size: 10px; opacity: 0.6; }
+.mk-chip-n { font-family: var(--font-family-mono); font-size: 10px; color: var(--text-tertiary); }
 /* sibling of the rail, never overlapping it */
 .mk-rail-next {
   flex: 0 0 auto;
@@ -3040,8 +3040,8 @@ body.dark .view-btn:not(:last-child) {
 /* --color-red (#fe4e4e) puts white at only 3.87:1 at this size; this darkened
    red measures 5.6:1 while still reading as the same alert red. */
 .mk-tag.hot { background: rgba(198, 40, 40, 0.95); border-color: transparent; }
-.mk-tag.new { background: rgba(18, 224, 255, 0.9); border-color: transparent; color: #06131a; }
-.mk-tag.rank { background: rgba(255, 215, 0, 0.92); border-color: transparent; color: #2a2000; }
+.mk-tag.new { background: rgba(var(--blue-rgb), 0.9); border-color: transparent; color: #06131a; }
+.mk-tag.rank { background: rgba(var(--yellow-rgb), 0.92); border-color: transparent; color: #2a2000; }
 .mk-tag.price { margin-left: auto; font-family: var(--font-family-mono); font-size: 10.5px; letter-spacing: 0.02em; }
 /* The FREE label is the one tag painted in an accent rather than --text-on-scrim,
    and it sits on a generated gradient whose hue varies per item. Composited
@@ -3114,7 +3114,7 @@ body.dark .view-btn:not(:last-child) {
 }
 .mk-card-author.is-link:hover {
   opacity: 1;
-  color: var(--color-secondary);
+  color: var(--text-info);
   text-decoration: underline;
 }
 
@@ -3147,7 +3147,7 @@ body.dark .view-btn:not(:last-child) {
 }
 .mk-m { display: flex; align-items: center; gap: 5px; }
 .mk-m b { color: var(--color-text); font-weight: var(--font-weight-medium); }
-.mk-m-star i { color: var(--color-yellow); }
+.mk-m-star i { color: var(--text-yellow); }
 /* kept only mildly secondary — opacity here multiplies with the parent's */
 .mk-m-count {
   opacity: 0.9;
@@ -3193,7 +3193,7 @@ body.dark .view-btn:not(:last-child) {
 .mk-inst.done,
 .mk-card:hover .mk-inst.done {
   background: rgba(var(--green-rgb), 0.14);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   box-shadow: none;
   cursor: default;
@@ -3238,7 +3238,7 @@ body.dark .view-btn:not(:last-child) {
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  background: rgba(25, 239, 131, 0.92);
+  background: rgba(var(--green-rgb), 0.92);
   color: #05140c; /* sits on a fixed green chip, not on a theme surface */
 }
 
@@ -3382,7 +3382,7 @@ body.dark .view-btn:not(:last-child) {
   border-radius: var(--border-radius-full);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-secondary);
+  color: var(--text-info);
   border: 1px solid rgba(var(--blue-rgb), 0.35);
   background: rgba(var(--blue-rgb), 0.1);
 }
@@ -3414,7 +3414,7 @@ body.dark .view-btn:not(:last-child) {
   color: var(--color-text);
 }
 .mk-prof-stat .v i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 15px;
 }
 .mk-prof-stat .k {
@@ -3439,7 +3439,7 @@ body.dark .view-btn:not(:last-child) {
   color: var(--color-text);
 }
 .mk-prof-rel i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .mk-prof-rel b {
   font-family: var(--font-family-mono);

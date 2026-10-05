@@ -857,7 +857,7 @@ export default {
 }
 
 .tiles-strip:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .strip-title {
@@ -916,7 +916,7 @@ export default {
   height: 6px;
   border-radius: 50%;
   flex: none;
-  background: var(--color-orange, #ff9500);
+  background: var(--color-orange, var(--color-orange));
   box-shadow: 0 0 6px var(--color-orange, #ff9500);
 }
 
@@ -927,7 +927,7 @@ export default {
 }
 
 .tiles-strip.expanded .strip-toggle {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 /* ── L1 tiles ── */
@@ -966,7 +966,7 @@ export default {
 }
 
 .tile:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--surface-hover);
 }
 
 .tile.active {
@@ -1066,8 +1066,8 @@ export default {
 }
 
 .compress-copy b { color: var(--color-text); font-weight: 600; }
-.compress-copy b.good { color: var(--color-green); }
-.compress-copy b.warn { color: var(--color-orange, #ff9500); }
+.compress-copy b.good { color: var(--text-green); }
+.compress-copy b.warn { color: var(--text-orange); }
 .compress-copy b.danger { color: var(--pink, #e53d8f); }
 
 .compress-actions {
@@ -1097,7 +1097,7 @@ export default {
 .cbtn.primary {
   background: rgba(var(--blue-rgb), 0.16);
   border-color: rgba(var(--blue-rgb), 0.45);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .cbtn.primary:hover:not(:disabled) {
@@ -1107,13 +1107,13 @@ export default {
 
 /* Past half the window the button asks for attention without shouting. */
 .cbtn.primary.nudge {
-  background: rgba(255, 149, 0, 0.14);
+  background: rgba(var(--orange-rgb), 0.14);
   border-color: rgba(255, 149, 0, 0.5);
-  color: var(--color-orange, #ff9500);
+  color: var(--text-orange);
 }
 
 .cbtn.primary.nudge:hover:not(:disabled) {
-  background: rgba(255, 149, 0, 0.26);
+  background: rgba(var(--orange-rgb), 0.26);
   border-color: var(--color-orange, #ff9500);
 }
 
@@ -1202,7 +1202,7 @@ export default {
 
 .blk-note.dim b { color: var(--text-secondary); font-weight: 500; }
 .blk-note b.danger { color: var(--pink, #e53d8f); }
-.blk-note b.warn { color: var(--color-orange, #ff9500); }
+.blk-note b.warn { color: var(--text-orange); }
 
 .blk-bar {
   display: flex;
@@ -1218,7 +1218,7 @@ export default {
 .seg-system { background: var(--color-blue); }
 .seg-tools { background: var(--color-indigo); }
 .seg-messages { background: var(--color-green); }
-.seg-output { background: rgba(255, 255, 255, 0.18); }
+.seg-output { background: var(--color-duller-navy); }
 
 .legend {
   display: grid;
@@ -1240,7 +1240,7 @@ export default {
 .dot-system { background: var(--color-blue); }
 .dot-tools { background: var(--color-indigo); }
 .dot-messages { background: var(--color-green); }
-.dot-output { background: rgba(255, 255, 255, 0.18); }
+.dot-output { background: var(--color-duller-navy); }
 
 .legend-label {
   color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
@@ -1283,12 +1283,12 @@ export default {
 }
 
 .accent-indigo {
-  background: rgba(125, 61, 229, 0.09);
+  background: rgba(var(--indigo-rgb), 0.09);
   border-color: var(--color-indigo);
 }
 
 .accent-gold {
-  background: rgba(255, 149, 0, 0.07);
+  background: rgba(var(--orange-rgb), 0.07);
   border-color: var(--color-orange, #ff9500);
 }
 
@@ -1298,7 +1298,7 @@ export default {
 }
 
 .accent-pink {
-  background: rgba(229, 61, 143, 0.08);
+  background: rgba(var(--pink-rgb), 0.08);
   border-color: var(--pink, #e53d8f);
 }
 
@@ -1316,7 +1316,7 @@ export default {
   color: var(--status-purple-text);
 }
 
-.accent-gold .accent-label { color: var(--color-orange, #ff9500); }
+.accent-gold .accent-label { color: var(--text-orange); }
 
 .accent-amount {
   font-family: var(--font-family-mono, monospace);
@@ -1334,8 +1334,8 @@ export default {
 
 .mt-system { background: var(--color-blue); }
 .mt-tools { background: var(--color-indigo); }
-.mt-est { background: rgba(255, 255, 255, 0.3); }
-.mt-drift { background: var(--color-orange, #ff9500); }
+.mt-est { background: var(--color-duller-navy); }
+.mt-drift { background: var(--color-orange, var(--color-orange)); }
 
 /* ── drivers ── */
 .cols {
@@ -1391,9 +1391,9 @@ export default {
   white-space: nowrap;
 }
 
-.why-system { background: rgba(var(--blue-rgb), 0.16); color: var(--color-blue); }
-.why-tool { background: rgba(125, 61, 229, 0.2); color: var(--status-purple-text); }
-.why-discovered { background: rgba(var(--green-rgb), 0.14); color: var(--color-green); }
+.why-system { background: rgba(var(--blue-rgb), 0.16); color: var(--text-blue); }
+.why-tool { background: rgba(var(--indigo-rgb), 0.2); color: var(--status-purple-text); }
+.why-discovered { background: rgba(var(--green-rgb), 0.14); color: var(--text-green); }
 
 .driver-per,
 .driver-total {
@@ -1421,7 +1421,7 @@ export default {
 .round {
   height: 100%;
   padding: 0;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--color-darker-1);
   border: 0;
   border-bottom: 2px solid transparent;
   cursor: pointer;
@@ -1432,7 +1432,7 @@ export default {
   min-width: 6px;
 }
 
-.round:hover { background: rgba(255, 255, 255, 0.12); }
+.round:hover { background: var(--surface-active); }
 
 .round.selected {
   background: rgba(var(--blue-rgb), 0.14);
@@ -1458,7 +1458,7 @@ export default {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--pink, #e53d8f);
+  background: var(--pink, var(--color-pink));
 }
 
 .rounds-axis {
@@ -1471,11 +1471,11 @@ export default {
   color: var(--text-quaternary);
 }
 
-.rounds-sel { color: var(--color-blue); }
+.rounds-sel { color: var(--text-blue); }
 
 /* ── shared state colours ── */
-.good { color: var(--color-green); }
-.warn { color: var(--color-orange, #ff9500); }
+.good { color: var(--text-green); }
+.warn { color: var(--text-orange); }
 .critical { color: var(--color-red); }
 .indigo { color: var(--status-purple-text); }
 .danger { color: var(--pink, #e53d8f); }

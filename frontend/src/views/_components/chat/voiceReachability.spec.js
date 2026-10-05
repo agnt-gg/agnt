@@ -581,7 +581,8 @@ describe('the voice button looks like the control it sits beside', () => {
       const block = ruleFor(src, `.chat-voice-button.${state}`);
       expect(block, state).toBeTruthy();
       expect(declared(block, 'background'), `${state} background`).toMatch(/^rgba\(var\(--\w+-rgb\), 0\.2\)$/);
-      expect(declared(block, 'color'), `${state} color`).toMatch(/^var\(--color-\w+\)$/);
+      // A theme token, never a literal: --text-<hue> for hued ink (light-safe), --color-* otherwise.
+      expect(declared(block, 'color'), `${state} color`).toMatch(/^var\(--(?:color|text)-[\w-]+\)$/);
     }
   });
 

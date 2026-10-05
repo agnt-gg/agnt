@@ -390,7 +390,7 @@ export default {
 
 .upload-prompt i {
   font-size: 2.5em;
-  color: var(--color-green);
+  color: var(--text-green);
   margin-bottom: 12px;
   opacity: 0.7;
 }
@@ -490,7 +490,7 @@ export default {
   border: 2px dashed var(--terminal-border-color);
   border-radius: 8px;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 12px;

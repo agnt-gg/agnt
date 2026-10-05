@@ -106,12 +106,12 @@ export default {
 
 .workflow-row.running .workflow-status,
 .workflow-row.running .workflow-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-row.listening .workflow-status,
 .workflow-row.listening .workflow-icon {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .workflow-row.error .workflow-status,
@@ -140,7 +140,7 @@ export default {
 
 .workflow-icon {
   font-size: 1.1em;
-  color: var(--color-blue);
+  color: var(--text-blue);
   line-height: 1;
 }
 

@@ -356,11 +356,11 @@ export default {
 }
 
 .status-value.status-working {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .status-value.status-complete {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-value.status-failed {
@@ -377,7 +377,7 @@ export default {
 }
 
 .status-value.priority.low {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-value.priority.medium {
@@ -463,7 +463,7 @@ export default {
 
 .task-number {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -497,7 +497,7 @@ export default {
 }
 
 .task-success {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .task-error {
@@ -505,7 +505,7 @@ export default {
 }
 
 .task-executing {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .task-details-expandable,
@@ -578,7 +578,7 @@ export default {
 
 .action-button.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border-color: var(--color-green);
 }
 

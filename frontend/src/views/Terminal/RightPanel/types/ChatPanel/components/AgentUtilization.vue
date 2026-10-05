@@ -232,18 +232,18 @@ export default {
 }
 
 .agent-status.active {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
 }
 
 .agent-status.processing {
-  color: var(--color-blue);
-  background: rgba(18, 224, 255, 0.1);
+  color: var(--text-blue);
+  background: rgba(var(--blue-rgb), 0.1);
 }
 
 .agent-status.high-load {
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.1);
+  color: var(--text-yellow);
+  background: rgba(var(--yellow-rgb), 0.1);
 }
 
 .agent-status.low-activity {

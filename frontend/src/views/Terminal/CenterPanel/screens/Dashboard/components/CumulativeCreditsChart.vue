@@ -536,7 +536,7 @@ export default {
   margin-left: 8px;
   font-family: var(--font-family-mono);
   font-size: 0.85em;
-  color: var(--color-orange);
+  color: var(--text-orange);
   transition: all 0.2s ease;
 }
 

@@ -1167,6 +1167,8 @@ export default {
 </script>
 
 <style scoped>
+/* On the accent fill: outranks the light theme's global muted copy-button ink. */
+.link-input-group .copy-button { color: var(--on-fill-accent); }
 .referrals-section {
   display: flex;
   flex-direction: column;
@@ -1707,7 +1709,7 @@ export default {
 
 .highlight-box .level-badge-small {
   background: rgba(var(--yellow-rgb), 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .example-box {
@@ -1727,7 +1729,7 @@ export default {
 /* Dynamic Calculation Box */
 .calculation-box {
   /* padding: 20px; */
-  /* background: linear-gradient(135deg, rgba(var(--green-rgb), 0.12) 0%, rgba(18, 224, 255, 0.12) 100%); */
+  /* background: linear-gradient(135deg, rgba(var(--green-rgb), 0.12) 0%, rgba(var(--blue-rgb), 0.12) 100%); */
   /* border: 2px solid var(--terminal-border-color); */
   border-radius: 12px;
   margin-top: 8px;
@@ -2086,7 +2088,7 @@ export default {
 
 .prompt-icon {
   font-size: 2em;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .prompt-content {
@@ -2236,7 +2238,7 @@ export default {
 
 .history-item-eligible {
   font-size: 0.75em;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   margin-top: 4px;
   display: flex;
   align-items: center;
@@ -2303,17 +2305,17 @@ export default {
 
 .history-item-status.status-pending {
   background: rgba(var(--yellow-rgb), 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .history-item-status.status-approved {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .history-item-status.status-paid {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 

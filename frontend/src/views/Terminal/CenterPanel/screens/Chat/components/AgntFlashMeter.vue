@@ -93,7 +93,7 @@ export default {
 .afm-bar i { display: block; height: 100%; background: var(--color-green); }
 .low .afm-bar i { background: var(--color-yellow); }
 .afm-left { white-space: nowrap; }
-.afm-nudge { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 10px; border: 1px solid rgba(255, 215, 0, 0.3); background: rgba(255, 215, 0, 0.05); border-radius: 8px; color: var(--color-text); }
+.afm-nudge { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 10px; border: 1px solid rgba(255, 215, 0, 0.3); background: rgba(var(--yellow-rgb), 0.05); border-radius: 8px; color: var(--color-text); }
 .afm-nudge span { flex: 1; min-width: 0; }
 .afm-btn { border: 1px solid var(--terminal-border-color); background: transparent; color: var(--color-text); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .afm-btn:disabled { opacity: 0.6; cursor: default; }

@@ -715,7 +715,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--scrim);
 }
 .ml-drawer-head {
   display: flex;

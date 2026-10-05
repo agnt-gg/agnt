@@ -582,8 +582,8 @@ export default {
 .mini-node-icon {
   width: 14px !important;
   height: 14px !important;
-  color: var(--color-dull-navy) !important;
-  fill: var(--color-dull-navy) !important;
+  color: var(--text-on-fill) !important;
+  fill: var(--text-on-fill) !important;
   pointer-events: none;
 }
 

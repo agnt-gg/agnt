@@ -419,7 +419,7 @@ export default {
 }
 
 .status-indicator.saved {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* ── custom instructions ──────────────────────────────────────────────── */
@@ -460,7 +460,7 @@ export default {
 }
 
 .char-count-warn {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 /* ── limits ───────────────────────────────────────────────────────────── */
@@ -529,10 +529,10 @@ export default {
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid var(--color-yellow);
   border-radius: 999px;
-  background: rgba(255, 215, 0, 0.08);
+  background: rgba(var(--yellow-rgb), 0.08);
   line-height: 1;
 }
 
@@ -623,7 +623,7 @@ export default {
 
 .preset-chip.active {
   background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: var(--color-green);
 }
 

@@ -775,7 +775,7 @@ export default {
   background: rgba(var(--green-rgb), 0.1);
   padding: 10px 8px;
   font-weight: 400;
-  color: var(--color-green);
+  color: var(--text-green);
   border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
 }
 
@@ -866,7 +866,7 @@ export default {
 .tab-button.active {
   background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .terminal-line {
@@ -875,7 +875,7 @@ export default {
 }
 
 .text-bright-green {
-  color: var(--color-green);
+  color: var(--text-green);
   text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
@@ -892,7 +892,7 @@ export default {
 }
 
 .col-status.running {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .col-status.failed {
@@ -900,11 +900,11 @@ export default {
 }
 
 .col-status.completed {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .col-status.queued {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .feedback-line {
@@ -1048,7 +1048,7 @@ export default {
 .collapse-toggle {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-green);
+  color: var(--text-green);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -1107,7 +1107,7 @@ export default {
   background: var(--color-darker-0);
   font-weight: 700;
   font-size: 12px;
-  color: var(--color-secondary);
+  color: var(--text-info);
   border: 1px solid var(--terminal-border-color);
   opacity: 0.5;
 }
@@ -1134,12 +1134,12 @@ export default {
 }
 
 .table-row.listening .col-status {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .table-row.active .col-status,
 .table-row.running .col-status {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .table-row.error .col-status,
@@ -1216,24 +1216,24 @@ export default {
   font-size: 11px;
   font-weight: 600;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .workflow-status.running {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-status.listening {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .workflow-status.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-status.stopped {
@@ -1248,7 +1248,7 @@ export default {
 
 .workflow-status.queued {
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .workflow-avatar-name {
@@ -1353,7 +1353,7 @@ export default {
 .tool-icon-small :deep(svg) {
   width: 10px;
   height: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tools-overflow {
@@ -1475,7 +1475,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 24px;
   opacity: 0.5;
   border-radius: 50%;
@@ -1542,7 +1542,7 @@ export default {
 
 .meta-item i {
   font-size: 11px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .meta-item.category i {
@@ -1550,7 +1550,7 @@ export default {
 }
 
 .meta-item .fa-star {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .meta-count {
@@ -1564,13 +1564,13 @@ export default {
   font-size: 12px;
   font-weight: 700;
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   flex-shrink: 0;
 }
 
 .workflow-price.free {
   background: rgba(34, 197, 94, 0.2) !important;
-  color: var(--color-green) !important;
+  color: var(--text-green) !important;
 }
 
 .workflow-publisher {
@@ -1620,11 +1620,11 @@ export default {
 
 .stat-item i {
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .stat-item .fa-star {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .stat-count {
@@ -1636,7 +1636,7 @@ export default {
   width: 100%;
   padding: 10px 16px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid transparent;
   font-weight: 700;
   font-size: 12px;

@@ -77,7 +77,7 @@ export default {
 
 .base-button.success {
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .base-button.success:hover {

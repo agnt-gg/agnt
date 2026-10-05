@@ -65,7 +65,7 @@ export default {
 
 .chunk-load-failed__icon {
   font-size: 28px;
-  color: var(--color-warning, #e0a34a);
+  color: var(--text-yellow);
 }
 
 .chunk-load-failed__title {

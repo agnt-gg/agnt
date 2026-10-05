@@ -707,7 +707,7 @@ export default {
       } else if (tmpl.type === 'html') {
         form.source_code =
           form.source_code ||
-          `<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--color-green);font-size:20px;font-family:monospace;">
+          `<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--text-green, var(--color-green));font-size:20px;font-family:monospace;">
   Hello Widget!
 </div>`;
       } else if (tmpl.type === 'iframe') {
@@ -937,14 +937,14 @@ export default {
 }
 
 .wf-back:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .wf-toolbar-title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -976,7 +976,7 @@ export default {
 }
 
 .wf-autosave-saved {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .wf-autosave-error {
@@ -1022,7 +1022,7 @@ export default {
 }
 
 .wf-btn-capture:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -1062,7 +1062,7 @@ export default {
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.06);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 10px;
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -1119,7 +1119,7 @@ export default {
   padding: 1px 5px;
   border-radius: 3px;
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   letter-spacing: 0.5px;
 }
 

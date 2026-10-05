@@ -190,7 +190,7 @@ export default {
 }
 
 .stat-value.positive {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 @media (max-width: 768px) {

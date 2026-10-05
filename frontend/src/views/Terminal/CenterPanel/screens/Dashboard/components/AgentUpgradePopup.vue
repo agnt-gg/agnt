@@ -242,7 +242,7 @@ export default {
 .modal-close-dashboard:hover {
   border-color: var(--color-red, var(--color-red));
   color: var(--color-red, var(--color-red));
-  background-color: rgba(254, 78, 78, 0.1);
+  background-color: rgba(var(--red-rgb), 0.1);
   transform: rotate(90deg);
 }
 
@@ -269,7 +269,7 @@ export default {
   color: var(--color-light-green);
 }
 .skill-points-display-dashboard strong {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 /* New styles for enhancement sections and rows */
@@ -302,7 +302,7 @@ export default {
 /* .skill-tree-dashboard class removed as it's no longer used as main container */
 
 .skill-node-dashboard {
-  background: rgba(255, 255, 255, 0.02); /* Darker base */
+  background: var(--color-darker-0); /* Darker base */
   border: 1px solid rgba(255, 255, 255, 0.08); /* Slightly more visible border */
   padding: 12px; /* Slightly reduced padding for tighter fit */
   text-align: center;
@@ -319,7 +319,7 @@ export default {
 
 .skill-node-dashboard.available-dashboard {
   border-color: var(--color-blue-medium, rgba(18, 224, 255, 0.4)); /* Using a themed blue */
-  background: rgba(18, 224, 255, 0.05); /* Light blue background */
+  background: rgba(var(--blue-rgb), 0.05); /* Light blue background */
 }
 .skill-node-dashboard.available-dashboard:hover {
   transform: translateY(-3px) scale(1.02);
@@ -330,7 +330,7 @@ export default {
 /* Style for nodes that are upgradeable but agent can't afford */
 .skill-node-dashboard.unavailable-dashboard {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.01);
+  background: var(--color-darker-0);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -351,10 +351,10 @@ export default {
    box-shadow: none;
 }
 .skill-node-dashboard.purchased-dashboard .skill-icon-dashboard {
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
 }
 .skill-node-dashboard.purchased-dashboard .skill-cost-dashboard {
-  color: var(--color-green-dark, #10a060);
+  color: var(--text-green);
   font-weight: bold;
 }
 
@@ -364,7 +364,7 @@ export default {
   color: var(--color-text-muted); /* Default icon color */
 }
 .skill-node-dashboard.available-dashboard .skill-icon-dashboard {
-  color: var(--color-blue, #12e0ff); /* Blue for available */
+  color: var(--text-blue); /* Blue for available */
 }
 .skill-node-dashboard.unavailable-dashboard .skill-icon-dashboard {
   color: var(--color-med-navy, #7f8193); /* Greyer for unavailable */
@@ -395,7 +395,7 @@ export default {
   margin-top: auto; /* Push cost to the bottom */
 }
 .skill-node-dashboard.available-dashboard .skill-cost-dashboard {
-  color: var(--color-yellow, #ffd700); /* Yellow for cost of available */
+  color: var(--text-yellow); /* Yellow for cost of available */
 }
 .skill-node-dashboard.unavailable-dashboard .skill-cost-dashboard {
   color: var(--color-red-desaturated, #aa5555); /* Muted red for "needs X SP" */
@@ -403,7 +403,7 @@ export default {
 
 /* Style for the prerequisite note */
 .skill-cost-dashboard .prerequisite-note-dashboard {
-  color: var(--color-orange, #ff8c00); /* A distinct orange for prerequisites */
+  color: var(--text-orange); /* A distinct orange for prerequisites */
   font-weight: 600; /* Slightly bolder to stand out */
 }
 

@@ -3203,7 +3203,7 @@ export default {
 
 .inline-context-pill.is-detached {
   border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-darker-0);
   color: var(--color-med-navy, #888);
 }
 
@@ -3235,7 +3235,7 @@ export default {
 }
 
 .inline-context-pill .pill-close:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--surface-active);
   color: var(--color-lightest);
 }
 
@@ -3277,7 +3277,7 @@ export default {
 
 .inline-goal-widget-wrap .inline-goal-detach:hover {
   color: var(--color-lightest);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
 }
 
 .inline-goal-widget-wrap .inline-goal-detach i {

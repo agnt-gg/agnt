@@ -335,10 +335,10 @@ export default {
   white-space: nowrap;
 }
 .mission-rewards i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .mission-rewards i.fa-star {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 
@@ -365,7 +365,7 @@ export default {
   text-align: right;
 }
 .mission-status-text.text-green {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .mission-status-text.text-red {
   color: var(--color-red);

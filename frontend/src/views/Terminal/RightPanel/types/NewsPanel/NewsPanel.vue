@@ -69,7 +69,7 @@ export default {
 }
 
 .panel-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .news-content {
@@ -146,7 +146,7 @@ body.dark .news-item {
   padding: 4px 8px;
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 500;
 }
 
@@ -157,7 +157,7 @@ body.dark .news-item {
   gap: 6px;
   background: none;
   border: none;
-  color: var(--color-green);
+  color: var(--text-green);
   font: inherit;
   font-size: 0.85em;
   font-weight: 500;

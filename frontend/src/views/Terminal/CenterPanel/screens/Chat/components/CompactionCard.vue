@@ -140,7 +140,7 @@ export default {
   cursor: pointer;
 }
 
-.fold-toggle i { font-size: 9px; color: var(--color-blue); }
+.fold-toggle i { font-size: 9px; color: var(--text-blue); }
 
 .fold-meta {
   font-family: var(--font-family-mono, monospace);
@@ -156,7 +156,7 @@ export default {
 .fold-hint {
   font-size: 10px;
   font-weight: 500;
-  color: var(--color-blue);
+  color: var(--text-blue);
   white-space: nowrap;
 }
 
@@ -197,7 +197,7 @@ export default {
   font-size: 9.5px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .summary-edit {
@@ -211,8 +211,8 @@ export default {
   cursor: pointer;
 }
 
-.summary-edit:hover { color: var(--color-text); background: rgba(255, 255, 255, 0.06); }
-.summary-edit.save { color: var(--color-blue); font-weight: 600; }
+.summary-edit:hover { color: var(--color-text); background: var(--surface-hover); }
+.summary-edit.save { color: var(--text-blue); font-weight: 600; }
 .summary-edit-actions { display: inline-flex; gap: 4px; }
 
 .summary-body {

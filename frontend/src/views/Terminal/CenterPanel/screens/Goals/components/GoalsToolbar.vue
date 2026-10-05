@@ -177,7 +177,7 @@ export default {
 .gt-title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -291,7 +291,7 @@ export default {
 .filter-chip.active {
   background: rgba(var(--green-rgb), 0.12);
   border-color: rgba(var(--green-rgb), 0.45);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .chip-dot {

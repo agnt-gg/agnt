@@ -51,7 +51,7 @@ watch(itemRef, () => { links.value = []; loadLinks(); });
 </script>
 <style scoped>
 .copy-to-team-note { margin: 4px 0 0; font-size: 11px; color: var(--color-text-muted); }
-.copy-dialog-scrim { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, .55); display: grid; place-items: center; padding: 16px; }
+.copy-dialog-scrim { position: fixed; inset: 0; z-index: 3000; background: var(--scrim); display: grid; place-items: center; padding: 16px; }
 .copy-dialog { width: min(520px, 100%); max-height: 90vh; height: auto; border: 1px solid var(--terminal-border-color); border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
 .copy-dialog header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--terminal-border-color); }
 .copy-dialog header h2 { margin: 0; font-size: 17px; }

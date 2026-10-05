@@ -697,7 +697,7 @@ const refreshGoalTasks = async () => {
 }
 
 .edit-button:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   background-color: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.3);
 }
@@ -709,7 +709,7 @@ const refreshGoalTasks = async () => {
 }
 
 .overview-edit h4 {
-  color: var(--color-green);
+  color: var(--text-green);
   margin-bottom: 5px;
   border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 5px;
@@ -794,7 +794,7 @@ h4.section-title {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .group-title {
@@ -914,7 +914,7 @@ h4.section-title {
 
 .action-button.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
 }
 
@@ -1095,7 +1095,7 @@ h4.section-title {
 }
 
 .chat-message.agent .message-sender {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .message-content {
@@ -1108,7 +1108,7 @@ h4.section-title {
 
 .chat-message.user .message-content {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border-bottom-right-radius: 4px;
 }
 
@@ -1187,7 +1187,7 @@ h4.section-title {
   border-radius: 50%;
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1334,12 +1334,12 @@ h4.section-title {
 
 .task-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .task-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .task-priority.urgent {
@@ -1561,17 +1561,17 @@ h4.section-title {
 
 .goal-status.executing {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .goal-status.paused {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .goal-status.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .goal-status.failed {
@@ -1601,12 +1601,12 @@ h4.section-title {
 
 .goal-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .goal-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .goal-priority.urgent {
@@ -1644,7 +1644,7 @@ h4.section-title {
 }
 
 .current-task-label {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.8em;
   font-weight: bold;
   margin-bottom: 4px;
@@ -1729,7 +1729,7 @@ h4.section-title {
 }
 
 .info-card i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.2em;
   margin-top: 2px;
 }
@@ -1838,17 +1838,17 @@ select option {
 
 .task-status-badge.assigned {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .task-status-badge.running {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .task-status-badge.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .task-status-badge.failed {

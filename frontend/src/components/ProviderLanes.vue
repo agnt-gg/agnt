@@ -756,11 +756,11 @@ export default {
 }
 
 .panel-billing.subscription {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .panel-billing.api {
-  color: var(--color-secondary);
+  color: var(--text-info);
 }
 
 .panel-close {
@@ -802,7 +802,7 @@ export default {
 }
 
 .panel-instructions :deep(a) {
-  color: var(--color-secondary);
+  color: var(--text-info);
 }
 
 /* Fine print sits BELOW the button it qualifies, so the action stays first in
@@ -862,7 +862,7 @@ export default {
   background: none;
   cursor: pointer;
   font: inherit;
-  color: var(--color-secondary);
+  color: var(--text-info);
 }
 
 .panel-swap button:hover {

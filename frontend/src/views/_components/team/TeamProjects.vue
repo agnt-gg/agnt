@@ -149,7 +149,7 @@ watch(() => [props.team.id, props.onTeamInstance], () => { accessFor.value = '';
 defineExpose({ reload: () => perform(load) });
 </script>
 <style scoped>
-.notice { color: var(--color-yellow, #ffd700); }
+.notice { color: var(--text-yellow); }
 .result { flex-basis: 100%; white-space: pre-wrap; font: 12px/1.6 'Fira Code', monospace; color: var(--color-text); max-height: 200px; overflow: auto; margin: 0; }
 .access { flex-basis: 100%; padding: 4px 0 4px 12px; border-left: 2px solid rgba(var(--primary-rgb), .3); display: grid; gap: 8px; }
 .grid-table { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); padding-top: 8px; }

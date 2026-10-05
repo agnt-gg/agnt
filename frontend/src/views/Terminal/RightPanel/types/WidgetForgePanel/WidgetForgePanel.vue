@@ -347,7 +347,7 @@ export default {
 }
 
 .tab-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -412,7 +412,7 @@ export default {
 }
 
 .tmpl-card.active .tmpl-icon {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tmpl-name {
@@ -447,7 +447,7 @@ export default {
   padding: 1px 5px;
   border-radius: 3px;
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   letter-spacing: 0.5px;
 }
 
@@ -469,7 +469,7 @@ export default {
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 3px;
   background: rgba(var(--green-rgb), 0.06);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 9px;
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -567,7 +567,7 @@ export default {
 }
 
 .icon-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.08);
 }

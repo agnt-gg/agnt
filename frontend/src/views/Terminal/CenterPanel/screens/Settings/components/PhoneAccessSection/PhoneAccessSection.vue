@@ -681,8 +681,8 @@ onBeforeUnmount(() => clearInterval(ticker));
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, #ffd700 40%, transparent);
-  background: color-mix(in srgb, #ffd700 12%, transparent);
-  color: var(--color-yellow, #ffd700);
+  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  color: var(--text-yellow);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -739,12 +739,12 @@ onBeforeUnmount(() => clearInterval(ticker));
   transition: transform 0.2s ease, background 0.2s ease;
 }
 .pa-switch input:checked + .pa-slider {
-  background: color-mix(in srgb, var(--color-primary, #19ef83) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-green)) 25%, transparent);
   border-color: var(--color-primary, #19ef83);
 }
 .pa-switch input:checked + .pa-slider::before {
   transform: translateX(20px);
-  background: var(--color-primary, #19ef83);
+  background: var(--color-primary, var(--color-green));
 }
 
 /* ── notes ── */
@@ -765,7 +765,7 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 .pa-note-warn {
   border-color: color-mix(in srgb, #ffd700 40%, transparent);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .pa-note-error {
   border-color: color-mix(in srgb, #e53d8f 50%, transparent);
@@ -787,7 +787,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 /* ── body ── */
@@ -894,7 +894,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   justify-content: center;
   font-size: 11px;
   font-weight: 600;
-  background: color-mix(in srgb, var(--color-primary, #19ef83) 20%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-green)) 20%, transparent);
   color: var(--color-primary, #19ef83);
 }
 
@@ -930,7 +930,7 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 .pa-url.active {
   border-color: var(--color-primary, #19ef83);
-  background: color-mix(in srgb, var(--color-primary, #19ef83) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-green)) 12%, transparent);
 }
 .pa-url code {
   font-size: 13px;
@@ -951,7 +951,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
   font-size: 12px;
   opacity: 0.85;
 }
@@ -1035,7 +1035,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   gap: 12px;
   padding: 14px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--color-primary, #19ef83) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-green)) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-primary, #19ef83) 45%, transparent);
 }
 
@@ -1081,7 +1081,7 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 
 .pa-witness.warn {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .pa-witness code {
@@ -1114,7 +1114,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   cursor: not-allowed;
 }
 .pa-btn-primary {
-  background: var(--color-primary, #19ef83);
+  background: var(--color-primary, var(--color-green));
   border-color: var(--color-primary, #19ef83);
   color: var(--on-fill-accent);
   font-weight: 600;

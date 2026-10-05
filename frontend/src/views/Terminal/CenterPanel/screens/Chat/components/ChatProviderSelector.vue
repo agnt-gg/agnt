@@ -919,7 +919,7 @@ export default {
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-blue, #4a9eff);
+  color: var(--text-blue);
   background: color-mix(in srgb, var(--color-blue, #4a9eff) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-blue, #4a9eff) 35%, transparent);
   white-space: nowrap;
@@ -1048,7 +1048,7 @@ export default {
 .provider-name {
   font-size: 0.95em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .model-name {
@@ -1130,7 +1130,7 @@ export default {
 .btn-add-custom {
   padding: 6px 12px;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px dashed rgba(var(--green-rgb), 0.4);
   border-radius: 5px;
   font-size: 0.8em;
@@ -1212,14 +1212,14 @@ export default {
 }
 
 .tool-support-warning i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 1em;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
 .tool-support-warning .warning-text {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   line-height: 1.4;
 }
 </style>

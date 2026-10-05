@@ -126,13 +126,13 @@ const actions = computed(() => [
   font-size: 0.85em;
   flex-shrink: 0;
 }
-.card-icon.pattern { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
+.card-icon.pattern { background: rgba(var(--green-rgb), 0.15); color: var(--text-green); }
 .card-icon.antipattern { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
 .card-icon.prompt_refinement { background: rgba(168, 85, 247, 0.15); color: var(--status-purple-text); }
 .card-icon.skill_recommendation { background: rgba(59, 130, 246, 0.15); color: var(--status-blue-text); }
 .card-icon.memory { background: rgba(236, 72, 153, 0.15); color: var(--color-pink); }
 .card-icon.bottleneck { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
-.card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: var(--color-blue); }
+.card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: var(--text-blue); }
 .card-icon.tool_preference { background: rgba(99, 102, 241, 0.15); color: var(--status-blue-text); }
 .card-icon.default { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 
@@ -194,7 +194,7 @@ const actions = computed(() => [
   font-weight: 500;
 }
 .status-badge.pending { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
-.status-badge.applied { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
+.status-badge.applied { background: rgba(var(--green-rgb), 0.15); color: var(--text-green); }
 .status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
 .status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 
@@ -212,7 +212,7 @@ const actions = computed(() => [
   color: var(--color-primary);
 }
 .source-badge.agent_chat { background: rgba(59, 130, 246, 0.1); color: var(--status-blue-text); }
-.source-badge.goal { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
+.source-badge.goal { background: rgba(var(--green-rgb), 0.1); color: var(--text-green); }
 .source-badge.workflow { background: rgba(168, 85, 247, 0.1); color: var(--status-purple-text); }
 .source-badge.tool_call { background: rgba(245, 158, 11, 0.1); color: var(--status-amber-text); }
 .target-badge {

@@ -512,6 +512,6 @@ button.icon {
 }
 
 button.icon:hover {
-  color: var(--color-secondary);
+  color: var(--text-info);
 }
 </style>

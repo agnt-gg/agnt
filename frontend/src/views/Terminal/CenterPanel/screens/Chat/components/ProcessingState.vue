@@ -40,8 +40,8 @@ export default {
   height: 20px;
   background: linear-gradient(
     to top,
-    rgba(18, 224, 255, 0.4) 0%,
-    rgba(18, 224, 255, 0.8) 100%
+    rgba(var(--blue-rgb), 0.4) 0%,
+    rgba(var(--blue-rgb), 0.8) 100%
   );
   border-radius: 2px;
   animation: wave-motion 1.2s ease-in-out infinite;

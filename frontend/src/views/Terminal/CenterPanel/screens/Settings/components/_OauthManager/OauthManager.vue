@@ -554,7 +554,7 @@ body.dark .app-item:hover {
 }
 
 .connected-status {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.6em;
   line-height: 100%;
 }

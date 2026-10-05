@@ -602,7 +602,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -663,7 +663,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-active);
   color: var(--color-primary);
 }
 
@@ -767,7 +767,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 
 .vote-btn:hover:not(:disabled) {
   color: var(--color-primary);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-hover);
 }
 
 .vote-btn.active {
@@ -788,7 +788,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 }
 
 .vote-count.positive {
-  color: var(--color-success, #19ef83);
+  color: var(--text-green);
 }
 
 .vote-count.negative {
@@ -857,21 +857,21 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 }
 
 .status-planned {
-  color: var(--color-blue);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.4);
-  background: rgba(18, 224, 255, 0.08);
+  background: rgba(var(--blue-rgb), 0.08);
 }
 
 .status-in_progress {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border-color: rgba(255, 215, 0, 0.4);
-  background: rgba(255, 215, 0, 0.08);
+  background: rgba(var(--yellow-rgb), 0.08);
 }
 
 .status-completed {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(25, 239, 131, 0.4);
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .status-declined {
@@ -925,7 +925,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 
 .admin-response {
   border: 1px solid rgba(18, 224, 255, 0.3);
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
   border-radius: 6px;
   padding: 10px 12px;
   margin-bottom: 12px;
@@ -934,7 +934,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 .admin-response-header {
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--color-blue);
+  color: var(--text-blue);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -1041,7 +1041,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 
 .btn-primary {
   background: var(--color-primary);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   font-weight: 600;
 }
 

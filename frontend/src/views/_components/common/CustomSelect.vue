@@ -647,7 +647,7 @@ select.custom-select {
 
 /* Special option styles */
 .option.create-new-option {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 500;
 }
 

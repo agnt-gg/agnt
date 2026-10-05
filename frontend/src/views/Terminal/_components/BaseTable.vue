@@ -506,11 +506,11 @@ export default {
 
 .table-row.running .col-status,
 .table-row.active .col-status {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .table-row.listening .col-status {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .table-row.failed .col-status,
@@ -519,7 +519,7 @@ export default {
 }
 
 .table-row.completed .col-status {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .table-row.stopped .col-status {
@@ -528,7 +528,7 @@ export default {
 
 .table-row.queued .col-status,
 .table-row.waiting .col-status {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .table-row.inactive .col-status {
@@ -608,13 +608,13 @@ select option {
 }
 
 .table-header .sortable:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .sort-arrow {
   margin-left: 4px;
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 </style>
 

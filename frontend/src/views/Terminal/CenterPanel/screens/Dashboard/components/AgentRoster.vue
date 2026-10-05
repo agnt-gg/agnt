@@ -95,7 +95,7 @@ export default {
   gap: 8px;
 }
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state-small {
@@ -237,7 +237,7 @@ export default {
 }
 
 .skill-tag, .tool-tag {
-    background-color: rgba(255,255,255,0.07);
+    background-color: var(--color-darker-1);
     padding: 1px 4px;
     border-radius: 2px;
     margin-right: 2px;
@@ -247,7 +247,7 @@ export default {
 }
 
 .agent-tps {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-weight: bold;
 }
 

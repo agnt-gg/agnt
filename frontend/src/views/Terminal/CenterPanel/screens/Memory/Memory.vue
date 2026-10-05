@@ -510,7 +510,7 @@ onMounted(() => initializeScreen());
 .view-tab.active {
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .tab-count {
   background: var(--color-darker-0);
@@ -667,7 +667,7 @@ onMounted(() => initializeScreen());
   transition: all 0.15s;
 }
 .mem-btn.edit:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.3);
 }
@@ -796,7 +796,7 @@ onMounted(() => initializeScreen());
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -903,7 +903,7 @@ select.form-input option {
 }
 .modal-btn.save {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   font-weight: 600;
 }

@@ -71,7 +71,7 @@ function handOff(action) {
 }
 </script>
 <style scoped>
-.share-scrim { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, .55); display: grid; place-items: center; padding: 16px; }
+.share-scrim { position: fixed; inset: 0; z-index: 3000; background: var(--scrim); display: grid; place-items: center; padding: 16px; }
 .share-sheet { width: min(540px, 100%); max-height: 90vh; height: auto; overflow: auto; border: 1px solid var(--terminal-border-color); border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
 .share-sheet header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--terminal-border-color); }
 .share-sheet .title { display: flex; align-items: center; gap: 10px; min-width: 0; }

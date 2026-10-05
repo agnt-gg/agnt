@@ -716,7 +716,7 @@ export default {
 }
 
 .text-link {
-  color: var(--color-secondary);
+  color: var(--text-info);
   padding: 0;
 }
 
@@ -735,17 +735,17 @@ export default {
   padding: var(--spacing-xxs) var(--spacing-sm);
   border-radius: var(--border-radius-lg);
   color: var(--status-blue-text);
-  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+  background: rgba(var(--blue-rgb), 0.12);
 }
 
 .status-pill.changed {
   color: var(--status-amber-text);
-  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  background: rgba(var(--yellow-rgb), 0.12);
 }
 
 .status-pill.installed {
   color: var(--status-green-text);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  background: rgba(var(--green-rgb), 0.12);
 }
 
 /* ── start ── */
@@ -1056,7 +1056,7 @@ export default {
   border-radius: var(--border-radius-md);
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  background: rgba(var(--primary-rgb), 0.14);
   color: var(--color-primary);
   flex-shrink: 0;
 }

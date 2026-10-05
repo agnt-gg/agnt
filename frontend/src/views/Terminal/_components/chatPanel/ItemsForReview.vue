@@ -107,7 +107,7 @@ export default {
 }
 
 .review-item-card.status-pending .review-item-icon {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .review-item-info {
@@ -129,7 +129,7 @@ export default {
 
 .review-item-action {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   padding: 6px 12px;
   border-radius: 6px;

@@ -110,7 +110,7 @@ onMounted(() => {
   font-size: 0.9em;
 }
 .song-artist a {
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
   text-decoration: underline;
   margin-left: 2px;
 }
@@ -133,7 +133,7 @@ onMounted(() => {
 .player-btn {
   background: none;
   border: none;
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
   font-size: 1em;
   cursor: pointer;
   padding: 4px 10px;

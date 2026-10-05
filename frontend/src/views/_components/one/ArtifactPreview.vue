@@ -193,7 +193,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -241,7 +241,7 @@ export default {
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--color-warning, #d9a441);
+  color: var(--text-yellow);
   border: 1px solid currentColor;
   border-radius: 4px;
   padding: 1px 5px;
@@ -262,7 +262,7 @@ export default {
   white-space: nowrap;
 }
 .ap-link:hover,
-.ap-x:hover { color: var(--color-text); background: rgba(255, 255, 255, 0.05); border-color: var(--terminal-border-color); }
+.ap-x:hover { color: var(--color-text); background: var(--surface-hover); border-color: var(--terminal-border-color); }
 .ap-link i { margin-right: 4px; font-size: 10.5px; }
 .ap-x { padding: 5px 9px; }
 .ap-body {
@@ -306,5 +306,5 @@ export default {
   opacity: 0.75;
 }
 .ap-btn { border-color: var(--terminal-border-color); color: var(--color-text); }
-.ap-btn:hover { background: rgba(255, 255, 255, 0.05); }
+.ap-btn:hover { background: var(--surface-hover); }
 </style>

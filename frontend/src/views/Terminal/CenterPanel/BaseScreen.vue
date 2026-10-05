@@ -1889,7 +1889,7 @@ export default {
 <style scoped>
 .terminal-content.artifact-active.artifact-expanded .main-panel,.terminal-content.artifact-active.artifact-expanded .left-panel-component,.terminal-content.artifact-active.artifact-expanded .resize-handle{display:none!important}.terminal-content.artifact-active.artifact-expanded .right-panel-component{width:100%!important;flex:1!important}
 @media screen and (max-width:800px){.terminal-content.artifact-active .right-panel-component{display:flex!important;position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;transform:none!important;z-index:100;background:var(--color-popup)}.terminal-content.artifact-active .main-panel{visibility:hidden}.terminal-content.artifact-active .right-panel-component.collapsed{width:100%!important}}
-.mobile-panel-scrim { position: absolute; inset: 0; border: 0; background: rgba(0,0,0,.45); z-index: 1198; }
+.mobile-panel-scrim { position: absolute; inset: 0; border: 0; background: var(--scrim); z-index: 1198; }
 .terminal-content.mobile-presentation .left-panel-component, .terminal-content.mobile-presentation .right-panel-component { position: absolute; inset: 0; width: 100%; max-width: 100%; height: 100%; z-index: 1199; transform: none; visibility: hidden; pointer-events: none; background: var(--color-background); }
 .terminal-content.mobile-presentation .mobile-panel-visible { visibility: visible; pointer-events: auto; }
 /* PanelBackdrop supplies desktop paint, but a phone panel overlays the main
@@ -1949,7 +1949,7 @@ body .terminal-content.mobile-presentation > .three-panel-container > .right-pan
   justify-content: center;
   gap: 12px;
   background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.95em;
   pointer-events: none;
 }
@@ -2198,7 +2198,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   border-radius: 50%;
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2698,7 +2698,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 .chat-voice-button:hover:not(:disabled) {
   background: var(--color-darker-0);
-  color: var(--color-green);
+  color: var(--text-green);
   transform: scale(1.05);
 }
 
@@ -2711,7 +2711,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
  */
 .chat-voice-button.voice-on {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 /*
@@ -2722,23 +2722,23 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
  */
 .chat-voice-button.voice-connecting {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .chat-voice-button.voice-listening,
 .chat-voice-button.voice-reopen {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .chat-voice-button.voice-thinking {
   background: rgba(var(--yellow-rgb), 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .chat-voice-button.voice-speaking {
   background: rgba(var(--blue-rgb), 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .voice-status-strip {
@@ -2847,7 +2847,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
   border: 1px solid rgba(var(--green-rgb, 18, 224, 255), 0.25);
   border-radius: 999px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.78em;
   line-height: 1.2;
   max-width: 100%;
@@ -2876,7 +2876,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -3023,7 +3023,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 .chat-attach-button:hover:not(:disabled) {
   background: var(--color-darker-0);
-  color: var(--color-green);
+  color: var(--text-green);
   transform: scale(1.05);
 }
 
@@ -3053,7 +3053,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 .chat-provider-button:hover:not(:disabled) {
   background: var(--color-darker-0);
-  color: var(--color-blue);
+  color: var(--text-blue);
   transform: scale(1.05);
 }
 

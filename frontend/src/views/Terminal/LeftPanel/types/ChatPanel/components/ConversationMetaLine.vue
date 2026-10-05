@@ -105,9 +105,9 @@ const participantsWithIcons = computed(() =>
  */
 .output-date {
   flex: 0 0 auto;
-  color: var(--color-text-muted);
+  /* Quiet by tier, not by opacity: 0.7 over the muted tier measured 2.5:1. */
+  color: var(--text-tertiary);
   font-size: var(--font-size-xxs, 10px);
-  opacity: 0.7;
   white-space: nowrap;
 }
 
@@ -121,9 +121,8 @@ const participantsWithIcons = computed(() =>
 .output-speaker {
   flex: 0 1 auto;
   min-width: 0;
-  color: var(--color-text-muted);
+  color: var(--text-tertiary);
   font-size: var(--font-size-xxs, 10px);
-  opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,6 +145,6 @@ const participantsWithIcons = computed(() =>
 }
 
 .speaking-verb {
-  opacity: 0.85;
+  color: var(--text-tertiary);
 }
 </style>

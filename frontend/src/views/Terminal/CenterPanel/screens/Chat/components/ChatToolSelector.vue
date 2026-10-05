@@ -646,7 +646,7 @@ export default {
 .summary-count {
   font-size: 0.95em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-loading {
@@ -724,7 +724,7 @@ export default {
    the user reads it as "always on" rather than "broken toggle". */
 .section-lock {
   font-size: 0.65em;
-  color: var(--color-green);
+  color: var(--text-green);
   margin-left: 4px;
   opacity: 0.85;
 }

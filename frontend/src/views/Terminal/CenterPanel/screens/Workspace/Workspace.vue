@@ -1435,12 +1435,12 @@ export default {
 }
 .ws-ai-btn.primary {
   color: var(--color-text, #fff);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-1);
   border-color: rgba(255, 255, 255, 0.22);
 }
 .ws-ai-btn.primary:hover:not(:disabled) {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--surface-active);
   border-color: rgba(255, 255, 255, 0.35);
 }
 .ws-ai-btn.primary:disabled {
@@ -1600,7 +1600,7 @@ body.custom-bg .ws-root {
 }
 .ws-tab:hover {
   color: var(--color-text, #fff);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
 }
 
 .ws-tab.on {
@@ -1613,12 +1613,12 @@ body.custom-bg .ws-root {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--color-duller-navy);
   flex: 0 0 auto;
 }
 
 .ws-tab.on .ws-dot {
-  background: var(--color-green, #19ef83);
+  background: var(--color-green, var(--color-green));
   box-shadow: 0 0 7px var(--color-green, #19ef83);
 }
 
@@ -1651,7 +1651,7 @@ body.custom-bg .ws-root {
 }
 
 .ws-tab.on .ws-count {
-  color: var(--color-cyan, #12e0ff);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.3);
 }
 
@@ -1697,7 +1697,7 @@ body.custom-bg .ws-root {
 }
 .ws-tab-add:hover {
   color: var(--color-text, #fff);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
 }
 
 .ws-tabbar-right {
@@ -1733,9 +1733,9 @@ body.custom-bg .ws-root {
 }
 
 .ws-pill.on {
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
   border-color: rgba(25, 239, 131, 0.4);
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .ws-pill-primary {
@@ -2036,7 +2036,7 @@ body.custom-bg .ws-root {
 }
 .ws-embed-empty code {
   font-family: var(--font-family-mono, monospace);
-  color: var(--color-cyan, #12e0ff);
+  color: var(--text-blue);
 }
 
 /* ═══════════ per-window navigation ═══════════
@@ -2159,14 +2159,14 @@ body.custom-bg .ws-root {
   transition: background 0.12s ease;
 }
 .ws-palette-item:active { cursor: grabbing; }
-.ws-palette-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-primary); }
+.ws-palette-item:hover { background: var(--surface-hover); color: var(--text-primary); }
 .ws-palette-item i {
   width: 14px;
   font-size: 11px;
   color: var(--text-tertiary);
 }
 .ws-palette-item.open i {
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
 }
 
 .ws-palette-name {
@@ -2181,7 +2181,7 @@ body.custom-bg .ws-root {
   font-size: 8.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
 }
 
 .ws-palette-empty {

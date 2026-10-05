@@ -1722,7 +1722,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -1868,7 +1868,7 @@ div#saved-outputs {
   padding: 3px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   min-width: 0;
 }
 .view-seg-btn {
@@ -1918,7 +1918,7 @@ div#saved-outputs {
   color: var(--color-text);
 }
 .sort-unread-count.is-plain {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-darker-1);
   color: var(--color-text-muted);
 }
 .panel-stats {
@@ -2136,7 +2136,7 @@ div#saved-outputs {
   border: none;
   cursor: pointer;
   font-size: 14px;
-  color: var(--color-dark-navy);
+  color: var(--text-primary);
   transition: opacity 0.2s;
 }
 
@@ -2216,7 +2216,7 @@ body.dark .create-output-btn {
 
 .pagination-btn.load-all:hover:not(:disabled) {
   border-color: var(--color-blue);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .all-loaded-message {
@@ -2395,7 +2395,7 @@ body.dark .create-output-btn {
 .main-chat-sub {
   margin-top: 4px;
   font-size: 0.78em;
-  opacity: 0.6;
+  color: var(--text-tertiary);
 }
 .main-chat-item .action-menu-btn:disabled {
   opacity: 0.35;
@@ -2480,7 +2480,7 @@ body.dark .create-output-btn {
   padding: 1px 5px;
   border-radius: 9px;
   background: var(--color-green);
-  color: var(--color-darker-2, #111);
+  color: var(--on-fill-success);
 }
 
 /* ===== Archived section ===== */

@@ -79,7 +79,7 @@ export default {
 
 .task-card.priority {
   border-color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.03);
+  background: rgba(var(--yellow-rgb), 0.03);
 }
 
 .task-header {
@@ -90,13 +90,13 @@ export default {
 
 .task-id {
   font-size: 0.75em;
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-family: var(--font-family-mono);
 }
 
 .task-impact {
   font-size: 0.85em;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 500;
 }
 

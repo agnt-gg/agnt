@@ -45,7 +45,7 @@ export default {
 .insp-sec-act {
   border: 0;
   background: none;
-  color: var(--color-green);
+  color: var(--text-green);
   font: inherit;
   font-size: 10.5px;
   letter-spacing: 0;

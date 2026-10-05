@@ -463,7 +463,7 @@ export default {
   }
   100% {
     transform: translate(0);
-    color: var(--color-green);
+    color: var(--text-green);
   }
 }
 
@@ -593,7 +593,7 @@ export default {
   display: inline-block;
   width: 4px;
   height: 0.75em;
-  background-color: var(--color-green, #19ef83);
+  background-color: var(--color-green, var(--color-green));
   box-shadow: 0 0 5px var(--color-green, #19ef83);
   animation: blink 1s step-end infinite;
   margin-left: -8px;

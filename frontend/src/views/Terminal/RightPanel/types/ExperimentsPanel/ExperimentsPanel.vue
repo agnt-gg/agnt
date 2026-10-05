@@ -524,10 +524,10 @@ export default {
 }
 .status-badge.planned { background: rgba(150,150,150,0.15); color: var(--color-text-muted); }
 .status-badge.running { background: rgba(59,130,246,0.15); color: var(--status-blue-text); }
-.status-badge.completed { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
+.status-badge.completed { background: rgba(var(--green-rgb),0.15); color: var(--text-green); }
 .status-badge.failed { background: rgba(239,68,68,0.15); color: var(--color-red); }
 .status-badge.pending { background: rgba(245,158,11,0.15); color: var(--status-amber-text); }
-.status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
+.status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--text-green); }
 .status-badge.rejected { background: rgba(239,68,68,0.15); color: var(--color-red); }
 .status-badge.superseded { background: rgba(150,150,150,0.15); color: var(--color-text-muted); }
 .source-badge {
@@ -570,13 +570,13 @@ export default {
 .detail-value i { font-size: 0.9em; color: var(--color-grey); }
 
 /* Category color */
-.category-val.pattern { color: var(--color-green); }
+.category-val.pattern { color: var(--text-green); }
 .category-val.antipattern { color: var(--color-red); }
 .category-val.prompt_refinement { color: var(--status-purple-text); }
 .category-val.skill_recommendation { color: var(--status-blue-text); }
 .category-val.memory { color: var(--color-pink); }
 .category-val.bottleneck { color: var(--status-amber-text); }
-.category-val.parameter_tune { color: var(--color-blue); }
+.category-val.parameter_tune { color: var(--text-blue); }
 .category-val.tool_preference { color: var(--status-blue-text); }
 
 /* Confidence inline */
@@ -616,7 +616,7 @@ export default {
   gap: 6px;
 }
 .sub-section h3 i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.9em;
 }
 .sub-section h4 {
@@ -757,10 +757,10 @@ export default {
   color: var(--color-text);
   font-weight: 600;
 }
-.result-value.pos { color: var(--color-green); }
+.result-value.pos { color: var(--text-green); }
 .result-value.neg { color: var(--color-red); }
 .result-value.decision { text-transform: capitalize; }
-.result-value.decision.keep { color: var(--color-green); }
+.result-value.decision.keep { color: var(--text-green); }
 .result-value.decision.discard { color: var(--color-red); }
 .result-value.decision.iterate { color: var(--status-amber-text); }
 
@@ -812,7 +812,7 @@ export default {
   font-size: 0.85em;
   flex-shrink: 0;
 }
-.dim-delta.pos { color: var(--color-green); }
+.dim-delta.pos { color: var(--text-green); }
 .dim-delta.neg { color: var(--color-red); }
 .dim-legend, .split-legend {
   display: flex;
@@ -868,7 +868,7 @@ export default {
 }
 .run-variant.mutated, .run-variant.treatment {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .run-score {
   margin-left: auto;
@@ -971,7 +971,7 @@ export default {
   font-size: 0.65em;
   text-transform: capitalize;
 }
-.split-chip.train { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
+.split-chip.train { background: rgba(var(--green-rgb), 0.1); color: var(--text-green); }
 .split-chip.validation { background: rgba(59,130,246,0.1); color: var(--status-blue-text); }
 .split-chip.holdout { background: rgba(245,158,11,0.1); color: var(--status-amber-text); }
 .more-items {

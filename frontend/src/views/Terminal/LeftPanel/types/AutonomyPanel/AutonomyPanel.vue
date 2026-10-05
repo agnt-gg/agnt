@@ -105,7 +105,7 @@ export default {
   display: flex; align-items: center; gap: 6px;
   color: var(--color-light-med-navy); font-size: 0.85em; opacity: 0.85;
 }
-.stat-item.warn { color: var(--color-orange); opacity: 1; }
+.stat-item.warn { color: var(--text-orange); opacity: 1; }
 
 .autonomy-nav { flex: 1; display: flex; flex-direction: column; gap: 16px; }
 .nav-section { display: flex; flex-direction: column; gap: 12px; }
@@ -133,7 +133,7 @@ export default {
 .nav-item span { font-weight: 400; flex: 1; }
 
 .nav-badge {
-  background: rgba(var(--orange-rgb), 0.18); color: var(--color-orange);
+  background: rgba(var(--orange-rgb), 0.18); color: var(--text-orange);
   font-size: 0.75em; padding: 1px 7px; border-radius: 10px;
   font-family: var(--font-family-mono); font-weight: 600; flex: none !important;
 }

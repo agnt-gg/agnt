@@ -1183,7 +1183,7 @@ export default {
 .workflow-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--text-green);
   margin: 0;
 }
 
@@ -1244,7 +1244,7 @@ export default {
 
 .publisher-link:hover {
   opacity: 1;
-  color: var(--color-secondary);
+  color: var(--text-info);
   text-decoration: underline;
 }
 
@@ -1258,12 +1258,12 @@ export default {
   font-size: 12px;
   font-weight: 700;
   background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .price.free {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .stats-bar {
@@ -1283,12 +1283,12 @@ export default {
 }
 
 .stat i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 14px;
 }
 
 .stat i.fa-star {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .stat-value {
@@ -1331,7 +1331,7 @@ export default {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
   width: fit-content;
 }
 
@@ -1363,7 +1363,7 @@ export default {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .updated {
@@ -1457,7 +1457,7 @@ export default {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1475,7 +1475,7 @@ export default {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 14px;
   font-weight: 600;
 }
@@ -1577,7 +1577,7 @@ export default {
 .no-reviews i {
   font-size: 32px;
   opacity: 0.3;
-  /* color: var(--color-yellow); */
+  /* color: var(--text-yellow); */
 }
 
 .no-reviews p {
@@ -1713,7 +1713,7 @@ export default {
 
 .item-type-card i {
   font-size: 36px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .item-type-card h3 {
@@ -1802,7 +1802,7 @@ export default {
 .item-svg-icon {
   width: 18px;
   height: 18px;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .item-icon-placeholder {
@@ -1874,7 +1874,7 @@ export default {
 .owner-action-btn.edit {
   background: rgba(59, 130, 246, 0.1);
   border-color: rgba(59, 130, 246, 0.3);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .owner-action-btn.edit:hover {
@@ -1887,7 +1887,7 @@ export default {
 .owner-action-btn.unpublish {
   background: rgba(245, 158, 11, 0.1);
   border-color: rgba(245, 158, 11, 0.3);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .owner-action-btn.unpublish:hover {
@@ -1900,7 +1900,7 @@ export default {
 .owner-action-btn.install {
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
   grid-column: 1 / -1;
 }
 
@@ -1914,7 +1914,7 @@ export default {
 .owner-action-btn.republish {
   background: rgba(34, 197, 94, 0.1);
   border-color: rgba(34, 197, 94, 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .owner-action-btn.republish:hover {

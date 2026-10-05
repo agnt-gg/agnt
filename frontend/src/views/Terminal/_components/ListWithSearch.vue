@@ -298,9 +298,8 @@ export default {
   padding: 4px 0;
 }
 .chips-placeholder {
-  color: var(--color-grey);
+  color: var(--text-quaternary);
   font-size: 0.95em;
-  opacity: 0.5;
   padding: 20px;
   width: 100%;
   text-align: center;

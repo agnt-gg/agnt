@@ -404,7 +404,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -439,7 +439,7 @@ export default {
   margin: 0;
   font-size: 1.25em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .close-btn {
@@ -574,7 +574,7 @@ export default {
 }
 
 .test-result.success .test-result-header {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .test-result.error .test-result-header {
@@ -600,7 +600,7 @@ export default {
   border-radius: 4px;
   font-size: 0.85em;
   font-family: var(--font-family-mono);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .dialog-footer {
@@ -637,7 +637,7 @@ export default {
 
 .btn-primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 
 .btn-primary:hover:not(:disabled) {

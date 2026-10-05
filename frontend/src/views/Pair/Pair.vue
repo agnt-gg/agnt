@@ -106,7 +106,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   font-size: 28px;
-  background: color-mix(in srgb, var(--color-primary, #19ef83) 15%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-green)) 15%, transparent);
   color: var(--color-primary, #19ef83);
 }
 
@@ -129,7 +129,7 @@ onMounted(async () => {
   padding: 12px 24px;
   border-radius: 10px;
   border: none;
-  background: var(--color-primary, #19ef83);
+  background: var(--color-primary, var(--color-green));
   color: var(--on-fill-accent);
   font-family: inherit;
   font-size: 15px;

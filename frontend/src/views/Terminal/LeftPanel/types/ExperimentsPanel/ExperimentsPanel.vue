@@ -212,7 +212,7 @@ export default {
 }
 
 .stat-value.pending-val { color: var(--status-amber-text); }
-.stat-value.applied-val { color: var(--color-green); }
+.stat-value.applied-val { color: var(--text-green); }
 
 .stat-label {
   font-size: 0.8em;

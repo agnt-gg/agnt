@@ -100,7 +100,7 @@ defineExpose({ previewFile, showSection, showTask });
   font-weight: 600;
 }
 .gd-tab.active i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-tab-n {
   font-family: var(--font-family-mono);
@@ -108,7 +108,7 @@ defineExpose({ previewFile, showSection, showTask });
   padding: 0 5px;
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-evidence-body {
   flex: 1 1 auto;
@@ -124,10 +124,10 @@ defineExpose({ previewFile, showSection, showTask });
   padding: 10px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
 }
 .gd-doc-head > i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-doc-file {
   min-width: 0;
@@ -182,7 +182,7 @@ defineExpose({ previewFile, showSection, showTask });
   font-size: 1em;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-rendered :deep(table) {
   width: 100%;
@@ -202,13 +202,13 @@ defineExpose({ previewFile, showSection, showTask });
 }
 .gd-rendered :deep(td) {
   padding: 6px 9px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  color: var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
+  color: var(--text-secondary);
 }
 .gd-rendered :deep(code) {
   font-family: var(--font-family-mono);
   font-size: 0.92em;
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 .gd-rendered :deep(pre) {
   padding: 10px 12px;
@@ -233,7 +233,7 @@ defineExpose({ previewFile, showSection, showTask });
   padding: 9px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
 }
 .gd-file.primary {
   border-color: rgba(var(--green-rgb), 0.3);
@@ -243,7 +243,7 @@ defineExpose({ previewFile, showSection, showTask });
   color: var(--color-text-muted);
 }
 .gd-file.primary > i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-file-body {
   flex: 1 1 auto;
@@ -268,7 +268,7 @@ defineExpose({ previewFile, showSection, showTask });
   padding: 2px 7px;
   border-radius: 5px;
   background: rgba(var(--green-rgb), 0.14);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.64em;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -282,7 +282,7 @@ defineExpose({ previewFile, showSection, showTask });
 .gd-task {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   overflow: hidden;
 }
 .gd-task > header {
@@ -321,7 +321,7 @@ defineExpose({ previewFile, showSection, showTask });
 }
 .gd-task-status.completed {
   border-color: rgba(var(--green-rgb), 0.35);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .gd-task-status.failed {
   border-color: rgba(var(--red-rgb), 0.35);

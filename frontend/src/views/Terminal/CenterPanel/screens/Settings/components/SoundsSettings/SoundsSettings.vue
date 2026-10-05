@@ -554,7 +554,7 @@ button.preview-button {
 }
 
 .info-card i {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-size: 1.2em;
   flex-shrink: 0;
   margin-top: 2px;

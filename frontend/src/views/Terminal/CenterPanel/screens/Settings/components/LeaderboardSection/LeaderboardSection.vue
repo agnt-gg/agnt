@@ -907,7 +907,7 @@ export default {
 
 .you-badge {
   font-size: 0.7em;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.2);
   padding: 2px 8px;
   border-radius: 4px;
@@ -947,7 +947,7 @@ export default {
 
 .loading-state i {
   font-size: 3em;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .loading-state p {

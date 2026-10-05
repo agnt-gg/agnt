@@ -65,7 +65,7 @@ export default {
   font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   flex-shrink: 0;
 }

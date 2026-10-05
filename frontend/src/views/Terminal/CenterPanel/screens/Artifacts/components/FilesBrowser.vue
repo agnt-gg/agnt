@@ -500,7 +500,7 @@ defineExpose({ refresh: load });
   object-fit: cover;
 }
 .k-directory .fb-thumb i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .k-html .fb-thumb i {
   color: var(--color-primary);
@@ -583,7 +583,7 @@ defineExpose({ refresh: load });
   z-index: 1000;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
 }
 .fb-dialog {
   width: min(520px, 92vw);

@@ -97,7 +97,7 @@ export default {
   font-weight: 500;
 }
 .connect-card-status {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 11px;
 }
 .connect-card-status.is-error {
@@ -109,7 +109,7 @@ export default {
   border: 1px solid var(--color-green);
   border-radius: 4px;
   background: transparent;
-  color: var(--color-green);
+  color: var(--text-green);
   font: inherit;
   font-weight: 600;
   cursor: pointer;

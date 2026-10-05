@@ -201,7 +201,7 @@ button.tab-button:last-child { border-radius: 0 8px 0 0; }
   font: inherit;
 }
 .tab-button:hover { background: rgba(var(--green-rgb), 0.1); }
-.tab-button:hover:not(.active) { color: var(--color-green); background: rgba(var(--green-rgb), 0.05); opacity: 1; }
+.tab-button:hover:not(.active) { color: var(--text-green); background: rgba(var(--green-rgb), 0.05); opacity: 1; }
 .tab-button.active {
   background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green);
@@ -232,7 +232,7 @@ button.tab-button:last-child { border-radius: 0 8px 0 0; }
 .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .kind-tag { font-size: 0.75em; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--color-light-med-navy); }
 .outcome-tag { font-size: 0.75em; border: 1px solid var(--terminal-border-color); padding: 4px 10px; border-radius: 999px; color: var(--color-light-med-navy); }
-.outcome-tag.supported { color: var(--color-green); border-color: rgba(var(--green-rgb), 0.35); }
+.outcome-tag.supported { color: var(--text-green); border-color: rgba(var(--green-rgb), 0.35); }
 .outcome-tag.watching { color: var(--status-blue-text); }
 .outcome-tag.inconclusive,
 .outcome-tag.regressed { color: var(--status-amber-text); }
@@ -241,21 +241,21 @@ button.tab-button:last-child { border-radius: 0 8px 0 0; }
 .learning-card p,
 .detail-section p { color: var(--color-light-med-navy); font-size: 0.95em; line-height: 1.5; margin: 0 0 16px; opacity: 0.9; }
 .proposed-fix { display: flex; gap: 12px; padding: 14px 16px; border: 1px solid var(--terminal-border-color); border-radius: 12px; margin: 0 0 16px; }
-.fix-symbol { color: var(--color-green); font-size: 1.2em; }
+.fix-symbol { color: var(--text-green); font-size: 1.2em; }
 .proposed-fix b { font-weight: 500; }
 .proposed-fix small { display: block; margin-top: 4px; color: var(--color-light-med-navy); }
 .learning-card footer { border-top: 1px solid var(--terminal-border-color); padding-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .learning-card footer > span { font-size: 0.85em; color: var(--color-light-med-navy); }
-.learning-card footer button { background: none; border: 0; padding: 4px 0; color: var(--color-green); font: inherit; font-size: 0.9em; cursor: pointer; white-space: nowrap; }
+.learning-card footer button { background: none; border: 0; padding: 4px 0; color: var(--text-green); font: inherit; font-size: 0.9em; cursor: pointer; white-space: nowrap; }
 .card-metric { display: flex; align-items: center; gap: 14px; font-size: 1.5em; margin: 0 0 16px; }
-.card-metric strong { color: var(--color-green); font-weight: 500; }
+.card-metric strong { color: var(--text-green); font-weight: 500; }
 .card-metric .arrow,
 .card-metric small { font-size: 0.55em; color: var(--color-light-med-navy); }
 .trial-progress { height: 4px; background: var(--terminal-border-color); border-radius: 4px; margin: 16px 0 8px; overflow: hidden; }
 .trial-progress span { display: block; height: 100%; background: var(--color-green); }
 .trial-meta { display: flex; justify-content: space-between; font-size: 0.85em; color: var(--color-light-med-navy); margin-bottom: 16px; }
 .policy-rule { font-family: var(--font-family-mono, monospace); font-size: 0.85em; line-height: 2; margin: 0 0 16px; }
-.policy-rule span { color: var(--color-green); margin-right: 12px; }
+.policy-rule span { color: var(--text-green); margin-right: 12px; }
 
 /* ── Detail ── */
 .learning-detail { align-self: start; position: sticky; top: 0; }
@@ -284,7 +284,7 @@ dd { margin: 0; max-width: 170px; text-align: right; overflow-wrap: anywhere; }
 
 /* ── Empty ── */
 .learning-empty { text-align: center; padding: 56px 24px; }
-.empty-mark { display: inline-grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--terminal-border-color); border-radius: 50%; color: var(--color-green); }
+.empty-mark { display: inline-grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--terminal-border-color); border-radius: 50%; color: var(--text-green); }
 .learning-empty h3 { font-size: 1.2em; font-weight: 500; margin: 20px 0 8px; }
 .learning-empty p { color: var(--color-light-med-navy); line-height: 1.5; margin: 0; }
 .learning-empty small { display: block; margin-top: 16px; color: var(--color-light-med-navy); }

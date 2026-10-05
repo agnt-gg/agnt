@@ -163,7 +163,7 @@ defineExpose({ tick, moreIdeas });
   width: 12px;
   height: 12px;
   flex: none;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .focused-starter-label {
   display: block;

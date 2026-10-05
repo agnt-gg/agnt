@@ -252,7 +252,7 @@ export default {
 .inbox-head { display: flex; align-items: center; gap: 12px; }
 .inbox-title { font-size: 1.05em; font-weight: 500; }
 .inbox-count {
-  background: rgba(var(--orange-rgb), 0.15); color: var(--color-orange);
+  background: rgba(var(--orange-rgb), 0.15); color: var(--text-orange);
   padding: 2px 10px; border-radius: 12px; font-family: var(--font-family-mono); font-size: 0.85em;
 }
 .btn.ghost {
@@ -277,14 +277,14 @@ export default {
 .row-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .target-chip {
   font-family: var(--font-family-mono); font-size: 0.8em;
-  background: rgba(var(--blue-rgb), 0.1); color: var(--color-blue);
+  background: rgba(var(--blue-rgb), 0.1); color: var(--text-blue);
   padding: 2px 8px; border-radius: 4px;
 }
 .cat { font-size: 0.8em; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
 .title { font-weight: 500; color: var(--color-text); flex: 1; min-width: 0; }
 .reason {
   font-family: var(--font-family-mono); font-size: 0.75em;
-  background: rgba(var(--orange-rgb), 0.1); color: var(--color-orange);
+  background: rgba(var(--orange-rgb), 0.1); color: var(--text-orange);
   padding: 2px 6px; border-radius: 3px;
 }
 .row-desc { font-size: 0.9em; color: var(--color-text-muted); }

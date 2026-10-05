@@ -293,13 +293,13 @@ export default {
   color: var(--color-red);
 }
 .priority-badge.high {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 .priority-badge.medium {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .priority-badge.low {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .priority-dot {
@@ -346,12 +346,12 @@ export default {
 }
 .status-chip.executing {
   background: rgba(var(--green-rgb), 0.18);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .status-chip.completed,
 .status-chip.validated {
   background: rgba(var(--green-rgb), 0.18);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .status-chip.failed,
 .status-chip.error,
@@ -361,11 +361,11 @@ export default {
 }
 .status-chip.paused {
   background: rgba(var(--yellow-rgb), 0.18);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .status-chip.needs_review {
   background: rgba(var(--orange-rgb), 0.18);
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 .status-chip.planning {
   background: rgba(var(--violet-rgb), 0.18);
@@ -381,7 +381,7 @@ export default {
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: var(--color-blue);
+  color: var(--text-blue);
   background: rgba(var(--blue-rgb), 0.08);
   border: 1px solid rgba(var(--blue-rgb), 0.2);
   padding: 4px 8px;
@@ -397,7 +397,7 @@ export default {
 .iteration-score {
   margin-left: auto;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .running-task {
@@ -405,7 +405,7 @@ export default {
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.08);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 4px 8px;
@@ -435,7 +435,7 @@ export default {
   padding: 1px 6px;
   border-radius: 8px;
   background: rgba(var(--blue-rgb), 0.15);
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-size: 0.85em;
   font-weight: 600;
 }
@@ -543,10 +543,10 @@ export default {
 }
 
 .pause-btn:hover {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .resume-btn:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .delete-btn:hover {
   color: var(--color-red);

@@ -659,7 +659,7 @@ export default {
 .empty-state i {
   font-size: 2.5em;
   opacity: 0.5;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .empty-state p {
@@ -696,7 +696,7 @@ export default {
 .quick-actions-wrapper {
   padding: 12px 0;
   border-top: 1px solid var(--terminal-border-color);
-  /* background: rgba(0, 0, 0, 0.05); */
+  /* background: var(--color-darker-0); */
 }
 
 .quick-actions-wrapper :deep(.suggestions-bar) {
@@ -707,7 +707,7 @@ export default {
 .chat-input-container {
   padding: 16px 0 0 2px;
   border-top: 1px solid var(--terminal-border-color);
-  /* background: rgba(0, 0, 0, 0.05); */
+  /* background: var(--color-darker-0); */
 }
 
 .workflow-editor-panel.fullscreen .chat-input-container {
@@ -795,7 +795,7 @@ export default {
   border-radius: 20px;
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   cursor: pointer;
   display: flex;
   align-items: center;

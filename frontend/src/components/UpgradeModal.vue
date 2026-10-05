@@ -168,7 +168,7 @@ export default {
 </script>
 
 <style scoped>
-.upgrade-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+.upgrade-backdrop { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: center; justify-content: center; z-index: 10000; }
 .upgrade-modal { position: relative; width: min(680px, calc(100% - 32px)); background: var(--color-background); color: var(--color-text); border: 1px solid var(--terminal-border-color); border-radius: 12px; padding: 28px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); }
 .upgrade-close { position: absolute; top: 14px; right: 14px; background: none; border: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 16px; }
 .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; color: var(--color-pink); }
@@ -176,21 +176,21 @@ export default {
 .lead { margin: 0 0 18px; color: var(--color-text-secondary); }
 .upgrade-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .tab { position: relative; text-align: left; padding: 12px 14px; border: 1px solid var(--terminal-border-color); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
-.tab.active { border-color: var(--color-pink); background: rgba(229, 61, 143, 0.08); }
+.tab.active { border-color: var(--color-pink); background: rgba(var(--pink-rgb), 0.08); }
 .tab-name { display: block; font-weight: 650; font-size: 13px; }
 .tab-price { display: block; font-size: 20px; font-weight: 700; letter-spacing: -0.03em; margin-top: 4px; }
 .tab-price small { font-size: 11px; font-weight: 400; color: var(--color-text-secondary); }
-.tab-current { position: absolute; top: 8px; right: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-green); }
+.tab-current { position: absolute; top: 8px; right: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-green); }
 .upgrade-body { margin-top: 18px; }
 .tagline { font-weight: 650; margin: 0 0 10px; }
 .includes { list-style: none; margin: 0; padding: 0; }
 .includes li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--terminal-border-color); font-size: 13px; }
 .includes li span { color: var(--color-text-secondary); }
 .meta { margin: 10px 0 0; font-size: 12px; color: var(--color-text-secondary); }
-.reason { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: rgba(229, 61, 143, 0.1); font-size: 13px; }
+.reason { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: rgba(var(--pink-rgb), 0.1); font-size: 13px; }
 .upgrade-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
 .interval { font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
-.btn-primary { padding: 12px 20px; border-radius: 6px; border: 0; background: var(--color-pink); color: var(--color-background); font-weight: 700; cursor: pointer; }
+.btn-primary { padding: 12px 20px; border-radius: 6px; border: 0; background: var(--color-pink); color: var(--text-on-fill); font-weight: 700; cursor: pointer; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .error { margin: 10px 0 0; color: var(--color-red); font-size: 13px; }
 @media (max-width: 640px) { .upgrade-tabs { grid-template-columns: 1fr; } .upgrade-foot { flex-direction: column; align-items: stretch; } }

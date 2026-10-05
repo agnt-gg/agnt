@@ -171,7 +171,7 @@ export default {
   flex-wrap: wrap;
   gap: 8px;
   font-size: var(--font-size-xs);
-  color: var(--color-duller-navy);
+  color: var(--text-quaternary);
 }
 
 .bj-meta {

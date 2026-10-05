@@ -231,7 +231,7 @@ export default {
 
 .item-icon.icon-hashtag {
   background: rgba(100, 255, 160, 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .item-content {

@@ -242,7 +242,7 @@ button.pr-row:focus-visible,
   align-items: center;
   gap: 6px;
   flex: none;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.86em;
   font-weight: 600;
 }

@@ -3323,7 +3323,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   box-sizing: border-box;
   font-size: 18px;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-darker-1);
   user-select: none;
 }
 
@@ -3435,7 +3435,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.68em;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -3568,7 +3568,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   margin: 1em 0;
   padding: 0.8em 1.5em;
   border-left: 4px solid var(--color-blue);
-  background-color: rgba(18, 224, 255, 0.03);
+  background-color: rgba(var(--blue-rgb), 0.03);
   color: var(--color-light-med-navy);
   border-radius: 0 4px 4px 0;
 }
@@ -3920,7 +3920,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -3947,7 +3947,7 @@ span.nodeLabel p {
 }
 
 .result-content {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .error-content {
@@ -3985,13 +3985,13 @@ span.nodeLabel p {
 }
 
 .tool-status-indicator.completed {
-  background: rgba(25, 239, 131, 0.1);
-  color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.1);
+  color: var(--text-green);
 }
 
 .tool-status-indicator.running {
-  background: rgba(18, 224, 255, 0.1);
-  color: var(--color-blue);
+  background: rgba(var(--blue-rgb), 0.1);
+  color: var(--text-blue);
   animation: tool-pulse 1.2s ease-in-out infinite;
 }
 
@@ -4100,7 +4100,7 @@ span.nodeLabel p {
 }
 
 .status-indicator.tool {
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
   border: 1px solid rgba(18, 224, 255, 0.1);
 }
 
@@ -4280,7 +4280,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -4500,7 +4500,7 @@ span.nodeLabel p {
   display: flex;
   gap: 12px;
   padding: 16px;
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
   border: 1px solid rgba(18, 224, 255, 0.15);
   border-radius: 8px;
   align-items: flex-start;
@@ -4520,7 +4520,7 @@ span.nodeLabel p {
 }
 
 .message-text :deep(.note-text strong) {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 
@@ -4530,7 +4530,7 @@ span.nodeLabel p {
   border-radius: 4px;
   font-size: 0.9em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(127, 129, 147, 0.15);
 }
 
@@ -4539,7 +4539,7 @@ span.nodeLabel p {
   display: flex;
   gap: 12px;
   padding: 16px;
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
   border: 1px solid rgba(18, 224, 255, 0.15);
   border-radius: 8px;
   align-items: flex-start;
@@ -4560,7 +4560,7 @@ span.nodeLabel p {
 }
 
 .provider-note .note-text strong {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 
@@ -4570,7 +4570,7 @@ span.nodeLabel p {
   border-radius: 4px;
   font-size: 0.9em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(127, 129, 147, 0.15);
 }
 
@@ -4615,7 +4615,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -4690,7 +4690,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.1em;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -4743,7 +4743,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -4780,7 +4780,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -4974,7 +4974,7 @@ span.nodeLabel p {
 }
 
 .share-modal-success .success-message {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1em;
   font-weight: 500;
   margin: 0;
@@ -5027,7 +5027,7 @@ span.nodeLabel p {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;
@@ -5062,13 +5062,13 @@ span.nodeLabel p {
 }
 
 .share-action-btn.view-btn {
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--blue-rgb), 0.1);
   border: 1px solid rgba(18, 224, 255, 0.3);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .share-action-btn.view-btn:hover {
-  background: rgba(18, 224, 255, 0.2);
+  background: rgba(var(--blue-rgb), 0.2);
   border-color: var(--color-blue);
 }
 
@@ -5390,7 +5390,7 @@ span.nodeLabel p {
 
 .message-edit-btn:hover {
   opacity: 1 !important;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-active);
 }
 
 /* When editing, user message stretches full width */
@@ -5470,7 +5470,7 @@ span.nodeLabel p {
 }
 
 .edit-cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
 }
 
 .edit-send-btn {
@@ -5488,6 +5488,6 @@ span.nodeLabel p {
 }
 
 .artifact-preview-status { padding: 12px 16px; font-size: 13px; line-height: 1.5; color: var(--color-text); background: var(--color-navy); border-bottom: 1px solid var(--color-duller-navy); }
-.artifact-preview-status[data-state="warning"], .artifact-preview-status[data-state="error"], .artifact-preview-status[data-state="unconfirmed"] { color: var(--color-orange); }
+.artifact-preview-status[data-state="warning"], .artifact-preview-status[data-state="error"], .artifact-preview-status[data-state="unconfirmed"] { color: var(--text-orange); }
 .artifact-preview-status[hidden] { display: none; }
 </style>

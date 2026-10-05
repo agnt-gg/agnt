@@ -25,7 +25,7 @@
             <i :class="item.icon"></i>
             <span>
               {{ item.label }}
-              <span v-if="item.pro" style="color: var(--color-yellow)">[PRO]</span>
+              <span v-if="item.pro" style="color: var(--text-yellow)">[PRO]</span>
             </span>
           </button>
         </div>

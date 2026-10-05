@@ -61,7 +61,7 @@ export default {
   font-size: 12px;
 }
 .au-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border: 1px solid rgba(255, 215, 0, 0.25);
   border-radius: 10px;
   padding: 10px;
@@ -83,8 +83,8 @@ export default {
   text-transform: uppercase;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(255, 215, 0, 0.1);
-  color: var(--color-yellow, #ffd700);
+  background: rgba(var(--yellow-rgb), 0.1);
+  color: var(--text-yellow);
   flex: 0 0 auto;
 }
 .au-title {
@@ -107,7 +107,7 @@ export default {
   padding: 0 10px;
   border-radius: 6px;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   font-size: 11px;

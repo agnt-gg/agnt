@@ -1466,7 +1466,7 @@ ${execution.log}
 .wm-title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
 }
 
@@ -1534,7 +1534,7 @@ ${execution.log}
 }
 
 .wm-btn.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
 }
@@ -1667,19 +1667,19 @@ ${execution.log}
 .col-status.running,
 .col-status.started,
 .col-status.executing {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .col-status.completed {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .col-status.validated {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .col-status.needs_review {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .col-status.failed,
@@ -1692,7 +1692,7 @@ ${execution.log}
 }
 
 .col-status.queued {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .workflow-name {
@@ -1736,7 +1736,7 @@ ${execution.log}
 
 .modal-header h3 {
   margin: 0;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.2em;
 }
 
@@ -1753,7 +1753,7 @@ ${execution.log}
 
 .close-btn:hover {
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .modal-body {
@@ -1767,7 +1767,7 @@ ${execution.log}
 }
 
 .detail-section h4 {
-  color: var(--color-green);
+  color: var(--text-green);
   margin: 0 0 12px 0;
   font-size: 1.1em;
   border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
@@ -1809,12 +1809,12 @@ ${execution.log}
 .status-badge.running,
 .status-badge.started {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-badge.completed {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .status-badge.failed,
@@ -1865,7 +1865,7 @@ ${execution.log}
 .node-status.running,
 .node-status.started {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .node-status.completed {
@@ -2045,12 +2045,12 @@ ${execution.log}
 .node-status.running,
 .node-status.started {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .node-status.completed {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .node-status.failed,
@@ -2266,22 +2266,22 @@ ${execution.log}
 .execution-status.started,
 .execution-status.executing {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .execution-status.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .execution-status.validated {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .execution-status.needs_review {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .execution-status.failed,
@@ -2297,7 +2297,7 @@ ${execution.log}
 
 .execution-status.queued {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .execution-actions {
@@ -2367,7 +2367,7 @@ ${execution.log}
   background: rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   font-size: 0.75em;
-  color: var(--color-green);
+  color: var(--text-green);
   width: fit-content;
 }
 
@@ -2503,7 +2503,7 @@ ${execution.log}
 .load-all-btn {
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.3);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .load-all-btn:hover {

@@ -135,7 +135,7 @@ export default {
 }
 .chip.active { background: rgba(var(--primary-rgb), 0.15); color: var(--color-primary); border-color: rgba(var(--primary-rgb), 0.4); }
 .totals { margin-left: auto; display: flex; gap: 12px; font-size: 0.85em; color: var(--color-text-muted); }
-.totals .violations { color: var(--color-orange); }
+.totals .violations { color: var(--text-orange); }
 
 .empty-state { padding: 32px; text-align: center; color: var(--color-text-muted); border: 1px dashed var(--terminal-border-color); border-radius: 8px; }
 .empty-state i { font-size: 2em; opacity: 0.4; display: block; margin-bottom: 8px; }
@@ -151,7 +151,7 @@ export default {
 .row-title { display: flex; align-items: center; gap: 10px; }
 .target-chip {
   font-family: var(--font-family-mono); font-size: 0.8em;
-  background: rgba(var(--blue-rgb), 0.1); color: var(--color-blue);
+  background: rgba(var(--blue-rgb), 0.1); color: var(--text-blue);
   padding: 2px 8px; border-radius: 4px;
 }
 .name { font-weight: 500; color: var(--color-text); }
@@ -164,7 +164,7 @@ export default {
 }
 .row-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8em; color: var(--color-text-muted); }
 .row-meta i { margin-right: 4px; opacity: 0.7; }
-.row-meta .bad { color: var(--color-orange); }
+.row-meta .bad { color: var(--text-orange); }
 .row-actions { display: flex; gap: 6px; }
 .icon-btn {
   background: transparent; border: 1px solid var(--terminal-border-color); color: var(--color-text-muted);

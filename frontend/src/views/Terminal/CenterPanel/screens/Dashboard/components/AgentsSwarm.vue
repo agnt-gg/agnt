@@ -183,15 +183,15 @@ export default {
 }
 
 .status-active {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-idle {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .status-data {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .status-guard {

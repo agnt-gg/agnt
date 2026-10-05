@@ -1104,7 +1104,7 @@ export default {
           ? caps
               .map((cap) => {
                 const [icon, label, desc] = CAPABILITY_LABELS[cap] || ['❔', cap, ''];
-                const undeclared = report.undeclared?.includes(cap) ? ' <span style="color:var(--color-yellow);">(undeclared by author)</span>' : '';
+                const undeclared = report.undeclared?.includes(cap) ? ' <span style="color:var(--text-yellow);">(undeclared by author)</span>' : '';
                 const ex = report.detected[cap]?.example;
                 const evidence = ex ? ` <span style="opacity:0.55;">(${ex.file}:${ex.line})</span>` : '';
                 return `${icon} <b>${label}</b>${undeclared} — ${desc}${evidence}`;
@@ -1855,7 +1855,7 @@ export default {
 
 .text-link {
   padding: 0;
-  color: var(--color-secondary);
+  color: var(--text-info);
   font-size: var(--font-size-sm);
 }
 
@@ -1985,7 +1985,7 @@ export default {
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--border-radius-md);
   border: 1px solid color-mix(in srgb, var(--color-yellow) 40%, transparent);
-  background: color-mix(in srgb, var(--color-yellow) 8%, transparent);
+  background: rgba(var(--yellow-rgb), 0.08);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
 }
@@ -2069,7 +2069,7 @@ export default {
   padding: var(--spacing-md);
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-md);
-  background: var(--surface-raised);
+  background: var(--color-darker-0);
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
@@ -2096,7 +2096,7 @@ export default {
   display: grid;
   place-items: center;
   border-radius: var(--border-radius-md);
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  background: rgba(var(--primary-rgb), 0.12);
   color: var(--color-primary);
 }
 
@@ -2245,12 +2245,12 @@ export default {
 
 .status-badge.installed {
   color: var(--status-green-text);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  background: rgba(var(--green-rgb), 0.12);
 }
 
 .status-badge.published {
   color: var(--status-blue-text);
-  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+  background: rgba(var(--blue-rgb), 0.12);
 }
 
 .status-badge.private {
@@ -2272,13 +2272,13 @@ export default {
 
 .notice-chip.review {
   color: var(--status-amber-text);
-  background: color-mix(in srgb, var(--color-yellow) 14%, transparent);
+  background: rgba(var(--yellow-rgb), 0.14);
   border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent);
   cursor: pointer;
 }
 
 .notice-chip.review:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-yellow) 26%, transparent);
+  background: rgba(var(--yellow-rgb), 0.26);
 }
 
 .notice-chip.review:disabled {
@@ -2288,13 +2288,13 @@ export default {
 
 .notice-chip.updated {
   color: var(--status-green-text);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  background: rgba(var(--green-rgb), 0.12);
   cursor: help;
 }
 
 .notice-chip.failed {
   color: var(--color-red);
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  background: rgba(var(--red-rgb), 0.12);
   cursor: help;
 }
 
@@ -2319,17 +2319,17 @@ export default {
 .trust-badge.trust-official,
 .trust-badge.trust-community {
   color: var(--status-green-text);
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+  background: rgba(var(--green-rgb), 0.12);
 }
 
 .trust-badge.trust-unverified {
   color: var(--status-amber-text);
-  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  background: rgba(var(--yellow-rgb), 0.12);
 }
 
 .trust-badge.trust-unaudited {
   color: var(--color-red);
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  background: rgba(var(--red-rgb), 0.12);
 }
 
 /* ── overflow menu ── */
@@ -2490,7 +2490,7 @@ export default {
 .price-option.active {
   border-color: var(--color-primary);
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  background: rgba(var(--primary-rgb), 0.1);
 }
 
 .version-summary {
@@ -2500,13 +2500,13 @@ export default {
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--border-radius-md);
   color: var(--status-green-text);
-  background: color-mix(in srgb, var(--color-green) 10%, transparent);
+  background: rgba(var(--green-rgb), 0.1);
   font-size: var(--font-size-sm);
 }
 
 .version-summary.blocked {
   color: var(--status-amber-text);
-  background: color-mix(in srgb, var(--color-yellow) 10%, transparent);
+  background: rgba(var(--yellow-rgb), 0.1);
 }
 
 .checklist {

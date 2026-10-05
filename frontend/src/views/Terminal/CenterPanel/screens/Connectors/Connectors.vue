@@ -2609,7 +2609,7 @@ export default {
 }
 
 .content-title {
-  /* color: var(--color-green); */
+  /* color: var(--text-green); */
   font-size: 1.8em;
   font-weight: 600;
   margin: 0 0 8px 0;
@@ -2623,8 +2623,8 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.5em;
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.15);
+  color: var(--text-yellow);
+  background: rgba(var(--yellow-rgb), 0.15);
   padding: 4px 12px;
   border-radius: 4px;
   border: 1px solid rgba(255, 215, 0, 0.4);
@@ -2656,11 +2656,11 @@ export default {
 }
 
 .health-status-text.status-healthy {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .health-status-text.status-degraded {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .health-status-text.status-critical {
@@ -2865,7 +2865,7 @@ body.dark .form-actions {
 .edit-provider-btn:hover {
   background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .oauth-app-content {
@@ -2903,11 +2903,11 @@ body.dark .form-actions {
 }
 
 .connection-status.connected {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .connection-status.degraded {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .connection-status.unhealthy {
@@ -2955,7 +2955,7 @@ body.dark .form-actions {
 
 .locked-overlay i {
   font-size: 2.5em;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   margin-bottom: 12px;
   display: block;
 }
@@ -3019,7 +3019,7 @@ body.dark .mcp-server-card {
 
 .server-type-badge.http {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .server-type-badge.stdio {
@@ -3062,7 +3062,7 @@ body.dark .mcp-server-card {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3112,8 +3112,8 @@ body.dark .mcp-server-card {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-green);
+  background: var(--surface-active);
+  color: var(--text-green);
 }
 
 .form-body {
@@ -3273,7 +3273,7 @@ body.dark .npm-package-card {
 }
 
 .npm-link:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Server Capabilities Styles */
@@ -3404,7 +3404,7 @@ body.dark .view-toggle {
 
 .view-btn.active {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 
 .view-btn:not(:last-child) {
@@ -3630,7 +3630,7 @@ body.dark .action-btn {
 .action-btn:hover {
   background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Pagination Styles */

@@ -210,7 +210,7 @@ h4.section-title {
   margin-bottom: 12px;
 }
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .empty-state {
   display: flex;
@@ -343,7 +343,7 @@ h4.section-title {
   gap: 12px;
 }
 .info-card i {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.2em;
   margin-top: 2px;
 }
@@ -434,15 +434,15 @@ select option {
 }
 .task-status-badge.assigned {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .task-status-badge.running {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .task-status-badge.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .task-status-badge.failed {
   background: rgba(220, 53, 69, 0.2);

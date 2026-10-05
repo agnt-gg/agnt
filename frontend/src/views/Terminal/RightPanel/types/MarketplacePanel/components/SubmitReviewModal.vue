@@ -385,7 +385,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -466,7 +466,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
   padding: 2px 8px;
   border-radius: 12px;
@@ -515,7 +515,7 @@ export default {
 
 .star-btn.active i,
 .star-btn.hover i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .rating-text {

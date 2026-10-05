@@ -453,7 +453,7 @@ export default {
   background: rgba(var(--blue-rgb), 0.1);
   border: 1px solid rgba(var(--blue-rgb), 0.2);
   border-radius: 12px;
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-family: var(--font-family-mono);
 }
 
@@ -496,7 +496,7 @@ export default {
 }
 
 .seg-output {
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--color-duller-navy);
   opacity: 1;
 }
 
@@ -619,7 +619,7 @@ export default {
 }
 
 .in-tokens {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .out-tokens {
@@ -659,13 +659,13 @@ export default {
 
 .cache-hit-badge.hit-high {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(var(--green-rgb), 0.25);
 }
 
 .cache-hit-badge.hit-medium {
   background: rgba(var(--orange-rgb), 0.15);
-  color: var(--color-orange);
+  color: var(--text-orange);
   border: 1px solid rgba(var(--orange-rgb), 0.25);
 }
 
@@ -682,11 +682,11 @@ export default {
 }
 
 .cache-read {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .cache-write {
-  color: var(--color-blue);
+  color: var(--text-blue);
   opacity: 0.8;
 }
 
@@ -735,7 +735,7 @@ export default {
 }
 
 .paid-nothing {
-  color: var(--green, #19ef83);
+  color: var(--text-green);
 }
 
 /* Not money that was charged - must not outrank the $0.00 beneath it. */
@@ -754,12 +754,12 @@ export default {
 }
 
 .savings-block.subscription {
-  background: rgba(18, 224, 255, 0.06);
+  background: rgba(var(--blue-rgb), 0.06);
   border-left-color: var(--cyan, #12e0ff);
 }
 
 .savings-block.subscription .savings-amount {
-  color: var(--cyan, #12e0ff);
+  color: var(--text-blue);
 }
 
 .savings-total {
@@ -840,12 +840,12 @@ export default {
 .savings-block {
   margin-top: 8px;
   padding: 8px 10px;
-  background: rgba(25, 239, 131, 0.06);
+  background: rgba(var(--green-rgb), 0.06);
   border-left: 2px solid var(--green, #19ef83);
 }
 
 .savings-block.investment {
-  background: rgba(255, 149, 0, 0.06);
+  background: rgba(var(--orange-rgb), 0.06);
   border-left-color: var(--gold, #ff9500);
 }
 
@@ -867,11 +867,11 @@ export default {
   font-family: var(--font-family-mono, monospace);
   font-size: 15px;
   font-weight: 600;
-  color: var(--green, #19ef83);
+  color: var(--text-green);
 }
 
 .savings-block.investment .savings-amount {
-  color: var(--gold, #ff9500);
+  color: var(--text-yellow);
 }
 
 .savings-pct {
@@ -894,15 +894,15 @@ export default {
    Previously this was inverted: a hatched "saved" portion read as empty
    track, making a 77.2% saving look like a 22.8% one. */
 .savings-free {
-  background: var(--green, #19ef83);
+  background: var(--green, var(--color-green));
 }
 
 .savings-paid {
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--color-duller-navy);
 }
 
 .savings-block.subscription .savings-free {
-  background: var(--cyan, #12e0ff);
+  background: var(--cyan, var(--color-blue));
 }
 
 .savings-note {
@@ -962,7 +962,7 @@ export default {
 
 .managed-text {
   font-size: 0.7em;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 500;
 }
 

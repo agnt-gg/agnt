@@ -351,7 +351,7 @@ body.dark .version-card {
   padding: 4px 8px;
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 500;
 }
 
@@ -370,7 +370,7 @@ body.dark .version-card {
 }
 
 body.dark .feature-item {
-  background: rgba(0, 0, 0, 10%);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -388,7 +388,7 @@ body.dark .feature-item {
   justify-content: center;
   background: rgba(var(--green-rgb), 0.1);
   border-radius: 8px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 1.2em;
 }
 
@@ -455,11 +455,11 @@ body.dark .feature-item {
 }
 
 .update-status.checking i {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .update-status.current {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .update-status.current i {
@@ -478,7 +478,7 @@ body.dark .feature-item {
   gap: 6px;
   font-size: 0.85em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .update-badge i {
@@ -503,7 +503,7 @@ body.dark .feature-item {
 }
 
 .update-btn:hover {
-  background: #14d974;
+  background: rgba(var(--green-rgb), 0.85);
   transform: translateY(-1px);
 }
 
@@ -532,7 +532,7 @@ body.dark .check-btn {
 
 .check-btn:hover:not(:disabled) {
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .check-btn:disabled {
@@ -542,19 +542,19 @@ body.dark .check-btn {
 
 /* Feature status labels */
 .feature-status-new {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   font-size: 0.85em;
 }
 
 .feature-status-updated {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   font-size: 0.85em;
 }
 
 .feature-status-bug {
-  color: var(--color-orange, #f59e0b);
+  color: var(--text-orange);
   font-weight: 600;
   font-size: 0.85em;
 }
@@ -563,7 +563,7 @@ body.dark .check-btn {
 .show-more-btn {
   background: none;
   border: none;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   font-weight: 500;
   cursor: pointer;

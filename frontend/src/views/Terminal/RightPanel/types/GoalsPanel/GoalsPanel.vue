@@ -1132,7 +1132,7 @@ ${goal.tasks
   color: var(--color-text-muted);
 }
 .goal-checklist .is-met > i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .goal-checklist .is-missed > i {
   color: var(--color-red);
@@ -1155,9 +1155,9 @@ ${goal.tasks
 .review-verdict > i { margin-top: 2px; font-size: 15px; }
 .review-verdict small { display: block; margin-top: 3px; font-size: 11.5px; color: var(--color-text-muted); overflow-wrap: anywhere; }
 .review-verdict.all-met { border-color: rgba(var(--green-rgb), 0.4); }
-.review-verdict.all-met > i { color: var(--color-green); }
+.review-verdict.all-met > i { color: var(--text-green); }
 .review-verdict.has-missed { border-color: var(--color-yellow); }
-.review-verdict.has-missed > i { color: var(--color-yellow); }
+.review-verdict.has-missed > i { color: var(--text-yellow); }
 .review-verdict.is-pending > i { color: var(--color-text-muted); }
 .review-score { color: var(--color-text-muted); font-weight: 400; }
 .review-file {
@@ -1345,7 +1345,7 @@ ${goal.tasks
 }
 .goal-status.completed,
 .goal-status.validated {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .goal-status.failed,
 .goal-status.error {
@@ -1353,7 +1353,7 @@ ${goal.tasks
 }
 .goal-status.paused,
 .goal-status.needs_review {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .goal-status.planning,
 .goal-status.queued {
@@ -1537,12 +1537,12 @@ h3 {
 .task-status.executing,
 .task-status.running {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .task-status.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .task-status.failed,
@@ -1566,7 +1566,7 @@ h3 {
   border-radius: 4px;
   margin-bottom: 8px;
   font-size: 0.85em;
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .task-desc {
@@ -1868,12 +1868,12 @@ h3 {
 
 .iteration-score.score-pass {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .iteration-score.score-fail {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .iteration-meta {
@@ -1898,7 +1898,7 @@ h3 {
 }
 
 .goal-live-iteration h3 {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .live-phase {
@@ -1916,7 +1916,7 @@ h3 {
 
 .phase-badge.executing {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 .phase-badge.evaluating {
   background: rgba(168, 85, 247, 0.2);
@@ -1924,11 +1924,11 @@ h3 {
 }
 .phase-badge.replanning {
   background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .phase-badge.completed {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .live-score {
@@ -1978,7 +1978,7 @@ h3 {
 
 .action-button.start {
   border-color: rgba(34, 197, 94, 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .action-button.start:hover {
@@ -2096,7 +2096,7 @@ h3 {
 
 .tool-exec-badge.badge-ok {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .tool-exec-badge.badge-error {
@@ -2132,7 +2132,7 @@ h3 {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;

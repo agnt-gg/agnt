@@ -29,7 +29,7 @@
 }
 
 *::placeholder {
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   opacity: 1;
 } */
 
@@ -253,7 +253,7 @@ input[type='color'] {
   padding: 3px 8px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-on-fill);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-ultra-light-navy);
@@ -264,7 +264,7 @@ input[type='file'] {
   width: -webkit-fill-available;
   font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
-  color: var(--color-navy);
+  color: var(--text-on-fill);
   background-color: var(--color-ultra-light-navy);
   cursor: pointer;
 }
@@ -302,7 +302,7 @@ textarea {
   padding: 8px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-on-fill);
   border: 1px solid var(--color-light-navy);
   line-height: 150%;
   background-color: var(--color-ultra-light-navy);
@@ -733,7 +733,7 @@ ol li:last-child {
   height: 100%;
   overflow: auto;
   background-color: rgb(0, 0, 0);
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--color-darker-2);
   flex-direction: column;
   flex-wrap: nowrap;
   align-content: center;
@@ -760,7 +760,7 @@ ol li:last-child {
 
 .modal-close-btn:hover,
 .modal-close-btn:focus {
-  color: var(--color-dark-navy);
+  color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
 }

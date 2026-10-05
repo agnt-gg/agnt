@@ -207,7 +207,7 @@ export default {
 
 .stat-card i.stat-icon {
   font-size: 1.6em;
-  color: var(--color-green);
+  color: var(--text-green);
   width: 30px;
   text-align: center;
 }
@@ -261,7 +261,7 @@ export default {
 }
 
 .info-icon:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Adjust Stat Card Layout */
@@ -299,7 +299,7 @@ export default {
 }
 
 :global(.particle-effect.positive) {
-  color: var(--color-green);
+  color: var(--text-green);
   text-shadow: 0 0 4px var(--color-green);
 }
 
@@ -342,7 +342,7 @@ export default {
   }
   50% {
     transform: scale(1.1);
-    color: var(--color-green);
+    color: var(--text-green);
   }
   100% {
     transform: scale(1);

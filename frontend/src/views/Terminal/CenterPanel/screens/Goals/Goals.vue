@@ -982,7 +982,7 @@ body[data-page='terminal-goals'] .scrollable-content {
   border: 1px solid var(--terminal-border-color);
 }
 .goal-detail-status.executing { color: var(--color-primary); border-color: var(--color-primary); }
-.goal-detail-status.completed { color: var(--color-green); border-color: var(--color-green); }
+.goal-detail-status.completed { color: var(--text-green); border-color: var(--color-green); }
 .goal-detail-status.failed { color: var(--color-red); border-color: var(--color-red); }
 .goal-detail-body {
   flex: 1;
@@ -1068,7 +1068,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 .add-goal-btn:hover {
   background: rgba(var(--green-rgb), 0.15);
   border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .column-count {
@@ -1082,7 +1082,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 
 .column-count.at-limit {
   background: rgba(var(--yellow-rgb), 0.18);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .column-count.over-limit {
@@ -1131,7 +1131,7 @@ body[data-page='terminal-goals'] .scrollable-content {
   font-size: 0.7em;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1182,7 +1182,7 @@ body[data-page='terminal-goals'] .scrollable-content {
   border-radius: 6px;
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.25);
-  color: var(--color-green);
+  color: var(--text-green);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1200,7 +1200,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1340,7 +1340,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 .priority-option.active {
   background: rgba(var(--green-rgb), 0.12);
   border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .priority-option .priority-dot {
@@ -1423,7 +1423,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 .modal-btn.create {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .modal-btn.create:hover:not(:disabled) {
@@ -1534,7 +1534,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 
 .schedule-tab.active {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .cron-row {
@@ -1589,7 +1589,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 
 .day-chip.active {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.5);
 }
 
@@ -1702,7 +1702,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 }
 
 .cron-preview-list li i {
-  color: var(--color-green);
+  color: var(--text-green);
   margin-right: 6px;
 }
 </style>

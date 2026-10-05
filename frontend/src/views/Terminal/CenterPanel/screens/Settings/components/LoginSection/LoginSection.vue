@@ -611,7 +611,7 @@ body.dark input[type='email']:focus {
 
 button.magic-link {
   background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
-  color: var(--color-ultra-dark-navy);
+  color: var(--text-on-fill);
   border: none;
   padding: 10px 18px;
   border-radius: 999px;
@@ -711,7 +711,7 @@ body.dark .google-auth:hover {
 }
 
 .success-message {
-  color: var(--color-green);
+  color: var(--text-green);
   margin-top: 4px;
   font-size: 13px;
   font-weight: 500;
@@ -772,7 +772,7 @@ body.dark .google-auth:hover {
 }
 
 .helper-text a {
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: none;
 }
 
@@ -904,7 +904,7 @@ body.dark .code-input:focus {
 
 .verify-btn {
   background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
-  color: var(--color-ultra-dark-navy);
+  color: var(--text-on-fill);
 }
 
 .verify-btn:hover:not(:disabled) {
@@ -935,7 +935,7 @@ body.dark .cancel-btn {
 }
 
 .cancel-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
   border-color: rgba(255, 255, 255, 0.16);
 }
 
@@ -949,7 +949,7 @@ body.dark .cancel-btn {
 .resend-btn {
   background: transparent;
   border: none;
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: underline;
   cursor: pointer;
   padding: 0;

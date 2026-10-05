@@ -238,7 +238,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--text-green);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -291,7 +291,7 @@ export default {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Sections */
@@ -343,7 +343,7 @@ export default {
 
 .stat-label {
   font-size: 0.8em;
-  color: var(--color-secondary);
+  color: var(--text-info);
   text-transform: uppercase;
 }
 
@@ -374,7 +374,7 @@ export default {
 .filter-item.active {
   background: rgba(var(--green-rgb), 0.15);
   border-color: rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .filter-item i {

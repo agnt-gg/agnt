@@ -180,7 +180,7 @@ const descriptionClass = computed(() => ({
 }
 .card-btn.run:hover,
 .card-btn.apply:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.4);
   background: rgba(var(--green-rgb), 0.15);
 }

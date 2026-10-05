@@ -1156,7 +1156,7 @@ body.dark .billing-header {
 }
 
 .current-plan-badge.pro-badge .badge-plan {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .badge-status {
@@ -1242,13 +1242,13 @@ body.dark .billing-toggle {
 
 .toggle-option.active {
   background: var(--color-primary);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
 }
 
 .save-badge {
   background: rgba(var(--yellow-rgb), 0.9);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.75em;
@@ -1300,7 +1300,7 @@ body.dark .billing-toggle {
 }
 
 .info-value.canceling {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .subscription-actions {
@@ -1700,7 +1700,7 @@ body.dark .billing-toggle {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1755,7 +1755,7 @@ body.dark .billing-toggle {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-active);
   color: var(--color-primary);
 }
 
@@ -1793,7 +1793,7 @@ body.dark .billing-toggle {
 
 .btn-primary {
   background: var(--color-primary);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   font-weight: 600;
 }
 
@@ -1814,7 +1814,7 @@ body.dark .billing-toggle {
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
 }
 
 /* Image Upload Styles */
@@ -1937,7 +1937,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
 }
 
 .notice-content h3 {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   font-size: 1.1em;
   font-weight: 700;
   margin: 0 0 8px 0;

@@ -236,7 +236,7 @@ export default {
 }
 
 .stars i.filled {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .rating-text {
@@ -284,7 +284,7 @@ export default {
 }
 
 .star-rating-input i.fas {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .star-rating-input i:hover {
@@ -363,7 +363,7 @@ export default {
 .review-header h4 {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-green);
   margin: 0;
 }
 
@@ -414,7 +414,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(var(--green-rgb), 0.1);
   padding: 2px 6px;
   border-radius: 4px;
@@ -475,7 +475,7 @@ export default {
 .vote-btn:hover {
   background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .vote-btn i {

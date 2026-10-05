@@ -291,7 +291,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   color: var(--color-green);
   display: flex;
   justify-content: center;
@@ -330,19 +330,19 @@ export default {
 .insight-card.status-optimal {
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.3);
-  color: var(--color-green-light);
+  color: var(--text-green);
 }
 .insight-card.status-optimal i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .insight-card.status-good {
   background: rgba(251, 191, 36, 0.1);
   border-color: rgba(251, 191, 36, 0.3);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .insight-card.status-good i {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .insight-card.status-warning {
@@ -388,12 +388,12 @@ export default {
 
 .chart-type-toggle:hover {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .chart-type-toggle.active {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 
 /* Header and Icon Styling */
@@ -425,7 +425,7 @@ export default {
 }
 
 .info-icon:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 /* Common clickable element styles */

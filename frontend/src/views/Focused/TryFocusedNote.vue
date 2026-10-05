@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
   padding: 3px 10px;
   border-radius: 999px;
   background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -134,7 +134,7 @@ h2 {
 }
 h2 em {
   font-style: normal;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 p {
   margin: 0;
@@ -165,7 +165,7 @@ p {
 .try-focused-points i {
   width: 16px;
   text-align: center;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .try-focused-actions {
   display: flex;
@@ -186,7 +186,7 @@ p {
 .try-focused-primary {
   border: none;
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   font-weight: 700;
 }
 .try-focused-quiet {

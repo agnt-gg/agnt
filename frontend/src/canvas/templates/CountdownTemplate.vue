@@ -102,7 +102,7 @@ export default {
 .cd-num {
   font-size: 28px;
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--text-green);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }

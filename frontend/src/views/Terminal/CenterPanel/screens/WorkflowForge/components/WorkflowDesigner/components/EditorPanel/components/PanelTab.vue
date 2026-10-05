@@ -1647,7 +1647,7 @@ export default {
   gap: 6px;
   padding: 4px 12px 2px;
   background-color: var(--color-green);
-  color: var(--color-dull-navy);
+  color: var(--text-on-fill);
   border: none;
   border-radius: 4px;
   font-size: 12px;
@@ -2043,7 +2043,7 @@ body.dark .file-text-display span {
 
 .remove-condition-btn:hover {
   color: var(--color-red);
-  background: rgba(254, 78, 78, 0.1);
+  background: rgba(var(--red-rgb), 0.1);
 }
 
 .logic-toggle-row {
@@ -2063,7 +2063,7 @@ body.dark .file-text-display span {
   text-transform: uppercase;
   border-radius: 6px !important;
   background-color: var(--color-green) !important;
-  color: var(--color-ultra-dark-navy) !important;
+  color: var(--text-on-fill) !important;
   border: none !important;
   cursor: pointer;
 }
@@ -2094,7 +2094,7 @@ body.dark .file-text-display span {
 
 .add-condition-btn:hover {
   border-color: var(--color-green);
-  color: var(--color-green);
+  color: var(--text-green);
   background: rgba(34, 197, 94, 0.05);
 }
 
@@ -2142,7 +2142,7 @@ body.dark .logic-select {
   margin-bottom: 16px;
   font-weight: 700;
   line-height: 1.2;
-  color: var(--color-green);
+  color: var(--text-green);
   letter-spacing: -0.025em;
 }
 
@@ -2277,7 +2277,7 @@ body.dark .logic-select {
   top: -8px;
   left: 8px;
   font-size: 3em;
-  color: var(--color-green);
+  color: var(--text-green);
   opacity: 0.3;
   font-family: var(--font-family-primary);
 }
@@ -2319,7 +2319,7 @@ body.dark .logic-select {
 }
 
 .tool-docs-content a {
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: none;
   font-weight: 500;
   border-bottom: 1px solid transparent;
@@ -2511,7 +2511,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼp {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 300;
 }
 
@@ -2531,12 +2531,12 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼu {
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 300;
 }
 
 .ͼv {
-  /* color: var(--color-green); */
+  /* color: var(--text-green); */
   color: var(--color-dull-white);
 }
 
@@ -2607,6 +2607,6 @@ body.dark .ͼo.cm-focused .cm-nonmatchingBracket {
 
 .controls-panel .connection-status.connected {
   background-color: var(--color-green);
-  color: var(--color-dull-navy);
+  color: var(--text-on-fill);
 }
 </style>

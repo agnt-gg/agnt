@@ -276,7 +276,7 @@ export default {
   z-index: 10;
   border-radius: 4px;
   backdrop-filter: blur(2px);
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 14px;

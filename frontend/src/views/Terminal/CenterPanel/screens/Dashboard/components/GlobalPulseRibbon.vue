@@ -171,11 +171,11 @@ export default {
 }
 
 .status-healthy {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-degraded {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .status-critical {

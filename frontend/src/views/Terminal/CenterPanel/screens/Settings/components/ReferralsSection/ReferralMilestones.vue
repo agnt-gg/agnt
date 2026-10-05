@@ -92,7 +92,7 @@ onMounted(async () => {
 .ms-ladder li.done { border-color: rgba(var(--primary-rgb), 0.5); }
 .ms-at { font-weight: 800; font-size: 18px; color: var(--color-primary); }
 .ms-state { color: var(--color-text-muted); white-space: nowrap; }
-.ms-ladder li.done .ms-state { color: var(--color-green); }
+.ms-ladder li.done .ms-state { color: var(--text-green); }
 .ms-muted { font-size: 13px; color: var(--color-text-muted); margin: 10px 0 0; }
 .ms-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .ms-button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--color-primary); background: var(--color-primary); color: var(--color-darker-0); font-weight: 700; cursor: pointer; font-size: 13px; }

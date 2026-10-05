@@ -394,7 +394,7 @@ body.dark #sidebar p {
 #sidebar p.title {
   width: 100%;
   font-size: var(--font-size-sm);
-  opacity: 0.5;
+  color: var(--text-tertiary);
   line-height: 1.25;
   user-select: none;
 }
@@ -567,8 +567,7 @@ body.dark .close-sidebar-button {
 
 .expand-section {
   cursor: pointer;
-  color: var(--text-primary);
-  opacity: 0.5;
+  color: var(--text-tertiary);
   font-size: var(--font-size-xs);
   /* font-weight: bold; */
   text-align: center;
@@ -600,8 +599,8 @@ body.dark .search-input {
   border-radius: 8px;
   font-size: 9px;
   font-weight: 700;
-  background: rgba(255, 215, 0, 0.15);
-  color: var(--color-yellow);
+  background: rgba(var(--yellow-rgb), 0.15);
+  color: var(--text-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   text-transform: uppercase;
   box-shadow: 0 0 6px rgba(255, 215, 0, 0.3);

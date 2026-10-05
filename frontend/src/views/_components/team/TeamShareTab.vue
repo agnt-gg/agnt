@@ -88,7 +88,7 @@ onMounted(load);
 .team-share label.check { display: flex; align-items: center; gap: 8px; }
 .team-share label.check input { width: auto; }
 .team-share .row { display: flex; gap: 8px; flex-wrap: wrap; }
-.team-share .warn { color: var(--color-yellow, #ffd700); }
-.team-share .ok { color: var(--color-green, #19ef83); font-size: 14px; }
+.team-share .warn { color: var(--text-yellow); }
+.team-share .ok { color: var(--text-green); font-size: 14px; }
 .team-share .error { padding: 10px 12px; border-radius: 6px; }
 </style>

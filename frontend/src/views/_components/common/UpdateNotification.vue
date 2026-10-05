@@ -350,7 +350,7 @@ defineExpose({
   font-family: var(--font-family-primary);
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
 }
 
 .is-error .update-title {
@@ -382,7 +382,7 @@ defineExpose({
 }
 
 .download-btn {
-  background: var(--color-green, #19ef83);
+  background: var(--color-green, var(--color-green));
   color: var(--on-fill-success);
 }
 
@@ -396,7 +396,7 @@ defineExpose({
   opacity: 0.6;
   cursor: default;
   transform: none;
-  background: var(--color-green, #19ef83);
+  background: var(--color-green, var(--color-green));
 }
 
 .dismiss-btn {
@@ -406,7 +406,7 @@ defineExpose({
 }
 
 .dismiss-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-active);
   color: var(--fg, #fff);
 }
 

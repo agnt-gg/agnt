@@ -3,7 +3,7 @@
     <!-- Compact Header -->
     <!-- <div class="score-header">
       <div class="score-main">
-        <span class="score-label"><span style="color: var(--color-green)">$</span>AGNT SCORE</span>
+        <span class="score-label"><span style="color: var(--text-green)">$</span>AGNT SCORE</span>
         <span class="score-value">{{ formattedScore }}</span>
         <span class="score-tier">{{ scoreTier }}</span>
       </div>
@@ -748,7 +748,7 @@ export default {
   background: var(--gradient-brand);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 2%;
+  min-width: 3em; /* room for the label: a sliver of fill pushed it onto the track */
   position: relative;
   overflow: hidden;
   display: flex;

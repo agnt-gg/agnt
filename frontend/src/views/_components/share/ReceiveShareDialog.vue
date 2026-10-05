@@ -111,7 +111,7 @@ watch(() => route.query.shared, value => { if (typeof value === 'string' && valu
 watch(() => shareState.receiving, value => { if (value) open(value); });
 </script>
 <style scoped>
-.share-scrim { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, .55); display: grid; place-items: center; padding: 16px; }
+.share-scrim { position: fixed; inset: 0; z-index: 3000; background: var(--scrim); display: grid; place-items: center; padding: 16px; }
 .share-sheet { width: min(520px, 100%); max-height: 90vh; height: auto; overflow: auto; border: 1px solid var(--terminal-border-color); border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
 .share-sheet header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--terminal-border-color); }
 .share-sheet .title { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -119,7 +119,7 @@ watch(() => shareState.receiving, value => { if (value) open(value); });
 .share-sheet header h2 { margin: 0; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .share-sheet .body { padding: 18px 20px; display: grid; gap: 12px; }
 .share-sheet .row { display: flex; gap: 8px; flex-wrap: wrap; }
-.share-sheet .warn { color: var(--color-yellow, #ffd700); }
-.share-sheet .ok { color: var(--color-green, #19ef83); font-size: 14px; }
+.share-sheet .warn { color: var(--text-yellow); }
+.share-sheet .ok { color: var(--text-green); font-size: 14px; }
 .share-sheet .error { padding: 10px 12px; border-radius: 6px; }
 </style>

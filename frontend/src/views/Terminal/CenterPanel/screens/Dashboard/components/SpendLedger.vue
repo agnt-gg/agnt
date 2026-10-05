@@ -754,7 +754,7 @@ export default {
 .flag-warn {
   background: rgba(var(--yellow-rgb), 0.12);
   border: 1px solid rgba(var(--yellow-rgb), 0.3);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .flag-error {
@@ -866,7 +866,7 @@ export default {
 /* .metric and .metric b are sized by the shared rule above. */
 
 .metric.good b {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .ledger-detail {
@@ -887,7 +887,7 @@ export default {
   font-size: 0.68em;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   margin-bottom: 8px;
 }
 
@@ -908,7 +908,7 @@ export default {
 .saving-value {
   font-family: var(--font-family-mono);
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--text-green);
   white-space: nowrap;
 }
 
@@ -932,7 +932,7 @@ export default {
   font-family: var(--font-family-mono);
   font-size: 1.15em;
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .saving-rate {
@@ -963,7 +963,7 @@ export default {
 
 .leverage-row i {
   margin-top: 3px;
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .leverage-row b {
@@ -972,7 +972,7 @@ export default {
 }
 
 .leverage-multiple {
-  color: var(--color-green) !important;
+  color: var(--text-green) !important;
   font-size: 1.1em;
 }
 
@@ -989,7 +989,7 @@ export default {
 }
 
 .seat-cost-cta:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.6);
 }
 
@@ -1060,7 +1060,7 @@ export default {
 .btn-save {
   background: rgba(var(--green-rgb), 0.15);
   border: 1px solid rgba(var(--green-rgb), 0.4);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .btn-cancel {
@@ -1278,6 +1278,6 @@ export default {
 
 .ledger-note i {
   margin-top: 2px;
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 </style>

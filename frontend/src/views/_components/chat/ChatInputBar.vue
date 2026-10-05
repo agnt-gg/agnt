@@ -547,7 +547,7 @@ export default {
 
 .chat-send-btn {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 .chat-send-btn:hover:not(:disabled) {
   background: rgba(var(--green-rgb), 0.8);
@@ -555,7 +555,7 @@ export default {
 }
 .chat-send-btn:disabled {
   background: rgba(var(--green-rgb), 0.3);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   transform: none;
 }
 

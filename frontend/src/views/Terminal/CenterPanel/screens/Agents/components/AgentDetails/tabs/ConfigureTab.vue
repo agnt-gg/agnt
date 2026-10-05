@@ -49,7 +49,7 @@
 
         <!-- System Prompt -->
         <div class="config-item">
-          <label><i class="fas fa-brain" style="color: var(--color-green); margin-right: 4px"></i> System Prompt</label>
+          <label><i class="fas fa-brain" style="color: var(--text-green); margin-right: 4px"></i> System Prompt</label>
           <textarea
             v-model="agentConfig.systemPrompt"
             class="input system-prompt-input"
@@ -672,7 +672,7 @@ h4.section-title {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .config-row {
@@ -796,7 +796,7 @@ textarea.input {
 }
 .action-button.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border: none;
 }
 .action-button.primary:hover {
@@ -930,7 +930,7 @@ textarea.input {
   border-radius: 50%;
   background: rgba(var(--green-rgb), 0.12);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.8em;
   font-weight: 700;
 }
@@ -982,7 +982,7 @@ textarea.input {
   color: var(--color-text);
 }
 .radio-label.active i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 .radio-label:hover {
   background: rgba(var(--green-rgb), 0.1);

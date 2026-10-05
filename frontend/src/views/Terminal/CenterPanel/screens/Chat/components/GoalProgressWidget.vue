@@ -367,7 +367,7 @@ export default {
 
 .gpw-status-badge.running {
   background: rgba(0, 255, 136, 0.15);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .gpw-status-badge.completed {
@@ -381,7 +381,7 @@ export default {
 }
 
 .gpw-status-badge.pending {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-1);
   color: var(--color-text-secondary, #999);
 }
 
@@ -406,7 +406,7 @@ export default {
 
 .gpw-progress-bar-container {
   height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -489,7 +489,7 @@ export default {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-duller-navy);
 }
 
 .gpw-spinner {
@@ -548,7 +548,7 @@ export default {
   color: var(--status-green-text);
 }
 .gpw-score-mid {
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 .gpw-score-low {
   color: var(--color-red);

@@ -101,7 +101,7 @@ onBeforeUnmount(clearTimer);
 }
 .popup-icon {
   font-size: 2em;
-  color: var(--color-green, #19ef83);
+  color: var(--text-green);
   flex-shrink: 0;
 }
 .popup-message {
@@ -129,11 +129,11 @@ onBeforeUnmount(clearTimer);
 }
 .popup-info {
   border: 2.5px solid var(--color-blue, #19b3ef);
-  color: var(--color-blue, #19b3ef);
+  color: var(--text-blue);
 }
 .popup-warning {
   border: 2.5px solid var(--color-yellow, #ffe066);
-  color: var(--color-yellow, #ffe066);
+  color: var(--text-yellow);
 }
 .popup-fade-enter-active, .popup-fade-leave-active {
   transition: opacity 0.3s, transform 0.3s;

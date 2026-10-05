@@ -153,7 +153,7 @@ button.copy-button {
 
 .modal-close-btn:hover,
 .modal-close-btn:focus {
-  color: var(--color-dark-navy);
+  color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
 }

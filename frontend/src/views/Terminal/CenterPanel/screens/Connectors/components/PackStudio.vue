@@ -611,14 +611,14 @@ export default {
   border-bottom: 1px solid var(--terminal-border-color);
 }
 .ps-header-bar-icon {
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: var(--font-size-sm);
 }
 .ps-header-bar-title {
   font-size: var(--font-size-xs);
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -684,7 +684,7 @@ export default {
   font-size: var(--font-size-xs);
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: var(--font-weight-semibold);
 }
 .ps-pane-title i { font-size: var(--font-size-xs); }
@@ -722,7 +722,7 @@ export default {
   border-color: var(--color-text-muted);
 }
 .ps-chip.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: var(--color-green);
   background: var(--color-darker-1);
 }
@@ -835,7 +835,7 @@ export default {
   justify-content: center;
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-sm);
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 10px;
   flex-shrink: 0;
 }
@@ -877,10 +877,10 @@ export default {
   font-family: inherit;
 }
 .ps-card:hover:not(:disabled) .ps-card-action {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: var(--color-green);
 }
-.ps-card.added .ps-card-action { color: var(--color-green); border-color: var(--color-green); }
+.ps-card.added .ps-card-action { color: var(--text-green); border-color: var(--color-green); }
 
 /* ─── Pack-side card ─── */
 .ps-card-armed {
@@ -918,8 +918,8 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ps-ref-bundled { color: var(--color-green); border-color: var(--color-green); }
-.ps-ref-external { color: var(--color-yellow); border-color: var(--color-yellow); }
+.ps-ref-bundled { color: var(--text-green); border-color: var(--color-green); }
+.ps-ref-external { color: var(--text-yellow); border-color: var(--color-yellow); }
 .ps-ref-missing { color: var(--color-red); border-color: var(--color-red); }
 
 /* ─── Footer ─── */
@@ -950,8 +950,8 @@ export default {
   color: var(--color-text-muted);
 }
 .ps-stat i { font-size: var(--font-size-xs); }
-.ps-stat.ok { color: var(--color-green); border-color: var(--color-green); }
-.ps-stat.warn { color: var(--color-yellow); border-color: var(--color-yellow); }
+.ps-stat.ok { color: var(--text-green); border-color: var(--color-green); }
+.ps-stat.warn { color: var(--text-yellow); border-color: var(--color-yellow); }
 
 .ps-actions {
   display: flex;
@@ -966,7 +966,7 @@ export default {
   color: var(--color-text-muted);
   font-style: italic;
 }
-.ps-blocker i { color: var(--color-yellow); }
+.ps-blocker i { color: var(--text-yellow); }
 
 .ps-toggle {
   display: inline-flex;
@@ -1000,7 +1000,7 @@ export default {
   border-color: var(--color-text-muted);
 }
 .ps-bundle.ready {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: var(--color-green);
 }
 .ps-bundle.ready:hover {

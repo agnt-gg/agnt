@@ -233,7 +233,7 @@ export default {
 }
 
 .markdown-preview :deep(a) {
-  color: var(--color-blue);
+  color: var(--text-blue);
   text-decoration: none;
 }
 
@@ -356,7 +356,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 16px;
@@ -381,7 +381,7 @@ export default {
   z-index: 10;
   border-radius: 4px;
   backdrop-filter: blur(2px);
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
   gap: 12px;
   font-size: 14px;
@@ -408,7 +408,7 @@ export default {
 }
 
 .markdown-preview-container.drag-hover .markdown-placeholder span {
-  color: var(--color-blue);
+  color: var(--text-blue);
   font-weight: 600;
 }
 

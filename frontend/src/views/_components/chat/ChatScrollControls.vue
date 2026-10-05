@@ -150,7 +150,7 @@ export default {
 }
 
 .scroll-btn:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   transform: scale(1.15);
 }
 

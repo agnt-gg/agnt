@@ -662,7 +662,7 @@ export default {
 }
 
 .info-icon:hover {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .goals-container {
@@ -681,7 +681,7 @@ export default {
 }
 
 .section-title i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .section-title.clickable {
@@ -692,7 +692,7 @@ export default {
 }
 
 .section-title.clickable:hover {
-  color: var(--color-green);
+  color: var(--text-green);
   transform: translateX(2px);
 }
 
@@ -704,7 +704,7 @@ export default {
 }
 
 .section-title.clickable:hover .collapse-icon {
-  color: var(--color-green) !important;
+  color: var(--text-green) !important;
 }
 
 .goals-group {
@@ -725,7 +725,7 @@ export default {
 }
 
 .task-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -739,7 +739,7 @@ export default {
 
 .task-card:hover {
   border-left-color: #6366f1;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
 }
@@ -809,13 +809,13 @@ export default {
 
 .status-badge.status-working {
   background: rgba(251, 191, 36, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .status-badge.status-complete {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
@@ -857,7 +857,7 @@ export default {
 
 .task-card-meta .goal-priority.low {
   background: rgba(16, 185, 129, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .task-card-meta .goal-priority.medium {
@@ -925,7 +925,7 @@ export default {
 
 .current-task-indicator p {
   margin: 0;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   display: flex;
   align-items: center;
@@ -941,7 +941,7 @@ export default {
 
 .completion-summary p {
   margin: 0;
-  color: var(--color-green);
+  color: var(--text-green);
   font-size: 0.85em;
   display: flex;
   align-items: center;
@@ -1110,7 +1110,7 @@ export default {
 
 .info-icon-wrapper {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -1150,7 +1150,7 @@ export default {
   align-items: center;
   margin-bottom: 24px;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--green-rgb), 0.15);
   border-radius: 10px;
   backdrop-filter: blur(10px);
@@ -1212,7 +1212,7 @@ export default {
 
 .control-button.primary {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   border-color: var(--color-green);
   font-weight: 600;
 }
@@ -1328,7 +1328,7 @@ export default {
 
 .goal-icon-wrapper {
   background: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
   width: 42px;
   height: 42px;
   border-radius: 10px;
@@ -1385,13 +1385,13 @@ export default {
 
 .goal-status-indicator.status-working {
   background: rgba(251, 191, 36, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .goal-status-indicator.status-complete {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 

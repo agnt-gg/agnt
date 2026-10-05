@@ -204,7 +204,7 @@ export default {
 }
 
 .promo-text {
-  color: var(--color-dull-navy);
+  color: var(--text-on-fill);
   font-size: 0.9em;
   font-weight: 700;
   text-align: center;

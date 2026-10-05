@@ -171,7 +171,7 @@ export default {
 }
 .refresh-models-btn.success {
   opacity: 1;
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(46, 160, 67, 0.3);
 }
 .refresh-models-btn.error {
@@ -181,7 +181,7 @@ export default {
 }
 .refresh-models-btn.stale {
   opacity: 1;
-  color: var(--color-yellow, #d29922);
+  color: var(--text-yellow);
   border-color: rgba(210, 153, 34, 0.35);
 }
 .refresh-models-btn .label {

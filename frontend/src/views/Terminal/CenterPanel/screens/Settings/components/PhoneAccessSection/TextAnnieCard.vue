@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 16px;
   border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #19ef83) 35%, var(--color-dull-navy, #2e3350));
+  border: 1px solid rgba(var(--primary-rgb), 0.35);
   background: var(--color-darker-1, #1b1b2b);
 }
 .ta-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
@@ -244,14 +244,14 @@ onBeforeUnmount(() => {
 .ta-link { font-size: 12px; color: var(--color-primary, #19ef83); white-space: nowrap; }
 .ta-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; border: 1px solid var(--color-dull-navy, #2e3350); color: var(--color-light-med-navy, #8b93a7); }
 .ta-note a { color: inherit; text-decoration: underline; }
-.ta-note-warn { border-color: color-mix(in srgb, #ffd700 40%, transparent); color: var(--color-yellow, #ffd700); }
-.ta-note-error { border-color: color-mix(in srgb, #e53d8f 50%, transparent); color: var(--color-red, #e53d8f); }
+.ta-note-warn { border-color: rgba(var(--yellow-rgb), 0.4); color: var(--text-yellow); }
+.ta-note-error { border-color: rgba(var(--red-rgb), 0.5); color: var(--color-red); }
 .ta-phone { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--color-dull-navy, #2e3350); }
 .ta-phone-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ta-phone-main strong { font-size: 14px; color: var(--color-text, #e0e0e0); }
 .ta-phone-main small { font-size: 12px; color: var(--color-light-med-navy, #8b93a7); }
 .ta-on { color: var(--color-primary, #19ef83); }
-.ta-off { color: var(--color-yellow, #ffd700); }
+.ta-off { color: var(--text-yellow); }
 .ta-phone-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ta-select { min-width: 220px; }
 /* Fill comes from _forms.css (--color-darker-0), which composites on any surface. */
@@ -259,11 +259,11 @@ onBeforeUnmount(() => {
 .ta-btn { min-height: 34px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--color-dull-navy, #2e3350); background: transparent; color: var(--color-text, #e0e0e0); font: inherit; font-size: 13px; cursor: pointer; }
 .ta-btn:hover:not(:disabled) { border-color: var(--color-primary, #19ef83); }
 .ta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ta-btn-primary { background: var(--color-primary, #19ef83); border-color: var(--color-primary, #19ef83); color: var(--on-fill-accent, #0b0b14); font-weight: 600; }
+.ta-btn-primary { background: var(--color-primary, var(--color-green)); border-color: var(--color-primary, #19ef83); color: var(--on-fill-accent, #0b0b14); font-weight: 600; }
 .ta-add { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .ta-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-light-med-navy, #8b93a7); }
 .ta-field input { width: 200px; }
-.ta-link-panel { padding: 14px; border-radius: 8px; background: color-mix(in srgb, var(--color-primary, #19ef83) 8%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #19ef83) 40%, transparent); }
+.ta-link-panel { padding: 14px; border-radius: 8px; background: rgba(var(--primary-rgb), 0.08); border: 1px solid rgba(var(--primary-rgb), 0.4); }
 .ta-link-row { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .ta-step { font-size: 12px; color: var(--color-light-med-navy, #8b93a7); margin-bottom: 4px; }
 .ta-code { display: inline-block; font-size: 22px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 12px; border-radius: 6px; background: var(--color-background, #12121c); color: var(--color-text, #e0e0e0); user-select: all; }

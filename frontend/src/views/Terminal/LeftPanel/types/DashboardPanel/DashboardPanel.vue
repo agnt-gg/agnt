@@ -108,7 +108,7 @@ export default {
 .title {
   font-size: 11px;
   letter-spacing: 2px;
-  color: var(--color-green);
+  color: var(--text-green);
   font-weight: 600;
   margin: 0;
 }
@@ -154,10 +154,10 @@ export default {
 }
 .nav-item:hover {
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 .nav-item.active {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.25);
   background: rgba(var(--green-rgb), 0.06);
 }

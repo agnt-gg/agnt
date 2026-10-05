@@ -341,7 +341,7 @@ export default {
 .err {
   color: var(--color-red);
   font-size: 11.5px;
-  background: rgba(254, 78, 78, 0.07);
+  background: rgba(var(--red-rgb), 0.07);
   border: 1px solid rgba(254, 78, 78, 0.22);
   border-radius: 7px;
   padding: 6px 8px;
@@ -380,14 +380,14 @@ export default {
   font-size: 9px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-darker-0);
   color: var(--color-text-muted);
   flex: 0 0 auto;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .tag.warn {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
 }
 .badge {
   font-size: 9px;
@@ -402,11 +402,11 @@ export default {
   flex: 0 0 auto;
 }
 .b-green {
-  color: var(--color-green);
+  color: var(--text-green);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 .b-blue {
-  color: var(--color-blue, #12e0ff);
+  color: var(--text-blue);
   border-color: rgba(18, 224, 255, 0.3);
 }
 .b-red {
@@ -414,23 +414,23 @@ export default {
   border-color: rgba(254, 78, 78, 0.3);
 }
 .b-yellow {
-  color: var(--color-yellow, #ffd700);
+  color: var(--text-yellow);
   border-color: rgba(255, 215, 0, 0.3);
 }
 .bar {
   height: 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-darker-1);
   overflow: hidden;
   margin: 0 0 12px;
 }
 .bar i {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--color-green), var(--color-blue, #12e0ff));
+  background: linear-gradient(90deg, var(--color-green), var(--color-blue, var(--color-blue)));
 }
 .card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 10px;
@@ -452,7 +452,7 @@ export default {
   padding: 0 10px;
   border-radius: 6px;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font: inherit;
   font-size: 11px;
@@ -469,7 +469,7 @@ export default {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-blue, #12e0ff);
+  background: var(--color-blue, var(--color-blue));
   box-shadow: 0 0 6px var(--color-blue, #12e0ff);
   flex: 0 0 auto;
 }
@@ -484,12 +484,12 @@ export default {
   top: 12px;
   bottom: 18px;
   width: 2px;
-  background: linear-gradient(180deg, var(--color-green), rgba(18, 224, 255, 0.55));
+  background: linear-gradient(180deg, var(--color-green), rgba(var(--blue-rgb), 0.55));
   border-radius: 2px;
 }
 .wf-node {
   position: relative;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 6px 10px;
@@ -560,10 +560,10 @@ export default {
   background: var(--color-green);
 }
 .tlr.red::before {
-  background: #fe4e4e;
+  background: var(--color-red);
 }
 .tlr.blue::before {
-  background: var(--color-blue, #12e0ff);
+  background: var(--color-blue, var(--color-blue));
 }
 .tlr .nm {
   flex: 1;

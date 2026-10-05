@@ -258,15 +258,15 @@ export default {
 }
 
 .health-item.healthy .item-status {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .health-item.active .item-status {
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .health-item.warning .item-status {
-  color: var(--color-orange);
+  color: var(--text-orange);
 }
 
 .health-item.error .item-status {

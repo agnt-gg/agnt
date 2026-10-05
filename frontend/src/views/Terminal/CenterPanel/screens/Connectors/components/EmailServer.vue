@@ -12,7 +12,7 @@
 
     <div v-else-if="emailListeners.length === 0 && isPro" class="no-email-servers">
       <i class="fas fa-envelope-open-text"></i>
-      <p style="color: var(--color-green); font-weight: 600">🚀 Email Server Enabled</p>
+      <p style="color: var(--text-green); font-weight: 600">🚀 Email Server Enabled</p>
       <p class="hint">Email listeners are automatically created when you add a Receive Email trigger node to a workflow</p>
     </div>
 
@@ -210,8 +210,8 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.5em;
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.15);
+  color: var(--text-yellow);
+  background: rgba(var(--yellow-rgb), 0.15);
   padding: 4px 12px;
   border-radius: 4px;
   border: 1px solid rgba(255, 215, 0, 0.4);
@@ -275,7 +275,7 @@ export default {
 
 .locked-overlay i {
   font-size: 2.5em;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   margin-bottom: 12px;
   display: block;
 }
@@ -325,7 +325,7 @@ body.dark .email-server-card {
 }
 
 .email-server-name i {
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .workflow-link {
@@ -334,7 +334,7 @@ body.dark .email-server-card {
 }
 
 .email-server-name:hover .workflow-link {
-  color: var(--color-green);
+  color: var(--text-green);
   text-decoration: underline;
 }
 
@@ -383,7 +383,7 @@ body.dark .email-server-card {
 .copy-btn:hover:not(.disabled) {
   background: var(--color-green);
   border-color: var(--color-green);
-  color: var(--color-dark-navy);
+  color: var(--text-on-fill);
 }
 
 .copy-btn.disabled {
@@ -400,7 +400,7 @@ body.dark .email-server-card {
 
 .copy-btn .lock-icon {
   font-size: 10px;
-  color: var(--color-yellow);
+  color: var(--text-yellow);
   margin-left: 4px;
 }
 
@@ -443,17 +443,17 @@ body.dark .email-server-card {
 
 .status-running {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
+  color: var(--text-green);
 }
 
 .status-listening {
   background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
+  color: var(--text-blue);
 }
 
 .status-queued {
   background: rgba(251, 191, 36, 0.2);
-  color: var(--color-yellow);
+  color: var(--text-yellow);
 }
 
 .status-stopped {
@@ -471,5 +471,5 @@ body.dark .email-server-card {
   color: var(--color-light-med-navy);
 }
 .locked-overlay { cursor: pointer; }
-.upgrade-cta { margin-top: 10px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--color-pink); color: var(--color-background); font-weight: 700; cursor: pointer; }
+.upgrade-cta { margin-top: 10px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--color-pink); color: var(--text-on-fill); font-weight: 700; cursor: pointer; }
 </style>

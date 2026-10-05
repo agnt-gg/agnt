@@ -8,6 +8,19 @@ npm run hooks:install     # or: git config core.hooksPath .githooks
 
 `postinstall` runs this too, so a normal `npm install` is enough.
 
+## pre-commit
+
+When a commit stages `frontend/src/**/*.vue`, `*.css` or anything under
+`frontend/src/styles/`, the hook runs `npx vitest run src/styles` (about 15s)
+and blocks the commit on failure. Commits that touch no styling skip it.
+
+Those specs are the theme contract: role tokens for text (`--text-*`,
+`--text-on-fill`), `--color-darker-N` for cards and sections, and a ratchet
+(`surfaceConventions.baseline.json`) that only lets legacy literal
+backgrounds go down. Each failure names the file, the rule and the token to
+use. CI runs them too, but only on push; a local branch can go hundreds of
+commits without one. `--no-verify` exists for emergencies, not for guards.
+
 ## commit-msg
 
 Two scripts run in order:
