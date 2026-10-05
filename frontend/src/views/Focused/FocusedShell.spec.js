@@ -157,11 +157,15 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
-  it('Plugins is borrowed from Studio, never the Connectors page', () => {
+  it('Plugins renders the shared catalog in Focused, with Studio only when explicitly requested', () => {
     const w = mountShell('PluginsScreen');
-    expect(w.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(false);
-    expect(w.find('.focused-borrowed-bar').exists()).toBe(true);
+    expect(w.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(true);
+    expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
     w.unmount();
+    const advanced = mountShell('PluginsScreen', { studio: '1' });
+    expect(advanced.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(false);
+    expect(advanced.find('.focused-borrowed-bar').exists()).toBe(true);
+    advanced.unmount();
   });
 
   it('a Studio-only screen is borrowed, with a way back to the chat', async () => {

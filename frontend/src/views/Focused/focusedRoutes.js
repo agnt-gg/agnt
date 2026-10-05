@@ -97,14 +97,16 @@ export function focusedLocation(screen, query = {}) {
       // AI models are not apps: the old ?section=providers link (pill, Jump,
       // bookmarks) means "which model", which is Settings in both shells.
       if (str(query.section) === 'providers') return { page: 'settings' };
-      // Apps: a card is a sign-in (`provider:google`) or an app with none of
-      // its own (`app:figma-bridge`, item `app:figma-bridge` — the appCards id).
+      // Package details use app:<name>; provider links keep their account setup page.
       const app = selected(query, 'app');
       return { page: 'connectors', item: selected(query, 'provider') || (app ? `app:${app}` : null) };
     }
-    // PluginsScreen is NOT here on purpose: plugins are code installed into
-    // AGNT, not connections to outside apps, and Focused has no page for them.
-    // Folding it into Connectors made /plugins show the wrong list.
+    case 'PluginsScreen': {
+      // Focused now renders the real shared package catalog, including plugin deep links.
+      // Explicit ?studio=1 still borrows the advanced manager/builder above.
+      const plugin = selected(query, 'plugin');
+      return { page: 'connectors', item: plugin ? `app:${plugin}` : null };
+    }
     case 'GoalsScreen':
     case 'AutonomyScreen': {
       // Autonomy also hosts approvals and limits, which are Studio's. Only

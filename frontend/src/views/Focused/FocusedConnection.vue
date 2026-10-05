@@ -133,7 +133,7 @@
 
 <script setup>
 // One app's page: what it turns on, how it signs in, what else it could turn
-// on. The card comes from services/appCards (shared with Studio's Apps view);
+// on. The account card comes from services/appCards; package browsing is shared separately;
 // every action goes through the shared stores — Focused never calls the API.
 import { ref, computed, inject, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
@@ -143,8 +143,11 @@ import { useAppCards } from '@/composables/useAppCards.js';
 import { findAppCard, describeApps } from '@/services/appCards.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
-/** The card id: a sign-in ('google') or an app with none of its own ('app:figma-bridge'). */
-const props = defineProps({ cardId: { type: String, required: true } });
+/** Legacy account links still work; in-app sign-in can return to its package details. */
+const props = defineProps({
+  cardId: { type: String, required: true },
+  returnItem: { type: String, default: null },
+});
 const store = useStore();
 const nav = inject('focusedNav');
 
@@ -170,7 +173,7 @@ const catalogueEntry = computed(() =>
 const providerId = computed(() => (catalogueEntry.value ? String(catalogueEntry.value.id) : card.value?.providerId));
 const providerName = computed(() => catalogueEntry.value?.name || card.value?.providerId || '');
 
-const back = () => nav.go({ page: 'connectors' });
+const back = () => nav.go(props.returnItem ? { page: 'connectors', item: props.returnItem } : { page: 'connectors' });
 
 // OAuth opens the provider's consent page in a popup (as Connectors does) and
 // re-reads the connections once it closes. The interval is cleared on close

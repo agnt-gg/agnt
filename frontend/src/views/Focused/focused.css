@@ -1394,29 +1394,8 @@
 .ui-focused .focused-market-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; margin: 20px 0; }
 .ui-focused .focused-market-description { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Connectors: the Market's frame, tabs and grid, with .focused-card chrome.
-   Layout only; colors, borders and radii all come from the shared rules. */
-.ui-focused .focused-connectors-head { flex-wrap: wrap; }
-.ui-focused .focused-connectors-title,
-.ui-focused .focused-connectors-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
-.ui-focused .focused-connectors-title h1 { margin: 0; }
-.ui-focused .focused-connectors-grid { gap: 12px; }
-.ui-focused .focused-connector-card {
-  box-sizing: border-box;
-  width: 100%;
-  align-items: flex-start;
-  padding: 16px;
-}
-.ui-focused .focused-connector-card .focused-market-card-copy { flex: 1; }
-.ui-focused .focused-connector-state { flex: 0 0 32px; color: var(--text-secondary); }
-.ui-focused .focused-connector-state.ok { color: var(--status-green-text); }
-.ui-focused .focused-connector-state.warn { color: var(--status-amber-text); }
-.ui-focused .focused-apps-attention { color: var(--status-amber-text); margin: 0 0 12px; }
+/* The shared Apps browser supplies its own theme-aware card and detail styles. */
+.ui-focused .focused-page.focused-apps { max-width: 1204px; }
 /* An app page's "What's inside": one row per app a sign-in turns on. */
 .ui-focused .focused-app-inside { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .ui-focused .focused-app-inside li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--terminal-border-color); }
@@ -1425,8 +1404,6 @@
 .ui-focused .focused-app-inside small { color: var(--text-secondary); flex: 1; }
 @media (max-width: 1100px) {
   .ui-focused .focused-market-controls { flex-wrap: wrap; }
-  .ui-focused .focused-connectors-actions { width: 100%; }
-  .ui-focused .focused-connectors-actions .focused-market-search { flex: 1 1 auto; width: auto; }
   .ui-focused .focused-market-search { width: 100%; flex-basis: 100%; }
   .ui-focused .focused-market-spotlight-copy { padding: 28px; }
   .ui-focused .focused-market-grid { grid-template-columns: minmax(0, 1fr); }

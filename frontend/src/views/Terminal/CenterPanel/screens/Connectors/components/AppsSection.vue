@@ -1,4 +1,4 @@
-<!-- Studio package browser. Credentials stay in Connectors' existing flows; Focused is unchanged. -->
+<!-- Shared package browser. Shells supply navigation and existing account-connection flows. -->
 <template>
   <div class="apps-studio">
     <SimpleModal ref="modal" />
@@ -16,7 +16,12 @@
     <p v-if="error" class="apps-notice error" role="alert">{{ error }} <button type="button" @click="reload">Retry</button></p>
     <p v-if="notice" class="apps-notice" role="status">{{ notice }}</p>
 
-    <template v-if="!selected">
+    <div v-if="selectedName && !selected" class="apps-empty" role="status">
+      <h2>{{ loading ? 'Loading app…' : 'This app isn’t available' }}</h2>
+      <p v-if="!loading">It may no longer be in the catalog. Your other apps are still here.</p>
+      <button type="button" class="apps-secondary" @click="closePlugin">All apps</button>
+    </div>
+    <template v-else-if="!selected">
       <div class="apps-heading">
         <div><h1>A little more capable.</h1><p>Good tools. Great agents. Find your next app.</p></div>
         <label class="apps-search"><AppsIcon name="search" /><input v-model="query" type="search" placeholder="Search apps" aria-label="Search apps" /></label>
@@ -80,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -89,7 +94,9 @@ import { API_CONFIG } from '@/tt.config.js';
 import { apiFetch } from '@/utils/apiFetch.js';
 import { studioCatalog, pluginContents, pluginConnections, installDisclosure, escapeDisclosure } from '@/services/studioApps.js';
 
-const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account']);
+// Undefined keeps Studio's local selection; Focused supplies a route-backed name (or null).
+const props = defineProps({ selectedPlugin: { type: String, default: undefined } });
+const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'select-app', 'close-app']);
 const store = useStore();
 const modal = ref(null);
 const query = ref('');
@@ -125,17 +132,31 @@ function price(app) {
   const amount = Number(app.price);
   return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';
 }
-function switchTab(value) { tab.value = value; selectedName.value = null; detailRequest++; }
+function switchTab(value) { tab.value = value; closePlugin(); }
 function resetFilters() { query.value = ''; category.value = 'All apps'; tab.value = 'explore'; }
 async function openPlugin(app) {
   selectedName.value = app.name;
   notice.value = '';
-  loadAssets(app);
+  emit('select-app', app.name);
   await nextTick();
   detailHeading.value?.focus({ preventScroll: true });
   detailHeading.value?.scrollIntoView?.({ block: 'nearest' });
 }
-function closePlugin() { selectedName.value = null; detailRequest++; }
+function closePlugin() { selectedName.value = null; emit('close-app'); }
+watch(() => props.selectedPlugin, (name) => {
+  if (name !== undefined) selectedName.value = name;
+}, { immediate: true });
+// A deep link may arrive before the catalog. Also re-read assets after an install,
+// but not on every credential refresh or parent render.
+watch([() => selected.value?.name, () => selected.value?.installed], () => {
+  if (selected.value) loadAssets(selected.value);
+  else {
+    detailRequest++;
+    assets.value = [];
+    detailError.value = '';
+    detailLoading.value = false;
+  }
+}, { immediate: true });
 async function loadAssets(app) {
   const request = ++detailRequest;
   assets.value = [];
@@ -199,7 +220,6 @@ async function install(app) {
     await store.dispatch('marketplace/installPlugin', { pluginName: app.name });
     notice.value = `${app.displayName} installed.`;
     await reload();
-    if (selectedName.value === app.name && selected.value?.installed) await loadAssets(selected.value);
   } catch (failure) {
     error.value = failure.message || 'Installation failed. Please retry.';
     console.error('[AppsSection] install:', failure);

@@ -56,11 +56,11 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('SettingsScreen', { section: 'billing' })).toEqual({ page: 'settings' });
   });
 
-  // Plugins are code installed into AGNT; connectors are connections to
-  // outside apps. /plugins used to land on the connections list.
-  it('Plugins is not Connectors: it opens the real Plugins screen', () => {
-    expect(via('PluginsScreen', {})).toBeNull();
-    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toBeNull();
+  it('Plugins opens the shared package catalog and its selected detail in Focused', () => {
+    expect(via('PluginsScreen', {})).toEqual({ page: 'connectors', item: null });
+    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toEqual({ page: 'connectors', item: 'app:figma-bridge' });
+    expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' }, studio: true })).toBeNull();
+    expect(via('PluginsScreen', { studio: true })).toBeNull();
   });
 
   it('Market has its own Focused storefront, including item deep links', () => {
@@ -125,8 +125,6 @@ describe('routeFor is the inverse of focusedLocation', () => {
     const studioOnly = new Set([
       'ChatScreen', 'WorkspaceScreen', 'DashboardScreen', 'GoalsScreen', 'TracesScreen',
       'LearningScreen', 'ExperimentsScreen', 'AutonomyScreen', 'WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen',
-      // Installed plugins. Not Connectors (connections to outside apps).
-      'PluginsScreen',
     ]);
     for (const screen of SECTION_ROUTES) {
       if (studioOnly.has(screen)) continue;
