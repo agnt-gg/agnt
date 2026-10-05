@@ -283,7 +283,9 @@
         <FocusedStarters v-if="showFocusedHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
 
         <!-- AGNT Flash credits left, and a heads-up at 80% used -->
-        <AgntFlashMeter v-if="isAgntProviderSelected && hasConnectedAIProvider" />
+        <!-- Only once the chat has content: on an empty chat it was just in
+             the way. Same rule as the home screen (chatHome.js). -->
+        <AgntFlashMeter v-if="isAgntProviderSelected && hasConnectedAIProvider && conversationStarted" />
 
         <!-- Quick Actions (Studio's follow-up chips; Focused hides them in
              focused.css and shows its own ideas above) -->
@@ -315,6 +317,7 @@ import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import { createNewSessionLanding } from './newSessionLanding.js';
 import { isUnstartedConversation } from './chatHome.js';
+import { chatHasModel, shouldSwitchToFlash } from './chatProvider.js';
 import { buildProviderGreeting, greetingNeedsReplacing } from './providerGreeting.js';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
@@ -425,6 +428,9 @@ export default {
     // bubble is the only message then, and the home replaces it. Never while
     // provider setup is pending: that card is the one thing a new user must
     // see, and hiding it would leave an input that cannot answer.
+    // Someone has spoken: the chat has content (both modes).
+    const conversationStarted = computed(() => !isUnstartedConversation(store.state.chat.messages));
+
     // The rule is shared with FocusedShell, which hides the title bar on it.
     const showFocusedHome = computed(() => {
       if (uiPresentation !== 'focused' || bulkLoading.value) return false;
@@ -709,31 +715,38 @@ export default {
       () => store.state.chat.activeConversationId || currentConversationId.value || '',
     );
 
-    const hasConnectedAIProvider = computed(() => {
-      // Check if a provider is selected AND connected
-      const selectedProvider = store.state.aiProvider?.selectedProvider;
-      const connectedApps = store.state.appAuth?.connectedApps || [];
-      const customProviders = store.state.aiProvider?.customProviders || [];
+    // Which model the chat can use (chatProvider.js). A signed-in account always
+    // has AGNT Flash, so the connect card is only for someone signed out.
+    const providerContext = computed(() => ({
+      provider: store.state.aiProvider?.selectedProvider || null,
+      authenticated: !!store.getters['userAuth/isAuthenticated'],
+      connectedApps: store.state.appAuth?.connectedApps || [],
+      customProviders: store.state.aiProvider?.customProviders || [],
+      localRunning: isLocalServerRunning.value,
+      connectionsSettled: !!store.state.appAuth?.connectedAppsSettled,
+      // Maps display names like "Z-AI" to keys like "zai".
+      resolveKey: resolveProviderKey,
+    }));
+    const hasConnectedAIProvider = computed(() => chatHasModel(providerContext.value));
 
-      if (!selectedProvider) return false;
-
-      if (selectedProvider.toLowerCase() === 'agnt') return store.getters['userAuth/isAuthenticated'];
-      // Local provider is only available when the local server is running
-      if (selectedProvider.toLowerCase() === 'local') {
-        return isLocalServerRunning.value;
-      }
-
-      // Check if it's a custom provider (custom providers are always "connected")
-      const isCustomProvider = customProviders.some((cp) => cp.id === selectedProvider);
-      if (isCustomProvider) {
-        return true;
-      }
-
-      // Check if the selected provider is in the connected apps
-      // resolveProviderKey maps display names like "Z-AI" to keys like "zai"
-      const providerKey = resolveProviderKey(selectedProvider);
-      return connectedApps.some((app) => app.toLowerCase() === providerKey);
-    });
+    // The chosen provider is known not to work: use AGNT Flash rather than
+    // asking to connect one. One attempt per provider that needs it, so a
+    // Flash that cannot be selected never loops.
+    let flashTriedFor = null;
+    const switchToFlash = async (reason) => {
+      const from = store.state.aiProvider?.selectedProvider || '';
+      if (flashTriedFor === from) return;
+      flashTriedFor = from;
+      const switched = await store.dispatch('aiProvider/selectAgntFlash', { source: 'flash-fallback' });
+      if (switched) terminalLines.value.push(`[AGNT Flash] ${reason}`);
+    };
+    watch(
+      () => shouldSwitchToFlash(providerContext.value),
+      (needed) => {
+        if (needed) switchToFlash(`${providerContext.value.provider || 'No provider'} is not connected; using AGNT Flash.`);
+      },
+      { immediate: true },
+    );
 
     // Disable input when no provider connected
     const isInputDisabled = computed(() => !hasConnectedAIProvider.value);
@@ -2820,6 +2833,11 @@ export default {
         }
       }
       // Server disconnected (true -> false) AND Local was the selected provider
+      else if (!isRunning && wasRunning && selectedProvider?.toLowerCase() === 'local' && store.getters['userAuth/isAuthenticated']) {
+        // Signed in: AGNT Flash is right there. Keep the conversation and use
+        // it, rather than wiping the chat to ask for a provider.
+        await switchToFlash('Local AI server stopped; using AGNT Flash.');
+      }
       else if (!isRunning && wasRunning && selectedProvider?.toLowerCase() === 'local') {
         console.log('[Auto-Switch] Local server disconnected - switching to provider setup');
 
@@ -2990,6 +3008,7 @@ export default {
     return {
       ...tutorialWithCallback,
       showFocusedHome,
+      conversationStarted,
       baseScreenRef,
       contextHost,
       conversationSpace,

@@ -85,13 +85,14 @@ export default {
 
 <style scoped>
 .agnt-flash-meter { margin: 0 0 6px; font-size: 11.5px; color: var(--color-text-secondary); }
-.afm-row { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+/* One centred line under the conversation, not a left-aligned label. */
+.afm-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 4px; }
 .afm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); flex: none; }
 .low .afm-dot { background: var(--color-yellow); }
 .afm-bar { width: 60px; height: 4px; border-radius: 3px; background: var(--terminal-border-color); overflow: hidden; flex: none; }
 .afm-bar i { display: block; height: 100%; background: var(--color-green); }
 .low .afm-bar i { background: var(--color-yellow); }
-.afm-left { margin-left: auto; white-space: nowrap; }
+.afm-left { white-space: nowrap; }
 .afm-nudge { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 10px; border: 1px solid rgba(255, 215, 0, 0.3); background: rgba(255, 215, 0, 0.05); border-radius: 8px; color: var(--color-text); }
 .afm-nudge span { flex: 1; min-width: 0; }
 .afm-btn { border: 1px solid var(--terminal-border-color); background: transparent; color: var(--color-text); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }

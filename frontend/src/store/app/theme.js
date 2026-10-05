@@ -208,13 +208,6 @@ export default {
     // Promo banner state
     isPromoBannerClosed: localStorage.getItem('isPromoBannerClosed') !== null ? localStorage.getItem('isPromoBannerClosed') === 'true' : false,
 
-    // Rate limit banner state
-    isRateLimited: false,
-    isRateLimitBannerClosed:
-      localStorage.getItem('isRateLimitBannerClosed') !== null ? localStorage.getItem('isRateLimitBannerClosed') === 'true' : false,
-    rateLimitInfo: null, // { resetAt, limit, window, currentPlan, hitCount }
-    rateLimitHitCount: 0,
-
     /* 'auto' follows the desktop; 'light'/'dark' pin a system-following theme's face. */
     themeFace: readStoredFace(),
 
@@ -343,24 +336,6 @@ export default {
     SET_PROMO_BANNER_CLOSED(state, isClosed) {
       state.isPromoBannerClosed = isClosed;
       localStorage.setItem('isPromoBannerClosed', isClosed);
-    },
-    // Rate limit banner mutations
-    SET_RATE_LIMITED(state, info) {
-      state.isRateLimited = true;
-      state.rateLimitInfo = info;
-      state.rateLimitHitCount += 1;
-    },
-    SET_RATE_LIMIT_BANNER_CLOSED(state, isClosed) {
-      state.isRateLimitBannerClosed = isClosed;
-      localStorage.setItem('isRateLimitBannerClosed', isClosed);
-    },
-    CLEAR_RATE_LIMIT(state) {
-      state.isRateLimited = false;
-      state.rateLimitInfo = null;
-      // Don't reset hit count - it persists for the session
-    },
-    RESET_RATE_LIMIT_HIT_COUNT(state) {
-      state.rateLimitHitCount = 0;
     },
     // Mark/unmark whether a theme has a custom background stored.
     SET_HAS_CUSTOM_BACKGROUND(state, { theme, hasCustom }) {
@@ -517,24 +492,6 @@ export default {
     // Promo banner action
     setPromoBannerClosed({ commit }, isClosed) {
       commit('SET_PROMO_BANNER_CLOSED', isClosed);
-    },
-    // Rate limit banner actions
-    setRateLimited({ commit }, info) {
-      commit('SET_RATE_LIMITED', info);
-    },
-    setRateLimitBannerClosed({ commit }, isClosed) {
-      commit('SET_RATE_LIMIT_BANNER_CLOSED', isClosed);
-    },
-    clearRateLimitIfExpired({ commit, state }) {
-      if (state.rateLimitInfo && state.rateLimitInfo.resetAt) {
-        const now = Date.now();
-        if (now >= state.rateLimitInfo.resetAt) {
-          commit('CLEAR_RATE_LIMIT');
-        }
-      }
-    },
-    clearRateLimit({ commit }) {
-      commit('CLEAR_RATE_LIMIT');
     },
     // Custom background image actions. `file` may be a File/Blob (preferred)
     // or a legacy data URL string; data URLs are converted to Blobs before
@@ -749,10 +706,5 @@ export default {
     backgroundLayerActive: (state) => state.useCustomBackground,
     // Promo banner getter
     isPromoBannerClosed: (state) => state.isPromoBannerClosed,
-    // Rate limit banner getters
-    isRateLimited: (state) => state.isRateLimited,
-    isRateLimitBannerClosed: (state) => state.isRateLimitBannerClosed,
-    rateLimitInfo: (state) => state.rateLimitInfo,
-    rateLimitHitCount: (state) => state.rateLimitHitCount,
   },
 };

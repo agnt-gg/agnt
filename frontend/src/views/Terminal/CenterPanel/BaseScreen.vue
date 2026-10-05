@@ -5,8 +5,6 @@
     ref="terminalContentRef"
     tabindex="-1"
   >
-    <!-- Global Banners - Rate Limit Banner first (more urgent) -->
-    <RateLimitBanner />
     <!-- <PromoBanner /> -->
 
     <div class="three-panel-container">
@@ -310,7 +308,6 @@ import { useCornerAnchor, findVisibleAnchor } from '@/utils/cornerAnchor.js';
 import { clickKeepsFocus } from '@/utils/chatFocusClaim.js';
 import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
-import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
@@ -322,7 +319,7 @@ import { resolvePanel, resolveInput, rightCollapsedDefault } from './screenRegis
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, Tooltip, ChatStopButton, CommandMenu },
   props: {
     // Layout defaults live in screenRegistry.js, keyed by screenId. An
     // explicitly passed prop always wins (screens with dynamic panels).

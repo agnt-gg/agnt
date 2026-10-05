@@ -9,15 +9,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import aiProviderStore from './aiProvider.js';
 
-const { applyIncludedModelDefault } = aiProviderStore.actions;
+const { applyIncludedModelDefault, selectAgntFlash } = aiProviderStore.actions;
 
 function harness({ selectedProvider = null, isPremium = false, isAuthenticated = false, models = ['agnt-flash'] } = {}) {
   // Display names, exactly as the real store holds them. A lowercase fixture
   // here is what hid the default never applying in the app.
   const state = { selectedProvider, providers: ['AGNT', 'OpenAI'], allModels: { AGNT: models } };
-  const dispatch = vi.fn().mockResolvedValue(undefined);
   const rootGetters = { 'userAuth/isPremium': isPremium, 'userAuth/isAuthenticated': isAuthenticated };
-  return { state, dispatch, context: { commit: vi.fn(), dispatch, state, rootGetters } };
+  const context = { commit: vi.fn(), state, rootGetters };
+  // selectAgntFlash runs for real; everything it dispatches is recorded.
+  context.dispatch = vi.fn((action, payload) => (action === 'selectAgntFlash' ? selectAgntFlash(context, payload) : Promise.resolve(undefined)));
+  return { state, dispatch: context.dispatch, context };
 }
 
 const chose = (dispatch) => dispatch.mock.calls.filter(([action]) => action === 'setProvider' || action === 'setModel');
@@ -58,5 +60,24 @@ describe('applyIncludedModelDefault', () => {
     const h = harness({ selectedProvider: 'OpenAI', isAuthenticated: true });
     await applyIncludedModelDefault(h.context);
     expect(h.dispatch).not.toHaveBeenCalled();
+  });
+});
+
+// The chat uses this when the chosen provider is known not to work, so a
+// signed-in account gets Flash instead of the connect card.
+describe('selectAgntFlash', () => {
+  it('moves the chat onto AGNT Flash and says it did', async () => {
+    const h = harness({ selectedProvider: 'OpenAI', isAuthenticated: true });
+    expect(await selectAgntFlash(h.context, { source: 'flash-fallback' })).toBe(true);
+    expect(chose(h.dispatch)).toEqual([
+      ['setProvider', { provider: 'AGNT', persist: false }],
+      ['setModel', { model: 'agnt-flash', source: 'flash-fallback' }],
+    ]);
+  });
+
+  it('reports false, changing nothing, when Flash has no model', async () => {
+    const h = harness({ selectedProvider: 'OpenAI', isAuthenticated: true, models: [] });
+    expect(await selectAgntFlash(h.context)).toBe(false);
+    expect(chose(h.dispatch)).toEqual([]);
   });
 });

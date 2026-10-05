@@ -1328,24 +1328,37 @@ const aiProviderModule = {
      * made. When the trial is spent, models.agnt.gg says so in the chat, with
      * the upgrade and bring-your-own-key options.
      */
-    async applyIncludedModelDefault({ commit, dispatch, state, rootGetters }) {
+    async applyIncludedModelDefault({ dispatch, state, rootGetters }) {
       if (state.selectedProvider) return;
       if (!rootGetters['userAuth/isPremium'] && !rootGetters['userAuth/isAuthenticated']) return;
+      await dispatch('selectAgntFlash', { source: 'included-default' });
+    },
+
+    /**
+     * Put the chat on AGNT Flash. Used for the first-run default above, and by
+     * the chat when the chosen provider is known not to work: a signed-in
+     * account always has Flash, so it is used before ever asking someone to
+     * connect a provider (views/.../Chat/chatProvider.js). Returns whether it
+     * switched.
+     */
+    async selectAgntFlash({ dispatch, state }, { source = 'flash-fallback' } = {}) {
       // The provider list holds display names ('AGNT'). A literal 'agnt'
       // lookup never matched it, so this default silently never applied.
       const agntProvider = canonicalizeProviderCase(state.providers, 'agnt');
-      if (!agntProvider) return;
+      if (!agntProvider) return false;
       try {
         await dispatch('fetchProviderModels', { provider: agntProvider });
         const models = state.allModels[agntProvider] || [];
         const model = models.includes('agnt-flash') ? 'agnt-flash' : models[0];
-        if (!model) return;
+        if (!model) return false;
         // One write of the complete pair: the provider is staged locally, then
         // the model save carries both halves.
         await dispatch('setProvider', { provider: agntProvider, persist: false });
-        await dispatch('setModel', { model, source: 'included-default' });
+        await dispatch('setModel', { model, source });
+        return true;
       } catch (error) {
-        console.warn('Included model default not applied:', error?.message || error);
+        console.warn('AGNT Flash not selected:', error?.message || error);
+        return false;
       }
     },
 

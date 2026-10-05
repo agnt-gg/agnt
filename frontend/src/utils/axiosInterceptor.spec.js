@@ -143,18 +143,19 @@ describe('mid-session session rejection', () => {
   });
 });
 
-describe('rate limit attribution', () => {
-  it('does not turn a provider or boot-probe 429 into a free-account quota warning', async () => {
+// A 429 from api.agnt.gg used to raise an "Upgrade to Pro" banner. The quota
+// was being spent by the AGNT Flash gateway's own account checks, so it
+// blamed the person for something they did not do. A 429 is the caller's to
+// handle; it never changes app-wide state.
+describe('rate limits', () => {
+  it('a 429 changes nothing app-wide and still reaches the caller', async () => {
     const store = makeStore();
-    initializeAxiosInterceptor(store, makeRouter());
-    await fire({ response: { status: 429, data: { error: 'Provider busy' } } });
-    expect(store.dispatch).not.toHaveBeenCalledWith('theme/setRateLimited', expect.anything());
-  });
-  it('shows a real account quota with its reset, rather than inventing a free plan', async () => {
-    const store = makeStore();
-    initializeAxiosInterceptor(store, makeRouter());
-    await fire({ response: { status: 429, data: { error: 'Rate limit exceeded', resetAt: Date.now() + 60000, limit: 1000, window: 'hour', currentPlan: 'free' } } });
-    expect(store.dispatch).toHaveBeenCalledWith('theme/setRateLimited', expect.objectContaining({ limit: 1000, window: 'hour' }));
+    const router = makeRouter();
+    initializeAxiosInterceptor(store, router);
+    const quota = { response: { status: 429, data: { error: 'Rate limit exceeded', resetAt: Date.now() + 60000, limit: 1000, window: 'hour', currentPlan: 'free' } } };
+    await expect(handlers.onError(quota)).rejects.toBe(quota);
+    expect(store.dispatch).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
   });
 });
 

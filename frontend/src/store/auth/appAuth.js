@@ -80,6 +80,11 @@ let _fetchConnectedAppsInFlight = null;
 
 const state = {
   connectedApps: [],
+  // True once the account's connections have been answered authoritatively
+  // (both lanes). "Not connected" before that only means "not loaded yet", so
+  // nothing may act on it, e.g. moving the chat to AGNT Flash. Reset with the
+  // rest of this module when the session ends.
+  connectedAppsSettled: false,
   allProviders: [],
   connectionHealth: null,
   lastHealthCheck: null,
@@ -94,6 +99,9 @@ const state = {
 const mutations = {
   SET_CONNECTED_APPS(state, apps) {
     state.connectedApps = apps;
+  },
+  SET_CONNECTED_APPS_SETTLED(state, settled) {
+    state.connectedAppsSettled = !!settled;
   },
   SET_ALL_PROVIDERS(state, providers) {
     state.allProviders = providers;
@@ -329,7 +337,9 @@ const actions = {
         }
         // Without a token the remote lane answers 401 by design, so its
         // silence is expected rather than a failure to hold the cache open for.
-        return { authoritative: localLaneAnswered && (remoteLaneAnswered || !token) };
+        const authoritative = localLaneAnswered && (remoteLaneAnswered || !token);
+        if (authoritative) commit('SET_CONNECTED_APPS_SETTLED', true);
+        return { authoritative };
       } finally {
         if (_fetchConnectedAppsInFlight && _fetchConnectedAppsInFlight.promise === runPromise) {
           _fetchConnectedAppsInFlight = null;
