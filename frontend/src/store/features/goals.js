@@ -547,27 +547,19 @@ const actions = {
   async fetchGoalTasks({ commit }, goalId) {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      if (!token) throw new Error('No authentication token found');
+      const response = await fetch(API_CONFIG.BASE_URL + '/goals/' + encodeURIComponent(goalId), {
+        headers: { Authorization: 'Bearer ' + token },
       });
-
-      if (!response.ok) return;
-
+      if (!response.ok) throw new Error('Could not load goal (' + response.status + ')');
       const data = await response.json();
-      if (data.goal.tasks) {
-        commit('UPDATE_GOAL', {
-          id: goalId,
-          tasks: data.goal.tasks,
-        });
-      }
+      const goal = data.goal || data;
+      if (!goal || goal.id !== goalId || !Array.isArray(goal.tasks)) throw new Error('Invalid goal detail response');
+      commit('UPDATE_GOAL', { ...goal, id: goalId });
+      return goal;
     } catch (error) {
       console.error('Error fetching goal tasks:', error);
+      throw error;
     }
   },
 

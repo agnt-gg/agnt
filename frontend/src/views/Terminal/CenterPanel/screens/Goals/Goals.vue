@@ -9,7 +9,7 @@
   >
     <template #default>
       <div class="goals-screen">
-        <GoalsToolbar v-show="!mobileView"
+        <GoalsToolbar v-show="!mobileView && !selectedGoalId"
           ref="toolbarRef"
           v-model:searchQuery="searchQuery"
           v-model:activeFilters="activeFilters"
@@ -46,7 +46,7 @@
             </div>
           </div>
           <div class="goal-detail-body">
-            <GoalsPanel :selectedGoalId="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
+            <GoalDetail :key="selectedGoalId" :goal-id="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
           </div>
         </div>
 
@@ -333,13 +333,12 @@ import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
+import GoalDetail from './components/GoalDetail.vue';
 import GoalsToolbar from './components/GoalsToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
-// The goal detail. It was the screen's right panel; it is the same component,
-// now hosted inside the screen so the board and the detail share one surface.
-import GoalsPanel from '@/views/Terminal/RightPanel/types/GoalsPanel/GoalsPanel.vue';
+// The centre review workspace uses the same goal/checklist helpers as the inspector.
 
 import { GOAL_COLUMNS, getGoalStage, matchesGoalFilter } from './goalBoard.js';
 
@@ -391,10 +390,10 @@ export default {
   components: { MobileCollection,
     CustomSelect,
     BaseScreen,
-    GoalsPanel,
     GoalCard,
     GoalsToolbar,
     Tooltip,
+    GoalDetail,
     SimpleModal,
     ScheduleGoalModal,
   },
@@ -608,22 +607,11 @@ export default {
       store.dispatch('schedules/fetchSchedules').catch(() => {});
     };
 
-    const handleGoalClick = async (goal) => {
+    const handleGoalClick = (goal) => {
       playSound('typewriterKeyPress');
       selectedGoalId.value = goal.id;
       terminalLines.value.push(`Selected goal: ${goal.title}`);
-      baseScreenRef.value?.scrollToBottom();
-      baseScreenRef.value?.triggerPanelMethod('updateSelectedGoal', goal);
-
-      try {
-        await store.dispatch('goals/fetchGoalTasks', goal.id);
-        const updatedGoal = store.getters['goals/getGoalById'](goal.id);
-        if (updatedGoal) {
-          baseScreenRef.value?.triggerPanelMethod('updateSelectedGoal', updatedGoal);
-        }
-      } catch (error) {
-        console.error('Error fetching goal details:', error);
-      }
+      // GoalDetail owns loading and retry; fetching here too raced its mount.
     };
 
     const pauseGoal = async (goal) => {
@@ -999,15 +987,15 @@ body[data-page='terminal-goals'] .scrollable-content {
 .goal-detail-body {
   flex: 1;
   min-height: 0;
-  overflow: hidden auto;
-  scrollbar-width: thin;
-  padding: 4px 18px 18px;
-  max-width: 1100px;
+  display: flex;
+  overflow: hidden;
+  padding: 14px 18px 18px;
   width: 100%;
-  margin: 0 auto;
+  box-sizing: border-box;
 }
-.goal-detail-body :deep(.goal-panel) {
-  height: auto;
+@media (max-width: 900px) {
+  .goal-detail-body { overflow-y: auto; padding: 12px; }
+  .goal-detail-crumb { display: none; }
 }
 
 .kanban-column {
