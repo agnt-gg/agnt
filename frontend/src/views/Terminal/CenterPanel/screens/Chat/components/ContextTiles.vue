@@ -9,6 +9,7 @@
       <div v-if="hasBreakdown" class="strip-bar" v-tooltip="compositionTitle">
         <div class="seg seg-system" :style="{ width: systemPct + '%' }"></div>
         <div class="seg seg-tools" :style="{ width: toolsPct + '%' }"></div>
+        <div class="seg seg-skills" :style="{ width: skillsPct + '%' }"></div>
         <div class="seg seg-messages" :style="{ width: messagesPct + '%' }"></div>
         <div class="seg seg-output" :style="{ width: outputPct + '%' }"></div>
       </div>
@@ -46,9 +47,10 @@
             {{ t.value }}<small v-if="t.unit"> {{ t.unit }}</small>
           </span>
           <span v-if="t.key === 'request' && hasBreakdown" class="tile-mini">
-            <span class="seg seg-system" :style="{ width: miniPct(breakdown.systemTokens) + '%' }"></span>
-            <span class="seg seg-tools" :style="{ width: miniPct(breakdown.toolTokens) + '%' }"></span>
-            <span class="seg seg-messages" :style="{ width: miniPct(breakdown.messagesTokens) + '%' }"></span>
+            <span class="seg seg-system" :style="{ width: miniPct(parts.system) + '%' }"></span>
+            <span class="seg seg-tools" :style="{ width: miniPct(parts.tools) + '%' }"></span>
+            <span class="seg seg-skills" :style="{ width: miniPct(parts.skills) + '%' }"></span>
+            <span class="seg seg-messages" :style="{ width: miniPct(parts.messages) + '%' }"></span>
           </span>
           <span class="tile-sub" :class="t.subCls">{{ t.sub }}</span>
         </button>
@@ -130,9 +132,10 @@
           <div class="blk full">
             <span class="blk-head">Composition &middot; {{ formatNumber(currentTokens) }} tokens</span>
             <div class="blk-bar">
-              <div class="seg seg-system" :style="{ width: relPct(breakdown.systemTokens) + '%' }"></div>
-              <div class="seg seg-tools" :style="{ width: relPct(breakdown.toolTokens) + '%' }"></div>
-              <div class="seg seg-messages" :style="{ width: relPct(breakdown.messagesTokens) + '%' }"></div>
+              <div class="seg seg-system" :style="{ width: relPct(parts.system) + '%' }"></div>
+              <div class="seg seg-tools" :style="{ width: relPct(parts.tools) + '%' }"></div>
+              <div class="seg seg-skills" :style="{ width: relPct(parts.skills) + '%' }"></div>
+              <div class="seg seg-messages" :style="{ width: relPct(parts.messages) + '%' }"></div>
             </div>
             <div class="legend">
               <div v-for="l in legendRows" :key="l.id" class="legend-row">
@@ -318,6 +321,7 @@
 
 <script>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { partitionContext } from '@/services/contextPartition.js';
 
 const USD = '\u0024';
 
@@ -469,9 +473,13 @@ export default {
     // budget each part occupies); the drawer bar is scaled against the REQUEST
     // (what the request is made of). Different questions, different denominators.
     const winPct = (t) => (tokenLimit.value ? Math.min(((t || 0) / tokenLimit.value) * 100, 100) : 0);
-    const systemPct = computed(() => winPct(breakdown.value?.systemTokens));
-    const toolsPct = computed(() => winPct(breakdown.value?.toolTokens));
-    const messagesPct = computed(() => winPct(breakdown.value?.messagesTokens));
+    // System / Tools / Skills / Messages as disjoint buckets that sum to the
+    // request. Skills are carved out of System and Messages (contextPartition).
+    const parts = computed(() => partitionContext(breakdown.value, props.manifest));
+    const systemPct = computed(() => winPct(parts.value.system));
+    const toolsPct = computed(() => winPct(parts.value.tools));
+    const skillsPct = computed(() => winPct(parts.value.skills));
+    const messagesPct = computed(() => winPct(parts.value.messages));
     const outputPct = computed(() => winPct(breakdown.value?.outputBufferTokens));
 
     const requestTotal = computed(() => {
@@ -490,16 +498,19 @@ export default {
     const compositionTitle = computed(() => {
       const b = breakdown.value;
       if (!b) return '';
-      return `System ${formatNumber(b.systemTokens)} · Tools ${formatNumber(b.toolTokens)} · `
-        + `Messages ${formatNumber(b.messagesTokens)} · Output reserve ${formatNumber(b.outputBufferTokens)}`;
+      const p = parts.value;
+      return `System ${formatNumber(p.system)} · Tools ${formatNumber(p.tools)} · Skills ${formatNumber(p.skills)} · `
+        + `Messages ${formatNumber(p.messages)} · Output reserve ${formatNumber(b.outputBufferTokens)}`;
     });
 
     const legendRows = computed(() => {
       const b = breakdown.value || {};
+      const p = parts.value;
       return [
-        { id: 'system', label: 'System', dot: 'dot-system', tokens: b.systemTokens || 0 },
-        { id: 'tools', label: 'Tools', dot: 'dot-tools', tokens: b.toolTokens || 0 },
-        { id: 'messages', label: 'Messages', dot: 'dot-messages', tokens: b.messagesTokens || 0 },
+        { id: 'system', label: 'System', dot: 'dot-system', tokens: p.system },
+        { id: 'tools', label: 'Tools', dot: 'dot-tools', tokens: p.tools },
+        { id: 'skills', label: 'Skills', dot: 'dot-skills', tokens: p.skills },
+        { id: 'messages', label: 'Messages', dot: 'dot-messages', tokens: p.messages },
         { id: 'output', label: 'Output reserve', dot: 'dot-output', tokens: b.outputBufferTokens || 0 },
       ];
     });
@@ -541,6 +552,14 @@ export default {
         why: 'system',
         whyClass: 'why-system',
       }));
+      // Resident skills re-send every turn like any system section; loaded
+      // playbooks are message content and, like messages, not ranked here.
+      const s = props.manifest?.skills;
+      const skills = [
+        // The whole catalog (gists, name-only list, rules), priced like any row.
+        s?.catalog?.tokens ? { id: 'skill-catalog', label: 'Skills catalog', cost: s.catalog.tokens * (e.rate || 0) } : null,
+        s?.pinned ? { id: 'skill-pinned', label: s.pinned.name, cost: s.pinned.cost || 0 } : null,
+      ].filter(Boolean).map((d) => ({ ...d, why: 'skills', whyClass: 'why-skills' }));
       const tools = (props.manifest?.tools?.items || []).map((t) => ({
         id: `tool-${t.name}`,
         label: t.name,
@@ -548,7 +567,7 @@ export default {
         why: t.reason === 'group' && t.group ? t.group : t.reason,
         whyClass: t.reason === 'discovered' ? 'why-discovered' : 'why-tool',
       }));
-      return [...sections, ...tools].sort((a, b) => b.cost - a.cost).slice(0, 8);
+      return [...sections, ...skills, ...tools].sort((a, b) => b.cost - a.cost).slice(0, 8);
     });
     const topThreeSaving = computed(() =>
       recurringDrivers.value.slice(0, 3).reduce((acc, d) => acc + d.cost, 0));
@@ -820,7 +839,7 @@ export default {
       compressArmed, confirmCompress, compressCost, compressTurnSaving, compactedAgo,
       breakdown, hasBreakdown, currentTokens, tokenLimit,
       utilization, utilizationClass,
-      systemPct, toolsPct, messagesPct, outputPct,
+      parts, systemPct, toolsPct, skillsPct, messagesPct, outputPct,
       relPct, miniPct, compositionTitle, legendRows,
       economics, hasEconomics, floorPendingReason, floorSystemPct, recurringDrivers, topThreeSaving,
       subscriptionSaved, totalAvoided, hasAvoided, savedIsCost, costReason,
@@ -1218,6 +1237,7 @@ export default {
 .seg-system { background: var(--color-blue); }
 .seg-tools { background: var(--color-indigo); }
 .seg-messages { background: var(--color-green); }
+.seg-skills { background: var(--color-yellow); }
 .seg-output { background: var(--color-duller-navy); }
 
 .legend {
@@ -1240,6 +1260,7 @@ export default {
 .dot-system { background: var(--color-blue); }
 .dot-tools { background: var(--color-indigo); }
 .dot-messages { background: var(--color-green); }
+.dot-skills { background: var(--color-yellow); }
 .dot-output { background: var(--color-duller-navy); }
 
 .legend-label {
@@ -1393,6 +1414,7 @@ export default {
 
 .why-system { background: rgba(var(--blue-rgb), 0.16); color: var(--text-blue); }
 .why-tool { background: rgba(var(--indigo-rgb), 0.2); color: var(--status-purple-text); }
+.why-skills { background: rgba(var(--yellow-rgb), 0.16); color: var(--text-yellow); }
 .why-discovered { background: rgba(var(--green-rgb), 0.14); color: var(--text-green); }
 
 .driver-per,

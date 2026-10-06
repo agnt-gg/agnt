@@ -3,7 +3,8 @@ import SkillModel from '../models/SkillModel.js';
 import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { parseSkillMd, serializeSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
-import { skillCatalogGist } from '../utils/skillCatalogGist.js';
+import { skillCatalogGist, CATALOG_GIST_CHARS } from '../utils/skillCatalogGist.js';
+import { NAME_ONLY_LEAD } from './orchestrator/skillsInventory.js';
 import { extractRelations, filterSupersededEntries } from '../utils/skillRelations.js';
 
 /**
@@ -78,6 +79,52 @@ export function normalizeSkillKey(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9/]+/g, '');
 }
 
+/**
+ * Share of this user's activations the featured (gist) tier must cover.
+ * Same rule as the lean resident tool set, which keeps the tools behind
+ * 99.1% of calls: there a miss costs a discovery round trip, here it costs
+ * nothing, because a name-only skill is still activated by name. Measured
+ * 2026-10-07 (129 installed, 1,868 activations in 90 days): 90% coverage is
+ * 60 skills; the old "3+ uses" rule featured 75.
+ */
+export const FEATURED_COVERAGE = 0.9;
+
+/**
+ * Normalized names of the skills that keep a gist: the most-activated ones
+ * until they cover `coverage` of activations, plus any used since
+ * `recentSince`. Counts are merged by normalized name (one skill activated
+ * under two spellings is one skill) and only installed skills compete, so an
+ * uninstalled favourite cannot take a slot.
+ *
+ * @param {Array<{name: string, count: number, last: string}>} stats
+ * @param {{installed?: Iterable<string>|null, recentSince?: string|null, coverage?: number}} [options]
+ *   installed: normalized names; null means "all"
+ * @returns {Set<string>}
+ */
+export function selectFeaturedSkills(stats, { installed = null, recentSince = null, coverage = FEATURED_COVERAGE } = {}) {
+  const allowed = installed ? new Set(installed) : null;
+  const merged = new Map();
+  for (const row of stats || []) {
+    const key = normalizeSkillKey(row?.name);
+    if (!key || (allowed && !allowed.has(key))) continue;
+    const prior = merged.get(key) || { key, count: 0, last: '' };
+    prior.count += Number(row.count) || 0;
+    if (String(row.last || '') > prior.last) prior.last = String(row.last);
+    merged.set(key, prior);
+  }
+  const ranked = [...merged.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  const total = ranked.reduce((sum, s) => sum + s.count, 0);
+  const featured = new Set();
+  let covered = 0;
+  for (const s of ranked) {
+    if (total === 0 || covered / total >= coverage) break;
+    featured.add(s.key);
+    covered += s.count;
+  }
+  if (recentSince) for (const s of ranked) if (s.last >= recentSince) featured.add(s.key);
+  return featured;
+}
+
 /** First occurrence wins: discovery lists filesystem skills before DB copies. */
 function dedupeSkills(skills) {
   const seen = new Set();
@@ -131,12 +178,12 @@ class SkillService {
       .map((s) => {
         const { dependsOn } = extractRelations(s.metadata);
         const needs = dependsOn.length > 0 ? ` [needs: ${dependsOn.join(', ')}]` : '';
-        return `- ${s.name}: ${skillCatalogGist(s.description)}${needs}`;
+        return `- ${s.name}: ${skillCatalogGist(s.description, CATALOG_GIST_CHARS)}${needs}`;
       })
       .join('\n');
     const others = visible.filter((s) => !isFeatured(s)).map((s) => s.name);
     const otherLine = others.length > 0
-      ? `\nAlso installed (name only; call activate_skill with "search" to see what fits, or with the name to load one): ${others.join('; ')}`
+      ? `\n${NAME_ONLY_LEAD}${others.join('; ')}`
       : '';
 
     return `<available-skills>\n${entries}${otherLine}\n</available-skills>`;
@@ -196,14 +243,11 @@ class SkillService {
    * Build behavioral instructions telling the LLM how to use the skill activation system.
    */
   static buildSkillActivationInstructions() {
-    return `SKILL ACTIVATION INSTRUCTIONS:
-You have skills available (listed above in <available-skills>: one-line gists, then other installed skills by name). A skill's full playbook loads only when activated.
-- When a user's request plausibly matches a skill, call activate_skill with its name to load its full instructions. Activation is cheap - if unsure whether a skill applies, activate it and check rather than guessing.
-- If no listed gist fits but the task is specialized, call activate_skill with "search" (a few keywords) to find one before working without it.
-- Only activate skills that are relevant to the current task.
-- Once activated, follow the skill's instructions carefully.
-- You can activate multiple skills if needed for a complex task.
-- Skills may include bundled scripts and reference files — use your file-reading capabilities to access them when the skill instructions reference them.`;
+    return `SKILL ACTIVATION:
+<available-skills> gives a one-line gist for the skills you use most, then the rest by name. A playbook loads only when activated.
+- When a request plausibly matches a skill, call activate_skill with its name. Activation is cheap: if unsure, activate and check.
+- When no gist fits but the task is specialized, call activate_skill with "search" (a few keywords) before working without one.
+- Follow an activated skill's instructions; activate several when a task needs them. Read its bundled scripts and references with your file tools when it points to them.`;
   }
 
   /**

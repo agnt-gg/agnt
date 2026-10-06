@@ -11,6 +11,14 @@
  * booting models or the database.
  */
 const MAX_GIST_CHARS = 220;
+/**
+ * The resident catalog's cap. A catalog line only has to tell the model WHEN
+ * to activate; the full playbook is one call away. Measured 2026-10-07 on a
+ * 129-skill install: first sentences run p50 156 / p90 217 chars, and capping
+ * the resident lines at 120 cut them by 23% with the trigger clause intact.
+ * On-demand gists (activate_skill search) keep the default: they are read once.
+ */
+export const CATALOG_GIST_CHARS = 120;
 // A sentence boundary before this offset is ignored — guards against "e.g."
 // style early periods truncating the gist to a useless fragment.
 const MIN_GIST_CHARS = 40;

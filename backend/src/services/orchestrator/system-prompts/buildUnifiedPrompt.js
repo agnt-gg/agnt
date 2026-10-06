@@ -64,6 +64,11 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     // blocks gated on this only describe how the CHAT WINDOW renders output,
     // which a script reading the raw text never sees.
     chatUiBlocks = true,
+    // Optional sink: every block appended to the prompt is also recorded here
+    // as { id, label, text }, in order. The context panel sizes each one from
+    // it, so "Core instructions" stops being one opaque number. Recording never
+    // changes the prompt text.
+    blocks = null,
   } = options;
 
   // Gate inputs are computed from the RESOLVED TOOL SURFACE (which
@@ -95,6 +100,11 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
   const has = gates.has;
 
   const parts = [];
+  const add = (id, label, text) => {
+    if (!text) return;
+    parts.push(text);
+    if (Array.isArray(blocks)) blocks.push({ id, label, text });
+  };
 
   if (agentOverride?.systemPrompt || agentOverride?.name) {
     // Identity first — models weight the opening of the prompt heavily, so
@@ -109,99 +119,99 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
         ? `Stay in character as ${agentName} at all times. You have the FULL AGNT platform capability surface described below — the same unified tool registry, skills system, and persistent memory as the main assistant. Use it freely in service of your role.`
         : `Stay in character as ${agentName} at all times. You have the AGNT platform capabilities described below (skills, persistent memory, and your assigned toolset). Use them in service of your role, and be plain about anything outside your toolset.`
     );
-    parts.push(identity.join('\n\n'));
+    add('identity', 'Agent identity', identity.join('\n\n'));
   } else {
-    parts.push(`You are Annie, a helpful assistant with access to AGNT's unified tool registry. Use tools to accomplish the user's request unless it is a trivial conversational task.
+    add('identity', 'Identity', `You are Annie, a helpful assistant with access to AGNT's unified tool registry. Use tools to accomplish the user's request unless it is a trivial conversational task.
 
 Every Annie chat surface is functionally the same assistant. The current page context is a soft signal: prefer tools and interpretations relevant to that page, but you may use any available tool when the user's request crosses domains.`);
   }
 
   // A clock read belongs in the append-only tool results, never in cached
   // system/history text. Keep this guidance independent of wall-clock time.
-  parts.push('When an answer depends on the current date or time, verify it using an available clock-capable tool. Do not treat dates in older conversation messages as the current date. Respect tool restrictions; if the clock cannot be verified, state that limitation rather than inventing a date.');
+  add('clock', 'Date and time rule', 'When an answer depends on the current date or time, verify it using an available clock-capable tool. Do not treat dates in older conversation messages as the current date. Respect tool restrictions; if the clock cannot be verified, state that limitation rather than inventing a date.');
 
   // Workspace path is environment context — every surface should know it
   // before reasoning about file-related tool calls.
-  if (workspaceSection) parts.push(workspaceSection);
+  add('workspace', 'Workspace context', workspaceSection);
 
   // Platform context (OS + shell + shell-specific syntax rules). Cheap to
   // include unconditionally: it's a few hundred bytes and prevents the LLM
   // from emitting bash-flavored commands on Windows (and vice-versa). Without
   // this, the LLM passes multi-line strings to cmd.exe, gets empty stdout,
   // and loops trying alternate syntax — a documented failure mode.
-  parts.push(getPlatformContextSection());
+  add('platform', 'Execution environment', getPlatformContextSection());
 
   // Image-handling rules only matter if the LLM can actually receive or
   // produce images on this surface.
-  if (on('critical_image_handling')) parts.push(CRITICAL_IMAGE_HANDLING);
-  if (on('critical_image_generation')) parts.push(CRITICAL_IMAGE_GENERATION);
-  if (on('async_execution')) parts.push(ASYNC_EXECUTION_GUIDANCE);
-  parts.push(OFFLOADED_DATA_GUIDANCE);
-  parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
+  if (on('critical_image_handling')) add('critical_image_handling', 'Image upload handling', CRITICAL_IMAGE_HANDLING);
+  if (on('critical_image_generation')) add('critical_image_generation', 'Image generation display rules', CRITICAL_IMAGE_GENERATION);
+  if (on('async_execution')) add('async_execution', 'Async & periodic execution', ASYNC_EXECUTION_GUIDANCE);
+  add('offloaded_data', 'Offloaded data guidance', OFFLOADED_DATA_GUIDANCE);
+  add('tool_call_rules', 'Tool call rules', CRITICAL_TOOL_CALL_REQUIREMENTS);
   // Directly after the tool-call rules on purpose: those say HOW to call a
   // tool, this says how a turn that calls tools is SHAPED — text before,
   // between and after. It used to sit last, behind every formatting guide and
   // the page context, where its one example was a single tool followed by a
   // stop-and-ask. Unconditional: every surface interleaves.
-  parts.push(CRITICAL_TOOL_RESPONSE_RULES);
-  parts.push(AGNT_NATIVE_EXECUTION);
+  add('tool_turn_shape', 'Working out loud', CRITICAL_TOOL_RESPONSE_RULES);
+  add('agnt_native', 'AGNT-native execution', AGNT_NATIVE_EXECUTION);
 
   if (on('task_delegation')) {
-    parts.push(`GOALS:
+    add('task_delegation', 'Goal delegation', `GOALS:
 A goal runs large multi-step work autonomously in the background (create_and_run_goal) and reports back to this conversation when it finishes; list_goals, get_goal_details, get_goal_status and evaluate_goal track it. Do the work yourself by default. For work large enough to benefit, offer a goal, and create one only when the user agrees.`);
   }
 
   if (has('discover_tools')) {
-    parts.push(`TOOL USAGE:
+    add('tool_usage', 'Tool usage', `TOOL USAGE:
 The tools parameter lists what is loaded now; more are available. discover_tools with operation="browse" lists every category, and operation="load" makes a category's tools callable in your next response. Check there before telling the user a capability is missing, and browse first when they ask what tools exist.`);
   } else {
-    parts.push(`TOOL USAGE:
+    add('tool_usage', 'Tool usage', `TOOL USAGE:
 Tools are provided through the API tools parameter. Use exact tool names. Only use tools that appear in the tools parameter — do not claim or imply access to tools that are not listed.`);
   }
 
   const contextBlock = await buildPageContextBlock(context);
-  if (contextBlock) parts.push(contextBlock);
+  add('page', 'Page context', contextBlock);
 
-  if (skillsCatalogSection) parts.push(skillsCatalogSection);
+  add('skills', 'Skills catalog', skillsCatalogSection);
   // Saved-agent specialty highlights — rendered right after the full catalog
   // so the agent's assigned skills/tools stand out from the general surface.
-  if (agentOverride?.specialtySkillsSection) parts.push(agentOverride.specialtySkillsSection);
-  if (agentOverride?.pinnedToolsSection) parts.push(agentOverride.pinnedToolsSection);
-  if (memorySection) parts.push(memorySection);
+  add('skills_assigned', 'Assigned skills', agentOverride?.specialtySkillsSection);
+  add('pinned_tools', 'Pinned tools', agentOverride?.pinnedToolsSection);
+  add('memory', 'Memory', memorySection);
 
   // "Remember anything" recall layer — recall/list_recent/get_trace are in
   // DEFAULT_TOOLS and UNIVERSAL_TOOLS, so they're on every chat surface.
   // Gated anyway so the guidance disappears cleanly if a future channel ever
   // turns them off.
-  if (on('memory_recall')) parts.push(MEMORY_RECALL_GUIDANCE);
+  if (on('memory_recall')) add('memory_recall', 'History recall guidance', MEMORY_RECALL_GUIDANCE);
 
-  if (chatUiBlocks) parts.push(ARTIFACTS_VS_WIDGETS);
+  if (chatUiBlocks) add('artifacts_widgets', 'Artifacts vs widgets', ARTIFACTS_VS_WIDGETS);
   // Directly after ARTIFACTS_VS_WIDGETS on purpose. That block is what creates
   // the "this request becomes a file" instinct; this one says the file is not
   // the delivery. Separating them let the model conclude that writing the file
   // WAS the answer and a link was how you hand it over — which is the behaviour
   // being fixed. Unconditional: the chat renders an html block on every surface,
   // and a gate that could flicker costs more than the ~300 tokens it saves.
-  if (chatUiBlocks) parts.push(HTML_INLINE_RENDERING);
-  if (chatUiBlocks) parts.push(RESPONSE_FORMATTING);
+  if (chatUiBlocks) add('html_inline', 'Inline HTML rendering', HTML_INLINE_RENDERING);
+  if (chatUiBlocks) add('formatting', 'Response formatting', RESPONSE_FORMATTING);
   // Local file rendering applies to every surface: any tool (generation, plugin,
   // MCP, file_operations, etc.) can return an absolute path the LLM needs to
   // embed. The frontend rewrites file:/// → /api/local-file/... so <img>,
   // <video>, <iframe>, <audio> all just work. Cheap to include unconditionally.
-  if (chatUiBlocks) parts.push(LOCAL_FILE_RENDERING);
+  if (chatUiBlocks) add('local_files', 'Local file rendering', LOCAL_FILE_RENDERING);
   // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
   // execute_javascript_code / file_operations / agnt_tools — skip the block
   // when none of those are enabled, otherwise the LLM advertises tools the
   // user has disabled in the per-channel selector.
-  if (on('important_guidelines')) parts.push(IMPORTANT_GUIDELINES);
+  if (on('important_guidelines')) add('important_guidelines', 'Multi-tool workflow guidelines', IMPORTANT_GUIDELINES);
   // Chart.js only. The D3 / Three.js / HTML guides are ON-DEMAND via
   // discover_tools categories=["visualization"] — 2,670 tokens that were
   // resident on every turn for a capability used on a small minority of them.
-  if (chatUiBlocks) parts.push(CHART_CHEATSHEET);
+  if (chatUiBlocks) add('charts', 'Chart guide', CHART_CHEATSHEET);
 
-  if (on('mcp_tool_use')) parts.push(MCP_TOOL_USE_RULES);
+  if (on('mcp_tool_use')) add('mcp_tool_use', 'MCP calling convention', MCP_TOOL_USE_RULES);
 
-  if (customInstructionsSection) parts.push(customInstructionsSection);
+  add('custom', 'Custom instructions', customInstructionsSection);
 
   return parts.filter(Boolean).join('\n\n');
 }

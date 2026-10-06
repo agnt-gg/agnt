@@ -1817,6 +1817,11 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
             // open with verbose date instructions that bias the LLM away from
             // the skill if the skill block is buried at the end.
             systemPrompt = `${skillBlock}\n\n${systemPrompt}`;
+            // Itemized under Skills in the context panel; without this row the
+            // whole playbook was silently counted as "Core instructions".
+            conversationContext._promptSections?.push({
+              id: 'skills_pinned', label: activeSkill.name || 'Pinned skill', tokens: estimateTokens(skillBlock), frozen: true,
+            });
             console.log(
               `[Skill Inject] OK: prepended ${skillBlock.length}b skill block for "${activeSkill.name}" ` +
               `via ${resolutionPath} (systemPrompt now ${systemPrompt.length}b, instructionsLen=${activeSkill.instructions.length})`
@@ -2199,6 +2204,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         calibration: displayCalibration,
         systemPrompt,
         promptSections: conversationContext._promptSections || [],
+        skillsText: conversationContext._skillsPromptText || null,
         toolSchemas: finalToolSchemas,
         toolProvenance: conversationContext._toolProvenance || {},
         toolSurfaceMeta: conversationContext._toolSurfaceMeta || {},

@@ -35,13 +35,71 @@
         <span class="group-dot dot-system"></span>
         <span class="group-name">System prompt</span>
         <span class="group-count">{{ manifest.system.sections.length }} part{{ manifest.system.sections.length === 1 ? '' : 's' }}</span>
-        <span class="group-tokens">{{ formatNumber(manifest.system.total) }}</span>
+        <span class="group-tokens">{{ formatNumber(buckets.system) }}</span>
       </div>
       <div v-if="open.system" class="group-body">
         <div v-for="s in manifest.system.sections" :key="s.id" class="item-row">
           <span class="item-name">{{ s.label }}</span>
           <span v-if="s.frozen" class="why why-frozen">frozen</span>
           <span class="item-tokens">{{ formatNumber(s.tokens) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SKILLS: everything skill-shaped in the request, from either bucket.
+         Catalog and pinned skills are carved out of the system prompt,
+         activated playbooks out of the messages, so the four headers add up
+         to the request (see contextPartition.js). -->
+    <div v-if="skills" class="manifest-group">
+      <div class="group-head" @click="toggle('skills')">
+        <span class="group-arrow">{{ open.skills ? '&#9662;' : '&#9656;' }}</span>
+        <span class="group-dot dot-skills"></span>
+        <span class="group-name">Skills</span>
+        <span class="group-count">{{ skillsCountLabel }}</span>
+        <span class="group-tokens">{{ formatNumber(buckets.skills) }}</span>
+      </div>
+      <div v-if="open.skills" class="group-body">
+        <div v-if="skills.pinned" class="item-row">
+          <span class="item-name">{{ skills.pinned.name }}</span>
+          <span class="why why-discovered">pinned</span>
+          <span class="item-tokens">{{ formatNumber(skills.pinned.tokens) }}</span>
+        </div>
+        <div v-for="s in skills.loaded" :key="'loaded-' + s.name" class="item-row">
+          <span class="item-name">{{ s.name }}</span>
+          <span class="why why-group">{{ s.activations > 1 ? `loaded ×${s.activations}` : 'loaded' }}</span>
+          <span class="item-tokens">{{ formatNumber(s.tokens) }}</span>
+        </div>
+        <div v-if="skills.assigned && skills.assigned.tokens > 0" class="item-row">
+          <span class="item-name">Agent's assigned skills</span>
+          <span class="why why-default">assigned</span>
+          <span class="item-tokens">{{ formatNumber(skills.assigned.tokens) }}</span>
+        </div>
+        <template v-if="catalog && catalog.tokens > 0">
+          <div class="item-row sub-head" @click="toggle('catalog')">
+            <span class="item-name">{{ open.catalog ? '&#9662;' : '&#9656;' }} Catalog &middot; {{ catalog.describedCount }} with gist</span>
+            <span class="why why-frozen">frozen</span>
+            <span class="item-tokens">{{ formatNumber(catalog.tokens) }}</span>
+          </div>
+          <template v-if="open.catalog">
+            <div v-for="s in visibleCatalog" :key="'cat-' + s.name" class="item-row indent">
+              <span class="item-name">{{ s.name }}</span>
+              <span class="item-tokens">{{ formatNumber(s.tokens) }}</span>
+            </div>
+            <div v-if="hiddenCatalogCount > 0" class="show-more" @click="showAllCatalog = true">
+              &#65291; {{ hiddenCatalogCount }} more
+            </div>
+            <div v-if="catalog.namedOnlyCount > 0" class="item-row indent">
+              <span class="item-name muted">{{ catalog.namedOnlyCount }} more by name only</span>
+              <span class="item-tokens">{{ formatNumber(catalog.namedOnlyTokens) }}</span>
+            </div>
+            <div v-if="catalog.rulesTokens > 0" class="item-row indent">
+              <span class="item-name muted">Activation rules</span>
+              <span class="item-tokens">{{ formatNumber(catalog.rulesTokens) }}</span>
+            </div>
+          </template>
+        </template>
+        <div v-if="buckets.skills === 0" class="item-row">
+          <span class="item-name muted">No skills in this request</span>
         </div>
       </div>
     </div>
@@ -82,7 +140,7 @@
         <span class="group-dot dot-messages"></span>
         <span class="group-name">Messages</span>
         <span class="group-count">{{ manifest.messages.count }}</span>
-        <span class="group-tokens">{{ formatNumber(manifest.messages.total) }}</span>
+        <span class="group-tokens">{{ formatNumber(buckets.messages) }}</span>
       </div>
       <div v-if="open.messages" class="group-body">
         <div class="item-row">
@@ -125,8 +183,10 @@
 
 <script>
 import { ref, reactive, computed } from 'vue';
+import { partitionContext } from '@/services/contextPartition.js';
 
 const TOOL_PREVIEW = 8;
+const CATALOG_PREVIEW = 8;
 
 export default {
   name: 'ContextManifest',
@@ -137,8 +197,31 @@ export default {
     },
   },
   setup(props) {
-    const open = reactive({ system: true, tools: true, messages: false, hidden: false });
+    const open = reactive({ system: true, skills: true, catalog: false, tools: true, messages: false, hidden: false });
     const showAllTools = ref(false);
+    const showAllCatalog = ref(false);
+
+    // Header numbers: System and Messages without the skills carved out of them.
+    const buckets = computed(() => partitionContext(null, props.manifest));
+    // Null on payloads from a backend that predates the Skills group.
+    const skills = computed(() => props.manifest?.skills || null);
+    const catalog = computed(() => skills.value?.catalog || null);
+    const skillsCountLabel = computed(() => {
+      const s = skills.value;
+      if (!s) return '';
+      const loaded = (s.loaded || []).length + (s.pinned ? 1 : 0);
+      const listed = (s.catalog?.describedCount || 0) + (s.catalog?.namedOnlyCount || 0);
+      if (loaded && listed) return `${loaded} loaded · ${listed} listed`;
+      if (loaded) return `${loaded} loaded`;
+      return listed ? `${listed} listed` : '';
+    });
+    const visibleCatalog = computed(() => {
+      const items = catalog.value?.items || [];
+      return showAllCatalog.value ? items : items.slice(0, CATALOG_PREVIEW);
+    });
+    const hiddenCatalogCount = computed(() =>
+      showAllCatalog.value ? 0 : Math.max(0, (catalog.value?.items || []).length - CATALOG_PREVIEW)
+    );
     const sortByCost = ref(false);
 
     const toggle = (key) => { open[key] = !open[key]; };
@@ -207,6 +290,7 @@ export default {
 
     return {
       open, toggle, cache, changedLabel, modeLabel, modeClass,
+      buckets, skills, catalog, skillsCountLabel, visibleCatalog, hiddenCatalogCount, showAllCatalog,
       visibleTools, hiddenToolCount, showAllTools, sortByCost,
       notInContextTotal, whyClass, whyLabel, formatNumber, TOOL_PREVIEW,
     };
@@ -317,6 +401,9 @@ export default {
 .dot-system { background: var(--cyan, var(--color-blue)); }
 .dot-tools { background: var(--purple, var(--color-indigo)); }
 .dot-messages { background: var(--green, var(--color-green)); }
+.dot-skills { background: var(--color-yellow); }
+.item-row.sub-head { cursor: pointer; }
+.item-row.indent { padding-left: 28px; }
 .dot-hidden { background: var(--color-duller-navy); }
 
 .group-name {

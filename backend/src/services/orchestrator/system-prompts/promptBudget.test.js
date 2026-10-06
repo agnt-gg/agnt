@@ -250,8 +250,8 @@ describe('every system-prompt section is frozen for the whole conversation', () 
     }
   });
 
-  it('the workspace section is reported as frozen to the panel', () => {
-    const line = CHAT_CONFIGS.split('\n').find((l) => l.includes("id: 'workspace'"));
+  it('every assembled prompt block (workspace included) is reported as frozen to the panel', () => {
+    const line = CHAT_CONFIGS.split('\n').find((l) => l.includes('context._promptSections = blocks.map('));
     expect(line).toBeTruthy();
     expect(line).toContain('frozen: true');
   });

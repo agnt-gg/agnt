@@ -1,5 +1,6 @@
 import { getVirtualAgent } from './agentRuntime.js';
 import { isDefaultSkill } from '../../utils/skillTrust.js';
+import { skillCatalogGist } from '../../utils/skillCatalogGist.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
@@ -57,7 +58,7 @@ async function loadSkillsCatalogSection(context) {
     const catalogEntries = await collectCatalogEntries(context.userId);
 
     if (catalogEntries.length > 0) {
-      const featured = await loadFeaturedSkillKeys(context.userId);
+      const featured = await loadFeaturedSkillKeys(context.userId, catalogEntries);
       skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries, { featured }) + '\n\n' + buildSkillActivationInstructions() + '\n';
     }
   } catch (e) {
@@ -70,10 +71,10 @@ async function loadSkillsCatalogSection(context) {
 
 /**
  * A skill keeps its gist line when it is part of this user's working set:
- * activated FEATURED_MIN_USES times in the window, or at all very recently.
+ * among the most-activated skills covering FEATURED_COVERAGE of activations
+ * in the window, or used at all very recently (see selectFeaturedSkills).
  */
 const FEATURED_SKILL_WINDOW_DAYS = 90;
-const FEATURED_MIN_USES = 3;
 const FEATURED_RECENT_DAYS = 7;
 /**
  * Below this many featured skills there is no usage signal worth trusting
@@ -84,21 +85,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Normalized names of the skills this user actually works with, or null for
- * "feature everything". Measured 2026-10-06: of 313 installed skills, 91 were
- * activated 3+ times in 90 days. The rest are listed by name only and are
- * findable with activate_skill search.
+ * "feature everything". The rest are listed by name only and are findable
+ * with activate_skill search.
  */
-async function loadFeaturedSkillKeys(userId) {
+async function loadFeaturedSkillKeys(userId, catalogEntries = []) {
   if (!userId) return null;
   try {
     const SkillModel = (await import('../../models/SkillModel.js')).default;
-    const { normalizeSkillKey } = await import('../SkillService.js');
+    const { normalizeSkillKey, selectFeaturedSkills } = await import('../SkillService.js');
     const now = Date.now();
     const stats = await SkillModel.activationStats(userId, new Date(now - FEATURED_SKILL_WINDOW_DAYS * DAY_MS).toISOString());
-    const recentCutoff = new Date(now - FEATURED_RECENT_DAYS * DAY_MS).toISOString();
-    const keys = new Set(stats
-      .filter((s) => s.count >= FEATURED_MIN_USES || String(s.last) >= recentCutoff)
-      .map((s) => normalizeSkillKey(s.name)));
+    const keys = selectFeaturedSkills(stats, {
+      installed: catalogEntries.map((s) => normalizeSkillKey(s.name)),
+      recentSince: new Date(now - FEATURED_RECENT_DAYS * DAY_MS).toISOString(),
+    });
     return keys.size >= MIN_FEATURED_SKILLS ? keys : null;
   } catch (e) {
     console.warn('[chatConfigs] Skill usage unavailable, featuring every skill:', e.message);
@@ -261,7 +261,10 @@ async function buildSpecialtySkillsSection(assignedSkills) {
     }
 
     if (entries.length === 0) return '';
-    const lines = entries.map((e) => `- ${e.name}: ${e.description || ''}`).join('\n');
+    // A gist, like the catalog: these lines say WHEN to activate, and the
+    // playbook is one activate_skill call away. Full descriptions ran 600+
+    // chars each, re-sent on every request of an agent chat.
+    const lines = entries.map((e) => `- ${e.name}: ${skillCatalogGist(e.description)}`).join('\n');
     return `## Your Specialty Skills\nThese skills are your assigned domain expertise. Activate them proactively with the activate_skill tool whenever a request touches their domain — do not recreate their contents from memory:\n${lines}`;
   } catch (e) {
     console.warn('[chatConfigs] Failed to build specialty skills section:', e.message);
@@ -920,7 +923,11 @@ async function buildPersonaOnlyPrompt(context, agentOverride, promptOptions) {
   ];
   const sections = [];
   if (promptOptions.memory) sections.push(['memory', 'Memory', await loadFrozenMemorySection(context, context.agentId)]);
-  if (promptOptions.skills) sections.push(['skills', 'Skills catalog', await loadSkillsCatalogSection(context)]);
+  if (promptOptions.skills) {
+    const catalog = await loadSkillsCatalogSection(context);
+    sections.push(['skills', 'Skills catalog', catalog]);
+    context._skillsPromptText = { catalog: catalog || '', assigned: '' };
+  }
   if (promptOptions.customInstructions) sections.push(['custom', 'Custom instructions', await loadCustomInstructionsSection(context)]);
   if (promptOptions.workspace) sections.push(['workspace', 'Workspace context', await loadFrozenWorkspaceSection(context)]);
   context._promptSections = [
@@ -953,6 +960,8 @@ const unifiedConfig = {
   async buildSystemPrompt(context) {
     const promptOptions = context.runtime?.prompt || null;
     const agentOverride = await loadAgentOverride(context);
+    // Rebuilt below; never let a turn report the previous turn's skills.
+    context._skillsPromptText = null;
     if (promptOptions?.platform === 'none') return buildPersonaOnlyPrompt(context, agentOverride, promptOptions);
     // Each section is skipped at the LOOKUP, not just left out of the text:
     // memory, skills and custom instructions are DB reads per call.
@@ -962,18 +971,12 @@ const unifiedConfig = {
     const workspaceSection = promptOptions?.workspace === false ? '' : await loadFrozenWorkspaceSection(context);
     const asyncToolsEnabled = await loadAsyncToolsEnabled(context);
 
-    // Size each dynamic section BEFORE assembly. These are the parts that
-    // vary per user/conversation; the panel subtracts them from the total to
-    // show how much is the hand-written prompt itself.
-    context._promptSections = [
-      { id: 'memory', label: 'Memory', tokens: estimateTokens(memorySection || ''), frozen: true },
-      { id: 'skills', label: 'Skills catalog', tokens: estimateTokens(skillsCatalogSection || ''), frozen: true },
-      { id: 'custom', label: 'Custom instructions', tokens: estimateTokens(customInstructionsSection || ''), frozen: true },
-      { id: 'workspace', label: 'Workspace context', tokens: estimateTokens(workspaceSection || ''), frozen: true },
-      { id: 'agent', label: 'Agent override', tokens: estimateTokens(agentOverride || ''), frozen: true },
-    ];
-
+    // Every block the assembler appends is recorded and sized, so the context
+    // panel itemizes the whole prompt instead of five dynamic rows and one
+    // opaque "Core instructions" residue. All of them are conversation-stable.
+    const blocks = [];
     const prompt = await buildUnifiedSystemPrompt(context, {
+      blocks,
       skillsCatalogSection,
       memorySection,
       customInstructionsSection,
@@ -985,6 +988,13 @@ const unifiedConfig = {
       // window renders: artifacts, inline HTML, file embeds, chart guide.
       chatUiBlocks: promptOptions?.platform !== 'lean',
     });
+    context._promptSections = blocks.map((b) => ({ id: b.id, label: b.label, tokens: estimateTokens(b.text), frozen: true }));
+    // The exact skill text sent, so the manifest can list skills one by one
+    // (see skillsInventory.js) rather than as one row of the system prompt.
+    context._skillsPromptText = {
+      catalog: skillsCatalogSection || '',
+      assigned: agentOverride?.specialtySkillsSection || '',
+    };
 
     /**
      * Voice turns get one extra section, appended AFTER the assembled prompt.

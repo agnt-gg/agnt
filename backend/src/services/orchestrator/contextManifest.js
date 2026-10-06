@@ -1,6 +1,10 @@
 import crypto from 'crypto';
-import { estimateToolTokens } from '../../utils/contextManager.js';
+import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { priceItems } from '../../utils/contextEconomics.js';
+import { describeSkillCatalog, findLoadedSkills } from './skillsInventory.js';
+
+/** System sections that are skills. They are reported under `skills`, not `system`. */
+export const SKILL_SECTION_IDS = new Set(['skills', 'skills_assigned', 'skills_pinned']);
 
 /**
  * The itemized inventory behind the chat's System Monitoring panel.
@@ -58,11 +62,13 @@ export const TOOL_REASONS = {
  * @param {object}   [input.capResult]     from capToolsToBudget when the surface was capped
  * @param {object}   [input.prior]         previous turn's fingerprints, for cache-prefix stability
  * @param {number}   [input.calibration]   estimate->real factor for the display boundary
+ * @param {object}   [input.skillsText]    { catalog, assigned }: the exact skill text in the system prompt
  * @returns {{manifest: object, fingerprints: object}}
  */
 export function buildContextManifest({
   systemPrompt = '',
   promptSections = [],
+  skillsText = null,
   toolSchemas = [],
   toolProvenance = {},
   toolSurfaceMeta = {},
@@ -95,7 +101,16 @@ export function buildContextManifest({
     dynamic.push({ id: 'static', label: 'Core instructions', tokens: staticTokens, frozen: true });
   }
   dynamic.sort((a, b) => b.tokens - a.tokens);
-  const pricedSections = priceItems(dynamic, rate);
+  // Skills get their own group; the residue above was computed with them in,
+  // so system.total stays the whole system bucket.
+  const pricedSections = priceItems(dynamic.filter((s) => !SKILL_SECTION_IDS.has(s.id)), rate);
+  const skills = buildSkillsGroup({
+    sections: dynamic.filter((s) => SKILL_SECTION_IDS.has(s.id)),
+    skillsText,
+    messages: contextResult.messages,
+    messagesTotal: contextResult.messagesTokens || 0,
+    rate,
+  });
 
   // ---- Tools: itemized, in the exact order they are sent ----
   const tools = toolSchemas.map((schema) => {
@@ -141,9 +156,12 @@ export function buildContextManifest({
     servedProvider: servedProvider ?? null,
     servedModel: servedModel ?? null,
     system: {
+      // The whole system bucket, skills included, so it matches context_status.
+      // `skills.resident` is the part of it the Skills group shows instead.
       total: systemTokens,
       sections: pricedSections,
     },
+    skills,
     tools: {
       total: contextResult.toolTokens || 0,
       count: tools.length,
@@ -205,4 +223,47 @@ export function buildContextManifest({
   }
 
   return { manifest, fingerprints };
+}
+
+/**
+ * The Skills group: every skill this request carries, from either bucket.
+ *
+ *   resident = catalog + assigned + pinned (/skill) skills, inside system.total
+ *   loaded   = activate_skill playbooks, inside messages.total
+ *   total    = resident + loaded
+ *
+ * The section token counts are authoritative for the resident part (the same
+ * numbers the cache fingerprints use); the parsed per-skill lines only
+ * itemize them.
+ */
+function buildSkillsGroup({ sections, skillsText, messages, messagesTotal, rate }) {
+  const sectionTokens = (id) => sections.find((s) => s.id === id)?.tokens || 0;
+  const catalogTokens = sectionTokens('skills');
+  const assignedTokens = sectionTokens('skills_assigned');
+  const pinned = sections.find((s) => s.id === 'skills_pinned');
+  const pinnedTokens = pinned?.tokens || 0;
+  const parsed = catalogTokens > 0 ? describeSkillCatalog(skillsText?.catalog, estimateTokens) : null;
+
+  const loadedItems = findLoadedSkills(messages, estimateTokens).sort((a, b) => b.tokens - a.tokens);
+  // Per-result estimates can overshoot the bucket they live in by rounding;
+  // the group may never claim more of the messages than there is.
+  const loadedTokens = Math.min(messagesTotal, loadedItems.reduce((sum, s) => sum + s.tokens, 0));
+  const resident = catalogTokens + assignedTokens + pinnedTokens;
+
+  return {
+    total: resident + loadedTokens,
+    resident,
+    loadedTokens,
+    catalog: {
+      tokens: catalogTokens,
+      describedCount: parsed?.described.length || 0,
+      namedOnlyCount: parsed?.namedOnly.length || 0,
+      namedOnlyTokens: parsed?.namedOnlyTokens || 0,
+      rulesTokens: parsed?.rulesTokens || 0,
+      items: priceItems((parsed?.described || []).slice().sort((a, b) => b.tokens - a.tokens), rate),
+    },
+    assigned: { tokens: assignedTokens },
+    pinned: pinned ? priceItems([{ name: pinned.label, tokens: pinnedTokens }], rate)[0] : null,
+    loaded: priceItems(loadedItems, rate),
+  };
 }

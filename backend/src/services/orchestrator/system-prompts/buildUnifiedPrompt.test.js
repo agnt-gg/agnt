@@ -7,6 +7,24 @@ const baseFrozen = {
   customInstructionsSection: '## User\'s Custom System Instructions\nAlways respond in haiku.',
 };
 
+describe('buildUnifiedSystemPrompt — block ledger', () => {
+  it('the recorded blocks are exactly the prompt, in order, nothing unaccounted for', async () => {
+    const ctx = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
+    const blocks = [];
+    const prompt = await buildUnifiedSystemPrompt(ctx, { ...baseFrozen, blocks });
+    expect(blocks.map((b) => b.text).join('\n\n')).toBe(prompt);
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(blocks.length);
+    expect(blocks.find((b) => b.id === 'skills').text).toBe(baseFrozen.skillsCatalogSection);
+  });
+
+  it('recording blocks never changes the prompt', async () => {
+    const ctx = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
+    const plain = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+    const recorded = await buildUnifiedSystemPrompt(ctx, { ...baseFrozen, blocks: [] });
+    expect(recorded).toBe(plain);
+  });
+});
+
 describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
   it('produces byte-identical output across re-invocations with the same context', async () => {
     const ctx = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };

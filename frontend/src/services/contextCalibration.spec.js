@@ -166,6 +166,29 @@ describe('calibrateManifest', () => {
     expect(out.messages.reduction).toBe(Math.round(8_000 * CAL));
   });
 
+  it('scales the Skills group with the same factor, counts untouched', () => {
+    const raw = {
+      ...rawManifest(),
+      skills: {
+        total: 1_000, resident: 600, loadedTokens: 400,
+        catalog: { tokens: 500, describedCount: 3, namedOnlyCount: 9, namedOnlyTokens: 100, rulesTokens: 50, items: [{ name: 'a', tokens: 200, cost: 0.0003 }] },
+        assigned: { tokens: 0 },
+        pinned: { name: 'p', tokens: 100, cost: 0.00015 },
+        loaded: [{ name: 'l', tokens: 400, activations: 2, cost: 0.0006 }],
+      },
+    };
+    const out = calibrateManifest(raw);
+    expect(out.skills.total).toBe(Math.round(1_000 * CAL));
+    expect(out.skills.resident).toBe(Math.round(600 * CAL));
+    expect(out.skills.loadedTokens).toBe(Math.round(400 * CAL));
+    expect(out.skills.catalog.tokens).toBe(Math.round(500 * CAL));
+    expect(out.skills.catalog.items[0].tokens).toBe(Math.round(200 * CAL));
+    expect(out.skills.catalog.describedCount).toBe(3);
+    expect(out.skills.pinned.tokens).toBe(Math.round(100 * CAL));
+    expect(out.skills.loaded[0]).toMatchObject({ tokens: Math.round(400 * CAL), activations: 2 });
+    expect(calibrateManifest(out)).toEqual(out);
+  });
+
   it('scales money without rounding it to zero', () => {
     const out = calibrateManifest(rawManifest());
     expect(out.economics.floorCost).toBeCloseTo(out.economics.floorTokens * 1.5e-6, 12);

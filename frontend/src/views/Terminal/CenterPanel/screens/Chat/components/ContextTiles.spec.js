@@ -392,7 +392,7 @@ describe('ContextTiles — drawer', () => {
     const w = make();
     await tileByLabel(w, 'Context used').trigger('click');
     const labels = w.findAll('.legend-label').map((l) => l.text());
-    expect(labels).toEqual(['System', 'Tools', 'Messages', 'Output reserve']);
+    expect(labels).toEqual(['System', 'Tools', 'Skills', 'Messages', 'Output reserve']);
   });
 
   it('closes a drawer whose tile stops existing', async () => {

@@ -154,3 +154,61 @@ describe('ContextManifest', () => {
     ).toBe('custom');
   });
 });
+
+
+describe('ContextManifest: Skills group', () => {
+  const withSkills = () => manifest({
+    system: {
+      total: 3000,
+      sections: [
+        { id: 'memory', label: 'Memory', tokens: 1500, frozen: true },
+        { id: 'static', label: 'Core instructions', tokens: 600, frozen: true },
+      ],
+    },
+    messages: { total: 2000, count: 6, managed: false, reduction: 0 },
+    skills: {
+      total: 1700, resident: 900, loadedTokens: 800,
+      catalog: {
+        tokens: 800, describedCount: 2, namedOnlyCount: 40, namedOnlyTokens: 300, rulesTokens: 150,
+        items: [{ name: 'frontend-design', tokens: 200 }, { name: 'flag-issue', tokens: 150 }],
+      },
+      assigned: { tokens: 0 },
+      pinned: { name: 'hyperframes', tokens: 100 },
+      loaded: [{ name: 'code-review', tokens: 800, activations: 2 }],
+    },
+  });
+
+  it('is its own group between System prompt and Tools', () => {
+    const w = mount(ContextManifest, { props: { manifest: withSkills() } });
+    const names = w.findAll('.group-name').map((n) => n.text());
+    expect(names.slice(0, 4)).toEqual(['System prompt', 'Skills', 'Tools', 'Messages']);
+  });
+
+  it('headers partition the request: skills come out of System and Messages', () => {
+    const w = mount(ContextManifest, { props: { manifest: withSkills() } });
+    const tokens = w.findAll('.group-head').map((h) => [h.find('.group-name').text(), h.find('.group-tokens').text()]);
+    const byName = Object.fromEntries(tokens);
+    expect(byName['System prompt']).toBe('2.1k'); // 3000 - 900 resident
+    expect(byName.Skills).toBe('1.7k');
+    expect(byName.Messages).toBe('1.2k');        // 2000 - 800 loaded
+  });
+
+  it('lists loaded and pinned skills by name, catalog on demand', async () => {
+    const w = mount(ContextManifest, { props: { manifest: withSkills() } });
+    expect(w.text()).toContain('code-review');
+    expect(w.text()).toContain('loaded ×2');
+    expect(w.text()).toContain('hyperframes');
+    expect(w.text()).toContain('Catalog · 2 with gist');
+    expect(w.text()).not.toContain('frontend-design');
+    await w.find('.item-row.sub-head').trigger('click');
+    expect(w.text()).toContain('frontend-design');
+    expect(w.text()).toContain('40 more by name only');
+    expect(w.text()).toContain('Activation rules');
+  });
+
+  it('an older backend without a skills group keeps the old layout', () => {
+    const w = mount(ContextManifest, { props: { manifest: manifest() } });
+    expect(w.findAll('.group-name').map((n) => n.text())).not.toContain('Skills');
+    expect(w.text()).toContain('Skills catalog');
+  });
+});

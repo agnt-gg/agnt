@@ -41,7 +41,9 @@ describe('system prompt itemization', () => {
     const { manifest } = buildContextManifest(base());
     const ids = manifest.system.sections.map((s) => s.id);
     expect(ids).toContain('memory');
-    expect(ids).toContain('skills');
+    // Skills are their own group (manifest.skills), not a System row.
+    expect(ids).not.toContain('skills');
+    expect(manifest.skills.catalog.tokens).toBe(300);
     expect(ids).toContain('static');
     // Zero-token sections are omitted rather than shown as noise.
     expect(ids).not.toContain('workspace');

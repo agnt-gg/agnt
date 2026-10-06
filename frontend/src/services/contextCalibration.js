@@ -174,6 +174,30 @@ export function calibrateManifest(manifest) {
     };
   }
 
+  if (manifest.skills && typeof manifest.skills === 'object') {
+    const s = manifest.skills;
+    const scaleOne = (item) => (item && typeof item === 'object' ? calibrateItems([item], factor, rate)[0] : item);
+    out.skills = {
+      ...s,
+      total: scaleTokens(s.total, factor),
+      resident: scaleTokens(s.resident, factor),
+      loadedTokens: scaleTokens(s.loadedTokens, factor),
+      catalog: s.catalog && typeof s.catalog === 'object'
+        ? {
+          ...s.catalog,
+          tokens: scaleTokens(s.catalog.tokens, factor),
+          namedOnlyTokens: scaleTokens(s.catalog.namedOnlyTokens, factor),
+          rulesTokens: scaleTokens(s.catalog.rulesTokens, factor),
+          items: calibrateItems(s.catalog.items, factor, rate),
+          // describedCount / namedOnlyCount are counts of skills, not tokens.
+        }
+        : s.catalog,
+      assigned: scaleOne(s.assigned),
+      pinned: scaleOne(s.pinned),
+      loaded: calibrateItems(s.loaded, factor, rate),
+    };
+  }
+
   if (manifest.messages && typeof manifest.messages === 'object') {
     out.messages = {
       ...manifest.messages,
