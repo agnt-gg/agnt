@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  ageToolResults, agedStub, agedDataId, KEEP_RECENT, HIGH_WATER_TOKENS, MIN_AGE_CHARS,
+  ageToolResults, agedStub, agedDataId, agingPaysBack, KEEP_RECENT, HIGH_WATER_TOKENS, MIN_AGE_CHARS, PAYBACK_RATIO,
 } from './toolResultAging.js';
 import { USER_AFTER_TOOL_RESULT_LABEL } from './turnContinuity.js';
 import { TOOL_LOAD_FIELD } from './deferredTools.js';
@@ -19,6 +19,9 @@ function ledger(count, { name = 'web_scrape', size = big } = {}) {
   return messages;
 }
 const tokensOf = (messages) => JSON.stringify(messages).length / 4;
+// What a batch DOES is tested on a request that is cold anyway (a batch is
+// free there); WHEN a warm-cache batch is allowed has its own describe below.
+const COLD = { cacheCold: true };
 
 describe('ageToolResults', () => {
   it('does nothing below the high-water mark', () => {
@@ -32,7 +35,7 @@ describe('ageToolResults', () => {
     const old = Math.ceil(HIGH_WATER_TOKENS / 5000) + 1;
     const messages = ledger(KEEP_RECENT + old);
     const context = {};
-    const out = ageToolResults(messages, context);
+    const out = ageToolResults(messages, context, COLD);
     expect(context._agedToolCallIds).toHaveLength(old);
     const results = out.filter((m) => m.role === 'tool');
     expect(results.slice(0, old).every((m) => m.content === agedStub(m.tool_call_id, 'web_scrape'))).toBe(true);
@@ -44,7 +47,7 @@ describe('ageToolResults', () => {
   it('never loses a result: the full text is stored where query_data reads it', () => {
     const messages = ledger(KEEP_RECENT + 10);
     const context = {};
-    ageToolResults(messages, context);
+    ageToolResults(messages, context, COLD);
     expect(context.preservedContent[agedDataId('c0')]).toBe(big(0));
     expect(context.dataRefSummaries[agedDataId('c0')].size).toBe(big(0).length);
   });
@@ -77,7 +80,7 @@ describe('ageToolResults', () => {
   it('replays the same stubs from a fresh context restored with the watermark (restart, next turn)', () => {
     const messages = ledger(KEEP_RECENT + 10);
     const live = {};
-    const first = ageToolResults(messages, live);
+    const first = ageToolResults(messages, live, COLD);
     const restored = { _agedToolCallIds: [...live._agedToolCallIds] };
     expect(ageToolResults(messages, restored)).toEqual(first);
     expect(restored.preservedContent[agedDataId('c0')]).toBe(big(0)); // repopulated from the ledger
@@ -85,7 +88,7 @@ describe('ageToolResults', () => {
 
   it('stubs an aged id the same way whatever copy of the result this request carries', () => {
     const context = {};
-    ageToolResults(ledger(KEEP_RECENT + 10), context);
+    ageToolResults(ledger(KEEP_RECENT + 10), context, COLD);
     const shortCopy = ledger(KEEP_RECENT + 10, { size: (i) => `r${i}: cut by the client` });
     const out = ageToolResults(shortCopy, context);
     expect(out.find((m) => m.tool_call_id === 'c0').content).toBe(agedStub('c0', 'web_scrape'));
@@ -99,7 +102,7 @@ describe('ageToolResults', () => {
     messages[7] = { ...messages[7], content: `${big(2)}\n${USER_AFTER_TOOL_RESULT_LABEL}\nstop` };        // c2: steer
     messages[9] = { ...messages[9], [TOOL_LOAD_FIELD]: { names: ['x'], schemas: [] } };                   // c3: load
     const context = {};
-    const out = ageToolResults(messages, context);
+    const out = ageToolResults(messages, context, COLD);
     expect(context._agedToolCallIds).toContain('c4');
     for (const id of ['c0', 'c1', 'c2', 'c3']) {
       expect(context._agedToolCallIds).not.toContain(id);
@@ -114,9 +117,49 @@ describe('ageToolResults', () => {
       messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: `t${i}`, name: 'web_scrape', input: { i } }] });
       messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: big(i) }] });
     }
-    const out = ageToolResults(messages, {});
+    const out = ageToolResults(messages, {}, COLD);
     expect(out[2].content[0].content).toBe(agedStub('t0', 'web_scrape'));
     const wire = new AnthropicAdapter({ messages: { create: async () => ({}) } }, 'claude-opus-5-5')._normalizeHistoryMessages(structuredClone(out));
     expect(wire.filter((m) => m.role === 'assistant')).toHaveLength(KEEP_RECENT + 10); // every pair survives
+  });
+});
+
+describe('when a batch may run: free, or paying back its cache re-write', () => {
+  const old = Math.ceil(HIGH_WATER_TOKENS / 5000) + 1; // just past the mark
+
+  it('a warm cache does NOT age a batch that would re-write more than twice what it removes', () => {
+    // 9 old results behind 12 recent ones: stubbing removes ~9 x 5k tokens
+    // but re-writes ~21 x 5k from the first stub on. Measured, such batches lost money.
+    const messages = ledger(KEEP_RECENT + old);
+    const context = {};
+    expect(ageToolResults(messages, context)).toBe(messages);
+    expect(context._agedToolCallIds).toBeUndefined();
+  });
+
+  it('the same batch runs when the request is cold anyway', () => {
+    const context = {};
+    ageToolResults(ledger(KEEP_RECENT + old), context, COLD);
+    expect(context._agedToolCallIds).toHaveLength(old);
+  });
+
+  it('a warm batch runs once what it removes reaches PAYBACK_RATIO of what it re-writes', () => {
+    // old >= KEEP_RECENT: the removed share of the tail reaches one half.
+    const context = {};
+    ageToolResults(ledger(KEEP_RECENT + KEEP_RECENT + 2), context);
+    expect(context._agedToolCallIds?.length).toBe(KEEP_RECENT + 2);
+  });
+
+  it('agingPaysBack compares removed characters with the re-written tail', () => {
+    // Only messages from firstAt on are re-written: 1000 chars from index 1, 2000 from index 0.
+    const messages = [{ role: 'user', content: 'a'.repeat(1000) }, { role: 'user', content: 'b'.repeat(1000) }];
+    expect(agingPaysBack(messages, 1, Math.ceil(PAYBACK_RATIO * 1000))).toBe(true);
+    expect(agingPaysBack(messages, 0, Math.ceil(PAYBACK_RATIO * 1000))).toBe(false);
+  });
+
+  it('once aged, ids stay stubbed on warm requests too (the watermark never waits on the gate)', () => {
+    const context = {};
+    const first = ageToolResults(ledger(KEEP_RECENT + old), context, COLD);
+    const warm = ageToolResults(ledger(KEEP_RECENT + old), context);
+    expect(warm).toEqual(first);
   });
 });

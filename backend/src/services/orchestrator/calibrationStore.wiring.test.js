@@ -25,7 +25,9 @@ describe('calibration is wired into the request path', () => {
 
   it('seeds a new conversation before the first manageContext call', () => {
     const seedAt = SRC.indexOf('getCalibration(normalizedProvider, model)');
-    const firstManage = SRC.indexOf('const contextResult = manageContext(');
+    // The turn's first manageContext call (wrapped so eviction cannot drop a
+    // /skill or page block, OrchestratorService manageKeepingTurnContext).
+    const firstManage = SRC.indexOf('const contextResult = manageKeepingTurnContext(manageContext(');
     expect(seedAt).toBeGreaterThan(-1);
     expect(firstManage).toBeGreaterThan(-1);
     // Seeding after the budget was computed would leave turn 1 uncalibrated —

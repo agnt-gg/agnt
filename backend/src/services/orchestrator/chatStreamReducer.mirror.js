@@ -462,6 +462,46 @@ function mergeAssistantTurn(target, next) {
 }
 
 /**
+ * Blocks and marker lines the SERVER puts in front of a user message for the
+ * model: the /skill playbook and page context (backend turnContext.js), the
+ * voice / text-message turn markers (turnRegister.js) and a mid-run steer's
+ * header (turnContinuity.js). They are in the provider transcript on purpose
+ * (it is replayed byte-for-byte so the prompt cache holds) but the user never
+ * typed them, so the read seam shows only the user's own words.
+ * A backend test pins these strings to the server's constants.
+ */
+export const SERVER_USER_BLOCKS = Object.freeze([
+  ['[ACTIVE SKILL]', '[/ACTIVE SKILL]'],
+  ['[PAGE CONTEXT]', '[/PAGE CONTEXT]'],
+]);
+export const SERVER_USER_MARKERS = Object.freeze(['[VOICE TURN]', '[TEXT MESSAGE TURN]']);
+export const SERVER_STEER_HEADER = '[USER STEER — mid-run instruction from the user, not tool output]';
+
+/** The user's own words of a stored user message, server prefixes removed. */
+export function stripServerUserPrefixes(text) {
+  if (typeof text !== 'string') return text;
+  let rest = text;
+  for (;;) {
+    const block = SERVER_USER_BLOCKS.find(([open]) => rest.startsWith(`${open}\n`));
+    if (block) {
+      const [, close] = block;
+      const end = rest.indexOf(`\n${close}\n\n`);
+      if (end === -1) return text; // not the server's shape: leave the words alone
+      rest = rest.slice(end + close.length + 3);
+      continue;
+    }
+    const marker = SERVER_USER_MARKERS.find((m) => rest.startsWith(`${m}\n`));
+    if (marker) {
+      rest = rest.slice(marker.length + 1);
+      if (rest.startsWith('\n')) rest = rest.slice(1);
+      continue;
+    }
+    if (rest.startsWith(`${SERVER_STEER_HEADER}\n`)) rest = rest.slice(SERVER_STEER_HEADER.length + 1);
+    return rest;
+  }
+}
+
+/**
  * Convert server conversation_logs messages into UI message shapes.
  *
  * Shared by chatUnified's workspace hydration and the main chat's
@@ -528,7 +568,8 @@ export function serverMessagesToUi(messages) {
 
     if (m.role === 'user') {
       openTurn = null;
-      out.push(hydrateMessage({ ...m, id: m.id || `srv-${i}-${stamp}` }));
+      const content = typeof m.content === 'string' ? stripServerUserPrefixes(m.content) : m.content;
+      out.push(hydrateMessage({ ...m, content, id: m.id || `srv-${i}-${stamp}` }));
       continue;
     }
 

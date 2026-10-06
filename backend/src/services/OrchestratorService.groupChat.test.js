@@ -36,14 +36,16 @@ describe('eviction watermark wiring', () => {
   });
 
   it('every manageContext call site passes evictedUnits and persists the result', () => {
-    // Turn start, tool-loop round, continuation nudge, no-text safety net.
+    // Turn start, tool-loop round, continuation nudge, no-text safety net,
+    // and the re-run that restores a /skill or page block eviction took
+    // (manageKeepingTurnContext, which persists the advanced watermark first).
     const callSites = code.match(/manageContext\(messages, model, finalToolSchemas, normalizedProvider, \{[^}]*\}/g) || [];
-    expect(callSites.length).toBe(4);
+    expect(callSites.length).toBe(5);
     for (const site of callSites) {
       expect(site).toContain('evictedUnits: conversationContext._evictedUnits || 0');
     }
     const persists = code.match(/conversationContext\._evictedUnits = \w+\.evictedUnits \|\| 0/g) || [];
-    expect(persists.length).toBe(4);
+    expect(persists.length).toBe(5);
   });
 
   it('the mid-turn cache revert can NEVER restore evicted units', () => {

@@ -33,8 +33,9 @@
  * them, and when the target changes there is no cached prefix to protect.
  */
 
-import { USER_AFTER_TOOL_RESULT_LABEL } from './turnContinuity.js';
+import { USER_AFTER_TOOL_RESULT_LABEL, USER_STEER_HEADER } from './turnContinuity.js';
 import { TURN_MARKERS } from './turnRegister.js';
+import { TURN_CONTEXT_HEADERS } from './turnContext.js';
 
 /** Header of the uploaded-files block the server prepends to a user message. */
 export const ATTACHED_FILES_HEADER = '[ATTACHED FILES]';
@@ -42,9 +43,10 @@ export const ATTACHED_FILES_HEADER = '[ATTACHED FILES]';
 /**
  * Every block the server prepends to a user message. A stored user message
  * begins with one of these exactly when the server decorated it: uploaded
- * files, or the voice / text-message turn marker (turnRegister.js).
+ * files, the voice / text-message turn marker (turnRegister.js), or the
+ * /skill and page-context blocks (turnContext.js).
  */
-export const USER_DECORATION_HEADERS = Object.freeze([ATTACHED_FILES_HEADER, ...TURN_MARKERS]);
+export const USER_DECORATION_HEADERS = Object.freeze([ATTACHED_FILES_HEADER, ...TURN_MARKERS, ...TURN_CONTEXT_HEADERS]);
 
 /** JSON with sorted keys, so semantically equal inputs compare equal. */
 function canonical(value) {
@@ -168,8 +170,28 @@ function isReusable(span) {
  * that, is restored.
  */
 function isDecorationOf(storedContent, clientContent) {
+  if (storedContent === `${USER_STEER_HEADER}\n${clientContent}`) return true; // a steer sent as its own user turn (OpenAI shapes)
   return USER_DECORATION_HEADERS.some((header) => storedContent.startsWith(header))
     && storedContent.endsWith(`\n\n${clientContent}`);
+}
+
+/**
+ * The user's words of every steer folded into a tool result of `span`
+ * (Anthropic shape: OrchestratorService.applySteerAsUserTurn).
+ */
+function foldedSteers(span) {
+  const prefix = `${USER_STEER_HEADER}\n`;
+  const steers = [];
+  for (const message of span) {
+    if (message?.role !== 'user' || !Array.isArray(message.content)) continue;
+    for (const block of message.content) {
+      if (block?.type !== 'tool_result' || !Array.isArray(block.content)) continue;
+      for (const part of block.content) {
+        if (part?.type === 'text' && typeof part.text === 'string' && part.text.startsWith(prefix)) steers.push(part.text.slice(prefix.length));
+      }
+    }
+  }
+  return steers;
 }
 
 /**
@@ -225,6 +247,18 @@ export function rehydrateHistory(clientMessages, storedMessages) {
           && resultIds(clientMessages[j]).every((id) => ids.has(id))) j += 1;
         for (const round of run) out.push(...structuredClone(round.span));
         roundsRestored += run.length;
+        // A steer that arrived during this run was sent folded into its last
+        // tool result. The client carries it as its own user message right
+        // after the round; sending that too would deliver the steer twice and
+        // change the bytes of every later message. Keep the client's copy
+        // only when the stored transcript has it there as well (it was sent).
+        const steers = foldedSteers(run.at(-1).span);
+        const following = clientMessages[j];
+        const storedNext = stored[run.at(-1).end];
+        if (following?.role === 'user' && typeof following.content === 'string' && steers.includes(following.content)
+          && !(storedNext?.role === 'user' && storedNext.content === following.content)) {
+          j += 1;
+        }
         i = j - 1;
         continue;
       }

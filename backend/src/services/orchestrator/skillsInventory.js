@@ -1,4 +1,8 @@
 import { assistantToolCalls } from './historyRehydration.js';
+import { ACTIVE_SKILL_OPEN, ACTIVE_SKILL_CLOSE } from './turnContext.js';
+
+/** `<skill name="x">` inside an [ACTIVE SKILL] block (SkillService.buildSkillsContext). */
+const PINNED_SKILL_NAME = /<skill name="([^"]*)">/;
 
 /**
  * What skills cost in one request, and where each part lives.
@@ -70,8 +74,10 @@ function resultText(content) {
 }
 
 /**
- * Skill playbooks loaded into this request's messages by activate_skill.
- * Searches (activate_skill with `search`) load nothing and are skipped.
+ * Skill playbooks loaded into this request's messages: by activate_skill, or
+ * pinned with /skill (an [ACTIVE SKILL] block on a user message, turnContext.js).
+ * Searches (activate_skill with `search`) load nothing and are skipped, and so
+ * is the "None." block a released skill leaves behind.
  * A skill activated twice is one row, its tokens summed.
  *
  * @param {Array<object>} messages the request messages, either provider shape
@@ -80,6 +86,24 @@ function resultText(content) {
  */
 export function findLoadedSkills(messages, estimate) {
   if (!Array.isArray(messages)) return [];
+  const byName = new Map();
+  const count = (name, text) => {
+    const row = byName.get(name) || { name, tokens: 0, activations: 0 };
+    row.tokens += estimate(text);
+    row.activations += 1;
+    byName.set(name, row);
+  };
+
+  for (const message of messages) {
+    if (message?.role !== 'user' || typeof message.content !== 'string') continue;
+    const start = message.content.indexOf(ACTIVE_SKILL_OPEN);
+    const end = start === -1 ? -1 : message.content.indexOf(ACTIVE_SKILL_CLOSE, start);
+    if (end === -1) continue;
+    const block = message.content.slice(start, end + ACTIVE_SKILL_CLOSE.length);
+    const name = block.match(PINNED_SKILL_NAME)?.[1];
+    if (name) count(name, block);
+  }
+
   const skillOfCall = new Map();
   for (const message of messages) {
     for (const call of assistantToolCalls(message)) {
@@ -90,17 +114,12 @@ export function findLoadedSkills(messages, estimate) {
       if (name) skillOfCall.set(call.id, String(name));
     }
   }
-  if (skillOfCall.size === 0) return [];
+  if (skillOfCall.size === 0) return [...byName.values()];
 
-  const byName = new Map();
   const add = (callId, content) => {
     const name = skillOfCall.get(callId);
     const text = name ? resultText(content) : null;
-    if (text === null) return;
-    const row = byName.get(name) || { name, tokens: 0, activations: 0 };
-    row.tokens += estimate(text);
-    row.activations += 1;
-    byName.set(name, row);
+    if (text !== null) count(name, text);
   };
   for (const message of messages) {
     if (message?.role === 'tool' && message.tool_call_id) add(message.tool_call_id, message.content);

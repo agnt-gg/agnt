@@ -49,9 +49,12 @@ import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import { stripProviderIncompatibleTools } from './orchestrator/providerToolCompat.js';
 import { pickPageContext } from './orchestrator/pageContext.js';
 import { markTurnContent } from './orchestrator/turnRegister.js';
+import { turnContextBlocks, carriedHistory, prependTurnContext, reassertTurnContext } from './orchestrator/turnContext.js';
+import { buildPageContextBlock } from './orchestrator/system-prompts/buildUnifiedPrompt.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import {
   foldBlocksIntoLastToolResult,
+  USER_STEER_HEADER,
   isNonTerminalStatus,
   continuationGuardsApply,
   CONTINUATION_NUDGE_TEXT,
@@ -160,7 +163,7 @@ export function clearSteer(conversationId) {
  * Returns a short tag describing the shape used (for logs + tests).
  */
 function applySteerAsUserTurn(messages, steerText) {
-  const text = `[USER STEER — mid-run instruction from the user, not tool output]\n${steerText}`;
+  const text = `${USER_STEER_HEADER}\n${steerText}`;
   const last = messages[messages.length - 1];
 
   // Anthropic: tool results are a user message of tool_result blocks. A second
@@ -1741,6 +1744,36 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     conversationContext.toolSchemas = toolSchemas;
     let systemPrompt = await config.buildSystemPrompt(conversationContext);
 
+    // This turn's /skill playbook and page context. Neither goes in the system
+    // prompt: both change between turns, and the system block is cached whole.
+    // They ride on this turn's user message when they change (turnContext.js).
+    let turnSkillText = '';
+    const turnPageText = await buildPageContextBlock(conversationContext);
+    // This turn's user message content as sent, once decorated; null when the
+    // turn has no fresh user message (a prepared segment history).
+    let turnContent = null;
+    /**
+     * Context management that never silently drops this turn's /skill or
+     * page context: when eviction advanced and took the message whose block
+     * this turn relied on, the block goes back on the turn's message and
+     * management runs again from the new watermark. Eviction re-writes the
+     * cache anyway, so this costs nothing extra. The ledger array is edited
+     * IN PLACE: later code holds references to it.
+     */
+    const manageKeepingTurnContext = (result, evictedBefore) => {
+      if (turnContent === null || (result.evictedUnits || 0) <= evictedBefore) return result;
+      const reasserted = reassertTurnContext(messages, { pageText: turnPageText, skillText: turnSkillText }, result.evictedUnits, turnContent);
+      if (reasserted === messages) return result;
+      const turnAt = reasserted.findIndex((m, k) => m !== messages[k]);
+      turnContent = reasserted[turnAt].content;
+      messages.splice(0, messages.length, ...reasserted);
+      conversationContext._evictedUnits = result.evictedUnits || 0; // re-manage from the advanced watermark
+      return manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+        calibration: conversationContext._estimateCalibration || 1,
+        evictedUnits: conversationContext._evictedUnits || 0,
+      });
+    };
+
     // Per-conversation skill injection (set via /skill in chat).
     // Resolution order:
     //   1) inline `skillInstructions` from the request body (covers
@@ -1813,19 +1846,13 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
         if (activeSkill && activeSkill.instructions && activeSkill.instructions.trim().length > 0) {
           const skillBlock = buildSkillsContext([activeSkill]);
           if (skillBlock) {
-            // Prepend (not append) so the skill instructions sit *before* the
-            // base system prompt's date/time/general guidance. Some prompts
-            // open with verbose date instructions that bias the LLM away from
-            // the skill if the skill block is buried at the end.
-            systemPrompt = `${skillBlock}\n\n${systemPrompt}`;
-            // Itemized under Skills in the context panel; without this row the
-            // whole playbook was silently counted as "Core instructions".
-            conversationContext._promptSections?.push({
-              id: 'skills_pinned', label: activeSkill.name || 'Pinned skill', tokens: estimateTokens(skillBlock), frozen: true,
-            });
+            // Rides on the user message of the turn it is bound (see
+            // turnSkillText above). The context panel itemizes it from the
+            // [ACTIVE SKILL] block in the messages (skillsInventory.js).
+            turnSkillText = skillBlock;
             console.log(
-              `[Skill Inject] OK: prepended ${skillBlock.length}b skill block for "${activeSkill.name}" ` +
-              `via ${resolutionPath} (systemPrompt now ${systemPrompt.length}b, instructionsLen=${activeSkill.instructions.length})`
+              `[Skill Inject] OK: ${skillBlock.length}b skill block for "${activeSkill.name}" ` +
+              `via ${resolutionPath} (instructionsLen=${activeSkill.instructions.length})`
             );
           }
         } else if (skillId && !activeSkill) {
@@ -1900,6 +1927,13 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // sent, and historyRehydration restores it on later turns.
     if (!preparedHistory && clientTurnMessage && messages.findLast((m) => m.role === 'user') === clientTurnMessage) {
       clientTurnMessage.content = markTurnContent(clientTurnMessage.content, { voiceMode, textMode });
+      // The /skill playbook and page context, by the same rule: on this turn's
+      // message when they changed, absent when the history the request
+      // carries already has them (turnContext.js).
+      const carried = carriedHistory(messages.slice(0, messages.lastIndexOf(clientTurnMessage)), conversationContext._evictedUnits || 0);
+      const contextBlocks = turnContextBlocks(carried, { pageText: turnPageText, skillText: turnSkillText });
+      clientTurnMessage.content = prependTurnContext(clientTurnMessage.content, contextBlocks);
+      turnContent = clientTurnMessage.content;
     }
 
     // Build an [ATTACHED FILES] block listing absolute disk paths so the LLM can
@@ -2134,10 +2168,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+    const evictedBefore = conversationContext._evictedUnits || 0;
+    const contextResult = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
       calibration: conversationContext._estimateCalibration || 1,
       evictedUnits: conversationContext._evictedUnits || 0,
-    });
+    }), evictedBefore);
     conversationContext._evictedUnits = contextResult.evictedUnits || 0;
     if (runtime.limits.maxInputTokens !== null && contextResult.totalRequestTokens > runtime.limits.maxInputTokens) {
       // Refused before the request is sent, not discovered on the bill.
@@ -3150,7 +3185,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
       // Rendered for THIS tier's transport (deferredTools.js), then stamped
       // after failover re-pointing so the fingerprint names the real target.
-      messages = ageToolResults(messages, conversationContext, { summarize: generateDataSummary }); // request copy (toolResultAging.js)
+      messages = ageToolResults(messages, conversationContext, { summarize: generateDataSummary, cacheCold: cacheRounds.isColdFor(normalizedProvider, model) });
       const wire = prepareTierRequest(adapter.deferredToolStyle?.() || null, { tools, messages, catalog: conversationContext._deferredToolCatalog });
       cacheRounds.stamp({ provider: normalizedProvider, model, messages: wire.messages, tools: wire.fingerprintTools });
       return adapter.callStream(
@@ -3661,6 +3696,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         calibration: conversationContext._estimateCalibration || 1,
         evictedUnits: conversationContext._evictedUnits || 0,
       });
+      loopContextResult = manageKeepingTurnContext(loopContextResult, conversationContext._evictedUnits || 0);
       conversationContext._evictedUnits = loopContextResult.evictedUnits || 0;
       const cacheGate = 0.95;
       const originalRequestTokens = loopContextResult.originalTokens + loopContextResult.toolTokens;
@@ -3831,10 +3867,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         if (nudgeCompacted.compactedCount > 0) {
           messages = nudgeCompacted.messages;
         }
-        const nudgeContext = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+        const nudgeContext = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
           calibration: conversationContext._estimateCalibration || 1,
           evictedUnits: conversationContext._evictedUnits || 0,
-        });
+        }), conversationContext._evictedUnits || 0);
         conversationContext._evictedUnits = nudgeContext.evictedUnits || 0;
 
         const { result: nudgedResponse } = await streamAcrossChain(
@@ -3966,10 +4002,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
           );
           messages = followUpCompacted.messages;
         }
-        const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+        const followUpContext = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
           calibration: conversationContext._estimateCalibration || 1,
           evictedUnits: conversationContext._evictedUnits || 0,
-        });
+        }), conversationContext._evictedUnits || 0);
         conversationContext._evictedUnits = followUpContext.evictedUnits || 0;
         // Do NOT reassign `messages` — the adapter call below reads
         // followUpContext.messages directly; `messages` must stay intact

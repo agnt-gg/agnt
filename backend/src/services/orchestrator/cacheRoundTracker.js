@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { CACHE_CAUSES, MAX_CACHE_ROUNDS, normalizeExecutionTelemetry } from '../ai/executionTelemetry.js';
+import { promptCacheTtlMs } from '../../utils/promptCacheTtl.js';
 
 export { CACHE_CAUSES, MAX_CACHE_ROUNDS };
 
@@ -147,6 +148,18 @@ export function createCacheRoundTracker({ carried = null, now = () => Date.now()
       previous = current;
       pending = null;
       return round;
+    },
+
+    /**
+     * Whether the NEXT request starts from a cold cache whatever it sends:
+     * nothing cached yet, another provider/model, or idle past the TTL. Such
+     * a request re-writes its whole prompt anyway, so changing old history
+     * on it costs nothing extra (toolResultAging uses this).
+     */
+    isColdFor(provider, model, ttlMs = promptCacheTtlMs(provider, model)) {
+      if (!previous) return true;
+      if (previous.provider !== provider || previous.model !== model) return true;
+      return Number.isFinite(ttlMs) && now() - previous.sentAt > ttlMs;
     },
 
     rounds: () => rounds.slice(),

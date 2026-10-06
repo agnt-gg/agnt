@@ -59,7 +59,9 @@ describe('every LLM stream in a turn goes through one failover call site', () =>
     const idx = ORCH.indexOf('adapter.callStream(');
     const start = ORCH.lastIndexOf('const runTierStream', idx);
     expect(start).toBeGreaterThan(-1);
-    expect(idx - start).toBeLessThan(2500);
+    // Proximity stands in for "inside runTierStream" (the count above is the
+    // strict check); 2600 leaves room for the per-tier aging gate call.
+    expect(idx - start).toBeLessThan(2600);
   });
 });
 

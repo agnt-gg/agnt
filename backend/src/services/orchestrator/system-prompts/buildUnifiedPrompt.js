@@ -39,11 +39,10 @@ import { getPluginForgeSystemContent } from './plugin-forge-chat.js';
 
 /**
  * Build the unified system prompt. Page-specific detail (workflow node/edge
- * conventions, tool field shapes, widget HTML rules, etc.) is loaded from the
- * dedicated per-page modules and injected when their trigger context is set —
- * see buildPageContextBlock() at the bottom of this file. The async signature
- * is required because the workflow / artifact / widget blocks read from
- * external sources (tool library, workspace files).
+ * conventions, tool field shapes, widget HTML rules, etc.) is NOT part of it:
+ * buildPageContextBlock() at the bottom of this file builds that block, and
+ * the orchestrator puts it on the user message of the turn where it changes
+ * (turnContext.js), so this prompt stays byte-identical across turns.
  */
 export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
   const {
@@ -169,8 +168,10 @@ The tools parameter lists what is loaded now; more are available. discover_tools
 Tools are provided through the API tools parameter. Use exact tool names. Only use tools that appear in the tools parameter — do not claim or imply access to tools that are not listed.`);
   }
 
-  const contextBlock = await buildPageContextBlock(context);
-  add('page', 'Page context', contextBlock);
+  // NO page context here. It changes between turns (every Forge or canvas
+  // edit), and any change to this prompt re-writes the system block and the
+  // whole cached history. It rides on the user message of the turn where it
+  // changes instead (turnContext.js); buildPageContextBlock below builds it.
 
   add('skills', 'Skills catalog', skillsCatalogSection);
   // Saved-agent specialty highlights — rendered right after the full catalog
@@ -223,7 +224,7 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
  * Blocks early-return empty strings when their trigger context isn't set, so
  * each chat surface gets exactly the guidance it needs and nothing else.
  */
-async function buildPageContextBlock(context) {
+export async function buildPageContextBlock(context) {
   const blocks = await Promise.all([
     buildWorkflowContextBlock(context),
     buildAgentContextBlock(context),

@@ -45,6 +45,13 @@
 export const USER_AFTER_TOOL_RESULT_LABEL =
   '[Message from the user, received after this tool result. This is user input, not tool output, and takes priority over the result above.]';
 
+/**
+ * First line of a mid-run steer as the server sends it; the user's words
+ * follow after one newline. Shared with historyRehydration, which must know a
+ * steer it sees in the stored transcript is the same text the client carries.
+ */
+export const USER_STEER_HEADER = '[USER STEER — mid-run instruction from the user, not tool output]';
+
 /** Historic fabricated bridge strings. Scrubbed on sight. */
 const LEGACY_BRIDGE_TEXTS = new Set([
   '(Continuing.)',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildUnifiedSystemPrompt } from './buildUnifiedPrompt.js';
+import { buildUnifiedSystemPrompt, buildPageContextBlock } from './buildUnifiedPrompt.js';
 
 const baseFrozen = {
   skillsCatalogSection: '## Skill Catalog\n- skill-a: does a\n- skill-b: does b',
@@ -89,8 +89,8 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
       workflowState: { id: 'wf-123', nodes: [], edges: [] },
     };
 
-    const promptNo = await buildUnifiedSystemPrompt(ctxNoWorkflow, baseFrozen);
-    const promptYes = await buildUnifiedSystemPrompt(ctxWithWorkflow, baseFrozen);
+    const promptNo = await buildPageContextBlock(ctxNoWorkflow);
+    const promptYes = await buildPageContextBlock(ctxWithWorkflow);
 
     expect(promptNo).not.toContain(PAGE_CONTEXT_HEADER);
     expect(promptNo).not.toContain(BLOCK_MARKERS.workflow);
@@ -101,6 +101,19 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     expect(promptYes).toContain('wf-123');
   });
 
+  it('never puts page context in the system prompt: it changes between turns', async () => {
+    // The system block is cached whole; page state that changed on every
+    // Forge edit re-wrote it and the entire history. It rides on the user
+    // message instead (turnContext.js).
+    const ctxNoPage = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
+    const withPage = { ...ctxNoPage, workflowId: 'wf-123', workflowState: { id: 'wf-123', nodes: [{ id: 'n1' }], edges: [] } };
+    const editedPage = { ...withPage, workflowState: { id: 'wf-123', nodes: [{ id: 'n1' }, { id: 'n2' }], edges: [] } };
+    const prompts = await Promise.all([ctxNoPage, withPage, editedPage].map((ctx) => buildUnifiedSystemPrompt(ctx, baseFrozen)));
+    expect(prompts[1]).toBe(prompts[0]);
+    expect(prompts[2]).toBe(prompts[0]);
+    expect(prompts[0]).not.toContain(PAGE_CONTEXT_HEADER);
+  });
+
   it('injects only the page-context blocks whose triggering IDs are present', async () => {
     const ctx = {
       userId: 'u1',
@@ -109,7 +122,7 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
       widgetId: 'wid-1',
       widgetState: { id: 'wid-1', name: 'My Widget', source_code: '<html></html>' },
     };
-    const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+    const prompt = await buildPageContextBlock(ctx);
 
     expect(prompt).toContain(PAGE_CONTEXT_HEADER);
     expect(prompt).toContain(BLOCK_MARKERS.widget);
@@ -130,7 +143,7 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
         files: { 'search.js': 'export default {}', 'manifest.json': '{"name":"notion-sync"}' },
       },
     };
-    const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+    const prompt = await buildPageContextBlock(ctx);
 
     expect(prompt).toContain(BLOCK_MARKERS.plugin);
     expect(prompt).toContain('--- FILE: manifest.json');
