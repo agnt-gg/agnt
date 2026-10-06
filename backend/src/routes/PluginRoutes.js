@@ -602,6 +602,14 @@ router.post('/build-generated', authenticateToken, accountPluginMutation(async (
           // Reload all plugin processes and wait for completion
           reloadResults = await reloadAllPlugins();
           installResult.reloadStatus = reloadResults;
+          // Installs from chat (install_plugin) never reach the Forge button's local emit; without this,
+          // open Plugins screens and the workflow tool sidebar keep a stale installed list.
+          broadcastToUser(req.user.userId, RealtimeEvents.PLUGIN_INSTALLED, {
+            name: pluginName,
+            version: manifest.version,
+            source: 'generated',
+            timestamp: new Date().toISOString(),
+          });
         }
       }
 
