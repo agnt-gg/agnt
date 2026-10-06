@@ -21,9 +21,18 @@ const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}
 describe('Focused page width', () => {
   it('is set once, from the shared variable, at the Plugins width', () => {
     expect(css).toMatch(/--focused-page-width:\s*1204px/);
-    const pageWidths = rules.filter(([selector, body]) => /\.focused-page\b/.test(selector) && /max-width/.test(body));
-    expect(pageWidths.map(([selector]) => selector)).toEqual(['.ui-focused .focused-page']);
-    expect(pageWidths[0][1]).toMatch(/max-width:\s*var\(--focused-page-width\)/);
+    expect(css).toMatch(/--focused-page-gutter:\s*max\(32px,\s*calc\(\(100% - var\(--focused-page-width\)\) \/ 2 \+ 32px\)\)/);
+  });
+
+  // The page is the scroller, so it must span the pane: a capped, centred
+  // scroller left the side space outside it and the wheel did nothing there.
+  it('the page scroller spans the pane and makes its column with gutters', () => {
+    const page = rules.find(([selector]) => selector === '.ui-focused .focused-page')[1];
+    expect(page).toMatch(/overflow-y:\s*auto/);
+    expect(page).toMatch(/width:\s*100%/);
+    expect(page).toMatch(/padding:\s*36px var\(--focused-page-gutter\) 48px/);
+    const capped = rules.filter(([selector, body]) => /\.focused-page(?![-\w])/.test(selector) && /(^|;)\s*(max-width|margin(-left|-right|-inline)?)\s*:/.test(body));
+    expect(capped.map(([selector]) => selector)).toEqual([]);
   });
 
   // Every class that sits beside `focused-page` on a page root, read from the

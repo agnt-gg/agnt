@@ -539,18 +539,24 @@
 /* ONE page width for every Focused page and editor: Plugins' width. Pages
    used to be 880px with Plugins alone at 1204px, so every page you moved
    between was a different width. Chat keeps its own reading column
-   (--focused-chat-column-width); nothing else may set a page max-width. */
+   (--focused-chat-column-width); nothing else may set a page width.
+
+   The page is the scroll container and it spans the whole pane, like chat's.
+   The column is made by side gutters, not by max-width + margin: a capped,
+   centred scroller left the space either side outside it, so the wheel did
+   nothing unless the pointer was over the content. With gutters that space
+   is the page's own padding and scrolls it. Content lands exactly where it
+   did: (width - 2 x 32px) inside a 1204px column. */
 .ui-focused {
   --focused-page-width: 1204px;
+  --focused-page-gutter: max(32px, calc((100% - var(--focused-page-width)) / 2 + 32px));
 }
 .ui-focused .focused-page {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   width: 100%;
-  max-width: var(--focused-page-width);
-  margin: 0 auto;
-  padding: 36px 32px 48px;
+  padding: 36px var(--focused-page-gutter) 48px;
   box-sizing: border-box;
 }
 .ui-focused .focused-page-head {
