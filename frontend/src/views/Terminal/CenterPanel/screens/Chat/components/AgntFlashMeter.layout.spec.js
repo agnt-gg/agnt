@@ -1,5 +1,5 @@
 /**
- * "AGNT Flash · Free trial · 10M left" is one centred line, and only once the
+ * "AGNT Flash · Free trial · 1M left" is one centred line, and only once the
  * chat has content. It was left-aligned, and on an empty chat (Studio and
  * Focused alike) it just sat in the way.
  */

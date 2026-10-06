@@ -16,15 +16,26 @@ const CHECKOUT_HOST = 'checkout.stripe.com';
 
 const count = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
-/** Normalise /usage into the few fields chat renders. */
+/**
+ * Normalise /usage into the few fields chat renders.
+ *
+ * "Left" is what has been CHARGED, never what is held. While a reply runs the
+ * gateway reserves its worst case and its own remainingCredits subtracts that
+ * hold, so a balance read mid-reply dipped and then rose again when the request
+ * settled ("the credits left went UP"). The hold is reported on its own.
+ */
 export function toFlashAccount(usage) {
+  const includedCredits = count(usage.includedCredits ?? usage.includedUnits);
+  const usedCredits = count(usage.usedCredits ?? usage.usedUnits);
+  const hasTotals = (usage.includedCredits ?? usage.includedUnits) !== undefined && (usage.usedCredits ?? usage.usedUnits) !== undefined;
   return {
     source: usage.source || 'payg',
     planName: usage.planName || null,
     trial: usage.source === 'agnt_trial',
-    includedCredits: count(usage.includedCredits ?? usage.includedUnits),
-    usedCredits: count(usage.usedCredits ?? usage.usedUnits),
-    remainingCredits: count(usage.remainingCredits ?? usage.remainingUnits),
+    includedCredits,
+    usedCredits,
+    remainingCredits: hasTotals ? Math.max(0, includedCredits - usedCredits) : count(usage.remainingCredits ?? usage.remainingUnits),
+    reservedCredits: count(usage.reservedCredits ?? usage.reservedUnits),
     balanceMicroUSD: count(usage.balance?.available),
     resetAt: usage.resetAt ?? null,
   };

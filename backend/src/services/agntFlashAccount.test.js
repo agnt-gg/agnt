@@ -22,11 +22,28 @@ describe('AGNT Flash account', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('a free account reads its trial balance despite the enforced Pro gate', async () => {
-    fetchMock.mockResolvedValue(reply(200, { source: 'agnt_trial', planName: 'AGNT Flash trial', includedCredits: 10_000_000, usedCredits: 9_000_000, remainingCredits: 1_000_000, resetAt: null, balance: { available: 0 } }));
+    fetchMock.mockResolvedValue(reply(200, { source: 'agnt_trial', planName: 'AGNT Flash trial', includedCredits: 1_000_000, usedCredits: 900_000, reservedCredits: 0, remainingCredits: 100_000, resetAt: null, balance: { available: 0 } }));
     const { getFlashAccount } = await import('./agntFlashAccount.js');
     const account = await getFlashAccount();
-    expect(account).toEqual({ source: 'agnt_trial', planName: 'AGNT Flash trial', trial: true, includedCredits: 10_000_000, usedCredits: 9_000_000, remainingCredits: 1_000_000, balanceMicroUSD: 0, resetAt: null });
+    expect(account).toEqual({ source: 'agnt_trial', planName: 'AGNT Flash trial', trial: true, includedCredits: 1_000_000, usedCredits: 900_000, remainingCredits: 100_000, reservedCredits: 0, balanceMicroUSD: 0, resetAt: null });
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://models.agnt.gg/models/v1/usage');
+  });
+
+  // Reported 2026-10-06: "the credits left number went UP". A read during a reply
+  // saw the gateway's remaining (included - used - HELD), then the hold settled.
+  it('"left" counts charged credits only; a hold for a reply in progress is reported apart', async () => {
+    const { toFlashAccount } = await import('./agntFlashAccount.js');
+    const during = toFlashAccount({ source: 'agnt_trial', includedCredits: 1_000_000, usedCredits: 100_000, reservedCredits: 53_000, remainingCredits: 847_000 });
+    const after = toFlashAccount({ source: 'agnt_trial', includedCredits: 1_000_000, usedCredits: 129_483, reservedCredits: 0, remainingCredits: 870_517 });
+    expect(during.remainingCredits).toBe(900_000);
+    expect(during.reservedCredits).toBe(53_000);
+    expect(after.remainingCredits).toBe(870_517);
+    expect(after.remainingCredits).toBeLessThanOrEqual(during.remainingCredits);
+  });
+
+  it('falls back to the gateway remaining when totals are absent', async () => {
+    const { toFlashAccount } = await import('./agntFlashAccount.js');
+    expect(toFlashAccount({ remainingCredits: 42 }).remainingCredits).toBe(42);
   });
 
   it('a free account can start a top-up: POST with an idempotency key, Stripe URL returned', async () => {

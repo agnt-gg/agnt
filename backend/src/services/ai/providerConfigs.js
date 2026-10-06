@@ -848,7 +848,7 @@ const PROVIDER_CONFIGS = [
     fallbackModels: ['agnt-flash'],
     modelMetadata: {
       // Published pay-as-you-go rates; the plan's included credits make most calls $0.
-      'agnt-flash': { contextWindow: 1000000, maxOutputTokens: 65536, inputCostPer1M: 1.25, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.025, supportsVision: true, supportsTools: true },
+      'agnt-flash': { contextWindow: 1000000, maxOutputTokens: 65536, inputCostPer1M: 0.4, outputCostPer1M: 1.6, inputCacheReadCostPer1M: 0.008, supportsVision: true, supportsTools: true },
     },
     compat: {},
     sdkOptions: {},

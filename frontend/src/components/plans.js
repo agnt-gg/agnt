@@ -14,7 +14,7 @@ export const PLANS = [
     tagline: 'Your agent, hosted. Everything included.',
     includes: [
       { label: 'Hosted instance', value: 'Sleeps when idle · up to 8 active hrs/day' },
-      { label: 'AGNT Flash', value: '100M credits / mo' },
+      { label: 'AGNT Flash', value: '5M credits / mo' },
       { label: 'Search', value: '150 searches + 750 pages / mo' },
       { label: 'Sandbox', value: '100 compute-minutes / mo' },
       { label: 'Mail', value: '1,000 units · 1 inbox' },
@@ -30,7 +30,7 @@ export const PLANS = [
     tagline: 'Pro, awake around the clock.',
     includes: [
       { label: 'Hosted instance', value: 'Never sleeps' },
-      { label: 'AGNT Flash', value: '300M credits / mo' },
+      { label: 'AGNT Flash', value: '15M credits / mo' },
       { label: 'Search', value: '500 searches + 2,500 pages / mo' },
       { label: 'Sandbox', value: '300 compute-minutes / mo' },
       { label: 'Mail', value: '5,000 units · 5 inboxes' },
@@ -46,7 +46,7 @@ export const PLANS = [
     tagline: 'Always-On for three people, one shared instance.',
     includes: [
       { label: 'Hosted instance', value: 'Never sleeps · shared vault · audit receipts' },
-      { label: 'AGNT Flash', value: '600M credits / mo' },
+      { label: 'AGNT Flash', value: '25M credits / mo' },
       { label: 'Search', value: '1,400 searches + 7,000 pages / mo' },
       { label: 'Sandbox', value: '600 compute-minutes / mo' },
       { label: 'Mail', value: '20,000 units · 15 inboxes' },

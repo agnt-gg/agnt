@@ -12,7 +12,7 @@ import { OpenAiLikeAdapter } from './chatCompletions.js';
 import { agntServiceNotice, AGNT_NOTICE_CODES, agntNoticeMarker } from './agntServiceNotice.js';
 
 const TRIAL_SENTENCE =
-  'Your free AGNT Flash trial credits are used up. Upgrade for 100M credits a month at https://agnt.gg/pricing, or keep going with your own API key or subscription (Claude Code, ChatGPT, OpenAI and more) from the model menu.';
+  'Your free AGNT Flash trial credits are used up. Upgrade for 5M credits a month at https://agnt.gg/pricing, or keep going with your own API key or subscription (Claude Code, ChatGPT, OpenAI and more) from the model menu.';
 
 function gatewayError(status, code, message) {
   return APIError.generate(status, { error: { message, type: 'insufficient_quota', code } }, undefined, new Headers());

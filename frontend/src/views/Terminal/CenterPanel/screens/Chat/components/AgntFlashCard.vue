@@ -76,8 +76,8 @@ import { PLANS } from '@/components/UpgradeModal.vue';
 import ProviderSetup from './ProviderSetup.vue';
 import { TOP_UP_OPTIONS, fetchFlashAccount, startFlashTopUp, formatCredits, usedShare, hasMoreToSpend } from '@/services/agntFlash.js';
 
-// $0.025 per million credits: one cent buys 400k credits.
-const CREDITS_PER_CENT = 400_000;
+// $0.40 per million credits (models.agnt.gg policy credits-v2): one cent buys 25k credits.
+const CREDITS_PER_CENT = 25_000;
 const POLL_MS = 5000;
 // Long enough for checkout plus the gateway's plan re-check; bounded so a
 // card left on screen never polls forever.

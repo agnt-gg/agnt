@@ -63,7 +63,7 @@ describe('UsageManager — free account', () => {
     ]);
     // Allowances come from the plan table checkout sells from.
     expect(w.find('[data-testid="pro-search"]').text()).toContain('150 searches + 750 pages / mo');
-    expect(w.find('[data-testid="pro-models"]').text()).toContain('100M credits / mo');
+    expect(w.find('[data-testid="pro-models"]').text()).toContain('5M credits / mo');
     expect(w.findAll('button').filter((b) => /upgrade/i.test(b.text()))).toHaveLength(1);
     expect(w.findAll('.usage-card')).toHaveLength(1);
   });
