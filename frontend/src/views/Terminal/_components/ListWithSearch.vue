@@ -1,307 +1,325 @@
+<!-- ListWithSearch — search-and-select for a long list (an agent's tools,
+     skills, workflows). The selection is chips inside the field; typing
+     filters; matches open beneath it with a check against each. Nothing is
+     shown that you did not ask for, so a list of 300 tools costs one line
+     until you search it.
+
+     v-model: array of ids. The list opens in the flow, not as a floating
+     popup, so a scrolling modal can never clip it. -->
 <template>
-  <div class="list-with-search">
-    <!-- Selected items as chips (always shown) -->
-    <div class="selected-chips">
-      <template v-if="selectedItems.length > 0">
-        <div v-for="item in selectedItems" :key="item[idKey]" class="chip">
-          <span>{{ item[labelKey] || item[idKey] }}</span>
-          <button class="chip-remove" @click="toggle(item[idKey])">×</button>
-        </div>
-      </template>
-      <template v-else>
-        <span class="chips-placeholder">{{ chipsPlaceholder }}</span>
-      </template>
-    </div>
-
-    <div class="list-with-search-controls">
-      <!-- Search bar on its own row -->
-      <div class="search-row">
-        <BaseInput v-model="search" :placeholder="placeholder || 'Search...'" class="list-search" />
-        <BaseSelect v-model="sortOrder" :options="sortOptions" class="list-sort" maxHeight="200px" />
-      </div>
-
-      <!-- Select all / Remove all button on its own row -->
-      <div class="select-all-row">
-        <button class="select-all-btn" :class="{ remove: allSelected }" type="button" @click="toggleAll">
-          <span v-if="allSelected">Remove all {{ allLabel }} from Agent</span>
-          <span v-else>Make all {{ allLabel }} available to Agent</span>
+  <div ref="root" class="lws" :class="{ open }" @focusout="onFocusOut">
+    <div class="lws-field" @click="focusInput">
+      <span v-for="item in selectedItems" :key="item[idKey]" class="lws-chip">
+        <span class="lws-chip-label">{{ labelOf(item) }}</span>
+        <button type="button" class="lws-chip-x" :aria-label="'Remove ' + labelOf(item)" @click.stop="toggle(item[idKey])">
+          <i class="fas fa-times" aria-hidden="true"></i>
         </button>
-      </div>
+      </span>
+      <input
+        ref="input"
+        v-model="search"
+        class="lws-input"
+        type="text"
+        role="combobox"
+        aria-autocomplete="list"
+        :aria-expanded="open ? 'true' : 'false'"
+        :aria-controls="listId"
+        :aria-activedescendant="open && options[active] ? optionId(options[active]) : undefined"
+        :placeholder="selectedItems.length ? 'Add more…' : placeholder || `Search ${noun}…`"
+        @focus="open = true"
+        @keydown="onKey"
+      />
     </div>
-    <div class="list-items">
-      <div v-if="sortedItems.length === 0" class="empty-state">No items found</div>
-      <div v-else v-for="item in sortedItems" :key="item[idKey]" class="list-option">
-        <input
-          type="checkbox"
-          :id="'list-' + item[idKey]"
-          :value="item[idKey]"
-          :checked="modelValue.includes(item[idKey])"
-          @change="toggle(item[idKey])"
-        />
-        <label :for="'list-' + item[idKey]">{{ item[labelKey] || item[idKey] }}</label>
-      </div>
+
+    <div class="lws-summary">
+      <span>{{ selectedItems.length ? `${selectedItems.length} of ${items.length} selected` : emptyMessage || `No ${noun} selected` }}</span>
+      <span class="lws-summary-actions">
+        <button v-if="canAddAllMatching" type="button" @click="addAllMatching">{{ search.trim() ? `Select ${options.length} matching` : `Select all ${items.length}` }}</button>
+        <button v-if="selectedItems.length" type="button" @click="clear">Clear</button>
+      </span>
     </div>
+
+    <ul v-if="open" :id="listId" class="lws-results" role="listbox" aria-multiselectable="true" :aria-label="noun">
+      <li v-if="!options.length" class="lws-empty">{{ items.length ? `No ${noun} match “${search.trim()}”.` : `No ${noun} available.` }}</li>
+      <li
+        v-for="(item, index) in options"
+        :id="optionId(item)"
+        :key="item[idKey]"
+        class="lws-option"
+        :class="{ active: index === active, chosen: isChosen(item) }"
+        role="option"
+        :aria-selected="isChosen(item) ? 'true' : 'false'"
+        @mousedown.prevent
+        @mouseenter="active = index"
+        @click="toggle(item[idKey])"
+      >
+        <span class="lws-check"><i v-if="isChosen(item)" class="fas fa-check" aria-hidden="true"></i></span>
+        <span class="lws-option-label">{{ labelOf(item) }}</span>
+        <small v-if="descriptionOf(item)" class="lws-option-desc">{{ descriptionOf(item) }}</small>
+      </li>
+    </ul>
   </div>
 </template>
 
 <script>
-import { ref, computed } from 'vue';
-import BaseInput from './BaseInput.vue';
-import BaseSelect from './BaseSelect.vue';
+import { ref, computed, watch, nextTick } from 'vue';
+
+let instances = 0;
 
 export default {
   name: 'ListWithSearch',
-  components: { BaseInput, BaseSelect },
   props: {
     items: { type: Array, required: true },
     modelValue: { type: Array, required: true },
     labelKey: { type: String, default: 'name' },
     idKey: { type: String, default: 'id' },
     placeholder: { type: String, default: '' },
+    emptyMessage: { type: String, default: '' },
+    /** Plural noun for the copy ("tools"); derived from the placeholder when absent. */
+    itemNoun: { type: String, default: '' },
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
+    const root = ref(null);
+    const input = ref(null);
     const search = ref('');
-    const sortOrder = ref('az');
-    const sortOptions = [
-      { value: 'az', label: 'A-Z' },
-      { value: 'za', label: 'Z-A' },
-    ];
+    const open = ref(false);
+    const active = ref(0);
+    const listId = `lws-${++instances}`;
 
-    const filteredItems = computed(() => {
-      if (!search.value.trim()) return props.items;
-      const q = search.value.toLowerCase();
-      return props.items.filter((item) =>
-        String(item[props.labelKey] || item[props.idKey] || '')
-          .toLowerCase()
-          .includes(q)
-      );
+    const labelOf = (item) => String(item[props.labelKey] || item.title || item.name || item[props.idKey] || '');
+    const descriptionOf = (item) => String(item.description || '').slice(0, 120);
+    const optionId = (item) => `${listId}-${String(item[props.idKey]).replace(/[^\w-]/g, '_')}`;
+    const chosen = computed(() => new Set(props.modelValue));
+    const isChosen = (item) => chosen.value.has(item[props.idKey]);
+
+    const noun = computed(() => {
+      if (props.itemNoun) return props.itemNoun;
+      const hint = `${props.placeholder} ${props.labelKey}`.toLowerCase();
+      return ['tools', 'skills', 'workflows'].find((word) => hint.includes(word.slice(0, -1))) || 'items';
     });
 
+    const byLabel = (a, b) => labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base', numeric: true });
+    // In model order, so chips do not jump around as more are added.
     const selectedItems = computed(() => {
-      return props.items.filter((item) => props.modelValue.includes(item[props.idKey]));
+      const byId = new Map(props.items.map((item) => [item[props.idKey], item]));
+      return props.modelValue.map((id) => byId.get(id)).filter(Boolean);
+    });
+    // Matches by name or description, best (name starts with the query) first.
+    const options = computed(() => {
+      const q = search.value.trim().toLowerCase();
+      if (!q) return [...props.items].sort(byLabel);
+      const rank = (item) => (labelOf(item).toLowerCase().startsWith(q) ? 0 : labelOf(item).toLowerCase().includes(q) ? 1 : 2);
+      return props.items
+        .filter((item) => labelOf(item).toLowerCase().includes(q) || descriptionOf(item).toLowerCase().includes(q))
+        .sort((a, b) => rank(a) - rank(b) || byLabel(a, b));
+    });
+    const canAddAllMatching = computed(() => options.value.some((item) => !isChosen(item)));
+
+    watch(search, () => {
+      active.value = 0;
+      open.value = true;
     });
 
-    const sortedItems = computed(() => {
-      const arr = [...filteredItems.value];
-      arr.sort((a, b) => {
-        const aLabel = String(a[props.labelKey] || a[props.idKey] || '').toLowerCase();
-        const bLabel = String(b[props.labelKey] || b[props.idKey] || '').toLowerCase();
-        if (sortOrder.value === 'az') return aLabel.localeCompare(bLabel);
-        else return bLabel.localeCompare(aLabel);
-      });
-      return arr;
-    });
-    const toggle = (id) => {
-      const next = props.modelValue.includes(id) ? props.modelValue.filter((i) => i !== id) : [...props.modelValue, id];
-      emit('update:modelValue', next);
-    };
+    const update = (ids) => emit('update:modelValue', ids);
+    const toggle = (id) => update(chosen.value.has(id) ? props.modelValue.filter((x) => x !== id) : [...props.modelValue, id]);
+    const addAllMatching = () => update([...props.modelValue, ...options.value.filter((item) => !isChosen(item)).map((item) => item[props.idKey])]);
+    const clear = () => update([]);
 
-    // Dynamic label for select all button
-    const allLabel = computed(() => {
-      const ph = (props.placeholder || '').toLowerCase();
-      const lk = (props.labelKey || '').toLowerCase();
-      if (ph.includes('tool') || lk.includes('tool')) return 'Tools';
-      if (ph.includes('workflow') || lk.includes('workflow')) return 'Workflows';
-      if (ph.includes('skill') || lk.includes('skill')) return 'Skills';
-      return 'Items';
-    });
-
-    // Dynamic placeholder for chips area
-    const chipsPlaceholder = computed(() => {
-      if (allLabel.value === 'Tools') return 'Select tools for your agent to use';
-      if (allLabel.value === 'Workflows') return 'Select workflows for your agent to use';
-      if (allLabel.value === 'Skills') return 'Select skills for your agent to use';
-      return 'Select items for your agent to use';
-    });
-
-    // All selected state
-    const allSelected = computed(() => {
-      if (!props.items.length) return false;
-      return props.items.every((item) => props.modelValue.includes(item[props.idKey]));
-    });
-
-    // Toggle all function
-    const toggleAll = () => {
-      if (allSelected.value) {
-        emit('update:modelValue', []);
-      } else {
-        const allIds = props.items.map((item) => item[props.idKey]);
-        emit('update:modelValue', allIds);
+    function focusInput() {
+      open.value = true;
+      input.value?.focus();
+    }
+    function scrollActiveIntoView() {
+      nextTick(() => root.value?.querySelector('.lws-option.active')?.scrollIntoView?.({ block: 'nearest' }));
+    }
+    function onKey(event) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        open.value = true;
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        if (options.value.length) active.value = (active.value + step + options.value.length) % options.value.length;
+        scrollActiveIntoView();
+      } else if (event.key === 'Enter') {
+        // Never submit the surrounding form from inside the picker.
+        event.preventDefault();
+        const item = options.value[active.value];
+        if (open.value && item) toggle(item[props.idKey]);
+      } else if (event.key === 'Escape') {
+        if (open.value) {
+          event.stopPropagation(); // close the list, not the modal around it
+          open.value = false;
+        }
+      } else if (event.key === 'Backspace' && !search.value && props.modelValue.length) {
+        update(props.modelValue.slice(0, -1));
       }
-    };
+    }
+    // Close when focus leaves the whole picker (tabbing away, clicking out).
+    function onFocusOut(event) {
+      if (!root.value?.contains(event.relatedTarget)) open.value = false;
+    }
 
     return {
-      search,
-      sortOrder,
-      sortOptions,
-      sortedItems,
-      selectedItems,
-      toggle,
-      allLabel,
-      allSelected,
-      toggleAll,
-      chipsPlaceholder,
+      root, input, search, open, active, listId, noun, options, selectedItems, canAddAllMatching,
+      labelOf, descriptionOf, optionId, isChosen, toggle, addAllMatching, clear, focusInput, onKey, onFocusOut,
     };
   },
 };
 </script>
 
 <style scoped>
-.list-with-search {
+.lws {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  min-height: 0;
+  min-width: 0;
 }
-.selected-chips {
+.lws-field {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  height: 58px;
+  min-height: 40px;
+  max-height: 120px;
   overflow-y: auto;
-  padding: 8px;
-  border: 1px solid rgba(var(--green-rgb), 0.1);
-  border-radius: 8px 8px 0 0;
-  align-content: flex-start;
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: flex-start;
-}
-
-.select-all-row {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-.select-all-btn {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.25);
-  color: var(--color-light-green);
-  border-radius: 4px;
-  padding: 7px 12px;
-  height: 32px;
-  font-size: 0.95em;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border 0.15s;
-}
-.select-all-btn:hover {
-  background: var(--color-darker-2);
-}
-.select-all-btn.remove {
-  background: rgba(var(--red-rgb), 0.05);
-  border: 1px solid rgba(var(--red-rgb), 0.25);
-  color: var(--color-red);
-  opacity: 0.75;
-}
-.select-all-btn.remove:hover {
-  background: rgba(var(--red-rgb), 0.22);
-  opacity: 1;
-}
-
-/* Styling for thin scrollbar */
-.selected-chips::-webkit-scrollbar {
-  width: 4px;
-}
-.selected-chips::-webkit-scrollbar-track {
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
   background: var(--color-darker-0);
-  border-radius: 4px;
+  cursor: text;
+  transition: border-color 0.15s;
 }
-.selected-chips::-webkit-scrollbar-thumb {
-  background: var(--color-duller-navy);
-  border-radius: 4px;
+.lws.open .lws-field,
+.lws-field:focus-within {
+  border-color: rgba(var(--green-rgb), 0.5);
 }
-.selected-chips::-webkit-scrollbar-thumb:hover {
-  background: var(--color-med-navy);
-}
-
-.chip {
-  display: flex;
+.lws-chip {
+  display: inline-flex;
   align-items: center;
-  background: var(--color-darker-2);
-  border-radius: 16px;
-  padding: 4px 8px 2px 12px;
-  font-size: 0.9em;
-  color: var(--color-dull-white);
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid rgba(var(--green-rgb), 0.25);
+  border-radius: 999px;
+  background: rgba(var(--green-rgb), 0.08);
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 1.3;
 }
-.chip-remove {
+.lws-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lws-chip-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
   background: none;
-  border: none;
-  color: var(--color-med-navy);
-  font-size: 1.2em;
-  line-height: 1;
-  padding: 0 0 0 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
   cursor: pointer;
-  margin-left: 4px;
+  flex: 0 0 auto;
 }
-.chip-remove:hover {
-  color: var(--color-dull-white);
+.lws-chip-x:hover {
+  color: var(--color-text);
+  background: rgba(var(--green-rgb), 0.15);
 }
-.list-with-search-controls {
+.lws-input {
+  flex: 1 1 120px;
+  min-width: 120px;
+  padding: 4px 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+}
+.lws-input::placeholder {
+  color: var(--color-text-muted);
+}
+.lws-summary {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.search-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.list-search {
-  flex: 1;
-}
-
-.list-sort {
-  width: 80px;
-}
-
-.select-all-row {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-.list-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0px;
-  background: var(--color-darker-1);
-  border-radius: 0px;
-  padding: 8px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-.list-option:first-child {
-  border-top: none;
-}
-.list-option {
-  display: flex;
-  border-top: 1px solid rgba(18, 224, 255, 0.1);
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  cursor: pointer !important;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
 }
-.list-option label {
-  font-size: 0.95em;
-  color: var(--color-light-green);
-  cursor: pointer !important;
+.lws-summary-actions {
+  display: flex;
+  gap: 12px;
 }
-.list-option input {
-  cursor: pointer !important;
+.lws-summary-actions button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-green);
+  font: inherit;
+  cursor: pointer;
 }
-.empty-state {
-  color: var(--color-grey);
-  font-size: 0.9em;
-  padding: 4px 0;
+.lws-summary-actions button:hover {
+  text-decoration: underline;
 }
-.chips-placeholder {
-  color: var(--text-quaternary);
-  font-size: 0.95em;
-  padding: 20px;
-  width: 100%;
-  text-align: center;
+.lws-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: var(--color-darker-0);
+}
+.lws-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lws-option.active {
+  background: rgba(var(--green-rgb), 0.08);
+}
+.lws-check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--on-fill-accent);
+}
+.lws-option.chosen .lws-check {
+  background: var(--color-green);
+  border-color: var(--color-green);
+}
+.lws-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lws-option-desc {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.lws-empty {
+  padding: 10px 8px;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
 }
 </style>

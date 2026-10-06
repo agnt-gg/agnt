@@ -43,10 +43,6 @@ export function agentPayload(agent, values) {
   };
 }
 
-/** One emoji or glyph (up to two code points, as the demo allowed). */
-export function cleanIcon(text) {
-  return [...String(text || '').trim()].slice(0, 2).join('');
-}
 
 // ── Workflows ──────────────────────────────────────────────────────────────
 

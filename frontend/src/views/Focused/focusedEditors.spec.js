@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   agentValues,
   agentPayload,
-  cleanIcon,
   workflowValues,
   workflowStepOrder,
   workflowPayload,
@@ -36,10 +35,9 @@ describe('agents', () => {
     expect(agentPayload({ status: 'active' }, { ...agentValues({}), active: false }).status).toBe('inactive');
   });
 
-  it('cleanIcon keeps one emoji (two code points max)', () => {
-    expect(cleanIcon(' 🤖x ')).toBe('🤖x');
-    expect(cleanIcon('abc')).toBe('ab');
-    expect(cleanIcon('')).toBe('');
+  it('carries an image avatar through untouched', () => {
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    expect(agentPayload({ avatar: image }, agentValues({ avatar: image })).avatar).toBe(image);
   });
 });
 

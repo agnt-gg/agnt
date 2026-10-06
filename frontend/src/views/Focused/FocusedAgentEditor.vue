@@ -20,9 +20,11 @@
     @delete="remove"
   >
     <template #icon>
-      <button type="button" class="focused-edit-icon editable" v-tooltip="'Change icon'" aria-label="Change icon" @click="pickIcon">
-        <FocusedGlyph :icon="v.icon" fallback="fas fa-robot" />
+      <!-- An agent's avatar is an image: the same picker and resize as Studio's create modal. -->
+      <button type="button" class="focused-edit-icon editable" v-tooltip="v.icon ? 'Change avatar' : 'Add an avatar'" :aria-label="v.icon ? 'Change avatar' : 'Add an avatar'" @click="avatarInput?.click()">
+        <FocusedGlyph :icon="v.icon" fallback="fas fa-camera" />
       </button>
+      <input ref="avatarInput" type="file" accept="image/*" hidden @change="onAvatar" />
     </template>
 
     <section class="focused-edit-block">
@@ -76,21 +78,19 @@
           <button type="button" class="focused-switch" role="switch" :aria-checked="tools.open ? 'true' : 'false'" aria-label="Every tool" @click="tools.open = !tools.open"></button>
         </div>
         <div v-if="!tools.open" class="focused-edit-row column">
-          <div class="focused-chips">
-            <span v-for="t in tools.chosen" :key="t" class="focused-chip">
-              {{ toolName(t) }}
-              <button type="button" :aria-label="'Remove ' + toolName(t)" @click="tools.chosen = tools.chosen.filter((x) => x !== t)">
-                <i class="fas fa-times" aria-hidden="true"></i>
-              </button>
-            </span>
-            <span v-if="!tools.chosen.length" class="focused-edit-hint">No tools yet.</span>
-          </div>
-          <CustomSelect
-            model-value=""
-            placeholder="Add a tool…"
-            :options="addableTools.map((t) => ({ label: t.title || t.name || t.id, value: t.id }))"
-            @update:model-value="addTool"
-          />
+          <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search tools…" />
+        </div>
+      </div>
+    </section>
+
+    <section class="focused-edit-block">
+      <div class="focused-edit-block-head">
+        <h3>Skills</h3>
+        <span class="focused-edit-hint">{{ skills.length ? `${skills.length} chosen` : 'What this agent knows how to do.' }}</span>
+      </div>
+      <div class="focused-edit-card">
+        <div class="focused-edit-row column">
+          <ListWithSearch v-model="skills" :items="allSkills" label-key="name" id-key="id" item-noun="skills" placeholder="Search skills…" />
         </div>
       </div>
     </section>
@@ -107,8 +107,10 @@ import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import ListWithSearch from '@/views/Terminal/_components/ListWithSearch.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
-import { agentValues, agentPayload, cleanIcon, ago } from './focusedEditors.js';
+import { agentValues, agentPayload, ago } from './focusedEditors.js';
+import { readAvatarFile } from '@/utils/avatarImage.js';
 import { editAsk } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 
@@ -123,6 +125,7 @@ const agent = computed(() => (isNew.value ? null : (store.getters['agents/allAge
 
 const v = reactive(agentValues({}));
 const tools = reactive({ open: false, chosen: [] });
+const skills = ref([]);
 // Dirty = differs from what was loaded or last saved (both reactive, so the
 // save bar appears on the first keystroke and goes away after a save).
 // Nothing is dirty before the first load: on a cold deep link the agents
@@ -130,11 +133,12 @@ const tools = reactive({ open: false, chosen: [] });
 // "changed" — which then stopped them loading at all.
 const loaded = ref(false);
 const baseline = ref('');
-const snapshot = () => JSON.stringify({ v, tools });
+const snapshot = () => JSON.stringify({ v, tools, skills: skills.value });
 function load(a) {
   Object.assign(v, agentValues(a));
   tools.open = a.toolAccessMode === 'open';
   tools.chosen = [...(a.assignedTools || [])];
+  skills.value = [...(a.assignedSkills || [])];
   baseline.value = snapshot();
   loaded.value = true;
 }
@@ -173,21 +177,21 @@ async function onProvider(provider) {
   if (!v.model) v.model = modelOptions.value[0] || '';
 }
 
-// Tools, from the shared tools store.
+// Tools and skills, from the shared stores.
 const allTools = computed(() => store.getters['tools/allTools'] || []);
-const toolName = (id) => {
-  const t = allTools.value.find((x) => String(x.id) === String(id) || x.name === id);
-  return t ? t.title || t.name || id : id;
-};
-const addableTools = computed(() => allTools.value.filter((t) => !tools.chosen.includes(t.id)));
-function addTool(id) {
-  if (id && !tools.chosen.includes(id)) tools.chosen = [...tools.chosen, id];
-}
+const allSkills = computed(() => store.getters['skills/allSkills'] || []);
 
-async function pickIcon() {
-  const next = await nav.prompt({ title: 'Agent icon', message: 'Type or paste one emoji.', placeholder: '🤖', confirmText: 'Use it' });
-  if (next === null) return;
-  v.icon = cleanIcon(next);
+const avatarInput = ref(null);
+async function onAvatar(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    v.icon = await readAvatarFile(file);
+    error.value = '';
+  } catch (e) {
+    error.value = 'Couldn’t use that image. ' + (e?.message || e);
+  }
 }
 
 async function save() {
@@ -198,7 +202,7 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
-    const payload = { ...agentPayload(agent.value || {}, v), toolAccessMode: tools.open ? 'open' : 'restricted', assignedTools: [...tools.chosen] };
+    const payload = { ...agentPayload(agent.value || {}, v), toolAccessMode: tools.open ? 'open' : 'restricted', assignedTools: [...tools.chosen], assignedSkills: [...skills.value] };
     if (isNew.value) {
       const res = await store.dispatch('agents/createAgent', payload);
       const id = res?.agentId || res?.agent?.id;
@@ -249,6 +253,7 @@ onMounted(async () => {
   }
   if (agent.value) load(agent.value);
   if (!allTools.value.length) store.dispatch('tools/fetchTools').catch(() => {});
+  if (!allSkills.value.length) store.dispatch('skills/fetchSkills').catch(() => {});
   loadModels();
 });
 // Arrived late, or saved elsewhere (Annie, Studio) while open and untouched

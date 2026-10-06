@@ -96,7 +96,7 @@ describe('new agent', () => {
     expect(w.text()).not.toContain('Edit in chat');
     expect(w.find('.focused-save-bar').exists()).toBe(false); // nothing to save yet
     await nameAndSave(w, '  Scout ');
-    expect(dispatch).toHaveBeenCalledWith('agents/createAgent', expect.objectContaining({ name: 'Scout', status: 'ACTIVE', toolAccessMode: 'restricted', assignedTools: [] }));
+    expect(dispatch).toHaveBeenCalledWith('agents/createAgent', expect.objectContaining({ name: 'Scout', status: 'ACTIVE', toolAccessMode: 'restricted', assignedTools: [], assignedSkills: [] }));
     expect(dispatch).not.toHaveBeenCalledWith('agents/updateAgent', expect.anything());
     expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab: 'agents', item: 'a-new' });
     expect(nav.ask).not.toHaveBeenCalled();
@@ -114,13 +114,15 @@ describe('new agent', () => {
   });
 
   it('a failed create stays on the form with the reason', async () => {
-    dispatch.mockImplementationOnce(() => Promise.reject(new Error('HTTP error! status: 500')));
+    // Only the create fails; the editor's own loads (tools, skills, models) still succeed.
+    dispatch.mockImplementation((action) => (action === 'agents/createAgent' ? Promise.reject(new Error('HTTP error! status: 500')) : Promise.resolve(CREATED[action])));
     const w = mount(FocusedAgentEditor, { props: { agentId: null }, global });
     await flushPromises();
     await nameAndSave(w, 'Scout');
     expect(w.text()).toContain('Couldn’t save. HTTP error! status: 500');
     expect(nav.go).not.toHaveBeenCalled();
     w.unmount();
+    dispatch.mockImplementation((action) => Promise.resolve(CREATED[action]));
   });
 });
 
