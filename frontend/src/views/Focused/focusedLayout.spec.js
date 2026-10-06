@@ -43,6 +43,16 @@ describe('Focused layout', () => {
     expect(row).toMatch(/overflow:\s*hidden/);
     expect(rule('.ui-focused .focused-recent-status')).toMatch(/width:\s*100%/);
   });
+  it('regression: an on/off switch after a row label stays switch-sized at the right, not stretched across the row', () => {
+    // The "value fills the rest of the row" rule out-specifies .focused-switch,
+    // so it must not match a switch at all (Agents' Active / Every tool).
+    expect(css).not.toMatch(/\.focused-edit-label \+ \* \{/);
+    expect(rule('.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + :not(.focused-switch)')).toMatch(/flex:\s*1/);
+    const sw = rule('.ui-focused .focused-switch');
+    expect(sw).toMatch(/flex:\s*0 0 auto/);
+    expect(sw).toMatch(/width:\s*38px/);
+    expect(sw).toMatch(/margin-left:\s*auto/);
+  });
   it('regression: a full-width row is border-box, so a <div> row (Scheduled) never overflows its list', () => {
     const row = rule('.ui-focused .focused-row');
     expect(row).toMatch(/width:\s*100%/);

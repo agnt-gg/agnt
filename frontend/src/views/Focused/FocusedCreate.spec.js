@@ -27,6 +27,11 @@ const getters = reactive({
   'skills/allSkills': [],
   'widgetDefinitions/definitions': [],
   'aiProvider/filteredProviders': [],
+  'userAuth/planType': 'pro',
+  'tools/workflowTools': {
+    triggers: [{ type: 'trigger-timer', title: 'Timer Trigger', category: 'trigger', parameters: { schedule: { type: 'string', inputType: 'select', options: ['Hourly', 'Daily'], default: 'Hourly' } } }],
+    actions: [{ type: 'generate-with-ai-llm', title: 'AI LLM Call', category: 'action', parameters: { prompt: { type: 'string', default: '' } } }],
+  },
 });
 const state = reactive({ aiProvider: { providers: [], allModels: {} } });
 vi.mock('@/components/UpgradeModal.vue', () => ({ default: { props: ['open'], template: '<div v-if="open" />' } }));
@@ -141,6 +146,88 @@ describe('new workflow / tool / skill / widget', () => {
     expect(dispatch).toHaveBeenCalledWith(action, expect.objectContaining(body));
     expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab: kind, item: id });
     expect(nav.ask).not.toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it('regression: a new workflow gets steps from Add step, wired and saved', async () => {
+    const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: null }, global });
+    await flushPromises();
+    const addStep = async (title) => {
+      await w.findAll('.focused-edit-block-head .focused-btn').find((b) => b.text() === 'Add step').trigger('click');
+      await flushPromises();
+      await w.findAll('.focused-step-option').find((b) => b.text().includes(title)).trigger('click');
+      await flushPromises();
+    };
+    await addStep('Timer Trigger');
+    await addStep('AI LLM Call');
+    expect(dispatch).toHaveBeenCalledWith('tools/fetchWorkflowTools');
+    expect(w.findAll('.focused-step-card').map((c) => c.find('.focused-step-title').element.value)).toEqual(['Timer Trigger', 'AI LLM Call']);
+    await nameAndSave(w, 'Digest');
+    const [, saved] = dispatch.mock.calls.find(([a]) => a === 'workflows/createWorkflow');
+    expect(saved.nodes.map((n) => n.type)).toEqual(['trigger-timer', 'generate-with-ai-llm']);
+    expect(saved.nodes[0].parameters).toEqual({ schedule: 'Hourly', schedule_options: ['Hourly', 'Daily'] });
+    expect(saved.edges).toHaveLength(1);
+    expect(saved.edges[0]).toMatchObject({ start: { id: saved.nodes[0].id }, end: { id: saved.nodes[1].id } });
+    expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab: 'workflows', item: 'w-new' });
+    w.unmount();
+  });
+
+  it('a step can be removed again before saving', async () => {
+    const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: null }, global });
+    await flushPromises();
+    await w.findAll('.focused-edit-block-head .focused-btn').find((b) => b.text() === 'Add step').trigger('click');
+    await w.findAll('.focused-step-option')[0].trigger('click');
+    await flushPromises();
+    await w.find('.focused-step-card .focused-icon-btn').trigger('click');
+    expect(w.findAll('.focused-step-card')).toHaveLength(0);
+    w.unmount();
+  });
+
+  it('regression: Discard on a stored workflow with steps restores it (its record is reactive)', async () => {
+    const stored = { id: 'w1', name: 'Daily', nodes: [{ id: 'a', text: 'Fetch', type: 'x', category: 'action', parameters: { url: 'u', opts: { deep: [1] } } }], edges: [] };
+    dispatch.mockImplementation((action) => Promise.resolve(action === 'workflows/fetchWorkflowById' ? JSON.parse(JSON.stringify(stored)) : CREATED[action]));
+    const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: 'w1' }, global });
+    await flushPromises();
+    await w.findAll('.focused-edit-block-head .focused-btn').find((b) => b.text() === 'Add step').trigger('click');
+    await w.findAll('.focused-step-option')[0].trigger('click');
+    await flushPromises();
+    expect(w.findAll('.focused-step-card')).toHaveLength(2);
+    await w.findAll('.focused-save-bar button').find((b) => /discard/i.test(b.text())).trigger('click');
+    await flushPromises();
+    expect(w.findAll('.focused-step-card')).toHaveLength(1);
+    expect(w.find('.focused-save-bar').exists()).toBe(false);
+    w.unmount();
+    dispatch.mockImplementation((action) => Promise.resolve(CREATED[action]));
+  });
+
+  it('Discard takes added steps away again', async () => {
+    const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: null }, global });
+    await flushPromises();
+    await w.findAll('.focused-edit-block-head .focused-btn').find((b) => b.text() === 'Add step').trigger('click');
+    await w.findAll('.focused-step-option')[0].trigger('click');
+    await flushPromises();
+    expect(w.findAll('.focused-step-card')).toHaveLength(1);
+    await w.findAll('.focused-save-bar button').find((b) => /discard/i.test(b.text())).trigger('click');
+    await flushPromises();
+    expect(w.findAll('.focused-step-card')).toHaveLength(0);
+    expect(w.find('.focused-save-bar').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it.each([
+    ['JavaScript', 'CODE_JS'],
+    ['Python', 'CODE_PYTHON'],
+  ])('regression: a new tool can be a %s tool, with code instead of a prompt', async (label, base) => {
+    const w = mount(FocusedAssetEditor, { props: { kind: 'tools', itemId: null }, global });
+    await flushPromises();
+    const types = w.findAll('[role="radiogroup"] [role="radio"]');
+    expect(types.map((t) => t.text())).toEqual(['Prompt', 'JavaScript', 'Python']);
+    expect(w.find('[aria-label="Prompt"]').exists()).toBe(true);
+    await types.find((t) => t.text() === label).trigger('click');
+    expect(w.find('[aria-label="Prompt"]').exists()).toBe(false);
+    await w.find('[aria-label="Code"]').setValue('print(1)');
+    await nameAndSave(w, 'Digest');
+    expect(dispatch).toHaveBeenCalledWith('tools/createTool', expect.objectContaining({ title: 'Digest', base, code: 'print(1)', type: 'digest' }));
     w.unmount();
   });
 

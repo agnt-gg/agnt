@@ -10,6 +10,16 @@
  * Pure and tested (focusedEditors.spec.js); the components only render these.
  */
 
+import { toKebabCase } from '@/views/_utils/stringFormatting.js';
+
+/**
+ * A deep, plain copy of stored data. Records reach here as reactive proxies
+ * (from the store, or from the editor's own ref on Discard), which
+ * structuredClone refuses with DataCloneError. Workflow graphs and the step
+ * library are JSON from the server, so a JSON copy loses nothing.
+ */
+const plainCopy = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+
 // ── Agents ─────────────────────────────────────────────────────────────────
 
 const isActive = (status) => !/^inactive$/i.test(String(status || 'active'));
@@ -46,13 +56,24 @@ export function agentPayload(agent, values) {
 
 // ── Workflows ──────────────────────────────────────────────────────────────
 
+/**
+ * `nodes` is what the step cards edit (name + settings). Steps added here are
+ * kept whole in `added` (the engine needs their type, outputs, position),
+ * with the edges that wire them in `newEdges`; `removed` lists stored steps
+ * taken out. workflowPayload applies all of it to the FRESH graph on save.
+ */
 export function workflowValues(raw = {}) {
   return {
     name: raw.name || '',
     description: raw.description || '',
-    nodes: (raw.nodes || []).map((n) => ({ id: n.id, text: n.text || '', parameters: structuredClone(n.parameters || {}) })),
+    nodes: (raw.nodes || []).map((n) => ({ id: n.id, text: n.text || '', parameters: plainCopy(n.parameters || {}) })),
+    added: [],
+    newEdges: [],
+    removed: [],
   };
 }
+
+const edgeEnds = (e) => [e.start?.id || e.source || e.from, e.end?.id || e.target || e.to];
 
 /**
  * Steps in the order they run: triggers first, then along the edges; any node
@@ -62,8 +83,7 @@ export function workflowStepOrder(raw = {}) {
   const nodes = raw.nodes || [];
   const next = new Map();
   for (const e of raw.edges || []) {
-    const s = e.start?.id || e.source || e.from;
-    const t = e.end?.id || e.target || e.to;
+    const [s, t] = edgeEnds(e);
     if (!s || !t) continue;
     if (!next.has(s)) next.set(s, []);
     next.get(s).push(t);
@@ -84,15 +104,32 @@ export function workflowStepOrder(raw = {}) {
 
 /**
  * The workflow workflows/updateWorkflow saves: the fresh stored graph with
- * only names, the description and each step's name/settings changed.
+ * the names, the description, each step's name/settings, and the steps added
+ * or removed here. Anything else on the fresh graph (positions, a step added
+ * elsewhere meanwhile) is kept; edges are untouched unless steps changed.
  */
 export function workflowPayload(fresh, values) {
   const byId = new Map(values.nodes.map((n) => [n.id, n]));
+  const edit = (n) => (byId.has(n.id) ? { ...n, text: byId.get(n.id).text, parameters: byId.get(n.id).parameters } : n);
+  const removed = new Set(values.removed || []);
+  const added = values.added || [];
+  const newEdges = values.newEdges || [];
+  const stored = fresh.nodes || [];
+  const storedIds = new Set(stored.map((n) => n.id));
+  const nodes = [...stored.filter((n) => !removed.has(n.id)), ...added.filter((n) => !storedIds.has(n.id))].map(edit);
+  let edges = fresh.edges;
+  if (removed.size || newEdges.length) {
+    const ids = new Set(nodes.map((n) => n.id));
+    const live = (e) => edgeEnds(e).every((id) => ids.has(id));
+    const storedEdgeIds = new Set((fresh.edges || []).map((e) => e.id).filter(Boolean));
+    edges = [...(fresh.edges || []).filter(live), ...newEdges.filter((e) => live(e) && !storedEdgeIds.has(e.id))];
+  }
   const workflow = {
     ...fresh,
     name: values.name.trim(),
     description: values.description.trim(),
-    nodes: (fresh.nodes || []).map((n) => (byId.has(n.id) ? { ...n, text: byId.get(n.id).text, parameters: byId.get(n.id).parameters } : n)),
+    nodes,
+    edges,
   };
   delete workflow.status;
   delete workflow.created_at;
@@ -101,6 +138,116 @@ export function workflowPayload(fresh, values) {
 }
 
 export const isRunningStatus = (status) => /^(listening|running|queued|active|executing)$/i.test(String(status || ''));
+
+/** The step library (tools/workflowTools), in the order a picker shows it. */
+export const STEP_GROUPS = Object.freeze([
+  ['triggers', 'Triggers'],
+  ['actions', 'Actions'],
+  ['utilities', 'Utilities'],
+  ['controls', 'Controls'],
+  ['custom', 'My tools'],
+  ['widgets', 'Widgets'],
+]);
+const GROUP_CAP = 40;
+
+/**
+ * The step picker's groups: entries matching `query`, each group capped (a
+ * search narrows it), with Pro-only steps marked `locked` on a free plan.
+ */
+export function stepLibraryGroups(library, query = '', { isPro = true } = {}) {
+  const q = String(query || '').trim().toLowerCase();
+  const hit = (e) => !q || [e.title, e.description, e.type].some((s) => String(s || '').toLowerCase().includes(q));
+  return STEP_GROUPS.map(([id, label]) => {
+    const all = (library?.[id] || []).filter((e) => e && e.type && hit(e));
+    return { id, label, more: Math.max(0, all.length - GROUP_CAP), items: all.slice(0, GROUP_CAP).map((e) => ({ entry: e, locked: !!e.requiresPro && !isPro })) };
+  }).filter((g) => g.items.length);
+}
+
+/**
+ * A step for the engine, built from a step-library entry exactly as Workflow
+ * Forge builds one (WorkflowDesigner#createNode): library defaults become
+ * values, a select keeps its choices beside it as `<key>_options`, and a
+ * custom tool keeps its parameter objects.
+ */
+export function workflowNodeFromTool(libraryEntry, { id, x = 0, y = 0, timeZone = 'UTC' }) {
+  // A copy, so the saved node never shares objects with the store's library.
+  const entry = plainCopy(libraryEntry);
+  const custom = entry.category === 'custom';
+  const parameters = {};
+  for (const [key, def] of Object.entries(entry.parameters || {})) {
+    if (custom) {
+      parameters[key] = def;
+    } else if (def && typeof def === 'object' && Object.prototype.hasOwnProperty.call(def, 'type')) {
+      parameters[key] = def.default ?? '';
+      if (def.defaultFrom === 'browserTimeZone' && !parameters[key]) parameters[key] = timeZone;
+      if (def.inputType === 'select') parameters[`${key}_options`] = def.options;
+    } else {
+      parameters[key] = def;
+    }
+  }
+  return {
+    id,
+    text: entry.title || humanKey(entry.type),
+    x,
+    y,
+    isEditing: false,
+    type: entry.type,
+    icon: entry.icon,
+    category: entry.category,
+    isSelected: false,
+    parameters,
+    description: entry.description,
+    error: null,
+    outputs: custom ? { generatedText: { type: 'string' }, tokenCount: { type: 'number' }, error: { type: 'string' } } : entry.outputs,
+  };
+}
+
+/** An edge as Workflow Forge draws one (WorkflowDesigner#createEdge). */
+export function workflowEdge(id, fromId, toId) {
+  return { id, start: { id: fromId, type: 'output' }, end: { id: toId, type: 'input' }, startX: 0, startY: 0, endX: 0, endY: 0, isActive: false };
+}
+
+/**
+ * Adds a library entry as a step, wired in: a trigger goes first (into the
+ * first step that is not a trigger), anything else runs after the last step.
+ * Placed below the graph so the full editor shows it in a sensible spot.
+ * Mutates `values`; `fresh` is the graph the editor opened (for positions).
+ */
+export function addWorkflowStep(values, fresh, entry, { nodeId, edgeId, timeZone }) {
+  const graph = workflowPayload(fresh, values);
+  const order = workflowStepOrder(graph);
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const last = byId.get(order[order.length - 1]);
+  const bottom = graph.nodes.reduce((y, n) => Math.max(y, Number(n.y) || 0), 0);
+  const node = workflowNodeFromTool(entry, { id: nodeId, x: Number(last?.x) || 100, y: graph.nodes.length ? bottom + 140 : 100, timeZone });
+  values.added.push(node);
+  values.nodes.push({ id: node.id, text: node.text, parameters: plainCopy(node.parameters) });
+  if (entry.category === 'trigger') {
+    const first = order.find((id) => byId.get(id)?.category !== 'trigger');
+    if (first) values.newEdges.push(workflowEdge(edgeId, node.id, first));
+  } else if (last) {
+    values.newEdges.push(workflowEdge(edgeId, last.id, node.id));
+  }
+  return node;
+}
+
+/**
+ * Removes a step. A step in the middle of a chain (one way in, one way out)
+ * is bridged, so removing it does not cut the workflow in two.
+ */
+export function removeWorkflowStep(values, fresh, id, { edgeId }) {
+  const graph = workflowPayload(fresh, values);
+  const into = (graph.edges || []).filter((e) => edgeEnds(e)[1] === id);
+  const out = (graph.edges || []).filter((e) => edgeEnds(e)[0] === id);
+  if (values.added.some((n) => n.id === id)) values.added = values.added.filter((n) => n.id !== id);
+  else values.removed.push(id);
+  values.nodes = values.nodes.filter((n) => n.id !== id);
+  values.newEdges = values.newEdges.filter((e) => !edgeEnds(e).includes(id));
+  if (into.length === 1 && out.length === 1) values.newEdges.push(workflowEdge(edgeId, edgeEnds(into[0])[0], edgeEnds(out[0])[1]));
+}
+
+/** A step's settings to show: a select's `<key>_options` list is not one. */
+export const visibleStepParams = (parameters = {}) => Object.keys(parameters).filter((k) => !(k.endsWith('_options') && k.slice(0, -8) in parameters));
 
 // ── Tools ──────────────────────────────────────────────────────────────────
 
@@ -132,6 +279,31 @@ export function codeLabel(raw = {}) {
   return raw.base || 'Code';
 }
 
+/**
+ * The three kinds of custom tool, as Tool Forge and CustomToolExecutor name
+ * them: a prompt template the AI fills in, or code that runs.
+ */
+export const TOOL_TYPES = Object.freeze([
+  { value: 'AI', label: 'Prompt', icon: 'fas fa-magic', hint: 'A prompt template the AI fills in with the inputs.' },
+  { value: 'CODE_JS', label: 'JavaScript', icon: 'fab fa-js', hint: 'JavaScript that runs with the inputs in `params`.' },
+  { value: 'CODE_PYTHON', label: 'Python', icon: 'fab fa-python', hint: 'Python that runs with the inputs in `params`.' },
+]);
+
+/**
+ * A stored `base` as one of TOOL_TYPES. Missing is AI (the executor's
+ * default); the older 'JS' / 'PYTHON' spellings read as their code type, so
+ * the next save writes the name the executor runs.
+ */
+export function toolBase(raw = {}) {
+  const b = String(raw.base || 'AI').toUpperCase();
+  if (b === 'AI') return 'AI';
+  if (b.includes('PY')) return 'CODE_PYTHON';
+  if (b.includes('JS') || b.includes('JAVASCRIPT')) return 'CODE_JS';
+  return raw.base;
+}
+
+export const isPromptTool = (values) => values.base === 'AI';
+
 export function toolValues(raw = {}) {
   const params = toolParams(raw.parameters);
   const inputs = Object.entries(params)
@@ -149,7 +321,7 @@ export function toolValues(raw = {}) {
     description: raw.description || '',
     category: raw.category || 'custom',
     code: raw.code || '',
-    isAI: String(raw.base || '').toUpperCase() === 'AI',
+    base: toolBase(raw),
     instructions: String(params.instructions || ''),
     provider: params.provider || '',
     model: params.model || '',
@@ -175,9 +347,18 @@ export function renameInPrompt(prompt, from, to) {
   return String(prompt || '').split(`{{${from}}}`).join(`{{${to}}}`);
 }
 
+/** Tool Forge's outputs for a tool that has none of its own. */
+const defaultToolOutputs = (prompt) => ({
+  success: { type: 'boolean', description: 'Indicates whether the operation was successful' },
+  result: { type: 'any', description: prompt ? 'The text generated by the LLM' : 'The result from code execution' },
+  error: { type: 'string', description: 'Error message if the operation failed' },
+});
+
 /** The tool tools/saveCustomTool upserts: the fresh record with the edits. */
 export function toolPayload(fresh, values) {
   validateToolInputs(values.inputs);
+  const prompt = isPromptTool(values);
+  const title = values.name.trim();
   const base = toolParams(fresh.parameters);
   const parameters = {};
   for (const i of values.inputs) {
@@ -191,13 +372,22 @@ export function toolPayload(fresh, values) {
       ...(i.value !== undefined ? { value: i.value } : {}),
     };
   }
-  if (values.isAI) Object.assign(parameters, { instructions: values.instructions, provider: values.provider, model: values.model });
+  if (prompt) Object.assign(parameters, { instructions: values.instructions, provider: values.provider, model: values.model });
   return {
     ...fresh,
-    title: values.name.trim(),
+    base: values.base,
+    title,
     description: values.description.trim(),
     category: values.category.trim() || 'custom',
-    code: values.isAI ? fresh.code : values.code,
+    // A prompt tool that carries code is run AS code (CustomToolExecutor),
+    // so a tool switched to Prompt drops its code. One that was always a
+    // prompt tool keeps whatever it stored.
+    code: prompt ? (toolBase(fresh) === 'AI' ? fresh.code : null) : values.code,
+    // Workflows find a custom tool by `type`; Tool Forge derives it from the
+    // title. A tool made here had none, so it never appeared as a step.
+    type: fresh.type || toKebabCase(title) || 'custom-tool',
+    icon: fresh.icon || 'custom',
+    outputs: fresh.outputs || defaultToolOutputs(prompt),
     parameters,
     isShareable: fresh.isShareable ?? !!fresh.is_shareable,
   };
@@ -245,8 +435,8 @@ export function widgetUpdates(base, values) {
 
 /**
  * The stored record a new item starts from, so the same xValues/xPayload
- * pair edits it and the create action saves it. A new tool is a prompt (AI)
- * tool: the no-code kind this editor can complete on its own.
+ * pair edits it and the create action saves it. A new tool starts as a
+ * prompt (AI) tool; the editor's Type switch makes it JavaScript or Python.
  */
 export function blankRecord(kind) {
   if (kind === 'workflows') return { name: '', description: '', nodes: [], edges: [] };

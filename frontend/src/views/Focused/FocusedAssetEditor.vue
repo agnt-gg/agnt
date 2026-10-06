@@ -35,8 +35,43 @@
       <div class="focused-edit-block-head">
         <h3>Steps</h3>
         <span class="focused-edit-hint">{{ v.nodes.length }} step{{ v.nodes.length === 1 ? '' : 's' }} · runs top to bottom</span>
+        <span class="focused-flex"></span>
+        <button v-if="!readOnly" type="button" class="focused-btn" :aria-expanded="picker.open ? 'true' : 'false'" @click="togglePicker">
+          {{ picker.open ? 'Done' : 'Add step' }}
+        </button>
       </div>
-      <p v-if="!v.nodes.length" class="focused-empty">{{ isNew ? 'No steps yet. Save it, then open the full editor to add steps.' : 'No steps yet. Open the full editor to add some.' }}</p>
+
+      <!-- The step library: triggers first, so a new workflow starts with what sets it off. -->
+      <div v-if="picker.open" class="focused-step-picker">
+        <input
+          ref="pickerSearch"
+          v-model="picker.query"
+          class="focused-input"
+          :placeholder="v.nodes.length ? 'Search steps to add…' : 'Start with a trigger, or search any step…'"
+          aria-label="Search steps"
+        />
+        <p v-if="!stepLibrary" class="focused-empty">Loading steps…</p>
+        <p v-else-if="!pickerGroups.length" class="focused-empty">No step matches “{{ picker.query }}”.</p>
+        <div v-for="group in pickerGroups" :key="group.id" class="focused-step-picker-group">
+          <h4>{{ group.label }}</h4>
+          <button
+            v-for="{ entry, locked } in group.items"
+            :key="group.id + ':' + entry.type"
+            type="button"
+            class="focused-step-option"
+            :disabled="locked"
+            v-tooltip="locked ? 'Needs a Pro plan' : ''"
+            @click="addStep(entry)"
+          >
+            <strong>{{ entry.title || humanKey(entry.type) }}</strong>
+            <small v-if="entry.description">{{ entry.description }}</small>
+            <span v-if="locked" class="focused-status-pill">Pro</span>
+          </button>
+          <p v-if="group.more" class="focused-foot-note">{{ group.more }} more. Search to find them.</p>
+        </div>
+      </div>
+
+      <p v-if="!v.nodes.length && !picker.open" class="focused-empty">No steps yet. Add a trigger to start it, then the steps it runs.</p>
       <div class="focused-step-list">
         <details v-for="(id, i) in stepOrder" :key="id" class="focused-step-card" :open="i === 0">
           <summary class="focused-step-sum">
@@ -52,14 +87,18 @@
               @input="node(id).text = $event.target.value"
             />
             <span class="focused-step-type">{{ stepType(id) }}</span>
+            <button v-if="!readOnly" type="button" class="focused-icon-btn" :aria-label="'Remove step ' + node(id).text" v-tooltip="'Remove step'" @click.prevent.stop="removeStep(id)">
+              <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
           </summary>
           <div class="focused-step-params">
-            <p v-if="!Object.keys(node(id).parameters).length" class="focused-edit-hint">No settings.</p>
+            <p v-if="!visibleStepParams(node(id).parameters).length" class="focused-edit-hint">No settings.</p>
             <FocusedParamField
-              v-for="k in Object.keys(node(id).parameters)"
+              v-for="k in visibleStepParams(node(id).parameters)"
               :key="k"
               :name="k"
               :read-only="readOnly"
+              :options="Array.isArray(node(id).parameters[k + '_options']) ? node(id).parameters[k + '_options'] : null"
               :model-value="node(id).parameters[k]"
               @update:model-value="node(id).parameters[k] = $event"
             />
@@ -70,7 +109,29 @@
 
     <!-- Tools -->
     <template v-else-if="kind === 'tools'">
-      <section v-if="v.isAI" class="focused-edit-block">
+      <section class="focused-edit-block">
+        <div class="focused-edit-block-head">
+          <h3>Type</h3>
+          <span class="focused-edit-hint">{{ toolType.hint }}</span>
+        </div>
+        <div class="focused-segmented" role="radiogroup" aria-label="Tool type">
+          <button
+            v-for="t in TOOL_TYPES"
+            :key="t.value"
+            type="button"
+            role="radio"
+            class="focused-segment"
+            :class="{ active: v.base === t.value }"
+            :aria-checked="v.base === t.value ? 'true' : 'false'"
+            :disabled="readOnly"
+            @click="v.base = t.value"
+          >
+            <i :class="t.icon" aria-hidden="true"></i>{{ t.label }}
+          </button>
+        </div>
+      </section>
+
+      <section v-if="isPrompt" class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Prompt</h3>
           <span class="focused-edit-hint">What the AI does with the inputs. Use them as <code v-pre>{{Name}}</code>.</span>
@@ -80,15 +141,15 @@
       <section v-else class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Code</h3>
-          <span class="focused-edit-hint">{{ codeLabel(raw) }} · runs when an agent uses this tool</span>
+          <span class="focused-edit-hint">{{ codeLabel({ base: v.base }) }} · runs when an agent uses this tool. The inputs are in <code>params</code>.</span>
         </div>
-        <AutoTextarea v-model="v.code" class="focused-code-edit" aria-label="Code" spellcheck="false" :readonly="readOnly" />
+        <AutoTextarea v-model="v.code" class="focused-code-edit" aria-label="Code" spellcheck="false" :readonly="readOnly" :placeholder="codePlaceholder" />
       </section>
 
       <section class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Inputs</h3>
-          <span class="focused-edit-hint">{{ v.isAI ? 'What gets passed in.' : 'What the code receives.' }}</span>
+          <span class="focused-edit-hint">{{ isPrompt ? 'What gets passed in.' : 'What the code receives.' }}</span>
           <span class="focused-flex"></span>
           <button v-if="!readOnly" type="button" class="focused-btn" @click="addInput">Add input</button>
         </div>
@@ -107,7 +168,7 @@
       <section class="focused-edit-block">
         <div class="focused-edit-block-head"><h3>Settings</h3></div>
         <div class="focused-edit-card">
-          <div v-if="v.isAI" class="focused-edit-row">
+          <div v-if="isPrompt" class="focused-edit-row">
             <span class="focused-edit-label">Model</span>
             <div class="focused-edit-pair">
               <CustomSelect
@@ -176,7 +237,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, onMounted, watch } from 'vue';
+import { ref, reactive, computed, inject, onMounted, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import FocusedParamField from './FocusedParamField.vue';
@@ -190,9 +251,15 @@ import {
   workflowStepOrder,
   workflowPayload,
   isRunningStatus,
+  stepLibraryGroups,
+  addWorkflowStep,
+  removeWorkflowStep,
+  visibleStepParams,
   toolValues,
   toolPayload,
   codeLabel,
+  TOOL_TYPES,
+  isPromptTool,
   INPUT_TYPES,
   cleanInputKey,
   renameInPrompt,
@@ -278,11 +345,50 @@ onMounted(load);
 
 const node = (id) => v.value.nodes.find((n) => n.id === id);
 const stepType = (id) => {
-  const r = (raw.value.nodes || []).find((n) => n.id === id) || {};
+  const r = [...(raw.value.nodes || []), ...(v.value.added || [])].find((n) => n.id === id) || {};
   return humanKey(String(r.type || '').replace(/-/g, '_'));
 };
 
+// ── Adding and removing steps ───────────────────────────────────────────────
+// The same step library Workflow Forge uses (tools/workflowTools).
+const picker = reactive({ open: false, query: '' });
+const pickerSearch = ref(null);
+const stepLibrary = computed(() => store.getters['tools/workflowTools']);
+const isPro = computed(() => (store.getters['userAuth/planType'] || 'free') !== 'free');
+const pickerGroups = computed(() => stepLibraryGroups(stepLibrary.value, picker.query, { isPro: isPro.value }));
+const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const refreshStepOrder = () => (stepOrder.value = workflowStepOrder(workflowPayload(raw.value, v.value)));
+
+async function togglePicker() {
+  picker.open = !picker.open;
+  picker.query = '';
+  if (!picker.open) return;
+  store.dispatch('tools/fetchWorkflowTools').catch((e) => console.warn('[Focused] could not load workflow steps:', e?.message || e));
+  await nextTick();
+  pickerSearch.value?.focus();
+}
+async function addStep(entry) {
+  const added = addWorkflowStep(v.value, raw.value, entry, { nodeId: crypto.randomUUID(), edgeId: crypto.randomUUID(), timeZone: timeZone() });
+  refreshStepOrder();
+  picker.open = false;
+  picker.query = '';
+  // Open the new step's card so its settings are right there.
+  await nextTick();
+  document.querySelectorAll('.focused-step-card')[stepOrder.value.indexOf(added.id)]?.setAttribute('open', '');
+}
+function removeStep(id) {
+  removeWorkflowStep(v.value, raw.value, id, { edgeId: crypto.randomUUID() });
+  refreshStepOrder();
+}
+
 // ── Tool inputs and model ──────────────────────────────────────────────────
+const isPrompt = computed(() => isPromptTool(v.value));
+const toolType = computed(() => TOOL_TYPES.find((t) => t.value === v.value.base) || { hint: codeLabel({ base: v.value.base }) });
+const codePlaceholder = computed(() =>
+  v.value.base === 'CODE_PYTHON'
+    ? '# The inputs are in params, e.g. params["topic"]\nresult = params["topic"].upper()\nprint(result)'
+    : '// The inputs are in params, e.g. params.topic\nconst result = params.topic.toUpperCase();\nconsole.log(result);',
+);
 function addInput() {
   v.value.inputs.push({ key: '', label: '', type: 'text', required: false });
 }
@@ -290,7 +396,7 @@ function renameInput(input, e) {
   const prev = input.key;
   input.key = cleanInputKey(e.target.value);
   if (e.target.value !== input.key) e.target.value = input.key;
-  if (v.value.isAI) v.value.instructions = renameInPrompt(v.value.instructions, prev, input.key);
+  if (isPrompt.value) v.value.instructions = renameInPrompt(v.value.instructions, prev, input.key);
 }
 const providerOptions = computed(() => {
   const list = (store.getters['aiProvider/filteredProviders'] || store.state.aiProvider?.providers || []).map((p) => (typeof p === 'string' ? p : p.name || p.id));
@@ -315,7 +421,7 @@ async function onProvider(provider) {
   v.value.model = modelOptions.value[0] || '';
 }
 watch(
-  () => loaded.value && props.kind === 'tools' && v.value.isAI && v.value.provider,
+  () => loaded.value && props.kind === 'tools' && isPrompt.value && v.value.provider,
   (p) => p && store.dispatch('aiProvider/fetchProviderModels', { provider: p }).catch(() => {}),
 );
 

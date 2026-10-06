@@ -1658,8 +1658,11 @@
   align-items: stretch;
   gap: 10px;
 }
-/* A row's value takes the rest of the line instead of its content width. */
-.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + * {
+/* A row's value takes the rest of the line instead of its content width.
+   Not a switch: this rule out-specifies .focused-switch's own `flex: 0 0
+   auto`, so every on/off switch after a label stretched across the row. A
+   switch keeps its size and sits at the right (its margin-left: auto). */
+.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + :not(.focused-switch) {
   flex: 1;
   min-width: 0;
 }
@@ -1885,6 +1888,76 @@
 }
 .ui-focused .focused-param-row > .focused-switch {
   margin: 6px 0 0;
+}
+.ui-focused .focused-param-row > .focused-param-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Add step: the step library, searchable, grouped. */
+.ui-focused .focused-step-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+}
+.ui-focused .focused-step-picker > .focused-input {
+  width: 100%;
+}
+.ui-focused .focused-step-picker-group h4 {
+  margin: 4px 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ui-focused .focused-step-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-focused .focused-step-option:hover:not(:disabled) {
+  background: var(--surface-active);
+}
+.ui-focused .focused-step-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ui-focused .focused-step-option strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ui-focused .focused-step-option small {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ui-focused .focused-step-option .focused-status-pill {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.ui-focused .focused-segmented button i {
+  margin-right: 6px;
 }
 
 /* Tool inputs */
