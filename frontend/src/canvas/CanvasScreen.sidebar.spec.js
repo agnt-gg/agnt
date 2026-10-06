@@ -45,10 +45,36 @@ describe('reference sidebar ordering and context',()=>{
   expect(upgrade.text()).toContain('Upgrade');
   expect(upgrade.classes()).toContain('cv-sb-page');
   const foot=wrapper.find('.cv-sb-bottom').findAll('button');
-  expect(foot.at(-1).attributes('data-tour-id')).toBe('sidebar.upgrade');
-  expect(foot.at(-2).attributes('data-tour-id')).toBe('sidebar.settings');
+  // The foot reads Settings, then Profile (the account menu), then the offer.
+  expect(foot.map(b=>b.attributes('data-tour-id')).slice(-3)).toEqual(['sidebar.settings','sidebar.profile','sidebar.upgrade']);
   await upgrade.trigger('click');
   expect(wrapper.emitted('screen-change').at(-1)).toEqual(['SettingsScreen',{section:'billing'}]);
+ });
+
+ // Focused's account menu, in Studio: the profile, the switch to Focused, and
+ // sign-out, one click from the rail.
+ it('the Profile button under Settings opens the account menu: Profile, Switch to Focused, Log out',async()=>{const{wrapper,store}=setup('pro');await flushPromises();
+  const dispatch=vi.spyOn(store,'dispatch').mockResolvedValue();
+  const profile=wrapper.find('[data-tour-id="sidebar.profile"]');
+  expect(profile.classes()).toContain('cv-sb-page');
+  expect(document.body.querySelector('.cv-profile-menu')).toBeNull();
+  await profile.trigger('click');
+  expect(profile.attributes('aria-expanded')).toBe('true');
+  const menu=()=>document.body.querySelector('.cv-profile-menu');
+  expect([...menu().querySelectorAll('[role="menuitem"]')].map(b=>b.textContent.replace(/Ctrl Shift S/,'').trim())).toEqual(['Profile','Switch to Focused','Log out']);
+  menu().querySelector('[data-testid="switch-to-focused"]').click();await flushPromises();
+  expect(dispatch).toHaveBeenCalledWith('theme/setUiMode','focused');
+  expect(menu()).toBeNull(); // choosing closes it
+  await profile.trigger('click');
+  menu().querySelector('[data-testid="open-profile"]').click();await flushPromises();
+  expect(wrapper.emitted('screen-change').at(-1)).toEqual(['SettingsScreen',{section:'profile'}]);
+  await profile.trigger('click');
+  document.body.querySelector('.cv-profile-scrim').click();await flushPromises();
+  expect(menu()).toBeNull(); // a click outside closes it
+  await profile.trigger('click');
+  menu().querySelector('[data-testid="studio-logout"]').click();await flushPromises();
+  expect(dispatch).toHaveBeenCalledWith('userAuth/logout');
+  expect(wrapper.emitted('screen-change').at(-1)).toEqual(['SettingsScreen',{section:'general'}]);
  });
 
  // Selling Pro to someone who already pays for it reads as a billing bug.

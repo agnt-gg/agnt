@@ -197,6 +197,40 @@
             </button>
           </Tooltip>
 
+          <!-- Profile: who is signed in, and the switch to Focused — the same
+               small account menu Focused has at the foot of its sidebar. -->
+          <Tooltip text="Profile" position="right" width="auto" :disabled="railLabelsVisible || profileOpen">
+            <button
+              ref="profileButton"
+              class="cv-sb-page cv-sb-profile"
+              data-tour-id="sidebar.profile"
+              aria-haspopup="menu"
+              :aria-expanded="profileOpen ? 'true' : 'false'"
+              @click="toggleProfile"
+            >
+              <span class="cv-sb-avatar" aria-hidden="true">{{ profileInitial }}</span>
+              <span class="cv-sb-label" v-marquee>
+                <span class="cv-sb-label-inner">{{ profileName }}</span>
+              </span>
+            </button>
+          </Tooltip>
+          <Teleport to="body">
+            <div v-if="profileOpen" class="cv-profile-scrim" @click="profileOpen = false"></div>
+            <div v-if="profileOpen" class="cv-profile-menu" role="menu" :style="profileMenuStyle" @keydown.esc="profileOpen = false">
+              <div class="cv-profile-who">
+                <strong>{{ profileName }}</strong>
+                <small v-if="profileEmail && profileEmail !== profileName">{{ profileEmail }}</small>
+              </div>
+              <button type="button" role="menuitem" class="cv-profile-item" data-testid="open-profile" @click="openProfile"><i class="fas fa-user" aria-hidden="true"></i>Profile</button>
+              <div class="cv-profile-sep"></div>
+              <button type="button" role="menuitem" class="cv-profile-item" data-testid="switch-to-focused" @click="switchToFocused">
+                <i class="fas fa-columns" aria-hidden="true"></i>Switch to Focused<kbd>Ctrl Shift S</kbd>
+              </button>
+              <div class="cv-profile-sep"></div>
+              <button type="button" role="menuitem" class="cv-profile-item" data-testid="studio-logout" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
+            </div>
+          </Teleport>
+
           <!-- Shown only to a plan that can actually upgrade. A paid account
                being sold what it already owns reads as a billing error, so
                enterprise and pro never see this. -->
@@ -556,6 +590,40 @@ export default {
 
     // Settings can hide, move, and regroup both built-in and custom pages.
     const bottomSections = BOTTOM_SECTIONS;
+
+    // ── Profile menu (foot of the rail) ──
+    // Mirrors Focused's account menu: Profile, Switch to Focused, Log out. The
+    // menu is teleported and fixed beside the button, so the rail's own
+    // overflow can never clip it.
+    const profileOpen = ref(false);
+    const profileButton = ref(null);
+    const profileMenuStyle = ref({});
+    const profileEmail = computed(() => store.getters['userAuth/userEmail'] || '');
+    const profileName = computed(() => store.getters['userAuth/userName'] || profileEmail.value || 'Profile');
+    const profileInitial = computed(() => (String(profileName.value).trim()[0] || 'A').toUpperCase());
+    function toggleProfile() {
+      if (!profileOpen.value) {
+        const rect = profileButton.value?.getBoundingClientRect?.();
+        if (rect) profileMenuStyle.value = { left: `${Math.round(rect.right + 8)}px`, bottom: `${Math.max(8, Math.round(window.innerHeight - rect.bottom))}px` };
+      }
+      profileOpen.value = !profileOpen.value;
+    }
+    function openProfile() {
+      profileOpen.value = false;
+      onCustomPage.value = false;
+      emit('screen-change', 'SettingsScreen', { section: 'profile' });
+    }
+    function switchToFocused() {
+      profileOpen.value = false;
+      store.dispatch('theme/setUiMode', 'focused');
+    }
+    // The same sign-out Settings › Sign in / out uses; land there afterwards.
+    async function logOut() {
+      profileOpen.value = false;
+      await store.dispatch('userAuth/logout');
+      onCustomPage.value = false;
+      emit('screen-change', 'SettingsScreen', { section: 'general' });
+    }
 
     // Only a plan that can actually buy something is offered the upgrade.
     // Anything already paid for (pro, enterprise, and the founder tiers) is
@@ -1145,6 +1213,16 @@ export default {
       activePage,
       allPages,
       bottomSections,
+      profileOpen,
+      profileButton,
+      profileMenuStyle,
+      profileEmail,
+      profileName,
+      profileInitial,
+      toggleProfile,
+      openProfile,
+      switchToFocused,
+      logOut,
       canUpgrade,
       openUpgrade,
       navigationGroups,
@@ -1802,6 +1880,89 @@ export default {
 .cv-sb-upgrade:focus-visible {
   outline: 2px solid rgba(212, 175, 55, 0.7);
   outline-offset: -2px;
+}
+
+/* Profile: a rail row whose icon is the signed-in person's initial. */
+.cv-sb-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+  background: rgba(var(--green-rgb), 0.16);
+  color: var(--text-green);
+  font-size: 10px;
+  font-weight: 700;
+}
+.cv-profile-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+}
+.cv-profile-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 230px;
+  padding: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  background: var(--color-popup);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  color: var(--color-text);
+  font-size: 13px;
+}
+.cv-profile-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.cv-profile-who strong,
+.cv-profile-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-profile-who small {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+.cv-profile-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-profile-item:hover,
+.cv-profile-item:focus-visible {
+  background: rgba(var(--green-rgb), 0.08);
+  outline: none;
+}
+.cv-profile-item i {
+  width: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.cv-profile-item kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+}
+.cv-profile-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--terminal-border-color);
 }
 
 /* Sits apart from Settings so it reads as its own thing, not another nav row. */
