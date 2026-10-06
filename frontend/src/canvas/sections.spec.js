@@ -367,16 +367,15 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('Apps leads BUILD (Your plugins · Plugin Forge); Market is WORK; Settings is the foot alone', () => {
+  it('Plugins leads BUILD (PLUGINS | PLUGIN FORGE tabs); Market is WORK; Settings is the foot alone', () => {
     // A plugin and the sign-in it needs are ONE app, so connecting and
-    // installing are one row. Plugin Forge (PluginsScreen) is a row of the Apps
-    // sidebar, not a toolbar tab, but the row still owns the screen so the
-    // rail stays highlighted on it.
+    // installing are one row. Plugin Forge sits beside Plugins in the toolbar,
+    // the same way Tool Forge sits beside Tools.
     const apps = MAIN_SECTIONS.find((s) => s.id === 'apps');
     expect(apps.group).toBe('BUILD');
     expect(MAIN_SECTIONS.filter((s) => s.group === 'BUILD')[0].id).toBe('apps');
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['PLUGINS']);
-    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['PLUGINS']);
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
+    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
     const market = MAIN_SECTIONS.find((s) => s.id === 'store');
     expect(market.group).toBe('WORK');
@@ -390,14 +389,15 @@ describe('canvas sections registry', () => {
   // Email and Webhooks are headline features: they were buried under an
   // "Advanced" caption. There is no Advanced group on Apps; Advanced is a
   // Settings group (navigation, remote access, backup, reset).
-  it('the Apps nav is one list: Your plugins, then Email and Webhooks; Plugin Forge opens its own screen', () => {
+  it('the Plugins nav is one list: Plugins, then Email and Webhooks; Plugin Forge is not a row', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
     expect(appsDirectory.map((g) => g.label)).toEqual(['Plugins']);
     const [main] = appsDirectory;
-    // Your plugins is the default view (one card per thing you connect).
-    expect(main.items.map((i) => i.id)).toEqual(['apps', 'email-server', 'webhooks', 'mcp-servers', 'plugins', 'oauth']);
-    expect(main.items.find((i) => i.id === 'plugins')).toMatchObject({ label: 'Plugin Forge', screen: 'PluginsScreen' });
+    // Plugins is the default view (one card per thing you connect).
+    expect(main.items.map((i) => i.id)).toEqual(['apps', 'email-server', 'webhooks', 'mcp-servers', 'oauth']);
+    expect(main.items[0].label).toBe('Plugins');
+    expect(main.items.some((i) => i.screen === 'PluginsScreen' || /forge/i.test(i.label))).toBe(false);
     expect(appsDirectory.flatMap((g) => g.items).map((i) => i.label).join(' ')).not.toMatch(/advanced/i);
     expect(connectorsScreenSrc).toMatch(/const activeSection = ref\('apps'\)/);
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);

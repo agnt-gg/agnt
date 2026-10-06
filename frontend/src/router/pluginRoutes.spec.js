@@ -58,8 +58,8 @@ describe('Plugin terminology across navigation surfaces', () => {
     expect(section.label).toBe('Plugins');
     expect(section.screens.map(s => s.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
     expect(appsDirectory[0].label).toBe('Plugins');
-    expect(appsDirectory[0].items.find(i => i.id === 'apps').label).toBe('Your plugins');
-    expect(appsDirectory[0].items.find(i => i.id === 'plugins').label).toBe('Plugin Forge');
+    expect(appsDirectory[0].items.find(i => i.id === 'apps').label).toBe('Plugins');
+    expect(appsDirectory[0].items.find(i => i.id === 'plugins')).toBeUndefined();
     expect(FOCUSED_PAGES.connectors.title).toBe('Plugins');
   });
 });

@@ -119,7 +119,7 @@ export const MAIN_SECTIONS = [
   // ── BUILD ── the things that do the work. This is what makes the account theirs.
   {
     // Plugins leads BUILD. The saved 'apps' id stays stable for user nav settings.
-    // Plugin Forge is a sidebar entry, not a toolbar tab; both share this row.
+    // Plugin Forge sits beside Plugins in the toolbar, like every other forge.
     id: 'apps',
     group: 'BUILD',
     icon: 'fas fa-cube',
@@ -127,7 +127,7 @@ export const MAIN_SECTIONS = [
     badge: 'connect',
     screens: [
       { screen: 'ConnectorsScreen', label: 'PLUGINS' },
-      { screen: 'PluginsScreen', label: 'PLUGIN FORGE', tab: false },
+      { screen: 'PluginsScreen', label: 'PLUGIN FORGE' },
     ],
   },
   {

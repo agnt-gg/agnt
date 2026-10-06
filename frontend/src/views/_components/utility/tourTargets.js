@@ -20,7 +20,7 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.artifacts',        selector: '[data-tour-id="sidebar.artifacts"]',     screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
   // ── Sidebar: BUILD ─────────────────────────────────────────────────────────
-  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',          screen: null, description: 'Sidebar button: Plugins (Your plugins; Plugin Forge; MCP Servers; Keys & Sign-ins; Email Inbox; Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',          screen: null, description: 'Sidebar button: Plugins (Plugins; Email Inbox; Webhooks; MCP Servers; Keys & Sign-ins). Plugin Forge is the toolbar tab beside PLUGINS', safeToSimulate: true },
   { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',        screen: null, description: 'Sidebar button: Agents (tabs: Agents, Memory)', safeToSimulate: true },
   { id: 'sidebar.workflows',        selector: '[data-tour-id="sidebar.workflows"]',     screen: null, description: 'Sidebar button: Workflows (tabs: Workflows, Workflow Forge)', safeToSimulate: true },
   { id: 'sidebar.tools',            selector: '[data-tour-id="sidebar.tools"]',         screen: null, description: 'Sidebar button: Tools (tabs: Tools, Tool Forge)', safeToSimulate: true },

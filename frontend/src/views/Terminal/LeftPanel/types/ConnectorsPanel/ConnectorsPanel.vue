@@ -77,7 +77,8 @@ import { useStore } from 'vuex';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 
 // Catalog and Plugin Forge share this sidebar and its section selection.
-// appsDirectory keeps its saved IDs while labels and URLs use Plugins.
+// Plugin Forge itself is reached from the toolbar tab, so every row here is a
+// catalog section. appsDirectory keeps its saved IDs.
 const APP_GROUPS = appsDirectory;
 const DEFAULT_SECTION = APP_GROUPS[0].items[0].id;
 
@@ -100,18 +101,10 @@ export default {
       return secrets.length + allProviders.length;
     });
 
-    const onOwnScreen = (item) => !!item.screen && props.screenName === item.screen;
-    const isActive = (item) =>
-      item.screen ? onOwnScreen(item) : props.screenName !== 'PluginsScreen' && activeSection.value === item.id;
+    // On Plugin Forge no catalog section is showing, so no row is lit.
+    const isActive = (item) => props.screenName !== 'PluginsScreen' && activeSection.value === item.id;
 
     const handleNavClick = (item) => {
-      // The { screen } form: BaseScreen turns it into a screen change for any
-      // screen. A bare string is left to each screen's own handler, and the
-      // Plugins screen has none, so the click went nowhere.
-      if (item.screen) {
-        emit('panel-action', 'navigate', { screen: item.screen });
-        return;
-      }
       setInnerSection(item.id);
       // From the Plugins screen, a section row first goes back to Apps; the
       // shared section value then shows the chosen view there.
