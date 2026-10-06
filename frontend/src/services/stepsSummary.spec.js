@@ -20,12 +20,23 @@ describe('summarizeSteps', () => {
     expect(summarizeSteps([s('completed'), s('pending', 'read_file')]).state).toBe('running');
   });
 
-  it('never says Done when something failed', () => {
-    expect(summarizeSteps([s('completed'), s('error'), s('error')])).toEqual({ state: 'error', text: '3 steps · 2 failed' });
+  // An errored step is routine, not a verdict on the group: no failure state
+  // (that drew a red X on the whole group), just a neutral count.
+  it('a finished group with errored steps is still done, with the errors counted', () => {
+    expect(summarizeSteps([s('completed'), s('error'), s('error')])).toEqual({ state: 'done', text: 'Done · 3 steps · 2 errors' });
+    expect(summarizeSteps([s('completed'), s('error')]).text).toBe('Done · 2 steps · 1 error');
+    expect(summarizeSteps([s('error')]).state).toBe('done');
   });
 
-  it('an interrupted run is Stopped, not Done', () => {
+  it('there is no error state at all', () => {
+    for (const mix of [[s('error')], [s('error'), s('completed')], [s('error'), s('interrupted')]]) {
+      expect(summarizeSteps(mix).state).not.toBe('error');
+    }
+  });
+
+  it('an interrupted run is Stopped, not Done, even with an errored step', () => {
     expect(summarizeSteps([s('completed'), s('interrupted')])).toEqual({ state: 'stopped', text: 'Stopped · 2 steps' });
+    expect(summarizeSteps([s('error'), s('interrupted')]).state).toBe('stopped');
   });
 
   it('survives junk', () => {

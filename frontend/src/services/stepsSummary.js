@@ -2,9 +2,14 @@
  * One line for a group of tool steps — Focused's "Done · 12 steps".
  *
  * Studio shows every tool call as its own row. Focused shows this line and
- * opens the same rows on click, so nothing is hidden, only folded. The line
- * must never claim more than the rows say: a group with a failure is not
- * "Done", and a group still running is not finished.
+ * opens the same rows on click, so nothing is hidden, only folded. A group
+ * still running is not finished, and a stopped one is not done.
+ *
+ * A step that errored does not make the group a failure. Errors are routine
+ * (a 404 probed, a retry, a fallback taken) and the agent usually carries on
+ * and succeeds; a red failure mark on the whole group read as "this all went
+ * wrong". The count stays, neutrally worded, and each row keeps its own
+ * status for whoever opens the group.
  *
  * Input: [{ status, name }] where status is MessageItem.toolCallStatus().
  */
@@ -31,10 +36,9 @@ export function summarizeSteps(steps) {
   const live = list.find((s) => s.status === 'running') || list.find((s) => s.status === 'pending');
   if (live) return { state: 'running', text: `Working · ${humanizeToolName(live.name)}` };
 
-  const failed = list.filter((s) => s.status === 'error').length;
-  if (failed) return { state: 'error', text: `${plural(n)} · ${failed} failed` };
-
   if (list.some((s) => s.status === 'interrupted')) return { state: 'stopped', text: `Stopped · ${plural(n)}` };
 
-  return { state: 'done', text: `Done · ${plural(n)}` };
+  const errors = list.filter((s) => s.status === 'error').length;
+  const note = errors ? ` · ${errors} error${errors === 1 ? '' : 's'}` : '';
+  return { state: 'done', text: `Done · ${plural(n)}${note}` };
 }
