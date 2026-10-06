@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortItems, breadcrumbs, formatSize, formatAge, invalidName, kindOf, joinPath } from './filesBrowser.js';
+import { sortItems, breadcrumbs, formatSize, formatAge, invalidName, kindOf, kindLabel, joinPath, parentOf, readLayout, writeLayout } from './filesBrowser.js';
 
 const items = [
   { name: 'b.md', type: 'file', modifiedAt: 300 },
@@ -44,5 +44,25 @@ describe('files grid helpers', () => {
   it('classifies and joins', () => {
     expect([kindOf({ type: 'directory', name: 'x' }), kindOf({ type: 'file', name: 'x.png' }), kindOf({ type: 'file', name: 'x.js' })]).toEqual(['directory', 'image', 'text']);
     expect([joinPath('', 'a'), joinPath('d', 'a')]).toEqual(['a', 'd/a']);
+    expect([parentOf('a'), parentOf('d/e/a')]).toEqual(['', 'd/e']);
+  });
+
+  it('names every kind in words for the list view', () => {
+    expect([kindLabel({ type: 'directory', name: 'x' }), kindLabel({ type: 'file', name: 'x.pdf' }), kindLabel({ type: 'file', name: 'x.md' })]).toEqual(['Folder', 'PDF', 'Document']);
+  });
+
+  it('remembers grid or list, and falls back to grid on anything else', () => {
+    const store = new Map();
+    const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+    expect(readLayout(storage)).toBe('grid');
+    writeLayout('list', storage);
+    expect(readLayout(storage)).toBe('list');
+    writeLayout('table', storage); // not a Files layout: ignored
+    expect(readLayout(storage)).toBe('list');
+    store.set('agnt.files.layout', 'garbage');
+    expect(readLayout(storage)).toBe('grid');
+    const blocked = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+    expect(readLayout(blocked)).toBe('grid');
+    expect(() => writeLayout('list', blocked)).not.toThrow();
   });
 });

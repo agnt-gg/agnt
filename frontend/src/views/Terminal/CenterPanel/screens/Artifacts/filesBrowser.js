@@ -15,7 +15,48 @@ export const KIND_ICONS = {
   text: 'fas fa-file-code',
 };
 
+/** What the list view's Kind column says for each kind. */
+export const KIND_LABELS = {
+  directory: 'Folder',
+  html: 'Web page',
+  markdown: 'Document',
+  csv: 'Spreadsheet',
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+  pdf: 'PDF',
+  archive: 'Archive',
+  file: 'File',
+  text: 'Code / text',
+};
+
 export const kindOf = (item) => (item.type === 'directory' ? 'directory' : artifactKind(item.name));
+
+export const kindLabel = (item) => KIND_LABELS[kindOf(item)] || 'File';
+
+/** The folder part of a workspace-relative path ('' at the root). */
+export const parentOf = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+// The grid/list choice, remembered across visits. Anything unexpected in
+// storage (an old value, a hand edit) falls back to the grid.
+export const LAYOUTS = ['grid', 'list'];
+const LAYOUT_KEY = 'agnt.files.layout';
+export function readLayout(storage = globalThis.localStorage) {
+  try {
+    const saved = storage?.getItem(LAYOUT_KEY);
+    return LAYOUTS.includes(saved) ? saved : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
+export function writeLayout(layout, storage = globalThis.localStorage) {
+  if (!LAYOUTS.includes(layout)) return;
+  try {
+    storage?.setItem(LAYOUT_KEY, layout);
+  } catch {
+    /* storage full or blocked: the choice simply is not remembered */
+  }
+}
 
 /** Folders first; within each, newest first (`recent`) or A–Z (`name`). Returns a copy. */
 export function sortItems(items, order = 'recent') {
