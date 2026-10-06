@@ -35,7 +35,7 @@ import LearningBoard from './LearningBoard.vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { learningPanelRoute } from './learningPanelRoute.js';
-import { inBatches } from './inBatches.js';
+import { useEscalationQueue } from '@/composables/useEscalationQueue.js';
 
 const store = useStore();
 const emit = defineEmits(['screen-change']);
@@ -63,37 +63,8 @@ const undo = item => mutate('/trials/' + item.id + '/undo', { revision: item.rev
 
 // ── The escalation queue (insights waiting for a yes or no) ──
 const waiting = computed(() => store.getters['insights/escalatedInsights'] || []);
-// Accept can call a model per insight: the server takes 50 at a time. Reject
-// is one statement per batch; 500 stays clear of SQLite's parameter limit.
-const ACCEPT_BATCH = 50, REJECT_BATCH = 500;
-const progress = ref(null), stopRequested = ref(false);
-watch(stopRequested, stopping => { if (progress.value) progress.value = { ...progress.value, stopping }; });
-
-async function runQueue(verb, ids, size, work) {
-  if (busy.value || disposed || !ids.length) return;
-  busy.value = true; error.value = ''; stopRequested.value = false;
-  progress.value = ids.length > size ? { verb, done: 0, total: ids.length, stoppable: true, stopping: false } : null;
-  try {
-    return await inBatches(ids, size, work, {
-      shouldStop: () => stopRequested.value || disposed,
-      onProgress: done => { if (progress.value) progress.value = { ...progress.value, done }; },
-    });
-  } catch (e) {
-    error.value = e.message || 'Something went wrong. Refresh and try again.';
-  } finally {
-    progress.value = null; stopRequested.value = false; busy.value = false;
-    // Resynchronise with the server whatever happened: a batch that failed
-    // mid-way may still have applied part of its work.
-    store.dispatch('insights/fetchEscalated').catch(() => {});
-    store.dispatch('insights/fetchStats').catch(() => {});
-  }
-}
-async function acceptInsights(ids) {
-  const run = await runQueue('Accepting', ids, ACCEPT_BATCH, batch => store.dispatch('insights/acceptEscalated', batch));
-  const failed = run?.results.flatMap(r => r.failed) || [];
-  if (failed.length) error.value = `${failed.length} ${failed.length === 1 ? 'action' : 'actions'} could not be applied and are still waiting: ${failed[0].error}`;
-}
-const rejectInsights = ids => runQueue('Rejecting', ids, REJECT_BATCH, batch => store.dispatch('insights/rejectEscalated', batch));
+// Shares the page's busy flag and error line with the learning loop above.
+const { progress, stopRequested, accept: acceptInsights, reject: rejectInsights } = useEscalationQueue(store, { busy, error, isDisposed: () => disposed });
 
 // ── Selection → right panel ──
 const selected = ref(null);

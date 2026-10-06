@@ -275,8 +275,6 @@ export default {
     function onEntityAction(action, payload) {
       if (action === 'open-forge') emit('panel-action', 'edit-workflow', payload.id);
       else if (action === 'edit-agent') emit('panel-action', 'edit-agent', payload.id);
-      else if (action === 'apply-insight') store.dispatch('insights/applyInsight', payload.id);
-      else if (action === 'reject-insight') store.dispatch('insights/rejectInsight', payload.id);
       else emit('panel-action', action, payload);
     }
 

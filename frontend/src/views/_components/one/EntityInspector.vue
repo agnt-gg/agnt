@@ -135,17 +135,7 @@
 
     <!-- ── AUTONOMY QUEUE ── -->
     <template v-else-if="kind === 'autonomy'">
-      <div v-if="!escalated.length" class="muted">Nothing is waiting for approval.</div>
-      <div v-for="ins in escalated" :key="ins.id" class="card">
-        <div class="row">
-          <span class="tag warn">{{ ins.insight_type || ins.type }}</span>
-          <span class="nm">{{ ins.title || ins.summary }}</span>
-        </div>
-        <div class="row" style="margin-top: 8px; gap: 6px">
-          <button class="btn sm" @click="$emit('action', 'reject-insight', ins)">Reject</button>
-          <button class="btn sm pri" @click="$emit('action', 'apply-insight', ins)">Approve</button>
-        </div>
-      </div>
+      <ApprovalQueue />
     </template>
 
     <!-- ── MEMORY ── -->
@@ -182,12 +172,13 @@ import { computed, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import InspectorShell from './InspectorShell.vue';
 import InspSection from './InspSection.vue';
+import ApprovalQueue from './ApprovalQueue.vue';
 import { ENTITY_SCREENS } from '@/utils/entityRefs.js';
 import { RUNNING_STATUSES as RUNNING, isRunning, runDisplayName, runStartedAt, runEndedAt } from '@/utils/runDisplay.js';
 
 export default {
   name: 'EntityInspector',
-  components: { InspectorShell, InspSection },
+  components: { InspectorShell, InspSection, ApprovalQueue },
   props: {
     kind: { type: String, required: true },
     id: { type: [String, Number], default: null },
