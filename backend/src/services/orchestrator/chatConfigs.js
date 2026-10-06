@@ -228,7 +228,7 @@ async function loadAsyncToolsEnabled(context) {
 // Resolve the agent's assignedSkills (ids, names, or slugs) to catalog
 // entries so the prompt can highlight them as the agent's specialty. Returns
 // '' when the agent has no assigned skills or resolution fails.
-async function buildSpecialtySkillsSection(assignedSkills) {
+async function buildSpecialtySkillsSection(assignedSkills, userId) {
   if (!Array.isArray(assignedSkills) || assignedSkills.length === 0) return '';
   try {
     const entries = [];
@@ -238,7 +238,7 @@ async function buildSpecialtySkillsSection(assignedSkills) {
     try {
       const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
       if (SkillDiscoveryService.initialized) {
-        for (const ds of SkillDiscoveryService.getSkillCatalog()) {
+        for (const ds of await SkillDiscoveryService.getSkillCatalogFor(userId)) {
           if (assignedSet.has(ds.name) || assignedSet.has(ds.slug)) {
             if (!isDefaultSkill(ds)) continue;
             entries.push({ name: ds.name, description: ds.description });
@@ -252,7 +252,10 @@ async function buildSpecialtySkillsSection(assignedSkills) {
 
     const SkillModel = (await import('../../models/SkillModel.js')).default;
     const records = await SkillModel.findByIds(assignedSkills);
-    for (const s of records.filter(isDefaultSkill)) {
+    // findByIds is unscoped; apply findAll's rule so an id copied into an
+    // agent cannot surface another account's skill.
+    const readable = records.filter((s) => s.user_id === userId || s.is_builtin);
+    for (const s of readable.filter(isDefaultSkill)) {
       const key = s.slug || s.name;
       if (!seenNames.has(key)) {
         entries.push({ name: key, description: s.description });
@@ -310,7 +313,7 @@ async function loadAgentOverride(context) {
         description: agent.description || '',
         systemPrompt: agent.systemPrompt || '',
         toolAccessMode: isOpen ? 'open' : 'restricted',
-        specialtySkillsSection: await buildSpecialtySkillsSection(agent.assignedSkills),
+        specialtySkillsSection: await buildSpecialtySkillsSection(agent.assignedSkills, context.userId),
         pinnedToolsSection,
       };
     }

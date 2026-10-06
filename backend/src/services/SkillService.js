@@ -201,7 +201,7 @@ class SkillService {
     try {
       const SkillDiscoveryService = (await import('./SkillDiscoveryService.js')).default;
       if (SkillDiscoveryService.initialized) {
-        for (const ds of SkillDiscoveryService.getSkillCatalog()) {
+        for (const ds of await SkillDiscoveryService.getSkillCatalogFor(userId)) {
           entries.push(ds);
           seenNames.add(ds.name);
         }
@@ -297,7 +297,7 @@ You have the above skills assigned. Follow the instructions defined in each skil
         const { default: SkillDiscoveryService } = await import('./SkillDiscoveryService.js');
         if (SkillDiscoveryService.initialized) {
           const dbSlugs = new Set(dbSkills.map((s) => s.slug).filter(Boolean));
-          filesystemSkills = Array.from(SkillDiscoveryService.skills.values())
+          filesystemSkills = (await SkillDiscoveryService.visibleSkills(userId))
             .filter((s) => !dbSlugs.has(s.name)) // Don't duplicate DB skills
             .map((s) => ({
               id: `fs-${s.name}`,

@@ -5,6 +5,7 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import { parseSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
 import { buildSupersededByIndex } from '../utils/skillRelations.js';
+import { getBootstrappedSkillNames } from '../utils/builtinSkillBootstrap.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,8 +48,15 @@ const CLIENT_SKILL_DIRS = [
  *   2. Ancestor directories up to git root
  *   3. User-level ~/.agnt/skills/ (AGNT home — bootstrapped builtins live here)
  *   4. User-level (all other client dirs)
+ *
+ * WHO SEES WHAT: the scan is one map per process, but the folders belong to
+ * the machine's owner, not to every account that signs in. Callers outside
+ * this file use the *For(userId) methods, which show AGNT's shipped built-ins
+ * to everyone and every other folder skill only to the accounts granted it in
+ * SkillFolderAccess. The unscoped getters remain for this class and its tests;
+ * skillFolderScope.contract.test.js fails if production code calls them.
  */
-class SkillDiscoveryService {
+export class SkillDiscoveryService {
   constructor() {
     /** @type {Map<string, DiscoveredSkill>} */
     this.skills = new Map();
@@ -64,6 +72,89 @@ class SkillDiscoveryService {
      * @type {Array<{name: string, path: string, errors: string[], skipped: boolean, at: string}>}
      */
     this.parseFailures = [];
+    /** Names AGNT bootstrapped from its own bundle; the only folder skills every account shares. */
+    this.builtinNames = new Set();
+    /** SkillFolderAccess, loaded on first use so file-only tests never open the database. */
+    this.access = null;
+  }
+
+  async _accessStore() {
+    if (!this.access) this.access = (await import('./SkillFolderAccess.js')).default;
+    return this.access;
+  }
+
+  /**
+   * A shipped built-in: named in the bootstrap manifest AND loaded from AGNT's
+   * own user folder. A same-named skill in a project or another tool's folder
+   * is somebody's file, not ours, and is owned like any other.
+   */
+  isSharedBuiltin(skill) {
+    return !!skill && skill.client === 'agnt' && skill.scope === 'user' && this.builtinNames.has(skill.name);
+  }
+
+  /**
+   * Every discovered skill this account may see. No account sees only the
+   * built-ins. If ownership cannot be read, this fails closed to the built-ins
+   * and says so, rather than falling open to everything on disk.
+   */
+  async visibleSkills(userId) {
+    const all = Array.from(this.skills.values());
+    const shared = all.filter((skill) => this.isSharedBuiltin(skill));
+    if (!userId) return shared;
+    try {
+      const access = await this._accessStore();
+      await access.adoptUnseen(all.filter((skill) => !this.isSharedBuiltin(skill)).map((skill) => skill.name));
+      const granted = await access.namesFor(userId);
+      return all.filter((skill) => this.isSharedBuiltin(skill) || granted.has(skill.name));
+    } catch (error) {
+      console.error('[SkillDiscovery] Folder skill ownership unavailable; showing built-ins only:', error.message);
+      return shared;
+    }
+  }
+
+  async canSee(name, userId) {
+    const skill = this.skills.get(name);
+    if (!skill) return false;
+    return (await this.visibleSkills(userId)).includes(skill);
+  }
+
+  async getSkillCatalogFor(userId) {
+    return (await this.visibleSkills(userId)).map((skill) => this._catalogEntry(skill));
+  }
+
+  async getSkillFor(name, userId) {
+    return (await this.canSee(name, userId)) ? this.getSkill(name) : null;
+  }
+
+  async getSkillContentFor(name, userId) {
+    return (await this.canSee(name, userId)) ? this.getSkillContent(name) : null;
+  }
+
+  async listResourcesFor(name, userId) {
+    return (await this.canSee(name, userId)) ? this.listResources(name) : null;
+  }
+
+  async readResourceFor(name, resourcePath, userId) {
+    return (await this.canSee(name, userId)) ? this.readResource(name, resourcePath) : null;
+  }
+
+  /** Superseding skills the account can see; another account's skill names are not hints. */
+  async getSupersededByFor(name, userId) {
+    return buildSupersededByIndex(await this.visibleSkills(userId)).get(name) || [];
+  }
+
+  /** Parse failures name files on disk: the instance owner sees all, others only their own. */
+  async getParseFailuresFor(userId) {
+    if (!userId) return [];
+    try {
+      const access = await this._accessStore();
+      if (await access.isHomeOwner(userId)) return this.getParseFailures();
+      const granted = await access.namesFor(userId);
+      return this.getParseFailures().filter((failure) => granted.has(failure.name));
+    } catch (error) {
+      console.error('[SkillDiscovery] Folder skill ownership unavailable; hiding parse failures:', error.message);
+      return [];
+    }
   }
 
   /**
@@ -201,6 +292,13 @@ class SkillDiscoveryService {
       }
 
       this.skills = discovered;
+      try {
+        this.builtinNames = await getBootstrappedSkillNames();
+      } catch (error) {
+        // Fail closed: with no manifest nothing is shared, everything is owned.
+        console.error('[SkillDiscovery] Built-in manifest unreadable; no folder skill is shared:', error.message);
+        this.builtinNames = new Set();
+      }
       this.lastScanTime = new Date().toISOString();
       console.log(`[SkillDiscovery] Scan complete. ${discovered.size} skills found, ${totalDirsScanned} directories scanned.`);
     } finally {
@@ -330,16 +428,19 @@ class SkillDiscoveryService {
    * Returns name + description for ALL discovered skills.
    */
   getSkillCatalog() {
-    return Array.from(this.skills.values())
-      .map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        source: 'filesystem',
-        scope: skill.scope,
-        client: skill.client,
-        trusted: skill.trusted,
-        metadata: skill.frontmatter?.metadata || null,
-      }));
+    return Array.from(this.skills.values()).map((skill) => this._catalogEntry(skill));
+  }
+
+  _catalogEntry(skill) {
+    return {
+      name: skill.name,
+      description: skill.description,
+      source: 'filesystem',
+      scope: skill.scope,
+      client: skill.client,
+      trusted: skill.trusted,
+      metadata: skill.frontmatter?.metadata || null,
+    };
   }
 
   /**

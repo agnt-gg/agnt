@@ -7,17 +7,19 @@ import { authenticateToken } from './Middleware.js';
 const SkillDiscoveryRoutes = express.Router();
 
 /**
- * GET / - List all filesystem-discovered skills (catalog only)
+ * GET / - Filesystem-discovered skills this account may see (catalog only).
+ * Every route here is scoped: the scan is per process, the skills are not.
  */
 SkillDiscoveryRoutes.get('/', authenticateToken, async (req, res) => {
   try {
-    const catalog = SkillDiscoveryService.getSkillCatalog();
+    const userId = req.user.userId;
+    const catalog = await SkillDiscoveryService.getSkillCatalogFor(userId);
     res.json({
       skills: catalog,
       lastScan: SkillDiscoveryService.lastScanTime,
       scanLocations: SkillDiscoveryService.getScanLocations(),
       total: catalog.length,
-      parseFailures: SkillDiscoveryService.getParseFailures(),
+      parseFailures: await SkillDiscoveryService.getParseFailuresFor(userId),
     });
   } catch (error) {
     console.error('Error fetching discovered skills:', error);
@@ -36,12 +38,13 @@ SkillDiscoveryRoutes.post('/rescan', authenticateToken, async (req, res) => {
     } else {
       await SkillDiscoveryService.discoverAll();
     }
-    const catalog = SkillDiscoveryService.getSkillCatalog();
+    const userId = req.user.userId;
+    const catalog = await SkillDiscoveryService.getSkillCatalogFor(userId);
     res.json({
       skills: catalog,
       lastScan: SkillDiscoveryService.lastScanTime,
       total: catalog.length,
-      parseFailures: SkillDiscoveryService.getParseFailures(),
+      parseFailures: await SkillDiscoveryService.getParseFailuresFor(userId),
     });
   } catch (error) {
     console.error('Error rescanning skills:', error);
@@ -54,7 +57,7 @@ SkillDiscoveryRoutes.post('/rescan', authenticateToken, async (req, res) => {
  */
 SkillDiscoveryRoutes.get('/:name', authenticateToken, async (req, res) => {
   try {
-    const skill = SkillDiscoveryService.getSkill(req.params.name);
+    const skill = await SkillDiscoveryService.getSkillFor(req.params.name, req.user.userId);
     if (!skill) return res.status(404).json({ error: 'Discovered skill not found' });
     res.json({ skill });
   } catch (error) {
@@ -68,7 +71,7 @@ SkillDiscoveryRoutes.get('/:name', authenticateToken, async (req, res) => {
  */
 SkillDiscoveryRoutes.get('/:name/resources', authenticateToken, async (req, res) => {
   try {
-    const resources = await SkillDiscoveryService.listResources(req.params.name);
+    const resources = await SkillDiscoveryService.listResourcesFor(req.params.name, req.user.userId);
     if (!resources) return res.status(404).json({ error: 'Discovered skill not found' });
     res.json({ resources });
   } catch (error) {
@@ -86,7 +89,7 @@ SkillDiscoveryRoutes.get('/:name/resources/*', authenticateToken, async (req, re
     const resourcePath = req.params[0];
     if (!resourcePath) return res.status(400).json({ error: 'Resource path is required' });
 
-    const content = await SkillDiscoveryService.readResource(req.params.name, resourcePath);
+    const content = await SkillDiscoveryService.readResourceFor(req.params.name, resourcePath, req.user.userId);
     if (content === null) return res.status(404).json({ error: 'Resource not found' });
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -106,7 +109,7 @@ SkillDiscoveryRoutes.get('/:name/resources/*', authenticateToken, async (req, re
 SkillDiscoveryRoutes.post('/:name/import', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const skill = SkillDiscoveryService.getSkillContent(req.params.name);
+    const skill = await SkillDiscoveryService.getSkillContentFor(req.params.name, userId);
     if (!skill) return res.status(404).json({ error: 'Discovered skill not found' });
 
     // Convert kebab-case name to Title Case for display consistency with manually-created skills

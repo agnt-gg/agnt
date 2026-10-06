@@ -103,7 +103,7 @@ beforeEach(() => {
     { id: 'm1', memory_type: 'fact', content: 'The client runs Prometheus on port 9090.', agent_id: AGENT_ID },
   ]);
 
-  const INFRA_AUDIT = { slug: 'infra-audit', name: 'infra-audit', description: 'Audit legacy infrastructure safely.' };
+  const INFRA_AUDIT = { slug: 'infra-audit', name: 'infra-audit', description: 'Audit legacy infrastructure safely.', user_id: USER_ID };
   SkillModel.findAll.mockReset();
   SkillModel.findAll.mockResolvedValue([INFRA_AUDIT]);
   // buildSpecialtySkillsSection resolves assignedSkills through findByIds — a
@@ -180,6 +180,16 @@ describe('a workflow/goal agent gets the whole prompt, not just its persona', ()
     const { systemPrompt } = await runtimeForWorkflow();
     expect(systemPrompt).toContain('infra-audit');
     expect(systemPrompt).toContain('Your Specialty Skills');
+  });
+
+  it('does not surface another account\u2019s skill through an assigned id', async () => {
+    // findByIds is unscoped; an id copied into an agent is not a credential.
+    SkillModel.findByIds.mockResolvedValue([
+      { slug: 'someone-elses-playbook', name: 'someone-elses-playbook', description: 'Private.', user_id: 'user-2' },
+    ]);
+    const { systemPrompt } = await runtimeForWorkflow();
+    expect(systemPrompt).not.toContain('someone-elses-playbook');
+    expect(systemPrompt).not.toContain('Your Specialty Skills');
   });
 
   it('carries agent memory', async () => {

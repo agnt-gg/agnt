@@ -22,9 +22,12 @@ const write = (rel, content) => {
 const skill = (rel, name) => write(`${rel}/SKILL.md`, `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`);
 
 /** Load the scanner fresh so its module-level state cannot leak between tests. */
-async function loadScanner() {
+async function loadScanner({ canSee = () => true, homeOwner = null } = {}) {
   vi.resetModules();
-  vi.doMock('../SkillDiscoveryService.js', () => ({ default: { getSkillCatalog: () => [] } }));
+  vi.doMock('../SkillDiscoveryService.js', () => ({
+    default: { getSkillCatalogFor: async () => [], canSee: async (name, userId) => canSee(name, userId) },
+  }));
+  vi.doMock('../SkillFolderAccess.js', () => ({ default: { isHomeOwner: async (userId) => userId === homeOwner } }));
   vi.doMock('../../models/SkillModel.js', () => ({ default: { findAll: async () => [] } }));
   const mod = await import('./HarnessScanner.js');
   return mod.default;
@@ -40,7 +43,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.doUnmock('../SkillDiscoveryService.js');
+  vi.doUnmock('../SkillFolderAccess.js');
   vi.doUnmock('../../models/SkillModel.js');
+  vi.unstubAllEnvs();
   fs.rmSync(TMP, { recursive: true, force: true });
 });
 
@@ -127,6 +132,41 @@ describe('HarnessScanner.detect — what counts as a skill', () => {
     const hermes = sources.find((s) => s.id === 'hermes');
     expect(hermes.skills.names).toEqual(['genuinely-new']);
     expect(totals.skillsImportable).toBe(1);
+  });
+});
+
+describe('HarnessScanner.detect — whose folders these are', () => {
+  it("offers a skill another account put in AGNT's folder: shared folder, separate access", async () => {
+    skill('.agnt/skills/theirs', 'theirs');
+    skill('.hermes/skills/theirs', 'theirs');
+    const Scanner = await loadScanner({ canSee: (name, userId) => userId === 'user-1' });
+    const forOwner = await Scanner.detect({ userId: 'user-1', env: {} });
+    const forOther = await Scanner.detect({ userId: 'user-2', env: {} });
+    expect(forOwner.totals.skillsImportable).toBe(0);
+    expect(forOther.sources.find((s) => s.id === 'hermes').skills.names).toEqual(['theirs']);
+  });
+
+  it("shows a hosted instance's tool folders to its owner and to no member", async () => {
+    // ~/.claude on a hosted instance is the owner's: skills, persona and memories.
+    vi.stubEnv('AGNT_TENANT_SLUG', 'acme');
+    skill('.claude/skills/private', 'private');
+    write('.claude/CLAUDE.md', 'The owner writes their working notes here.');
+    const Scanner = await loadScanner({ homeOwner: 'owner-1' });
+
+    const member = await Scanner.detect({ userId: 'member-1', env: {} });
+    expect(member.sources).toEqual([]);
+    expect(member.totals).toEqual({ sources: 0, skillsSeen: 0, skillsImportable: 0, personas: 0, memories: 0 });
+    expect((await Scanner.detect({ env: {} })).sources).toEqual([]);
+
+    const owner = await Scanner.detect({ userId: 'owner-1', env: {} });
+    expect(owner.sources.map((s) => s.id)).toEqual(['claude']);
+  });
+
+  it('lets any account on a desktop import, because one person owns the machine', async () => {
+    skill('.claude/skills/mine', 'mine');
+    const Scanner = await loadScanner({ homeOwner: 'someone-else' });
+    const { sources } = await Scanner.detect({ userId: 'user-2', env: {} });
+    expect(sources.map((s) => s.id)).toEqual(['claude']);
   });
 });
 

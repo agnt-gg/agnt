@@ -1796,7 +1796,9 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
         if (skillId) {
           try {
             const dbSkill = await SkillModel.findById(skillId);
-            if (dbSkill && dbSkill.instructions) {
+            // findById is unscoped; a skill id is not a credential. Same rule as findAll.
+            const readable = dbSkill && (dbSkill.user_id === userId || dbSkill.is_builtin);
+            if (readable && dbSkill.instructions) {
               activeSkill = dbSkill;
               resolutionPath = 'db';
             }
@@ -1811,7 +1813,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
             const { default: SkillDiscoveryService } = await import('./SkillDiscoveryService.js');
             if (SkillDiscoveryService.initialized) {
               const slug = skillId.slice(3);
-              const fsSkill = SkillDiscoveryService.getSkillContent(slug) || SkillDiscoveryService.getSkill(slug);
+              const fsSkill = (await SkillDiscoveryService.getSkillContentFor(slug, userId)) || (await SkillDiscoveryService.getSkillFor(slug, userId));
               if (fsSkill && fsSkill.instructions) {
                 activeSkill = {
                   name: fsSkill.displayName || fsSkill.name || slug,

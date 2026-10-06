@@ -30,14 +30,26 @@ const skill = (rel, name) =>
  *        than on a broken file, because a directory that has no readable
  *        SKILL.md is never offered as a skill in the first place.
  */
-async function loadImporter({ rejectSkill = null } = {}) {
+async function loadImporter({ rejectSkill = null, canSee = () => true } = {}) {
   vi.resetModules();
-  calls = { skills: [], agents: [], memories: [], rescans: 0 };
+  calls = { skills: [], agents: [], memories: [], rescans: 0, grants: [], revokes: [] };
 
   vi.doMock('../SkillDiscoveryService.js', () => ({
     default: {
-      getSkillCatalog: () => [],
+      getSkillCatalogFor: async () => [],
+      canSee: async (name, userId) => canSee(name, userId),
       discoverAll: async () => { calls.rescans += 1; },
+    },
+  }));
+  // Records whether the files were already on disk when access was granted:
+  // a grant after the copy leaves a window where the scan hands the skill to
+  // the instance owner instead.
+  vi.doMock('../SkillFolderAccess.js', () => ({
+    default: {
+      grant: async (name, userId) => {
+        calls.grants.push({ name, userId, filesPresent: fs.existsSync(path.join(agntSkill(name), 'SKILL.md')) });
+      },
+      revoke: async (name, userId) => { calls.revokes.push({ name, userId }); },
     },
   }));
   vi.doMock('../../models/SkillModel.js', () => ({ default: { findAll: async () => [] } }));
@@ -190,6 +202,56 @@ describe('HarnessImporter — skills', () => {
     const Importer = await loadImporter();
     await Importer.run({ skills: ['hermes'] }, 'user-1', { env: {} });
     expect(fs.existsSync(path.join(agntSkill('alpha'), '.usage.json'))).toBe(false);
+  });
+});
+
+describe('HarnessImporter — the skills folder is shared, access is not', () => {
+  it('grants the importing account before the files land', async () => {
+    skill('.hermes/skills/alpha', 'alpha');
+
+    const Importer = await loadImporter();
+    await Importer.run({ skills: ['hermes'] }, 'user-1', { env: {} });
+
+    expect(calls.grants).toEqual([{ name: 'alpha', userId: 'user-1', filesPresent: false }]);
+    expect(calls.revokes).toEqual([]);
+  });
+
+  it('takes the grant back when the skill cannot be registered', async () => {
+    skill('.hermes/skills/alpha', 'alpha');
+
+    const Importer = await loadImporter({ rejectSkill: () => true });
+    await Importer.run({ skills: ['hermes'] }, 'user-1', { env: {} });
+
+    expect(calls.revokes).toEqual([{ name: 'alpha', userId: 'user-1' }]);
+  });
+
+  it("adds another account's copy to this account instead of calling it already imported", async () => {
+    // user-1 imported alpha earlier; user-2 cannot see it and imports it too.
+    skill('.agnt/skills/alpha', 'alpha');
+    skill('.hermes/skills/alpha', 'alpha');
+    const onDisk = fs.readFileSync(path.join(agntSkill('alpha'), 'SKILL.md'), 'utf8');
+
+    const Importer = await loadImporter({ canSee: (name, userId) => userId === 'user-1' });
+    const result = await Importer.run({ skills: ['hermes'] }, 'user-2', { env: {} });
+
+    expect(result.items.find((i) => i.name === 'alpha').status).toBe('imported');
+    expect(calls.grants).toEqual([{ name: 'alpha', userId: 'user-2', filesPresent: true }]);
+    expect(calls.skills).toEqual([onDisk]);
+    expect(fs.readFileSync(path.join(agntSkill('alpha'), 'SKILL.md'), 'utf8')).toBe(onDisk);
+  });
+
+  it('leaves a copy the account can already see alone', async () => {
+    skill('.agnt/skills/alpha', 'alpha');
+    skill('.hermes/skills/alpha', 'alpha');
+    const onDisk = fs.readFileSync(path.join(agntSkill('alpha'), 'SKILL.md'), 'utf8');
+
+    const Importer = await loadImporter({ canSee: () => true });
+    const result = await Importer.run({ skills: ['hermes'] }, 'user-1', { env: {} });
+
+    expect(result.imported.skills).toBe(0);
+    expect(calls.grants).toEqual([]);
+    expect(calls.skills).toEqual([]);
+    expect(fs.readFileSync(path.join(agntSkill('alpha'), 'SKILL.md'), 'utf8')).toBe(onDisk);
   });
 });
 

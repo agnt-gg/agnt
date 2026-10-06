@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import SkillDiscoveryService from '../SkillDiscoveryService.js';
+import { isRestrictedInstance } from '../auth/tenantOwnership.js';
 import SkillModel from '../../models/SkillModel.js';
 import { HARNESSES, looksLikeTemplate, resolveReadRoot, splitMemories } from './harnesses.js';
 
@@ -83,11 +84,12 @@ async function listSkillDirs(skillsRoot) {
 async function existingSkillNames(userId) {
   const names = new Set();
 
-  // 1. AGNT's own skills directory, read directly. This is the ground truth
-  //    for "copying this file would land on top of an existing one", and it
-  //    is true regardless of who is asking or whether discovery has run.
+  // 1. AGNT's own skills directory, read directly, because discovery may not
+  //    have run yet. The folder is shared by every account on the machine, so
+  //    a copy there is "already in AGNT" only for an account that can see it;
+  //    for anyone else HarnessImporter adds the existing copy to their account.
   for (const name of await listSkillDirs(path.join(os.homedir(), '.agnt', 'skills'))) {
-    names.add(name.toLowerCase());
+    if (!userId || await SkillDiscoveryService.canSee(name, userId)) names.add(name.toLowerCase());
   }
 
   // 2. The discovery catalog is name-deduped by priority, and AGNT's own
@@ -95,7 +97,7 @@ async function existingSkillNames(userId) {
   //    precisely "AGNT holds its own copy". Catches skills registered from
   //    somewhere other than the default folder.
   try {
-    for (const skill of SkillDiscoveryService.getSkillCatalog() || []) {
+    for (const skill of (await SkillDiscoveryService.getSkillCatalogFor(userId)) || []) {
       if (skill?.client === 'agnt' && skill?.name) names.add(String(skill.name).toLowerCase());
     }
   } catch {
@@ -116,6 +118,20 @@ async function existingSkillNames(userId) {
   }
 
   return names;
+}
+
+/**
+ * The other tools' folders (~/.claude, ~/.hermes, ...) belong to the person
+ * who owns this machine. A desktop has one person behind every account, so
+ * any account may import; on a hosted or self-hosted instance only its owner
+ * may, or a team member could copy the owner's skills, persona and memories.
+ * HarnessImporter.run goes through detect(), so this one gate covers both.
+ */
+async function mayReadMachineHarnesses(userId) {
+  if (!isRestrictedInstance()) return true;
+  if (!userId) return false;
+  const { default: SkillFolderAccess } = await import('../SkillFolderAccess.js');
+  return SkillFolderAccess.isHomeOwner(userId);
 }
 
 /** Persona text for one harness, or null when there is nothing real to take. */
@@ -159,6 +175,9 @@ class HarnessScanner {
    * @returns {Promise<{sources: object[], totals: object}>}
    */
   static async detect({ userId, env = process.env } = {}) {
+    if (!(await mayReadMachineHarnesses(userId))) {
+      return { sources: [], totals: { sources: 0, skillsSeen: 0, skillsImportable: 0, personas: 0, memories: 0 } };
+    }
     const alreadyHave = await existingSkillNames(userId);
 
     const sources = [];

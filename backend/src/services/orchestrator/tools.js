@@ -4660,11 +4660,11 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         let skillContent = null, resources = null, source = null, identity = null;
         if (!skill_id) {
           const Discovery = (await import('../SkillDiscoveryService.js')).default;
-          skillContent = Discovery.getSkillContent(skill_name);
+          skillContent = await Discovery.getSkillContentFor(skill_name, context.userId);
           if (skillContent) {
             source = 'filesystem';
             if (!isDefaultSkill({metadata:skillContent.frontmatter?.metadata}) && !allow_draft) throw new Error('Draft requires allow_draft for explicit review');
-            resources = await Discovery.listResources(skill_name);
+            resources = await Discovery.listResourcesFor(skill_name, context.userId);
             identity = skillIdentity({ ...skillContent, metadata:skillContent.frontmatter?.metadata }, source);
           }
         }
@@ -4718,7 +4718,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           if (source === 'filesystem') {
             try {
               const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
-              supersededBy = SkillDiscoveryService.getSupersededBy(skill_name);
+              supersededBy = await SkillDiscoveryService.getSupersededByFor(skill_name, context.userId);
             } catch { /* discovery unavailable */ }
           }
           const relationsPayload = buildActivationRelationsPayload({

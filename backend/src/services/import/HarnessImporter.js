@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import SkillDiscoveryService from '../SkillDiscoveryService.js';
+import SkillFolderAccess from '../SkillFolderAccess.js';
 import { importSkillFromMd } from '../SkillService.js';
 import { importAgent } from '../AgentImportService.js';
 import AgentMemoryModel from '../../models/AgentMemoryModel.js';
@@ -152,11 +153,39 @@ class HarnessImporter {
           const dest = path.join(destRoot, name);
           try {
             if (await exists(dest)) {
-              items.push({ kind: 'skill', name, source: source.id, status: 'skipped',
-                detail: 'already in AGNT' });
+              // A folder with no SKILL.md (an interrupted run) is never touched,
+              // and a skill this account already sees is already theirs.
+              const existingSkillMd = path.join(dest, 'SKILL.md');
+              if (!(await exists(existingSkillMd)) || await SkillDiscoveryService.canSee(name, userId)) {
+                items.push({ kind: 'skill', name, source: source.id, status: 'skipped',
+                  detail: 'already in AGNT' });
+                continue;
+              }
+              // Another account on this machine imported the same skill from
+              // the same tool. The folder is shared; access is not. Add the
+              // copy on disk to this account rather than calling it theirs.
+              await SkillFolderAccess.grant(name, userId);
+              try {
+                await importSkillFromMd(await fs.readFile(existingSkillMd, 'utf8'), userId);
+              } catch (rowErr) {
+                await SkillFolderAccess.revoke(name, userId);
+                throw rowErr;
+              }
+              imported.skills += 1;
+              items.push({ kind: 'skill', name, source: source.id, status: 'imported',
+                detail: 'already on this machine; added to your account' });
               continue;
             }
-            await copyTree(src, dest, destRoot, { files: 0, bytes: 0 });
+            // Granted BEFORE the files land: the folder is shared, and a scan
+            // that ran between copy and grant would hand the skill to the
+            // instance owner instead of the account importing it.
+            await SkillFolderAccess.grant(name, userId);
+            try {
+              await copyTree(src, dest, destRoot, { files: 0, bytes: 0 });
+            } catch (copyErr) {
+              await SkillFolderAccess.revoke(name, userId);
+              throw copyErr;
+            }
 
             // The row makes it selectable in the UI; the files make it work.
             // A copy without a row is invisible, so a failure here is a
@@ -166,6 +195,7 @@ class HarnessImporter {
               await importSkillFromMd(md, userId);
             } catch (rowErr) {
               await fs.rm(dest, { recursive: true, force: true });
+              await SkillFolderAccess.revoke(name, userId);
               throw rowErr;
             }
 
