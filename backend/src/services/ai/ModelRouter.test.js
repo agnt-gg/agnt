@@ -135,6 +135,28 @@ describe('resolveChain — who to try, in order', () => {
     expect(pairs(chain)).toEqual(['kimi/k2']);
   });
 
+  it('preferOtherThan puts a different provider first and drops nothing (independent grader)', async () => {
+    const deps = makeDeps({ settings: account, routed: routedPicks });
+    const { chain: plain } = await resolveChain({ userId: 'u', origin: 'goal_eval' }, deps);
+    const { chain } = await resolveChain({ userId: 'u', origin: 'goal_eval', preferOtherThan: 'anthropic' }, deps);
+    expect(chain[0].provider).not.toBe('anthropic');
+    expect(chain[0].primary).toBe(true);
+    expect([...pairs(chain)].sort()).toEqual([...pairs(plain)].sort());
+    expect(pairs(chain).at(-1)).toBe('anthropic/claude-opus-5');
+  });
+
+  it('preferOtherThan: true avoids whoever would have run first', async () => {
+    const deps = makeDeps({ settings: account });
+    const { chain } = await resolveChain({ userId: 'u', origin: 'goal_eval', routing: 'never', preferOtherThan: true }, deps);
+    expect(pairs(chain)).toEqual(['openai/gpt-5.5', 'anthropic/claude-opus-5']);
+  });
+
+  it('preferOtherThan never strands a single-provider account', async () => {
+    const deps = makeDeps({ settings: { ...account, fallbackEnabled: false, fallbackProviders: [] } });
+    const { chain } = await resolveChain({ userId: 'u', origin: 'goal_eval', routing: 'never', preferOtherThan: 'anthropic' }, deps);
+    expect(pairs(chain)).toEqual(['anthropic/claude-opus-5']);
+  });
+
   it('tells the router what the job is', async () => {
     const deps = makeDeps({ settings: account, routed: routedPicks });
     await resolveChain({ userId: 'u', origin: 'title', conversationId: 'c1', intentInput: { contextTokens: 600, outputTokens: 30 } }, deps);

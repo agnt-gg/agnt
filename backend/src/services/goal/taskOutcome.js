@@ -28,6 +28,18 @@ export function taskFailureReason(response) {
   return null;
 }
 
+/** One task's grade against the bar every task must clear; null when it clears it.
+ * Shared by the per-task gate and the whole-goal decision so they cannot drift. */
+export function taskEvaluationRejection(entry) {
+  if (!record(entry) || !score(entry.score)) return 'TASK_SCORE_REJECTED';
+  const criteria = entry.criteriaMet;
+  if (!record(criteria) || !Object.keys(criteria).length || Object.values(criteria).some(v => typeof v !== 'boolean')) return 'CRITERIA_INVALID';
+  if (criteria.error === true || criteria.evaluated === false) return 'EVALUATION_UNAVAILABLE';
+  const substantive = Object.entries(criteria).filter(([key]) => !['error','evaluated'].includes(key));
+  if (!substantive.length || substantive.some(([,met]) => met !== true)) return 'CRITERIA_UNMET';
+  return null;
+}
+
 /** Closed, total decision with reason codes for UI/reporting and test receipts. */
 export function assessGoalCompletion(evaluation, tasks, evaluationFailed = false) {
   const reject = (code, taskId = null) => ({passed:false,code,taskId});
@@ -45,13 +57,13 @@ export function assessGoalCompletion(evaluation, tasks, evaluationFailed = false
       const output = typeof task.output === 'string' ? JSON.parse(task.output) : task.output;
       if (taskFailureReason(output)) return reject('TASK_OUTPUT_REJECTED',task.id);
     } catch { return reject('TASK_OUTPUT_INVALID',task.id); }
-    if (!score(entry.score)) return reject('TASK_SCORE_REJECTED',task.id);
-    const criteria = entry.criteriaMet;
-    if (!record(criteria) || !Object.keys(criteria).length || Object.values(criteria).some(v => typeof v !== 'boolean')) return reject('CRITERIA_INVALID',task.id);
-    if (criteria.error === true || criteria.evaluated === false) return reject('EVALUATION_UNAVAILABLE',task.id);
-    const substantive = Object.entries(criteria).filter(([key]) => !['error','evaluated'].includes(key));
-    if (!substantive.length || substantive.some(([,met]) => met !== true)) return reject('CRITERIA_UNMET',task.id);
+    const verdict = taskEvaluationRejection(entry);
+    if (verdict) return reject(verdict,task.id);
   }
+  // The acceptance checklist is the contract: every item must be shown met.
+  // Unassessed (null) fails closed, like EVALUATION_UNAVAILABLE above.
+  const checklist = evaluation.checklist;
+  if (Array.isArray(checklist) && checklist.some(item => item?.met !== true)) return reject('CHECKLIST_UNMET');
   if (evaluation.passed !== true || !score(evaluation.scores?.overall)) return reject('AGGREGATE_REJECTED');
   return {passed:true,code:'ACCEPTED',taskId:null};
 }

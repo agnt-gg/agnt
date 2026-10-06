@@ -73,7 +73,7 @@ class GoalEvaluator {
       const checklist = await this.evaluateChecklist(goal, tasks, userId, provider, model, accumulateUsage);
 
       // Step 5: Determine if goal passed
-      const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
+      const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations,checklist},tasks);
       const passed = completionDecision.passed;
 
       // Ledger rows are written per call by ModelRouter (origin goal_eval,
@@ -165,7 +165,7 @@ class GoalEvaluator {
    * @returns {Promise<Array<{id,text,met,evidence}>>}
    */
   static async evaluateChecklist(goal, tasks, userId, provider = null, model = null, accumulateUsage = null) {
-    const checklist = checklistOf(goal.success_criteria);
+    const checklist = checklistOf(goal.success_criteria, goal.world_state?.reviewerFeedback);
     if (!checklist.length) return [];
     try {
       const raw = await this._complete(checklistPrompt(goal, checklist, tasks), 'You check work against a checklist. Return valid JSON only.', userId, provider, model, accumulateUsage, goal.id);
@@ -179,10 +179,12 @@ class GoalEvaluator {
   /**
    * One evaluation call; returns the text.
    *
-   * Through ModelRouter as 'goal_eval' (high stake): the caller's pin if any,
-   * then the account default and fallbacks, and only THEN routed picks — a
-   * judgement is never handed to a cheaper model to save money, but it no
-   * longer fails outright when the one configured provider is down.
+   * Through ModelRouter as 'goal_eval' (high stake): the account default and
+   * fallbacks, then routed picks — a judgement is never handed to a cheaper
+   * model to save money. `provider`/`model` name who DID the work: the grader
+   * prefers a different provider so a model never grades its own output, and
+   * falls back to the same one only when the account has nothing else (it
+   * stays in the chain as a last resort, so grading works wherever it did).
    */
   static async _complete(prompt, system, userId, provider, model, accumulateUsage, goalId = null) {
     const { complete } = await import('../ai/ModelRouter.js');
@@ -190,7 +192,8 @@ class GoalEvaluator {
       userId,
       origin: 'goal_eval',
       originId: goalId,
-      requested: { provider, model },
+      preferOtherThan: provider || true,
+      alsoTry: provider ? [{ provider, model }] : [],
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: prompt },
@@ -269,7 +272,7 @@ EVALUATION INSTRUCTIONS:
 2. Check if the output meets the quality standards specified
 3. Provide a score from 0-100 based on how well criteria are met
 4. List applicable required deliverable and quality criteria as Boolean values (true/false). Do not invent requirements. Explain optional suggestions in feedback, not as failed required criteria. Mixed tool failures/successes require explaining whether the failed operation was actually recovered; an unrelated successful call is not recovery.
-5. Provide constructive feedback
+5. Review adversarially: look for every defect, gap or unsupported claim. Any defect the work could have avoided means the criterion it affects is false. Do not give credit for intent, effort or plans — only for what the output shows.
 
 Respond with ONLY a valid JSON object (no markdown, no extra text):
 {
@@ -287,7 +290,7 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
     try {
       const result = await this._complete(
         prompt,
-        'You are an expert evaluator. Return valid JSON only.',
+        'You are a strict, adversarial reviewer. Return valid JSON only.',
         userId,
         provider,
         model,

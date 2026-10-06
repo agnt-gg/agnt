@@ -1,4 +1,4 @@
-import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
+import { taskFailureReason, goalEvaluationPasses, taskEvaluationRejection } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
@@ -430,7 +430,8 @@ class TaskOrchestrator {
 
       // Step 2: Prepare task message for agent
       console.log(`[TaskOrchestrator] Step 2: Preparing task message`);
-      const taskMessage = this.prepareTaskMessage(task, previousTaskOutputs);
+      const { reviewerFeedback } = (await GoalModel.getWorldState(task.goal_id)) || {};
+      const taskMessage = this.prepareTaskMessage(task, previousTaskOutputs, reviewerFeedback);
       console.log(`[TaskOrchestrator] Step 2 Complete: Task message prepared`);
 
       // Step 3: Update task status to running with input data
@@ -454,11 +455,26 @@ class TaskOrchestrator {
 
       // Step 4: Execute task via agent chat
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
-      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal, {
-        origin: 'goal_task',
-        originId: task.goal_id,
-      });
+      const ledgerCtx = { origin: 'goal_task', originId: task.goal_id };
+      let result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal, ledgerCtx);
       console.log(`[TaskOrchestrator] Step 4 Complete: Agent completed task execution`);
+
+      // Step 4b: Checkpoint gate. The work is graded BEFORE the task is marked
+      // completed, so nothing that depends on it ever builds on unchecked work.
+      // One in-place retry with the reviewer's findings, then the task fails.
+      let review = await this._reviewTaskResult(task, result, userId, provider, model);
+      if (review.rejected) {
+        console.log(`[TaskOrchestrator] Task ${task.id} did not pass review (${review.code}) — retrying once with the findings`);
+        const retryMessage = `${taskMessage}\n\nREVIEW OF YOUR PREVIOUS ATTEMPT (it did not pass — fix every point, then redo the task):\n${review.feedback}`;
+        result = await this.executeTaskViaAgentChat(agent, retryMessage, userId, provider, model, signal, ledgerCtx);
+        review = await this._reviewTaskResult(task, result, userId, provider, model);
+      }
+      if (review.rejected) {
+        const reason = `Did not pass review (${review.code}): ${review.feedback}`.slice(0, 2000);
+        const output = { content: result?.content, toolExecutions: result?.tool_executions || [], outcome: 'incomplete', timestamp: new Date().toISOString() };
+        await TaskModel.updateStatus(task.id, 'failed', 0, null, null, null, output, reason);
+        throw Object.assign(new Error(reason), { code: 'TASK_REVIEW_FAILED' });
+      }
 
       // Step 5: Process and store results
       console.log(`[TaskOrchestrator] Step 5: Processing task results`);
@@ -510,12 +526,48 @@ class TaskOrchestrator {
       releaseLeaseTimer();
     }
   }
-  static prepareTaskMessage(task, previousTaskOutputs) {
+  /**
+   * Grade one task's fresh result against the goal's criteria, the same way
+   * the final evaluation will. Self-reported blockers are left to
+   * processTaskResult (no grader call needed). A grader that cannot run lets
+   * the work through: the final evaluation still fails closed on it, and an
+   * outage must not burn the retry.
+   * @returns {Promise<{rejected:boolean, code?:string, feedback?:string}>}
+   */
+  static async _reviewTaskResult(task, result, userId, provider, model) {
+    if (taskFailureReason(result)) return { rejected: false };
+    try {
+      const goal = await GoalModel.findOne(task.goal_id);
+      const graded = await GoalEvaluator.evaluateTask(
+        { ...task, status: 'completed', error: null, output: { content: result.content, toolExecutions: result.tool_executions || [] } },
+        goal?.success_criteria || {},
+        userId,
+        provider,
+        model,
+      );
+      const code = taskEvaluationRejection(graded);
+      if (!code || code === 'EVALUATION_UNAVAILABLE' || graded?.criteriaMet?.evaluated === false) return { rejected: false };
+      return { rejected: true, code, feedback: String(graded.feedback || 'Criteria not met').slice(0, 1500) };
+    } catch (error) {
+      if (this._isCancellation(error)) throw error;
+      console.warn(`[TaskOrchestrator] Review unavailable for task ${task.id}: ${error.message}`);
+      return { rejected: false };
+    }
+  }
+
+  static prepareTaskMessage(task, previousTaskOutputs, reviewerFeedback = []) {
     let message = `TASK ASSIGNMENT:
 Title: ${task.title}
 Description: ${task.description}
 
 OBJECTIVE: Complete this task using your assigned tools. Provide clear, actionable results.`;
+
+    if (Array.isArray(reviewerFeedback) && reviewerFeedback.length) {
+      message += `
+
+REVIEWER FEEDBACK (a person reviewed earlier work on this goal; address every point that applies to this task):
+${reviewerFeedback.map((entry) => `- ${entry.text}`).join('\n')}`;
+    }
 
     if (previousTaskOutputs) {
       message += `

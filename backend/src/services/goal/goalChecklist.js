@@ -17,10 +17,12 @@ const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0
 /**
  * The checklist for a goal's success criteria: the planner's explicit list
  * when present, otherwise derived from deliverables and quality checks so
- * goals planned before checklists existed still get one.
+ * goals planned before checklists existed still get one. Reviewer feedback
+ * ("request changes") is appended as items of its own, so the work cannot
+ * pass again until a grader shows the feedback was addressed.
  * @returns {{ id: string, text: string }[]}
  */
-export function checklistOf(successCriteria) {
+export function checklistOf(successCriteria, reviewerFeedback = []) {
   const criteria = successCriteria && typeof successCriteria === 'object' ? successCriteria : {};
   const explicit = Array.isArray(criteria.checklist) ? criteria.checklist : null;
   const source = explicit?.length
@@ -36,7 +38,19 @@ export function checklistOf(successCriteria) {
     items.push({ id: `c${items.length + 1}`, text });
     if (items.length === MAX_ITEMS) break;
   }
+  for (const entry of Array.isArray(reviewerFeedback) ? reviewerFeedback : []) {
+    const text = clean(typeof entry === 'object' && entry ? entry.text : entry);
+    if (text) items.push({ id: `c${items.length + 1}`, text: `Reviewer feedback addressed: ${text}` });
+  }
   return items;
+}
+
+/** Keep the most recent reviewer requests; older ones are already in the work or superseded. */
+export const MAX_REVIEWER_FEEDBACK = 5;
+export function withReviewerFeedback(worldState, feedback, at = new Date().toISOString()) {
+  const text = clean(feedback);
+  const previous = Array.isArray(worldState?.reviewerFeedback) ? worldState.reviewerFeedback : [];
+  return text ? [...previous, { text, at }].slice(-MAX_REVIEWER_FEEDBACK) : previous;
 }
 
 /** Text of each task's result, bounded so one huge output cannot crowd the rest out. */

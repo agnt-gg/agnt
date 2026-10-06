@@ -122,6 +122,10 @@ class TaskModel {
       if (error !== null) {
         query += `, error = ?`;
         params.push(error);
+      } else if (status === 'pending') {
+        // Back to pending = a fresh attempt. A stale error from the previous
+        // attempt would otherwise reject the task forever, even after it succeeds.
+        query += `, error = NULL`;
       }
 
       query += ` WHERE id = ?`;

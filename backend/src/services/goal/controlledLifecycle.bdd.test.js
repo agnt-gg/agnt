@@ -55,10 +55,14 @@ async function reached(bar, work) {
   expect(result, 'operation must reach the controlled barrier').toBe('entered');
 }
 function grader(bar = null, fail = false) {
-  probe.call.mockImplementation(async () => {
+  probe.call.mockImplementation(async (messages) => {
     const index = probe.call.mock.calls.length;
     if (index === 1 && bar) await bar.hold();
     if (index === 1 && fail) throw new Error('Synthetic evaluator outage');
+    // The checklist is a gate: answer it like a real grader, item c1 met.
+    if (String(messages?.at(-1)?.content || '').includes('acceptance checklist')) {
+      return { responseMessage: { content: JSON.stringify({ items: [{ id: 'c1', met: true, evidence: 'Fixture evidence v1.' }] }) }, usage: null };
+    }
     return { responseMessage: { content: index === 1
       ? JSON.stringify({ score: 95, criteriaMet: { deliverable: true }, feedback: 'Fixture evidence accepted.' })
       : 'Fixture overall feedback.' }, usage: null };

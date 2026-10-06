@@ -146,6 +146,9 @@ async function accountChainFor(userId, settings, deps) {
  *   last-resort tiers after the account chain — e.g. the chat's own model for
  *   a side call, so it still works for an account with no default set. Unlike
  *   `requested`, these are never pinned ahead of the routed picks.
+ * @param {string|true} [args.preferOtherThan]  move tiers of OTHER providers
+ *   first (stable; nothing is dropped). `true` = other than whoever would run
+ *   first. A grader on a different model family than the work it grades.
  * @returns {Promise<{chain: Array, intent: object, routed: boolean, decision: object|null}>}
  */
 export async function resolveChain({
@@ -157,6 +160,7 @@ export async function resolveChain({
   authToken = null,
   routing = 'auto',
   alsoTry = [],
+  preferOtherThan = null,
 } = {}, deps = defaultDeps) {
   const intent = classifyIntent({ origin, ...intentInput });
   const settings = userId ? await Promise.resolve().then(() => deps.loadUserSettings(userId)).catch(() => null) : null;
@@ -205,7 +209,7 @@ export async function resolveChain({
     .filter((t) => nonEmpty(t?.provider))
     .map((t) => ({ provider: canonicalProvider(t.provider), model: nonEmpty(t.model) }));
 
-  const chain = composeChain({
+  const runnable = composeChain({
     pinned,
     routed,
     defaults: [...accountChain, ...lastResort],
@@ -214,8 +218,12 @@ export async function resolveChain({
     keyOf: canonicalProvider,
   })
     .map((t) => withModel({ ...t, provider: canonicalProvider(t.provider) }))
-    .filter((t) => t.model)
-    .map((t, i) => ({ ...t, tier: i, primary: i === 0 }));
+    .filter((t) => t.model);
+  const avoid = preferOtherThan === true ? runnable[0]?.provider : nonEmpty(preferOtherThan) && canonicalProvider(preferOtherThan);
+  const ordered = avoid
+    ? [...runnable.filter((t) => t.provider !== avoid), ...runnable.filter((t) => t.provider === avoid)]
+    : runnable;
+  const chain = ordered.map((t, i) => ({ ...t, tier: i, primary: i === 0 }));
 
   return { chain, intent, routed: routingOn, decision };
 }
@@ -258,12 +266,13 @@ export async function complete({
   record = true,
   onUsage = null,
   alsoTry = [],
+  preferOtherThan = null,
 } = {}, deps = defaultDeps) {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new TypeError('ModelRouter.complete: messages must be a non-empty array');
   }
 
-  const { chain } = await resolveChain({ userId, origin, requested, intentInput, conversationId, authToken, routing, alsoTry }, deps);
+  const { chain } = await resolveChain({ userId, origin, requested, intentInput, conversationId, authToken, routing, alsoTry, preferOtherThan }, deps);
   if (chain.length === 0) throw new NoAiConfiguredError();
 
   const { result, tier, attempts } = await runWithFallback({

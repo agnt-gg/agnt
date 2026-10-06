@@ -2,6 +2,7 @@ import GoalModel from '../models/GoalModel.js';
 import TaskModel from '../models/TaskModel.js';
 import GoalIterationModel from '../models/GoalIterationModel.js';
 import GoalProcessor, { GoalPlanningError } from '../services/goal/GoalProcessor.js';
+import { withReviewerFeedback } from '../services/goal/goalChecklist.js';
 import TaskOrchestrator from '../services/goal/TaskOrchestrator.js';
 import GoalEvaluator from '../services/goal/GoalEvaluator.js';
 import GoldenStandardModel from '../models/GoldenStandardModel.js';
@@ -574,13 +575,18 @@ class GoalService {
         // immediately dispatches executeGoalAutonomous so this is only a
         // transient state between feedback capture and the next run.
         await GoalModel.updateStatus(id, 'planning');
-        // Store feedback in world state so the next iteration can use it
+        // Feedback becomes a checklist item the next evaluation must see met,
+        // and every task is redone with it — otherwise the completed tasks are
+        // skipped and the same work is simply re-graded.
         if (feedback) {
-          const currentWorldState = await GoalModel.getWorldState(id);
-          const worldState = currentWorldState || {};
+          const worldState = (await GoalModel.getWorldState(id)) || {};
+          worldState.reviewerFeedback = withReviewerFeedback(worldState, feedback);
           worldState.user_feedback = feedback;
           worldState.user_feedback_at = new Date().toISOString();
           await GoalModel.updateWorldState(id, worldState);
+          for (const task of await TaskModel.findByGoalId(id)) {
+            if (task.status !== 'pending') await TaskModel.updateStatus(task.id, 'pending', 0);
+          }
         }
         res.json({ message: 'Goal sent back for revision', status: 'planning', feedback });
       } else {

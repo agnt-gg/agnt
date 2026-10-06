@@ -284,10 +284,9 @@ Respond with ONLY a valid JSON object (no markdown, no extra text) containing:
 }
 
 Rules:
-- Break down the goal into the MINIMUM number of tasks needed to complete it effectively
-- Simple goals may only need 1 task - that's perfectly fine
-- Complex goals may need multiple tasks - use your judgment
-- Each task should be specific and measurable
+- Break the goal into small steps that can each be checked on their own, ordered simplest first (foundation, then one piece, then the rest), so a mistake is caught before anything builds on it
+- Simple goals may only need 1 task - that's perfectly fine; never split work just to add steps
+- Each task is reviewed before the next starts: its description must say what output proves it is done
 - Keep task titles under 50 characters
 - estimatedDuration is in minutes
 - requiredTools should ONLY use tool types from the AVAILABLE TOOL TYPES list above
