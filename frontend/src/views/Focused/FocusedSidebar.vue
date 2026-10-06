@@ -129,15 +129,19 @@
 
     <UpgradePrompt compact title="Get more from AGNT" description="Scheduled goals and paid services. Put your agents to work for you." />
     <div class="focused-menu-anchor focused-account-anchor">
-      <button type="button" class="focused-account" :aria-expanded="accountOpen ? 'true' : 'false'" @click="accountOpen = !accountOpen">
-        <span class="focused-avatar" aria-hidden="true">{{ initial }}</span>
-        <span class="focused-account-text">
-          <strong>{{ userName || 'You' }}</strong>
-          <small>{{ planLabel }}</small>
-        </span>
+      <!-- A nav row like every other: a Font Awesome icon and one label. -->
+      <button
+        type="button"
+        class="focused-nav-row focused-account"
+        aria-haspopup="menu"
+        :aria-expanded="accountOpen ? 'true' : 'false'"
+        aria-label="Profile"
+        @click="accountOpen = !accountOpen"
+      >
+        <i class="fas fa-user-circle" aria-hidden="true"></i><span>{{ userName || 'Profile' }}</span>
       </button>
       <div v-if="accountOpen" class="focused-menu focused-menu-up" role="menu" @click="accountOpen = false">
-        <div v-if="userEmail" class="focused-menu-note">{{ userEmail }}</div>
+        <div class="focused-menu-note">{{ userEmail ? `${userEmail} · ${planLabel}` : planLabel }}</div>
         <button type="button" role="menuitem" class="focused-menu-item" @click="$emit('open-page', 'settings')">
           <i class="fas fa-cog" aria-hidden="true"></i>Settings
         </button>
@@ -159,7 +163,7 @@ import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, nextTick, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
-import { FOCUSED_PAGES, recentConversations, initialOf } from './focusedModel.js';
+import { FOCUSED_PAGES, recentConversations } from './focusedModel.js';
 import { useMainChat, MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
 import { renameConversation, setConversationRead, setConversationArchived, deleteConversation } from '@/services/conversationActions.js';
 
@@ -223,7 +227,6 @@ const activeConversationId = computed(() => route.query['content-id'] || store.s
 // The username chosen at onboarding (the pseudonym), not the full account name.
 const userName = computed(() => store.getters['userAuth/userPseudonym']);
 const userEmail = computed(() => store.getters['userAuth/userEmail']);
-const initial = computed(() => initialOf(userName.value || userEmail.value));
 const planLabel = computed(() => {
   const plan = String(store.getters['userAuth/planType'] || '').trim();
   return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free';

@@ -19,6 +19,7 @@ const getters = reactive({
   'chat/streamingOutputIds': new Set(),
   'chat/speakingByOutputId': {},
   'userAuth/userName': 'Nathan',
+  'userAuth/userPseudonym': 'Nathan',
   'userAuth/userEmail': 'n@x.co',
   'userAuth/planType': 'free',
 });
@@ -51,6 +52,21 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.chat.savedOutputId = null;
   route.query = {};
+});
+
+describe('the profile row', () => {
+  it('regression: is a nav row like the others — a Font Awesome icon and the name, no letter avatar', async () => {
+    const w = mountSidebar();
+    const row = w.find('.focused-account');
+    expect(row.classes()).toContain('focused-nav-row');
+    expect(row.find('i.fas.fa-user-circle').exists()).toBe(true);
+    expect(row.find('.focused-avatar').exists()).toBe(false);
+    expect(row.text()).toBe('Nathan');
+    // The plan moved into the menu, beside the email.
+    await row.trigger('click');
+    expect(w.find('.focused-menu-up .focused-menu-note').text()).toBe('n@x.co · Free');
+    w.unmount();
+  });
 });
 
 describe('right-click on a Focused chat', () => {

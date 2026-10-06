@@ -371,50 +371,12 @@
   border-top: 1px solid var(--terminal-border-color);
   padding: 8px;
 }
-.ui-focused .focused-account {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.ui-focused .focused-account:hover {
-  background: var(--surface-hover);
-}
-.ui-focused .focused-avatar {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(var(--green-rgb), 0.16);
-  color: var(--text-green);
-  font-weight: 700;
-  font-size: 13px;
-}
-.ui-focused .focused-account-text {
-  display: flex;
-  flex-direction: column;
+/* The account row is a plain .focused-nav-row; only a long name needs care. */
+.ui-focused .focused-account span {
   min-width: 0;
-}
-.ui-focused .focused-account-text strong {
-  font-size: 13px;
-  white-space: nowrap;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
-}
-.ui-focused .focused-account-text small {
-  font-size: 11px;
-  color: var(--text-tertiary);
 }
 
 /* ── Menus ────────────────────────────────────────────────────────────────── */

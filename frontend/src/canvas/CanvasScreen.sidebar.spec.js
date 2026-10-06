@@ -57,6 +57,9 @@ describe('reference sidebar ordering and context',()=>{
   const dispatch=vi.spyOn(store,'dispatch').mockResolvedValue();
   const profile=wrapper.find('[data-tour-id="sidebar.profile"]');
   expect(profile.classes()).toContain('cv-sb-page');
+  // Regression: the same Font Awesome icon as every rail row, not a letter avatar.
+  expect(profile.find('i.fas.fa-user-circle').exists()).toBe(true);
+  expect(profile.find('.cv-sb-avatar').exists()).toBe(false);
   // The onboarding username, never the full account name.
   expect(profile.text()).toContain('AGNT');
   expect(profile.text()).not.toContain('Nathan Wilbanks');

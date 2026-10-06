@@ -205,10 +205,11 @@
               class="cv-sb-page cv-sb-profile"
               data-tour-id="sidebar.profile"
               aria-haspopup="menu"
+              aria-label="Profile"
               :aria-expanded="profileOpen ? 'true' : 'false'"
               @click="toggleProfile"
             >
-              <span class="cv-sb-avatar" aria-hidden="true">{{ profileInitial }}</span>
+              <i class="fas fa-user-circle"></i>
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ profileName }}</span>
               </span>
@@ -602,7 +603,6 @@ export default {
     // The username chosen at onboarding (the pseudonym), not the account's
     // full name; the getter falls back to name, then the email's local part.
     const profileName = computed(() => store.getters['userAuth/userPseudonym'] || profileEmail.value || 'Profile');
-    const profileInitial = computed(() => (String(profileName.value).trim()[0] || 'A').toUpperCase());
     function toggleProfile() {
       if (!profileOpen.value) {
         const rect = profileButton.value?.getBoundingClientRect?.();
@@ -1220,7 +1220,6 @@ export default {
       profileMenuStyle,
       profileEmail,
       profileName,
-      profileInitial,
       toggleProfile,
       openProfile,
       switchToFocused,
@@ -1884,19 +1883,6 @@ export default {
   outline-offset: -2px;
 }
 
-/* Profile: a rail row whose icon is the signed-in person's initial. */
-.cv-sb-avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  border-radius: 50%;
-  background: rgba(var(--green-rgb), 0.16);
-  color: var(--text-green);
-  font-size: 10px;
-  font-weight: 700;
-}
 .cv-profile-scrim {
   position: fixed;
   inset: 0;
