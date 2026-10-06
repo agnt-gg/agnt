@@ -536,12 +536,19 @@
 
 /* ── Pages: Library, Connectors, Scheduled ──────────────────────────────────── */
 
+/* ONE page width for every Focused page and editor: Plugins' width. Pages
+   used to be 880px with Plugins alone at 1204px, so every page you moved
+   between was a different width. Chat keeps its own reading column
+   (--focused-chat-column-width); nothing else may set a page max-width. */
+.ui-focused {
+  --focused-page-width: 1204px;
+}
 .ui-focused .focused-page {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   width: 100%;
-  max-width: 880px;
+  max-width: var(--focused-page-width);
   margin: 0 auto;
   padding: 36px 32px 48px;
   box-sizing: border-box;
@@ -1394,8 +1401,6 @@
 .ui-focused .focused-market-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; margin: 20px 0; }
 .ui-focused .focused-market-description { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* The shared Apps browser supplies its own theme-aware card and detail styles. */
-.ui-focused .focused-page.focused-apps { max-width: 1204px; }
 /* An app page's "What's inside": one row per app a sign-in turns on. */
 .ui-focused .focused-app-inside { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .ui-focused .focused-app-inside li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--terminal-border-color); }
@@ -1592,7 +1597,13 @@
   line-height: 1.55;
   white-space: pre-line;
 }
+/* A block always spans its page. Inside the flex-column forms (routine,
+   memory) a block is a flex item; this makes its width explicit rather than
+   left to how its contents measure. */
 .ui-focused .focused-edit-block {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin-bottom: 22px;
 }
 .ui-focused .focused-edit-block-head {
@@ -1623,10 +1634,17 @@
   padding: 8px 14px;
   font-size: 14px;
 }
+/* Column rows stretch their children: with flex-start every child shrank to
+   its content, so pickers, notes and errors sat squeezed at the left. */
 .ui-focused .focused-edit-row.column {
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 10px;
+}
+/* A row's value takes the rest of the line instead of its content width. */
+.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + * {
+  flex: 1;
+  min-width: 0;
 }
 .ui-focused .focused-edit-row + .focused-edit-row {
   border-top: 1px solid var(--terminal-border-color);

@@ -7,6 +7,9 @@
       <button type="button" class="focused-icon-btn" aria-label="Search chats" v-tooltip="'Search chats'" @click="toggleSearch">
         <i class="fas fa-search" aria-hidden="true"></i>
       </button>
+      <button type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
+        <i class="fas fa-edit" aria-hidden="true"></i>
+      </button>
       <button type="button" class="focused-icon-btn" aria-label="Close sidebar" v-tooltip="'Close sidebar'" @click="$emit('close')">
         <i class="fas fa-angle-double-left" aria-hidden="true"></i>
       </button>
@@ -36,9 +39,6 @@
         </button>
       </div>
 
-      <button type="button" class="focused-nav-row" :class="{ active: onChat && !activeConversationId }" @click="$emit('new-chat')">
-        <i class="fas fa-edit" aria-hidden="true"></i><span>New chat</span>
-      </button>
       <button
         v-for="item in pageItems"
         :key="item.id"
