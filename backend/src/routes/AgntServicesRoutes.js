@@ -48,14 +48,19 @@ AgntServicesRoutes.get('/usage', authenticateToken, async (_req, res) => {
       { key: 'units', label: 'Webhook units', used: u.usedUnits, included: u.includedUnits, unit: 'units' },
       { key: 'endpoints', label: 'Endpoints', used: extra.count, included: u.maxInboxes ?? u.maxEndpoints, unit: 'endpoints' },
     ],
-    mobile: (u) => [
+    // Text Annie: one unit is one text either way. Phone slots are the plan's
+    // maxInboxes; storage is the photos and files texted in or out.
+    mobile: (u, extra) => [
       { key: 'texts', label: 'Texts', used: u.usedUnits, included: u.includedUnits, unit: 'texts' },
-      { key: 'phones', label: 'Phones', used: undefined, included: u.maxInboxes, unit: 'phones' },
+      { key: 'phones', label: 'Phones', used: extra.count, included: u.maxInboxes, unit: 'phones' },
+      { key: 'storage', label: 'Media storage', used: u.storedBytes, included: u.storageBytes, unit: 'bytes' },
     ],
   };
   const extras = {
     mail: async () => ({ count: ((await callService('mail', '/inboxes')).inboxes || []).filter((i) => i.state === 'active').length }),
     webhooks: async () => ({ count: ((await callService('webhooks', '/endpoints')).endpoints || []).filter((e) => e.state === 'active').length }),
+    // A paused (STOP) or pending phone still holds a slot; only unlinking frees one.
+    mobile: async () => ({ count: ((await callService('mobile', '/phones')).phones || []).filter((p) => p.state !== 'revoked').length }),
   };
   const services = await Promise.all(
     Object.keys(SERVICES).map(async (name) => {

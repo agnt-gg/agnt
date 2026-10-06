@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <ProGate v-if="!isPremium" feature="models" label="Hosted services" suggest="personal" hint="Models, Search, Sandbox, Mail and Webhooks come with AGNT Pro. Usage appears here once you're on a plan.">
+    <ProGate v-if="!isPremium" feature="models" label="Hosted services" suggest="personal" hint="Models, Search, Sandbox, Mail, Webhooks and Text Annie come with AGNT Pro. Usage appears here once you're on a plan.">
       <template #preview>
         <div class="usage-grid"><div v-for="s in SERVICE_ORDER" :key="s" class="usage-card"><div class="card-head"><i :class="ICONS[s]"></i><h3>{{ NAMES[s] }}</h3></div><div class="meter"><div class="meter-bar"><div class="meter-fill" style="width: 30%"></div></div></div></div></div>
       </template>
@@ -51,7 +51,7 @@
 
 <script>
 /**
- * One page for the five metered services. Reads /api/agnt-services/usage,
+ * One page for the six metered services. Reads /api/agnt-services/usage,
  * which asks each service for its own numbers, so what is shown here is what
  * the service will enforce — not a local estimate.
  */
@@ -60,9 +60,9 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config';
 import ProGate from '@/components/ProGate.vue';
 
-const SERVICE_ORDER = ['models', 'search', 'sandbox', 'mail', 'webhooks'];
-const NAMES = { models: 'AGNT Flash', search: 'Search', sandbox: 'Sandbox', mail: 'Mail', webhooks: 'Webhooks' };
-const ICONS = { models: 'fas fa-bolt', search: 'fas fa-search', sandbox: 'fas fa-terminal', mail: 'fas fa-envelope', webhooks: 'fas fa-plug' };
+const SERVICE_ORDER = ['models', 'search', 'sandbox', 'mail', 'webhooks', 'mobile'];
+const NAMES = { models: 'AGNT Flash', search: 'Search', sandbox: 'Sandbox', mail: 'Mail', webhooks: 'Webhooks', mobile: 'Text Annie' };
+const ICONS = { models: 'fas fa-bolt', search: 'fas fa-search', sandbox: 'fas fa-terminal', mail: 'fas fa-envelope', webhooks: 'fas fa-plug', mobile: 'fas fa-sms' };
 
 export default {
   name: 'UsageManager',
