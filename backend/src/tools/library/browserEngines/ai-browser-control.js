@@ -7,7 +7,6 @@ import { laneFor, bindConversation } from '../../../services/browserLanes.js';
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
 } from './browserFallbackSurface.js';
-import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 import { wrapBrowserScript } from './browserScriptPrelude.js';
 
@@ -332,9 +331,14 @@ class AIBrowserControl extends BaseAction {
     // The exception is a surface the registry already knows: a workspace open
     // in another window, which a turn that is not workspace-bound may
     // legitimately drive. That one is worth waiting for.
-    const canvasTurn = isCanvasTurn(workflowEngine);
+    //
+    // A canvas turn NO LONGER waits on its own account. The canvas opens the
+    // Browser widget for page verbs only (frontend browserToolCalls.js); it
+    // does not open one for a script, because a script that never touches a
+    // page was exactly how empty Browser widgets appeared. So nothing is on its
+    // way for this step to wait for unless the registry already knows it.
     const registryKnowsOne = Boolean(getActiveSurface(userId, { workspaceId, instanceId }));
-    const appearWait = canvasTurn || registryKnowsOne ? waitMs : 0;
+    const appearWait = registryKnowsOne ? waitMs : 0;
 
     let surface = await findWidget(appearWait);
 
@@ -371,7 +375,13 @@ class AIBrowserControl extends BaseAction {
       return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface) };
     }
 
-    const cdpUrl = await ensureFallbackSurface({ log: (m) => console.log(m) });
+    // HIDDEN, like every other unnamed launch (verbs, run, the viewer route).
+    // This was the one path that omitted the flag, so a script step put an
+    // empty Chrome window on the user's desktop — and because a running
+    // browser is reused whatever its visibility, every later step inherited
+    // that window. It is watched through the screencast; a NAMED browser
+    // (above) is the only launch that should ever be a desktop window.
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
     // The launched browser picks its own port, so this is a different shape from
     // a widget bridge — but it must still be loopback, for the same reason.
     if (!isLoopbackWebSocket(cdpUrl)) {

@@ -93,17 +93,28 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'tutorial',
   'canvas',
   'appearance',
-  // Three schemas. Being resident is what makes "open agnt.gg" work on turn 1
-  // without a discovery round — the first live run of the verbs tool failed
-  // precisely because the model could not see it and reached for the
-  // nested-agent tool it could.
-  'browser',
-  // ONE schema, and it is the only way to reach built-in desktop control. The
-  // five tools it replaced were in NO group at all, so they fell into the
-  // anonymous "installed" bucket that discover_tools only samples -- native
-  // app automation was effectively unreachable without asking for everything.
-  'computer',
+  // NOT 'browser' AND NOT 'computer' — DELIBERATELY ON INTENT, NEVER RESIDENT.
+  //
+  // Both drive something the user can see: a real browser window, or the
+  // user's own desktop. Resident, the model reached for them unprompted —
+  // measured over the 30 days to 2026-10-06: 663 browser calls across 118
+  // runs, ~49 of those runs with no web intent in the user's message, 41% of
+  // calls the raw `script` escape hatch (one was used to read an environment
+  // variable). Each one surfaced an empty Browser card, widget or OS window.
+  //
+  // They still arrive the moment they are wanted: the `browser` / `computer`
+  // GROUP_TRIGGERS load them when the message names a site, a URL, a browser
+  // or an app, a deferred conversation discovers them in one free call, and
+  // a group once loaded stays loaded for the rest of the conversation.
+  // Named in ON_INTENT_GROUPS below, so the exclusion is a contract, not a gap.
 ];
+
+/**
+ * Static groups that are deliberately NEVER resident: they act on something
+ * the user can see (a browser, their desktop), so they load only when the
+ * turn asks for them. Every other static group is resident.
+ */
+export const ON_INTENT_GROUPS = Object.freeze(['browser', 'computer']);
 
 /**
  * The resident tool surface for a DEFERRED-mode conversation.
@@ -145,7 +156,8 @@ export const DEFERRED_MODE_RESIDENT_TOOLS = Object.freeze([
   // Research and media.
   'web_search',
   'web_scrape',
-  'browser',
+  // 'browser' clears the >= 100-call bar but is excluded on purpose: see the
+  // note at the end of ORCHESTRATOR_RESIDENT_GROUPS. It is one discovery away.
   'analyze_image',
   'generate_image',
   // Platform the prompt depends on.

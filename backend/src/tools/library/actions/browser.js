@@ -47,13 +47,44 @@ import { browserUseProviderOptions } from '../browserEngines/browserUseProviders
  * schema rather than hand-listed, so a parameter added to an engine is
  * forwarded without anyone remembering to update this file.
  */
+/**
+ * Did the person in this conversation ask for a browser?
+ *
+ * WHY `script` IS GATED ON THE USER'S WORDS, NOT THE MODEL'S JUDGEMENT.
+ * Measured over 30 days: 272 of 663 browser calls were `script`, most of them
+ * the model reaching for raw CDP to poke at localhost or its own files, and
+ * once to read an environment variable. Every such call surfaced a browser
+ * the user never asked for and that showed nothing. The verbs stay available
+ * on the model's judgement — "open agnt.gg" is a fine reason to navigate —
+ * but a raw program against a browser is reserved for when the person said so.
+ *
+ * Words for a browser, a named browser, its tooling, or the one task that
+ * needs a real browser session: signing in. Sign-in must be the VERB ("log
+ * in", "signed in"), not the noun — "the login page has a bug" is code work.
+ * Edge only by its full name: "edge case" is not a browser.
+ */
+const BROWSER_INTENT = /\b(browsers?|chrome|chromium|brave|microsoft\s+edge|msedge|firefox|vivaldi|devtools|cdp|playwright|puppeteer|log(?:ged)?\s+in|sign(?:ed)?\s+in)\b/i;
+
+export function userAskedForBrowser(message) {
+  return BROWSER_INTENT.test(String(message || ''));
+}
+
+/** A conversation turn, as opposed to a workflow node (see ai-browser-control.isChatRun). */
+function isChatRun(workflowEngine) {
+  return Boolean(workflowEngine?.provider || workflowEngine?.normalizedProvider);
+}
+
 class Browser extends BaseAction {
   static schema = {
     title: 'Browser',
     category: 'action',
     type: 'browser',
     icon: 'globe',
-    description: 'ONE browser tool, three levels of control. VERBS (default — each call is milliseconds, no nested agent): '
+    description: 'Drive a real browser the user can watch. USE ONLY when the user asks for a browser, or the task cannot be '
+      + 'done without one: logging in, clicking through an interactive site, or seeing what JavaScript renders. NOT for '
+      + 'reading a web page (web_scrape), a local file (read_file), a local server or API (execute_shell_command or '
+      + 'execute_javascript_code with fetch), or checking your own output (render it in the chat). '
+      + 'VERBS (default — each call is milliseconds, no nested agent): '
       + 'action="navigate" with url returns the loaded page as an accessibility-tree snapshot where every interactive '
       + 'element has a @ref; act with "click"/"type"/"select"/"hover" on a ref or a CSS selector. Any verb that changes '
       + 'the page returns the NEW page inline (navigated:true) — use those refs; "snapshot" only to re-look (query filters; '
@@ -63,9 +94,8 @@ class Browser extends BaseAction {
       + 'already retried once), loopDetected or a login/captcha → stop and tell the user. DELEGATION: action="run" with instructions hands the '
       + 'WHOLE task to an autonomous browser agent that reports back when finished — slow but self-sufficient, right for '
       + 'workflows and fire-and-forget jobs. ESCAPE HATCH: action="script" with python drives the browser with raw '
-      + 'Python/CDP helpers, in chat only. A browser is always available: it drives the Browser widget when one is open '
-      + 'and quietly opens a hidden one otherwise — never ask the user to open a browser, and never expect a visible OS '
-      + 'window unless the user explicitly asked for one (externalWindow, run only).',
+      + 'Python/CDP helpers — chat only, and refused unless the user\'s message asks for the browser. Never expect a '
+      + 'visible OS window unless the user explicitly asked for one (externalWindow, run only).',
     parameters: {
       action: {
         type: 'string',
@@ -181,7 +211,7 @@ class Browser extends BaseAction {
         required: false,
         type: 'string',
         inputType: 'textarea',
-        description: 'For script (chat only): Python to run against the browser, with the browser-use helpers pre-imported.',
+        description: 'For script (chat only, and only when the user asked for the browser): Python to run against the browser, with the browser-use helpers pre-imported.',
       },
       provider: {
         required: false,
@@ -301,6 +331,18 @@ class Browser extends BaseAction {
       }
       // The chat-only gate lives in the engine's execute, where it has always
       // been, so it cannot be bypassed by calling the engine directly either.
+      // The INTENT gate lives here: it is policy about this tool's surface,
+      // and the engine stays a mechanism. Workflows never reach it — the
+      // engine refuses them before any browser is touched.
+      if (isChatRun(workflowEngine) && !userAskedForBrowser(workflowEngine?.latestUserMessage)) {
+        return this.formatOutput({
+          success: false,
+          error: 'action="script" is reserved for when the user asks for the browser, and this message did not. '
+            + 'Use the right tool instead: read_file for local files, execute_shell_command or '
+            + 'execute_javascript_code (fetch) for localhost and APIs, web_scrape to read a page, or the browser '
+            + 'verbs (navigate/click/type) if a real page genuinely has to be driven.',
+        });
+      }
       return controlTool.execute(Browser.paramsFor(controlTool, params), inputData, workflowEngine);
     }
 

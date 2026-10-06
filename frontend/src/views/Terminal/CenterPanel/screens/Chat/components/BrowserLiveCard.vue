@@ -26,7 +26,7 @@
   <Teleport :to="fullscreenHost || 'body'" :disabled="!fullscreen">
   <div
     v-if="owns"
-    v-show="live || showing"
+    v-show="showing"
     ref="cardRef"
     class="browser-live-card"
     :class="{ 'is-fullscreen': fullscreen }"
@@ -54,14 +54,16 @@
     <!-- data-keeps-focus: clicks in here belong to the page, not the chat input. -->
     <div v-if="!collapsed || fullscreen" class="live-body" data-keeps-focus>
       <!--
-        The LIVE turn opens a browser if none exists: the card is there because
-        the agent is browsing right now, and a card that waits for a browser
-        that never comes is the blank pane this used to be. An OLD message
-        never launches (scrolling back must not open browsers); it stays
-        hidden (v-show above) until it actually has pixels to show.
+        A WATCHER, NEVER A LAUNCHER. The card used to open a browser on the
+        live turn so it would not sit on a blank pane; that launched browsers
+        for turns whose calls never had a page (a script, a refused navigate)
+        and showed them empty (trace c59eb9e9). Now the agent's own page verbs
+        are the only thing that opens a browser, and the card stays hidden
+        (v-show above) until that browser has real pixels — so there is no
+        blank pane to avoid in the first place.
       -->
       <BrowserStreamView
-        :launch="live"
+        :launch="false"
         :high-quality="fullscreen"
         :conversation-id="conversationId"
         @page="onPage"
@@ -104,8 +106,6 @@ const props = defineProps({
   cardKey: { type: String, required: true },
   /** Monotonic within a conversation; the highest claim owns the stream. */
   order: { type: Number, default: 0 },
-  /** This card belongs to the turn happening now, not one being re-read. */
-  live: { type: Boolean, default: false },
   /**
    * The conversation this card belongs to. Each conversation has its own
    * browser tab, so the card shows THIS conversation's browser and competes

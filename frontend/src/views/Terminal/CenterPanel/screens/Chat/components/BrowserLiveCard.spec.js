@@ -1,10 +1,13 @@
 /**
- * The inline browser card opens a browser on the live turn, and never shows a
- * dead pane.
+ * The inline browser card WATCHES; it never opens a browser, and never shows
+ * a dead pane.
  *
- * It used to mount with launch=false always: whenever no browser was
- * registered (the tool failed first, the backend restarted, a separate window
- * was used) it sat on "No browser is open yet. Waiting for one…" forever.
+ * History: it first mounted launch=false and visible, so with no browser it sat
+ * on "No browser is open yet. Waiting for one…" forever. The fix for that was
+ * to launch on the live turn — which opened browsers for turns that never had a
+ * page (a script, a refused navigate) and showed them empty (trace c59eb9e9,
+ * 2026-10-06). The fix that holds both ways: never launch, and stay hidden
+ * until there are real pixels.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -41,9 +44,9 @@ const makeHost = () => {
   return host;
 };
 
-const mountCard = async (live, extra = {}, { host = makeHost() } = {}) => {
+const mountCard = async (extra = {}, { host = makeHost() } = {}) => {
   wrapper = mount(BrowserLiveCard, {
-    props: { cardKey: `m-${Math.random()}`, order: Date.now(), live, ...extra },
+    props: { cardKey: `m-${Math.random()}`, order: Date.now(), ...extra },
     global: { directives: { tooltip: {} } },
     // Attached inside the host, as the chat transcript is, so a teleported
     // card is still findable in the real DOM.
@@ -52,22 +55,14 @@ const mountCard = async (live, extra = {}, { host = makeHost() } = {}) => {
   await flushPromises();
 };
 
-describe('the live turn', () => {
-  it('may open a browser, and is shown straight away', async () => {
-    await mountCard(true);
-    expect(seen.props.launch).toBe(true);
-    expect(hidden()).toBe(false);
-  });
-});
-
-describe('an old message being re-read', () => {
-  it('never opens a browser', async () => {
-    await mountCard(false);
+describe('a watcher, never a launcher', () => {
+  it('never opens a browser, on the live turn or any other', async () => {
+    await mountCard();
     expect(seen.props.launch).toBe(false);
   });
 
   it('shows nothing until real pixels arrive, then shows them', async () => {
-    await mountCard(false);
+    await mountCard();
     expect(hidden()).toBe(true);
     // Still mounted, so it can pick up a browser that opens later.
     expect(wrapper.find('.stream-stub').exists()).toBe(true);
@@ -82,7 +77,7 @@ describe('fullscreen', () => {
   const isFullscreen = () => card().classList.contains('is-fullscreen');
 
   it('moves the SAME live view into the screen box, and back', async () => {
-    await mountCard(true);
+    await mountCard();
     const host = document.querySelector('[data-fullscreen-host]');
     const before = seen.setups;
 
@@ -105,7 +100,7 @@ describe('fullscreen', () => {
   it('stays inline when its surface has no fullscreen host, never covering app chrome', async () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      await mountCard(true, {}, { host: null });
+      await mountCard({}, { host: null });
       const parent = card().parentElement;
       await toggle(); await flushPromises();
       expect(isFullscreen()).toBe(false);
@@ -117,7 +112,7 @@ describe('fullscreen', () => {
   });
 
   it('leaves on Escape even when the page has focus and swallows the key', async () => {
-    await mountCard(true);
+    await mountCard();
     await toggle(); await flushPromises();
     // The real stream canvas forwards keys with @keydown.stop, so a bubbling
     // window listener never hears them. This was the trap.
@@ -135,7 +130,7 @@ describe('fullscreen', () => {
     const current = shallowRef(BrowserLiveCard);
     const host = makeHost();
     wrapper = mount(defineComponent({
-      render: () => h(KeepAlive, null, [h(current.value, { cardKey: 'k-alive', order: Date.now(), live: true })]),
+      render: () => h(KeepAlive, null, [h(current.value, { cardKey: 'k-alive', order: Date.now() })]),
     }), {
       global: { directives: { tooltip: {} } },
       attachTo: host.appendChild(document.createElement('div')),
@@ -150,7 +145,7 @@ describe('fullscreen', () => {
   });
 
   it('asks for full-resolution frames only while fullscreen', async () => {
-    await mountCard(true);
+    await mountCard();
     expect(seen.props.highQuality).toBe(false);
     await toggle(); await flushPromises();
     expect(seen.props.highQuality).toBe(true);
@@ -159,7 +154,7 @@ describe('fullscreen', () => {
   });
 
   it('leaves on Escape', async () => {
-    await mountCard(true);
+    await mountCard();
     await toggle(); await flushPromises();
     expect(isFullscreen()).toBe(true);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -168,7 +163,7 @@ describe('fullscreen', () => {
   });
 
   it('shows the page even if the card was collapsed', async () => {
-    await mountCard(true);
+    await mountCard();
     card().querySelector('.live-header').click(); await flushPromises();
     expect(card().querySelector('.stream-stub')).toBeNull();
     await toggle(); await flushPromises();
@@ -178,14 +173,14 @@ describe('fullscreen', () => {
 
 describe('focus', () => {
   it('marks the page area as keeping focus, so the chat input cannot steal typing', async () => {
-    await mountCard(true);
+    await mountCard();
     expect(wrapper.find('.live-body').attributes()).toHaveProperty('data-keeps-focus');
   });
 });
 
 describe('its own conversation', () => {
   it('asks for its conversation\'s browser', async () => {
-    await mountCard(true, { conversationId: 'conv-7' });
+    await mountCard({ conversationId: 'conv-7' });
     expect(seen.props.conversationId).toBe('conv-7');
   });
 
@@ -193,7 +188,7 @@ describe('its own conversation', () => {
     const { claimLiveView, ownsLiveView } = await import('./browserLiveRegistry.js');
     // Another conversation's newer card is already on screen.
     claimLiveView('other', Date.now() + 100000, 'conv-other');
-    await mountCard(true, { conversationId: 'conv-7' });
+    await mountCard({ conversationId: 'conv-7' });
     expect(wrapper.find('.browser-live-card').exists()).toBe(true);
     expect(ownsLiveView('other')).toBe(true);
   });

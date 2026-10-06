@@ -50,7 +50,21 @@ describe('lean resident surface (deferred mode, lean profile)', () => {
 describe('every other conversation keeps the surface it had', () => {
   it('deferred, full profile (started before profiles existed): every static group resident', async () => {
     const resident = new Set(namesOf(await surface(conversation({ _toolLoadingMode: 'deferred', _residentProfile: 'full' }))));
-    for (const name of ['generate_widget', 'computer_use', 'create_and_run_goal', ...DEFAULT_TOOLS]) expect(resident.has(name), name).toBe(true);
+    for (const name of ['generate_widget', 'create_and_run_goal', ...DEFAULT_TOOLS]) expect(resident.has(name), name).toBe(true);
+  });
+
+  it('no profile ever makes the browser or the desktop resident — they arrive on intent or discovery', async () => {
+    for (const extra of [
+      { _toolLoadingMode: 'deferred', _residentProfile: 'lean' },
+      { _toolLoadingMode: 'deferred', _residentProfile: 'full' },
+      { _toolLoadingMode: 'legacy', _residentProfile: 'full' },
+    ]) {
+      const ctx = conversation(extra);
+      const resident = new Set(namesOf(await surface(ctx)));
+      expect(resident.has('browser'), JSON.stringify(extra)).toBe(false);
+      expect(resident.has('computer_use'), JSON.stringify(extra)).toBe(false);
+      if (ctx._deferredToolCatalog) expect(namesOf(ctx._deferredToolCatalog)).toContain('browser');
+    }
   });
 
   it('deferred with no profile recorded is treated as full', async () => {

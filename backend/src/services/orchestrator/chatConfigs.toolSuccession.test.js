@@ -51,6 +51,10 @@ function buildRegistry() {
 const namesOf = (schemas) => new Set(schemas.map((s) => s.function?.name));
 const surfaceFor = (ctx) => getChatConfig('orchestrator').getToolSchemas(ctx);
 const NEUTRAL_MSG = 'hello there';
+// The browser is loaded ON INTENT now, never resident (see
+// ORCHESTRATOR_RESIDENT_GROUPS), so "does the selection confer it" has to be
+// asked on a turn that wants a browser. NEUTRAL_MSG still proves the ceiling.
+const BROWSE_MSG = 'open agnt.gg in the browser';
 
 // A realistic selection saved BEFORE the consolidation: it enables browsing
 // under the old name, which is why the loss was invisible — the legacy tool
@@ -85,7 +89,7 @@ describe('the succession map itself', () => {
 describe('a selection saved before the consolidation', () => {
   it('reaches the tool that REPLACED what it named (the reported bug)', async () => {
     const ns = namesOf(await surfaceFor({
-      latestUserMessage: NEUTRAL_MSG,
+      latestUserMessage: BROWSE_MSG,
       enabledTools: new Set(SAVED_BEFORE_CONSOLIDATION),
     }));
     expect(ns.has('browser')).toBe(true);
@@ -102,7 +106,7 @@ describe('a selection saved before the consolidation', () => {
   it('inherits from ANY predecessor, not just the first one listed', async () => {
     for (const legacy of LEGACY) {
       const ns = namesOf(await surfaceFor({
-        latestUserMessage: NEUTRAL_MSG,
+        latestUserMessage: BROWSE_MSG,
         enabledTools: new Set(['discover_tools', legacy]),
       }));
       expect(ns.has('browser'), `${legacy} should confer browser`).toBe(true);
@@ -122,7 +126,8 @@ describe('a selection saved before the consolidation', () => {
 describe('it is inheritance, not a blanket grant', () => {
   it('a channel that never permitted browsing still gets nothing', async () => {
     const ns = namesOf(await surfaceFor({
-      latestUserMessage: NEUTRAL_MSG,
+      // Even when the user asks for a browser: the ceiling outranks intent.
+      latestUserMessage: BROWSE_MSG,
       enabledTools: new Set(['discover_tools', 'web_search', 'read_file']),
     }));
     expect(ns.has('browser')).toBe(false);
@@ -134,10 +139,28 @@ describe('it is inheritance, not a blanket grant', () => {
     expect(ns.has('browser')).toBe(false);
   });
 
-  it('no selection at all is unaffected — browser rides its resident group', async () => {
-    const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
+  it('no selection at all: the browser arrives when the turn asks for one', async () => {
+    const ctx = { latestUserMessage: BROWSE_MSG, enabledTools: null };
     const ns = namesOf(await surfaceFor(ctx));
     expect(ctx._toolCeiling).toBeNull();
     expect(ns.has('browser')).toBe(true);
+  });
+});
+
+describe('the browser and desktop tools are never resident', () => {
+  // THE BUG THIS PINS (measured 2026-10-06): resident, the model reached for
+  // the browser on ~49 of 118 browsing runs whose message had no web intent,
+  // and every call surfaced an empty Browser card, widget or OS window.
+  it('a turn with no browsing intent is not handed the browser or the desktop', async () => {
+    const ns = namesOf(await surfaceFor({ latestUserMessage: 'fix the failing test in the repo', enabledTools: null }));
+    expect(ns.has('browser')).toBe(false);
+    expect(ns.has('computer_use')).toBe(false);
+  });
+
+  it('once loaded for a turn, it stays loaded for the conversation', async () => {
+    const first = { latestUserMessage: BROWSE_MSG, enabledTools: null };
+    await surfaceFor(first);
+    const next = { latestUserMessage: NEUTRAL_MSG, enabledTools: null, _loadedToolGroups: first._loadedToolGroups };
+    expect(namesOf(await surfaceFor(next)).has('browser')).toBe(true);
   });
 });

@@ -226,6 +226,21 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
   });
 
+  it('launches it HIDDEN — an unnamed fallback is never a window on the desktop', async () => {
+    // THE BUG THIS PINS (trace c59eb9e9, 2026-10-06): this was the one launch
+    // path without the flag, so a script step put an empty Chrome window on
+    // the user's desktop, and every later step reused that visible window.
+    waitForSurface.mockResolvedValue(null);
+    await action.execute({ python: 'print(1)' }, {}, CHAT);
+    expect(ensureFallbackSurface).toHaveBeenCalledWith(expect.objectContaining({ hidden: true }));
+  });
+
+  it('a NAMED browser is the one launch that is a real window, because the user asked for it', async () => {
+    waitForSurface.mockResolvedValue(null);
+    await action.execute({ python: 'print(1)', browser: 'brave' }, {}, CHAT);
+    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBeUndefined();
+  });
+
   it('records which browser a conversation used, so its live card shows the work', async () => {
     // The script daemon drives the whole browser, not a conversation's tab, so
     // it cannot use a lane. The card must still follow it rather than show an
@@ -309,11 +324,19 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(waitForSurface).toHaveBeenCalledWith('u1', expect.anything(), 0);
   });
 
-  it('CANVAS: still waits for the widget it just opened', async () => {
-    // The canvas mounts the widget as this tool is called, so the backend gets
-    // here while the webview is still attaching its debugger. Removing this
-    // wait would make the first "go look at X" of a session open a second,
-    // separate browser next to the widget the user just watched appear.
+  it('CANVAS: does not wait for a widget the canvas no longer opens for a script', async () => {
+    // The canvas opens the Browser widget for page verbs only. A script used to
+    // open it too, which is how empty widgets appeared; now nothing is coming,
+    // so waiting would be eight seconds of dead air.
+    waitForSurface.mockResolvedValue(null);
+
+    await action.execute({ python: 'print(1)' }, {}, CANVAS);
+
+    expect(waitForSurface).toHaveBeenCalledWith('u1', expect.anything(), 0);
+  });
+
+  it('CANVAS: still waits for a widget that is already open', async () => {
+    getActiveSurface.mockReturnValue({ instanceId: 'w1', cdpUrl: CDP });
     waitForSurface.mockResolvedValue(null);
 
     await action.execute({ python: 'print(1)' }, {}, CANVAS);

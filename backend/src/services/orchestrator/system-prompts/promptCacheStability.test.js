@@ -27,6 +27,8 @@ import {
   resolveResidentElements,
   getGuidanceForTools,
   ORCHESTRATOR_RESIDENT_GROUPS,
+  ON_INTENT_GROUPS,
+  DEFERRED_MODE_RESIDENT_TOOLS,
   RESIDENT_GATED_ELEMENTS,
 } from './promptElements.js';
 import { TOOL_GROUPS } from '../toolSelector.js';
@@ -155,11 +157,24 @@ describe('freezing strands nothing — guidance follows the tool', () => {
 });
 
 describe('the resident floor keeps discovery rare', () => {
-  it('covers every static tool group', () => {
+  it('covers every static tool group, except the ones named as on-intent', () => {
     // Anything left out is a discovery waiting to happen, and one discovery
-    // costs more than the whole group costs to keep resident.
+    // costs more than the whole group costs to keep resident — so leaving a
+    // group out must be a NAMED decision (ON_INTENT_GROUPS), never a gap.
     for (const group of Object.keys(TOOL_GROUPS)) {
+      if (ON_INTENT_GROUPS.includes(group)) continue;
       expect(ORCHESTRATOR_RESIDENT_GROUPS, `group "${group}" is not resident`).toContain(group);
+    }
+  });
+
+  it('never makes the browser or the desktop resident', () => {
+    // Resident, the model drove a visible browser on turns that never asked
+    // for one (measured 2026-10-06). They load on intent or discovery only.
+    expect(ON_INTENT_GROUPS).toEqual(expect.arrayContaining(['browser', 'computer']));
+    for (const group of ON_INTENT_GROUPS) {
+      expect(Object.keys(TOOL_GROUPS), `on-intent group "${group}" must exist`).toContain(group);
+      expect(ORCHESTRATOR_RESIDENT_GROUPS).not.toContain(group);
+      for (const tool of TOOL_GROUPS[group]) expect(DEFERRED_MODE_RESIDENT_TOOLS).not.toContain(tool);
     }
   });
 

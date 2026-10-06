@@ -15,6 +15,8 @@
  *   create_goal      → 'goals' …and so on.
  */
 
+import { drivesBrowserPage } from '@/utils/browserToolCalls.js';
+
 /**
  * SCREEN_WIDGET_MAP — ScreenName → canvas widget, for translating embedded
  * screens' `screen-change` emissions into canvas actions.
@@ -78,9 +80,9 @@ const ID_FIELDS = {
 export const TOOL_WIDGET_MAP = {
   // Annie browsing in chat should be something you can WATCH. No id to bind:
   // the widget owns its own browser surface, so opening it is the whole job.
-  // Verbs, run and script are all one tool now, and all show their work here.
-  // Opening the widget on the first call keeps the work on the canvas, beside
-  // the conversation, rather than in a separate window the user did not ask for.
+  // Only for a call with a PAGE (drivesBrowserPage, enforced in
+  // widgetForToolCall): a script or a refused navigate opened this widget
+  // empty, which is the bug that rule exists for.
   browser: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
@@ -161,6 +163,7 @@ export function widgetForToolCall(toolCall) {
   if (!toolCall || !toolCall.name) return null;
   const entry = TOOL_WIDGET_MAP[toolCall.name];
   if (!entry) return null;
+  if (entry.widgetId === 'browser' && !drivesBrowserPage(toolCall)) return null;
 
   const objectId = entry.idKind ? extractId(toolCall, entry.idKind) : '';
 

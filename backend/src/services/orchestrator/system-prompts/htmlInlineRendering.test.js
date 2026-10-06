@@ -75,7 +75,11 @@ describe('inline HTML is the resident default, not a discoverable extra', () => 
     expect(prompt).toContain('{"path":"C:/absolute/path/site.html","title":"Site"}');
     expect(prompt).toContain('Do not repeat the file or invent a wrapper');
     expect(prompt).toContain('write-and-echo blocks still pair');
-    expect(prompt).toContain('opening file:// alone is not chat QA');
+    // Measured: "test the chat HTTP origin" sent the model into a browser to
+    // QA its own output on turns that never asked for one. Checking output
+    // happens with files, tests and the shell — never by opening a browser.
+    expect(prompt).toContain('Do not open a browser to check HTML, files or localhost you produced');
+    expect(prompt).not.toContain('Test the chat HTTP origin');
     expect(prompt).not.toContain('IF YOU ALSO WRITE THE FILE TO DISK, DO BOTH');
   });
 

@@ -244,7 +244,6 @@
             :key="`browser-live:${browserConversationId}`"
             :card-key="message.id"
             :order="browserCardOrder"
-            :live="browserCardLive"
             :conversation-id="browserConversationId"
           />
 
@@ -478,6 +477,7 @@ import { shareTarget } from './shareCards.js';
 import { useBrowserConversation } from './browserConversation.js';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { compactArtifactText } from '@/utils/chatArtifacts.js';
+import { drivesBrowserPage } from '@/utils/browserToolCalls.js';
 import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 // Lazy: a conversation that never browses should not download a streaming
 // client, and this one pulls the canvas stream view in behind it.
@@ -2800,25 +2800,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     /**
-     * Tool calls that drive a browser, and therefore have something to
-     * watch.
-     *
-     * All four names, not just the current one. `browser` is the only tool
-     * that can be CALLED now — the three it consolidated were de-registered
-     * once the DB confirmed nothing referenced them — but this list is about
-     * READING, not calling: a conversation loaded from history can still
-     * contain any of them, and a card that only knew the new name would
-     * render nothing for yesterday's transcript. These stay forever.
+     * Does this turn have a browser PAGE to watch? Not "did it call the
+     * browser tool" — a script or a refused navigate has nothing to show, and
+     * mounting a card for one is how empty Live browser panes appeared. The
+     * rule (and the history-only legacy names) live in browserToolCalls.js,
+     * shared with the Workspace canvas so the two can never disagree.
      */
-    const BROWSER_TOOL_NAMES = new Set([
-      'browser',
-      'ai_browser_act',
-      'ai_browser_use',
-      'ai_browser_control',
-    ]);
     const hasBrowserToolCall = computed(
       () => !insideWidgetCanvas
-        && (props.message?.toolCalls || []).some((tc) => BROWSER_TOOL_NAMES.has(tc?.name)),
+        && (props.message?.toolCalls || []).some(drivesBrowserPage),
     );
 
     /**
@@ -2838,22 +2828,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       return Number.isFinite(ts) && ts > 0 ? ts : messageFirstRenderedAt;
     });
 
-    /**
-     * Is this the turn happening now? Only then may its card OPEN a browser.
-     * A browser call still running is live by definition; otherwise a message
-     * from the last few minutes counts, which covers the card mounting just
-     * after the call finished. Anything older is history being re-read.
-     */
-    const LIVE_BROWSER_CARD_MS = 10 * 60 * 1000;
     // Which conversation this transcript is (provided by the chat surface), so
     // the browser card shows this conversation's browser and no other.
     const browserConversationId = useBrowserConversation();
-
-    const browserCardLive = computed(() => {
-      const calls = (props.message?.toolCalls || []).filter((tc) => BROWSER_TOOL_NAMES.has(tc?.name));
-      if (calls.some((tc) => (props.runningTools || []).includes(tc.id))) return true;
-      return messageFirstRenderedAt - browserCardOrder.value < LIVE_BROWSER_CARD_MS;
-    });
 
     const isAutonomousGoalTool = (toolCall) => {
       // Direct tool names
@@ -3233,7 +3210,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isAutonomousGoalTool,
       hasBrowserToolCall,
       browserCardOrder,
-      browserCardLive,
       browserConversationId,
       extractGoalId,
       extractGoalTitle,

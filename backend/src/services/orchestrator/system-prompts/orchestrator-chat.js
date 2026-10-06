@@ -80,10 +80,9 @@ Use embedded or relative assets in saved HTML;
 internal file URLs are not universally portable. Never construct localhost API URLs.
 
 Use direct media tags for images/video/audio/PDF. Link files to keep.
-The browser is for REMOTE pages, not for presenting your local output.
-Test the chat HTTP origin, sandbox and resources;
-opening file:// alone is not chat QA. A load event is not proof of correctness.
-Distinguish isolated renderer tests from observing the user’s actual chat.`;
+The browser is for REMOTE pages the user wants driven, never for presenting your local output.
+Do not open a browser to check HTML, files or localhost you produced: the user sees the render,
+and a load event is not proof of correctness. Verify with read_file, tests or the shell.`;
 
 export const LOCAL_FILE_RENDERING = `LOCAL FILE RENDERING:
 When a tool returns an absolute path to media or a document (for example { filePath: 'C:/.../clip.mp4' }, or anything under %APPDATA%/AGNT/plugin-data/), embed it with a file:/// URL. The chat serves these with the right content type and range support, so video seeking, large images and PDFs work:

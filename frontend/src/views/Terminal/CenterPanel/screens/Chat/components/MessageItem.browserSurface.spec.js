@@ -27,14 +27,17 @@ const store = createStore({
   modules: {},
 });
 
-function mountBrowserMessage({ insideWidgetCanvas = false } = {}) {
+function mountBrowserMessage({
+  insideWidgetCanvas = false,
+  toolCalls = [{ id: 't-browser', name: 'browser', args: { action: 'navigate' } }],
+} = {}) {
   return mount(MessageItem, {
     props: {
       message: {
         id: 'm-browser',
         role: 'assistant',
         content: '',
-        toolCalls: [{ id: 't-browser', name: 'browser', args: { action: 'navigate' } }],
+        toolCalls,
       },
       imageCache: new Map(),
     },
@@ -61,5 +64,19 @@ describe('MessageItem browser presentation', () => {
   it('leaves Browser presentation to the workspace canvas when embedded', () => {
     const wrapper = mountBrowserMessage({ insideWidgetCanvas: true });
     expect(wrapper.find('[data-test="browser-live-card"]').exists()).toBe(false);
+  });
+
+  // trace c59eb9e9: a script that read an environment variable mounted an
+  // empty Live browser card. A browser CALL is not a browser PAGE.
+  it('shows no card for a turn whose browser calls never had a page', () => {
+    for (const toolCalls of [
+      [{ id: 't1', name: 'browser', args: { action: 'script', python: 'print(1)' } }],
+      [{ id: 't2', name: 'browser', args: { action: 'console' } }],
+      [{ id: 't3', name: 'browser', args: { action: 'navigate', url: 'file:///C:/x.html' },
+        result: { success: false, error: 'Refusing to navigate to a file: URL.' } }],
+    ]) {
+      const wrapper = mountBrowserMessage({ toolCalls });
+      expect(wrapper.find('[data-test="browser-live-card"]').exists(), JSON.stringify(toolCalls)).toBe(false);
+    }
   });
 });

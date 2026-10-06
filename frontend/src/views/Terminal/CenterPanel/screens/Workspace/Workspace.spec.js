@@ -103,6 +103,18 @@ describe('widgetForToolCall — tool → widget mapping', () => {
     }
   });
 
+  // trace c59eb9e9: a script that never touched a page opened the Browser
+  // widget empty. The widget is for a page someone can watch.
+  it('opens the Browser widget for a page, and never for a script, a diagnostic or a failure', async () => {
+    const { widgetForToolCall } = await import('./surfaceRegistry.js');
+    expect(widgetForToolCall({ name: 'browser', args: { action: 'navigate' }, result: { success: true } }).widgetId).toBe('browser');
+    for (const tc of [
+      { name: 'browser', args: { action: 'script' }, result: { success: true } },
+      { name: 'browser', args: { action: 'requests' }, result: { success: true } },
+      { name: 'browser', args: { action: 'navigate' }, result: { success: false, error: 'Refusing to navigate to a file: URL.' } },
+    ]) expect(widgetForToolCall(tc), JSON.stringify(tc)).toBeNull();
+  });
+
   it('ignores unrelated tools', async () => {
     const { widgetForToolCall } = await import('./surfaceRegistry.js');
     expect(widgetForToolCall({ name: 'web_search', result: {} })).toBeNull();

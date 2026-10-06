@@ -296,6 +296,7 @@ import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } 
 import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor, flushSync } from './useWorkspaces.js';
 import { openShare } from '@/composables/useShare.js';
 import { widgetForToolCall, SCREEN_WIDGET_MAP } from './surfaceRegistry.js';
+import { drivesBrowserPage } from '@/utils/browserToolCalls.js';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export default {
@@ -643,16 +644,14 @@ export default {
     const runningMap = computed(() => store.state.chatUnified.runningToolCalls[chatChannelKey.value] || {});
     const isStreaming = computed(() => store.getters['chatUnified/isStreaming'](chatChannelKey.value));
 
-    // Live path only: this scans for a RUNNING call, and `browser` is the only
-    // browser tool the model can emit. The three it consolidated are no longer
-    // registered, so they can never appear here. History is different — see
-    // MessageItem's BROWSER_TOOL_NAMES, which still knows the old names.
-    const browserToolNames = new Set(['browser']);
-
     /**
      * Browser is not an optional post-result suggestion. It is the surface the
      * backend is about to drive, and resolveSurface waits briefly for this
      * workspace to publish it before falling back to a hidden browser.
+     *
+     * Only for a call with a PAGE (drivesBrowserPage, shared with the chat
+     * card). A script or a diagnostic used to force this widget open and leave
+     * it empty; the script engine no longer waits for one either.
      *
      * Read the named calls from the live transcript instead of decoding
      * runningToolCalls' composite keys: message and tool ids may themselves
@@ -662,7 +661,7 @@ export default {
       if (!Object.keys(runningMap.value).length) return;
       const messages = store.getters['chatUnified/getMessages'](chatChannelKey.value) || [];
       const hasRunningBrowser = messages.slice(-6).some((message) =>
-        (message.toolCalls || []).some((toolCall) => browserToolNames.has(toolCall?.name)
+        (message.toolCalls || []).some((toolCall) => drivesBrowserPage(toolCall)
           && runningMap.value[`${message.id}-${toolCall.id}`]),
       );
       if (hasRunningBrowser) open('browser', { auto: true, required: true });

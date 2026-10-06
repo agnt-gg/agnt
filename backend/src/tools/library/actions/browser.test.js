@@ -48,9 +48,11 @@ vi.mock('../browserEngines/ai-browser-control.js', () => ({
   },
 }));
 
-const { default: browser } = await import('./browser.js');
+const { default: browser, userAskedForBrowser } = await import('./browser.js');
 
 const ENGINE = { userId: 'u1', provider: 'anthropic' };
+/** A chat turn whose user asked for the browser — the only turn script may run on. */
+const ASKED = { ...ENGINE, latestUserMessage: 'use the browser to check the pricing page' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -108,13 +110,39 @@ describe('run goes to the autonomous agent', () => {
 
 describe('script goes to the raw-control engine', () => {
   it('forwards python and passes the SAME workflowEngine — the chat gate lives in the engine', async () => {
-    await browser.execute({ action: 'script', python: 'print(1)', timeoutSeconds: 30 }, {}, ENGINE);
+    await browser.execute({ action: 'script', python: 'print(1)', timeoutSeconds: 30 }, {}, ASKED);
 
     expect(controlExecute).toHaveBeenCalledTimes(1);
     expect(controlExecute.mock.calls[0][0]).toEqual({ python: 'print(1)', timeoutSeconds: 30 });
     // The engine's execute checks isChatRun(workflowEngine) itself, so the
     // gate holds whether it is reached through this façade or directly.
-    expect(controlExecute.mock.calls[0][2]).toBe(ENGINE);
+    expect(controlExecute.mock.calls[0][2]).toBe(ASKED);
+  });
+
+  // THE BUG THIS PINS (trace c59eb9e9, 2026-10-06): mid-way through UI work the
+  // model ran a script to read an environment variable. The user had asked
+  // for nothing browser-shaped; a browser launched and a blank card appeared.
+  it('is refused in chat when the user did not ask for a browser — and no browser is touched', async () => {
+    for (const latestUserMessage of [undefined, '', 'make the files page match our brand and add a list mode']) {
+      controlExecute.mockClear();
+      const out = await browser.execute({ action: 'script', python: 'print(1)' }, {}, { ...ENGINE, latestUserMessage });
+      expect(out.success).toBe(false);
+      expect(out.error).toMatch(/reserved for when the user asks for the browser/);
+      // It teaches the right tool rather than just saying no.
+      expect(out.error).toMatch(/read_file/);
+      expect(controlExecute).not.toHaveBeenCalled();
+    }
+  });
+
+  it('leaves workflows to the engine, which refuses script there for its own reason', async () => {
+    const WORKFLOW = { userId: 'u1' };
+    await browser.execute({ action: 'script', python: 'print(1)' }, {}, WORKFLOW);
+    expect(controlExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not gate the verbs — "open agnt.gg" is a fine reason to navigate', async () => {
+    await browser.execute({ action: 'navigate', url: 'agnt.gg' }, {}, { ...ENGINE, latestUserMessage: 'what is on agnt.gg?' });
+    expect(actExecute).toHaveBeenCalledTimes(1);
   });
 
   it('refuses script without python', async () => {
@@ -122,6 +150,22 @@ describe('script goes to the raw-control engine', () => {
     expect(out.success).toBe(false);
     expect(out.error).toMatch(/python/);
     expect(controlExecute).not.toHaveBeenCalled();
+  });
+});
+
+describe('userAskedForBrowser', () => {
+  it('hears a browser, a named browser, its tooling, or signing in', () => {
+    for (const msg of [
+      'use the browser', 'open it in Chrome', 'try Brave', 'open Microsoft Edge', 'check devtools', 'drive it with playwright',
+      'I need to log in to stripe', 'sign in for me', 'are we logged in?', 'BROWSER pls',
+    ]) expect(userAskedForBrowser(msg), msg).toBe(true);
+  });
+
+  it('does not hear it in ordinary engineering requests', () => {
+    for (const msg of [
+      'fix the failing tests', 'make the files page better', 'check the localhost server', 'read the html file',
+      'what is my edge case here', 'the login page has a bug', null, undefined, '',
+    ]) expect(userAskedForBrowser(msg), String(msg)).toBe(false);
   });
 });
 
