@@ -961,6 +961,13 @@ function startServer() {
         startMobileReceiver({ port: config.port });
       });
 
+      // Worker chats the last run left running or unreported are reported to
+      // the chat that started them (and texted, when a phone is linked).
+      afterBoot('sub-chat report recovery', async () => {
+        const { startSubChatRecovery } = await import('./src/services/orchestrator/subChatReports.js');
+        await startSubChatRecovery();
+      });
+
       // Defer all heavy initialization to next tick so the listen callback
       // returns immediately and the server can respond to health checks
       setImmediate(() => {

@@ -68,6 +68,8 @@ const REGISTRY = {
   web_scrape: { capabilities: ['http'], sink: ['url'] },
   web_search: { capabilities: ['http'], sink: ['query'] },
   send_email: { capabilities: ['http'], sink: ['to'] },
+  // Only ever to the account owner's own verified phone; the service picks it.
+  text_user: { capabilities: ['http'], sink: [] },
 
   // ── Orchestrator: no execution sink at all ───────────────────────────────
   // These cannot run, write, or fetch anything. Their arguments are pure

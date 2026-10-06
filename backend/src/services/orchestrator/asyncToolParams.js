@@ -102,6 +102,8 @@ export const LONG_RUNNING_TOOL_NAMES = new Set([
   'web_search',
   'web_scrape',
   'send_email',
+  // Reminders: scheduled with _delayFirst + _interval.
+  'text_user',
   'custom_api',
   // action="run" hands a whole task to a nested agent, which is long-running
   // delegation; the verbs are milliseconds but share the one tool name.

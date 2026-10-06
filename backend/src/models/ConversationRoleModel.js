@@ -53,11 +53,40 @@ class ConversationRoleModel {
     return row ? row.id : null;
   }
 
-  /** Record that `outputId` was started from `parentOutputId` (may be null). */
+  /** Record that `outputId` was started from `parentOutputId` (may be null). Its work starts 'running'. */
   static addSub(userId, outputId, parentOutputId) {
     return run(
-      `INSERT OR REPLACE INTO conversation_roles (output_id, user_id, role, parent_output_id) VALUES (?, ?, 'sub', ?)`,
+      `INSERT OR REPLACE INTO conversation_roles (output_id, user_id, role, parent_output_id, task_state) VALUES (?, ?, 'sub', ?, 'running')`,
       [outputId, userId, parentOutputId || null],
+    );
+  }
+
+  /** Move sub-chats' work to `state` (running | done | reported | interrupted | expired). */
+  static setTaskState(userId, outputIds, state) {
+    const ids = (Array.isArray(outputIds) ? outputIds : [outputIds]).filter(Boolean);
+    if (!ids.length) return Promise.resolve({ changes: 0 });
+    return run(
+      `UPDATE conversation_roles SET task_state = ? WHERE user_id = ? AND role = 'sub' AND output_id IN (${ids.map(() => '?').join(',')})`,
+      [state, userId, ...ids],
+    );
+  }
+
+  /**
+   * Sub-chats whose work never reached their parent: still 'running' (the app
+   * stopped mid-run) or 'done' but unreported. With what a report needs: the
+   * title, the sub-chat's saved transcript, and the parent's CURRENT
+   * conversation id (clearing the Main chat mints a new one; the row id holds).
+   */
+  static listUnreported() {
+    return all(
+      `SELECT r.output_id AS outputId, r.user_id AS userId, r.task_state AS taskState, r.created_at AS createdAt,
+              co.title AS title, co.content AS content, parent.conversation_id AS parentConversationId
+       FROM conversation_roles r
+       JOIN content_outputs co ON co.id = r.output_id AND co.user_id = r.user_id
+       LEFT JOIN content_outputs parent ON parent.id = r.parent_output_id AND parent.user_id = r.user_id
+       WHERE r.role = 'sub' AND r.task_state IN ('running', 'done')
+       ORDER BY r.created_at`,
+      [],
     );
   }
 

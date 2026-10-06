@@ -29,6 +29,7 @@ const PLURAL_PROBES = {
   goal_management: [['goal', 'goals'], ['task', 'tasks']],
   media: [['image', 'images'], ['photo', 'photos'], ['picture', 'pictures'], ['screenshot', 'screenshots']],
   email: [['email', 'emails']],
+  texting: [['reminder', 'reminders'], ['text message', 'text messages']],
   memory: [['memory', 'memories'], ['trace', 'traces']],
   tutorial: [['tour', 'tours'], ['tutorial', 'tutorials']],
   appearance: [['background', 'backgrounds'], ['wallpaper', 'wallpapers']],

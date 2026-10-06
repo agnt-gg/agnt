@@ -29,6 +29,8 @@ export function buildMainChatSection() {
     '  poll, or guess at the result.',
     '- Each worker reports back here automatically when it finishes. Relay the outcome',
     '  briefly, name the chat it lives in, and propose the next step.',
+    '- If the user has a phone linked, that relay is also texted to them, so they hear',
+    '  back wherever they are. Do not text it yourself.',
   ].join('\n');
 }
 

@@ -1986,6 +1986,46 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       }
     },
   },
+  text_user: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'text_user',
+        description:
+          'Send the user a text message on their linked phone (Text Annie, mobile.agnt.gg): a reminder, a heads-up, a follow-up they asked for. Counts as one text against their monthly allowance. For a reminder at a later time, schedule this call with _executeAsync + _delayFirst + _interval (seconds until it is due) + _stopAfter: 1. Finished sub-chats are texted automatically; do not text those yourself.',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: {
+              type: 'string',
+              description: 'The message, written as a short text: plain words, no markdown.',
+            },
+          },
+          required: ['text'],
+        },
+      },
+    },
+    execute: async (args) => {
+      const text = typeof args?.text === 'string' ? args.text.trim() : '';
+      if (!text) return JSON.stringify({ success: false, error: 'text is required.' });
+      try {
+        const { textUser } = await import('../mobileOutbound.js');
+        // One key per call: a network retry inside it is one text, a
+        // scheduled repeat is a new one.
+        const result = await textUser({ text, key: `tool-${randomUUID()}` });
+        if (result.sent) return JSON.stringify({ success: true, message: 'Texted the user.' });
+        const why = {
+          no_phone: 'No phone is linked. The user can link one in Settings → Text Annie.',
+          allowance_exhausted: "This month's texts are used up, so nothing was sent.",
+          not_subscribed: 'Texting needs AGNT Pro.',
+          signed_out: 'Not signed in to AGNT.',
+        }[result.reason];
+        return JSON.stringify({ success: false, error: why || `The text was not sent (${result.reason}).` });
+      } catch (error) {
+        return JSON.stringify({ success: false, error: `The text was not sent: ${error.message}` });
+      }
+    },
+  },
   file_operations: {
     schema: {
       type: 'function',

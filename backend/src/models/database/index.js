@@ -390,6 +390,16 @@ function createTables() {
       )`);
       createIndex(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_roles_one_main ON conversation_roles(user_id) WHERE role = 'main'`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_roles_user ON conversation_roles(user_id, role)`);
+      // Where a sub-chat's work is: running -> done -> reported (or
+      // interrupted / expired). In the database, not memory, so a worker that
+      // was running or unreported when the app stopped is still reported to
+      // its parent after a restart (subChatReports.recoverSubChatReports).
+      // NULL on main rows and on sub-chats from before this column existed.
+      db.run(`ALTER TABLE conversation_roles ADD COLUMN task_state TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('conversation_roles.task_state migration failed:', err.message);
+        }
+      });
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (

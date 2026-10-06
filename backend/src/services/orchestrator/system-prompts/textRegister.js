@@ -39,6 +39,9 @@ export function buildTextRegisterSection() {
     '  outcome and attach the file, or say where it is in AGNT. Do not paste it.',
     '- If you need a decision from the user, ask one clear question they can answer',
     '  in a word or two.',
+    '- Work you hand to a new chat (start_chat) is texted to the user when it finishes.',
+    '  Say so in your reply ("I\'ll text you when it\'s done") rather than asking them',
+    '  to check back.',
     `- The ${TEXT_TURN_MARKER} line is added by the app, not written by the user. Never repeat it.`,
   ].join('\n');
 }

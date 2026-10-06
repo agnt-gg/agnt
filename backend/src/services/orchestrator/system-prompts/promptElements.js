@@ -89,6 +89,7 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'goal_management',
   'media',
   'email',
+  'texting',
   'memory',
   'tutorial',
   'canvas',

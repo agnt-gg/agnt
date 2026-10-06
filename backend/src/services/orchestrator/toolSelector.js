@@ -212,6 +212,9 @@ export const TOOL_GROUPS = {
   email: [
     'send_email',
   ],
+  texting: [
+    'text_user',
+  ],
   memory: [
     'save_agent_memory',
     'get_agent_memories',
@@ -331,6 +334,7 @@ export const GROUP_TRIGGERS = {
   goal_management: /\b(goals?|tasks?|progress|evaluate|golden\s*standards?)\b/i,
   media: /\b(images?|photos?|pictures?|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshots?|ocr)\b/i,
   email: /\b(emails?|e-mails?|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
+  texting: /\b(text\s+(?:me|him|her|them|my\s+phone)|texts?\s+messages?|sms|imessage|remind(?:er|ers)?|ping\s+me|on\s+my\s+phone|let\s+me\s+know\s+(?:when|once|if))\b/i,
   memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
   appearance: /\b(backgrounds?|wallpapers?|bg\s*images?|desktop\s*images?)\b/i,
@@ -361,6 +365,7 @@ export const GROUP_DESCRIPTIONS = {
   goal_management: 'Create, execute, monitor, evaluate, and manage goals and goal tasks',
   media: 'Image analysis (vision/OCR) and image generation (DALL-E, Gemini, Grok)',
   email: 'Send emails via SMTP',
+  texting: "Text the user on their linked phone (reminders, heads-ups) via Text Annie",
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
@@ -422,6 +427,7 @@ export const GROUP_GUIDANCE = {
     'CRITICAL_IMAGE_GENERATION',
   ],
   email: [],
+  texting: [],
   memory: [],
   tutorial: ['IMPORTANT_GUIDELINES'],
   appearance: [],

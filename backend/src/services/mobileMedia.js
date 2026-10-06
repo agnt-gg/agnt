@@ -141,13 +141,18 @@ export async function findOutboundFiles(answer, { imageIds = [], resolveImage = 
   return files;
 }
 
-/** Upload outbound files for one text; returns the media ids that made it. */
+/**
+ * Upload outbound files for one text; returns the media ids that made it.
+ * A reply reserves against the text it answers; a text the instance starts
+ * (messageId null) reserves through /outbound/media.
+ */
 export async function sendMedia(messageId, files, { callService, fetchImpl = fetch, readFile = fs.readFile }) {
+  const reservePath = messageId ? `/messages/${encodeURIComponent(messageId)}/media` : '/outbound/media';
   const sent = [];
   for (const file of files) {
     try {
       const buffer = await readFile(file.path);
-      const reserved = await callService('mobile', `/messages/${encodeURIComponent(messageId)}/media`, { method: 'POST', body: { name: file.name, mime: file.mime, bytes: buffer.length }, timeoutMs: 20_000, planGate: false });
+      const reserved = await callService('mobile', reservePath, { method: 'POST', body: { name: file.name, mime: file.mime, bytes: buffer.length }, timeoutMs: 20_000, planGate: false });
       const response = await fetchImpl(reserved.uploadUrl, { method: 'PUT', body: buffer, headers: { 'Content-Type': 'application/octet-stream' }, signal: AbortSignal.timeout(120_000) });
       if (response.status !== 201 && response.status !== 409) throw new Error(`upload ${response.status}`);
       sent.push({ ...file, mediaId: reserved.mediaId });

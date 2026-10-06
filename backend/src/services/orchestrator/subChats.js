@@ -15,25 +15,33 @@
  *     chat request runs, with a transport that has no socket behind it. The
  *     run is still registered and broadcast, so opening the sub-chat while it
  *     works shows it streaming live;
- *   - the report back is AutonomousMessageService, the same path an async
- *     tool's completion already takes: the parent's AI reads the outcome and
- *     tells the user in its own words.
+ *   - the report back is a real chat turn in the parent (subChatReports.js):
+ *     the parent's AI reads the outcome and tells the user in its own words,
+ *     and when a phone is linked that answer is texted to them.
  *
  * Guardrails: a sub-chat cannot start sub-chats (one level of delegation), and
  * a user has at most MAX_RUNNING_SUB_CHATS in flight.
  */
 import { randomUUID } from 'crypto';
+import { createHeadlessTransport } from './headlessTransport.js';
+import { queueReport, defaultReportDeps, buildReport } from './subChatReports.js';
+
+export { createHeadlessTransport, buildReport };
 
 export const MAX_RUNNING_SUB_CHATS = 5;
 const MAX_PROMPT_CHARS = 20000;
 const MAX_TITLE_CHARS = 80;
-// Enough for the parent to summarise from; the full answer is one click away.
-const MAX_REPORTED_CHARS = 6000;
 
 const runningByUser = new Map(); // userId -> Set<conversationId>
+const runningOutputIds = new Set(); // sub-chat rows whose work is live in THIS process
 
 export function runningSubChatCount(userId) {
   return runningByUser.get(userId)?.size || 0;
+}
+
+/** Is this sub-chat's work running in this process right now? (Boot recovery must not report it.) */
+export function isSubChatRunning(outputId) {
+  return runningOutputIds.has(outputId);
 }
 
 /** A title from the caller, else the task's first line, trimmed to fit a sidebar row. */
@@ -43,104 +51,22 @@ export function subChatTitle(title, prompt) {
   return clean.length > MAX_TITLE_CHARS ? `${clean.slice(0, MAX_TITLE_CHARS - 1)}…` : clean || 'Task';
 }
 
-/**
- * A chat transport for a turn nobody is watching through this socket.
- * Same contract as chatTransport.js; instead of writing SSE frames it keeps
- * the turn's final answer and whether it failed.
- */
-export function createHeadlessTransport() {
-  let finalContent = null;
-  let lastError = null;
-  let rejected = null;
-  return {
-    onClose() { return () => {}; },
-    reject(status, error) { rejected = { status, error }; },
-    start() {},
-    send(eventName, payload) {
-      if (eventName === 'final_content' && typeof payload?.content === 'string') {
-        finalContent = payload.content;
-        if (payload.recovered_from_error) lastError = lastError || 'The run hit an error before finishing.';
-      } else if (eventName === 'error') {
-        lastError = payload?.error || 'Unknown error';
-      }
-    },
-    finish() {},
-    outcome() {
-      if (rejected) return { ok: false, content: null, error: String(rejected.error || `Rejected (${rejected.status})`) };
-      if (!finalContent) return { ok: false, content: null, error: lastError || 'The run ended without an answer.' };
-      return { ok: !lastError, content: finalContent, error: lastError };
-    },
-  };
-}
-
-function clip(text, max) {
-  if (typeof text !== 'string') return '';
-  return text.length > max ? `${text.slice(0, max)}\n\n[…truncated — the full answer is in the sub-chat]` : text;
-}
-
-/** The message the parent's AI receives when a sub-chat finishes. */
-export function buildReport({ title, outputId, outcome }) {
-  const status = outcome.ok ? 'finished' : 'finished with a problem';
-  return {
-    role: 'user',
-    content: `[System: Sub-chat ${status}]
-
-Sub-chat: "${title}" (conversation id ${outputId})
-Status: ${outcome.ok ? 'completed' : 'failed'}${outcome.error ? `\nError: ${outcome.error}` : ''}
-
-Its final answer:
-${clip(outcome.content || '(none)', MAX_REPORTED_CHARS)}
-
-INSTRUCTIONS:
-You started this sub-chat to do work for the user. Tell the user, briefly and in your own words, what it ${outcome.ok ? 'found or did' : 'ran into'}. Name the sub-chat by its title so they can open it for the full detail. ${outcome.ok ? 'Do not repeat the whole answer.' : 'Do NOT claim success. Suggest a next step.'}`,
-  };
-}
-
 async function defaultDeps() {
-  const [{ default: ContentOutputModel }, { default: ConversationRoleModel }, { serializeTranscript }, { broadcastToUser, RealtimeEvents }, { default: autonomousMessageService }] = await Promise.all([
+  const [{ default: ContentOutputModel }, { serializeTranscript }, { broadcastToUser, RealtimeEvents }, reportDeps] = await Promise.all([
     import('../../models/ContentOutputModel.js'),
-    import('../../models/ConversationRoleModel.js'),
     import('./transcriptProjection.js'),
     import('../../utils/realtimeSync.js'),
-    import('../AutonomousMessageService.js'),
+    defaultReportDeps(),
   ]);
   return {
+    // executeChatSegment, ConversationRoleModel, isConversationBusy, sleep and
+    // the report/phone collaborators.
+    ...reportDeps,
     ContentOutputModel,
-    ConversationRoleModel,
     serializeTranscript,
     broadcastToUser,
     RealtimeEvents,
-    // Lazy: OrchestratorService imports tools.js, which imports this file.
-    executeChatSegment: async (...args) => (await import('../OrchestratorService.js')).executeChatSegment(...args),
-    isConversationBusy: async (conversationId, userId) => (await import('./activeRuns.js')).getRunStatus(conversationId, userId).active === true,
-    reportToParent: (conversationId, message) => autonomousMessageService.triggerAutonomousMessage(conversationId, message),
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
-}
-
-const PARENT_IDLE_POLL_MS = 2000;
-const PARENT_IDLE_MAX_WAIT_MS = 10 * 60 * 1000;
-const PARENT_SETTLE_MS = 1500;
-
-/**
- * Report only once the parent is between turns.
- *
- * The report is an autonomous turn built from the parent's STORED context,
- * which the parent's own turn rewrites when it ends. Reporting mid-turn would
- * answer from a context missing the current turn, and then be overwritten by
- * it. A quick worker finishing while the Main chat is still replying is the
- * ordinary case, not an edge one. Bounded: a parent that never goes idle
- * still gets its report.
- */
-async function waitForParentIdle(deps, conversationId, userId) {
-  const deadline = Date.now() + PARENT_IDLE_MAX_WAIT_MS;
-  let waited = false;
-  while (Date.now() < deadline && (await deps.isConversationBusy(conversationId, userId))) {
-    waited = true;
-    await deps.sleep(PARENT_IDLE_POLL_MS);
-  }
-  // The run is marked ended a moment before its context is stored.
-  if (waited) await deps.sleep(PARENT_SETTLE_MS);
 }
 
 /**
@@ -198,19 +124,27 @@ export async function startSubChat({ userId, authToken, parentConversationId, ti
   const running = runningByUser.get(userId) || new Set();
   running.add(conversationId);
   runningByUser.set(userId, running);
+  runningOutputIds.add(outputId);
 
   // The slot is released when the WORK ends, not when the report lands: a
   // finished worker waiting for its parent to go idle is not using anything.
   const release = () => {
     running.delete(conversationId);
+    runningOutputIds.delete(outputId);
     if (running.size === 0 && runningByUser.get(userId) === running) runningByUser.delete(userId);
   };
   const finished = runSubChat({ deps, userId, authToken, conversationId, userMessageId, task })
-    .finally(release)
     .then(async (outcome) => {
-      if (!parentConversationId) return;
-      await waitForParentIdle(deps, parentConversationId, userId);
-      await deps.reportToParent(parentConversationId, buildReport({ title: chatTitle, outputId, outcome }));
+      // 'done' before the slot frees, so boot recovery never sees a finished
+      // worker as one that was interrupted.
+      await deps.ConversationRoleModel.setTaskState(userId, [outputId], parentConversationId ? 'done' : 'expired')
+        .catch((error) => console.error(`[SubChat] ${conversationId} state not recorded:`, error?.message || error));
+      return outcome;
+    })
+    .finally(release)
+    .then((outcome) => {
+      if (!parentConversationId) return null;
+      return queueReport(deps, { userId, authToken, parentConversationId, report: { title: chatTitle, outputId, outcome } });
     })
     .catch((error) => console.error(`[SubChat] ${conversationId} report failed:`, error?.message || error));
 
