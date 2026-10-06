@@ -24,6 +24,8 @@ export const PAGE_CONTEXT_FIELDS = Object.freeze([
   'workflowId', 'workflowContext', 'workflowState',
   'toolId', 'toolContext', 'toolState',
   'widgetId', 'widgetContext', 'widgetState',
+  // Plugin Forge: the draft plugin (manifest + files) the chat is editing.
+  'pluginContext', 'pluginState',
   'goalId', 'goalContext',
   'codeId', 'codeContext',
   'workspaceState',

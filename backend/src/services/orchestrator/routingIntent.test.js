@@ -8,8 +8,16 @@
  * and then declines to verify it.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyIntent, STAKE_WEIGHTS } from './routingIntent.js';
+import { classifyIntent, STAKE_WEIGHTS, CONVERSATIONAL_ORIGINS } from './routingIntent.js';
 import { CHAT_SURFACE_ORIGINS, ORIGINS } from '../../models/LlmCallModel.js';
+
+// routingIntent keeps its own copy of the surface list to stay a pure module.
+// A copy is only safe while something fails when it drifts; this is that thing.
+describe('CONVERSATIONAL_ORIGINS mirrors the ledger', () => {
+  it('equals every chat surface plus legacy "chat"', () => {
+    expect([...CONVERSATIONAL_ORIGINS].sort()).toEqual([...CHAT_SURFACE_ORIGINS, 'chat'].sort());
+  });
+});
 
 describe('stake comes from the call site, not the prompt', () => {
   it('background work is low stake', () => {

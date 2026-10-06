@@ -74,6 +74,7 @@ const ORIGIN_STAKE = Object.freeze({
   agent: 'normal',
   tool: 'normal',
   widget: 'normal',
+  plugin: 'normal',
   goal: 'normal',
   artifact: 'normal',
   chat: 'normal',
@@ -104,6 +105,8 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
   workflow: 'mechanical',
   tool: 'mechanical',
   widget: 'mechanical',
+  // Installed and run: a broken tool returns an error the Forge sees.
+  plugin: 'mechanical',
   goal_eval: 'referential',
   goal_task: 'referential',
   insight: 'subjective',
@@ -123,7 +126,7 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
  * routingIntent.test.js) — duplicated rather than imported to keep this pure.
  * Everything else is one-shot background work.
  */
-export const CONVERSATIONAL_ORIGINS = Object.freeze(['orchestrator', 'agent', 'workflow', 'tool', 'widget', 'goal', 'artifact', 'chat']);
+export const CONVERSATIONAL_ORIGINS = Object.freeze(['orchestrator', 'agent', 'workflow', 'tool', 'widget', 'plugin', 'goal', 'artifact', 'chat']);
 
 /**
  * Classify a turn.

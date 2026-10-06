@@ -29,6 +29,7 @@ describe('PAGE_CONTEXT_FIELDS', () => {
       'workflowId', 'workflowContext', 'workflowState',
       'toolId', 'toolContext', 'toolState',
       'widgetId', 'widgetContext', 'widgetState',
+      'pluginContext', 'pluginState',
       'goalId', 'goalContext',
       'codeId', 'codeContext',
       'workspaceState',

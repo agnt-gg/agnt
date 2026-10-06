@@ -845,6 +845,8 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     widgetId,
     widgetContext,
     widgetState,
+    pluginContext,
+    pluginState,
     // One Canvas chats send their own workspace identity in pageState. The
     // canvas tools address their writes to it, so a widget asked for in one
     // workspace cannot land in another when the user switches tabs mid-turn.
@@ -4312,6 +4314,7 @@ const BUILTIN_DISPLAY_GROUPS = [
   { id: 'goal_management', name: 'Goals' },
   { id: 'tool_authoring', name: 'Tool Forge' },
   { id: 'widget_authoring', name: 'Widgets' },
+  { id: 'plugin_authoring', name: 'Plugin Forge' },
   { id: 'artifact_code', name: 'Artifacts' },
   { id: 'media', name: 'Media' },
   { id: 'email', name: 'Email' },

@@ -76,7 +76,7 @@ const ALL_LEFT_PANELS = [
   'ToolForgePanel', 'WorkflowForgePanel',
   'ConnectorsPanel', 'MarketplacePanel', 'TracesPanel',
   'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
-  'WidgetForgePanel', 'GoalsPanel',
+  'WidgetForgePanel', 'PluginForgePanel', 'GoalsPanel',
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
   'MemoryPanel',
   'AutonomyPanel',

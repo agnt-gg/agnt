@@ -76,7 +76,7 @@ beforeEach(() => {
   requested = [];
   store.state = {
     marketplace: { myPublishedItems: [] },
-    pluginBuilder: { builtPluginNames: ['notion-sync'], generatedManifest: null, conversation: [] },
+    pluginBuilder: { builtPluginNames: ['notion-sync'], generatedManifest: null },
   };
   store.getters = {
     'connectors/activeTab': 'installed',

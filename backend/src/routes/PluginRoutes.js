@@ -13,7 +13,6 @@ import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
 import { bundleSelection } from '../plugins/PluginBundler.js';
 import { packageInstalledPlugin } from '../plugins/packageInstalledPlugin.js';
 import reloadAllPlugins from '../plugins/reloadAllPlugins.js';
-import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
@@ -467,220 +466,8 @@ router.get('/tools', async (req, res) => {
 });
 
 // ============================================================================
-// AI PLUGIN GENERATION
+// PLUGIN FORGE: BUILD AND INSTALL A DRAFT
 // ============================================================================
-
-/**
- * POST /api/plugins/generate
- * Generate a plugin using AI from a natural language description
- * Streams progress events as the plugin is generated
- *
- * Body: { description: string, provider?: string, model?: string, options?: object }
- */
-router.post('/generate', authenticateToken, accountPluginMutation(async (req, res) => {
-  try {
-    const { description, provider, model, options = {} } = req.body;
-    const userId = req.user.id;
-
-    if (!description) {
-      return res.status(400).json({
-        success: false,
-        error: 'Plugin description is required',
-      });
-    }
-
-    if (!provider || !model) {
-      return res.status(400).json({
-        success: false,
-        error: 'AI provider and model are required',
-      });
-    }
-
-    console.log(`[PluginRoutes] Generating plugin for user ${userId}`);
-    console.log(`[PluginRoutes] Provider: ${provider}, Model: ${model}`);
-
-    // Set up streaming response
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    const sendEvent = (event, data) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-
-    try {
-      const generator = new PluginGenerator(userId);
-
-      // Step 1: Generate manifest
-      sendEvent('progress', { step: 'manifest', status: 'generating' });
-      const manifest = await generator.generateManifest(description, provider, model);
-      sendEvent('manifest', manifest);
-
-      // Step 2: Generate code for each tool
-      const toolCode = {};
-      for (const tool of manifest.tools) {
-        const fileName = tool.entryPoint.replace('./', '');
-        sendEvent('progress', { step: 'code', tool: tool.type, status: 'generating' });
-        toolCode[fileName] = await generator.generateToolCode(tool, manifest, provider, model);
-        sendEvent('code', { file: fileName, code: toolCode[fileName] });
-      }
-
-      // Step 3: Generate package.json
-      sendEvent('progress', { step: 'package', status: 'generating' });
-      const packageJson = await generator.generatePackageJson(manifest, toolCode, provider, model);
-      sendEvent('package', packageJson);
-
-      // Complete
-      sendEvent('complete', { success: true });
-      res.end();
-    } catch (genError) {
-      console.error('[PluginRoutes] Generation error:', genError);
-      sendEvent('error', { error: genError.message });
-      res.end();
-    }
-  } catch (error) {
-    console.error('[PluginRoutes] Error in generate route:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-}));
-
-/**
- * POST /api/plugins/regenerate-file
- * Regenerate a specific file with AI based on instructions
- *
- * Body: { fileName: string, instructions: string, currentManifest: object, currentCode: object, provider: string, model: string }
- */
-router.post('/regenerate-file', authenticateToken, accountPluginMutation(async (req, res) => {
-  try {
-    const { fileName, instructions, currentManifest, currentCode, provider, model } = req.body;
-    const userId = req.user.id;
-
-    if (!fileName || !instructions) {
-      return res.status(400).json({
-        success: false,
-        error: 'fileName and instructions are required',
-      });
-    }
-
-    if (!provider || !model) {
-      return res.status(400).json({
-        success: false,
-        error: 'AI provider and model are required',
-      });
-    }
-
-    console.log(`[PluginRoutes] Regenerating file ${fileName} for user ${userId}`);
-
-    const generator = new PluginGenerator(userId);
-    const content = await generator.regenerateFile(fileName, instructions, currentManifest, currentCode, provider, model);
-
-    res.json({
-      success: true,
-      content,
-    });
-  } catch (error) {
-    console.error('[PluginRoutes] Error regenerating file:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-}));
-
-/**
- * POST /api/plugins/regenerate
- * Regenerate an entire plugin using AI based on instructions + current state
- * Streams progress events (same format as /generate)
- *
- * Body: { instructions: string, currentManifest: object, currentCode: object, currentPackageJson: object, provider: string, model: string }
- */
-router.post('/regenerate', authenticateToken, accountPluginMutation(async (req, res) => {
-  try {
-    const { instructions, currentManifest, currentCode, currentPackageJson, provider, model, conversationHistory = [] } = req.body;
-    const userId = req.user.id;
-
-    if (!instructions) {
-      return res.status(400).json({
-        success: false,
-        error: 'Instructions are required',
-      });
-    }
-
-    if (!currentManifest || !currentCode) {
-      return res.status(400).json({
-        success: false,
-        error: 'Current manifest and code are required',
-      });
-    }
-
-    if (!provider || !model) {
-      return res.status(400).json({
-        success: false,
-        error: 'AI provider and model are required',
-      });
-    }
-
-    console.log(`[PluginRoutes] Regenerating plugin for user ${userId}`);
-    console.log(`[PluginRoutes] Provider: ${provider}, Model: ${model}`);
-
-    // Set up streaming response
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    const sendEvent = (event, data) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-
-    try {
-      const generator = new PluginGenerator(userId);
-      await generator.loadContext();
-
-      // Step 1: Regenerate manifest
-      sendEvent('progress', { step: 'manifest', status: 'generating' });
-      const manifest = await generator.regenerateManifest(instructions, currentManifest, provider, model, conversationHistory);
-
-      // Auto-bump version based on what changed
-      const bumpType = determineVersionBump(currentManifest, manifest);
-      manifest.version = bumpVersion(currentManifest.version, bumpType);
-      console.log(`[PluginRoutes] Version bump: ${currentManifest.version} → ${manifest.version} (${bumpType})`);
-
-      sendEvent('manifest', manifest);
-
-      // Step 2: Regenerate code for each tool
-      const toolCode = {};
-      for (const tool of manifest.tools) {
-        const fileName = tool.entryPoint.replace('./', '');
-        const existingCode = currentCode[fileName] || '';
-        sendEvent('progress', { step: 'code', tool: tool.type, status: 'generating' });
-        toolCode[fileName] = await generator.regenerateToolCode(tool, manifest, instructions, existingCode, provider, model, conversationHistory);
-        sendEvent('code', { file: fileName, code: toolCode[fileName] });
-      }
-
-      // Step 3: Regenerate package.json
-      sendEvent('progress', { step: 'package', status: 'generating' });
-      const packageJson = await generator.regeneratePackageJson(manifest, toolCode, instructions, currentPackageJson, provider, model);
-      sendEvent('package', packageJson);
-
-      // Complete
-      sendEvent('complete', { success: true });
-      res.end();
-    } catch (genError) {
-      console.error('[PluginRoutes] Regeneration error:', genError);
-      sendEvent('error', { error: genError.message });
-      res.end();
-    }
-  } catch (error) {
-    console.error('[PluginRoutes] Error in regenerate route:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-}));
 
 /**
  * POST /api/plugins/build-generated
@@ -722,7 +509,12 @@ router.post('/build-generated', authenticateToken, accountPluginMutation(async (
       // "agents/koder-kai.json", so ensure the parent dir exists before writing
       // each file. Without this, a flat fs.writeFile fails with ENOENT.
       for (const [fileName, code] of Object.entries(toolCode)) {
-        const target = path.join(tempPluginDir, fileName);
+        const target = path.resolve(tempPluginDir, fileName);
+        // File names arrive from the Plugin Forge draft, which a model edits.
+        // Every file must land inside this plugin's own directory.
+        if (!target.startsWith(path.resolve(tempPluginDir) + path.sep)) {
+          throw Object.assign(new Error(`Invalid plugin file name: ${fileName}`), { status: 400 });
+        }
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, code);
       }
@@ -833,7 +625,7 @@ router.post('/build-generated', authenticateToken, accountPluginMutation(async (
     }
   } catch (error) {
     console.error('[PluginRoutes] Error building generated plugin:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message,
     });

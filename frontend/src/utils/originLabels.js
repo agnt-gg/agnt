@@ -61,6 +61,7 @@ export const ORIGIN_LABELS = Object.freeze({
   workflow: 'Workflow Forge',
   tool: 'Tool Forge',
   widget: 'Widget Forge',
+  plugin: 'Plugin Forge',
   goal: 'Goals',
   artifact: 'Artifacts',
 

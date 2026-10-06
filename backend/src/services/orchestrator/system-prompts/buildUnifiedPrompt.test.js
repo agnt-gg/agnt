@@ -60,6 +60,7 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     agent: 'You are Annie, a helpful AI assistant specialized in creating and managing AI agents',
     tool: 'You are Annie, a helpful AI assistant specialized in creating, modifying, and testing custom AGNT tools',
     goal: 'You are Annie, an intelligent goal orchestration assistant',
+    plugin: 'You are Annie, working in Plugin Forge',
   };
 
   it('injects workflow context block only when workflowId is present', async () => {
@@ -94,8 +95,33 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
 
     expect(prompt).toContain(PAGE_CONTEXT_HEADER);
     expect(prompt).toContain(BLOCK_MARKERS.widget);
-    for (const key of ['workflow', 'agent', 'tool', 'goal']) {
+    for (const key of ['workflow', 'agent', 'tool', 'goal', 'plugin']) {
       expect(prompt, `${key} block leaked into a widget-only context`).not.toContain(BLOCK_MARKERS[key]);
+    }
+  });
+
+  it('gives Plugin Forge its own block carrying the live draft', async () => {
+    const ctx = {
+      userId: 'u1',
+      latestUserMessage: 'what does it need from me?',
+      normalizedProvider: 'anthropic',
+      pluginContext: { name: 'notion-sync' },
+      pluginState: {
+        name: 'notion-sync',
+        installState: 'changed',
+        files: { 'search.js': 'export default {}', 'manifest.json': '{"name":"notion-sync"}' },
+      },
+    };
+    const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+
+    expect(prompt).toContain(BLOCK_MARKERS.plugin);
+    expect(prompt).toContain('--- FILE: manifest.json');
+    expect(prompt).toContain('export default {}');
+    expect(prompt).toContain('NOT installed');
+    // manifest first: every other file is read against it
+    expect(prompt.indexOf('--- FILE: manifest.json')).toBeLessThan(prompt.indexOf('--- FILE: search.js'));
+    for (const key of ['workflow', 'agent', 'tool', 'goal', 'widget']) {
+      expect(prompt, `${key} block leaked into a plugin-only context`).not.toContain(BLOCK_MARKERS[key]);
     }
   });
 

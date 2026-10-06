@@ -115,11 +115,13 @@ describe('chat surface origins — vocabulary', () => {
       [{ path: '/workflow-chat', body: {} }, 'workflow'],
       [{ path: '/tool-chat', body: {} }, 'tool'],
       [{ path: '/widget-chat', body: {} }, 'widget'],
+      [{ path: '/plugin-chat', body: {} }, 'plugin'],
       [{ path: '/goal-chat', body: {} }, 'goal'],
       [{ path: '/artifact-chat', body: {} }, 'artifact'],
       [{ path: '/chat', body: {} }, 'orchestrator'],
       [{ path: '/chat', body: { toolId: 't1' } }, 'tool'],
       [{ path: '/chat', body: { widgetId: 'w1' } }, 'widget'],
+      [{ path: '/chat', body: { pluginState: { files: {} } } }, 'plugin'],
       [{ path: '/chat', body: { codeId: 'c1' } }, 'artifact'],
     ];
     for (const [req, expected] of cases) {

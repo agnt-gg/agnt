@@ -39,6 +39,7 @@ router.post('/agent-chat', authenticateToken, upload.array('files'), universalCh
 router.post('/workflow-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/tool-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/widget-chat', authenticateToken, upload.array('files'), universalChatHandler);
+router.post('/plugin-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/goal-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/suggestions', authenticateToken, universalChatHandler);
 router.post('/artifact-chat', authenticateToken, upload.array('files'), universalChatHandler);

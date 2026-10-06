@@ -15,6 +15,7 @@ const ENDPOINTS = {
   workflow: '/orchestrator/workflow-chat',
   tool: '/orchestrator/tool-chat',
   widget: '/orchestrator/widget-chat',
+  plugin: '/orchestrator/plugin-chat',
   artifact: '/orchestrator/artifact-chat',
 };
 

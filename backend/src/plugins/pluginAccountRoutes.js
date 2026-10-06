@@ -19,7 +19,7 @@ export async function pluginAccountBoundary(req, res, next) {
         return res.status(409).json({ success: false, error: 'This package is also in use by another account. Its shared code cannot be changed here.' });
       }
     }
-    if (req.method === 'POST' && ['/install-file','/install-github','/bundle-from-assets','/build-generated','/regenerate','/regenerate-file'].includes(req.path)) {
+    if (req.method === 'POST' && ['/install-file','/install-github','/bundle-from-assets','/build-generated'].includes(req.path)) {
       const name = suppliedName;
       if (name && (await PluginAccounts.owners(name)).some(owner => owner !== userId)) {
         return res.status(409).json({ success: false, error: 'Another account uses a package with this name. Choose a different name; their package will not be overwritten.' });

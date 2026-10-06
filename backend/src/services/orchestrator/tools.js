@@ -21,6 +21,7 @@ import { getWorkflowToolSchemas, executeWorkflowTool } from './workflowTools.js'
 import { getCodeToolSchemas, executeCodeFunction } from './codeTools.js';
 import { getToolForgeToolSchemas, executeToolForgeTool } from './toolForgeTools.js';
 import { getWidgetToolSchemas, executeWidgetTool } from './widgetTools.js';
+import { getPluginToolSchemas, executePluginTool } from './pluginTools.js';
 import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js';
 import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceTools.js';
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
@@ -5019,6 +5020,7 @@ function injectAsyncParams(schema) {
   const codeToolSchemas = getCodeToolSchemas();
   const toolForgeToolSchemas = getToolForgeToolSchemas();
   const widgetToolSchemas = getWidgetToolSchemas();
+  const pluginToolForgeSchemas = getPluginToolSchemas();
   const tutorialToolSchemas = getTutorialToolSchemas();
   const appearanceToolSchemas = getAppearanceToolSchemas();
   const canvasToolSchemas = getCanvasToolSchemas();
@@ -5062,6 +5064,7 @@ function injectAsyncParams(schema) {
     ...codeToolSchemas,
     ...toolForgeToolSchemas,
     ...widgetToolSchemas,
+    ...pluginToolForgeSchemas,
     ...tutorialToolSchemas,
     ...appearanceToolSchemas,
     ...canvasToolSchemas,
@@ -5277,6 +5280,12 @@ async function executeToolInner(toolName, args, authToken, context) {
     if (widgetToolNames.has(toolName)) {
       console.log(`Executing widget tool: ${toolName}`);
       return await executeWidgetTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const pluginForgeToolNames = new Set(getPluginToolSchemas().map(s => s.function.name));
+    if (pluginForgeToolNames.has(toolName)) {
+      console.log(`Executing plugin-forge tool: ${toolName}`);
+      return await executePluginTool(toolName, resolvedArgs, authToken, context);
     }
 
     const tutorialToolNames = new Set(getTutorialToolSchemas().map(s => s.function.name));

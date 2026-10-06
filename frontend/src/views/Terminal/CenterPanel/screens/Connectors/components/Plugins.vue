@@ -554,12 +554,9 @@ export default {
         const tools = manifest.tools?.length || 0;
         return {
           title: getDisplayName({ name: manifest.name || 'new-plugin', displayName: manifest.displayName }),
-          description: manifest.description || state.pluginDescription || '',
+          description: manifest.description || '',
           detail: `${tools} ${tools === 1 ? 'tool' : 'tools'} · not installed`,
         };
-      }
-      if (!manifest && state.conversation?.length) {
-        return { title: 'New plugin', description: state.pluginDescription || '', detail: 'Not generated yet' };
       }
       return null;
     });

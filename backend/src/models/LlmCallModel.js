@@ -50,6 +50,7 @@ export const CHAT_SURFACE_ORIGINS = Object.freeze([
   'workflow',
   'tool',
   'widget',
+  'plugin',
   'goal',
   'artifact',
 ]);

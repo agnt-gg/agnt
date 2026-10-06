@@ -87,6 +87,7 @@ const CHANNEL_TO_BACKEND_GROUP = {
   'workflow:some-id': 'workflow_authoring',
   'tool:some-id': 'tool_authoring',
   'widget:some-id': 'widget_authoring',
+  'plugin:plugin-forge': 'plugin_authoring',
   'artifact:some-id': 'artifact_code',
 };
 

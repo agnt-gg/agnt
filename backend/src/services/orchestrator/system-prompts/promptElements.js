@@ -84,6 +84,7 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'workflow_authoring',
   'tool_authoring',
   'widget_authoring',
+  'plugin_authoring',
   'artifact_code',
   'goal_management',
   'media',

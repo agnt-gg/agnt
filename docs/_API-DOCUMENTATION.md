@@ -6633,69 +6633,9 @@ Base path: `/api/plugins`
 }
 ```
 
-### Generate Plugin with AI
+### Plugin Forge (AI authoring)
 
-**POST** `/generate`
-
-- **Authentication**: Required
-- **Body**:
-
-```json
-{
-  "description": "Natural language description of the plugin",
-  "provider": "openai",
-  "model": "gpt-4",
-  "options": {}
-}
-```
-
-- **Response**: Server-sent events stream with generation progress
-
-### Regenerate Plugin File
-
-**POST** `/regenerate-file`
-
-- **Authentication**: Required
-- **Body**:
-
-```json
-{
-  "fileName": "index.js",
-  "instructions": "Update the file to...",
-  "currentManifest": {},
-  "currentCode": {},
-  "provider": "openai",
-  "model": "gpt-4"
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true,
-  "content": "Generated file content"
-}
-```
-
-### Regenerate Entire Plugin
-
-**POST** `/regenerate`
-
-- **Authentication**: Required
-- **Body**:
-
-```json
-{
-  "description": "Updated plugin description",
-  "currentManifest": {},
-  "currentCode": {},
-  "provider": "openai",
-  "model": "gpt-4"
-}
-```
-
-- **Response**: Server-sent events stream with regeneration progress
+Plugins are written in the Plugin Forge chat, not through dedicated generation endpoints. The chat's `plugin` surface edits the draft with orchestrator tools (`generate_plugin`, `edit_plugin_file`, `write_plugin_file`, `delete_plugin_file`, `install_plugin`, `test_plugin_tool`, `load_plugin`); `install_plugin` builds and installs through `/build-generated` below.
 
 ### Build Generated Plugin
 

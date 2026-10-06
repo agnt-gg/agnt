@@ -1,9 +1,9 @@
-<!-- PluginBuilder.vue — the Plugin Forge.
+<!-- PluginBuilder.vue — the Plugin Forge pane.
 
-     One idea: the conversation IS the builder. Before anything exists the
-     page is a single question and a composer. Once a draft exists the chat
-     stays pinned on the left and the plugin it is producing sits on the
-     right (Overview · Test · Code), so the input is never below the fold.
+     The chat that builds the plugin is the screen's left column
+     (LeftPanel/PluginForgePanel), the same arrangement as Widget Forge: the
+     conversation on the left, the thing it is producing here (Overview ·
+     Test · Code). The draft both sides work on is the pluginBuilder store.
 
      Install state is the only status the page needs, and it is derived, not
      stored: the draft's fingerprint against the fingerprint of what was last
@@ -21,9 +21,11 @@
         <span>Plugin Forge</span>
       </button>
       <span class="crumb-sep">/</span>
-      <span class="crumb-current">{{ hasDraft && isGenerationComplete ? displayName : 'New plugin' }}</span>
-      <span v-if="isGenerationComplete" class="status-pill" :class="installState">{{ installStateLabel }}</span>
+      <span class="crumb-current">{{ hasDraft ? displayName : 'New plugin' }}</span>
+      <span v-if="hasDraft" class="status-pill" :class="installState">{{ installStateLabel }}</span>
+      <span v-if="chatBusy" class="working"><i class="fas fa-circle-notch fa-spin"></i> Annie is working…</span>
       <span class="bar-spacer"></span>
+      <button v-if="mobileView" class="text-button" @click="openChat"><i class="fas fa-comment"></i> Chat</button>
       <template v-if="hasDraft">
         <button class="text-button" :disabled="isBusy" @click="startOver">Start over</button>
         <BaseButton class="btn-compact"
@@ -34,92 +36,38 @@
         >
           <i class="fas fa-cloud-upload-alt"></i> Publish…
         </BaseButton>
-        <BaseButton class="btn-compact" variant="primary" :disabled="!isGenerationComplete || isBusy || installState === 'installed'" @click="buildAndInstall">
+        <BaseButton class="btn-compact" variant="primary" :disabled="isBusy || installState === 'installed'" @click="buildAndInstall">
           <i class="fas" :class="isBuilding ? 'fa-spinner fa-spin' : installState === 'installed' ? 'fa-check' : 'fa-download'"></i>
           {{ installLabel }}
         </BaseButton>
       </template>
     </header>
 
-    <!-- START: nothing exists yet, so the page is one question. -->
-    <section v-if="!hasDraft" class="forge-start">
-      <h2 class="start-title">What should your plugin do?</h2>
-      <p class="start-sub">Describe it in plain words. You'll see it, test it and install it right here.</p>
-      <div class="composer composer-large">
-        <textarea
-          ref="startInputRef"
-          v-model="draftMessage"
-          rows="3"
-          placeholder="e.g. Connect to Notion so agents can create pages and search my workspace…"
-          @keydown.enter.exact.prevent="send"
-        ></textarea>
-        <div class="composer-row">
-          <span class="model-label" v-tooltip="'Uses the model selected in chat'">{{ modelLabel }}</span>
-          <button class="send-button" :disabled="!canSend" aria-label="Generate plugin" @click="send">
-            <i class="fas fa-arrow-up"></i>
-          </button>
-        </div>
-      </div>
-      <div class="starters">
-        <button v-for="starter in starters" :key="starter.label" class="starter" @click="useStarter(starter)">{{ starter.label }}</button>
-      </div>
-      <p class="start-alt">
+    <!-- Nothing exists yet: the chat is where a plugin starts. -->
+    <section v-if="!hasDraft" class="pane-empty forge-empty">
+      <i class="fas" :class="chatBusy ? 'fa-circle-notch fa-spin' : 'fa-plug'"></i>
+      <h2 class="empty-title">{{ chatBusy ? 'Building your plugin…' : 'What should your plugin do?' }}</h2>
+      <p>
+        Describe it to Annie in the chat{{ mobileView ? '' : ' on the left' }}. She writes it, installs it and tests it with you;
+        it shows up here as soon as it exists.
+      </p>
+      <BaseButton v-if="mobileView" class="btn-compact" variant="primary" @click="openChat">Open chat</BaseButton>
+      <p class="meta">
         Bundling agents, workflows or tools you already have?
         <button class="text-link" @click="$emit('open-pack')">Make a pack instead</button>
       </p>
     </section>
 
-    <!-- WORKING: chat pinned left, the plugin on the right. -->
-    <div v-else class="forge-split">
-      <nav v-if="mobileView" class="pane-tabs mobile-tabs">
-        <button v-for="tab in paneTabs" :key="tab.key" class="pane-tab" :class="{ active: paneTab === tab.key }" @click="paneTab = tab.key">
-          {{ tab.label }}
-        </button>
-      </nav>
-
-      <section v-show="!mobileView || paneTab === 'chat'" class="forge-chat">
-        <div ref="messagesRef" class="chat-messages">
-          <div v-for="message in conversation" :key="message.id" class="message" :class="message.role">{{ message.content }}</div>
-          <div v-if="isGenerating" class="message assistant">
-            <div class="steps">
-              <span v-for="step in steps" :key="step.key" class="step" :class="step.state">
-                <i class="fas" :class="step.state === 'done' ? 'fa-check' : step.state === 'active' ? 'fa-spinner fa-spin' : 'fa-circle'"></i>
-                {{ step.label }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="composer">
-          <textarea
-            v-model="draftMessage"
-            rows="2"
-            :placeholder="isGenerationComplete ? 'Ask for a change…' : 'Describe your plugin…'"
-            :disabled="isBusy"
-            @keydown.enter.exact.prevent="send"
-          ></textarea>
-          <div class="composer-row">
-            <span class="model-label" v-tooltip="'Uses the model selected in chat'">{{ modelLabel }}</span>
-            <button class="send-button" :disabled="!canSend" aria-label="Send" @click="send">
-              <i class="fas" :class="isGenerating ? 'fa-spinner fa-spin' : 'fa-arrow-up'"></i>
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section v-show="!mobileView || paneTab !== 'chat'" class="forge-pane">
-        <nav v-if="!mobileView" class="pane-tabs">
+    <div v-else class="forge-body">
+      <section class="forge-pane">
+        <nav class="pane-tabs">
           <button v-for="tab in paneTabs" :key="tab.key" class="pane-tab" :class="{ active: paneTab === tab.key }" @click="paneTab = tab.key">
             {{ tab.label }}
           </button>
         </nav>
 
-        <div v-if="!isGenerationComplete" class="pane-empty">
-          <i class="fas" :class="isGenerating ? 'fa-spinner fa-spin' : 'fa-puzzle-piece'"></i>
-          <p>{{ isGenerating ? 'Building your plugin…' : 'Your plugin shows up here as soon as it is generated.' }}</p>
-        </div>
-
         <!-- OVERVIEW -->
-        <div v-else-if="paneTab === 'overview'" class="pane-body">
+        <div v-if="paneTab === 'overview'" class="pane-body">
           <div class="overview-head">
             <span class="overview-icon"><SvgIcon :name="manifest.icon || 'custom'" /></span>
             <div>
@@ -239,7 +187,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, inject, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, inject, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
@@ -247,20 +195,8 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { apiFetch } from '@/utils/apiFetch.js';
-
-const STEP_ORDER = ['manifest', 'code', 'package', 'complete'];
-const STEPS = [
-  { key: 'manifest', label: 'Manifest' },
-  { key: 'code', label: 'Tool code' },
-  { key: 'package', label: 'Package' },
-];
-
-const STARTERS = [
-  { label: 'Notion pages & databases', prompt: 'Connect to Notion so agents can create pages, query databases and search my workspace.' },
-  { label: 'Slack messages', prompt: 'Send and read Slack messages in channels and DMs.' },
-  { label: 'Stripe payments', prompt: 'Look up Stripe customers, payments and subscriptions, and create payment links.' },
-  { label: 'Wrap a REST API', prompt: 'Wrap this REST API as plugin tools (paste the docs URL or endpoints): ' },
-];
+import { PLUGIN_FORGE_CHANNEL_KEY } from '@/store/features/pluginBuilder.js';
+import { askPluginForge } from '@/composables/chat/usePluginChatContext.js';
 
 /** Tool parameters in manifest order, normalised for the test form. */
 function parametersOf(tool) {
@@ -308,22 +244,21 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const mobileView = inject('isMobile', ref(false));
-    const playSound = inject('playSound', () => {});
+    // Phones show the chat as a sheet; Plugins.vue provides how to open it.
+    const openForgeChat = inject('openForgeChat', () => {});
     const builder = computed(() => store.state.pluginBuilder);
 
     const modalRef = ref(null);
-    const messagesRef = ref(null);
-    const startInputRef = ref(null);
-    const draftMessage = ref('');
-    const paneTab = ref(mobileView.value ? 'chat' : 'overview');
+    const paneTab = ref('overview');
     const selectedToolType = ref(null);
     const testArgs = ref({});
     const isTesting = ref(false);
 
-    const isGenerating = computed(() => builder.value.isGenerating);
     const isBuilding = computed(() => builder.value.isBuilding);
-    const isBusy = computed(() => isGenerating.value || isBuilding.value);
-    const conversation = computed(() => builder.value.conversation);
+    // While the chat is mid-turn its tools may be editing or installing this
+    // draft; a manual install or reset racing them would install a half-edit.
+    const chatBusy = computed(() => Boolean(store.state.chatUnified?.streamingChannels?.[PLUGIN_FORGE_CHANNEL_KEY]));
+    const isBusy = computed(() => isBuilding.value || chatBusy.value);
     const activePreviewFile = computed(() => builder.value.activePreviewFile);
     const isGenerationComplete = computed(() => store.getters['pluginBuilder/isGenerationComplete']);
     const generatedFiles = computed(() => store.getters['pluginBuilder/generatedFiles']);
@@ -343,7 +278,7 @@ export default {
       return builder.value.generatedManifest || {};
     });
 
-    const hasDraft = computed(() => isGenerationComplete.value || isGenerating.value || conversation.value.length > 0);
+    const hasDraft = isGenerationComplete;
     const displayName = computed(() => {
       if (manifest.value.displayName) return manifest.value.displayName;
       return String(pluginName.value)
@@ -373,61 +308,33 @@ export default {
       return installState.value === 'changed' ? 'Install changes' : 'Install & try';
     });
 
-    const modelLabel = computed(() => {
-      const { selectedProvider, selectedModel } = store.state.aiProvider || {};
-      return selectedProvider && selectedModel ? `${selectedProvider} / ${selectedModel}` : 'No model selected';
-    });
-    const canSend = computed(() => Boolean(draftMessage.value.trim()) && !isBusy.value);
-
-    const steps = computed(() => {
-      const current = STEP_ORDER.indexOf(builder.value.generationProgress);
-      return STEPS.map((step, index) => ({
-        ...step,
-        state: current > index ? 'done' : current === index ? 'active' : 'pending',
-      }));
-    });
-
-    const paneTabs = computed(() => [
-      ...(mobileView.value ? [{ key: 'chat', label: 'Chat' }] : []),
+    const paneTabs = [
       { key: 'overview', label: 'Overview' },
       { key: 'test', label: 'Test' },
       { key: 'code', label: 'Code' },
-    ]);
+    ];
 
     // ── chat ──────────────────────────────────────────────────────────────
-    async function send(text) {
-      const message = (typeof text === 'string' ? text : draftMessage.value).trim();
-      if (!message || isBusy.value) return;
-      const { selectedProvider, selectedModel } = store.state.aiProvider || {};
-      if (!selectedProvider || !selectedModel) {
-        emit('show-alert', 'No model selected', 'Pick an AI provider and model in the chat model picker first.');
-        return;
-      }
-      playSound('typewriterKeyPress');
-      draftMessage.value = '';
-      let result;
-      if (isGenerationComplete.value) {
-        result = await store.dispatch('pluginBuilder/regeneratePlugin', { instructions: message });
-      } else {
-        store.dispatch('pluginBuilder/setPluginDescription', message);
-        result = await store.dispatch('pluginBuilder/generatePlugin', { description: message });
-      }
-      // The failure is already in the conversation; keep the text so it can be resent.
-      if (!result?.success) draftMessage.value = message;
+    function openChat() {
+      openForgeChat();
     }
 
-    function useStarter(starter) {
-      draftMessage.value = starter.prompt;
-      nextTick(() => startInputRef.value?.focus());
+    // What the chat's tools did, as the pane should show it. The store is
+    // already updated (usePluginChatContext applies every plugin-* event);
+    // this is only about where the user's eyes go.
+    function onChatEvent(event) {
+      const { eventType, eventData } = event.detail || {};
+      if (eventType === 'plugin-installed') {
+        emit('plugin-installed');
+      } else if (eventType === 'plugin-test-result') {
+        const tool = tools.value.find((candidate) => candidate.type === eventData?.toolType);
+        if (tool) openTest(tool);
+      } else if (eventType === 'plugin-files-replaced') {
+        paneTab.value = 'overview';
+      }
     }
-
-    function scrollChatToEnd() {
-      nextTick(() => {
-        const element = messagesRef.value;
-        if (element) element.scrollTop = element.scrollHeight;
-      });
-    }
-    watch(() => [conversation.value.length, isGenerating.value, builder.value.generationProgress], scrollChatToEnd);
+    onMounted(() => window.addEventListener('chat-sse-event', onChatEvent));
+    onUnmounted(() => window.removeEventListener('chat-sse-event', onChatEvent));
 
     // ── install ───────────────────────────────────────────────────────────
     async function buildAndInstall() {
@@ -438,7 +345,7 @@ export default {
         return;
       }
       emit('plugin-installed');
-      if (!mobileView.value || paneTab.value !== 'chat') paneTab.value = 'test';
+      paneTab.value = 'test';
     }
 
     async function startOver() {
@@ -455,9 +362,8 @@ export default {
       });
       if (!confirmed) return;
       store.dispatch('pluginBuilder/resetAll');
-      draftMessage.value = '';
       selectedToolType.value = null;
-      paneTab.value = mobileView.value ? 'chat' : 'overview';
+      paneTab.value = 'overview';
     }
 
     // ── test ──────────────────────────────────────────────────────────────
@@ -530,8 +436,8 @@ export default {
       const tool = selectedTool.value;
       const result = selectedResult.value;
       if (!tool || !result) return;
-      if (mobileView.value) paneTab.value = 'chat';
-      send(
+      if (mobileView.value) openForgeChat();
+      askPluginForge(
         `The "${toolTitle(tool)}" tool (${tool.type}) failed when run with ${JSON.stringify(result.args)}. ` +
           `Error: ${result.error || result.output}. Fix it.`,
       );
@@ -569,25 +475,16 @@ export default {
       return tool.schema?.title || tool.type;
     }
 
-    onMounted(() => {
-      scrollChatToEnd();
-      if (!hasDraft.value) startInputRef.value?.focus();
-    });
-
     return {
       mobileView,
       modalRef,
-      messagesRef,
-      startInputRef,
-      draftMessage,
       paneTab,
       paneTabs,
-      starters: STARTERS,
-      isGenerating,
       isBuilding,
+      chatBusy,
+      openChat,
       isBusy,
       isTesting,
-      conversation,
       activePreviewFile,
       isGenerationComplete,
       generatedFiles,
@@ -601,17 +498,12 @@ export default {
       installState,
       installStateLabel,
       installLabel,
-      modelLabel,
-      canSend,
-      steps,
       selectedToolType,
       selectedTool,
       visibleParameters,
       selectedResult,
       testArgs,
       fileContentModel,
-      send,
-      useStarter,
       buildAndInstall,
       startOver,
       selectTool,
@@ -748,230 +640,12 @@ export default {
   background: rgba(var(--green-rgb), 0.12);
 }
 
-/* ── start ── */
-.forge-start {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-xl) var(--spacing-lg);
-  text-align: center;
-  overflow-y: auto;
-}
-
-.start-title {
-  margin: 0;
-  font-size: var(--font-size-xxxl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-}
-
-.start-sub {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.starters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--spacing-sm);
-  max-width: 680px;
-}
-
-.starter {
-  font: inherit;
-  font-size: var(--font-size-sm);
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--terminal-border-color);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.starter:hover {
-  border-color: var(--color-primary);
-  color: var(--text-primary);
-}
-
-.start-alt {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
-}
-
-/* ── composer (shared by start and chat) ── */
-.composer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--border-radius-md);
-  background: var(--color-darker-0);
-  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-xs) var(--spacing-md);
-  transition: border-color var(--transition-fast);
-}
-
-.composer:focus-within {
-  border-color: var(--color-primary);
-}
-
-.composer-large {
-  width: 100%;
-  max-width: 680px;
-  text-align: left;
-}
-
-.composer textarea {
-  width: 100%;
-  min-height: 0;
-  height: auto;
-  padding: 0;
-  border: none;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  font-weight: var(--font-weight-normal);
-  line-height: 1.45;
-  box-shadow: none;
-}
-
-.composer textarea::placeholder {
-  color: var(--text-quaternary);
-}
-
-.composer-large textarea {
-  font-size: var(--font-size-lg);
-}
-
-.composer-row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.model-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: var(--border-radius-sm);
-  padding: var(--spacing-xxs) var(--spacing-sm);
-  max-width: 70%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.send-button {
-  margin-left: auto;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--border-radius-md);
-  border: none;
-  background: var(--fill-accent);
-  color: var(--on-fill-accent);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-}
-
-.send-button:disabled {
-  background: var(--surface-active);
-  color: var(--text-quaternary);
-  cursor: default;
-}
-
-/* ── split ── */
-.forge-split {
+/* ── body ── */
+.forge-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(300px, 38%) 1fr;
-}
-
-.forge.is-mobile .forge-split {
   display: flex;
   flex-direction: column;
-}
-
-.forge-chat {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-right: 1px solid var(--terminal-border-color);
-}
-
-.forge.is-mobile .forge-chat {
-  flex: 1;
-  border-right: none;
-}
-
-.chat-messages {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--spacing-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.message {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-normal);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--text-primary);
-}
-
-.message.assistant {
-  padding-left: var(--spacing-sm);
-  border-left: 2px solid var(--terminal-border-color);
-  color: var(--text-secondary);
-}
-
-.message.user {
-  align-self: flex-end;
-  max-width: 82%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius-md);
-  background: var(--surface-active);
-}
-
-.steps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  color: var(--text-tertiary);
-}
-
-.step.done {
-  color: var(--status-green-text);
-}
-
-.step.active {
-  color: var(--status-blue-text);
-}
-
-.step .fa-circle {
-  font-size: 0.6em;
-}
-
-.forge-chat .composer {
-  margin: 0 var(--spacing-md) var(--spacing-md);
 }
 
 /* ── pane ── */
@@ -1030,6 +704,25 @@ export default {
   color: var(--text-tertiary);
   padding: var(--spacing-xl);
   text-align: center;
+}
+
+.forge-empty {
+  flex: 1;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+
+.working {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--status-blue-text);
 }
 
 .pane-empty i {
@@ -1334,15 +1027,4 @@ export default {
   border-color: var(--color-primary);
 }
 
-@media (max-width: 900px) {
-  .forge-split {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(320px, 45%) 1fr;
-  }
-
-  .forge-chat {
-    border-right: none;
-    border-bottom: 1px solid var(--terminal-border-color);
-  }
-}
 </style>

@@ -42,6 +42,7 @@ const CHAT_OVERRIDES = {
   workflow: { maxToolRounds: 25, contextKey: 'workflowContext' },
   tool: { maxToolRounds: 100, contextKey: 'toolContext' },
   widget: { maxToolRounds: 100, contextKey: 'widgetContext' },
+  plugin: { maxToolRounds: 100, contextKey: 'pluginContext' },
   goal: { maxToolRounds: 100, contextKey: 'goalContext' },
   artifact: { maxToolRounds: 25, contextKey: 'codeContext' },
 };
@@ -330,6 +331,10 @@ function getForcedToolGroups(context) {
     groups.add('widget_authoring');
     groups.add('agnt_platform');
   }
+  if (context.pluginContext || context.pluginState) {
+    groups.add('plugin_authoring');
+    groups.add('agnt_platform');
+  }
   if (context.goalId || context.goalContext) {
     groups.add('goal_management');
     groups.add('agnt_platform');
@@ -558,6 +563,9 @@ const SIDEBAR_SPECIALTY = {
   workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
   tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
   widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
+  // web_search/web_scrape ride along: wrapping a third-party API starts with
+  // reading its documentation.
+  plugin: ['generate_plugin', 'edit_plugin_file', 'write_plugin_file', 'delete_plugin_file', 'install_plugin', 'test_plugin_tool', 'load_plugin', 'get_agnt_api', 'web_search', 'web_scrape', 'mcp_client', ...MEMORY_DEFAULTS],
   artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'grep_files', 'glob_files', 'query_data', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
 };
 
@@ -575,6 +583,7 @@ function detectSidebarSpecialty(context) {
   if (context.workflowId || context.workflowContext || context.workflowState) return SIDEBAR_SPECIALTY.workflow;
   if (context.toolId || context.toolContext || context.toolState) return SIDEBAR_SPECIALTY.tool;
   if (context.widgetId || context.widgetContext || context.widgetState) return SIDEBAR_SPECIALTY.widget;
+  if (context.pluginContext || context.pluginState) return SIDEBAR_SPECIALTY.plugin;
   if (context.codeId || context.codeContext) return SIDEBAR_SPECIALTY.artifact;
   return null;
 }
@@ -1048,6 +1057,7 @@ export function detectChatType(req, context = {}) {
   if (path.includes('/workflow-chat')) return 'workflow';
   if (path.includes('/tool-chat')) return 'tool';
   if (path.includes('/widget-chat')) return 'widget';
+  if (path.includes('/plugin-chat')) return 'plugin';
   if (path.includes('/goal-chat')) return 'goal';
   if (path.includes('/artifact-chat')) return 'artifact';
   if (path.includes('/suggestions')) return 'suggestions';
@@ -1063,6 +1073,7 @@ export function detectChatType(req, context = {}) {
   if (body.workflowId || body.workflowContext || body.workflowState) return 'workflow';
   if (body.toolId || body.toolContext || body.toolState) return 'tool';
   if (body.widgetId || body.widgetContext || body.widgetState) return 'widget';
+  if (body.pluginContext || body.pluginState) return 'plugin';
   if (body.goalId || body.goalContext) return 'goal';
   if (body.codeId || body.codeContext) return 'artifact';
   if (context.type) return context.type;

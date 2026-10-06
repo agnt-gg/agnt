@@ -3,14 +3,16 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The old builder put its "describe changes" input below a 300px file viewer
- * and a stats strip, inside a second card — you scrolled past the code to
- * find the chat. These tests pin the replacement: the composer is always on
- * screen, the install state is derived honestly, and Test runs the installed
- * tool through the same endpoint an agent uses — never pretending a draft
- * that is not installed can be exercised.
+ * The Forge's chat is the screen's left column (PluginForgePanel), a real
+ * agent with plugin tools. This pane is what it produces. These tests pin
+ * that the pane defers to the chat (empty state points there, Ask to fix is
+ * sent there, nothing installs underneath a running chat turn), that the
+ * install state is derived honestly, and that Test runs the installed tool
+ * through the same endpoint an agent uses — never pretending a draft that is
+ * not installed can be exercised.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { createStore } from 'vuex';
 
@@ -27,6 +29,7 @@ vi.mock('@/utils/apiFetch.js', () => ({
 
 import pluginBuilder from '@/store/features/pluginBuilder.js';
 import PluginBuilder from './PluginBuilder.vue';
+import { PLUGIN_FORGE_ASK_EVENT } from '@/composables/chat/usePluginChatContext.js';
 
 const PRISTINE = JSON.parse(JSON.stringify(pluginBuilder.state));
 const MANIFEST = {
@@ -51,28 +54,33 @@ const MANIFEST = {
 const showModal = vi.fn().mockResolvedValue(true);
 const SimpleModalStub = { name: 'SimpleModal', template: '<div />', methods: { showModal } };
 
-function makeStore({ draft = false, installed = false } = {}) {
+function makeStore({ draft = false, installed = false, chatStreaming = false } = {}) {
   const store = createStore({
     modules: {
       pluginBuilder: { ...pluginBuilder, state: () => JSON.parse(JSON.stringify(PRISTINE)) },
       aiProvider: { namespaced: true, state: () => ({ selectedProvider: 'OpenAI', selectedModel: 'gpt-test' }) },
       tools: { namespaced: true, actions: { fetchTools: vi.fn() } },
+      chatUnified: {
+        namespaced: true,
+        state: () => ({ streamingChannels: chatStreaming ? { 'plugin:plugin-forge': true } : {} }),
+        actions: { clearConversation: vi.fn() },
+      },
     },
   });
   if (draft) {
     store.commit('pluginBuilder/SET_GENERATED_MANIFEST', MANIFEST);
     store.commit('pluginBuilder/SET_GENERATED_CODE', { fileName: 'search.js', code: 'module.exports = {}' });
-    store.commit('pluginBuilder/ADD_CONVERSATION_MESSAGE', { id: 'm1', role: 'user', content: 'Search my Notion' });
   }
   if (installed) store.commit('pluginBuilder/SET_INSTALLED_HASH', store.getters['pluginBuilder/draftHash']);
   return store;
 }
 
-function mountForge(store, installedNames = []) {
+function mountForge(store, installedNames = [], { openForgeChat = vi.fn(), mobile = false } = {}) {
   return mount(PluginBuilder, {
     props: { installedNames },
     global: {
       plugins: [store],
+      provide: { openForgeChat, isMobile: ref(mobile) },
       stubs: { SimpleModal: SimpleModalStub, SvgIcon: true },
       directives: { tooltip: {} },
     },
@@ -91,20 +99,26 @@ beforeEach(() => {
 });
 
 describe('before anything exists', () => {
-  it('asks one question, with the composer front and centre', () => {
+  it('points at the chat, where a plugin starts — no second composer here', () => {
     const wrapper = mountForge(makeStore());
 
-    expect(wrapper.find('.start-title').text()).toBe('What should your plugin do?');
-    expect(wrapper.find('.forge-start .composer textarea').exists()).toBe(true);
-    expect(wrapper.find('.forge-split').exists()).toBe(false);
+    expect(wrapper.find('.empty-title').text()).toBe('What should your plugin do?');
+    expect(wrapper.text()).toContain('chat on the left');
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(wrapper.find('.forge-body').exists()).toBe(false);
   });
 
-  it('a starter fills the composer rather than sending on its own', async () => {
-    const wrapper = mountForge(makeStore());
-    await buttonByText(wrapper, 'Slack messages').trigger('click');
+  it('shows the chat is building while it is', () => {
+    const wrapper = mountForge(makeStore({ chatStreaming: true }));
+    expect(wrapper.find('.empty-title').text()).toBe('Building your plugin…');
+    expect(wrapper.find('.working').exists()).toBe(true);
+  });
 
-    expect(wrapper.find('.forge-start textarea').element.value).toContain('Slack');
-    expect(global.fetch).not.toHaveBeenCalled();
+  it('on a phone, opens the chat sheet', async () => {
+    const openForgeChat = vi.fn();
+    const wrapper = mountForge(makeStore(), [], { openForgeChat, mobile: true });
+    await buttonByText(wrapper, 'Open chat').trigger('click');
+    expect(openForgeChat).toHaveBeenCalled();
   });
 
   it('offers packs as a way out, not as a peer tab', async () => {
@@ -116,12 +130,32 @@ describe('before anything exists', () => {
 });
 
 describe('once a draft exists', () => {
-  it('keeps the chat composer on screen beside the plugin', () => {
+  it('is the plugin, full width — the conversation lives in the left column', () => {
     const wrapper = mountForge(makeStore({ draft: true }));
 
-    expect(wrapper.find('.forge-chat .composer textarea').exists()).toBe(true);
     expect(wrapper.find('.forge-pane').exists()).toBe(true);
-    expect(wrapper.find('.forge-chat').text()).toContain('Search my Notion');
+    expect(wrapper.find('.forge-chat').exists()).toBe(false);
+    expect(wrapper.findAll('.pane-tab').map((t) => t.text())).toEqual(['Overview', 'Test', 'Code']);
+  });
+
+  it('nothing installs or resets underneath a running chat turn', () => {
+    const wrapper = mountForge(makeStore({ draft: true, chatStreaming: true }));
+
+    expect(buttonByText(wrapper, 'Install & try').attributes('disabled')).toBeDefined();
+    expect(buttonByText(wrapper, 'Start over').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('.working').text()).toContain('Annie is working');
+  });
+
+  it('reacts to what the chat did: a test result opens the Test tab, an install refreshes the list', async () => {
+    const wrapper = mountForge(makeStore({ draft: true, installed: true }), ['notion-sync']);
+
+    window.dispatchEvent(new CustomEvent('chat-sse-event', { detail: { eventType: 'plugin-test-result', eventData: { toolType: 'notion-search' } } }));
+    await flushPromises();
+    expect(wrapper.find('.pane-tab.active').text()).toBe('Test');
+
+    window.dispatchEvent(new CustomEvent('chat-sse-event', { detail: { eventType: 'plugin-installed', eventData: { name: 'notion-sync', files: {} } } }));
+    expect(wrapper.emitted('plugin-installed')).toHaveLength(1);
+    wrapper.unmount();
   });
 
   it('a draft that was never installed says so, and cannot be published', () => {
@@ -212,11 +246,17 @@ describe('Test', () => {
     await flushPromises();
 
     expect(wrapper.find('.test-result.bad').text()).toContain('Failed');
-    global.fetch.mockResolvedValue({ ok: false, statusText: 'x', json: async () => ({ error: 'stop here' }) });
+    const asked = [];
+    const listener = (event) => asked.push(event.detail.text);
+    window.addEventListener(PLUGIN_FORGE_ASK_EVENT, listener);
     await buttonByText(wrapper, 'Ask to fix').trigger('click');
-    await flushPromises();
+    window.removeEventListener(PLUGIN_FORGE_ASK_EVENT, listener);
 
-    const regenerate = global.fetch.mock.calls.find(([url]) => String(url).includes('/plugins/regenerate'));
-    expect(JSON.parse(regenerate[1].body).instructions).toContain('401 unauthorized');
+    // To the chat, which can read the code, edit it, reinstall and re-test —
+    // not to a generator that rewrites the whole plugin.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('401 unauthorized');
+    expect(asked[0]).toContain('notion-search');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

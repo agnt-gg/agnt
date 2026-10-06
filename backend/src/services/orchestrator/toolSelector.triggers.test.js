@@ -24,6 +24,7 @@ const PLURAL_PROBES = {
   workflow_authoring: [['workflow', 'workflows'], ['node', 'nodes'], ['edge', 'edges'], ['trigger', 'triggers'], ['checkpoint', 'checkpoints']],
   tool_authoring: [['tool', 'tools']],
   widget_authoring: [['widget', 'widgets'], ['dashboard', 'dashboards'], ['iframe', 'iframes']],
+  plugin_authoring: [['plugin', 'plugins'], ['manifest', 'manifests']],
   artifact_code: [['artifact', 'artifacts'], ['file', 'files'], ['workspace', 'workspaces']],
   goal_management: [['goal', 'goals'], ['task', 'tasks']],
   media: [['image', 'images'], ['photo', 'photos'], ['picture', 'pictures'], ['screenshot', 'screenshots']],

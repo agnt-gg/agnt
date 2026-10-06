@@ -3,6 +3,7 @@ import db from '../../models/database/index.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { notifyWidgetChanged } from '../../utils/widgetChangeNotifier.js';
+import { fuzzyFind } from './fuzzyFind.js';
 
 export function getWidgetToolSchemas() {
   return [
@@ -559,34 +560,6 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
     console.error(`Error executing widget function ${functionName}:`, error);
     return JSON.stringify({ success: false, error: error.message });
   }
-}
-
-function fuzzyFind(source, search) {
-  const exactIdx = source.indexOf(search);
-  if (exactIdx !== -1) return { start: exactIdx, end: exactIdx + search.length };
-
-  const normalizeWS = (s) => s.replace(/\s+/g, ' ').trim();
-  const normSearch = normalizeWS(search);
-  if (!normSearch) return null;
-
-  for (let srcPos = 0; srcPos < source.length; srcPos++) {
-    let normWindow = '';
-    let windowEnd = srcPos;
-    while (windowEnd < source.length) {
-      const ch = source[windowEnd];
-      if (/\s/.test(ch)) {
-        if (!normWindow.endsWith(' ') && normWindow.length > 0) normWindow += ' ';
-      } else {
-        normWindow += ch;
-      }
-      windowEnd++;
-
-      const trimmedWindow = normWindow.trim();
-      if (trimmedWindow === normSearch) return { start: srcPos, end: windowEnd };
-      if (trimmedWindow.length > normSearch.length + 10) break;
-    }
-  }
-  return null;
 }
 
 function extractText(responseMessage) {

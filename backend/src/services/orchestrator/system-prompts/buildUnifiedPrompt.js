@@ -35,6 +35,7 @@ import { getCodeSystemContent } from './artifact-chat.js';
 import { getGoalSystemContent } from './goal-chat.js';
 import { getToolForgeSystemContent } from './tool-forge-chat.js';
 import { getWidgetForgeSystemContent } from './widget-forge-chat.js';
+import { getPluginForgeSystemContent } from './plugin-forge-chat.js';
 
 /**
  * Build the unified system prompt. Page-specific detail (workflow node/edge
@@ -218,6 +219,7 @@ async function buildPageContextBlock(context) {
     buildAgentContextBlock(context),
     buildToolContextBlock(context),
     buildWidgetContextBlock(context),
+    buildPluginContextBlock(context),
     buildArtifactContextBlock(context),
     buildGoalContextBlock(context),
   ]);
@@ -337,6 +339,11 @@ async function buildWidgetContextBlock({ widgetId, widgetContext, widgetState })
   }
 
   return getWidgetForgeSystemContent(widgetId, widgetContext, hydratedState);
+}
+
+async function buildPluginContextBlock({ pluginContext, pluginState }) {
+  if (!pluginContext && !pluginState) return '';
+  return getPluginForgeSystemContent(pluginContext, pluginState);
 }
 
 async function buildArtifactContextBlock(context) {

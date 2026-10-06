@@ -131,6 +131,20 @@ const SIDEBAR_DEFAULTS = {
     'get_agnt_api',
     'mcp_client',
   ],
+  // Plugin Forge. web_search/web_scrape: wrapping an API starts with its docs.
+  plugin: [
+    'generate_plugin',
+    'edit_plugin_file',
+    'write_plugin_file',
+    'delete_plugin_file',
+    'install_plugin',
+    'test_plugin_tool',
+    'load_plugin',
+    'get_agnt_api',
+    'web_search',
+    'web_scrape',
+    'mcp_client',
+  ],
   artifact: [
     'read_file',
     'write_file',

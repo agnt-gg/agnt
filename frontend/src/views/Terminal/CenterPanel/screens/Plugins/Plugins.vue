@@ -7,9 +7,12 @@
 
      PluginManager owns the whole page: its own single header (this screen
      used to stack three titles), the library views, and the Forge. While the
-     Forge is open it takes the full height of the scroll area so the chat
-     composer is always on screen, which is why the marketplace shelf and the
-     page padding step aside in that mode.
+     Forge is open it takes the full height of the scroll area, which is why
+     the marketplace shelf and the page padding step aside in that mode.
+
+     While the Forge is building a plugin the left column is its chat
+     (PluginForgePanel), exactly as Widget Forge's is; in the library it is
+     the Apps navigation the registry assigns this screen.
 
      PluginManager still lives in the Connectors directory beside the two
      siblings it imports relatively (PluginBuilder, PackStudio). It is imported
@@ -20,6 +23,7 @@
     ref="baseScreenRef"
     screenId="PluginsScreen"
     :activeRightPanel="activeRightPanel"
+    :activeLeftPanel="isBuilderMode ? 'PluginForgePanel' : undefined"
     :panelProps="{ context: 'plugins' }"
     :leftPanelProps="{ screenName: 'PluginsScreen' }"
     @screen-change="(screenName) => emit('screen-change', screenName)"
@@ -42,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, watch } from 'vue';
+import { ref, computed, inject, provide, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -59,6 +63,21 @@ watch(() => store.getters['connectors/selectedPlugin'], plugin => { if (mobileVi
 // Library views; anything else is a Forge mode (builder, pack-studio).
 const LIBRARY_VIEWS = ['installed', 'marketplace', 'mine'];
 const isForgeMode = computed(() => !LIBRARY_VIEWS.includes(store.getters['connectors/activeTab']));
+const isBuilderMode = computed(() => store.getters['connectors/activeTab'] === 'builder');
+
+// The chat is the builder, so it must be on screen when the builder opens,
+// even if the Apps column was collapsed earlier on this screen.
+watch(
+  isBuilderMode,
+  async (building) => {
+    if (!building || mobileView.value) return;
+    await nextTick();
+    if (baseScreenRef.value?.leftPanelCollapsed) baseScreenRef.value.toggleLeftPanelCollapsed();
+  },
+  { immediate: true },
+);
+// Phones show the left column as a sheet; the Forge opens it from its Chat button.
+provide('openForgeChat', () => baseScreenRef.value?.openMobilePanel('left'));
 
 // The right panel is ConnectorsPanel in both states: a selected plugin shows
 // its detail; nothing selected shows the plugins summary (context: 'plugins').

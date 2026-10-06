@@ -170,6 +170,16 @@ export const TOOL_GROUPS = {
     'list_widgets',
     'get_agnt_api',
   ],
+  plugin_authoring: [
+    'generate_plugin',
+    'edit_plugin_file',
+    'write_plugin_file',
+    'delete_plugin_file',
+    'install_plugin',
+    'test_plugin_tool',
+    'load_plugin',
+    'get_agnt_api',
+  ],
   artifact_code: [
     'read_file',
     'write_file',
@@ -316,6 +326,7 @@ export const GROUP_TRIGGERS = {
   workflow_authoring: /\b(workflows?|nodes?|edges?|triggers?|actions?|delays?|checkpoints?|workflow\s*versions?|start\s+workflow|stop\s+workflow)\b/i,
   tool_authoring: /\b(tools?|toolforge|tool\s*forge|custom\s*tools?|save\s+tool|run\s+tool)\b/i,
   widget_authoring: /\b(widgets?|dashboards?|iframes?|source\s*code|html\s*widgets?|widget\s*forge)\b/i,
+  plugin_authoring: /\b(plugins?|plugin\s*forge|manifests?)\b/i,
   artifact_code: /\b(artifacts?|files?|workspaces?|read\s+file|write\s+file|edit\s+file|code|html|markdown|grep|glob|search\s+(?:the\s+)?(?:code|files?|repo|codebase)|find\s+(?:the\s+)?files?)\b/i,
   goal_management: /\b(goals?|tasks?|progress|evaluate|golden\s*standards?)\b/i,
   media: /\b(images?|photos?|pictures?|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshots?|ocr)\b/i,
@@ -345,6 +356,7 @@ export const GROUP_DESCRIPTIONS = {
   workflow_authoring: 'Edit workflows, inspect node types, create checkpoints, and start/stop workflows',
   tool_authoring: 'Generate, save, load, delete, list, and run Tool Forge tools',
   widget_authoring: 'Generate, edit, configure, save, and load dashboard widgets',
+  plugin_authoring: 'Write, edit, install and test AGNT plugins in Plugin Forge',
   artifact_code: 'Read, write, edit, list, grep and glob files in the Artifacts workspace',
   goal_management: 'Create, execute, monitor, evaluate, and manage goals and goal tasks',
   media: 'Image analysis (vision/OCR) and image generation (DALL-E, Gemini, Grok)',
@@ -390,6 +402,10 @@ export const GROUP_GUIDANCE = {
     'IMPORTANT_GUIDELINES',
   ],
   widget_authoring: [
+    'ASYNC_EXECUTION_GUIDANCE',
+    'IMPORTANT_GUIDELINES',
+  ],
+  plugin_authoring: [
     'ASYNC_EXECUTION_GUIDANCE',
     'IMPORTANT_GUIDELINES',
   ],

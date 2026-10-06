@@ -1,8 +1,12 @@
 /**
- * Plugin Builder Store
+ * Plugin Builder Store — the Plugin Forge draft.
  *
- * Manages state for AI-powered plugin generation.
- * Uses the global AI provider to generate manifest, code, and package.json.
+ * The draft is a plugin being written: manifest.json, one code file per tool,
+ * package.json. It lives here (persisted locally) and is edited from two
+ * places: by hand in the Forge's Code tab, and by the Forge chat, whose
+ * backend tools (orchestrator/pluginTools.js) describe each change as a
+ * `plugin-*` frontend event that `applyChatEvent` applies. The chat reads the
+ * draft back through `draftFiles` on every turn (usePluginChatContext).
  */
 
 // Load persisted state from localStorage
@@ -23,8 +27,6 @@ const saveState = (state) => {
       generatedManifest: state.generatedManifest,
       generatedCode: state.generatedCode,
       generatedPackageJson: state.generatedPackageJson,
-      conversation: state.conversation,
-      pluginDescription: state.pluginDescription,
       installedHash: state.installedHash,
       builtPluginNames: state.builtPluginNames,
     };
@@ -35,6 +37,12 @@ const saveState = (state) => {
 };
 
 const persistedState = loadPersistedState();
+
+/** The Forge's one chat channel. A draft is one plugin; so is its conversation. */
+export const PLUGIN_FORGE_CHANNEL_KEY = 'plugin:plugin-forge';
+
+const MANIFEST = 'manifest.json';
+const PACKAGE = 'package.json';
 
 /**
  * Cheap, stable fingerprint of the draft's files (djb2).
@@ -49,26 +57,29 @@ export function fingerprint(text) {
   return (hash >>> 0).toString(36);
 }
 
-/** One line the chat can show after a build: what exists now. */
-function describeBuild(manifest, verb) {
-  const tools = manifest?.tools || [];
-  const names = tools.map((tool) => tool.schema?.title || tool.type).filter(Boolean);
-  const count = `${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}`;
-  return `${verb} ${manifest?.name || 'the plugin'}: ${count}${names.length ? ` (${names.join(', ')})` : ''}.`;
+/**
+ * Fingerprint of a { fileName: content } map, independent of key order. The
+ * chat's `plugin-installed` event carries the exact files it installed, so
+ * the install state is recorded from what was installed, not from whatever
+ * the draft happens to hold when the event lands.
+ */
+export function hashFiles(files) {
+  const sorted = {};
+  for (const name of Object.keys(files).sort()) sorted[name] = files[name];
+  return fingerprint(JSON.stringify(sorted));
+}
+
+/** Clears the Forge conversation when the draft becomes a different plugin. */
+function clearForgeConversation(store) {
+  if (store?.hasModule?.('chatUnified')) {
+    store.dispatch('chatUnified/clearConversation', { channelKey: PLUGIN_FORGE_CHANNEL_KEY });
+  }
 }
 
 export default {
   namespaced: true,
   state: {
-    // User input
-    pluginDescription: persistedState?.pluginDescription || '',
-
-    // Generation state
-    isGenerating: false,
-    generationProgress: null, // 'manifest' | 'code' | 'package' | 'complete'
-    generationError: null,
-
-    // Generated files
+    // Draft files
     generatedManifest: persistedState?.generatedManifest || null,
     generatedCode: persistedState?.generatedCode || {}, // { 'tool-name.js': '...' }
     generatedPackageJson: persistedState?.generatedPackageJson || null,
@@ -78,10 +89,6 @@ export default {
     buildProgress: null,
     buildResult: null,
     buildError: null,
-
-    // Conversation for iterative refinement (chat-based approach)
-    conversation: persistedState?.conversation || [],
-    isStreaming: false,
 
     // Preview/Edit state
     activePreviewFile: null, // Which file is being previewed/edited
@@ -97,27 +104,6 @@ export default {
   },
 
   mutations: {
-    SET_PLUGIN_DESCRIPTION(state, description) {
-      state.pluginDescription = description;
-      saveState(state);
-    },
-
-    SET_GENERATING(state, isGenerating) {
-      state.isGenerating = isGenerating;
-      if (isGenerating) {
-        state.generationError = null;
-      }
-    },
-
-    SET_GENERATION_PROGRESS(state, progress) {
-      state.generationProgress = progress;
-    },
-
-    SET_GENERATION_ERROR(state, error) {
-      state.generationError = error;
-      state.isGenerating = false;
-    },
-
     SET_GENERATED_MANIFEST(state, manifest) {
       state.generatedManifest = manifest;
       saveState(state);
@@ -135,6 +121,47 @@ export default {
 
     SET_GENERATED_PACKAGE_JSON(state, packageJson) {
       state.generatedPackageJson = packageJson;
+      saveState(state);
+    },
+
+    /**
+     * One file's new content, from the chat. JSON files are stored parsed so
+     * the Overview reads them; content that does not parse is kept verbatim
+     * as an edit rather than dropped. Either way the file's hand edit is
+     * superseded: the chat edited the text the user was looking at.
+     */
+    APPLY_FILE(state, { file, content }) {
+      const edited = { ...state.editedFiles };
+      delete edited[file];
+      if (file === MANIFEST || file === PACKAGE) {
+        let parsed;
+        try {
+          parsed = JSON.parse(content);
+        } catch {
+          parsed = undefined;
+        }
+        if (parsed === undefined) edited[file] = content;
+        else if (file === MANIFEST) state.generatedManifest = parsed;
+        else state.generatedPackageJson = parsed;
+      } else {
+        state.generatedCode = { ...state.generatedCode, [file]: content };
+      }
+      state.editedFiles = edited;
+      saveState(state);
+    },
+
+    REMOVE_FILE(state, file) {
+      if (file === PACKAGE) {
+        state.generatedPackageJson = null;
+      } else {
+        const code = { ...state.generatedCode };
+        delete code[file];
+        state.generatedCode = code;
+      }
+      const edited = { ...state.editedFiles };
+      delete edited[file];
+      state.editedFiles = edited;
+      if (state.activePreviewFile === file) state.activePreviewFile = null;
       saveState(state);
     },
 
@@ -160,45 +187,12 @@ export default {
       state.isBuilding = false;
     },
 
-    ADD_CONVERSATION_MESSAGE(state, message) {
-      state.conversation.push(message);
-      saveState(state);
-    },
-
-    UPDATE_CONVERSATION_MESSAGE(state, { messageId, content }) {
-      const message = state.conversation.find((m) => m.id === messageId);
-      if (message) {
-        message.content = content;
-        saveState(state);
-      }
-    },
-
-    APPEND_CONVERSATION_MESSAGE(state, { messageId, delta }) {
-      const message = state.conversation.find((m) => m.id === messageId);
-      if (message) {
-        message.content = (message.content || '') + delta;
-      }
-    },
-
-    CLEAR_CONVERSATION(state) {
-      state.conversation = [];
-      saveState(state);
-    },
-
-    SET_STREAMING(state, isStreaming) {
-      state.isStreaming = isStreaming;
-    },
-
     SET_ACTIVE_PREVIEW_FILE(state, fileName) {
       state.activePreviewFile = fileName;
     },
 
     SET_EDITED_FILE(state, { fileName, content }) {
       state.editedFiles = { ...state.editedFiles, [fileName]: content };
-    },
-
-    CLEAR_EDITED_FILES(state) {
-      state.editedFiles = {};
     },
 
     SET_INSTALLED_HASH(state, hash) {
@@ -220,8 +214,6 @@ export default {
       state.generatedManifest = null;
       state.generatedCode = {};
       state.generatedPackageJson = null;
-      state.generationProgress = null;
-      state.generationError = null;
       state.buildResult = null;
       state.buildError = null;
       state.editedFiles = {};
@@ -230,10 +222,6 @@ export default {
     },
 
     RESET_ALL(state) {
-      state.pluginDescription = '';
-      state.isGenerating = false;
-      state.generationProgress = null;
-      state.generationError = null;
       state.generatedManifest = null;
       state.generatedCode = {};
       state.generatedPackageJson = null;
@@ -241,8 +229,6 @@ export default {
       state.buildProgress = null;
       state.buildResult = null;
       state.buildError = null;
-      state.conversation = [];
-      state.isStreaming = false;
       state.activePreviewFile = null;
       state.editedFiles = {};
       state.installedHash = null;
@@ -257,10 +243,10 @@ export default {
       if (state.editedFiles[fileName] !== undefined) {
         return state.editedFiles[fileName];
       }
-      if (fileName === 'manifest.json' && state.generatedManifest) {
+      if (fileName === MANIFEST && state.generatedManifest) {
         return JSON.stringify(state.generatedManifest, null, 2);
       }
-      if (fileName === 'package.json' && state.generatedPackageJson) {
+      if (fileName === PACKAGE && state.generatedPackageJson) {
         return JSON.stringify(state.generatedPackageJson, null, 2);
       }
       return state.generatedCode[fileName] || '';
@@ -270,18 +256,25 @@ export default {
     generatedFiles: (state) => {
       const files = [];
       if (state.generatedManifest) {
-        files.push({ name: 'manifest.json', type: 'json', icon: 'file-code' });
+        files.push({ name: MANIFEST, type: 'json', icon: 'file-code' });
       }
       Object.keys(state.generatedCode).forEach((fileName) => {
         files.push({ name: fileName, type: 'javascript', icon: 'file-code' });
       });
       if (state.generatedPackageJson) {
-        files.push({ name: 'package.json', type: 'json', icon: 'file-code' });
+        files.push({ name: PACKAGE, type: 'json', icon: 'file-code' });
       }
       return files;
     },
 
-    // Check if generation is complete
+    /** Every file as the user sees it (hand edits included). What the chat reads. */
+    draftFiles: (state, getters) => {
+      const files = {};
+      for (const { name } of getters.generatedFiles) files[name] = getters.getFileContent(name);
+      return files;
+    },
+
+    // A draft exists: a manifest and at least one code file.
     isGenerationComplete: (state) => {
       return state.generatedManifest !== null && Object.keys(state.generatedCode).length > 0;
     },
@@ -304,11 +297,14 @@ export default {
     // Fingerprint of the effective files (user edits included), or null.
     draftHash: (state, getters) => {
       if (!getters.isGenerationComplete) return null;
-      const files = {};
-      for (const name of getters.generatedFiles.map((file) => file.name).sort()) {
-        files[name] = getters.getFileContent(name);
-      }
-      return fingerprint(JSON.stringify(files));
+      return hashFiles(getters.draftFiles);
+    },
+
+    /** 'none' | 'draft' (never installed) | 'changed' (installed, edited since) | 'installed'. */
+    draftInstallState: (state, getters) => {
+      if (!getters.isGenerationComplete) return 'none';
+      if (!state.installedHash) return 'draft';
+      return getters.draftHash === state.installedHash ? 'installed' : 'changed';
     },
 
     // True when the draft has work that exists nowhere but this browser.
@@ -320,123 +316,40 @@ export default {
   },
 
   actions: {
-    setPluginDescription({ commit }, description) {
-      commit('SET_PLUGIN_DESCRIPTION', description);
-    },
-
     /**
-     * Generate a plugin from the description
-     * This calls the backend API which uses the global AI provider
+     * Apply one change the Forge chat made. Returns whether the event was a
+     * Plugin Forge event at all, so callers can tell "handled" from "not ours".
      */
-    async generatePlugin({ commit, state, rootState }, { description, options = {} } = {}) {
-      const pluginDescription = description || state.pluginDescription;
-      if (!pluginDescription) {
-        commit('SET_GENERATION_ERROR', 'Please provide a plugin description');
-        return { success: false, error: 'No description provided' };
-      }
-
-      commit('SET_GENERATING', true);
-      commit('RESET_GENERATION');
-      commit('ADD_CONVERSATION_MESSAGE', {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: pluginDescription,
-        timestamp: new Date().toISOString(),
-      });
-
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('Authentication required');
+    applyChatEvent({ commit, dispatch }, { eventType, eventData = {} } = {}) {
+      switch (eventType) {
+        case 'plugin-files-replaced': {
+          const files = eventData.files || {};
+          commit('RESET_GENERATION');
+          for (const [file, content] of Object.entries(files)) commit('APPLY_FILE', { file, content });
+          commit('SET_INSTALLED_HASH', eventData.installed ? hashFiles(files) : null);
+          return true;
         }
-
-        // Get the selected AI provider and model from the store
-        const provider = rootState.aiProvider.selectedProvider;
-        const model = rootState.aiProvider.selectedModel;
-
-        const { API_CONFIG } = await import('@/tt.config.js');
-
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/generate`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            description: pluginDescription,
-            provider: provider?.toLowerCase(),
-            model,
-            options,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Generation failed: ${response.statusText}`);
-        }
-
-        // Handle streaming response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.startsWith('event:')) continue;
-
-            const eventMatch = line.match(/event: (\w+)\ndata: (.+)/s);
-            if (!eventMatch) continue;
-
-            const [, eventType, eventData] = eventMatch;
-            const data = JSON.parse(eventData);
-
-            switch (eventType) {
-              case 'progress':
-                commit('SET_GENERATION_PROGRESS', data.step);
-                break;
-              case 'manifest':
-                commit('SET_GENERATED_MANIFEST', data);
-                break;
-              case 'code':
-                commit('SET_GENERATED_CODE', { fileName: data.file, code: data.code });
-                break;
-              case 'package':
-                commit('SET_GENERATED_PACKAGE_JSON', data);
-                break;
-              case 'error':
-                throw new Error(data.error || 'Generation failed');
-              case 'complete':
-                commit('SET_GENERATION_PROGRESS', 'complete');
-                break;
-            }
+        case 'plugin-file-updated':
+          if (typeof eventData.file === 'string' && typeof eventData.content === 'string') {
+            commit('APPLY_FILE', { file: eventData.file, content: eventData.content });
           }
-        }
-
-        commit('SET_GENERATING', false);
-        commit('ADD_CONVERSATION_MESSAGE', {
-          id: `msg-${Date.now()}`,
-          role: 'assistant',
-          content: describeBuild(state.generatedManifest, 'Built'),
-          timestamp: new Date().toISOString(),
-        });
-        return { success: true };
-      } catch (error) {
-        console.error('Plugin generation error:', error);
-        commit('SET_GENERATION_ERROR', error.message);
-        commit('ADD_CONVERSATION_MESSAGE', {
-          id: `msg-${Date.now()}`,
-          role: 'assistant',
-          content: `Generation failed: ${error.message}`,
-          timestamp: new Date().toISOString(),
-        });
-        return { success: false, error: error.message };
+          return true;
+        case 'plugin-file-deleted':
+          if (typeof eventData.file === 'string') commit('REMOVE_FILE', eventData.file);
+          return true;
+        case 'plugin-installed':
+          commit('SET_INSTALLED_HASH', hashFiles(eventData.files || {}));
+          commit('ADD_BUILT_PLUGIN_NAME', eventData.name);
+          // New tools exist now; anything listing tools should see them.
+          dispatch('tools/fetchTools', { force: true }, { root: true })?.catch?.(() => {});
+          return true;
+        case 'plugin-test-result':
+          if (eventData.pluginName && eventData.toolType) {
+            commit('SET_TEST_RESULT', { pluginName: eventData.pluginName, toolType: eventData.toolType, result: eventData.result });
+          }
+          return true;
+        default:
+          return false;
       }
     },
 
@@ -460,8 +373,8 @@ export default {
 
         // Get the effective content (with any user edits)
         let manifest = state.generatedManifest;
-        if (state.editedFiles['manifest.json']) {
-          manifest = JSON.parse(state.editedFiles['manifest.json']);
+        if (state.editedFiles[MANIFEST]) {
+          manifest = JSON.parse(state.editedFiles[MANIFEST]);
         }
 
         const toolCode = {};
@@ -470,8 +383,8 @@ export default {
         }
 
         let packageJson = state.generatedPackageJson;
-        if (state.editedFiles['package.json']) {
-          packageJson = JSON.parse(state.editedFiles['package.json']);
+        if (state.editedFiles[PACKAGE]) {
+          packageJson = JSON.parse(state.editedFiles[PACKAGE]);
         }
 
         const { API_CONFIG } = await import('@/tt.config.js');
@@ -546,24 +459,12 @@ export default {
     },
 
     /**
-     * Reset all state
+     * Start over: an empty draft and a fresh conversation about it.
+     * (`this` is the store: Vuex calls actions with it bound.)
      */
     resetAll({ commit }) {
       commit('RESET_ALL');
-    },
-
-    /**
-     * Add a message to the conversation (for chat-based refinement)
-     */
-    addConversationMessage({ commit }, message) {
-      commit('ADD_CONVERSATION_MESSAGE', message);
-    },
-
-    /**
-     * Clear the conversation
-     */
-    clearConversation({ commit }) {
-      commit('CLEAR_CONVERSATION');
+      clearForgeConversation(this);
     },
 
     /**
@@ -571,6 +472,7 @@ export default {
      */
     async loadPluginForEditing({ commit, getters }, pluginName) {
       commit('RESET_ALL'); // Start fresh
+      clearForgeConversation(this);
 
       try {
         const token = localStorage.getItem('token');
@@ -591,252 +493,26 @@ export default {
         const files = data.files;
 
         // Parse manifest
-        if (files['manifest.json']) {
-          const manifest = JSON.parse(files['manifest.json']);
-          commit('SET_GENERATED_MANIFEST', manifest);
-          commit('SET_PLUGIN_DESCRIPTION', manifest.description || '');
-          delete files['manifest.json'];
+        if (files[MANIFEST]) {
+          commit('SET_GENERATED_MANIFEST', JSON.parse(files[MANIFEST]));
+          delete files[MANIFEST];
         }
 
         // Parse package.json
-        if (files['package.json']) {
-          commit('SET_GENERATED_PACKAGE_JSON', JSON.parse(files['package.json']));
-          delete files['package.json'];
+        if (files[PACKAGE]) {
+          commit('SET_GENERATED_PACKAGE_JSON', JSON.parse(files[PACKAGE]));
+          delete files[PACKAGE];
         }
 
         // Rest are code files
         commit('SET_ALL_GENERATED_CODE', files);
 
-        // Set state to "complete" so preview shows up
-        commit('SET_GENERATION_PROGRESS', 'complete');
         // Loaded from the installed copy, so it IS the installed copy.
         commit('SET_INSTALLED_HASH', getters.draftHash);
 
         return { success: true };
       } catch (error) {
         console.error('Error loading plugin:', error);
-        commit('SET_GENERATION_ERROR', error.message);
-        return { success: false, error: error.message };
-      }
-    },
-
-    /**
-     * Regenerate the entire plugin with AI based on instructions
-     * Gathers current effective files and calls the /regenerate SSE endpoint
-     */
-    async regeneratePlugin({ commit, state, getters, rootState }, { instructions }) {
-      if (!instructions) {
-        commit('SET_GENERATION_ERROR', 'Please provide instructions');
-        return { success: false, error: 'No instructions provided' };
-      }
-
-      // Add user message to conversation history immediately so it's visible
-      commit('ADD_CONVERSATION_MESSAGE', {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: instructions,
-        timestamp: new Date().toISOString(),
-      });
-
-      commit('SET_GENERATING', true);
-      commit('SET_GENERATION_PROGRESS', null);
-      commit('SET_GENERATION_ERROR', null);
-
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('Authentication required');
-        }
-
-        const provider = rootState.aiProvider.selectedProvider;
-        const model = rootState.aiProvider.selectedModel;
-
-        // Gather current effective files (edited versions take priority)
-        let currentManifest = state.generatedManifest;
-        if (state.editedFiles['manifest.json']) {
-          currentManifest = JSON.parse(state.editedFiles['manifest.json']);
-        }
-
-        const currentCode = {};
-        for (const fileName of Object.keys(state.generatedCode)) {
-          currentCode[fileName] = getters.getFileContent(fileName);
-        }
-
-        let currentPackageJson = state.generatedPackageJson;
-        if (state.editedFiles['package.json']) {
-          currentPackageJson = JSON.parse(state.editedFiles['package.json']);
-        }
-
-        // Build conversation history (just the instruction strings) for LLM context
-        const conversationHistory = state.conversation
-          .filter((m) => m.role === 'user')
-          .slice(0, -1) // Exclude current message (already in `instructions`)
-          .map((m) => m.content);
-
-        const { API_CONFIG } = await import('@/tt.config.js');
-
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/regenerate`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            instructions,
-            currentManifest,
-            currentCode,
-            currentPackageJson,
-            conversationHistory,
-            provider: provider?.toLowerCase(),
-            model,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Regeneration failed: ${response.statusText}`);
-        }
-
-        // Handle streaming response (same SSE format as generatePlugin)
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // Don't clear generated code here — it would make isGenerationComplete false
-        // and flip the UI back to the description screen. Each SET_GENERATED_CODE
-        // call below will overwrite files as they stream in.
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.startsWith('event:')) continue;
-
-            const eventMatch = line.match(/event: (\w+)\ndata: (.+)/s);
-            if (!eventMatch) continue;
-
-            const [, eventType, eventData] = eventMatch;
-            const data = JSON.parse(eventData);
-
-            switch (eventType) {
-              case 'progress':
-                commit('SET_GENERATION_PROGRESS', data.step);
-                break;
-              case 'manifest':
-                commit('SET_GENERATED_MANIFEST', data);
-                break;
-              case 'code':
-                commit('SET_GENERATED_CODE', { fileName: data.file, code: data.code });
-                break;
-              case 'package':
-                commit('SET_GENERATED_PACKAGE_JSON', data);
-                break;
-              case 'error':
-                throw new Error(data.error || 'Regeneration failed');
-              case 'complete':
-                commit('SET_GENERATION_PROGRESS', 'complete');
-                break;
-            }
-          }
-        }
-
-        // Clear user edits since regeneration replaces everything
-        commit('CLEAR_EDITED_FILES');
-        commit('SET_GENERATING', false);
-
-        // Add success message to conversation
-        commit('ADD_CONVERSATION_MESSAGE', {
-          id: `msg-${Date.now()}`,
-          role: 'assistant',
-          content: describeBuild(state.generatedManifest, 'Updated'),
-          timestamp: new Date().toISOString(),
-        });
-
-        return { success: true };
-      } catch (error) {
-        console.error('Plugin regeneration error:', error);
-        commit('SET_GENERATION_ERROR', error.message);
-
-        // Add error message to conversation
-        commit('ADD_CONVERSATION_MESSAGE', {
-          id: `msg-${Date.now()}`,
-          role: 'assistant',
-          content: `Regeneration failed: ${error.message}`,
-          timestamp: new Date().toISOString(),
-        });
-
-        return { success: false, error: error.message };
-      }
-    },
-
-    /**
-     * Regenerate a specific file with AI
-     */
-    async regenerateFile({ commit, state, rootState }, { fileName, instructions }) {
-      commit('SET_GENERATING', true);
-
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('Authentication required');
-        }
-
-        const provider = rootState.aiProvider.selectedProvider;
-        const model = rootState.aiProvider.selectedModel;
-
-        const { API_CONFIG } = await import('@/tt.config.js');
-
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/regenerate-file`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileName,
-            instructions,
-            currentManifest: state.generatedManifest,
-            currentCode: state.generatedCode,
-            provider: provider?.toLowerCase(),
-            model,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Regeneration failed: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-
-        if (fileName === 'manifest.json') {
-          commit('SET_GENERATED_MANIFEST', result.content);
-        } else if (fileName === 'package.json') {
-          commit('SET_GENERATED_PACKAGE_JSON', result.content);
-        } else {
-          commit('SET_GENERATED_CODE', { fileName, code: result.content });
-        }
-
-        // Clear any user edits for this file since we regenerated it
-        if (state.editedFiles[fileName]) {
-          const newEditedFiles = { ...state.editedFiles };
-          delete newEditedFiles[fileName];
-          commit('CLEAR_EDITED_FILES');
-          Object.entries(newEditedFiles).forEach(([name, content]) => {
-            commit('SET_EDITED_FILE', { fileName: name, content });
-          });
-        }
-
-        commit('SET_GENERATING', false);
-        return { success: true };
-      } catch (error) {
-        console.error('File regeneration error:', error);
-        commit('SET_GENERATION_ERROR', error.message);
         return { success: false, error: error.message };
       }
     },
