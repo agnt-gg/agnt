@@ -1243,7 +1243,6 @@ body.dark .billing-section {
 /* Comparison Table */
 .comparison-table-wrapper {
   overflow-x: auto;
-  scrollbar-width: thin !important;
   border-radius: 12px;
   border: 1px solid var(--terminal-border-color);
 }

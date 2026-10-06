@@ -2112,7 +2112,6 @@ body.dark .view-btn:not(:last-child) {
   flex: 1;
   height: 100%;
   overflow-y: scroll !important;
-  scrollbar-width: thin !important;
   display: flex;
   flex-direction: column;
   align-items: center;

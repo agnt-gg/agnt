@@ -74,28 +74,21 @@ app {
   height: 100%;
 }
 
-/* SCROLLBAR */
+/* SCROLLBAR — AGNT draws none. Everything still scrolls (wheel, trackpad,
+   touch, keyboard); only the bar is hidden. This is the app's one rule, and
+   it is !important so a page cannot quietly bring a bar back: the default
+   used to be a thin visible bar, so every new scrolling area showed one
+   unless it remembered to opt out, and new pages kept forgetting.
+   Where overflow needs saying, use an edge fade, not a bar. Pinned by
+   styles/noScrollbars.spec.js. */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--terminal-border-color) transparent;
+  scrollbar-width: none !important;
 }
 
 *::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: var(--terminal-border-color);
-  border-radius: 3px;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: var(--terminal-border-color);
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* FLEXBOX UTILITIES */

@@ -2254,7 +2254,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   align-content: flex-start;
   justify-content: flex-start;
   align-items: center;
-  scrollbar-width: thin !important;
   scrollbar-color: var(--terminal-border-color) transparent;
 }
 
