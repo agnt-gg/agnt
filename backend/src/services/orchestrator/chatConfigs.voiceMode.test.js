@@ -8,8 +8,11 @@
  * detail after a blank line — and only that opening is spoken.
  *
  * These tests pin the two halves of that: the instruction says the right
- * things, and it reaches the prompt ONLY on a voice turn.
+ * things, and the system prompt is BYTE-IDENTICAL whether a turn is typed or
+ * spoken. The system block is the cached prefix of every turn; which turn is
+ * spoken is carried by a marker on that user message (turnRegister.js).
  */
+import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
 vi.mock('./tools.js', () => ({ getAvailableToolSchemas: vi.fn(async () => []) }));
@@ -22,6 +25,8 @@ vi.mock('./workspaceContext.js', () => ({
 
 import { getChatConfig } from './chatConfigs.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
+import { buildTextRegisterSection } from './system-prompts/textRegister.js';
+import { VOICE_TURN_MARKER } from './turnRegister.js';
 import { PAGE_CONTEXT_FIELDS, pickPageContext } from './pageContext.js';
 
 const buildPrompt = (ctx) => getChatConfig('orchestrator').buildSystemPrompt(ctx);
@@ -59,51 +64,52 @@ describe('buildVoiceRegisterSection — presenter, not screen reader', () => {
   it('is plain speech — no markdown in the spoken part', () => {
     expect(text()).toMatch(/No markdown, no bullets, no headings/i);
   });
+
+  it('applies to the marked user message only, and says typed messages are normal', () => {
+    expect(text()).toContain(`A user message that begins with ${VOICE_TURN_MARKER}`);
+    expect(text()).toMatch(/Messages without it are typed: answer\s+those normally/);
+  });
 });
 
-describe('the voice section reaches the prompt only on a voice turn', () => {
+describe('the system prompt is byte-identical whatever the input mode', () => {
   // The first prompt build lazy-imports the skill services and models and opens
   // the test database: ~0.6s alone, past the 5s test default under full-suite
   // load. Paid once here, with its own budget, so no test is timed on it.
   beforeAll(() => buildPrompt({ latestUserMessage: 'warm-up' }), 60000);
 
-  it('a normal turn gets the base prompt, untouched', async () => {
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+  const MODES = [
+    ['typed', {}],
+    ['voice', { voiceMode: true }],
+    ['voice (multipart string)', { voiceMode: 'true' }],
+    ['voice off', { voiceMode: false }],
+    ['text message', { textMode: true }],
+    ['voice over text message', { voiceMode: true, textMode: true }],
+  ];
+
+  it('every input mode produces the exact same bytes', async () => {
+    const prompts = [];
+    for (const [, flags] of MODES) prompts.push(await buildPrompt({ latestUserMessage: 'hello', ...flags }));
+    const hashes = new Set(prompts.map(sha));
+    expect(hashes.size).toBe(1);
+    for (const prompt of prompts) expect(prompt).toBe(prompts[0]);
+  });
+
+  it('the voice and text guidance are always present, after the base prompt', async () => {
     const prompt = await buildPrompt({ latestUserMessage: 'hello' });
-    expect(prompt).toBe('BASE_PROMPT');
+    expect(prompt).toBe(`BASE_PROMPT\n\n${buildVoiceRegisterSection()}\n\n${buildTextRegisterSection()}`);
   });
 
-  it('a voice turn gets the section appended', async () => {
-    const prompt = await buildPrompt({ latestUserMessage: 'hello', voiceMode: true });
-    expect(prompt).toContain('BASE_PROMPT');
-    expect(prompt).toContain('ONLY THE OPENING PARAGRAPH IS READ ALOUD');
-  });
-
-  it('appends at the TAIL, so the cached prefix is byte-identical', async () => {
-    // The section is the only per-turn-varying part of the prompt. Putting it
-    // anywhere but the end would move every byte after it between a spoken
-    // turn and a typed one.
-    const prompt = await buildPrompt({ latestUserMessage: 'hello', voiceMode: true });
-    expect(prompt.startsWith('BASE_PROMPT')).toBe(true);
-    expect(prompt.trimEnd().endsWith(buildVoiceRegisterSection().trimEnd())).toBe(true);
-  });
-
-  it('accounts for its own tokens, so the context panel does not under-report', async () => {
-    const ctx = { latestUserMessage: 'hello', voiceMode: true };
-    await buildPrompt(ctx);
-    const voice = (ctx._promptSections || []).find((s) => s.id === 'voice');
-    expect(voice).toBeTruthy();
-    expect(voice.tokens).toBeGreaterThan(0);
-  });
-
-  it('adds no voice section to the accounting on a normal turn', async () => {
-    const ctx = { latestUserMessage: 'hello' };
-    await buildPrompt(ctx);
-    expect((ctx._promptSections || []).some((s) => s.id === 'voice')).toBe(false);
-  });
-
-  it('a falsy voiceMode is not a voice turn', async () => {
-    for (const value of [false, undefined, null, '']) {
-      expect(await buildPrompt({ latestUserMessage: 'hi', voiceMode: value })).toBe('BASE_PROMPT');
+  it('the context panel accounts the guidance as one frozen section in every mode', async () => {
+    for (const [, flags] of MODES) {
+      const ctx = { latestUserMessage: 'hello', ...flags };
+      await buildPrompt(ctx);
+      const sections = ctx._promptSections || [];
+      expect(sections.map((s) => s.id)).not.toContain('voice');
+      expect(sections.map((s) => s.id)).not.toContain('text');
+      const registers = sections.find((s) => s.id === 'turn-registers');
+      expect(registers?.frozen).toBe(true);
+      expect(registers.tokens).toBeGreaterThan(0);
     }
   });
 });

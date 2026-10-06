@@ -34,9 +34,17 @@
  */
 
 import { USER_AFTER_TOOL_RESULT_LABEL } from './turnContinuity.js';
+import { TURN_MARKERS } from './turnRegister.js';
 
 /** Header of the uploaded-files block the server prepends to a user message. */
 export const ATTACHED_FILES_HEADER = '[ATTACHED FILES]';
+
+/**
+ * Every block the server prepends to a user message. A stored user message
+ * begins with one of these exactly when the server decorated it: uploaded
+ * files, or the voice / text-message turn marker (turnRegister.js).
+ */
+export const USER_DECORATION_HEADERS = Object.freeze([ATTACHED_FILES_HEADER, ...TURN_MARKERS]);
 
 /** JSON with sorted keys, so semantically equal inputs compare equal. */
 function canonical(value) {
@@ -154,12 +162,14 @@ function isReusable(span) {
 }
 
 /**
- * The server prepends an uploaded-files block to the user message it was sent
- * with. The client keeps the user's own words, so the stored message equals
- * `<files block>…<user text>` exactly. That, and only that, is restored.
+ * The server prepends blocks (uploaded files, a turn marker) to the user
+ * message it was sent with. The client keeps the user's own words, so the
+ * stored message equals `<decoration>…\n\n<user text>` exactly. That, and only
+ * that, is restored.
  */
 function isDecorationOf(storedContent, clientContent) {
-  return storedContent.startsWith(ATTACHED_FILES_HEADER) && storedContent.endsWith(`\n\n${clientContent}`);
+  return USER_DECORATION_HEADERS.some((header) => storedContent.startsWith(header))
+    && storedContent.endsWith(`\n\n${clientContent}`);
 }
 
 /**

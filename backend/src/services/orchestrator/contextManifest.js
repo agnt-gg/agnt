@@ -51,6 +51,25 @@ export const TOOL_REASONS = {
 };
 
 /**
+ * Which system sections differ between two turns, by id.
+ *
+ * A section that appeared or disappeared is reported as such; it used to be
+ * dropped (only ids present on BOTH turns were compared), so a section that
+ * came and went was never named. 'static' is not real text but the residue
+ * total minus named sections, so it moves by a few tokens whenever any named
+ * section moves; it is reported only when nothing named explains the change.
+ */
+export function diffSections(prior, current) {
+  const ids = (sections) => Object.keys(sections).filter((id) => id !== 'static');
+  const sectionsAdded = ids(current).filter((id) => prior[id] === undefined);
+  const sectionsRemoved = ids(prior).filter((id) => current[id] === undefined);
+  const changedSections = ids(current).filter((id) => prior[id] !== undefined && prior[id] !== current[id]);
+  const namedChange = sectionsAdded.length + sectionsRemoved.length + changedSections.length > 0;
+  if (!namedChange && prior.static !== current.static) changedSections.push('static');
+  return { changedSections, sectionsAdded, sectionsRemoved };
+}
+
+/**
  * @param {object}   input
  * @param {string}   input.systemPrompt
  * @param {Array}    input.promptSections  [{ id, label, tokens, frozen }] dynamic sections
@@ -204,18 +223,15 @@ export function buildContextManifest({
     const priorTools = prior.tools ? prior.tools.split(',') : [];
     const toolsStable = toolNames.slice(0, priorTools.length).join(',') === prior.tools;
 
-    const changedSections = [];
-    for (const [id, tokens] of Object.entries(fingerprints.sections)) {
-      if (prior.sections && prior.sections[id] !== undefined && prior.sections[id] !== tokens) {
-        changedSections.push(id);
-      }
-    }
+    const { changedSections, sectionsAdded, sectionsRemoved } = diffSections(prior.sections || {}, fingerprints.sections);
 
     manifest.cache = {
       prefixStable: systemStable && toolsStable,
       systemStable,
       toolsStable,
       changedSections,
+      sectionsAdded,
+      sectionsRemoved,
       toolsAdded: Math.max(0, toolNames.length - priorTools.length),
     };
   } else {

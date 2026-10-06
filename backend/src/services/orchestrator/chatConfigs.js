@@ -996,17 +996,8 @@ const unifiedConfig = {
       assigned: agentOverride?.specialtySkillsSection || '',
     };
 
-    /**
-     * Voice turns get one extra section, appended AFTER the assembled prompt.
-     *
-     * Appending rather than threading it through buildUnifiedSystemPrompt is
-     * deliberate on two counts. It keeps the section machinery untouched, and
-     * it puts the only per-turn-varying text at the very tail, leaving the
-     * entire stable prefix ahead of it byte-identical between a spoken turn
-     * and a typed one.
-     */
-    // Main chat / sub-chat role: fixed for the conversation's life, so it sits
-    // after the shared prefix and before the per-turn voice section.
+    // Main chat / sub-chat role: fixed for the conversation's life (the role
+    // row is written before the conversation's first turn).
     const roleSection = promptOptions?.platform === 'lean' ? '' : await loadConversationRoleSection(context);
     let assembled = prompt;
     if (roleSection) {
@@ -1014,24 +1005,18 @@ const unifiedConfig = {
       assembled = `${assembled}\n\n${roleSection}`;
     }
 
-    // Text-message turns (mobile.agnt.gg) get their own tail section, by the
-    // same rule as voice: per-turn text goes last so the prefix stays cached.
-    if (context.textMode && context.textMode !== 'false') {
-      const textSection = buildTextRegisterSection();
-      context._promptSections.push({ id: 'text', label: 'Text message register', tokens: estimateTokens(textSection), frozen: false });
-      assembled = `${assembled}\n\n${textSection}`;
-    }
+    // Voice and text-message guidance: in EVERY prompt, never per turn. The
+    // system block is cached whole, so a section that appeared only on spoken
+    // or texted turns re-wrote the system and the entire history at
+    // cache-write price whenever the user switched between typing and talking.
+    // Which turn is spoken/texted is carried by a marker on that user message
+    // instead (turnRegister.js). Nothing here may read context.voiceMode or
+    // context.textMode.
+    const registersSection = `${buildVoiceRegisterSection()}\n\n${buildTextRegisterSection()}`;
+    context._promptSections.push({ id: 'turn-registers', label: 'Voice and text-message turns', tokens: estimateTokens(registersSection), frozen: true });
+    assembled = `${assembled}\n\n${registersSection}`;
 
-    if (!context.voiceMode) return withCallerContract(assembled, promptOptions, context);
-
-    const voiceSection = buildVoiceRegisterSection();
-    context._promptSections.push({
-      id: 'voice',
-      label: 'Voice register',
-      tokens: estimateTokens(voiceSection),
-      frozen: false,
-    });
-    return withCallerContract(`${assembled}\n\n${voiceSection}`, promptOptions, context);
+    return withCallerContract(assembled, promptOptions, context);
   },
   maxToolRounds: 100,
   responseType: 'stream',

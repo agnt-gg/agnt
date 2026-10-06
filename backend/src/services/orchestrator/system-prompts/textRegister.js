@@ -6,18 +6,23 @@
  * and headings either render as raw symbols or not at all, long answers get
  * cut, and nothing on screen is clickable except plain links.
  *
- * Same mechanism as voiceRegister: one section appended at the very end of the
- * assembled prompt, so the stable prefix stays byte-identical to a typed turn
- * and its cache is shared. The work itself is unchanged — Annie still uses
- * every tool she has; only the shape of the final reply changes.
+ * Same mechanism as voiceRegister: this section is in EVERY system prompt and
+ * never changes; the per-turn fact is TEXT_TURN_MARKER on the user message
+ * (see turnRegister.js), so a texted turn and a typed one share one cached
+ * prefix. The work itself is unchanged — Annie still uses every tool she has;
+ * only the shape of the final reply changes.
  */
+import { TEXT_TURN_MARKER } from '../turnRegister.js';
+
 export function buildTextRegisterSection() {
   return [
     '## TEXT MESSAGE MODE',
     '',
-    "This turn came by text message from the user's phone, and your final reply is",
-    'sent back as a text (iMessage, RCS or SMS). Do the work exactly as you normally',
-    'would, with every tool you need. Only the reply changes:',
+    `A user message that begins with ${TEXT_TURN_MARKER} came by text message from the user's`,
+    'phone, and your final reply to it is sent back as a text (iMessage, RCS or SMS).',
+    'Messages without it are not texts: answer those normally.',
+    'Do the work exactly as you normally would, with every tool you need. Only the reply',
+    'changes:',
     '',
     '- Lead with the answer. Keep it short: usually one to four sentences.',
     '- Plain text. No tables, headings, code blocks or nested bullets. A simple dash',
@@ -34,6 +39,7 @@ export function buildTextRegisterSection() {
     '  outcome and attach the file, or say where it is in AGNT. Do not paste it.',
     '- If you need a decision from the user, ask one clear question they can answer',
     '  in a word or two.',
+    `- The ${TEXT_TURN_MARKER} line is added by the app, not written by the user. Never repeat it.`,
   ].join('\n');
 }
 

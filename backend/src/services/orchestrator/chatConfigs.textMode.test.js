@@ -1,8 +1,9 @@
 /**
  * A text-message turn (mobile.agnt.gg) is answered on a phone, so its reply
  * must be short plain text. These tests pin that the instruction exists, rides
- * the shared page-context list, and reaches the prompt ONLY on a text turn, at
- * the tail, leaving the cached prefix untouched.
+ * the shared page-context list, and is in EVERY system prompt so a texted turn
+ * and a typed one share one cached prefix. Which turn is texted is carried by
+ * a marker on that user message (turnRegister.js).
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 
@@ -16,6 +17,7 @@ vi.mock('./workspaceContext.js', () => ({
 
 import { getChatConfig } from './chatConfigs.js';
 import { buildTextRegisterSection } from './system-prompts/textRegister.js';
+import { TEXT_TURN_MARKER } from './turnRegister.js';
 import { PAGE_CONTEXT_FIELDS, pickPageContext } from './pageContext.js';
 
 const buildPrompt = (ctx) => getChatConfig('orchestrator').buildSystemPrompt(ctx);
@@ -40,6 +42,10 @@ describe('buildTextRegisterSection', () => {
     expect(text).toMatch(/attached to your reply automatically, up to 4 files/);
     expect(text).toMatch(/voice notes \(as a transcript\)/);
   });
+
+  it('applies to the marked user message only', () => {
+    expect(buildTextRegisterSection()).toContain(`A user message that begins with ${TEXT_TURN_MARKER}`);
+  });
 });
 
 describe('textMode rides the shared page-context list', () => {
@@ -50,20 +56,14 @@ describe('textMode rides the shared page-context list', () => {
   });
 });
 
-describe('the text section reaches the prompt only on a text turn', () => {
+describe('a text turn and a typed turn get the same system prompt', () => {
   beforeAll(() => buildPrompt({ latestUserMessage: 'warm-up' }), 60000);
 
-  it('a normal turn is untouched', async () => {
-    expect(await buildPrompt({ latestUserMessage: 'hello' })).toBe('BASE_PROMPT');
-  });
-
-  it('a text turn appends the section after the unchanged prefix', async () => {
-    const prompt = await buildPrompt({ latestUserMessage: 'hello', textMode: true });
-    expect(prompt.startsWith('BASE_PROMPT')).toBe(true);
-    expect(prompt).toContain(buildTextRegisterSection());
-  });
-
-  it('the multipart string "false" is not a text turn', async () => {
-    expect(await buildPrompt({ latestUserMessage: 'hi', textMode: 'false' })).toBe('BASE_PROMPT');
+  it('textMode true, "true", "false" and absent all build identical bytes', async () => {
+    const typed = await buildPrompt({ latestUserMessage: 'hello' });
+    expect(typed).toContain(buildTextRegisterSection());
+    for (const textMode of [true, 'true', 'false', false]) {
+      expect(await buildPrompt({ latestUserMessage: 'hello', textMode })).toBe(typed);
+    }
   });
 });

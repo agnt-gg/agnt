@@ -41,20 +41,26 @@
  *   - Leading with the finding is simply good writing, so the instruction
  *     costs nothing when the answer is read instead of heard.
  */
+import { VOICE_TURN_MARKER } from '../turnRegister.js';
 
 /**
- * The system-prompt section appended to a voice turn.
+ * The voice guidance. It is in EVERY system prompt, whether or not a turn is
+ * spoken, and applies only to user messages carrying VOICE_TURN_MARKER.
  *
- * Appended at the very END of the assembled prompt, deliberately: it is the
- * only per-turn-varying part, and keeping it at the tail leaves the whole
- * stable prefix ahead of it untouched.
+ * It used to be appended only on voice turns. That made the system block
+ * differ between a typed turn and a spoken one, and since the system block is
+ * cached whole, every switch re-wrote the system and the full history at
+ * cache-write price (see turnRegister.js). The per-turn fact is the marker on
+ * the user message; this text never changes.
  */
 export function buildVoiceRegisterSection() {
   return [
     '## VOICE MODE — ONE ANSWER, TWO REGISTERS',
     '',
-    'This turn is being SPOKEN ALOUD as well as rendered on screen. These are not two',
-    'answers. They are one answer, told at the two lengths the two channels are good at.',
+    `A user message that begins with ${VOICE_TURN_MARKER} was spoken, and your answer to it is`,
+    'SPOKEN ALOUD as well as rendered on screen. Messages without it are typed: answer',
+    'those normally. For a voice turn, these are not two answers. They are one answer,',
+    'told at the two lengths the two channels are good at.',
     '',
     'Open with the SPOKEN REGISTER: the finding, in as few sentences as it genuinely',
     'takes. Then a blank line. Everything after that blank line belongs to the screen —',
@@ -80,6 +86,8 @@ export function buildVoiceRegisterSection() {
     '',
     'The user can interrupt you at any moment, so a short spoken register loses them',
     'nothing — anything you left on screen, they can simply ask about.',
+    '',
+    `The ${VOICE_TURN_MARKER} line is added by the app, not written by the user. Never repeat it.`,
   ].join('\n');
 }
 

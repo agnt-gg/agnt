@@ -48,6 +48,7 @@ import {
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import { stripProviderIncompatibleTools } from './orchestrator/providerToolCompat.js';
 import { pickPageContext } from './orchestrator/pageContext.js';
+import { markTurnContent } from './orchestrator/turnRegister.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import {
   foldBlocksIntoLastToolResult,
@@ -1856,6 +1857,10 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // provider has already seen are replaced with the server's own copy, so
     // the cached prefix survives into this turn (historyRehydration.js).
     // Same provider and model only: native blocks belong to their transport.
+    // The client's own copy of this turn's message, before rehydration. If the
+    // stored transcript replaces it (a retried turn), the stored copy already
+    // carries its turn marker and must not be marked again.
+    const clientTurnMessage = messages.findLast((m) => m.role === 'user') || null;
     if (!preparedHistory && canRehydrateFor(priorContext?._cacheRoundState, normalizedProvider, model)) {
       const storedTranscript = await storedTranscriptFor(priorContext, conversationId, userId);
       const rehydrated = rehydrateHistory(messages, storedTranscript);
@@ -1886,6 +1891,15 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
       if (lastUserMsg) {
         unfirehoseSession.logUserMessage(lastUserMsg.content);
       }
+    }
+
+    // A spoken or texted turn is marked ON ITS OWN USER MESSAGE, never in the
+    // system prompt: the system block is cached whole, and a section that came
+    // and went with the input mode re-wrote the system and the entire history
+    // at cache-write price (turnRegister.js). The marked message is stored as
+    // sent, and historyRehydration restores it on later turns.
+    if (!preparedHistory && clientTurnMessage && messages.findLast((m) => m.role === 'user') === clientTurnMessage) {
+      clientTurnMessage.content = markTurnContent(clientTurnMessage.content, { voiceMode, textMode });
     }
 
     // Build an [ATTACHED FILES] block listing absolute disk paths so the LLM can

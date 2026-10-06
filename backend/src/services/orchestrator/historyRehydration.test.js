@@ -4,6 +4,7 @@ import { clientNextTurn } from './clientHistoryBuilder.testkit.js';
 import { USER_AFTER_TOOL_RESULT_LABEL } from './turnContinuity.js';
 import { AnthropicAdapter, OpenAIResponsesAdapter } from './llmAdapters.js';
 import { BaseAdapter } from './transports/BaseAdapter.js';
+import { markTurnContent } from './turnRegister.js';
 
 // ── The bug, end to end ──────────────────────────────────────────────────────
 // Turn N's last request carried the server's native transcript. Turn N+1 is
@@ -158,6 +159,83 @@ describe('rehydrateHistory — what it will and will not restore', () => {
     expect(userMessagesRestored).toBe(1);
     expect(messages[0].content).toBe('continue'); // the identical earlier message keeps its own bytes
     expect(messages[2].content).toBe(upload);
+  });
+});
+
+// ── Voice / text-message turns ───────────────────────────────────────────────
+// The server marks a spoken or texted turn on its user message (turnRegister).
+// The CLIENT never has the marker: its UI holds the user's own words. So the
+// client's view below is built from the UNMARKED ledger, while the server's
+// transcript is the marked one — exactly the split that exists in production.
+const voiced = (ledger, index, flags = { voiceMode: true }) => {
+  const marked = structuredClone(ledger);
+  marked[index] = { ...marked[index], content: markTurnContent(marked[index].content, flags) };
+  return marked;
+};
+
+describe.each([
+  ['anthropic', anthropicLedger, anthropicWire, 'claude-code'],
+  ['chat completions', chatCompletionsLedger, chatCompletionsWire, 'openai'],
+  ['responses', responsesLedger, responsesWire, 'openai-codex'],
+])('%s: a spoken turn stays a cached prefix of the next turn', (_name, ledgerOf, wireOf, provider) => {
+  it('negative control: without the restore, the unmarked client copy breaks the prefix', () => {
+    const uiLedger = ledgerOf();
+    const serverLedger = voiced(uiLedger, 1);
+    const next = clientNextTurn(uiLedger, provider, 'and the fix?');
+    expect(isPrefix(wireOf(previousRequestOf(serverLedger)), wireOf([SYSTEM, ...next]))).toBe(false);
+  });
+
+  it('rehydrated, the next (typed) turn starts with the spoken turn byte-for-byte', () => {
+    const uiLedger = ledgerOf();
+    const serverLedger = voiced(uiLedger, 1);
+    const { messages, userMessagesRestored } = rehydrateHistory(clientNextTurn(uiLedger, provider, 'and the fix?'), serverLedger);
+    expect(userMessagesRestored).toBe(1);
+    expect(isPrefix(wireOf(previousRequestOf(serverLedger)), wireOf([SYSTEM, ...messages]))).toBe(true);
+  });
+
+  it('a text-message turn, and a turn with both markers, are restored the same way', () => {
+    for (const flags of [{ textMode: true }, { voiceMode: 'true', textMode: 'true' }]) {
+      const uiLedger = ledgerOf();
+      const serverLedger = voiced(uiLedger, 1, flags);
+      const { messages } = rehydrateHistory(clientNextTurn(uiLedger, provider, 'q'), serverLedger);
+      expect(isPrefix(wireOf(previousRequestOf(serverLedger)), wireOf([SYSTEM, ...messages]))).toBe(true);
+    }
+  });
+});
+
+describe('turn markers across a typed / spoken / typed conversation', () => {
+  it('every turn replays all earlier turns byte-for-byte, markers in place', () => {
+    // Turn 1 typed, turn 2 spoken, turn 3 typed. Each turn's request must be
+    // a byte prefix of the next one at the Anthropic wire.
+    const ui = [SYSTEM, { role: 'user', content: 'hello' }, { role: 'assistant', content: 'hi' }];
+    const server1 = structuredClone(ui);
+
+    const client2 = rehydrateHistory(clientNextTurn(ui, 'claude-code', 'what broke?'), server1).messages;
+    client2[client2.length - 1].content = markTurnContent(client2.at(-1).content, { voiceMode: true });
+    const request2 = [SYSTEM, ...client2];
+    expect(isPrefix(anthropicWire(server1), anthropicWire(request2))).toBe(true);
+
+    const server2 = [...request2, { role: 'assistant', content: 'the cache' }];
+    const ui2 = [...ui, { role: 'user', content: 'what broke?' }, { role: 'assistant', content: 'the cache' }];
+    const client3 = rehydrateHistory(clientNextTurn(ui2, 'claude-code', 'fix it'), server2).messages;
+    expect(client3[2].content).toBe('[VOICE TURN]\n\nwhat broke?');
+    expect(client3.at(-1).content).toBe('fix it');
+    expect(isPrefix(anthropicWire(request2), anthropicWire([SYSTEM, ...client3]))).toBe(true);
+  });
+
+  it('a retried turn whose stored copy is already marked is restored, not re-marked', () => {
+    const marked = markTurnContent('again', { voiceMode: true });
+    const transcript = [SYSTEM, { role: 'user', content: marked }];
+    const { messages } = rehydrateHistory([{ role: 'user', content: 'again' }], transcript);
+    expect(messages[0].content).toBe(marked);
+    // The request path marks only a message the client sent fresh: this one is
+    // a different object now, so OrchestratorService leaves it alone.
+  });
+
+  it('the user typing the marker text themselves is not mistaken for a decoration', () => {
+    const transcript = [SYSTEM, { role: 'user', content: '[VOICE TURN] is a literal string' }];
+    const { userMessagesRestored } = rehydrateHistory([{ role: 'user', content: '[VOICE TURN] is a literal string' }], transcript);
+    expect(userMessagesRestored).toBe(0);
   });
 });
 

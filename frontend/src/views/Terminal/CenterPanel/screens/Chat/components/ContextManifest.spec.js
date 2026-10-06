@@ -117,6 +117,14 @@ describe('ContextManifest', () => {
     expect(w.text()).toContain('memory');
   });
 
+  it('names a section that was added or removed, not just refreshed ones', () => {
+    const w = mount(ContextManifest, {
+      props: { manifest: manifest({ cache: { prefixStable: false, changedSections: [], sectionsAdded: ['voice'], sectionsRemoved: ['text'] } }) },
+    });
+    expect(w.text()).toContain('(voice added, text removed)');
+    expect(w.text()).not.toContain('static');
+  });
+
   it('previews the 8 costliest-order tools and expands on demand', async () => {
     const m = manifest();
     m.tools.items = Array.from({ length: 20 }, (_, i) => ({

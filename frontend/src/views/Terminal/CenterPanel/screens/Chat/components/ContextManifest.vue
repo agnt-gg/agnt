@@ -228,9 +228,15 @@ export default {
 
     const cache = computed(() => props.manifest?.cache || null);
 
+    // Names what moved: sections that appeared, disappeared or changed size.
+    // An added section used to fall through, so the banner blamed 'static'.
     const changedLabel = computed(() => {
-      const changed = cache.value?.changedSections || [];
-      if (changed.length) return ` (${changed.join(', ')} refreshed)`;
+      const parts = [
+        ...(cache.value?.sectionsAdded || []).map((id) => `${id} added`),
+        ...(cache.value?.sectionsRemoved || []).map((id) => `${id} removed`),
+        ...(cache.value?.changedSections || []).map((id) => `${id} refreshed`),
+      ];
+      if (parts.length) return ` (${parts.join(', ')})`;
       if (cache.value && cache.value.toolsStable === false) return ' (tool order changed)';
       return '';
     });

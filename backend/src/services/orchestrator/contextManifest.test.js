@@ -3,7 +3,7 @@
 // These pin the two things the old panel could not express: WHY each tool is
 // present, and whether the cached prompt prefix survived the turn.
 import { describe, it, expect } from 'vitest';
-import { buildContextManifest } from './contextManifest.js';
+import { buildContextManifest, diffSections } from './contextManifest.js';
 
 const schema = (name, size = 200) => ({
   type: 'function',
@@ -184,5 +184,37 @@ describe('robustness', () => {
     const { manifest } = buildContextManifest(input);
     expect(manifest.messages.managed).toBe(true);
     expect(manifest.messages.reduction).toBe(12_400);
+  });
+});
+
+// The banner that said "(static refreshed)" when a per-turn voice section had
+// been ADDED: an added section was never compared, and the residue 'static'
+// moved by a few rounding tokens, so the hand-written core got the blame.
+describe('naming what changed in the system prompt', () => {
+  it('a section that appears is named as added, and static is not blamed', () => {
+    const first = buildContextManifest(base());
+    const input = base();
+    input.systemPrompt = 'SYSTEM PROMPT BODY + a new tail section';
+    input.promptSections = [...input.promptSections, { id: 'voice', label: 'Voice register', tokens: 900, frozen: false }];
+    input.contextResult = { ...input.contextResult, systemTokens: 3903 }; // residue moves by 3 from rounding
+    const second = buildContextManifest({ ...input, prior: first.fingerprints });
+    expect(second.manifest.cache.systemStable).toBe(false);
+    expect(second.manifest.cache.sectionsAdded).toEqual(['voice']);
+    expect(second.manifest.cache.changedSections).not.toContain('static');
+  });
+
+  it('a section that disappears is named as removed', () => {
+    expect(diffSections({ memory: 10, voice: 900, static: 50 }, { memory: 10, static: 52 }))
+      .toEqual({ changedSections: [], sectionsAdded: [], sectionsRemoved: ['voice'] });
+  });
+
+  it('static is named only when no real section explains the change', () => {
+    expect(diffSections({ memory: 10, static: 50 }, { memory: 10, static: 60 }).changedSections).toEqual(['static']);
+    expect(diffSections({ memory: 10, static: 50 }, { memory: 12, static: 48 }).changedSections).toEqual(['memory']);
+  });
+
+  it('identical sections report nothing', () => {
+    expect(diffSections({ memory: 10, static: 50 }, { memory: 10, static: 50 }))
+      .toEqual({ changedSections: [], sectionsAdded: [], sectionsRemoved: [] });
   });
 });
