@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import BillingManager from './BillingManager.vue';
 import { PLAN_PRICES, yearlySavingsPercent } from './planPrices.js';
+import PlanPicker from '@/components/PlanPicker.vue';
+import { PLANS } from '@/components/plans.js';
 
 /**
  * data() is the one place a stale identifier fails at runtime and nowhere
@@ -19,7 +21,26 @@ describe('BillingManager mounts', () => {
     });
     const wrapper = mount(BillingManager, { global: { plugins: [store], directives: { tooltip: {} }, stubs: { SimpleModal: true, Tooltip: { template: '<div><slot /></div>' } } } });
     expect(wrapper.text()).toContain('AGNT Pro');
-    expect(wrapper.text()).toContain('$290/year');
+    vi.unstubAllGlobals();
+  });
+
+  // Compare Plans is the upgrade modal's picker, not a second table that can drift from it.
+  it('compares plans with the same picker as the upgrade modal, routed through its own flows', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    const store = createStore({
+      modules: {
+        userAuth: { namespaced: true, state: { token: 't', planType: 'free', user: { email: 'a@b.co' } }, getters: { isPremium: () => false, licenseInfo: () => null, planName: () => 'Community Core' }, actions: { fetchLicense: () => null, fetchSubscription: () => null } },
+      },
+    });
+    const wrapper = mount(BillingManager, { global: { plugins: [store], directives: { tooltip: {} }, stubs: { SimpleModal: true, Tooltip: { template: '<div><slot /></div>' } } } });
+    expect(wrapper.find('.comparison-table').exists()).toBe(false);
+    const picker = wrapper.findComponent(PlanPicker);
+    expect(picker.exists()).toBe(true);
+    const handlePlanAction = vi.spyOn(wrapper.vm, 'handlePlanAction').mockResolvedValue();
+    await picker.vm.$emit('choose', { planType: 'always_on', interval: 'yearly' });
+    expect(wrapper.vm.selectedInterval).toBe('yearly');
+    expect(handlePlanAction).toHaveBeenCalledWith(expect.objectContaining({ planType: 'always_on', name: 'Pro + Always-On' }));
+    expect(wrapper.text()).toContain('Contact sales');
     vi.unstubAllGlobals();
   });
 });
@@ -63,8 +84,14 @@ describe('BillingManager pricing', () => {
     expect(yearlySavingsPercent({})).toBe(0);
   });
 
-  it('the badge reads the computed saving, not a typed-in number', () => {
-    expect(BillingManager.computed.yearlySavings.call({})).toBe(17);
+  // The picker's table (plans.js) and checkout's prices (planPrices.js) are two
+  // files; this keeps them saying the same thing.
+  it('the picker shows the prices checkout charges', () => {
+    for (const plan of PLANS) {
+      expect(PLAN_PRICES[plan.id], plan.id).toBeDefined();
+      expect(plan.price).toBe(PLAN_PRICES[plan.id].monthly);
+      expect(plan.yearly).toBe(PLAN_PRICES[plan.id].yearly);
+    }
   });
 
   it('maps every displayed plan name to a checkout plan type', () => {

@@ -65,7 +65,7 @@
   "views/Terminal/CenterPanel/screens/Minigames/BallJumper/BallJumper.vue": 1,
   "views/Terminal/CenterPanel/screens/Minigames/BallJumper/css/notification.css": 2,
   "views/Terminal/CenterPanel/screens/Settings/components/AgntScoreBreakdown/AgntScoreBreakdown.vue": 4,
-  "views/Terminal/CenterPanel/screens/Settings/components/BillingManager/BillingManager.vue": 5,
+  "views/Terminal/CenterPanel/screens/Settings/components/BillingManager/BillingManager.vue": 4,
   "views/Terminal/CenterPanel/screens/Settings/components/DataExportSection/dataPanel.css": 4,
   "views/Terminal/CenterPanel/screens/Settings/components/LeaderboardSection/LeaderboardSection.vue": 1,
   "views/Terminal/CenterPanel/screens/Settings/components/LoginSection/LoginSection.vue": 3,

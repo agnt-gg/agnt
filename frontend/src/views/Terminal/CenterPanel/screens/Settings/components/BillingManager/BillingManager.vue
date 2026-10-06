@@ -42,74 +42,14 @@
       </div>
     </div>
 
-    <!-- Plans Comparison Section -->
+    <!-- Plans: the same picker as the upgrade modal (components/PlanPicker.vue). -->
     <div class="billing-section">
       <div class="section-header">
         <h3>Compare Plans</h3>
-        <p>Select the perfect plan for your needs. All plans include unlimited workflows and integrations.</p>
-
-        <!-- Billing Interval Toggle -->
-        <div class="billing-toggle">
-          <button class="toggle-option" :class="{ active: selectedInterval === 'monthly' }" @click="selectedInterval = 'monthly'">Monthly</button>
-          <button class="toggle-option" :class="{ active: selectedInterval === 'yearly' }" @click="selectedInterval = 'yearly'">
-            Yearly
-            <span v-if="yearlySavings > 0" class="save-badge">Save {{ yearlySavings }}%</span>
-          </button>
-        </div>
+        <p>Six services. One subscription. Nothing else to buy.</p>
       </div>
-
-      <div class="comparison-table-wrapper">
-        <table class="comparison-table">
-          <thead>
-            <tr>
-              <th class="feature-column">Features</th>
-              <th v-for="plan in plans" :key="plan.id" :class="{ 'current-plan-column': plan.name === currentPlan, 'popular-column': plan.popular }">
-                <div class="plan-header-cell">
-                  <div v-if="plan.popular" class="popular-badge">POPULAR</div>
-                  <div class="plan-icon">{{ plan.icon }}</div>
-                  <div class="plan-name">{{ plan.name }}</div>
-                  <div class="plan-price">
-                    <span v-if="plan.originalPrice" class="original-price">{{ plan.originalPrice }}</span>
-                    <span class="current-price">{{ plan.price }}</span>
-                  </div>
-                  <div class="plan-tagline">{{ plan.tagline }}</div>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(featureName, index) in allFeatures" :key="index" class="feature-row">
-              <td class="feature-name">{{ featureName }}</td>
-              <td
-                v-for="plan in plans"
-                :key="plan.id"
-                :class="{ 'current-plan-column': plan.name === currentPlan, 'popular-column': plan.popular }"
-                class="feature-cell"
-              >
-                <span class="feature-check" :class="{ included: getFeatureValue(plan, featureName) }">
-                  {{ getFeatureValue(plan, featureName) ? '✓' : '—' }}
-                  <span v-if="getFeatureDetail(plan, featureName)" class="feature-detail">
-                    {{ getFeatureDetail(plan, featureName) }}
-                  </span>
-                </span>
-              </td>
-            </tr>
-            <tr class="action-row">
-              <td class="feature-name"></td>
-              <td v-for="plan in plans" :key="plan.id" :class="{ 'current-plan-column': plan.name === currentPlan, 'popular-column': plan.popular }">
-                <button
-                  class="plan-button"
-                  :class="[plan.name.toLowerCase().replace(' ', '-'), { 'current-plan-button': plan.name === currentPlan }]"
-                  :disabled="plan.name === currentPlan || loading"
-                  @click="handlePlanAction(plan)"
-                >
-                  {{ getPlanButtonText(plan) }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <PlanPicker :current-plan="planType !== 'free' ? planType : null" :busy="loading" @choose="choosePlan" />
+      <p class="enterprise-note">Need unlimited seats or a dedicated runtime? <button type="button" class="enterprise-link" @click="handleContactSales">Contact sales</button></p>
     </div>
 
     <!-- Subscription Management Section (for paid plans) -->
@@ -217,7 +157,8 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { onMounted, onBeforeUnmount } from 'vue';
-import { priceLabel, yearlySavingsPercent } from './planPrices.js';
+import { priceLabel } from './planPrices.js';
+import PlanPicker from '@/components/PlanPicker.vue';
 
 // ============================================
 // DISCOUNT CONFIGURATION
@@ -230,6 +171,7 @@ export default {
   name: 'BillingManager',
   components: {
     SimpleModal,
+    PlanPicker,
   },
   computed: {
     ...mapState('userAuth', ['subscription', 'planType']),
@@ -275,16 +217,6 @@ export default {
       if (this.subscriptionDetails.cancelAtPeriodEnd) return 'Canceling';
       if (this.subscriptionDetails.planStatus === 'past_due') return 'Past Due';
       return 'Active';
-    },
-
-    allFeatures() {
-      const featuresSet = new Set();
-      this.plans.forEach((plan) => {
-        plan.features.forEach((feature) => {
-          featuresSet.add(feature.text);
-        });
-      });
-      return Array.from(featuresSet);
     },
 
     isFormValid() {
@@ -335,11 +267,6 @@ export default {
       const currentIndex = planHierarchy.indexOf(this.scheduledPlanChange.currentPlanName);
       const newIndex = planHierarchy.indexOf(this.scheduledPlanChange.newPlanName);
       return newIndex > currentIndex;
-    },
-
-    // Derived from the prices (planPrices.js), never typed in.
-    yearlySavings() {
-      return yearlySavingsPercent();
     },
 
     plans() {
@@ -445,33 +372,12 @@ export default {
       this.countdown = { days, hours, minutes, seconds };
     },
 
-    getFeatureValue(plan, featureName) {
-      const feature = plan.features.find((f) => f.text === featureName);
-      return feature ? feature.included : false;
-    },
-    getFeatureDetail(plan, featureName) {
-      const feature = plan.features.find((f) => f.text === featureName);
-      return feature && feature.detail ? feature.detail : '';
-    },
-
-    getPlanButtonText(plan) {
-      if (plan.name === this.currentPlan) {
-        return 'Current Plan';
-      }
-
-      if (plan.planType === 'enterprise') {
-        return 'Contact Sales';
-      }
-
-      const planHierarchy = ['Community Core', 'AGNT Pro', 'Pro + Always-On', 'AGNT Team', 'Managed Operations'];
-      const currentIndex = planHierarchy.indexOf(this.currentPlan);
-      const targetIndex = planHierarchy.indexOf(plan.name);
-
-      if (targetIndex < currentIndex) {
-        return 'Downgrade';
-      }
-
-      return 'Upgrade to Pro';
+    // PlanPicker's choice, run through this page's own upgrade / downgrade
+    // flows (a downgrade is scheduled at period end and asks first).
+    async choosePlan({ planType, interval }) {
+      this.selectedInterval = interval;
+      const plan = this.plans.find((p) => p.planType === planType);
+      if (plan) await this.handlePlanAction(plan);
     },
 
     async handlePlanAction(plan) {
@@ -1203,62 +1109,6 @@ body.dark .billing-section {
 }
 
 /* Billing Toggle */
-.billing-toggle {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 16px;
-  padding: 4px;
-  background: var(--color-darker-0);
-  border-radius: 8px;
-  width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-body.dark .billing-toggle {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.toggle-option {
-  padding: 8px 20px;
-  border: none;
-  background: transparent;
-  color: var(--color-light-med-navy);
-  font-size: 0.85em;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.3s ease;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.toggle-option:hover {
-  color: var(--color-primary);
-}
-
-.toggle-option.active {
-  background: var(--color-primary);
-  color: var(--text-on-fill);
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
-}
-
-.save-badge {
-  background: rgba(var(--yellow-rgb), 0.9);
-  color: var(--text-on-fill);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.75em;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
-
-.toggle-option.active .save-badge {
-  background: var(--color-yellow);
-}
 
 /* Subscription Management */
 .subscription-row {
@@ -1396,231 +1246,6 @@ body.dark .billing-toggle {
   scrollbar-width: thin !important;
   border-radius: 12px;
   border: 1px solid var(--terminal-border-color);
-}
-
-.comparison-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: transparent;
-}
-
-.comparison-table thead tr {
-  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.05), rgba(var(--primary-rgb), 0.02));
-}
-
-.comparison-table th {
-  padding: 16px 12px;
-  text-align: center;
-  vertical-align: middle;
-  border-right: 1px solid var(--terminal-border-color);
-  border-bottom: 2px solid var(--terminal-border-color);
-  position: relative;
-}
-
-.comparison-table th:last-child {
-  border-right: none;
-}
-
-.comparison-table th.feature-column {
-  text-align: left;
-  color: var(--color-primary);
-  font-weight: 700;
-  font-size: 0.8em;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  width: 180px;
-  min-width: 180px;
-}
-
-.plan-header-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  position: relative;
-  min-height: 120px;
-}
-
-.popular-badge {
-  position: absolute;
-  top: -10px;
-  background: var(--color-primary);
-  color: var(--on-fill-accent);
-  padding: 2px 8px 0;
-  border-radius: 8px;
-  font-size: 0.6em;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  z-index: -1;
-}
-
-.plan-icon {
-  font-size: 1.6em;
-}
-
-.plan-name {
-  color: var(--color-primary);
-  font-size: 0.85em;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin: 0;
-}
-
-.plan-price {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-
-.original-price {
-  color: var(--color-med-navy);
-  font-size: 0.7em;
-  text-decoration: line-through;
-  opacity: 0.6;
-  font-family: var(--font-family-mono);
-}
-
-.current-price {
-  color: var(--color-light-med-navy);
-  font-size: 0.95em;
-  font-weight: 600;
-  font-family: var(--font-family-mono);
-}
-
-.plan-tagline {
-  color: var(--color-light-med-navy);
-  font-size: 0.7em;
-  opacity: 0.7;
-}
-
-.feature-row {
-  border-bottom: 1px solid var(--terminal-border-color);
-  transition: background-color 0.2s ease;
-}
-
-.feature-row:hover {
-  background: rgba(var(--primary-rgb), 0.03);
-}
-
-.feature-name {
-  padding: 10px 12px;
-  color: var(--color-light-med-navy);
-  font-weight: 500;
-  font-size: 0.8em;
-  text-align: left;
-  vertical-align: middle;
-  border-right: 1px solid var(--terminal-border-color);
-}
-
-.feature-cell {
-  padding: 8px 12px;
-  text-align: center;
-  vertical-align: middle;
-  border-right: 1px solid var(--terminal-border-color);
-}
-
-.feature-cell:last-child {
-  border-right: none;
-}
-
-.feature-check {
-  font-size: 1.1em;
-  font-weight: 700;
-  color: var(--color-med-navy);
-  opacity: 0.3;
-}
-
-.feature-check.included {
-  color: var(--color-primary);
-  opacity: 1;
-}
-
-.feature-detail {
-  display: inline-block;
-  margin-left: 4px;
-  font-size: 0.7em;
-  font-weight: 500;
-  color: var(--color-light-med-navy);
-  opacity: 0.8;
-  white-space: nowrap;
-}
-
-.action-row {
-  border-top: 2px solid var(--terminal-border-color);
-}
-
-.action-row td {
-  padding: 14px 12px;
-  border-right: 1px solid var(--terminal-border-color);
-}
-
-.action-row td:first-child {
-  padding: 0;
-}
-
-.action-row td:last-child {
-  border-right: none;
-}
-
-.plan-button {
-  margin: 0;
-  padding: 12px 16px;
-  border: 2px solid transparent;
-  border-radius: 8px;
-  font-size: 0.8em;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  width: 100%;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.plan-button.community-core,
-.plan-button.personal-pro,
-.plan-button.business-pro,
-.plan-button.enterprise {
-  background: rgba(var(--primary-rgb), 0.05);
-  color: var(--color-text);
-  border-color: var(--color-primary);
-}
-
-.plan-button.community-core:hover:not(:disabled),
-.plan-button.personal-pro:hover:not(:disabled),
-.plan-button.business-pro:hover:not(:disabled),
-.plan-button.enterprise:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.4);
-  filter: brightness(1.1);
-}
-
-.plan-button.current-plan-button {
-  background: var(--color-lighter-0);
-  color: var(--color-text);
-  border: none;
-  border-color: var(--color-primary);
-  cursor: not-allowed;
-  opacity: 0.8;
-  font-weight: 700;
-}
-
-.plan-button.current-plan-button:hover {
-  transform: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.plan-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.8;
 }
 
 /* Responsive Design */
@@ -2107,5 +1732,22 @@ body.dark .scheduled-change-notice.upgrade-notice {
   .ribbon-icon {
     font-size: 1em;
   }
+}
+
+.enterprise-note {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.enterprise-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-green);
+  font: inherit;
+  cursor: pointer;
+}
+.enterprise-link:hover {
+  text-decoration: underline;
 }
 </style>
