@@ -1,7 +1,8 @@
 import { accountModelPair } from './ai/accountModel.js';
 import { createChatTransport } from './orchestrator/chatTransport.js';
 import { admitConversationWork } from './orchestrator/conversationWorkRegistry.js';
-import { capToolResult } from './orchestrator/toolResultCap.js';
+import { capToolResult, toolResultCapFor } from './orchestrator/toolResultCap.js';
+import { ageToolResults } from './orchestrator/toolResultAging.js';
 import { userMessageText } from './orchestrator/taskMemory.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
@@ -73,7 +74,8 @@ import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
-import { loadConversationState, saveConversationState, serializeConversationState, reviveConversationState } from './orchestrator/conversationStateStore.js';
+import { loadConversationState, saveConversationState, serializeConversationState, reviveConversationState, loadStoredTranscript } from './orchestrator/conversationStateStore.js';
+import { rehydrateHistory, canRehydrateFor } from './orchestrator/historyRehydration.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollowupConfig.js';
 import UserModel from '../models/UserModel.js';
@@ -726,6 +728,19 @@ async function processUploadedFiles(files, conversationId) {
  * Universal chat handler that replaces all the duplicate chat handlers
  * Supports: orchestrator, agent, workflow, tool, goal, and suggestions
  */
+/**
+ * The provider transcript the previous turn of this conversation ended with,
+ * or null. The in-memory copy is free and authoritative; the persisted log
+ * covers a backend restart. A context held for another user is never used,
+ * and in that case the log is not consulted either.
+ */
+async function storedTranscriptFor(priorContext, conversationId, userId) {
+  if (Array.isArray(priorContext?.messages) && priorContext.messages.length > 0) {
+    return priorContext.userId === userId ? priorContext.messages : null;
+  }
+  return loadStoredTranscript(conversationId, userId);
+}
+
 async function universalChatHandler(req, res, context = {}) {
   const originClientId = req?.headers?.['x-agnt-client-id'] || null;
   const chatType = detectChatType(req, context);
@@ -1503,6 +1518,14 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // changes the tool array, which rewrites the whole cached prefix.
     if (priorContext._toolLoadingMode) {
       conversationContext._toolLoadingMode = priorContext._toolLoadingMode;
+      // Absent on conversations that began before profiles existed: those
+      // were built with the full surface and must keep it.
+      conversationContext._residentProfile = priorContext._residentProfile || 'full';
+    }
+    // Tool results already aged out of the request. Replayed so every request
+    // stubs the same results and the cached prefix holds (toolResultAging.js).
+    if (Array.isArray(priorContext._agedToolCallIds)) {
+      conversationContext._agedToolCallIds = [...priorContext._agedToolCallIds];
     }
     // Prior turn's prompt/tool fingerprints so the manifest can report whether
     // the cached prefix actually survived into this turn.
@@ -1673,9 +1696,22 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     // Choose the tool-loading mode once, on a conversation's first turn, from
     // what the primary transport supports. A conversation that already has
     // turns keeps loading tools the way its cached prefix was built.
+    //
+    // NOTE: `messages` is not built until further down, so `hasPriorTurns` is
+    // always false here and every conversation WITHOUT stored state chooses
+    // fresh. That is the correct outcome, not an accident to fix: state is
+    // restored from memory or disk for 24h (conversationStateStore), the
+    // provider cache lives 1h, so a conversation with no state has no cached
+    // prefix left to protect and should get the best mode available.
+    //
+    // The resident-surface profile is chosen with the mode and frozen with it:
+    // a conversation choosing deferred gets the lean surface
+    // (DEFERRED_MODE_RESIDENT_TOOLS); one restored with a mode keeps the
+    // surface its cached prefix was built with (see the restore block).
     if (!conversationContext._toolLoadingMode) {
       const hasPriorTurns = messages.some((m) => m?.role === 'assistant');
       conversationContext._toolLoadingMode = hasPriorTurns ? 'legacy' : chooseToolLoadingMode(adapter);
+      conversationContext._residentProfile = conversationContext._toolLoadingMode === 'deferred' ? 'lean' : 'full';
     }
 
     // Get tool schemas for this chat type
@@ -1810,6 +1846,20 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
         tool_call_id: msg.tool_call_id,
       }));
 
+    // The client rebuilt this history from its UI, which drops thinking
+    // blocks, re-serializes tool calls and caps tool results. Tool rounds the
+    // provider has already seen are replaced with the server's own copy, so
+    // the cached prefix survives into this turn (historyRehydration.js).
+    // Same provider and model only: native blocks belong to their transport.
+    if (!preparedHistory && canRehydrateFor(priorContext?._cacheRoundState, normalizedProvider, model)) {
+      const storedTranscript = await storedTranscriptFor(priorContext, conversationId, userId);
+      const rehydrated = rehydrateHistory(messages, storedTranscript);
+      if (rehydrated.roundsRestored > 0 || rehydrated.userMessagesRestored > 0) {
+        messages = rehydrated.messages;
+        console.log(`[HistoryRehydration] ${conversationId}: restored ${rehydrated.roundsRestored} tool round(s), ${rehydrated.userMessagesRestored} user message(s) from the stored transcript`);
+      }
+    }
+
     // Broadcast user message to all connected tabs (real-time sync)
     if (!preparedHistory && userId && runtime.broadcast && messages.length > 0) {
       const lastUserMessage = messages[messages.length - 1];
@@ -1848,12 +1898,15 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
         `${lines.join('\n')}\n[/ATTACHED FILES]\n\n`;
     }
 
-    // Add file context (and attachments block) to the first user message if files were uploaded.
-    // Images are handled separately via vision API.
+    // Add file context (and attachments block) to the user message the files
+    // were uploaded WITH: the latest one. It used to go to the first user
+    // message of the conversation, which both misattributed a later upload to
+    // turn 1 and rewrote the oldest message — invalidating the entire cached
+    // history. Images are handled separately via vision API.
     if (attachmentsBlock || fileContext.trim()) {
-      const firstUserMsgIndex = messages.findIndex((m) => m.role === 'user');
-      if (firstUserMsgIndex !== -1) {
-        messages[firstUserMsgIndex].content = `${attachmentsBlock}${fileContext}\n\n${messages[firstUserMsgIndex].content}`;
+      const uploadTurnIndex = messages.findLastIndex((m) => m.role === 'user');
+      if (uploadTurnIndex !== -1) {
+        messages[uploadTurnIndex].content = `${attachmentsBlock}${fileContext}\n\n${messages[uploadTurnIndex].content}`;
       }
     }
 
@@ -2765,7 +2818,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // query_data reads it and the model gets a shortened view plus the
           // reference; nothing is dropped and the tool's own success/error
           // verdict is kept (#115). See orchestrator/toolResultCap.js.
-          const MAX_TOOL_RESULT_CHARS = toolOutputCap; // user-tunable; default 100000 (~28k tokens)
+          // Reference-material tools get a 16k view; verbatim tools keep the
+          // user's cap (toolResultCap.js REFERENCE_VIEW_CHARS).
+          const MAX_TOOL_RESULT_CHARS = toolResultCapFor(functionName, toolOutputCap);
           if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
             const originalSize = functionResponseContent.length;
             functionResponseContent = capToolResult(functionResponseContent, {
@@ -3075,6 +3130,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
       // Rendered for THIS tier's transport (deferredTools.js), then stamped
       // after failover re-pointing so the fingerprint names the real target.
+      messages = ageToolResults(messages, conversationContext, { summarize: generateDataSummary }); // request copy (toolResultAging.js)
       const wire = prepareTierRequest(adapter.deferredToolStyle?.() || null, { tools, messages, catalog: conversationContext._deferredToolCatalog });
       cacheRounds.stamp({ provider: normalizedProvider, model, messages: wire.messages, tools: wire.fingerprintTools });
       return adapter.callStream(

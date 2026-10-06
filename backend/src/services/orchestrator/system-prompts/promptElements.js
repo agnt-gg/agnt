@@ -106,6 +106,64 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
 ];
 
 /**
+ * The resident tool surface for a DEFERRED-mode conversation.
+ *
+ * ORCHESTRATOR_RESIDENT_GROUPS above is right for LEGACY transports, where a
+ * discovery appends to the tool array and rewrites the cached prefix. In
+ * deferred mode (deferredTools.js: Claude 4.5+, GPT-5.4+ Responses) that
+ * premise is false — a discovery lands in the message history and the prefix
+ * is untouched (measured 16,007 of 16,011 read after a discovery) — so the
+ * floor is pure cost: 26,928 tokens on every request, 39 of its 105 tools
+ * never called in 30 days.
+ *
+ * This set is what the measured usage says is needed on turn 1:
+ *   - every resident tool with >= 100 calls in the 30 days to 2026-10-06
+ *     (together 99.1% of all calls to resident tools);
+ *   - the tools the system prompt itself instructs (memory and history,
+ *     mention_agent for group chat, start_chat for Main-chat delegation).
+ * Everything else is still permitted and still one discover_tools call away,
+ * delivered as deferred definitions at no prefix cost.
+ *
+ * Only conversations that START in deferred mode use it, and the choice is
+ * frozen with the conversation (see chatConfigs._residentProfile), so no
+ * conversation's tool array ever changes mid-flight. Legacy transports keep
+ * the full floor and behave exactly as before.
+ */
+export const DEFERRED_MODE_RESIDENT_TOOLS = Object.freeze([
+  'discover_tools',
+  // Execution and files: 81% of all calls.
+  'execute_shell_command',
+  'execute_javascript_code',
+  'read_file',
+  'edit_file',
+  'write_file',
+  'grep_files',
+  'glob_files',
+  'list_files',
+  'file_system_operation',
+  'query_data',
+  // Research and media.
+  'web_search',
+  'web_scrape',
+  'browser',
+  'analyze_image',
+  'generate_image',
+  // Platform the prompt depends on.
+  'activate_skill',
+  'get_agnt_api',
+  'agnt_auth',
+  'mention_agent',
+  'start_chat',
+  // Memory and history (instructed by the HISTORY AND MEMORY section).
+  'save_agent_memory',
+  'get_agent_memories',
+  'record_memory_use',
+  'recall',
+  'list_recent',
+  'get_trace',
+]);
+
+/**
  * Compute the gate inputs for a turn.
  *
  * NOTE THE SIGNATURE. It takes the resolved tool schemas, the frozen per-user

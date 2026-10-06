@@ -14,6 +14,30 @@ class SkillModel {
     });
   }
 
+  /**
+   * How often, and how recently, this user activated each skill since `since`
+   * (ISO string), for the skills catalog's featured tier. Starts from
+   * agent_executions, which is indexed on (user_id, start_time);
+   * agent_tool_executions is reached through its execution_id index.
+   * @returns {Promise<Array<{name: string, count: number, last: string}>>}
+   */
+  static activationStats(userId, since) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT json_extract(t.input, '$.skill_name') AS name, COUNT(*) AS count, MAX(a.start_time) AS last
+           FROM agent_executions a
+           JOIN agent_tool_executions t ON t.execution_id = a.id
+          WHERE a.user_id = ? AND a.start_time >= ? AND t.tool_name = 'activate_skill'
+          GROUP BY name`,
+        [userId, since],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve((rows || []).filter((row) => typeof row.name === 'string' && row.name));
+        }
+      );
+    });
+  }
+
   static findById(id) {
     return new Promise((resolve, reject) => {
       db.get(`SELECT * FROM skills WHERE id = ?`, [id], (err, row) => {

@@ -69,6 +69,26 @@ export async function importSkillFromMd(content, userId, options = {}) {
   return { id, slug, warnings: parsed.warnings || [] };
 }
 
+/**
+ * Case- and punctuation-insensitive skill identity: "WebGPU Three.js TSL" ===
+ * "webgpu-threejs-tsl". The plugin namespace is kept ("a/x" !== "b/x"): two
+ * plugins may ship different skills under one leaf name.
+ */
+export function normalizeSkillKey(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9/]+/g, '');
+}
+
+/** First occurrence wins: discovery lists filesystem skills before DB copies. */
+function dedupeSkills(skills) {
+  const seen = new Set();
+  return skills.filter((s) => {
+    const key = normalizeSkillKey(s.name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 class SkillService {
   /**
    * Sanitize skill name: trim whitespace
@@ -89,23 +109,87 @@ class SkillService {
    *   (token saving; steers the model to the successor).
    * - depends-on relations surface as a "[needs: ...]" suffix so the model
    *   activates prerequisites in one shot.
+   * Two tiers when `featured` is given: featured skills keep their gist line,
+   * the rest are listed by name only (activate_skill's `search` describes
+   * them on demand). Without `featured`, every skill gets a gist, as before.
+   *
+   * Duplicates are dropped by normalized name: the same skill installed on
+   * disk and imported into the DB ("webgpu-threejs-tsl" / "WebGPU Three.js
+   * TSL") was listed twice.
    * @param {Array<{name: string, description: string, source?: string, metadata?: object|string}>} skills
+   * @param {{featured?: Set<string>|null}} [options] normalized names (see normalizeSkillKey)
    */
-  static buildSkillCatalog(skills) {
+  static buildSkillCatalog(skills, { featured = null } = {}) {
     if (!skills || skills.length === 0) return '';
 
-    const { entries: visible } = filterSupersededEntries(skills.filter(isDefaultSkill));
+    const { entries: visible } = filterSupersededEntries(dedupeSkills(skills.filter(isDefaultSkill)));
     if (visible.length === 0) return '';
 
+    const isFeatured = (s) => !featured || featured.has(normalizeSkillKey(s.name));
     const entries = visible
+      .filter(isFeatured)
       .map((s) => {
         const { dependsOn } = extractRelations(s.metadata);
         const needs = dependsOn.length > 0 ? ` [needs: ${dependsOn.join(', ')}]` : '';
         return `- ${s.name}: ${skillCatalogGist(s.description)}${needs}`;
       })
       .join('\n');
+    const others = visible.filter((s) => !isFeatured(s)).map((s) => s.name);
+    const otherLine = others.length > 0
+      ? `\nAlso installed (name only; call activate_skill with "search" to see what fits, or with the name to load one): ${others.join('; ')}`
+      : '';
 
-    return `<available-skills>\n${entries}\n</available-skills>`;
+    return `<available-skills>\n${entries}${otherLine}\n</available-skills>`;
+  }
+
+  /**
+   * Every skill the catalog may list for this user: filesystem-discovered
+   * first, then the user's DB skills not already discovered. One source for
+   * both the catalog and activate_skill's search, so they can never disagree.
+   * @returns {Promise<Array<{name: string, description: string, source?: string, metadata?: any}>>}
+   */
+  static async collectCatalogEntries(userId) {
+    const entries = [];
+    const seenNames = new Set();
+    try {
+      const SkillDiscoveryService = (await import('./SkillDiscoveryService.js')).default;
+      if (SkillDiscoveryService.initialized) {
+        for (const ds of SkillDiscoveryService.getSkillCatalog()) {
+          entries.push(ds);
+          seenNames.add(ds.name);
+        }
+      }
+    } catch {
+      // Discovery service may not be initialized.
+    }
+    if (userId) {
+      for (const s of await SkillModel.findAll(userId)) {
+        const key = s.slug || s.name;
+        if (!seenNames.has(key)) {
+          entries.push({ name: key, description: s.description, source: 'database', metadata: s.metadata || null });
+          seenNames.add(key);
+        }
+      }
+    }
+    return entries;
+  }
+
+  /**
+   * Skills ranked against a free-text query, for activate_skill's search.
+   * Scores word overlap, weighting the name over the description.
+   * @returns {Array<{name: string, gist: string}>}
+   */
+  static searchSkills(skills, query, limit = 8) {
+    const terms = [...new Set(String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))];
+    if (terms.length === 0) return [];
+    const scored = dedupeSkills((skills || []).filter(isDefaultSkill)).map((s) => {
+      const name = String(s.name || '').toLowerCase();
+      const description = String(s.description || '').toLowerCase();
+      const score = terms.reduce((sum, t) => sum + (name.includes(t) ? 3 : 0) + (description.includes(t) ? 1 : 0), 0);
+      return { s, score };
+    }).filter((x) => x.score > 0);
+    scored.sort((a, b) => b.score - a.score || String(a.s.name).localeCompare(String(b.s.name)));
+    return scored.slice(0, limit).map(({ s }) => ({ name: s.name, gist: skillCatalogGist(s.description) }));
   }
 
   /**
@@ -113,8 +197,9 @@ class SkillService {
    */
   static buildSkillActivationInstructions() {
     return `SKILL ACTIVATION INSTRUCTIONS:
-You have skills available (listed above in <available-skills> as one-line gists). Each line is an abbreviated summary - a skill's full playbook loads only when activated.
-- When a user's request plausibly matches a skill's gist, call the activate_skill tool with the skill's name to load its full instructions. Activation is cheap - if unsure whether a skill applies, activate it and check rather than guessing.
+You have skills available (listed above in <available-skills>: one-line gists, then other installed skills by name). A skill's full playbook loads only when activated.
+- When a user's request plausibly matches a skill, call activate_skill with its name to load its full instructions. Activation is cheap - if unsure whether a skill applies, activate it and check rather than guessing.
+- If no listed gist fits but the task is specialized, call activate_skill with "search" (a few keywords) to find one before working without it.
 - Only activate skills that are relevant to the current task.
 - Once activated, follow the skill's instructions carefully.
 - You can activate multiple skills if needed for a complex task.
@@ -411,6 +496,8 @@ console.log('Skill Service Started...');
 // Named exports for static utility functions
 export const buildSkillsContext = SkillService.buildSkillsContext;
 export const buildSkillCatalog = SkillService.buildSkillCatalog;
+export const searchSkills = SkillService.searchSkills;
+export const collectCatalogEntries = SkillService.collectCatalogEntries;
 export const buildSkillActivationInstructions = SkillService.buildSkillActivationInstructions;
 
 export default new SkillService();

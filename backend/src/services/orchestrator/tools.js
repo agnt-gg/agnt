@@ -245,6 +245,15 @@ export async function resolveAnalyzeImageSource({
   };
 }
 
+/**
+ * activate_skill's search: the catalog lists rarely used skills by name only,
+ * so this is how the model learns what one does before loading it.
+ */
+async function searchInstalledSkills(query, userId) {
+  const { collectCatalogEntries, searchSkills } = await import('../SkillService.js');
+  return searchSkills(await collectCatalogEntries(userId), query);
+}
+
 export const TOOLS = {
   execute_javascript_code: {
     schema: {
@@ -4580,7 +4589,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'activate_skill',
         description:
-          'Activate a skill to load its full instructions into context. Call this when a user request matches a skill from the <available-skills> catalog. Returns the complete skill instructions and lists any bundled resources (scripts, references, assets).',
+          'Activate a skill to load its full instructions into context. Call this when a user request matches a skill from the <available-skills> catalog. Returns the complete skill instructions and lists any bundled resources (scripts, references, assets). With "search" instead, returns matching skill names and gists without activating anything.',
         parameters: {
           type: 'object',
           properties: {
@@ -4588,6 +4597,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'string',
               description: 'Skill name, or omit when using an exact skill_id.',
             },
+            search: { type: 'string', description: 'Keywords to find skills by name and description. Use alone; activates nothing.' },
             skill_id: { type: 'string', description: 'Exact database skill ID, preferred for linked procedures.' },
             allow_draft: { type: 'boolean', description: 'Explicitly load an unverified draft for review/testing, not as a trusted default.' },
             version_id: { type: 'string', description: 'Exact draft version to review/test; requires allow_draft.' },
@@ -4596,8 +4606,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ skill_name, skill_id, allow_draft = false, version_id }, authToken, context) => {
+    execute: async ({ skill_name, skill_id, allow_draft = false, version_id, search }, authToken, context) => {
       try {
+        if (typeof search === 'string' && search.trim()) {
+          if (skill_name || skill_id) throw new Error('Use search alone, or skill_name OR skill_id');
+          if (!context?.userId) throw new Error('User context required');
+          return JSON.stringify({ success: true, matches: await searchInstalledSkills(search, context.userId) });
+        }
         if ((!skill_name && !skill_id) || (skill_name && skill_id)) throw new Error('Use skill_name OR skill_id');
         if (version_id && (!skill_id || !allow_draft)) throw new Error('Draft version requires skill_id and allow_draft');
         if (!context?.userId) throw new Error('User context required');

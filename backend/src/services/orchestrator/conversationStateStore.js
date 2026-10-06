@@ -65,14 +65,20 @@ export const PERSISTED_STATE_KEYS = [
   { key: '_loadedToolNames', kind: 'set' },
   { key: '_pinnedToolNames', kind: 'value' },
   { key: '_toolOrder', kind: 'value' },
-  // Deferred vs legacy tool loading, frozen on turn 1 (see deferredTools.js).
+  // Deferred vs legacy tool loading, frozen on turn 1 (see deferredTools.js),
+  // and the resident surface chosen with it (promptElements
+  // DEFERRED_MODE_RESIDENT_TOOLS). Losing either changes the tool array.
   { key: '_toolLoadingMode', kind: 'value' },
+  { key: '_residentProfile', kind: 'value' },
   // Last request's content-free fingerprint, so the first request after a
   // restart is still attributed against it (see cacheRoundTracker.js).
   { key: '_cacheRoundState', kind: 'value' },
   // Compression watermark. Losing this re-cuts the history at a different
   // point, which moves the message prefix as well as the system block.
   { key: '_evictedUnits', kind: 'value' },
+  // Tool-result aging watermark (toolResultAging.js). Losing it un-stubs old
+  // results on the next request, which rewrites the prefix from the first.
+  { key: '_agedToolCallIds', kind: 'value' },
   // Learned estimator correction + the panel's prior-turn fingerprints.
   { key: '_estimateCalibration', kind: 'value' },
   { key: '_residualDrift', kind: 'value' },
@@ -235,6 +241,31 @@ export async function loadConversationState(conversationId) {
   }
 }
 
+/**
+ * The provider transcript the previous turn ended with, for history
+ * rehydration after a restart (the in-memory copy is preferred and free).
+ *
+ * Scoped by user: the conversation id arrives from the client, and a
+ * transcript must never be readable through someone else's id.
+ *
+ * @returns {Promise<Array<object>|null>} null when absent, unreadable or not an array.
+ */
+export async function loadStoredTranscript(conversationId, userId) {
+  if (!conversationId || typeof conversationId !== 'string' || !userId) return null;
+  try {
+    const row = await dbGet(
+      'SELECT full_history FROM conversation_logs WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+    if (!row?.full_history) return null;
+    const parsed = JSON.parse(row.full_history);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (err) {
+    console.error('[ConversationState] Transcript load failed, using client history:', err.message);
+    return null;
+  }
+}
+
 /** Drop rows for conversations that can no longer have a live cached prefix. */
 export async function pruneConversationState(maxAgeMs = STATE_MAX_AGE_MS) {
   const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
@@ -273,6 +304,7 @@ export function __resetConversationStateCache() {
 export default {
   saveConversationState,
   loadConversationState,
+  loadStoredTranscript,
   pruneConversationState,
   serializeConversationState,
   reviveConversationState,

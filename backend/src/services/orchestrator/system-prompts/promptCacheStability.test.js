@@ -193,8 +193,18 @@ describe('wiring contract', () => {
     expect(ORCH).toMatch(/conversationContext\._frozenPromptGates = priorContext\._frozenPromptGates/);
   });
 
-  it('chatConfigs seeds the resident groups into the surface', () => {
-    expect(CHAT).toMatch(/\.\.\.ORCHESTRATOR_RESIDENT_GROUPS/);
+  it('chatConfigs seeds the resident groups into the surface, except for a lean deferred conversation', () => {
+    // Legacy transports pay a full prefix rewrite per discovery, so they keep
+    // the floor. A conversation that STARTED deferred with the lean profile
+    // discovers for free and gets DEFERRED_MODE_RESIDENT_TOOLS instead.
+    expect(CHAT).toMatch(/\.\.\.\(leanSurface \? \[\] : ORCHESTRATOR_RESIDENT_GROUPS\)/);
+    expect(CHAT).toMatch(/const leanSurface = deferredMode && context\._residentProfile === 'lean';/);
+  });
+
+  it('the resident profile is chosen with the loading mode and frozen with it', () => {
+    expect(ORCH).toMatch(/conversationContext\._residentProfile = conversationContext\._toolLoadingMode === 'deferred' \? 'lean' : 'full';/);
+    // A conversation that predates profiles keeps the surface it was built with.
+    expect(ORCH).toMatch(/conversationContext\._residentProfile = priorContext\._residentProfile \|\| 'full';/);
   });
 
   it('discover_tools delivers late guidance in its result', () => {

@@ -8,6 +8,7 @@ import {
   buildGateInputs,
   resolveResidentElements,
   ORCHESTRATOR_RESIDENT_GROUPS,
+  DEFERRED_MODE_RESIDENT_TOOLS,
 } from './system-prompts/promptElements.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
@@ -52,37 +53,12 @@ async function loadSkillsCatalogSection(context) {
 
   let skillsCatalogSection = '';
   try {
-    const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
-    const catalogEntries = [];
-    const seenNames = new Set();
-
-    try {
-      const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
-      if (SkillDiscoveryService.initialized) {
-        const discovered = SkillDiscoveryService.getSkillCatalog();
-        for (const ds of discovered) {
-          catalogEntries.push(ds);
-          seenNames.add(ds.name);
-        }
-      }
-    } catch {
-      // Discovery service may not be initialized.
-    }
-
-    if (context.userId) {
-      const SkillModel = (await import('../../models/SkillModel.js')).default;
-      const dbSkills = await SkillModel.findAll(context.userId);
-      for (const s of dbSkills) {
-        const key = s.slug || s.name;
-        if (!seenNames.has(key)) {
-          catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database', metadata: s.metadata || null });
-          seenNames.add(key);
-        }
-      }
-    }
+    const { buildSkillCatalog, buildSkillActivationInstructions, collectCatalogEntries } = await import('../SkillService.js');
+    const catalogEntries = await collectCatalogEntries(context.userId);
 
     if (catalogEntries.length > 0) {
-      skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
+      const featured = await loadFeaturedSkillKeys(context.userId);
+      skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries, { featured }) + '\n\n' + buildSkillActivationInstructions() + '\n';
     }
   } catch (e) {
     console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
@@ -90,6 +66,44 @@ async function loadSkillsCatalogSection(context) {
 
   context._frozenSkillsCatalog = skillsCatalogSection;
   return skillsCatalogSection;
+}
+
+/**
+ * A skill keeps its gist line when it is part of this user's working set:
+ * activated FEATURED_MIN_USES times in the window, or at all very recently.
+ */
+const FEATURED_SKILL_WINDOW_DAYS = 90;
+const FEATURED_MIN_USES = 3;
+const FEATURED_RECENT_DAYS = 7;
+/**
+ * Below this many featured skills there is no usage signal worth trusting
+ * (a new install), so every skill keeps its gist, as before.
+ */
+const MIN_FEATURED_SKILLS = 20;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Normalized names of the skills this user actually works with, or null for
+ * "feature everything". Measured 2026-10-06: of 313 installed skills, 91 were
+ * activated 3+ times in 90 days. The rest are listed by name only and are
+ * findable with activate_skill search.
+ */
+async function loadFeaturedSkillKeys(userId) {
+  if (!userId) return null;
+  try {
+    const SkillModel = (await import('../../models/SkillModel.js')).default;
+    const { normalizeSkillKey } = await import('../SkillService.js');
+    const now = Date.now();
+    const stats = await SkillModel.activationStats(userId, new Date(now - FEATURED_SKILL_WINDOW_DAYS * DAY_MS).toISOString());
+    const recentCutoff = new Date(now - FEATURED_RECENT_DAYS * DAY_MS).toISOString();
+    const keys = new Set(stats
+      .filter((s) => s.count >= FEATURED_MIN_USES || String(s.last) >= recentCutoff)
+      .map((s) => normalizeSkillKey(s.name)));
+    return keys.size >= MIN_FEATURED_SKILLS ? keys : null;
+  } catch (e) {
+    console.warn('[chatConfigs] Skill usage unavailable, featuring every skill:', e.message);
+    return null;
+  }
 }
 
 async function loadFrozenMemorySection(context) {
@@ -784,6 +798,9 @@ async function getUnifiedToolSchemas(context) {
   // array (that rewrote the cached prefix); the model discovers them instead,
   // and discovery is free. Page-forced groups stay, as before.
   const deferredMode = context._toolLoadingMode === 'deferred';
+  // Lean only for a conversation that started deferred with the lean profile;
+  // see DEFERRED_MODE_RESIDENT_TOOLS for why the floor below does not apply.
+  const leanSurface = deferredMode && context._residentProfile === 'lean';
   const { matchedGroups } = deferredMode ? { matchedGroups: new Set() } : selectTools(allSchemas, latestUserMessage);
   const forcedGroups = getForcedToolGroups(context);
   const previousGroups = context._loadedToolGroups || new Set();
@@ -803,10 +820,11 @@ async function getUnifiedToolSchemas(context) {
   // gating in the first place.
   const allGroups = new Set([
     ...previousGroups,
-    ...ORCHESTRATOR_RESIDENT_GROUPS,
+    ...(leanSurface ? [] : ORCHESTRATOR_RESIDENT_GROUPS),
     ...matchedGroups,
     ...forcedGroups,
   ]);
+  const leanResident = leanSurface ? new Set(DEFERRED_MODE_RESIDENT_TOOLS) : null;
 
   const groupToolNames = new Set();
   // First group to contribute a tool is the one credited in the manifest.
@@ -831,6 +849,13 @@ async function getUnifiedToolSchemas(context) {
     // ceiling when it was resolved, so they survive this test by membership
     // rather than by exception.
     if (ceiling && !ceiling.has(name)) return false;
+    if (leanResident) {
+      // Lean: the measured core, plus whatever the page forces. DEFAULT_TOOLS
+      // and the universal set stay reachable as deferred definitions.
+      if (leanResident.has(name)) return true;
+      for (const fn of dynamicMatchers) if (fn(name)) return true;
+      return groupToolNames.has(name);
+    }
     if (DEFAULT_TOOLS.has(name)) return true;
     for (const fn of dynamicMatchers) if (fn(name)) return true;
     // UNIVERSAL_TOOLS ride along on the orchestrator/keyword path too —
