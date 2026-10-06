@@ -80,7 +80,7 @@ class ConversationRoleModel {
   static listUnreported() {
     return all(
       `SELECT r.output_id AS outputId, r.user_id AS userId, r.task_state AS taskState, r.created_at AS createdAt,
-              co.title AS title, co.content AS content, parent.conversation_id AS parentConversationId
+              co.title AS title, co.content AS content, co.conversation_id AS conversationId, parent.conversation_id AS parentConversationId
        FROM conversation_roles r
        JOIN content_outputs co ON co.id = r.output_id AND co.user_id = r.user_id
        LEFT JOIN content_outputs parent ON parent.id = r.parent_output_id AND parent.user_id = r.user_id

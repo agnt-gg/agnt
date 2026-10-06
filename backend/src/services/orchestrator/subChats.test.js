@@ -95,6 +95,9 @@ describe('startSubChat', () => {
     expect(calls.reports[0].message.content).toContain('Pricing research');
     expect(calls.reports[0].message.content).toContain('Done: found 3 competitors.');
     expect(calls.reports[0].message.content).toContain('Status: completed');
+    // Named by the id that opens the chat, never by its saved-row id.
+    expect(calls.reports[0].message.content).toContain(`conversation id ${result.conversationId}`);
+    expect(calls.reports[0].message.content).not.toContain(result.outputId);
     // running -> done (recorded while the slot was still held) -> reported.
     expect(calls.states.map((s) => s.state)).toEqual(['done', 'reported']);
     expect(calls.states[0].running).toEqual([true]);

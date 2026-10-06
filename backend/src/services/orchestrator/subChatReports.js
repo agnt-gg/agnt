@@ -52,8 +52,9 @@ function clip(text, max) {
   return text.length > max ? `${text.slice(0, max)}\n\n[…truncated — the full answer is in the sub-chat]` : text;
 }
 
-function describe({ title, outputId, outcome }, maxChars) {
-  return `Sub-chat: "${title}" (conversation id ${outputId})
+// The conversation id is what opens the chat; outputId is only its saved row.
+function describe({ title, conversationId, outcome }, maxChars) {
+  return `Sub-chat: "${title}"${conversationId ? ` (conversation id ${conversationId})` : ''}
 Status: ${outcome.ok ? 'completed' : 'failed'}${outcome.error ? `\nError: ${outcome.error}` : ''}
 
 Its final answer:
@@ -61,13 +62,13 @@ ${clip(outcome.content || '(none)', maxChars)}`;
 }
 
 /** The message the parent's AI receives when one sub-chat finishes. */
-export function buildReport({ title, outputId, outcome }) {
+export function buildReport({ title, conversationId, outcome }) {
   const status = outcome.ok ? 'finished' : 'finished with a problem';
   return {
     role: 'user',
     content: `[System: Sub-chat ${status}]
 
-${describe({ title, outputId, outcome }, MAX_REPORTED_CHARS)}
+${describe({ title, conversationId, outcome }, MAX_REPORTED_CHARS)}
 
 INSTRUCTIONS:
 You started this sub-chat to do work for the user. Tell the user, briefly and in your own words, what it ${outcome.ok ? 'found or did' : 'ran into'}. Name the sub-chat by its title so they can open it for the full detail. ${outcome.ok ? 'Do not repeat the whole answer.' : 'Do NOT claim success. Suggest a next step.'}`,
@@ -246,7 +247,7 @@ export async function recoverSubChatReports(deps, { now = Date.now() } = {}) {
     const outcome = row.taskState === 'done' && answer
       ? { ok: true, content: answer, error: null }
       : { ok: false, content: null, error: row.taskState === 'done' ? 'It finished, but its answer could not be read back.' : INTERRUPTED_ERROR };
-    summary.deliveries.push(queueReport(deps, { userId: row.userId, authToken, parentConversationId: row.parentConversationId, report: { title: row.title || 'Task', outputId: row.outputId, outcome } }));
+    summary.deliveries.push(queueReport(deps, { userId: row.userId, authToken, parentConversationId: row.parentConversationId, report: { title: row.title || 'Task', outputId: row.outputId, conversationId: row.conversationId, outcome } }));
     summary.queued++;
   }
   return summary;

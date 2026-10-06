@@ -73,6 +73,7 @@ describe('conversation_roles.task_state', () => {
     expect(Object.keys(byId).sort()).toEqual(['sub-done', 'sub-other', 'sub-running']);
     expect(byId['sub-running']).toMatchObject({ userId: USER, taskState: 'running', title: 'Long build', parentConversationId: 'conv-main-2' });
     expect(byId['sub-done'].content).toContain('Found 3.');
+    expect(byId['sub-done'].conversationId).toBe('conv-sub-2');
     // No parent: listed, so boot recovery can expire it.
     expect(byId['sub-other'].parentConversationId).toBe(null);
     expect(typeof byId['sub-running'].createdAt).toBe('string');

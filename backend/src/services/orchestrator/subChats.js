@@ -144,7 +144,7 @@ export async function startSubChat({ userId, authToken, parentConversationId, ti
     .finally(release)
     .then((outcome) => {
       if (!parentConversationId) return null;
-      return queueReport(deps, { userId, authToken, parentConversationId, report: { title: chatTitle, outputId, outcome } });
+      return queueReport(deps, { userId, authToken, parentConversationId, report: { title: chatTitle, outputId, conversationId, outcome } });
     })
     .catch((error) => console.error(`[SubChat] ${conversationId} report failed:`, error?.message || error));
 

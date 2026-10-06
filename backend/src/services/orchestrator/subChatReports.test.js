@@ -137,7 +137,7 @@ describe('recoverSubChatReports (boot)', () => {
   it('reports interrupted workers as failed and unreported finished ones with their saved answer', async () => {
     const rows = [
       { outputId: 'o-run', userId: 'u1', taskState: 'running', createdAt: sqlite(now - 60_000), title: 'Long build', content: transcript('half'), parentConversationId: 'main' },
-      { outputId: 'o-done', userId: 'u1', taskState: 'done', createdAt: sqlite(now - 60_000), title: 'Pricing', content: transcript('Found 3 competitors.'), parentConversationId: 'main' },
+      { outputId: 'o-done', userId: 'u1', taskState: 'done', createdAt: sqlite(now - 60_000), title: 'Pricing', content: transcript('Found 3 competitors.'), conversationId: 'conv-pricing', parentConversationId: 'main' },
     ];
     const { deps, calls } = makeDeps({ rows });
     const summary = await recoverSubChatReports(deps, { now });
@@ -147,6 +147,8 @@ describe('recoverSubChatReports (boot)', () => {
     const content = calls.turns[0].body.messages.at(-1).content;
     expect(content).toContain(INTERRUPTED_ERROR);
     expect(content).toContain('Found 3 competitors.');
+    expect(content).toContain('conversation id conv-pricing');
+    expect(content).not.toContain('o-done');
     expect(calls.texts[0].key).toBe(reportKey(['o-run', 'o-done']));
   });
 
