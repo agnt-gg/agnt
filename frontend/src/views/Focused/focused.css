@@ -1038,11 +1038,27 @@
   margin-left: 0;
 }
 
-/* The composer carries what the demo's did: attach, voice, send. The model
-   lives in Settings, tools in the chat's own choices; both remain in Studio. */
-.ui-focused .chat-screen-wrapper .chat-provider-button,
+/* The composer carries attach, model, voice and send. The model button names
+   the model THIS chat will use and opens the picker scoped to it: a pick pins
+   the chat (chat.aiByConv, persisted per conversation), even before its first
+   message. Hiding it left Focused users unable to tell or change what
+   answers them. Tools stay in the chat's own choices, and in Studio. */
 .ui-focused .chat-screen-wrapper .chat-tools-button {
   display: none;
+}
+
+/* The model button keeps its NAME. The composer collapses every label to an
+   icon below 900px (BaseScreen's @composer query), and Focused's composer is
+   always that narrow, so the button said nothing about what would answer.
+   The label already truncates itself (max-width + ellipsis); the button,
+   which that query also pins to a 36px circle, grows to hold it. */
+.ui-focused .chat-screen-wrapper .chat-provider-button .chat-provider-model {
+  display: inline-block;
+}
+
+.ui-focused .chat-screen-wrapper .input-line .chat-provider-button {
+  width: auto;
+  padding: 0 12px;
 }
 
 /* Steps, folded (MessageItem `.steps-folded`): one line per group. Only the
