@@ -25,6 +25,7 @@
           @open-app="(name) => emit('screen-change', 'PluginsScreen', { select: { kind: 'plugin', id: name } })"
           @open-widget="(id) => emit('screen-change', 'WidgetManagerScreen', { select: { kind: 'widget', id } })"
           @build-app="emit('screen-change', 'PluginsScreen')"
+          @open-market="emit('screen-change', 'MarketplaceScreen')"
           @add-account="openAddProviderModal"
         />
       </div>

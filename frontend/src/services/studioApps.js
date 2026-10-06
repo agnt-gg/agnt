@@ -14,7 +14,9 @@ export const titleFromSlug = (value) => text(value).replace(/[-_]+/g, ' ').repla
 /** Studio lists packages, not credentials. Focused keeps its existing account-grouped cards. */
 export function studioCatalog(installed = [], available = []) {
   const packages = new Map();
-  for (const row of list(available)) if (row.name) packages.set(row.name, { ...row, installed: false });
+  // onMarket: listed by the marketplace feed. It survives the installed merge
+  // below, so the Market tab shows a plugin whether or not you have it.
+  for (const row of list(available)) if (row.name) packages.set(row.name, { ...row, installed: false, onMarket: true });
   for (const row of list(installed)) if (row.name) packages.set(row.name, { ...packages.get(row.name), ...row, installed: true });
   return [...packages.values()].map((row) => {
     const groups = pluginContents(row);

@@ -122,3 +122,36 @@ describe('Studio Apps catalog and detail', () => {
     await wrapper.find('.apps-back').trigger('click'); expect(wrapper.findAll('.apps-card')).toHaveLength(2);
   });
 });
+
+describe('Market tab', () => {
+  const tabButton = (label) => wrapper.findAll('.apps-nav nav button').find((b) => b.text().startsWith(label));
+
+  it('lists every plugin on the Market, installed or not, with its count', async () => {
+    // A locally built plugin is installed but not on the Market.
+    setup({ installed: [available[1], { name: 'homemade', displayName: 'Homemade', category: 'utility' }] }); await flushPromises();
+    expect(tabButton('Market').text()).toBe('Market 2');
+    await tabButton('Market').trigger('click');
+    expect(wrapper.findAll('.apps-card').map((c) => c.attributes('data-app')).sort()).toEqual(['calculator', 'research']);
+    expect(wrapper.find('.apps-section-label h2').text()).toBe('On the Market');
+  });
+
+  it('an empty list links to the Marketplace, and Installed offers the Market tab', async () => {
+    setup({ installed: [] }); await flushPromises();
+    await tabButton('Installed').trigger('click');
+    expect(wrapper.text()).toContain('No plugins installed yet');
+    await wrapper.findAll('.apps-empty button').find((b) => b.text().startsWith('Browse 2 on the Market')).trigger('click');
+    expect(wrapper.findAll('.apps-card')).toHaveLength(2);
+    await tabButton('Installed').trigger('click');
+    await wrapper.find('[data-testid="open-marketplace"]').trigger('click');
+    expect(wrapper.emitted('open-market')).toHaveLength(1);
+  });
+
+  it('clearing a search keeps you on the tab you were on', async () => {
+    setup({ installed: [available[1]] }); await flushPromises();
+    await tabButton('Installed').trigger('click');
+    await wrapper.find('input').setValue('nothing-matches');
+    await wrapper.findAll('.apps-empty button').find((b) => b.text() === 'Clear filters').trigger('click');
+    expect(tabButton('Installed').classes()).toContain('active');
+    expect(wrapper.findAll('.apps-card')).toHaveLength(1);
+  });
+});

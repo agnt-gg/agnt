@@ -6,6 +6,7 @@
       <nav aria-label="Plugin library">
         <button type="button" :class="{ active: tab === 'explore' }" @click="switchTab('explore')">Explore</button>
         <button type="button" :class="{ active: tab === 'installed' }" @click="switchTab('installed')">Installed <span>{{ installedCount }}</span></button>
+        <button type="button" :class="{ active: tab === 'market' }" @click="switchTab('market')">Market <span>{{ marketCount }}</span></button>
       </nav>
       <div class="apps-nav-actions">
         <button type="button" @click="emit('build-app')"><AppsIcon name="plus" /> New plugin</button>
@@ -38,9 +39,18 @@
         <div class="feature-art" aria-hidden="true"><div class="feature-orbit"></div><div class="feature-sheet"><span class="eyebrow">YOUR NEXT CAPABILITY</span><span class="app-logo feature-logo"><SvgIcon :name="featured.icon || 'puzzle-piece'" /></span><strong>{{ featured.displayName }}</strong><div class="feature-lines"><i></i><i></i></div><span class="feature-chip">{{ composition(featured) }}</span></div><span class="feature-float"><AppsIcon name="plugin" /> Built for AGNT</span></div>
       </section>
 
-      <div class="apps-section-label"><h2>{{ tab === 'installed' ? 'Installed plugins' : category }}</h2><span>Pick a capability. Make it yours.</span></div>
+      <div class="apps-section-label"><h2>{{ sectionTitle }}</h2><span>{{ tab === 'market' ? 'Every plugin on the AGNT Market.' : 'Pick a capability. Make it yours.' }}</span></div>
       <p v-if="loading && !catalog.length" class="apps-empty" role="status">Loading plugins…</p>
-      <div v-else-if="!filtered.length" class="apps-empty"><AppsIcon name="search" /><h2>{{ query ? 'No matching plugins' : 'No plugins here yet' }}</h2><p>{{ query ? 'Try another name or category.' : 'Explore the catalog to add your first plugin.' }}</p><button type="button" class="apps-secondary" @click="resetFilters">{{ query ? 'Clear filters' : 'Explore plugins' }}</button></div>
+      <div v-else-if="!filtered.length" class="apps-empty">
+        <AppsIcon name="search" />
+        <h2>{{ query ? 'No matching plugins' : tab === 'installed' ? 'No plugins installed yet' : 'No plugins here yet' }}</h2>
+        <p>{{ query ? 'Try another name or category.' : 'Find one on the Market to add your first plugin.' }}</p>
+        <div class="apps-empty-actions">
+          <button v-if="query || category !== 'All plugins'" type="button" class="apps-secondary" @click="resetFilters">Clear filters</button>
+          <button v-else-if="tab !== 'market' && marketCount" type="button" class="apps-secondary" @click="switchTab('market')">Browse {{ marketCount }} on the Market</button>
+          <button type="button" class="apps-primary" data-testid="open-marketplace" @click="emit('open-market')">Open the Marketplace</button>
+        </div>
+      </div>
       <div v-else class="apps-grid">
         <article v-for="app in filtered" :key="app.name" class="apps-card" :data-app="app.name">
           <div class="card-top"><span class="app-logo"><SvgIcon :name="app.icon || 'puzzle-piece'" /></span><span v-if="app.installed" class="card-status"><AppsIcon name="check" /> Installed</span><span v-else class="card-type">{{ app.isPack ? 'Capability pack' : app.category }}</span></div>
@@ -96,7 +106,7 @@ import { studioCatalog, pluginContents, pluginConnections, installDisclosure, es
 
 // Undefined keeps Studio's local selection; Focused supplies a route-backed name (or null).
 const props = defineProps({ selectedPlugin: { type: String, default: undefined } });
-const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'select-app', 'close-app']);
+const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'select-app', 'close-app', 'open-market']);
 const store = useStore();
 const modal = ref(null);
 const query = ref('');
@@ -115,9 +125,13 @@ let detailRequest = 0;
 let alive = true;
 const catalog = computed(() => studioCatalog(store.getters['apps/installed'], store.getters['apps/available']));
 const installedCount = computed(() => catalog.value.filter((app) => app.installed).length);
+const marketCount = computed(() => catalog.value.filter((app) => app.onMarket).length);
+// Which plugins each tab lists, before category and search narrow it.
+const inTab = (app) => (tab.value === 'installed' ? app.installed : tab.value === 'market' ? app.onMarket : true);
+const sectionTitle = computed(() => (tab.value === 'installed' ? 'Installed plugins' : tab.value === 'market' ? `On the Market${category.value === 'All plugins' ? '' : ' · ' + category.value}` : category.value));
 const selected = computed(() => catalog.value.find((app) => app.name === selectedName.value));
 const categories = computed(() => ['All plugins', ...new Set(catalog.value.map((app) => app.category))]);
-const filtered = computed(() => catalog.value.filter((app) => (tab.value !== 'installed' || app.installed) && (category.value === 'All plugins' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
+const filtered = computed(() => catalog.value.filter((app) => inTab(app) && (category.value === 'All plugins' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
 const featured = computed(() => catalog.value.find((app) => app.isPack && !app.installed) || catalog.value.find((app) => app.isPack) || catalog.value.find((app) => !app.installed));
 const groups = computed(() => pluginContents(selected.value, assets.value));
 const capabilityCount = computed(() => groups.value.reduce((total, group) => total + group.items.length, 0));
@@ -133,7 +147,7 @@ function price(app) {
   return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';
 }
 function switchTab(value) { tab.value = value; closePlugin(); }
-function resetFilters() { query.value = ''; category.value = 'All plugins'; tab.value = 'explore'; }
+function resetFilters() { query.value = ''; category.value = 'All plugins'; }
 async function openPlugin(app) {
   selectedName.value = app.name;
   notice.value = '';
@@ -357,6 +371,7 @@ onBeforeUnmount(() => { alive = false; detailRequest++; });
 .apps-package dt { color: var(--text-secondary); }
 .apps-package dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; text-align: right; }
 .apps-empty { text-align: center; color: var(--text-secondary); padding: 45px 15px; }
+.apps-empty-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .apps-empty h2 { margin: 15px 0 8px; font-size: 24px; }
 .apps-notice { padding: 12px 16px; border: 1px solid var(--apps-border); background: var(--apps-tint); border-radius: 8px; color: var(--text-primary); font-size: 14px; }
 .apps-notice.error { border-color: var(--color-red); }

@@ -16,6 +16,7 @@
       @open-widget="(id) => nav.go({ page: 'library', tab: 'widgets', item: id })"
       @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
       @build-app="nav.studio('PluginsScreen')"
+      @open-market="nav.go({ page: 'market' })"
       @add-account="nav.studio('ConnectorsScreen', { section: 'oauth' })"
     />
   </section>
