@@ -1179,13 +1179,10 @@
   color: var(--text-secondary);
 }
 
-/* ── Market: a quiet storefront, not Studio's three-panel workbench ─────── */
-.ui-focused .focused-market {
-  max-width: none;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 40px max(24px, calc((100% - 1040px) / 2)) 64px;
-}
+/* ── Market: a quiet storefront, not Studio's three-panel workbench ───────
+   Width and gutters are .focused-page's, like every other page. It used to
+   cancel the page width and pad itself in to 1040px, so Market alone was
+   narrower than the rest. */
 .ui-focused .focused-market-head {
   display: flex;
   align-items: center;

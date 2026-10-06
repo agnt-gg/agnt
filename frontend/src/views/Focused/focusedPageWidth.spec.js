@@ -7,7 +7,7 @@
  * Chat keeps its reading column, which is a different rule entirely.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,9 +26,25 @@ describe('Focused page width', () => {
     expect(pageWidths[0][1]).toMatch(/max-width:\s*var\(--focused-page-width\)/);
   });
 
-  it('no Focused page class narrows itself with its own max-width', () => {
-    const narrowed = rules.filter(([selector, body]) => /\.focused-page\.focused-[\w-]+$|\.focused-(apps|editor)$/.test(selector) && /(^|;)\s*max-width\s*:\s*\d/.test(body));
-    expect(narrowed.map(([selector]) => selector)).toEqual([]);
+  // Every class that sits beside `focused-page` on a page root, read from the
+  // templates so a new page is covered without editing this list. Market used
+  // to cancel the width (max-width: none) and pad itself in to 1040px, which
+  // a max-width-only check missed.
+  const pageClasses = [...new Set(readdirSync(DIR).filter((f) => f.endsWith('.vue')).flatMap((f) =>
+    [...readFileSync(join(DIR, f), 'utf8').matchAll(/class="([^"]*)"/g)]
+      .map((m) => m[1].split(/\s+/))
+      .filter((tokens) => tokens.includes('focused-page')) // the exact token, not focused-page-search
+      .flat().filter((c) => /^focused-/.test(c) && c !== 'focused-page')))];
+
+  it('finds the page classes it guards', () => {
+    expect(pageClasses).toEqual(expect.arrayContaining(['focused-market', 'focused-apps']));
+  });
+
+  it('no Focused page sets its own width, max-width or gutters', () => {
+    const ownsLayout = rules.filter(([selector, body]) =>
+      selector.split(',').some((s) => pageClasses.some((c) => new RegExp(`\\.${c}$`).test(s.trim()))) &&
+      /(^|;)\s*(max-width|width|padding(-left|-right|-inline)?)\s*:/.test(body));
+    expect(ownsLayout.map(([selector]) => selector)).toEqual([]);
   });
 
   it('blocks span their page and column rows stretch their children', () => {
