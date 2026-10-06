@@ -526,7 +526,12 @@ export default {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* Exactly the width it is given. With content-box sizing the border was
+     added on top of 100% and the page scrolled sideways by 2px; min-width:0
+     stops long code or names from widening the flex item past its parent. */
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
