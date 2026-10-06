@@ -193,7 +193,38 @@ export function createCustomProviderIdResolver(fetchProviders, onError) {
  * first text model. Returns null if the provider exposes no text models
  * (caller should then skip the tier).
  */
+// Providers that borrow a local CLI login. Their real model catalogue is
+// fetched live from the CLI/proxy at runtime; the static list in
+// providerConfigs is a stale floor, not an authority. Observed 2026-10-06: a
+// fallback configured as Grok-Build/grok-4.7 (the ONLY model the live
+// grok-build catalogue offered) was silently run as grok-4.5 because the
+// static list still said ['grok-4.5'].
+const CLI_AUTH_SCHEMES = new Set([
+  'codex',
+  'claude-code',
+  'gemini-cli',
+  'antigravity',
+  'grok-build',
+  'cursor-cli',
+]);
+
+function isCliLoginProvider(provider) {
+  try {
+    const key = resolveProviderKey(provider);
+    if (!key) return false;
+    return CLI_AUTH_SCHEMES.has(getProviderConfig(key)?.authScheme);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveTierModel(provider, model) {
+  // A model the USER explicitly configured for a CLI-login provider is kept
+  // verbatim. If it is genuinely invalid the tier fails and the chain rolls
+  // to the next one — strictly better than silently running a model the user
+  // never chose. An UNSET model still falls through to the defaults below.
+  if (model && isCliLoginProvider(provider)) return model;
+
   let textModels = [];
   try {
     textModels = ProviderRegistry.getTextModels(provider) || [];

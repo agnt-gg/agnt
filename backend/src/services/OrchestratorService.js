@@ -3248,6 +3248,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       if (conversationId) {
         __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
       }
+      // Run history must name the tier that SERVED the turn, not the primary
+      // it was created with. Fire-and-forget: a trace write must never break
+      // the turn. On repeated failovers the last tier wins, which is correct.
+      if (agentExecutionId) {
+        AgentExecutionModel.setServedProvider(agentExecutionId, to.provider, to.model)
+          .catch((e) => console.warn('[Chat] Could not record served provider on execution:', e.message));
+      }
       sendEvent('provider_fallback', {
         from: { provider: from.provider, model: from.model },
         to: { provider: to.provider, model: to.model },
