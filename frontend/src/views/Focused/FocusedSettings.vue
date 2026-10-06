@@ -109,7 +109,7 @@
     <section class="focused-edit-block focused-usage">
       <div class="focused-edit-block-head">
         <h3>Usage</h3>
-        <span class="focused-edit-hint">Models, Search, Sandbox, Mail and Webhooks this month.</span>
+        <span class="focused-edit-hint">AGNT Flash and every hosted service, this month.</span>
       </div>
       <UsageManager />
     </section>
