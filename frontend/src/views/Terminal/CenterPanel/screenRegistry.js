@@ -37,9 +37,9 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // list stays on screen and you can move between them without a trip back
   // through the gear. Autonomy carries its own inline tab strip (see
   // Autonomy.vue), so its left panel was duplicate navigation.
-  // Right: the approval queue (AGNT One). `null` used to fall back to Chat's
-  // panel beside the policy screen.
-  LearningScreen: { leftPanel: 'SettingsPanel', rightPanel: false, input: false },
+  // Right: LearningPanel, the page's inspector — an overview when nothing is
+  // selected, the selected item's receipt and verbs when something is.
+  LearningScreen: { leftPanel: 'SettingsPanel', rightPanel: 'LearningPanel', input: false },
   // Chat opens with the inspector (right panel) collapsed: the thread is the
   // point, the inspector is on demand. A small toggle at the top-right of the
   // canvas expands it; the choice is remembered for THIS screen only.

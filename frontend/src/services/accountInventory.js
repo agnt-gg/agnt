@@ -22,6 +22,8 @@ export const HYDRATION = [
   ['widgetDefinitions/allDefinitions', 'widgetDefinitions/fetchDefinitions'],
   ['memory/agentMemories', 'memory/fetchAllMemories'],
   ['insights/allInsights', 'insights/fetchInsights'],
+  // The escalation queue behind "N actions waiting for you": its own query.
+  ['insights/escalatedInsights', 'insights/fetchEscalated'],
   ['executionHistory/getExecutions', 'executionHistory/fetchExecutions'],
   ['contentOutputs/outputs', 'contentOutputs/fetchOutputs', { limit: 1, offset: 0, loadAll: false, force: true }],
 ];

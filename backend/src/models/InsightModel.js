@@ -45,9 +45,52 @@ class InsightModel {
   }
 
   /**
+   * Find one insight only if it belongs to `userId`. Every per-insight route
+   * reads through this, so an id from another account is simply not found.
+   */
+  static findOwned(id, userId) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT * FROM insights WHERE id = ? AND user_id = ?', [id, userId], (err, row) => {
+        if (err) reject(err);
+        else {
+          if (row) {
+            row.source_context = row.source_context ? JSON.parse(row.source_context) : null;
+            row.evidence = row.evidence ? JSON.parse(row.evidence) : null;
+            row.applied_result = row.applied_result ? JSON.parse(row.applied_result) : null;
+          }
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
+  /**
+   * Reject escalated insights that are still waiting for the user, in one
+   * statement. `ids` null means every one of them; otherwise only those ids
+   * (anything not owned, not pending or not escalated is left untouched).
+   * Resolves to the number of rows rejected.
+   */
+  static rejectEscalated(userId, ids = null) {
+    if (Array.isArray(ids) && ids.length === 0) return Promise.resolve(0);
+    let query = `UPDATE insights SET status = 'rejected'
+                  WHERE user_id = ? AND status = 'pending' AND autonomy_decision = 'escalate'`;
+    const params = [userId];
+    if (Array.isArray(ids)) {
+      query += ` AND id IN (${ids.map(() => '?').join(',')})`;
+      params.push(...ids);
+    }
+    return new Promise((resolve, reject) => {
+      db.run(query, params, function (err) {
+        if (err) reject(err);
+        else resolve(this.changes);
+      });
+    });
+  }
+
+  /**
    * Find all insights for a user, with optional filters.
    */
-  static findByUserId(userId, { targetType, targetId, status, category, limit = 1000 } = {}) {
+  static findByUserId(userId, { targetType, targetId, status, category, autonomyDecision, limit = 1000 } = {}) {
     let query = 'SELECT * FROM insights WHERE user_id = ?';
     const params = [userId];
 
@@ -55,6 +98,9 @@ class InsightModel {
     if (targetId) { query += ' AND target_id = ?'; params.push(targetId); }
     if (status) { query += ' AND status = ?'; params.push(status); }
     if (category) { query += ' AND category = ?'; params.push(category); }
+    // In SQL, before LIMIT: filtering after it made the escalation count depend
+    // on how big a page the caller happened to ask for.
+    if (autonomyDecision) { query += ' AND autonomy_decision = ?'; params.push(autonomyDecision); }
 
     query += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);

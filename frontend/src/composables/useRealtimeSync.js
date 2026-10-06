@@ -735,8 +735,8 @@ export function useRealtimeSync() {
     // Autonomy router events
     socket.on('evolution:insight_escalated', (data) => {
       console.log('[Realtime] Insight escalated:', data);
-      // Pull a fresh page of pending insights so the inbox count + escalation list update.
-      store.dispatch('insights/fetchInsights', { status: 'pending', limit: 200 }).catch(() => {});
+      // Reload the escalation queue so the count and the Learning list update.
+      store.dispatch('insights/fetchEscalated').catch(() => {});
       store.dispatch('insights/fetchStats').catch(() => {});
       window.dispatchEvent(new CustomEvent('autonomy-escalated', { detail: data }));
     });

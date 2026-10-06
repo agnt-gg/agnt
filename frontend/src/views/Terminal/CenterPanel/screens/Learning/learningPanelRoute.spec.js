@@ -37,7 +37,7 @@ describe('a Settings nav click on the Learning page', () => {
 
   it('Learning forwards the section, and its screen-change keeps the options', () => {
     const src = readFileSync(join(DIR, 'Learning.vue'), 'utf8');
-    expect(src).toMatch(/learningPanelRoute\(action,payload\)/);
+    expect(src).toMatch(/learningPanelRoute\(action,\s*payload\)/);
     expect(src).toMatch(/@screen-change="\(screen, opts\) => \$emit\('screen-change', screen, opts\)"/);
   });
 });

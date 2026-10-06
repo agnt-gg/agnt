@@ -53,7 +53,7 @@ const ALL_RIGHT_PANELS = [
   'TracesPanel', 'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
   'WidgetForgePanel', 'GoalsPanel', 'FileTreePanel', 'NewsPanel',
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
-  'MemoryPanel', 'SecurityActivityPanel', 'DashboardPanel', 'AutonomyPanel',
+  'MemoryPanel', 'SecurityActivityPanel', 'DashboardPanel', 'AutonomyPanel', 'LearningPanel',
 ];
 let panelsPreloaded = false;
 const preloadPanels = () => {

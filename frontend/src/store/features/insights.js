@@ -10,6 +10,10 @@ export default {
   namespaced: true,
   state: {
     insights: [],
+    // The escalation queue: pending insights the autonomy router handed to the
+    // user. Its own list, loaded by its own query, so the "waiting for you"
+    // count never depends on which page of `insights` some screen fetched last.
+    escalated: [],
     stats: null,
     targetInsights: [],
     sourceInsights: [],
@@ -27,10 +31,20 @@ export default {
     SET_EVOLUTION_SETTINGS(state, settings) { state.evolutionSettings = settings; },
     SET_LOADING(state, val) { state.isLoading = val; },
     SET_ERROR(state, err) { state.error = err; },
-    REMOVE_INSIGHT(state, id) { state.insights = state.insights.filter(i => i.id !== id); },
+    REMOVE_INSIGHT(state, id) {
+      state.insights = state.insights.filter(i => i.id !== id);
+      state.escalated = state.escalated.filter(i => i.id !== id);
+    },
+    SET_ESCALATED(state, insights) { state.escalated = insights || []; },
+    /** Drop ids from the queue once they are no longer waiting. */
+    DEQUEUE_ESCALATED(state, ids) {
+      const gone = new Set(ids);
+      state.escalated = state.escalated.filter(i => !gone.has(i.id));
+    },
     UPDATE_INSIGHT_STATUS(state, { id, status }) {
       const insight = state.insights.find(i => i.id === id);
       if (insight) insight.status = status;
+      if (status !== 'pending') state.escalated = state.escalated.filter(i => i.id !== id);
     },
   },
   actions: {
@@ -56,6 +70,55 @@ export default {
       } finally {
         commit('SET_LOADING', false);
       }
+    },
+
+    // The whole escalation queue, filtered server-side.
+    async fetchEscalated({ commit }) {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/insights?status=pending&autonomyDecision=escalate&limit=5000`, {
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      commit('SET_ESCALATED', data.insights);
+      return data.insights;
+    },
+
+    /**
+     * Accept one batch (at most 50) of waiting insights. Applied and skipped
+     * ids leave the queue; failed ones stay so they can be retried or rejected.
+     * Resolves to the server's { applied, skipped, failed }.
+     */
+    async acceptEscalated({ commit, rootState }, ids) {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/insights/escalated/apply`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ids,
+          provider: rootState.aiProvider?.selectedProvider || null,
+          model: rootState.aiProvider?.selectedModel || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      commit('DEQUEUE_ESCALATED', [...data.applied, ...data.skipped]);
+      return data;
+    },
+
+    /** Reject the given waiting insights, or every one of them when ids is null. */
+    async rejectEscalated({ commit, state, dispatch }, ids = null) {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/insights/escalated/reject`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(ids ? { ids } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      commit('DEQUEUE_ESCALATED', ids || state.escalated.map(i => i.id));
+      dispatch('fetchStats');
+      return data.rejected;
     },
 
     async fetchStats({ commit }) {
@@ -355,8 +418,8 @@ export default {
     pendingInsights: state => state.insights.filter(i => i.status === 'pending'),
     pendingCount: state => state.stats?.statusCounts?.pending || 0,
     insightsByTarget: state => (targetType) => state.insights.filter(i => i.target_type === targetType),
-    // Escalation inbox view
-    escalatedInsights: state => state.insights.filter(i => i.autonomy_decision === 'escalate' && i.status === 'pending'),
+    // Escalation inbox: its own server-filtered list (see state.escalated).
+    escalatedInsights: state => state.escalated,
     autonomySettings: state => state.evolutionSettings?.autonomy || null,
   },
 };

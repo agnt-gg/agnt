@@ -73,7 +73,7 @@ export default {
 
     onMounted(() => {
       // Lightweight prefetch so the badges populate on first render.
-      store.dispatch('insights/fetchInsights', { status: 'pending', limit: 200 }).catch(() => {});
+      store.dispatch('insights/fetchEscalated').catch(() => {});
       store.dispatch('schedules/fetchSchedules').catch(() => {});
       store.dispatch('contracts/fetchContracts', { status: 'active' }).catch(() => {});
       store.dispatch('mutations/fetchHistory').catch(() => {});

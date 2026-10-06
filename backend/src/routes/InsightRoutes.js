@@ -18,14 +18,10 @@ InsightRoutes.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { targetType, targetId, status, category, autonomyDecision, limit } = req.query;
-    let insights = await InsightModel.findByUserId(userId, {
-      targetType, targetId, status, category,
+    const insights = await InsightModel.findByUserId(userId, {
+      targetType, targetId, status, category, autonomyDecision,
       limit: parseInt(limit) || 1000,
     });
-    // PRD-091 Layer 4: client-side autonomy filter (avoids touching findByUserId signature)
-    if (autonomyDecision) {
-      insights = insights.filter((i) => i.autonomy_decision === autonomyDecision);
-    }
     res.json({ success: true, insights });
   } catch (error) {
     console.error('[Insight Route] List error:', error);
@@ -242,12 +238,97 @@ InsightRoutes.delete('/memory/orphaned', authenticateToken, async (req, res) => 
   }
 });
 
+// ==================== APPLYING ====================
+
+class UnknownTargetError extends Error {}
+
+/**
+ * Apply one insight the caller owns, through the applicator for its target.
+ * The single and bulk accept routes both go through here so they cannot drift.
+ */
+async function applyInsight(insight, userId, { provider, model } = {}) {
+  // PRD-091 Layer 5: contract_proposal insights install via the contract
+  // applicator regardless of target_type.
+  if (insight.category === 'contract_proposal') {
+    const ContractApplicator = (await import('../services/evolution/applicators/ContractApplicator.js')).default;
+    return ContractApplicator.apply(insight.id, userId);
+  }
+  switch (insight.target_type) {
+    case 'agent':
+      return AgentApplicator.apply(insight.id, userId, provider, model);
+    case 'skill':
+      return SkillApplicator.apply(insight.id, userId);
+    case 'workflow':
+      return WorkflowApplicator.apply(insight.id, userId);
+    case 'tool':
+      return ToolApplicator.apply(insight.id, userId);
+    case 'evolution_settings': {
+      const EvolutionSettingsApplicator = (await import('../services/evolution/applicators/EvolutionSettingsApplicator.js')).default;
+      return EvolutionSettingsApplicator.apply(insight.id, userId);
+    }
+    default:
+      throw new UnknownTargetError(`Unknown target type: ${insight.target_type}`);
+  }
+}
+
+// Applying can call a model per insight, so one request takes a bounded batch
+// and the client walks the queue in batches (with progress and a stop).
+export const MAX_APPLY_BATCH = 50;
+
+const isIdList = (ids) => Array.isArray(ids) && ids.every((id) => typeof id === 'string' && id.length > 0);
+
+// ==================== ESCALATION QUEUE (before /:id routes) ====================
+
+// POST /api/insights/escalated/apply — Accept a batch of waiting insights.
+// Body: { ids: string[] (1..MAX_APPLY_BATCH), provider?, model? }.
+// Each id is applied in order; one failure never stops the rest. Ids that are
+// not this user's, or no longer waiting, are reported as skipped.
+InsightRoutes.post('/escalated/apply', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+  const { ids, provider, model } = req.body || {};
+  if (!isIdList(ids) || ids.length === 0 || ids.length > MAX_APPLY_BATCH) {
+    return res.status(400).json({ error: `ids must be 1 to ${MAX_APPLY_BATCH} insight ids` });
+  }
+  const applied = [];
+  const skipped = [];
+  const failed = [];
+  for (const id of new Set(ids)) {
+    try {
+      const insight = await InsightModel.findOwned(id, userId);
+      if (!insight || insight.status !== 'pending' || insight.autonomy_decision !== 'escalate') {
+        skipped.push(id);
+        continue;
+      }
+      await applyInsight(insight, userId, { provider, model });
+      applied.push(id);
+    } catch (error) {
+      console.error('[Insight Route] Bulk apply error:', id, error);
+      failed.push({ id, error: error.message || 'Failed to apply' });
+    }
+  }
+  res.json({ success: true, applied, skipped, failed });
+});
+
+// POST /api/insights/escalated/reject — Reject waiting insights in one statement.
+// Body: { ids?: string[] }. Without ids, every waiting insight is rejected.
+InsightRoutes.post('/escalated/reject', authenticateToken, async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (ids !== undefined && !isIdList(ids)) return res.status(400).json({ error: 'ids must be a list of insight ids' });
+    const rejected = await InsightModel.rejectEscalated(req.user.userId, ids ?? null);
+    res.json({ success: true, rejected });
+  } catch (error) {
+    console.error('[Insight Route] Bulk reject error:', error);
+    res.status(500).json({ error: 'Failed to reject insights' });
+  }
+});
+
 // ==================== SINGLE INSIGHT (must be after all named routes) ====================
 
 // GET /api/insights/:id — Get a single insight
 InsightRoutes.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const insight = await InsightModel.findOne(req.params.id);
+    const insight = await InsightModel.findOwned(req.params.id, req.user.userId);
     if (!insight) return res.status(404).json({ error: 'Insight not found' });
     res.json({ success: true, insight });
   } catch (error) {
@@ -260,42 +341,12 @@ InsightRoutes.get('/:id', authenticateToken, async (req, res) => {
 InsightRoutes.post('/:id/apply', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { provider, model } = req.body || {};
-    const insight = await InsightModel.findOne(req.params.id);
+    const insight = await InsightModel.findOwned(req.params.id, userId);
     if (!insight) return res.status(404).json({ error: 'Insight not found' });
-
-    let result;
-    // PRD-091 Layer 5: contract_proposal insights install via the contract applicator
-    // regardless of target_type.
-    if (insight.category === 'contract_proposal') {
-      const ContractApplicator = (await import('../services/evolution/applicators/ContractApplicator.js')).default;
-      result = await ContractApplicator.apply(req.params.id, userId);
-    } else {
-      switch (insight.target_type) {
-        case 'agent':
-          result = await AgentApplicator.apply(req.params.id, userId, provider, model);
-          break;
-        case 'skill':
-          result = await SkillApplicator.apply(req.params.id, userId);
-          break;
-        case 'workflow':
-          result = await WorkflowApplicator.apply(req.params.id, userId);
-          break;
-        case 'tool':
-          result = await ToolApplicator.apply(req.params.id, userId);
-          break;
-        case 'evolution_settings': {
-          const EvolutionSettingsApplicator = (await import('../services/evolution/applicators/EvolutionSettingsApplicator.js')).default;
-          result = await EvolutionSettingsApplicator.apply(req.params.id, userId);
-          break;
-        }
-        default:
-          return res.status(400).json({ error: `Unknown target type: ${insight.target_type}` });
-      }
-    }
-
+    const result = await applyInsight(insight, userId, req.body || {});
     res.json({ success: true, result });
   } catch (error) {
+    if (error instanceof UnknownTargetError) return res.status(400).json({ error: error.message });
     console.error('[Insight Route] Apply error:', error);
     res.status(500).json({ error: 'Failed to apply insight', details: error.message });
   }
@@ -304,8 +355,9 @@ InsightRoutes.post('/:id/apply', authenticateToken, async (req, res) => {
 // POST /api/insights/:id/reject — Reject an insight
 InsightRoutes.post('/:id/reject', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
-    await InsightModel.updateStatus(req.params.id, 'rejected');
+    const insight = await InsightModel.findOwned(req.params.id, req.user.userId);
+    if (!insight) return res.status(404).json({ error: 'Insight not found' });
+    await InsightModel.updateStatus(insight.id, 'rejected');
     res.json({ success: true, message: 'Insight rejected' });
   } catch (error) {
     console.error('[Insight Route] Reject error:', error);
