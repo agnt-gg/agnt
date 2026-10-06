@@ -59,6 +59,8 @@
 
     <p v-if="error" class="fb-error" role="alert">{{ error }}</p>
 
+    <!-- The one scroll area. Toolbar, breadcrumbs and notices above stay put. -->
+    <div class="fb-scroll">
     <div v-if="loading" class="fb-state"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
     <div v-else-if="!shown.length" class="fb-state">
       <span class="fb-state-mark"><i :class="query ? 'fas fa-search' : 'fas fa-folder-open'"></i></span>
@@ -133,6 +135,7 @@
 
     <MarketplaceShelf asset-type="file" variant="strip" fallback-to-all @browse="item => emit('market', item)" />
     <p v-if="truncated" class="fb-note">Showing the first results. Narrow the search to see more.</p>
+    </div>
 
     <div v-if="dragDepth > 0" class="fb-drop" aria-hidden="true">
       <i class="fas fa-cloud-upload-alt"></i> Drop to upload into {{ crumbs[crumbs.length - 1].name }}
@@ -375,7 +378,26 @@ defineExpose({ refresh: load });
   min-height: 0;
   padding: 16px 20px 20px;
   box-sizing: border-box;
+  overflow: hidden;
+}
+/* Everything outside .fb-scroll is fixed chrome: it keeps its height and
+   never scrolls. Before, the whole page scrolled, so the toolbar went with
+   the files; and as flex items the sections could shrink, so the list
+   (overflow: hidden) was squeezed to fit, clipping its header and rows and
+   leaving nothing to scroll. */
+.fb > * {
+  flex: none;
+}
+.fb > .fb-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fb-scroll > * {
+  flex: none;
 }
 .fb :deep(.wm-header) {
   width: 100%;
