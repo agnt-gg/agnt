@@ -25,6 +25,7 @@ import { fileURLToPath } from 'url';
 import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
 import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
 import { createCacheRoundTracker } from './orchestrator/cacheRoundTracker.js';
+import { fromAgntGatewayUsage } from './orchestrator/agntGatewayUsage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = path.join(__dirname, 'OrchestratorService.js');
@@ -85,6 +86,7 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
     'normalizedProvider',
     'model',
     'cacheRounds',
+    'fromAgntGatewayUsage',
     `return function accumulateUsage(usage) ${BODY};`
   );
   return {
@@ -96,7 +98,8 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
       promptCacheTtlMs,
       provider,
       model,
-      cacheRounds
+      cacheRounds,
+      fromAgntGatewayUsage
     ),
     events,
     tokenAccumulator,
@@ -107,6 +110,25 @@ function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
     cacheEvents: () => events.filter((e) => e.name === 'cache_activity'),
   };
 }
+
+describe('AGNT Flash usage (models.agnt.gg camelCase shape)', () => {
+  // Measured 2026-10-06: this exact turn was recorded as 0 tokens and free.
+  it('accumulates fresh + cached input, output and cache reads', () => {
+    const h = makeHarness({ provider: 'agnt', model: 'agnt-flash' });
+    h.accumulateUsage({ inputTokens: 700, cachedInputTokens: 27776, outputTokens: 1307, credits: 6484 });
+    expect(h.tokenAccumulator.inputTokens).toBe(28476);
+    expect(h.tokenAccumulator.outputTokens).toBe(1307);
+    expect(h.tokenAccumulator.cacheReadTokens).toBe(27776);
+    expect(h.tokenAccumulator.totalTokens).toBe(29783);
+  });
+
+  it('a gateway that also sends OpenAI fields is counted once', () => {
+    const h = makeHarness({ provider: 'agnt', model: 'agnt-flash' });
+    h.accumulateUsage({ inputTokens: 700, cachedInputTokens: 27776, outputTokens: 1307, prompt_tokens: 28476, completion_tokens: 1307, prompt_tokens_details: { cached_tokens: 27776 } });
+    expect(h.tokenAccumulator.inputTokens).toBe(28476);
+    expect(h.tokenAccumulator.cacheReadTokens).toBe(27776);
+  });
+});
 
 describe('accumulateUsage -> cache_activity (per-round freshness signal)', () => {
   let h;

@@ -824,9 +824,17 @@ async function getUnifiedToolSchemas(context) {
   // ORCHESTRATOR_RESIDENT_GROUPS. The large tail (MCP + installed plugins)
   // stays behind discover_tools, which is the surface that actually motivated
   // gating in the first place.
+  // AGNT Flash: keyword-matched groups only, not every static group. The
+  // argument above prices tokens Anthropic's way (cache WRITE 1.25x, read 0.1x).
+  // AGNT Flash bills a cold turn at the full fresh-input rate and its upstream
+  // charges nothing extra to write a cache, so ~19k tokens of unused tool
+  // definitions made a one-line first message cost 28k tokens (measured
+  // 2026-10-06). Everything else stays one discover_tools call away, and a
+  // group, once loaded, stays (previousGroups), so the cached prefix holds.
+  const keywordResident = !deferredMode && isKeywordResidentProvider(context.normalizedProvider);
   const allGroups = new Set([
     ...previousGroups,
-    ...(leanSurface ? [] : ORCHESTRATOR_RESIDENT_GROUPS),
+    ...(leanSurface || keywordResident ? [] : ORCHESTRATOR_RESIDENT_GROUPS),
     ...matchedGroups,
     ...forcedGroups,
   ]);
@@ -1072,6 +1080,16 @@ export const CHAT_CONFIGS = {
   artifact: unifiedConfig,
   suggestions: suggestionsConfig,
 };
+
+/**
+ * Providers whose first turn starts from keyword-matched tool groups instead of
+ * the full resident set. AGNT Flash only: priced per fresh token, no cache-write
+ * premium upstream. See the resident-groups note in the auto surface above.
+ */
+export const KEYWORD_RESIDENT_PROVIDERS = Object.freeze(new Set(['agnt']));
+export function isKeywordResidentProvider(provider) {
+  return KEYWORD_RESIDENT_PROVIDERS.has(String(provider || '').toLowerCase());
+}
 
 export function detectChatType(req, context = {}) {
   const path = req.path || req.route?.path || '';

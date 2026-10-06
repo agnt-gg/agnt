@@ -1,5 +1,6 @@
 import { accountModelPair } from './ai/accountModel.js';
 import { createChatTransport } from './orchestrator/chatTransport.js';
+import { fromAgntGatewayUsage } from './orchestrator/agntGatewayUsage.js';
 import { admitConversationWork } from './orchestrator/conversationWorkRegistry.js';
 import { capToolResult, toolResultCapFor } from './orchestrator/toolResultCap.js';
 import { ageToolResults } from './orchestrator/toolResultAging.js';
@@ -2301,6 +2302,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
      *   → true total input = prompt_tokens (already includes cached)
      */
     function accumulateUsage(usage) {
+      // AGNT Flash's gateway reports camelCase usage; read it as OpenAI's shape.
+      usage = fromAgntGatewayUsage(usage);
       if (!usage) return;
       const output = usage.completion_tokens || usage.output_tokens || 0;
       tokenAccumulator.outputTokens += output;

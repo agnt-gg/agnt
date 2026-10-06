@@ -208,12 +208,16 @@ describe('wiring contract', () => {
     expect(ORCH).toMatch(/conversationContext\._frozenPromptGates = priorContext\._frozenPromptGates/);
   });
 
-  it('chatConfigs seeds the resident groups into the surface, except for a lean deferred conversation', () => {
+  it('chatConfigs seeds the resident groups into the surface, except for a lean deferred conversation or AGNT Flash', () => {
     // Legacy transports pay a full prefix rewrite per discovery, so they keep
     // the floor. A conversation that STARTED deferred with the lean profile
     // discovers for free and gets DEFERRED_MODE_RESIDENT_TOOLS instead.
-    expect(CHAT).toMatch(/\.\.\.\(leanSurface \? \[\] : ORCHESTRATOR_RESIDENT_GROUPS\)/);
+    // AGNT Flash starts keyword-matched: its cold turns bill every fresh token
+    // at full rate and its upstream has no cache-write premium
+    // (chatConfigs.agntFlashSurface.test.js).
+    expect(CHAT).toMatch(/\.\.\.\(leanSurface \|\| keywordResident \? \[\] : ORCHESTRATOR_RESIDENT_GROUPS\)/);
     expect(CHAT).toMatch(/const leanSurface = deferredMode && context\._residentProfile === 'lean';/);
+    expect(CHAT).toMatch(/const keywordResident = !deferredMode && isKeywordResidentProvider\(context\.normalizedProvider\);/);
   });
 
   it('the resident profile is chosen with the loading mode and frozen with it', () => {
