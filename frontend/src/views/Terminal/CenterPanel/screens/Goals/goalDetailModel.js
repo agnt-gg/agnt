@@ -1,8 +1,26 @@
-// Display-only normalisation. Do not turn absent scores or costs into zero.
-export function reviewPercent(value) {
-  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(Math.max(0, Math.min(100, number)) * 10) / 10 : null;
+// The overview is an excerpt of recorded work, never a generated success claim.
+// Full task text and files remain available on demand.
+export function briefText(value, limit = 280) {
+  const text = String(value || '').slice(0, OUTPUT_LIMIT)
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(^|\n)\s{0,3}#{1,6}\s+/g, '$1')
+    .replace(/[*`_]/g, '')
+    .replace(/\s+/g, ' ').trim();
+  if (text.length <= limit) return text;
+  const clipped = text.slice(0, limit - 1);
+  const boundary = clipped.lastIndexOf(' ');
+  return (boundary > limit * .6 ? clipped.slice(0, boundary) : clipped) + '…';
+}
+
+export function goalResultText(tasks = []) {
+  for (let index = tasks.length - 1; index >= 0; index--) {
+    if (tasks[index]?.status !== 'completed') continue;
+    const text = taskOutputText(tasks[index].output);
+    if (text.trim()) return text;
+  }
+  return '';
 }
 
 export const OUTPUT_LIMIT = 50_000;

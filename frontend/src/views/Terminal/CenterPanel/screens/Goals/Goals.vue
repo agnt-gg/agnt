@@ -37,13 +37,8 @@
         <div v-else-if="selectedGoalId" class="goal-detail-view fade-in" @keydown.esc.stop="deselectGoal">
           <div class="goal-detail-bar">
             <button type="button" class="goal-detail-back" @click="deselectGoal">
-              <i class="fas fa-arrow-left"></i> Back to board
+              <i class="fas fa-chevron-left" aria-hidden="true"></i> Goals
             </button>
-            <div class="goal-detail-crumb" v-if="selectedGoal">
-              <i :class="getStatusIcon(selectedGoal.status)"></i>
-              <span class="goal-detail-title">{{ selectedGoal.title || 'Untitled goal' }}</span>
-              <span class="goal-detail-status" :class="(selectedGoal.status || '').toLowerCase()">{{ selectedGoal.status }}</span>
-            </div>
           </div>
           <div class="goal-detail-body">
             <GoalDetail :key="selectedGoalId" :goal-id="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
@@ -408,17 +403,6 @@ export default {
     const simpleModal = ref(null);
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
-    const selectedGoal = computed(() => (allGoals.value || []).find((goal) => goal.id === selectedGoalId.value) || null);
-    const getStatusIcon = (status) =>
-      ({
-        planning: 'fas fa-lightbulb',
-        executing: 'fas fa-play',
-        paused: 'fas fa-pause',
-        completed: 'fas fa-check',
-        failed: 'fas fa-times',
-        stopped: 'fas fa-stop',
-        needs_review: 'fas fa-eye',
-      })[String(status || '').toLowerCase()] || 'fas fa-bullseye';
 
     // Schedule a goal
     const scheduleModalGoal = ref(null);
@@ -859,8 +843,6 @@ export default {
       getEmptyText,
       emit,
       selectedGoalId,
-      selectedGoal,
-      getStatusIcon,
       allGoals,
       isLoading,
       showCreateModal,
@@ -921,7 +903,7 @@ body[data-page='terminal-goals'] .scrollable-content {
   scrollbar-width: thin;
 }
 
-/* Goal detail — replaces the board. Full width, one sheet. */
+/* One scrolling sheet; no duplicate title/status or nested dashboard. */
 .goal-detail-view {
   display: flex;
   flex-direction: column;
@@ -929,73 +911,43 @@ body[data-page='terminal-goals'] .scrollable-content {
   min-height: 0;
   min-width: 0;
   margin-bottom: 16px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 10px;
-  background: var(--color-darker-0);
-  overflow: hidden;
+  overflow-y: auto;
 }
 .goal-detail-bar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--terminal-border-color);
+  width: 100%;
+  max-width: 770px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 22px 34px 27px;
   flex: 0 0 auto;
 }
 .goal-detail-back {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
+  padding: 0;
+  min-height: 32px;
+  border: 0;
   background: transparent;
   color: var(--color-text-muted);
   font: inherit;
-  font-size: 0.85em;
+  font-size: 14px;
   cursor: pointer;
 }
 .goal-detail-back:hover {
   color: var(--color-text);
   border-color: var(--color-primary);
 }
-.goal-detail-crumb {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  color: var(--color-text-muted);
-}
-.goal-detail-title {
-  color: var(--color-text);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.goal-detail-status {
-  font-size: 0.75em;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--terminal-border-color);
-}
-.goal-detail-status.executing { color: var(--color-primary); border-color: var(--color-primary); }
-.goal-detail-status.completed { color: var(--text-green); border-color: var(--color-green); }
-.goal-detail-status.failed { color: var(--color-red); border-color: var(--color-red); }
+.goal-detail-back:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .goal-detail-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-  padding: 14px 18px 18px;
+  padding: 0 34px;
   width: 100%;
   box-sizing: border-box;
 }
-@media (max-width: 900px) {
-  .goal-detail-body { overflow-y: auto; padding: 12px; }
-  .goal-detail-crumb { display: none; }
+@media (max-width: 540px) {
+  .goal-detail-body { padding: 0 20px; }
+  .goal-detail-bar { padding: 16px 20px 20px; }
+  .goal-detail-back { min-height: 44px; }
 }
 
 .kanban-column {

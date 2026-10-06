@@ -1,125 +1,163 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { reactive } from 'vue';
+import { reactive, nextTick } from 'vue';
 import GoalDetail from './GoalDetail.vue';
 import GoalDetailEvidence from './GoalDetailEvidence.vue';
-import GoalDetailVerdict from './GoalDetailVerdict.vue';
-import { reviewPercent, taskOutputText, OUTPUT_LIMIT } from '../goalDetailModel.js';
+import { briefText, goalResultText, taskOutputText, OUTPUT_LIMIT } from '../goalDetailModel.js';
 
 const REPORT = 'C:/work/weekly/report.md';
 const htmlFile = 'C:/work/site/index.html';
-const fileMock = vi.hoisted(() => vi.fn());
-vi.mock('@/services/fileSystemService.js', () => ({ getFile: fileMock }));
 const state = reactive({ goals: [] });
-const evaluation = { overall_score: 89.5, evaluation_data: { scores: { completeness: 100, quality: 85, taskAverage: 85 }, checklist: [
-  {id:'c1',text:'Dated weekly/report.md',met:true,evidence:'Task 1 wrote weekly/report.md.'},
-  {id:'c2',text:'Metrics must include a baseline',met:false,evidence:'Task 1 did not verify the baseline.'},
-] } };
-const store = {getters:{'goals/getGoalById':id => state.goals.find(g=>g.id===id)},dispatch:vi.fn()};
-vi.mock('vuex', () => ({useStore:()=>store}));
-const makeGoal = () => ({id:'g1',title:'Weekly review',status:'needs_review',current_iteration:4,max_iterations:50,priority:'high',success_criteria:{deliverables:['Dated weekly/report.md']},tasks:[{id:'t1',title:'Verify baseline',status:'completed',output:JSON.stringify({content:[{type:'text',text:'Work completed.'}],toolExecutions:[{name:'write_file',arguments:{path:REPORT}},{name:'write_file',arguments:{path:htmlFile}}]})}]});
-const inspectorStub = {props:['artifact'],template:'<div class="inline-inspector">{{ artifact.name }} {{ artifact.kind }}<button class="close-preview" @click="$emit(\'close\')">Close</button></div>'};
-const mountGoal = () => mount(GoalDetail,{props:{goalId:'g1',goals:state.goals},global:{stubs:{ArtifactInspector:inspectorStub}}});
-function button(wrapper, text) { const found = wrapper.findAll('button').find(b=>b.text().includes(text));if(!found)throw Error('Missing button: '+text);return found; }
-beforeEach(() => {
-  state.goals=[makeGoal()];
-  fileMock.mockReset().mockResolvedValue({content:'# Weekly\n## Metrics\nBaseline evidence.\n## Receipts\nAll five receipts.'});
-  store.dispatch.mockReset().mockImplementation(async (action,id) => {
-    if(action==='goals/fetchGoalEvaluation'){const index=state.goals.findIndex(g=>g.id===id);state.goals.splice(index,1,{...state.goals[index],evaluation});return evaluation;}
-    return {};
-  });
-});
+const store = { getters: { 'goals/getGoalById': id => state.goals.find(goal => goal.id === id) }, dispatch: vi.fn() };
+vi.mock('vuex', () => ({ useStore: () => store }));
+const makeGoal = () => ({ id: 'g1', title: 'Weekly review', status: 'needs_review', current_iteration: 4, max_iterations: 50, priority: 'high', tasks: [{ id: 't1', title: 'Verify baseline', status: 'completed', output: JSON.stringify({ content: [{ type: 'text', text: 'Work completed.' }], toolExecutions: [{ name: 'write_file', arguments: { path: REPORT } }, { name: 'write_file', arguments: { path: htmlFile } }] }) }] });
+const inspectorStub = { props: ['artifact'], emits: ['close', 'expand'], template: '<div class="inline-inspector">{{ artifact.name }} {{ artifact.kind }}<button class="close-preview" @click="$emit(\'close\')">Close</button></div>' };
+const mountGoal = () => mount(GoalDetail, { props: { goalId: 'g1', goals: state.goals }, global: { stubs: { ArtifactInspector: inspectorStub } } });
+function button(wrapper, text) { const found = wrapper.findAll('button').find(button => button.text().includes(text)); if (!found) throw Error('Missing button: ' + text); return found; }
+async function openDetails(wrapper) { wrapper.element.open = true; await wrapper.trigger('toggle'); await nextTick(); }
+beforeEach(() => { state.goals = [makeGoal()]; store.dispatch.mockReset().mockResolvedValue({}); });
 
-describe('goal detail review workspace', () => {
-  it('follows a replacement store object and shows real scores, criteria and report tabs',async()=>{
-    const wrapper=mountGoal();await flushPromises();
-    expect(wrapper.text()).toContain('89.5%');expect(wrapper.text()).toContain('1 of 2 met');
-    expect(wrapper.findAll('.gd-tab').map(b=>b.text())).toContain('Metrics');
-    await button(wrapper,'Metrics').trigger('click');
-    expect(wrapper.find('.gd-evidence-body').text()).toContain('Baseline evidence.');
-    expect(store.dispatch).toHaveBeenCalledTimes(2);
+describe('goal detail actions and lifecycle', () => {
+  it('follows a replacement store object and loads the goal exactly once', async () => {
+    const wrapper = mountGoal(); await flushPromises();
+    state.goals.splice(0, 1, { ...makeGoal(), title: 'Updated goal', status: 'validated' });
+    await nextTick();
+    expect(wrapper.text()).toContain('Updated goal'); expect(wrapper.find('.gd-status').text()).toBe('Approved');
+    expect(store.dispatch).toHaveBeenCalledTimes(1);
+    expect(store.dispatch).toHaveBeenCalledWith('goals/fetchGoalTasks', 'g1');
     wrapper.unmount();
   });
-  it('opens passed proof and its report section or task without navigating',async()=>{
-    const wrapper=mountGoal();await flushPromises();
-    const passed=wrapper.find('.gd-check.is-met');await button(passed,'Proof').trigger('click');
-    expect(passed.text()).toContain('Task 1 wrote');
-    await button(passed,'Task 1').trigger('click');await flushPromises();
-    expect(wrapper.find('[data-review-task="1"]').text()).toContain('Work completed.');
-    const missed=wrapper.find('.gd-check.is-missed');await button(missed,'Proof').trigger('click');
-    await button(missed,'Metrics in the report').trigger('click');
-    expect(wrapper.find('.gd-evidence-body').text()).toContain('Baseline evidence.');wrapper.unmount();
+  it('opens full task work on demand without navigating', async () => {
+    const wrapper = mountGoal(); await flushPromises();
+    expect(wrapper.find('.gd-rendered').exists()).toBe(false);
+    await openDetails(wrapper.find('.gd-tasks'));
+    await openDetails(wrapper.find('.gd-task'));
+    expect(wrapper.find('.gd-rendered').text()).toContain('Work completed.');
+    wrapper.unmount();
   });
-  it('previews an HTML file in the existing inspector and closes back to files',async()=>{
-    const wrapper=mountGoal();await flushPromises();await button(wrapper,'All files').trigger('click');
-    const row=wrapper.findAll('.gd-file').find(r=>r.text().includes('index.html'));
-    await button(row,'Preview').trigger('click');
+  it('previews HTML through the existing inspector and closes back to the same goal', async () => {
+    const wrapper = mountGoal(); await flushPromises();
+    const row = wrapper.findAll('.gd-file').find(row => row.text().includes('index.html'));
+    await row.trigger('click');
     expect(wrapper.find('.inline-inspector').text()).toContain('index.html html');
-    expect(wrapper.findComponent(GoalDetail).exists()).toBe(true);
-    await wrapper.find('.close-preview').trigger('click');expect(wrapper.findAll('.gd-file')).toHaveLength(2);wrapper.unmount();
+    await wrapper.find('.close-preview').trigger('click');
+    expect(wrapper.findAll('.gd-file')).toHaveLength(2);
+    expect(wrapper.find('.gd-title').text()).toBe('Weekly review');
+    wrapper.unmount();
   });
-  it('retains comments after a failed return and clears only after success; no implicit run',async()=>{
-    const wrapper=mountGoal();await flushPromises();await button(wrapper,'Request changes').trigger('click');await wrapper.find('textarea').setValue('Verify C4 first.');
-    store.dispatch.mockRejectedValueOnce(Error('Offline'));
-    await button(wrapper,'Send back to queue').trigger('click');await flushPromises();
-    expect(wrapper.find('textarea').element.value).toBe('Verify C4 first.');expect(wrapper.find('[role="alert"]').text()).toContain('Offline');
-    store.dispatch.mockResolvedValueOnce({status:'planning',message:'Returned for revision'});
-    await button(wrapper,'Send back to queue').trigger('click');await flushPromises();
-    expect(wrapper.find('textarea').exists()).toBe(false);
-    expect(store.dispatch).toHaveBeenCalledWith('goals/reviewGoal',{goalId:'g1',action:'reject',feedback:'Verify C4 first.'});
-    expect(store.dispatch.mock.calls.some(([action])=>action==='goals/executeGoalAutonomous')).toBe(false);wrapper.unmount();
+  it('dispatches approval once during a pending request and shows the result', async () => {
+    const wrapper = mountGoal(); await flushPromises(); let finish;
+    store.dispatch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await button(wrapper, 'Approve result').trigger('click'); await button(wrapper, 'Approve result').trigger('click');
+    expect(store.dispatch.mock.calls.filter(([action]) => action === 'goals/reviewGoal')).toHaveLength(1);
+    finish({ status: 'validated', message: 'Accepted' }); await flushPromises();
+    expect(wrapper.text()).toContain('Accepted'); wrapper.unmount();
   });
-  it('dispatches approval once during a pending request and shows the result',async()=>{
-    const wrapper=mountGoal();await flushPromises();let finish;
-    store.dispatch.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
-    await button(wrapper,'Approve result').trigger('click');await button(wrapper,'Approve result').trigger('click');
-    expect(store.dispatch.mock.calls.filter(([action])=>action==='goals/reviewGoal')).toHaveLength(1);
-    finish({status:'validated',message:'Accepted'});await flushPromises();expect(wrapper.text()).toContain('Accepted');wrapper.unmount();
+  it('labels an unrun proposal as plan approval; approval preserves server-owned execution', async () => {
+    state.goals = [{ ...makeGoal(), current_iteration: 0, tasks: [{ id: 't1', status: 'pending', title: 'Plan' }] }];
+    const wrapper = mountGoal(); await flushPromises();
+    await button(wrapper, 'Approve plan').trigger('click'); await flushPromises();
+    expect(store.dispatch).toHaveBeenCalledWith('goals/reviewGoal', { goalId: 'g1', action: 'approve' });
+    expect(wrapper.findAll('button').some(button => button.text() === 'Pause goal')).toBe(false);
+    expect(store.dispatch.mock.calls.some(([action]) => action === 'goals/executeGoalAutonomous')).toBe(false);
+    wrapper.unmount();
   });
-  it('labels an unrun proposal as plan approval and does not offer pause',async()=>{
-    state.goals=[{...makeGoal(),current_iteration:0,tasks:[{id:'t1',status:'pending',title:'Plan'}]}];
-    const wrapper=mountGoal();await flushPromises();expect(wrapper.text()).toContain('Approve plan');
-    expect(wrapper.findAll('button').some(b=>b.text()==='Pause goal')).toBe(false);wrapper.unmount();
+  it.each([
+    ['executing', 'Pause goal', 'goals/pauseGoal', 'g1'],
+    ['queued', 'Pause goal', 'goals/pauseGoal', 'g1'],
+    ['paused', 'Resume', 'goals/resumeGoal', 'g1'],
+    ['planning', 'Run goal', 'goals/executeGoalAutonomous', { goalId: 'g1', maxIterations: 50 }],
+    ['failed', 'Run goal', 'goals/executeGoalAutonomous', { goalId: 'g1', maxIterations: 50 }],
+    ['stopped', 'Run goal', 'goals/executeGoalAutonomous', { goalId: 'g1', maxIterations: 50 }],
+  ])('preserves %s control dispatch', async (status, label, action, payload) => {
+    state.goals[0].status = status; const wrapper = mountGoal(); await flushPromises();
+    await button(wrapper, label).trigger('click'); await flushPromises();
+    expect(store.dispatch).toHaveBeenCalledWith(action, payload); wrapper.unmount();
   });
-  it('reports read errors with retry instead of a blank report',async()=>{
-    fileMock.mockRejectedValueOnce(Error('Missing file'));const wrapper=mountGoal();await flushPromises();
-    expect(wrapper.find('.gd-doc [role="alert"]').text()).toContain('Missing file');
-    await button(wrapper.find('.gd-doc'),'Retry').trigger('click');await flushPromises();expect(wrapper.find('.gd-rendered').text()).toContain('Baseline evidence');wrapper.unmount();
-  });
-  it('rejects a late file read from the previous goal, even when the path is the same',async()=>{
-    const pending=[];fileMock.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)));
-    const wrapper=mountGoal();await flushPromises();
-    state.goals.push({...makeGoal(),id:'g2',title:'Second goal'});
-    await wrapper.setProps({goalId:'g2'});await flushPromises();
-    pending.at(-1)({content:'## Fresh\nSecond goal evidence.'});await flushPromises();
-    pending[0]({content:'## Stale\nWrong goal.'});await flushPromises();
-    expect(wrapper.text()).toContain('Second goal evidence');expect(wrapper.text()).not.toContain('Wrong goal.');wrapper.unmount();
-  });
-  it('sanitises hostile report HTML and leaves all work inside the page',async()=>{
-    fileMock.mockResolvedValue({content:'## Metrics\n<img src=x onerror="alert(1)"><script>alert(2)</script><iframe src="https://example.com"></iframe>'});
-    const wrapper=mountGoal();await flushPromises();
-    expect(wrapper.find('.gd-rendered').html()).not.toContain('onerror');expect(wrapper.find('.gd-rendered script').exists()).toBe(false);expect(wrapper.find('.gd-rendered iframe').exists()).toBe(false);wrapper.unmount();
-  });
-  it('shows fetch failures rather than pretending the goal is loaded',async()=>{
+  it('blocks actions after a failed load and enables them after a successful retry', async () => {
     store.dispatch.mockRejectedValueOnce(Error('Forbidden'));
-    const wrapper=mountGoal();await flushPromises();expect(wrapper.find('[role="alert"]').text()).toContain('Forbidden');wrapper.unmount();
+    const wrapper = mountGoal(); await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toContain('Forbidden');
+    await button(wrapper, 'Approve result').trigger('click'); expect(store.dispatch).toHaveBeenCalledTimes(1);
+    await button(wrapper, 'Retry loading').trigger('click'); await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    await button(wrapper, 'Approve result').trigger('click'); expect(store.dispatch).toHaveBeenCalledTimes(3);
+    wrapper.unmount();
+  });
+  it('ignores a previous goal load failure and resets open task/preview/feedback state', async () => {
+    let rejectOld; store.dispatch.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectOld = reject; }));
+    const wrapper = mountGoal(); await flushPromises();
+    state.goals.push({ ...makeGoal(), id: 'g2', title: 'Second goal' });
+    await wrapper.setProps({ goalId: 'g2' }); await flushPromises();
+    rejectOld(Error('Old failure')); await flushPromises();
+    expect(wrapper.text()).not.toContain('Old failure');
+    await openDetails(wrapper.find('.gd-tasks'));
+    await button(wrapper, 'Request changes').trigger('click');
+    await wrapper.find('textarea').setValue('Old feedback');
+    await wrapper.find('.gd-file').trigger('click');
+    await wrapper.setProps({ goalId: 'g1' }); await flushPromises();
+    expect(wrapper.find('.inline-inspector').exists()).toBe(false);
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(wrapper.find('.gd-tasks').element.open).toBe(false);
+    wrapper.unmount();
+  });
+  it('does not publish an old mutation notice after a goal switch', async () => {
+    const wrapper = mountGoal(); await flushPromises(); let finish;
+    store.dispatch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await button(wrapper, 'Approve result').trigger('click');
+    state.goals.push({ ...makeGoal(), id: 'g2', title: 'Second goal' });
+    await wrapper.setProps({ goalId: 'g2' }); await flushPromises();
+    finish({ message: 'Old result accepted' }); await flushPromises();
+    expect(wrapper.text()).not.toContain('Old result accepted');
+    expect(wrapper.emitted('panel-action')).toBeUndefined(); wrapper.unmount();
+  });
+  it('rejects whitespace feedback and retains the draft when cancel is disabled during sending', async () => {
+    const wrapper = mountGoal(); await flushPromises();
+    await button(wrapper, 'Request changes').trigger('click');
+    await wrapper.find('textarea').setValue('   ');
+    expect(button(wrapper, 'Send feedback').element.disabled).toBe(true);
+    await wrapper.find('textarea').setValue('Do not lose this.');
+    let finish; store.dispatch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await button(wrapper, 'Send feedback').trigger('click');
+    expect(button(wrapper, 'Cancel').element.disabled).toBe(true);
+    await wrapper.find('textarea').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('textarea').element.value).toBe('Do not lose this.');
+    finish({}); await flushPromises(); expect(wrapper.find('textarea').exists()).toBe(false); wrapper.unmount();
   });
 });
 
-describe('detail display boundaries',()=>{
-  it.each([null,undefined,'',NaN,Infinity,false])('does not turn %s into a score',value=>expect(reviewPercent(value)).toBe(null));
-  it('preserves decimals and clamps invalid bounds',()=>{expect(reviewPercent(89.5)).toBe(89.5);expect(reviewPercent(120)).toBe(100);expect(reviewPercent(-2)).toBe(0);});
-  it('unwraps nested content, skips reasoning/tool blocks and bounds long output',()=>{
-    expect(taskOutputText({content:[{type:'thinking',thinking:'private'},{type:'text',text:'answer'},{type:'tool_use',name:'test'}]})).toBe('answer');
+describe('concise evidence boundaries', () => {
+  it('bounds excerpts and unwraps task output without thinking/tool blocks', () => {
+    expect(briefText('a '.repeat(10000))).toHaveLength(278);
+    expect(briefText('# Heading\n**Read** [the report](file:///work/a.md)')).toBe('Heading Read the report');
+    expect(taskOutputText({ content: [{ type: 'thinking', thinking: 'private' }, { type: 'text', text: 'answer' }, { type: 'tool_use', name: 'test' }] })).toBe('answer');
     expect(taskOutputText('x'.repeat(500000))).toHaveLength(OUTPUT_LIMIT);
+    expect(goalResultText([{ status: 'completed', output: 'First' }, { status: 'failed', output: 'Do not call this the result' }])).toBe('First');
+    expect(goalResultText([{ status: 'completed', output: 'First' }, { status: 'completed', output: 'Latest' }])).toBe('Latest');
+    expect(goalResultText([])).toBe('');
   });
-  it('renders absent evaluation without invented zero bars',()=>{
-    const wrapper=mount(GoalDetailVerdict,{props:{verdict:{evaluated:false,met:0,total:1},items:[{id:'c1',text:'Deliver',met:null,proof:{tasks:[],files:[],section:null}}],submitFeedback:async()=>false}});
-    expect(wrapper.text()).toContain('1 not checked');expect(wrapper.text()).not.toContain('0%');expect(wrapper.find('.gd-ring-num').text()).toBe('—');wrapper.unmount();
+  it('sanitises hostile task HTML and never renders summary text as HTML', async () => {
+    state.goals[0].tasks[0].output = '<img src=x onerror="alert(1)"><script>alert(2)</script><iframe src="https://example.com"></iframe>Output';
+    const wrapper = mountGoal(); await flushPromises();
+    expect(wrapper.find('.gd-result-summary img').exists()).toBe(false);
+    await openDetails(wrapper.find('.gd-tasks')); await openDetails(wrapper.find('.gd-task'));
+    expect(wrapper.find('.gd-rendered').html()).not.toContain('onerror');
+    expect(wrapper.find('.gd-rendered script').exists()).toBe(false);
+    expect(wrapper.find('.gd-rendered iframe').exists()).toBe(false); wrapper.unmount();
   });
-  it('keeps a selected section on content refresh',async()=>{
-    const wrapper=mount(GoalDetailEvidence,{props:{report:{path:REPORT,text:'A'},sections:[{heading:'Metrics',body:'A'},{heading:'Receipts',body:'B'}],renderMarkdown:text=>text}});
-    await button(wrapper,'Receipts').trigger('click');await wrapper.setProps({sections:[{heading:'Metrics',body:'A2'},{heading:'Receipts',body:'B2'}]});
-    expect(wrapper.find('.gd-rendered').text()).toBe('B2');wrapper.unmount();
+  it('does not invent a successful result for empty, failed or running goals', async () => {
+    const wrapper = mount(GoalDetailEvidence, { props: { goal: { id: 'g1', status: 'planning' }, tasks: [] } });
+    expect(wrapper.find('.gd-result-summary').text()).toBe('No result yet.');
+    await wrapper.setProps({ goal: { id: 'g1', status: 'failed' } });
+    expect(wrapper.find('.gd-result-summary').text()).toContain('Execution failed.');
+    await wrapper.setProps({ goal: { id: 'g1', status: 'executing' }, tasks: [{ title: 'Compare products', status: 'running' }] });
+    expect(wrapper.find('.gd-result-summary').text()).toBe('Working on: Compare products'); wrapper.unmount();
+  });
+  it('keeps overflow files collapsed and includes files linked in answers', async () => {
+    const tasks = [{ status: 'completed', output: { content: 'Files: file:///C:/work/answer.md', toolExecutions: Array.from({ length: 5 }, (_, index) => ({ name: 'write_file', arguments: { path: 'C:/work/file' + index + '.md' } })) } }];
+    const wrapper = mount(GoalDetailEvidence, { props: { goal: { id: 'g1' }, tasks } });
+    expect(wrapper.findAll('.gd-files > .gd-file')).toHaveLength(3);
+    expect(wrapper.find('.gd-more-files').element.open).toBe(false);
+    expect(wrapper.find('.gd-more-files').text()).toContain('answer.md'); wrapper.unmount();
   });
 });
