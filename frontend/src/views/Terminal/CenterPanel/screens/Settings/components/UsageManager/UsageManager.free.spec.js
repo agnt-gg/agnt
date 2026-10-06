@@ -41,6 +41,7 @@ describe('UsageManager — free account', () => {
     expect(card.text()).toContain('2.5M');
     expect(card.text()).toContain('10M');
     expect(card.text()).toContain('7.5M credits left');
+    expect(card.find('button').exists()).toBe(false);
     expect(card.find('.meter-fill').attributes('style')).toContain('width: 25%');
     expect(w.find('.pro-gate').exists()).toBe(false);
   });
@@ -52,31 +53,26 @@ describe('UsageManager — free account', () => {
     expect(flashApi.fetchFlashAccount).toHaveBeenCalledOnce();
   });
 
-  it('lists every service AGNT Pro adds, each with what it includes and its own Upgrade', async () => {
+  // One quiet block, one button: an Upgrade per service crowded the page.
+  it('lists what AGNT Pro adds as one dimmed list under a single Upgrade', async () => {
     const w = mountUsage();
     await flushPromises();
-    const cards = w.findAll('.usage-card.locked');
-    expect(cards.map((c) => c.find('h3').text())).toEqual(['Search', 'Sandbox', 'Mail', 'Webhooks', 'Text Annie', 'Hosted instance']);
-    for (const c of cards) expect(c.find('.card-btn.primary').text()).toContain('Upgrade');
+    const block = w.find('[data-testid="pro-services"]');
+    expect(block.findAll('li').map((li) => li.find('.pro-name').text())).toEqual([
+      'AGNT Flash', 'Search', 'Sandbox', 'Mail', 'Webhooks', 'Text Annie', 'Hosted instance',
+    ]);
     // Allowances come from the plan table checkout sells from.
-    expect(w.find('[data-testid="upgrade-search"]').text()).toContain('150 searches + 750 pages / mo');
-    expect(w.find('[data-testid="free-flash"]').text()).toContain('100M credits / mo');
+    expect(w.find('[data-testid="pro-search"]').text()).toContain('150 searches + 750 pages / mo');
+    expect(w.find('[data-testid="pro-models"]').text()).toContain('100M credits / mo');
+    expect(w.findAll('button').filter((b) => /upgrade/i.test(b.text()))).toHaveLength(1);
+    expect(w.findAll('.usage-card')).toHaveLength(1);
   });
 
-  it('opens the upgrade modal naming the service that was clicked', async () => {
+  it('opens the upgrade modal from that one button', async () => {
     const w = mountUsage();
     await flushPromises();
-    await w.find('[data-testid="upgrade-mail"] .card-btn.primary').trigger('click');
-    const modal = w.findComponent({ name: 'UpgradeModal' });
-    expect(modal.props('open')).toBe(true);
-    expect(modal.props('reason')).toBe('Mail comes with AGNT Pro.');
-  });
-
-  it('tops up AGNT Flash from its card', async () => {
-    const w = mountUsage();
-    await flushPromises();
-    await w.find('[data-testid="free-flash"] .card-btn:not(.primary)').trigger('click');
-    expect(flashApi.startFlashTopUp).toHaveBeenCalledWith(1000);
+    await w.find('[data-testid="pro-services"] .card-btn.primary').trigger('click');
+    expect(w.findComponent({ name: 'UpgradeModal' }).props('open')).toBe(true);
   });
 
   it('still shows every upgrade when the Flash balance cannot be read', async () => {
@@ -84,7 +80,7 @@ describe('UsageManager — free account', () => {
     const w = mountUsage();
     await flushPromises();
     expect(w.find('.usage-error').text()).toContain('offline');
-    expect(w.findAll('.usage-card.locked')).toHaveLength(6);
+    expect(w.findAll('[data-testid="pro-services"] li')).toHaveLength(7);
   });
 
   it('leaves a paid account on its measured usage view', async () => {
