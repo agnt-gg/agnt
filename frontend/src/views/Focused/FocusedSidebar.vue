@@ -220,7 +220,8 @@ const recents = computed(() =>
 // Same precedence as Studio's list (OutputList.activeOutputId).
 const activeConversationId = computed(() => route.query['content-id'] || store.state.chat?.savedOutputId || null);
 
-const userName = computed(() => store.getters['userAuth/userName']);
+// The username chosen at onboarding (the pseudonym), not the full account name.
+const userName = computed(() => store.getters['userAuth/userPseudonym']);
 const userEmail = computed(() => store.getters['userAuth/userEmail']);
 const initial = computed(() => initialOf(userName.value || userEmail.value));
 const planLabel = computed(() => {

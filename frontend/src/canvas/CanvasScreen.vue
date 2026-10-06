@@ -599,7 +599,9 @@ export default {
     const profileButton = ref(null);
     const profileMenuStyle = ref({});
     const profileEmail = computed(() => store.getters['userAuth/userEmail'] || '');
-    const profileName = computed(() => store.getters['userAuth/userName'] || profileEmail.value || 'Profile');
+    // The username chosen at onboarding (the pseudonym), not the account's
+    // full name; the getter falls back to name, then the email's local part.
+    const profileName = computed(() => store.getters['userAuth/userPseudonym'] || profileEmail.value || 'Profile');
     const profileInitial = computed(() => (String(profileName.value).trim()[0] || 'A').toUpperCase());
     function toggleProfile() {
       if (!profileOpen.value) {

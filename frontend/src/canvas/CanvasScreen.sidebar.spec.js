@@ -15,7 +15,7 @@ beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){} disconnect(){}}
 afterEach(()=>{mounted.splice(0).forEach(w=>w.unmount());vi.unstubAllGlobals();document.body.innerHTML='';delete window.electron;sessionStorage.clear();});
 function spaceHost(){const host={list:vi.fn(async()=>({spaces:[],activeId:'primary'})),switch:vi.fn(async()=>({ok:true})),syncTeams:vi.fn(async()=>({ok:true})),onChanged:vi.fn(()=>()=>{})};window.electron={spaces:host};return host;}
 function setup(planType='free'){const pages=[{id:'chat',name:'Chat',route:'ChatScreen'},{id:'goal',name:'Goals',route:'GoalsScreen'},{id:'custom',name:'Scratch',route:'custom:scratch'}];const store=createStore({modules:{
- userAuth:{namespaced:true,state:()=>({token:'user-1',plan:planType}),getters:{isAuthenticated:()=>true,planType:s=>s.plan}},
+ userAuth:{namespaced:true,state:()=>({token:'user-1',plan:planType}),getters:{isAuthenticated:()=>true,planType:s=>s.plan,userName:()=>'Nathan Wilbanks',userPseudonym:()=>'AGNT',userEmail:()=>'nathan@agnt.gg'}},
  aiProvider:{namespaced:true,state:()=>({selectedProvider:'openai',selectedModel:'gpt-4o'})},
  widgetLayout:{namespaced:true,state:()=>({pages}),getters:{allPages:s=>s.pages,activePageId:()=> 'custom',activePage:()=>pages[2],isLoaded:()=>true,pageForRoute:s=>route=>s.pages.find(p=>p.route===route)},actions:{setActivePage:vi.fn(),createPageFromDefault:vi.fn(),fetchLayouts:vi.fn()}},
  shell:{namespaced:true,state:()=>({jump:false}),getters:{jumpOpen:s=>s.jump,inspect:()=>null,updateAvailable:()=>false},mutations:{open(s){s.jump=true}},actions:{openJump({commit}){commit('open')},toggleJump({commit}){commit('open')}}}},
@@ -57,6 +57,9 @@ describe('reference sidebar ordering and context',()=>{
   const dispatch=vi.spyOn(store,'dispatch').mockResolvedValue();
   const profile=wrapper.find('[data-tour-id="sidebar.profile"]');
   expect(profile.classes()).toContain('cv-sb-page');
+  // The onboarding username, never the full account name.
+  expect(profile.text()).toContain('AGNT');
+  expect(profile.text()).not.toContain('Nathan Wilbanks');
   expect(document.body.querySelector('.cv-profile-menu')).toBeNull();
   await profile.trigger('click');
   expect(profile.attributes('aria-expanded')).toBe('true');
