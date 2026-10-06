@@ -269,7 +269,7 @@ describe('OnboardingModal', () => {
       expect(component.vm.$options.emits).toContain('connect');
       expect(component.vm.$options.emits).toContain('submit-credential');
       // Both handlers must exist on this parent, or the events land nowhere.
-      expect(typeof wrapper.vm.handleProviderClick).toBe('function');
+      expect(typeof wrapper.vm.connectProvider).toBe('function');
       expect(typeof wrapper.vm.saveApiKey).toBe('function');
     });
   });
@@ -722,11 +722,13 @@ describe('OnboardingModal', () => {
   });
 
   /**
-   * The provider step as a new user sees it. The store has already chosen
-   * (aiProvider.firstRunDefault.spec.js); this screen shows that choice and
-   * keeps every other option one link away.
+   * The AI step as a new user sees it: ONE page. It used to be a summary
+   * ("We found 5 on this computer", or "You're ready") whose "More options"
+   * opened a second page with the full list — two screens for one question,
+   * and every connection several clicks deep. Everything is on this page now,
+   * and every option is one click (ProviderLanes + useAiProviderConnect).
    */
-  describe('Provider Step: the ready screen', () => {
+  describe('Provider Step: one page, one click', () => {
     const SEATS = [
       { id: 'openai-codex', name: 'OpenAI Codex', icon: 'openai', categories: ['AI'], connectionType: 'oauth' },
       { id: 'claude-code', name: 'Claude Code', icon: 'anthropic', categories: ['AI'], connectionType: 'oauth' },
@@ -737,79 +739,87 @@ describe('OnboardingModal', () => {
       wrapper = createWrapper({}, { allProviders: SEATS, ...overrides });
       await goto(wrapper, 'provider');
     };
-    const continueButton = () => wrapper.find('.modal-actions .btn-primary');
+    const tile = (label) =>
+      wrapper.findAll('.provider-tile').find((t) => t.find('.provider-name').text() === label);
 
-    it('shows the AI found on this computer as in use, with Continue as the only action', async () => {
-      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
-      expect(wrapper.find('h2').text()).toBe("You're ready");
-      expect(wrapper.find('[data-testid="provider-in-use"]').text()).toContain('ChatGPT');
-      expect(continueButton().text()).toBe('Continue with ChatGPT →');
-      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(false);
+    it('is a single page: every option, no summary in front of it', async () => {
+      await open({ connectedApps: ['claude-code', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      expect(wrapper.find('h2').text()).toBe('Choose your AI');
+      const lanes = wrapper.findComponent({ name: 'ProviderLanes' });
+      expect(lanes.exists()).toBe(true);
+      expect(lanes.props('included')).toBe(true);
+      // The removed summary screen and its link to this list.
+      expect(wrapper.find('[data-testid="provider-in-use"]').exists()).toBe(false);
+      expect(wrapper.find('[role="radio"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('More options');
+      expect(wrapper.find('.provider-back').exists()).toBe(false);
+      // Plans, keys and AGNT Flash, all at once.
+      for (const label of ['AGNT Flash', 'ChatGPT', 'Claude Code', 'Gemini CLI', 'OpenAI']) {
+        expect(tile(label), label).toBeTruthy();
+      }
     });
 
-    it('advances with one click when an AI was found', async () => {
+    it('has no second page to open', () => {
+      expect(MODAL_SOURCE).not.toMatch(/ProviderReady|providerListOpen|More options/);
+    });
+
+    it('marks the AI the store already picked as in use', async () => {
+      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      expect(tile('ChatGPT').classes()).toContain('active');
+      expect(tile('ChatGPT').find('.provider-in-use').text()).toBe('In use');
+    });
+
+    it('uses AGNT Flash in one click', async () => {
+      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      await tile('AGNT Flash').trigger('click');
+      await flushPromises();
+      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/useProvider', { provider: 'AGNT', source: 'onboarding' });
+    });
+
+    it('switches to a plan signed in on this computer in one click', async () => {
+      await open({ connectedApps: ['gemini-cli', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
+      await tile('Gemini CLI').trigger('click');
+      await flushPromises();
+      expect(store.dispatch).toHaveBeenCalledWith(
+        'aiProvider/useProvider',
+        expect.objectContaining({ provider: expect.stringMatching(/gemini/i), source: 'onboarding' }),
+      );
+    });
+
+    it('takes an API key as click, paste, save — and uses it', async () => {
+      await open({ connectedApps: [], selectedProvider: 'AGNT' });
+      await tile('OpenAI').trigger('click');
+      await flushPromises();
+      global.fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) });
+      await wrapper.find('.panel-input').setValue('sk-typed');
+      await wrapper.find('.panel-action').trigger('click');
+      await flushPromises();
+
+      const [url, init] = global.fetch.mock.calls.find(([u]) => String(u).includes('/auth/apikeys/'));
+      expect(url).toBe('http://localhost:3000/auth/apikeys/openai');
+      expect(JSON.parse(init.body).apiKey).toBe('encrypted_sk-typed');
+      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/useProvider', { provider: 'OpenAI', source: 'onboarding' });
+    });
+
+    it('advances with one click once an AI is in use', async () => {
       await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
       const step = wrapper.vm.currentStep;
-      await continueButton().trigger('click');
+      await wrapper.find('.modal-actions .btn-primary').trigger('click');
       await flushPromises();
       expect(wrapper.vm.currentStep).toBe(step + 1);
     });
 
-    it('asks one question when several are found, with the store pick checked', async () => {
-      await open({ connectedApps: ['claude-code', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
-      expect(wrapper.find('h2').text()).toBe('Which AI should AGNT use?');
-      const options = wrapper.findAll('[role="radio"]');
-      expect(options.map((o) => o.text())).toEqual([expect.stringContaining('ChatGPT'), expect.stringContaining('Claude')]);
-      expect(options[0].attributes('aria-checked')).toBe('true');
-      expect(options[1].attributes('aria-checked')).toBe('false');
-    });
-
-    it('switches in one tap from the several-found question', async () => {
-      await open({ connectedApps: ['claude-code', 'openai-codex'], selectedProvider: 'OpenAI-Codex' });
-      await wrapper.findAll('[role="radio"]')[1].trigger('click');
-      await flushPromises();
-      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/useProvider', { provider: 'Claude-Code', source: 'onboarding' });
-    });
-
-    it('on AGNT Flash, says so and offers the subscriptions it could use instead', async () => {
-      await open({ connectedApps: ['agnt'], selectedProvider: 'AGNT' });
-      expect(wrapper.find('[data-testid="provider-in-use"]').text()).toContain('AGNT Flash');
-      expect(continueButton().text()).toBe('Continue with AGNT Flash →');
-      expect(wrapper.findAll('.pr-tile').map((t) => t.text())).toEqual([
-        expect.stringContaining('ChatGPT'),
-        expect.stringContaining('Claude'),
-        expect.stringContaining('Gemini'),
-      ]);
-    });
-
-    it('shows checking, not an empty choice, until the connection list settles', async () => {
-      await open({ connectedApps: [], connectedAppsSettled: false });
-      expect(wrapper.find('.pr-skeleton').exists()).toBe(true);
-      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(false);
-      expect(continueButton().text()).toBe('Continue →');
-    });
-
-    it('shows checking while the first-run pick is still being made', async () => {
-      await open({ connectedApps: ['openai-codex'], firstRunDefaultPending: true });
-      expect(wrapper.find('.pr-skeleton').exists()).toBe(true);
-    });
-
-    it('stops checking after a timeout, so a list that never settles cannot strand the user', async () => {
-      await open({ connectedApps: [], connectedAppsSettled: false });
-      await flushPromises();
-      vi.advanceTimersByTime(8000);
-      await flushPromises();
-      expect(wrapper.find('.pr-skeleton').exists()).toBe(false);
-      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(true);
-    });
-
-    it('opens the full list on request, and Back returns to the ready screen', async () => {
-      await open({ connectedApps: ['openai-codex'], selectedProvider: 'OpenAI-Codex' });
-      await wrapper.find('.pr-link').trigger('click');
-      expect(wrapper.findComponent({ name: 'ProviderLanes' }).exists()).toBe(true);
-      expect(wrapper.find('h2').text()).toBe('Choose an AI');
-      await wrapper.find('.provider-back').trigger('click');
-      expect(wrapper.find('[data-testid="provider-in-use"]').exists()).toBe(true);
+    // "Finish" used to sit on the step BEFORE the last one; clicking it led
+    // to another screen. Only the last step ends the tour.
+    it('never says Finish before the last step', async () => {
+      harnessImportStub.hasAnythingToImport.value = true;
+      wrapper = createWrapper({}, { allProviders: SEATS, connectedApps: ['openai-codex'] });
+      for (const id of wrapper.vm.steps.slice(0, -1)) {
+        await goto(wrapper, id);
+        expect(wrapper.find('.modal-actions').text(), id).not.toContain('Finish');
+      }
+      await goto(wrapper, 'ready');
+      expect(wrapper.find('.modal-actions').text()).toContain('Start Building');
     });
   });
 

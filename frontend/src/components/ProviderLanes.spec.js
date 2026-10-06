@@ -28,8 +28,9 @@ const PROVIDERS = [
   ai('local', 'Local', { connectionType: 'apikey' }),
 ];
 
-const mountLanes = (props = {}) =>
+const mountLanes = (props = {}, options = {}) =>
   mount(ProviderLanes, {
+    ...options,
     props: { providers: PROVIDERS, connectedIds: [], codexStatus: {}, ...props },
     global: {
       stubs: {
@@ -41,13 +42,9 @@ const mountLanes = (props = {}) =>
 const tileText = (wrapper) =>
   wrapper.findAll('.provider-tile').map((t) => t.text().replace(/\s+/g, ' ').trim());
 
-/**
- * Open a provider's panel by the text on its tile, expanding lanes first so a
- * test never depends on where the preview cut happens to fall.
- */
+/** Click a provider's tile by the text on it. */
 const openTile = async (wrapper, label) => {
-  for (const more of wrapper.findAll('.provider-tile.more')) await more.trigger('click');
-  const tile = wrapper.findAll('.provider-tile').find((t) => t.text().trim() === label);
+  const tile = wrapper.findAll('.provider-tile').find((t) => t.find('.provider-name').text().trim() === label);
   if (!tile) throw new Error(`No tile labelled "${label}" in: ${tileText(wrapper).join(', ')}`);
   await tile.trigger('click');
   return tile;
@@ -137,24 +134,20 @@ describe('ProviderLanes — the list', () => {
     expect(labels).not.toContain('Gemini-CLI');
   });
 
-  it('previews four per lane and hides the rest behind a count', () => {
+  // A "+N more" expander was one more click between a user and the plan they
+  // pay for. Every provider is a tile, on screen, from the start.
+  it('shows every provider in every lane, with no expander', () => {
     const wrapper = mountLanes();
-    // 4 + expander, twice.
-    expect(wrapper.findAll('.provider-tile.more')).toHaveLength(2);
-    expect(wrapper.findAll('.provider-tile')).toHaveLength(4 + 1 + 4 + 1);
-    expect(wrapper.text()).toContain('+1more');
-  });
-
-  it('expands a lane in place without collapsing the other', async () => {
-    const wrapper = mountLanes();
-    await wrapper.findAll('.provider-tile.more')[0].trigger('click');
-    expect(wrapper.findAll('.provider-tile.more')).toHaveLength(1);
+    expect(wrapper.find('.provider-tile.more').exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/\+\d+\s*more/);
+    // 5 plans + 5 keys (Local is the footer, not a tile).
+    expect(wrapper.findAll('.provider-tile')).toHaveLength(10);
     expect(tileText(wrapper)).toContain('Grok Build');
+    expect(tileText(wrapper)).toContain('Groq');
   });
 
   it('shows ChatGPT by that name, in the subscription lane', async () => {
     const wrapper = mountLanes();
-    for (const more of wrapper.findAll('.provider-tile.more')) await more.trigger('click');
     const labels = tileText(wrapper);
     expect(labels).toContain('ChatGPT');
     expect(labels).not.toContain('OpenAI Codex');
@@ -163,9 +156,7 @@ describe('ProviderLanes — the list', () => {
     expect(labels.indexOf('ChatGPT')).toBeLessThan(labels.indexOf('OpenAI'));
   });
 
-  it('marks connected providers and never hides one behind the expander', () => {
-    // grok-build sorts last by label, so without the connected-first rule it
-    // would be the one tile the expander swallowed.
+  it('marks connected providers', () => {
     const wrapper = mountLanes({ connectedIds: ['grok-build'] });
     const connected = wrapper.findAll('.provider-tile.connected');
     expect(connected).toHaveLength(1);
@@ -222,9 +213,36 @@ describe('ProviderLanes — the list', () => {
 });
 
 describe('ProviderLanes — one provider', () => {
-  it('states who charges you on the subscription panel', async () => {
+  // Reported: connecting a plan took a tile, a drawer, then "Sign in with X".
+  // The tile IS the sign-in button now; the parent starts the flow.
+  it('starts a plan sign-in on the tile click itself, with no drawer', async () => {
     const wrapper = mountLanes();
     await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.emitted('connect')).toHaveLength(1);
+    expect(wrapper.emitted('connect')[0][0].id).toBe('openai-codex');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+  });
+
+  it('connects every provider that needs no typing in one click', async () => {
+    const wrapper = mountLanes();
+    for (const label of ['ChatGPT', 'Claude Code', 'Gemini CLI', 'Cursor', 'Grok Build']) {
+      await openTile(wrapper, label);
+    }
+    expect(wrapper.emitted('connect').map(([p]) => p.id)).toEqual([
+      'openai-codex',
+      'claude-code',
+      'gemini-cli',
+      'cursor-cli',
+      'grok-build',
+    ]);
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+  });
+
+  it('states who charges you when a plan is redeemed with a pasted token', async () => {
+    const wrapper = mountLanes({
+      providers: [ai('kimi-code', 'Kimi-Code', { connectionType: 'apikey' })],
+    });
+    await openTile(wrapper, 'Kimi Code');
     expect(wrapper.find('.panel-billing').text()).toContain('Included in your plan');
     expect(wrapper.find('.panel-billing').classes()).toContain('subscription');
   });
@@ -248,14 +266,14 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.panel-warn').exists()).toBe(false);
   });
 
-  it('offers the sibling product in both directions', async () => {
+  it('offers the subscription of the same name, one click away, from its API key', async () => {
     const wrapper = mountLanes();
     await openTile(wrapper, 'OpenAI');
-    expect(wrapper.find('.panel-swap').text()).toContain('Connect ChatGPT instead');
+    expect(wrapper.find('.panel-swap').text()).toContain('Use ChatGPT instead');
 
     await wrapper.find('.panel-swap button').trigger('click');
-    expect(wrapper.find('.drawer-who strong').text()).toBe('ChatGPT');
-    expect(wrapper.find('.panel-swap').text()).toContain('Connect OpenAI instead');
+    expect(wrapper.emitted('connect')[0][0].id).toBe('openai-codex');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
   });
 
   it('omits the sibling link when that provider is not on this screen', async () => {
@@ -277,7 +295,25 @@ describe('ProviderLanes — one provider', () => {
 
     await openTile(wrapper, 'ChatGPT');
     expect(wrapper.find('.panel-input').exists()).toBe(false);
-    expect(wrapper.find('.panel-action').text()).toContain('Sign in with ChatGPT');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+  });
+
+  // Click, paste, Enter: the field is ready the moment it opens.
+  it('focuses the key field when it opens', async () => {
+    const wrapper = mountLanes({}, { attachTo: document.body });
+    await openTile(wrapper, 'OpenAI');
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(document.activeElement).toBe(wrapper.find('.panel-input').element);
+    wrapper.unmount();
+  });
+
+  it('saves on Enter in the key field', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    await wrapper.find('.panel-input').setValue('typed-value');
+    await wrapper.find('.panel-input').trigger('keyup.enter');
+    expect(wrapper.emitted('submit-credential')[0][1]).toBe('typed-value');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
   });
 
   it('branches the field on connection type, not on lane', async () => {
@@ -290,11 +326,8 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.panel-input').exists()).toBe(true);
   });
 
-  it('promises local storage only where that is actually true', async () => {
+  it('says where a pasted key is kept', async () => {
     const wrapper = mountLanes();
-    await openTile(wrapper, 'ChatGPT');
-    expect(wrapper.text()).toContain('on this computer');
-
     await openTile(wrapper, 'OpenAI');
     expect(wrapper.text()).toContain('follows you to other machines');
     expect(wrapper.text()).not.toContain('never sees a password');
@@ -338,17 +371,20 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.provider-drawer').exists()).toBe(false);
   });
 
-  it('still opens the drawer for a provider that is not connected', async () => {
+  it('starts the sign-in for a plan that is not connected yet, also in one tap', async () => {
     const wrapper = mountLanes({ connectedIds: ['openai-codex'] });
     await openTile(wrapper, 'Claude Code');
-    expect(wrapper.emitted('connect')).toBeUndefined();
-    expect(wrapper.find('.provider-drawer').exists()).toBe(true);
+    expect(wrapper.emitted('connect')[0][0].id).toBe('claude-code');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
   });
 
-  it('keeps the tile of the provider in use lit, whatever its casing', () => {
+  it('marks the provider in use, whatever its casing', () => {
     const wrapper = mountLanes({ connectedIds: ['openai-codex', 'claude-code'], activeId: 'OpenAI-Codex' });
-    const lit = wrapper.findAll('.provider-tile.selected').map((t) => t.text().trim());
-    expect(lit).toEqual(['ChatGPT']);
+    const inUse = wrapper.findAll('.provider-tile.active');
+    expect(inUse.map((t) => t.find('.provider-name').text())).toEqual(['ChatGPT']);
+    expect(inUse[0].find('.provider-in-use').text()).toBe('In use');
+    expect(inUse[0].attributes('aria-pressed')).toBe('true');
+    expect(wrapper.findAll('.provider-in-use')).toHaveLength(1);
   });
 
   it('never navigates away from the list to show one provider', async () => {
@@ -401,92 +437,59 @@ describe('ProviderLanes — one provider', () => {
     // fifth thing you read. Asserted on DOM order so prose cannot creep back
     // above it.
     const wrapper = mountLanes();
-    await openTile(wrapper, 'ChatGPT');
+    await openTile(wrapper, 'OpenAI');
     const order = [...wrapper.find('.provider-drawer').element.querySelectorAll('.panel-action, .panel-fine')];
     expect(order[0].classList.contains('panel-action')).toBe(true);
   });
 });
 
-describe('ProviderLanes — which wallet, asked first', () => {
-  it('asks nothing extra by default, so chat stays one click', () => {
+/**
+ * The ONE "which AI" page. Onboarding used to put a summary screen in front of
+ * this list ("More options") and a plan-vs-key question inside it; both were
+ * extra clicks before the AI a user already pays for. Every answer is on
+ * screen at once now, and each is a single click.
+ */
+describe('ProviderLanes — one page, every answer', () => {
+  it('asks no question before showing the providers', () => {
     const wrapper = mountLanes();
     expect(wrapper.find('.lane-fork').exists()).toBe(false);
+    expect(wrapper.find('.fork-card').exists()).toBe(false);
     expect(wrapper.findAll('.lane-title')).toHaveLength(2);
+    expect(wrapper.find('.provider-tile').exists()).toBe(true);
   });
 
-  it('offers the two wallets, priced, before naming a single vendor', () => {
-    const wrapper = mountLanes({ askBillingFirst: true });
-    const cards = wrapper.findAll('.fork-card');
-    expect(cards).toHaveLength(2);
-    expect(cards[0].text()).toContain('I have a subscription');
-    expect(cards[0].text()).toContain('already paid');
-    expect(cards[1].text()).toContain('I have an API key');
-    expect(cards[1].text()).toContain('pay per token');
-    expect(wrapper.find('.provider-tile').exists()).toBe(false);
+  it('has no way to ask it either', () => {
+    expect(ProviderLanes.props.askBillingFirst).toBeUndefined();
   });
 
-  it('shows only the lane that was chosen', async () => {
-    const wrapper = mountLanes({ askBillingFirst: true });
-    await wrapper.findAll('.fork-card')[0].trigger('click');
-    expect(wrapper.findAll('.lane')).toHaveLength(1);
-    expect(wrapper.find('.lane-subscription').exists()).toBe(true);
-    expect(wrapper.find('.lane-api').exists()).toBe(false);
-    expect(tileText(wrapper)).toContain('ChatGPT');
+  it('offers AGNT Flash, included with the account, when asked to', async () => {
+    const wrapper = mountLanes({ included: true });
+    const lane = wrapper.find('.lane-included');
+    expect(lane.text()).toContain('Included with your account');
+    expect(lane.find('.provider-name').text()).toBe('AGNT Flash');
+
+    await lane.find('.provider-tile').trigger('click');
+    expect(wrapper.emitted('connect')[0][0].id).toBe('agnt');
   });
 
-  it('asks which vendor, not which wallet again, once the wallet is known', async () => {
-    const wrapper = mountLanes({ askBillingFirst: true });
-    await wrapper.findAll('.fork-card')[0].trigger('click');
-    expect(wrapper.find('.lane-title').text()).toBe('Which plan do you have?');
-    // Already read on the card that was just clicked.
-    expect(wrapper.find('.lane-chip').exists()).toBe(false);
-    expect(wrapper.find('.lane-note').exists()).toBe(false);
+  it('marks AGNT Flash in use when it is the selected provider', () => {
+    const wrapper = mountLanes({ included: true, activeId: 'AGNT' });
+    expect(wrapper.find('.lane-included .provider-in-use').text()).toBe('In use');
+    expect(wrapper.findAll('.provider-in-use')).toHaveLength(1);
   });
 
-  it('goes back to the two wallets', async () => {
-    const wrapper = mountLanes({ askBillingFirst: true });
-    await wrapper.findAll('.fork-card')[1].trigger('click');
-    await wrapper.find('.lane-back').trigger('click');
-    expect(wrapper.findAll('.fork-card')).toHaveLength(2);
+  it('leaves AGNT Flash out where a signed-out user is choosing', () => {
+    expect(mountLanes().find('.lane-included').exists()).toBe(false);
   });
 
-  it('carries the visible lane along when the swap link crosses the divide', async () => {
-    /**
-     * The swap link exists to clear a dead end. Behind the fork it can create
-     * one instead: follow it from the metered lane and the provider it selects
-     * lives in the lane the fork is hiding, so the drawer renders nowhere.
-     */
-    const wrapper = mountLanes({ askBillingFirst: true });
-    await wrapper.findAll('.fork-card')[1].trigger('click');
-    await openTile(wrapper, 'OpenAI');
-    await wrapper.find('.panel-swap button').trigger('click');
-
-    expect(wrapper.find('.lane-subscription').exists()).toBe(true);
-    expect(wrapper.find('.provider-drawer').exists()).toBe(true);
-    expect(wrapper.find('.drawer-who strong').text()).toBe('ChatGPT');
+  it('switches from the AI in use to any other in one click', async () => {
+    const wrapper = mountLanes({ included: true, activeId: 'AGNT', connectedIds: ['openai-codex'] });
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.emitted('connect')[0][0].id).toBe('openai-codex');
   });
 
-  it('does not ask when only one wallet has anything in it', () => {
-    const wrapper = mountLanes({
-      askBillingFirst: true,
-      providers: [ai('openai', 'OpenAI', { connectionType: 'apikey' })],
-    });
-    expect(wrapper.find('.lane-fork').exists()).toBe(false);
-    expect(wrapper.find('.lane-api').exists()).toBe(true);
-  });
-
-  it('does not hide an already-connected provider behind the question', () => {
-    // Nothing here is worth making someone guess their way back to a provider
-    // that already works.
-    const wrapper = mountLanes({ askBillingFirst: true, connectedIds: ['claude-code'] });
-    expect(wrapper.find('.lane-fork').exists()).toBe(false);
-    expect(wrapper.findAll('.provider-tile.connected')).toHaveLength(1);
-  });
-
-  it('still offers the local runtime while the question is on screen', () => {
-    // Running a model here is a third answer to "how do you want to pay", so
-    // it cannot be stranded behind either card.
-    const wrapper = mountLanes({ askBillingFirst: true });
+  it('still offers the local runtime beside everything else', () => {
+    const wrapper = mountLanes({ included: true });
     expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
   });
 });

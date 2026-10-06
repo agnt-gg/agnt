@@ -96,39 +96,21 @@
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
               </div>
-              <h2>{{ providerHeading.title }}</h2>
-              <p class="subtitle">{{ providerHeading.subtitle }}</p>
+              <h2>Choose your AI</h2>
+              <p class="subtitle">Click one to use it. Plans you already pay for sign in here too. You can change this any time.</p>
 
-              <!-- Nothing to decide, or one thing: the choice the store already
-                   made, shown as a fact. Continue is the only button. -->
-              <ProviderReady
-                v-if="!showProviderList"
+              <!-- The one AI page: AGNT Flash, every plan and every API key,
+                   each one click (ProviderLanes). It replaced a summary screen
+                   that linked to this list as a second page. -->
+              <ProviderLanes
                 :providers="allProviders"
                 :connected-ids="connectedApps"
+                :codex-status="codexStatus"
                 :active-id="selectedProvider || ''"
-                :checking="providerChecking"
-                @connect="handleProviderClick"
-                @more="providerListOpen = true"
+                included
+                @connect="connectProvider"
+                @submit-credential="saveApiKey"
               />
-
-              <template v-else>
-                <button v-if="selectedProvider" type="button" class="btn-text provider-back" @click="providerListOpen = false">
-                  ← Back
-                </button>
-                <!-- ask-billing-first: this is where the plan-vs-key distinction
-                     gets taught, and where there is room to teach it. The chat
-                     card renders both lanes at once instead, because a user who
-                     hit "no model found" mid-task is not here to be taught. -->
-                <ProviderLanes
-                  :providers="allProviders"
-                  :connected-ids="connectedApps"
-                  :codex-status="codexStatus"
-                  :active-id="selectedProvider || ''"
-                  ask-billing-first
-                  @connect="handleProviderClick"
-                  @submit-credential="saveApiKey"
-                />
-              </template>
             </div>
 
             <!-- Step 5: Workspace Folder -->
@@ -229,23 +211,16 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ProviderLanes from '@/components/ProviderLanes.vue';
-import ProviderReady from '@/components/ProviderReady.vue';
 import WorkspacePicker from '@/components/WorkspacePicker.vue';
 import HarnessImport from '@/components/HarnessImport.vue';
 import { useHarnessImport } from '@/composables/useHarnessImport.js';
 import { API_CONFIG } from '@/tt.config.js';
-import {
-  PROVIDER_FETCH_ACTIONS,
-  detectedSubscriptions,
-  providerLabel,
-  providerStoreName,
-  resolveProviderKey,
-} from '@/store/app/aiProvider.js';
-import { encrypt } from '@/views/_utils/encryption.js';
+import { resolveProviderKey } from '@/store/app/aiProvider.js';
+import { useAiProviderConnect } from '@/composables/useAiProviderConnect.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
 
 export default {
@@ -253,7 +228,6 @@ export default {
   components: {
     SimpleModal,
     ProviderLanes,
-    ProviderReady,
     WorkspacePicker,
     HarnessImport,
   },
@@ -343,65 +317,13 @@ export default {
     });
 
     // The provider in use. The store picks it on first run (a subscription
-    // found on this machine, else AGNT Flash; see applyIncludedModelDefault),
-    // so this step shows a choice already made instead of asking for one.
+    // found on this machine, else AGNT Flash; see applyIncludedModelDefault);
+    // the AI step marks it "In use" and any tile changes it in one click.
     const selectedProvider = computed(() => store.state.aiProvider.selectedProvider);
-    const activeProviderLabel = computed(() => {
-      const key = resolveProviderKey(selectedProvider.value || '');
-      if (!key) return '';
-      if (key === 'agnt') return 'AGNT Flash';
-      const record = allProviders.value.find((p) => resolveProviderKey(String(p.id || '')) === key);
-      return providerLabel(record || selectedProvider.value);
-    });
-    // Counted the way ProviderReady lists them: only seats with a record to show.
-    const detectedCount = computed(
-      () =>
-        detectedSubscriptions(connectedApps.value).filter((key) =>
-          allProviders.value.some((p) => resolveProviderKey(String(p.id || '')) === key),
-        ).length,
-    );
-    const connectionsSettled = computed(() => !!store.state.appAuth.connectedAppsSettled);
 
-    // "Checking" ends when the connection list and the first-run pick are in,
-    // or after CHECK_TIMEOUT_MS regardless: a list that never settles (offline,
-    // remote lane down) must not leave the user staring at a skeleton.
-    const CHECK_TIMEOUT_MS = 8000;
-    const checkTimedOut = ref(false);
-    let checkTimer = null;
-    const providerChecking = computed(
-      () => !checkTimedOut.value && (!connectionsSettled.value || !!store.state.aiProvider.firstRunDefaultPending),
-    );
-
-    // The full list (ProviderLanes): on request, or when there is no choice to
-    // show (signed out, or checking gave up with nothing selected).
-    const providerListOpen = ref(false);
-    const showProviderList = computed(
-      () => providerListOpen.value || (!providerChecking.value && !selectedProvider.value),
-    );
-
-    const providerHeading = computed(() => {
-      if (showProviderList.value) {
-        return { title: 'Choose an AI', subtitle: 'Already pay for one? Sign in and AGNT will use it.' };
-      }
-      if (providerChecking.value) {
-        return { title: 'Setting up your AI', subtitle: 'Checking for an AI you already use on this computer…' };
-      }
-      if (detectedCount.value > 1) {
-        return { title: 'Which AI should AGNT use?', subtitle: `We found ${detectedCount.value} on this computer. You can change this any time.` };
-      }
-      if (resolveProviderKey(selectedProvider.value || '') === 'agnt') {
-        return { title: "You're ready", subtitle: 'AGNT comes with its own AI, included with your account. Nothing to set up.' };
-      }
-      return { title: "You're ready", subtitle: `AGNT will use ${activeProviderLabel.value}. You can change this any time.` };
-    });
-
-    const continueLabel = computed(() => {
-      if (currentStep.value === totalSteps.value - 1) return 'Finish';
-      if (currentStepId.value === 'provider' && !showProviderList.value && !providerChecking.value && activeProviderLabel.value) {
-        return `Continue with ${activeProviderLabel.value}`;
-      }
-      return 'Continue';
-    });
+    // The last step's own button is "Start Building"; every step before it
+    // continues. ("Finish" used to sit on the step BEFORE the last one.)
+    const continueLabel = computed(() => 'Continue');
 
     /**
      * The steps this run of onboarding will show, in order.
@@ -562,8 +484,6 @@ export default {
       }, 500); // 500ms debounce
     };
 
-    const getProviderCase = providerStoreName;
-
     const showAlert = async (title, message) => {
       await modal.value.showModal({
         title,
@@ -573,231 +493,8 @@ export default {
       });
     };
 
-    const showPrompt = async (title, message, defaultValue = '') => {
-      const result = await modal.value.showModal({
-        title,
-        message,
-        isPrompt: true,
-        inputType: 'password',
-        placeholder: defaultValue,
-        defaultValue: defaultValue,
-        confirmText: 'Connect',
-        cancelText: 'Cancel',
-        confirmClass: 'btn-primary',
-        cancelClass: 'btn-secondary',
-        showCancel: true,
-      });
-      return result === null ? null : result || defaultValue;
-    };
-
-    const selectProvider = async (provider) => {
-      const correctCase = getProviderCase(provider.id);
-      // Back to the ready screen, which now shows this choice as the one in use.
-      providerListOpen.value = false;
-      // Provider and model saved together in one write. The old path saved the
-      // provider beside the PREVIOUS model (e.g. OpenAI-Codex + agnt-flash).
-      if (correctCase !== 'Local' && (await store.dispatch('aiProvider/useProvider', { provider: correctCase, source: 'onboarding' }))) {
-        return;
-      }
-      await store.dispatch('aiProvider/setProvider', correctCase);
-
-      // Fetch models so the store auto-selects the first one
-      const fetchAction = PROVIDER_FETCH_ACTIONS[correctCase];
-      if (fetchAction) {
-        try {
-          await store.dispatch(fetchAction);
-        } catch (error) {
-          console.error(`Failed to fetch models for ${correctCase}:`, error);
-        }
-      }
-    };
-
-    const handleProviderClick = async (provider) => {
-      // Local provider doesn't require authentication - just set it directly
-      // Success is shown on the step itself ("Using X"); a popup to confirm it
-      // is one more click between the user and a working chat.
-      if (provider.id.toLowerCase() === 'local') {
-        await selectProvider(provider);
-        return;
-      }
-
-      // OpenAI Codex providers use a local device auth flow via the Codex CLI.
-      const providerLower = provider.id.toLowerCase();
-      if (providerLower === 'openai-codex' || providerLower === 'openai-codex') {
-        await connectCodexProvider(provider);
-        return;
-      }
-
-      // If already connected, just select it.
-      if (isProviderConnected(provider.id)) {
-        await selectProvider(provider);
-        return;
-      }
-
-      const connectionType = provider.connectionType || provider.connection_type;
-
-      if (connectionType === 'oauth') {
-        await connectOAuthApp(provider);
-      } else if (connectionType === 'apikey') {
-        await promptApiKey(provider);
-      } else {
-        await showAlert('Configuration Required', `Please configure the connection type for ${provider.name} in the settings.`);
-      }
-    };
-
-    const connectOAuthApp = async (provider) => {
-      // Show instructions before connecting
-      if (provider.instructions) {
-        const proceed = await modal.value.showModal({
-          title: `Connect to ${provider.name}`,
-          message: provider.instructions,
-          confirmText: 'Continue',
-          cancelText: 'Cancel',
-          confirmClass: 'btn-primary',
-          showCancel: true,
-        });
-
-        if (!proceed) return;
-      }
-
-      try {
-        const token = localStorage.getItem('token');
-        // Pass origin as query parameter for reliable Electron support
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/connect/${provider.id}?origin=${encodeURIComponent(window.location.origin)}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (data.authUrl) {
-          window.location.href = data.authUrl;
-        } else {
-          throw new Error('No authUrl provided in the response');
-        }
-      } catch (error) {
-        console.error(`Error connecting to ${provider.name}:`, error);
-        await showAlert('Connection Error', `Failed to connect to ${provider.name}: ${error.message}`);
-      }
-    };
-
-    const connectCodexProvider = async (provider) => {
-      try {
-        const providerLower = provider.id.toLowerCase();
-        const isCliProvider = providerLower === 'openai-codex';
-        const status = await store.dispatch('appAuth/fetchCodexStatus');
-        if (status?.available && (isCliProvider || status?.apiUsable)) {
-          await selectProvider(provider);
-          return;
-        }
-
-        const session = await store.dispatch('appAuth/startCodexDeviceAuth');
-        if (!session?.success) {
-          throw new Error(session?.error || 'Failed to start Codex device login');
-        }
-
-        if (session.state === 'error') {
-          await showAlert('Codex Device Login', session.message || 'Codex device login failed to start.');
-          return;
-        }
-
-        const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
-        const deviceCode = session.deviceCode || '(code unavailable)';
-
-        if (!session.deviceUrl || !session.deviceCode) {
-          await showAlert('Codex Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
-          return;
-        }
-
-        const confirmed = await modal.value.showModal({
-          title: 'OpenAI Codex Device Login',
-          message: `
-            <div style="text-align:left">
-              <p><strong>1.</strong> Open this URL in your browser:</p>
-              <p><code>${deviceUrl}</code></p>
-              <p><strong>2.</strong> Enter this one-time code:</p>
-              <p><code style="font-size:16px">${deviceCode}</code></p>
-              <p>Then return here and click <strong>I have logged in</strong>.</p>
-            </div>
-          `,
-          confirmText: 'I have logged in',
-          cancelText: 'Cancel',
-          showCancel: true,
-          confirmClass: 'btn-primary',
-        });
-
-        if (!confirmed) return;
-
-        const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
-        if (result?.state === 'success') {
-          const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
-          const isReady = latestStatus?.available && (isCliProvider || latestStatus?.apiUsable);
-
-          if (isReady) {
-            await selectProvider(provider);
-            return;
-          }
-
-          const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
-          const suggestion = isCliProvider ? '' : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex provider instead.';
-          await showAlert('Codex Not Ready', `Device login completed but the provider is not ready yet.${hint}${suggestion}`);
-        } else {
-          const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
-          const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
-          await showAlert('Codex Not Ready', `${result?.message || 'Device login not completed yet.'}${hint}`);
-        }
-      } catch (error) {
-        console.error('Error connecting OpenAI Codex:', error);
-        await showAlert('Connection Error', `Failed to connect OpenAI Codex: ${error.message}`);
-      }
-    };
-
-    const promptApiKey = async (provider) => {
-      const promptMessage = provider.instructions || provider.custom_prompt || `Enter API Key for ${provider.name}:`;
-      const apiKey = await showPrompt(`Connect to ${provider.name}`, promptMessage, '');
-
-      if (apiKey) {
-        await saveApiKey(provider, apiKey);
-      }
-    };
-
-    const saveApiKey = async (provider, apiKey) => {
-      try {
-        const token = localStorage.getItem('token');
-        const encryptedApiKey = encrypt(apiKey);
-
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${provider.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ apiKey: encryptedApiKey }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          // Update connected apps
-          await store.dispatch('appAuth/fetchConnectedApps');
-
-          // Set this as the selected AI provider and fetch models
-          await selectProvider(provider);
-        } else {
-          throw new Error(result.message || 'Failed to save API key');
-        }
-      } catch (error) {
-        console.error(`Error saving API key for ${provider.name}:`, error);
-        await showAlert('Error', `Failed to save API key for ${provider.name}: ${error.message}`);
-      }
-    };
+    // Same pipeline as the chat's no-model card (useAiProviderConnect).
+    const { connect: connectProvider, saveApiKey } = useAiProviderConnect(modal, { store, source: 'onboarding' });
 
     const handleSkip = async () => {
       // Safety check for modal ref
@@ -838,8 +535,6 @@ export default {
       { immediate: true },
     );
 
-    onBeforeUnmount(() => clearTimeout(checkTimer));
-
     // Fetch referrer info if has bonus
     onMounted(async () => {
       // Deliberately NOT awaited. This looks at the disk for other AI tools and
@@ -853,11 +548,6 @@ export default {
       if (allProviders.value.length === 0) {
         await store.dispatch('appAuth/fetchAllProviders');
       }
-
-      clearTimeout(checkTimer);
-      checkTimer = setTimeout(() => {
-        checkTimedOut.value = true;
-      }, CHECK_TIMEOUT_MS);
 
       // Fetch connected apps to check provider status
       await store.dispatch('appAuth/fetchConnectedApps');
@@ -923,11 +613,6 @@ export default {
       connectedApps,
       codexStatus,
       selectedProvider,
-      activeProviderLabel,
-      providerChecking,
-      providerListOpen,
-      showProviderList,
-      providerHeading,
       continueLabel,
       currentTheme,
       availableThemes,
@@ -939,7 +624,7 @@ export default {
       prevStep,
       complete,
       handleSkip,
-      handleProviderClick,
+      connectProvider,
       saveApiKey,
       isProviderConnected,
       hasAnyProviderConnected,
@@ -969,8 +654,11 @@ export default {
   padding: 20px;
 }
 
+/* --color-popup is translucent in several themes; layered over the solid page
+   background it keeps its tint but stops the screen behind ghosting through
+   (and content showing through the pinned action bar). */
 .onboarding-modal {
-  background: var(--color-popup);
+  background: linear-gradient(var(--color-popup), var(--color-popup)), var(--color-background);
   border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
   padding: 48px;
@@ -1369,15 +1057,25 @@ export default {
   font-weight: 600;
 }
 
-/* Modal Actions */
+/* Modal Actions
+   Pinned to the bottom of the modal's scroll area. The modal scrolls inside
+   90vh, and the AI step (every provider on one page) is taller than that, so
+   an unpinned row left Continue below the fold behind a hidden scrollbar.
+   The negative margins cancel the modal's 48px padding so the bar spans the
+   full width and sits flush with the bottom edge while content scrolls under. */
 .modal-actions {
+  position: sticky;
+  bottom: -48px;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-top: 40px;
-  padding-top: 32px;
+  margin: 40px -48px -48px;
+  padding: 20px 48px 28px;
   border-top: 1px solid var(--color-darker-1);
+  background: linear-gradient(var(--color-popup), var(--color-popup)), var(--color-background);
+  border-radius: 0 0 24px 24px;
 }
 
 .spacer {
