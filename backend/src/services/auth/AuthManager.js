@@ -1,5 +1,6 @@
 import { isLocalProviderDisconnected } from './localProviderAccess.js';
 import db from '../../models/database/index.js';
+import { withTransaction } from '../../models/database/connectionGate.js';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
@@ -226,40 +227,20 @@ class AuthManager {
     return Array.from(connected).map((providerId) => ({ providerId, connected: true }));
   }
   async disconnectProviderAndRemoveApiKey(providerId, userId) {
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION', (err) => {
-          if (err) {
-            console.error('Error beginning transaction:', err);
-            return reject(err);
-          }
-
-          db.run('DELETE FROM oauth_tokens WHERE user_id = ? AND provider_id = ?', [userId, providerId], (err) => {
-            if (err) {
-              console.error('Error deleting OAuth tokens:', err);
-              return db.run('ROLLBACK', () => reject(err));
-            }
-
-            // Disconnecting also forgets any OAuth client credentials the user
-            // entered for a plugin provider: a disconnect leaves nothing behind.
-            db.run('DELETE FROM api_keys WHERE user_id = ? AND provider_id IN (?, ?)', [userId, providerId, clientRowId(providerId)], (err) => {
-              if (err) {
-                console.error('Error deleting API keys:', err);
-                return db.run('ROLLBACK', () => reject(err));
-              }
-
-              db.run('COMMIT', (err) => {
-                if (err) {
-                  console.error('Error committing transaction:', err);
-                  return db.run('ROLLBACK', () => reject(err));
-                }
-                resolve();
-              });
-            });
-          });
-        });
-      });
+    const run = (sql, params) => new Promise((resolve, reject) => {
+      db.run(sql, params, (err) => (err ? reject(err) : resolve()));
     });
+    try {
+      await withTransaction(db, async () => {
+        await run('DELETE FROM oauth_tokens WHERE user_id = ? AND provider_id = ?', [userId, providerId]);
+        // Disconnecting also forgets any OAuth client credentials the user
+        // entered for a plugin provider: a disconnect leaves nothing behind.
+        await run('DELETE FROM api_keys WHERE user_id = ? AND provider_id IN (?, ?)', [userId, providerId, clientRowId(providerId)]);
+      }, { label: 'disconnect provider' });
+    } catch (err) {
+      console.error('Error disconnecting provider (rolled back):', err);
+      throw err;
+    }
   }
 
   /**

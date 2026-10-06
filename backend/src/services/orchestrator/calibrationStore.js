@@ -152,23 +152,26 @@ export function flushCalibrations() {
   const dirty = [...cache.entries()].filter(([, v]) => v.dirty);
   if (!dirty.length) return Promise.resolve(0);
 
+  // Plain db.run, not a prepared statement: prepared statements bypass the
+  // connection gate (see models/database/connectionGate.js).
   return new Promise((resolve) => {
-    const stmt = db.prepare(
-      `INSERT INTO estimate_calibration (provider, model, ratio, samples, updated_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(provider, model) DO UPDATE SET
-         ratio = excluded.ratio,
-         samples = excluded.samples,
-         updated_at = CURRENT_TIMESTAMP`
-    );
     let pending = dirty.length;
     for (const [k, v] of dirty) {
       const [provider, model] = k.split('|');
-      stmt.run([provider, model, v.ratio, v.samples], (err) => {
-        if (err) console.warn('[Calibration] persist failed:', err.message);
-        else v.dirty = false;
-        if (--pending === 0) stmt.finalize(() => resolve(dirty.length));
-      });
+      db.run(
+        `INSERT INTO estimate_calibration (provider, model, ratio, samples, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(provider, model) DO UPDATE SET
+           ratio = excluded.ratio,
+           samples = excluded.samples,
+           updated_at = CURRENT_TIMESTAMP`,
+        [provider, model, v.ratio, v.samples],
+        (err) => {
+          if (err) console.warn('[Calibration] persist failed:', err.message);
+          else v.dirty = false;
+          if (--pending === 0) resolve(dirty.length);
+        }
+      );
     }
   });
 }

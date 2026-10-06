@@ -1,5 +1,5 @@
-import sqlite3 from 'sqlite3';
 import { randomUUID } from 'node:crypto';
+import { withTransaction } from '../../models/database/connectionGate.js';
 import { canonicalCandidate, hash, learningError, validateEvent, scoreTrial, WORK_STATES } from './learningContract.js';
 
 const parse = row => row ? { ...row,
@@ -7,18 +7,17 @@ const parse = row => row ? { ...row,
   ...(row.baseline_json ? { baseline: JSON.parse(row.baseline_json) } : {}),
   ...(row.result_json ? { result: JSON.parse(row.result_json) } : {}) } : null;
 
-/** Dedicated connection owns every learning transaction; no unrelated writer can join one. */
+/** Every learning transaction is atomic against all other statements on its
+ * connection: on the shared (gated) connection the gate excludes them; on a
+ * plain test handle, BEGIN IMMEDIATE does. The local queue keeps learning's
+ * own transactions in submission order. */
 export class LearningCoordinator {
   constructor(connection, { clock = () => Date.now() } = {}) { this.db = connection; this.clock = clock; this.queue = Promise.resolve(); }
   run(sql, args = []) { return new Promise((resolve, reject) => this.db.run(sql, args, function(error) { error ? reject(error) : resolve(this.changes); })); }
   get(sql, args = []) { return new Promise((resolve, reject) => this.db.get(sql, args, (error, row) => error ? reject(error) : resolve(row))); }
   all(sql, args = []) { return new Promise((resolve, reject) => this.db.all(sql, args, (error, rows) => error ? reject(error) : resolve(rows))); }
   transaction(fn) {
-    const operation = this.queue.then(async () => {
-      await this.run('BEGIN IMMEDIATE');
-      try { const result = await fn(); await this.run('COMMIT'); return result; }
-      catch (error) { await this.run('ROLLBACK'); throw error; }
-    });
+    const operation = this.queue.then(() => withTransaction(this.db, fn, { label: 'learning transaction' }));
     this.queue = operation.catch(() => {});
     return operation;
   }
@@ -225,9 +224,10 @@ let singleton;
 export async function getLearningCoordinator() {
   if (!singleton) singleton = (async()=>{
     const {default:db,dbReady}=await import('../../models/database/index.js'); await dbReady;
-    const connection=await new Promise((resolve,reject)=>{const c=new sqlite3.Database(db.filename,error=>error?reject(error):resolve(c));});
-    connection.configure('busyTimeout',3000);
-    return new LearningCoordinator(connection);
+    // The shared connection, not a second one: a second connection holding
+    // BEGIN IMMEDIATE while the shared one's waiters filled the thread pool is
+    // the deadlock connectionGate.js exists to prevent.
+    return new LearningCoordinator(db);
   })();
   return singleton;
 }

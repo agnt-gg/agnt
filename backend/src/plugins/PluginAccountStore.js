@@ -1,4 +1,5 @@
 import db, { dbReady } from '../models/database/index.js';
+import { withTransaction } from '../models/database/connectionGate.js';
 
 /** Installation is an account entitlement; the executable package is only a host cache.
  * Legacy ownership comes from asset rows; otherwise a pre-account package keeps the
@@ -21,12 +22,12 @@ export class PluginAccountStore {
     await this.run('CREATE TABLE IF NOT EXISTS plugin_account_legacy_seen (plugin_name TEXT PRIMARY KEY)');
     const columns = await this.all('PRAGMA table_info(installed_plugin_assets)');
     if (!columns.length || columns.some(c => c.name === 'user_id')) return;
-    // One SQL transaction; old rows and keys survive any failed migration.
-    await this.run('BEGIN IMMEDIATE');
-    try {
+    // One SQL transaction; old rows and keys survive any failed migration. On
+    // the shared connection it is gated, so no unrelated write can join it.
+    await withTransaction(this.db, async () => {
       // Another process may have completed the migration while BEGIN was waiting.
       const lockedColumns = await this.all('PRAGMA table_info(installed_plugin_assets)');
-      if (lockedColumns.some(c => c.name === 'user_id')) { await this.run('COMMIT'); return; }
+      if (lockedColumns.some(c => c.name === 'user_id')) return;
       await this.run(`CREATE TABLE installed_plugin_assets_scoped (
         id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_name TEXT NOT NULL, plugin_version TEXT NOT NULL,
         asset_type TEXT NOT NULL, asset_slug TEXT NOT NULL, local_id TEXT NOT NULL,
@@ -50,8 +51,7 @@ export class PluginAccountStore {
       await this.run('ALTER TABLE installed_plugin_assets_scoped RENAME TO installed_plugin_assets');
       await this.run('CREATE INDEX idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name,user_id)');
       await this.run('CREATE INDEX idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type,local_id)');
-      await this.run('COMMIT');
-    } catch (error) { await this.run('ROLLBACK'); throw error; }
+    }, { label: 'plugin account migration' });
   }
   async adoptLegacy(pluginName) {
     await this.ready();

@@ -7,10 +7,8 @@ const runs = [];
 vi.mock('../../models/database/index.js', () => ({
   default: {
     all: (_sql, _p, cb) => cb(null, rows),
-    prepare: () => ({
-      run: (params, cb) => { runs.push(params); cb(null); },
-      finalize: (cb) => cb && cb(),
-    }),
+    // Plain run, not prepare: prepared statements bypass the connection gate.
+    run: (_sql, params, cb) => { runs.push(params); cb(null); },
   },
 }));
 

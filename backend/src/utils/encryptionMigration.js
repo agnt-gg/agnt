@@ -3,6 +3,7 @@ import path from 'path';
 import { encrypt, decrypt, keyGenerationOf } from './encryption.js';
 import { hasLegacyKey } from './legacySecrets.js';
 import pathManager from './PathManager.js';
+import { withTransaction } from '../models/database/connectionGate.js';
 
 /**
  * Re-encrypt credentials written under the published key with this install's
@@ -199,9 +200,10 @@ export async function migrateEncryptedColumns(db, options = {}) {
 
   summary.sidecar = writeSidecar(scan.legacy);
 
-  await run(db, 'BEGIN IMMEDIATE');
+  // One transaction (gated on the shared connection, so no unrelated write can
+  // join it): a crash or failure mid-run leaves every row exactly as it was.
   try {
-    for (const entry of scan.legacy) {
+    await withTransaction(db, async () => { for (const entry of scan.legacy) {
       const { table, column, id, value } = entry;
 
       // Decrypt with the legacy key, re-encrypt with this install's key, then
@@ -235,17 +237,11 @@ export async function migrateEncryptedColumns(db, options = {}) {
 
       await run(db, `UPDATE ${table} SET ${column} = ? WHERE id = ?`, [reEncrypted, id]);
       summary.migrated += 1;
-    }
+    } }, { label: 'encryption migration' });
 
-    await run(db, 'COMMIT');
     summary.ran = true;
     summary.reason = 'migrated';
   } catch (error) {
-    try {
-      await run(db, 'ROLLBACK');
-    } catch {
-      /* the transaction is already gone; nothing further to undo */
-    }
     summary.reason = `failed: ${error?.message}`;
     throw error;
   }

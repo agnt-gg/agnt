@@ -1,4 +1,5 @@
 import db from './database/index.js';
+import { withTransaction } from './database/connectionGate.js';
 
 class GroupModel {
   static create(id, userId, name, description = null, color = '#6366f1', sortOrder = 0, parentId = null) {
@@ -115,19 +116,17 @@ class GroupModel {
     });
   }
 
-  static updateSortOrder(userId, groupOrders) {
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        const stmt = db.prepare('UPDATE groups SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?');
-        for (const { id, sort_order } of groupOrders) {
-          stmt.run(sort_order, id, userId);
-        }
-        stmt.finalize((err) => {
-          if (err) reject(err);
-          else resolve({ success: true });
-        });
-      });
+  // One transaction, so a reorder lands whole or not at all. (A prepared
+  // statement here ran outside the connection gate, and per-row errors were
+  // never reported — finalize() succeeded regardless.)
+  static async updateSortOrder(userId, groupOrders) {
+    const run = (params) => new Promise((resolve, reject) => {
+      db.run('UPDATE groups SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', params, (err) => (err ? reject(err) : resolve()));
     });
+    await withTransaction(db, async () => {
+      for (const { id, sort_order } of groupOrders) await run([sort_order, id, userId]);
+    }, { label: 'group reorder' });
+    return { success: true };
   }
 }
 

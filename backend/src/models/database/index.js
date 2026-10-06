@@ -9,6 +9,7 @@ import pathManager from '../../utils/PathManager.js';
 import { setupFullTextSearch } from './fts.js';
 import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
+import { installConnectionGate, withTransaction } from './connectionGate.js';
 
 // Canonical data dir comes from PathManager (see PRD-060). PathManager itself
 // already creates the directory and falls back to a temp dir on failure.
@@ -53,6 +54,11 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.log('Database successfully initialized at:', dbPath);
   }
 });
+
+// One statement in flight on this connection; the rest wait in JavaScript, not
+// on pool threads. Installed before any statement is issued, so boot work is
+// ordered by the same FIFO as everything after it. See connectionGate.js.
+const connectionGate = installConnectionGate(db);
 
 // CRITICAL: PRAGMAs must be queued BEFORE createTables() below.
 // sqlite3 queues operations in call order, so these will execute first.
@@ -2656,5 +2662,5 @@ if (!skipSchemaInit) {
 
 // dbPath: for bulk jobs (restore, reset) that need their OWN connection, so their transactions
 // can never swallow, or be rolled back with, the application's writes on this shared one.
-export { dbReady, dbRunWithRetry, dbPath };
+export { dbReady, dbRunWithRetry, dbPath, withTransaction, connectionGate };
 export default db;

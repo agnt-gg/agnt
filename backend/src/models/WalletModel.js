@@ -1,5 +1,9 @@
 import db from './database/index.js';
+import { withTransaction } from './database/connectionGate.js';
 import generateUUID from '../utils/generateUUID.js';
+
+// Thrown inside a transaction to roll it back without reporting a failure.
+const ROLLBACK_NO_TRANSFER = Symbol('rollback: no transfer');
 
 /**
  * WalletModel — linear capability budgets (PRD-091 Layer 3).
@@ -121,37 +125,33 @@ class WalletModel {
     if (!Number.isFinite(amt) || amt <= 0) {
       return Promise.reject(new Error(`Invalid transfer amount: ${amount}`));
     }
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run('BEGIN IMMEDIATE');
-        db.run(
-          `UPDATE wallets
-              SET balance = balance - ?,
-                  updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND status = 'active' AND balance >= ?`,
-          [amt, parentId, amt],
-          function (err) {
-            if (err) { db.run('ROLLBACK'); return reject(err); }
-            if (this.changes === 0) { db.run('ROLLBACK'); return resolve(null); }
-            db.run(
-              `UPDATE wallets
-                  SET balance = balance + ?,
-                      allocated = allocated + ?,
-                      updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND status = 'active'`,
-              [amt, amt, childId],
-              function (err2) {
-                if (err2) { db.run('ROLLBACK'); return reject(err2); }
-                if (this.changes === 0) { db.run('ROLLBACK'); return resolve(null); }
-                db.run('COMMIT', (cErr) => {
-                  if (cErr) return reject(cErr);
-                  resolve({ ok: true, amount: amt });
-                });
-              }
-            );
-          }
-        );
-      });
+    // One gated transaction: no other statement on the shared connection can
+    // join it or land between the debit and the credit.
+    const run = (sql, params) => new Promise((resolve, reject) => {
+      db.run(sql, params, function (err) { if (err) reject(err); else resolve(this.changes); });
+    });
+    return withTransaction(db, async () => {
+      const debited = await run(
+        `UPDATE wallets
+            SET balance = balance - ?,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND status = 'active' AND balance >= ?`,
+        [amt, parentId, amt]
+      );
+      if (debited === 0) throw ROLLBACK_NO_TRANSFER;
+      const credited = await run(
+        `UPDATE wallets
+            SET balance = balance + ?,
+                allocated = allocated + ?,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND status = 'active'`,
+        [amt, amt, childId]
+      );
+      if (credited === 0) throw ROLLBACK_NO_TRANSFER;
+      return { ok: true, amount: amt };
+    }, { label: 'wallet transfer' }).catch((error) => {
+      if (error === ROLLBACK_NO_TRANSFER) return null;
+      throw error;
     });
   }
 
