@@ -15,7 +15,15 @@
       <button v-if="mobileView && isLoggedIn" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Settings</button>
       <template v-if="isLoggedIn">
         <div v-if="activeSection === 'members'" class="settings-content" data-section="members">
-          <MembersSettings @open-billing="handlePanelAction('settings-nav', 'billing')" @close="handlePanelAction('settings-nav', 'profile')" />
+          <div class="content-header">
+            <h2 class="content-title">Members</h2>
+            <p class="content-subtitle">Manage team access, invitations and roles</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <MembersSettings @open-billing="handlePanelAction('settings-nav', 'billing')" @close="handlePanelAction('settings-nav', 'profile')" />
+            </div>
+          </div>
         </div>
         <!-- General Settings Section -->
         <div v-else-if="activeSection === 'general'" class="settings-content" data-section="general">

@@ -1,6 +1,7 @@
 <template>
+  <!-- The page header is Settings' own content-header (Settings.vue), like
+       every other section; this is only the section's body. -->
   <section class="members-settings" aria-label="Members">
-    <div class="members-heading"><h1>Members</h1><p>Manage team access, invitations and roles.</p></div>
     <TeamWorkspace
       :selected-team-id="selectedTeamId"
       initial-tab="Members"
@@ -22,7 +23,8 @@ const selectedTeamId = ref(currentTeamScope()?.teamId || '');
 function refreshSpaces() { window.dispatchEvent(new CustomEvent('agnt:team-membership-changed')); }
 </script>
 <style scoped>
-.members-heading { margin-bottom: 20px; }
-.members-heading h1 { margin: 0; color: var(--text-primary); font-size: 26px; font-weight: 600; }
-.members-heading p { margin: 7px 0 0; color: var(--text-secondary); font-size: 14px; }
+/* Settings' column is the width; the team views' own 980px cap is for their
+   standalone panel, not for a page that already has one. */
+.members-settings { width: 100%; }
+.members-settings :deep(.team-body) { max-width: none; }
 </style>
