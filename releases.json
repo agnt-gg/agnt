@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.6.7",
+      "date": "October 6, 2026",
+      "title": "AGNT Everywhere: Cloud, Phone & Teams — AGNT v0.6.7",
+      "type": "patch",
+      "features": [
+        { "name": "A brand-new AGNT: one window for everything, with a new sidebar, a goals board, and live previews right in the chat", "status": "new" },
+        { "name": "[Pro] Run your own AGNT in the cloud, reachable from anywhere and still working while you sleep", "status": "new" },
+        { "name": "[Pro] Open your cloud AGNT on any phone and it becomes a mobile app, with nothing to install", "status": "new" },
+        { "name": "[Pro] Text your AGNT like a friend: send photos, voice notes and files, and it texts you back when the work is done", "status": "new" },
+        { "name": "[Team] Teams: invite people, share a workspace, and run one always-on AGNT for the whole crew", "status": "new" },
+        { "name": "[Pro] New built-in services for agents: Mail, Search, Sandbox, Webhooks and Models", "status": "new" },
+        { "name": "Agents drive a real browser and your real desktop, and you can watch them work live in the chat", "status": "new" },
+        { "name": "AGNT picks the best model for every turn and uses the AI subscriptions you already have, no setup needed", "status": "new" },
+        { "name": "Spread one goal across every machine you own: add a computer and it starts picking up work", "status": "new" },
+        { "name": "Runs survive crashes, restarts and switching devices, and AGNT now updates itself", "status": "new" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.6",
       "date": "August 8, 2026",
       "title": "Voice, Phone Access & Workspaces — AGNT v0.6.6",
