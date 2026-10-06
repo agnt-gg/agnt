@@ -29,6 +29,6 @@ describe('production schema and evidence adapters',()=>{
  });
  it('one authority boundary gates legacy producers and writes while preserving Memory',()=>{
    const root=path.resolve(import.meta.dirname,'../../../..');const server=fs.readFileSync(path.join(root,'backend/server.js'),'utf8');const triggers=fs.readFileSync(path.join(root,'backend/src/services/evolution/InsightTriggers.js'),'utf8');
-   expect(triggers).not.toContain('InsightEngine.extract');expect(triggers).not.toContain('SkillForgeOrchestrator');expect(server).toContain("req.path.startsWith('/memory')");for(const route of ['experiments','skillforge','mutations','evolution'])expect(server).toContain(`app.use('/api/${route}', learningOnlyWrites,`);
+   expect(triggers).not.toContain('InsightEngine.extract');expect(triggers).not.toContain('SkillForgeOrchestrator');expect(server).toContain("app.use('/api/insights', insightWritesGuard, InsightRoutes);");for(const route of ['experiments','skillforge','mutations','evolution'])expect(server).toContain(`app.use('/api/${route}', learningOnlyWrites,`);
  });
 });

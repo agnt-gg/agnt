@@ -96,6 +96,7 @@ import SkillRoutes from './src/routes/SkillRoutes.js';
 import SkillDiscoveryRoutes from './src/routes/SkillDiscoveryRoutes.js';
 import SkillForgeRoutes from './src/routes/SkillForgeRoutes.js';
 import LearningRoutes from './src/routes/LearningRoutes.js';
+import { learningOnlyWrites, insightWritesGuard } from './src/routes/learningWriteGuard.js';
 import ExperimentRoutes from './src/routes/ExperimentRoutes.js';
 import FileSystemRoutes from './src/routes/FileSystemRoutes.js';
 import InsightRoutes from './src/routes/InsightRoutes.js';
@@ -308,11 +309,10 @@ app.use('/api/widget-definitions', WidgetDefinitionRoutes);
 app.use('/api/skills/discovered', SkillDiscoveryRoutes);
 app.use('/api/skills', SkillRoutes);
 app.use('/api/learning', LearningRoutes);
-// Legacy evidence stays readable. Behaviour changes have one owner: Learning.
-const learningOnlyWrites = (req,res,next) => ['GET','HEAD','OPTIONS'].includes(req.method) ? next() : res.status(410).json({error:'learning_lifecycle_required', replacement:'/api/learning'});
+// Legacy evidence stays readable. Behaviour changes have one owner: Learning (see learningWriteGuard.js).
 app.use('/api/skillforge', learningOnlyWrites, SkillForgeRoutes);
 app.use('/api/experiments', learningOnlyWrites, ExperimentRoutes);
-app.use('/api/insights', (req,res,next) => req.path.startsWith('/memory') || ['GET','HEAD','OPTIONS'].includes(req.method) ? next() : learningOnlyWrites(req,res,next), InsightRoutes);
+app.use('/api/insights', insightWritesGuard, InsightRoutes);
 app.use('/api/memory', MemoryRoutes);
 app.use('/api/groups', GroupRoutes);
 app.use('/api/filesystem', FileSystemRoutes);
