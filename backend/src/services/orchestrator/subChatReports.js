@@ -61,8 +61,21 @@ Its final answer:
 ${clip(outcome.content || '(none)', maxChars)}`;
 }
 
+/**
+ * Machine-readable tail on a report: which sub-chats it is about, so the app
+ * can draw a card that opens each one (the prose names them, but only by title
+ * and conversation id, and the app opens chats by their saved row id).
+ * base64url JSON in an HTML comment: no title can break out of it. Only the
+ * report turn's INPUT carries it; what is texted is the parent's reply.
+ */
+export const SUB_CHAT_MARKER = 'agnt-subchats';
+export function subChatMarker(reports) {
+  const items = reports.map((r) => ({ outputId: r.outputId || null, title: r.title || 'Task', ok: !!r.outcome?.ok }));
+  return `<!-- ${SUB_CHAT_MARKER}:${Buffer.from(JSON.stringify(items)).toString('base64url')} -->`;
+}
+
 /** The message the parent's AI receives when one sub-chat finishes. */
-export function buildReport({ title, conversationId, outcome }) {
+export function buildReport({ title, conversationId, outcome, outputId }) {
   const status = outcome.ok ? 'finished' : 'finished with a problem';
   return {
     role: 'user',
@@ -71,7 +84,9 @@ export function buildReport({ title, conversationId, outcome }) {
 ${describe({ title, conversationId, outcome }, MAX_REPORTED_CHARS)}
 
 INSTRUCTIONS:
-You started this sub-chat to do work for the user. Tell the user, briefly and in your own words, what it ${outcome.ok ? 'found or did' : 'ran into'}. Name the sub-chat by its title so they can open it for the full detail. ${outcome.ok ? 'Do not repeat the whole answer.' : 'Do NOT claim success. Suggest a next step.'}`,
+You started this sub-chat to do work for the user. Tell the user, briefly and in your own words, what it ${outcome.ok ? 'found or did' : 'ran into'}. Name the sub-chat by its title so they can open it for the full detail. ${outcome.ok ? 'Do not repeat the whole answer.' : 'Do NOT claim success. Suggest a next step.'}
+
+${subChatMarker([{ title, outcome, outputId }])}`,
   };
 }
 
@@ -86,7 +101,9 @@ export function buildBatchReport(reports) {
 ${reports.map((r, i) => `--- ${i + 1} of ${reports.length} ---\n${describe(r, MAX_BATCH_REPORTED_CHARS)}`).join('\n\n')}
 
 INSTRUCTIONS:
-You started these sub-chats to do work for the user. In ONE reply, tell the user briefly what each one found, did or ran into, naming each by its title so they can open it for the full detail. Do not repeat whole answers. Do NOT claim success for any that failed; suggest a next step for those.`,
+You started these sub-chats to do work for the user. In ONE reply, tell the user briefly what each one found, did or ran into, naming each by its title so they can open it for the full detail. Do not repeat whole answers. Do NOT claim success for any that failed; suggest a next step for those.
+
+${subChatMarker(reports)}`,
   };
 }
 

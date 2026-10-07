@@ -277,6 +277,16 @@
           <!-- AGNT Flash out of credits: upgrade, top up, or bring your own -->
           <AgntFlashCard v-if="agntNotice" :code="agntNotice.code" @resume="handleAgntResume" />
 
+          <!-- Work handed to a new chat (start_chat): a card that opens it. -->
+          <SubChatCard
+            v-for="h in handoffCards"
+            :key="h.key"
+            kind="handoff"
+            :title="h.title"
+            :output-id="h.outputId"
+            :status="h.status"
+          />
+
           <!-- Provider Note (shown after provider buttons) -->
           <div v-if="message.showProviderNote" class="provider-note">
             <div class="note-icon">💡</div>
@@ -460,6 +470,8 @@ import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, 
 import { summarizeSteps } from '@/services/stepsSummary.js';
 import { closingText } from '@/services/assistantReplyEdit.js';
 import { parseAgntNotice, stripAgntNotice } from '@/services/agntFlash.js';
+import { handoffsOf, handoffStatus } from '@/services/subChatLinks.js';
+import SubChatCard from './SubChatCard.vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
 import DOMPurify from 'dompurify';
@@ -635,6 +647,7 @@ export default {
   components: {
     ProviderSetup,
     AgntFlashCard,
+    SubChatCard,
     Tooltip,
     GoalProgressWidget,
     ArtifactCards,
@@ -2930,6 +2943,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const agntNotice = computed(() => (props.message.role === 'assistant' ? parseAgntNotice(artifactContent.value) : null));
     const handleAgntResume = () => emit('agnt-resume', props.message.id);
 
+    // Handoffs to sub-chats, with where each one is now (subChatLinks.js).
+    const handoffCards = computed(() => {
+      const handoffs = handoffsOf(props.message);
+      if (!handoffs.length) return [];
+      const messages = store.state.chat?.messages || [];
+      const working = store.getters['chat/streamingOutputIds'];
+      return handoffs
+        .filter((h) => !h.pending)
+        .map((h) => ({ ...h, status: h.started ? handoffStatus(h.outputId, h.title, messages, working) : 'failed' }));
+    });
+
     // File preview helper functions
     const getFilePreviewUrl = (file) => {
       if (!file) return '';
@@ -3234,6 +3258,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       handleProviderConnected,
       agntNotice,
       handleAgntResume,
+      handoffCards,
       hasImages,
       extractImages,
       downloadImage,

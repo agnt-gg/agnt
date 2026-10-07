@@ -164,6 +164,14 @@
                   Show earlier messages ({{ hiddenMessageCount }})
                 </button>
               </div>
+              <!-- In a sub-chat: where its work came from, and the way back. -->
+              <div v-if="subChatParent && !showFocusedHome" class="sub-chat-origin" data-testid="sub-chat-origin">
+                <i class="fas fa-share" aria-hidden="true"></i>
+                <span>Task from <strong>{{ subChatParent.title }}</strong>. Its result goes back there when it's done.</span>
+                <button type="button" class="sub-chat-origin-back" @click="openSubChatParent">
+                  <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to {{ subChatParent.title }}
+                </button>
+              </div>
               <TransitionGroup v-show="!showFocusedHome" :name="bulkLoading || suppressMessageTransition ? '' : 'message'" :key="$store.state.chat.activeConversationId" tag="div" class="message-flow">
                 <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
@@ -223,6 +231,20 @@
                       <div v-if="message.summary" class="goal-event-summary">{{ message.summary }}</div>
                       <div v-if="message.detail" class="goal-event-detail">{{ message.detail }}</div>
                     </div>
+                  </div>
+
+                  <!-- Work coming back from a sub-chat. Stored as a user-role
+                       turn (it is what the AI reads), but nobody typed it:
+                       shown as a card linking to that chat, not a bubble. -->
+                  <div v-else-if="handbackItems(message)" class="sub-chat-handback-row" :data-message-id="message.id">
+                    <SubChatCard
+                      v-for="(item, i) in handbackItems(message)"
+                      :key="message.id + ':' + i"
+                      kind="handback"
+                      :title="item.title"
+                      :output-id="item.outputId"
+                      :status="item.ok ? 'done' : 'problem'"
+                    />
                   </div>
 
                   <!-- The fold line of a compressed conversation. Above it the
@@ -332,6 +354,8 @@ import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ContextManifest from './components/ContextManifest.vue';
 import ContextTiles from './components/ContextTiles.vue';
 import CompactionCard from './components/CompactionCard.vue';
+import SubChatCard from './components/SubChatCard.vue';
+import { handbackOf, resolveByTitle } from '@/services/subChatLinks.js';
 import {
   activeCompactionIndex,
   chooseFoldIndex,
@@ -369,6 +393,7 @@ export default {
     ChatActions,
     ContextMonitor,
     CompactionCard,
+    SubChatCard,
     ContextManifest,
     ContextTiles,
     SystemHealthPanel,
@@ -1039,6 +1064,30 @@ export default {
         iteration_end: 'Iteration end',
         attached: 'Goal attached',
       })[kind] || kind;
+
+    // A handback's sub-chats, each with the saved row that opens it
+    // (subChatLinks.js). Reports from before the marker resolve by title.
+    // The chat that started the open one, if it is a sub-chat.
+    const subChatParent = computed(() => {
+      const id = store.state.chat?.savedOutputId;
+      const parents = store.state.contentOutputs?.subChatParents || {};
+      if (!id || !(id in parents)) return null;
+      const parentId = parents[id];
+      if (!parentId) return null;
+      const row = (store.state.contentOutputs?.outputs || []).find((o) => o.id === parentId);
+      return { id: parentId, title: row?.title || 'Main chat' };
+    });
+    const openSubChatParent = () => {
+      if (subChatParent.value) router.push({ path: '/chat', query: { 'content-id': subChatParent.value.id } }).catch(() => {});
+    };
+
+    const handbackItems = (message) => {
+      const items = handbackOf(message);
+      if (!items) return null;
+      const outputs = store.state.contentOutputs?.outputs || [];
+      const subIds = store.getters['contentOutputs/subChatIdSet'];
+      return items.map((i) => ({ ...i, outputId: i.outputId || resolveByTitle(i.title, outputs, subIds) }));
+    };
 
     const goalEventIcon = (kind) =>
       ({
@@ -3034,6 +3083,9 @@ export default {
       handleCommandAction,
       goalEventLabel,
       goalEventIcon,
+      handbackItems,
+      subChatParent,
+      openSubChatParent,
     };
   },
 };
@@ -3093,6 +3145,52 @@ export default {
 
 /* One bordered-message column for both roles and the fold. Short messages
    still shrink-wrap; the avatar lives outside this column. */
+/* Top of a sub-chat: where it came from, with the way back. */
+.sub-chat-origin {
+  /* Pinned while the conversation scrolls: the way back is always one click. */
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  background: var(--color-background);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(800px, 100%);
+  margin: 12px auto 4px;
+  padding: 8px 8px 8px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.sub-chat-origin > span { flex: 1; min-width: 0; }
+.sub-chat-origin strong { color: var(--text-primary); }
+.sub-chat-origin-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sub-chat-origin-back:hover { border-color: var(--color-primary); }
+.sub-chat-origin-back:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* A sub-chat's result coming back: centred in the column, not a user bubble. */
+.sub-chat-handback-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
 .message-flow {
   --chat-avatar-gutter: 62px;
   --chat-body-width: min(784px, calc(100% - var(--chat-avatar-gutter)));

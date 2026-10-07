@@ -115,6 +115,10 @@ describe('startSubChat', () => {
     expect(calls.reports[0].textMode).toBe(true);
     expect(calls.texts).toHaveLength(1);
     expect(calls.texts[0].text).toBe('Relayed to the user.');
+    // The app's link marker rides only on the report turn's input; the phone
+    // gets the Main chat's own reply, exactly as before.
+    expect(calls.reports[0].message.content).toContain('<!-- agnt-subchats:');
+    expect(calls.texts[0].text).not.toContain('agnt-subchats');
   });
 
   it('waits until the parent is between turns before reporting', async () => {
