@@ -68,11 +68,18 @@ describe('heartbeat wiring', () => {
     expect(SERVER.indexOf('recoverJournaledRuns()')).toBeLessThan(SERVER.indexOf('startJournalHeartbeat'));
   });
 
-  it('is not started in the workflow child process', () => {
+  it('is not started in the workflow child process, nor in any non-owner of the data dir', () => {
     // Same reasoning as recovery: the child owns no runs, and a second
-    // heartbeat over the same directory is pure contention.
+    // heartbeat over the same directory is pure contention. Asserted on the
+    // guard STRUCTURE — the heartbeat sits inside the AGNT_SKIP_DB_INIT block,
+    // behind the ownership check — not on a character distance that any
+    // comment in between can break.
     const idx = SERVER.indexOf('startJournalHeartbeat');
-    expect(SERVER.slice(Math.max(0, idx - 2000), idx)).toMatch(/AGNT_SKIP_DB_INIT/);
+    const guard = SERVER.lastIndexOf("process.env.AGNT_SKIP_DB_INIT !== '1'", idx);
+    expect(guard).toBeGreaterThan(-1);
+    const guardedBlock = SERVER.slice(guard, idx);
+    expect(guardedBlock).not.toMatch(/\n\}\n/); // still inside the same top-level block
+    expect(guardedBlock).toMatch(/if \(!\(await isDataDirOwner\(\)\)\) return;/);
   });
 
   it('cannot stop the server booting', () => {

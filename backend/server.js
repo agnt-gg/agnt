@@ -117,6 +117,7 @@ import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
 import EvolutionCoreRoutes from './src/routes/EvolutionCoreRoutes.js';
 import { dbReady } from './src/models/database/index.js';
+import { isDataDirOwner } from './src/models/database/dataDirOwnership.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import { prewarmCodexModels } from './src/routes/ModelRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
@@ -428,6 +429,7 @@ dbReady.then(async () => {
 // swallowed by the function itself.
 if (process.env.AGNT_SKIP_DB_INIT !== '1') {
   dbReady.then(async () => {
+    if (!(await isDataDirOwner())) return; // a live owner's turns are not ours to recover
     try {
       const { recoverJournaledRuns } = await import('./src/services/orchestrator/recoverJournaledRuns.js');
       await recoverJournaledRuns();

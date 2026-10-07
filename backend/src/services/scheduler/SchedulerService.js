@@ -68,9 +68,11 @@ class SchedulerService {
 
     console.log(`[Scheduler] Starting (tick every ${tickIntervalMs}ms)`);
 
-    // A run left 'running' by a previous process will never finish.
+    // A run left 'running' by a previous process will never finish — but only
+    // the data-dir owner can know the previous process is gone.
     try {
-      const interrupted = await ScheduleModel.markInterruptedRuns();
+      const { isDataDirOwner } = await import('../../models/database/dataDirOwnership.js');
+      const interrupted = (await isDataDirOwner()) ? await ScheduleModel.markInterruptedRuns() : 0;
       if (interrupted > 0) console.log(`[Scheduler] Marked ${interrupted} unfinished run(s) from the last session as interrupted`);
     } catch (err) {
       console.error('[Scheduler] Interrupted-run sweep failed:', err.message);

@@ -10,6 +10,7 @@ import { setupFullTextSearch } from './fts.js';
 import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 import { installConnectionGate, withTransaction } from './connectionGate.js';
+import { acquireDataDirOwnership, DEFAULT_OWNER_WAIT_MS } from './dataDirOwnership.js';
 
 // Canonical data dir comes from PathManager (see PRD-060). PathManager itself
 // already creates the directory and falls back to a temp dir on failure.
@@ -2449,7 +2450,23 @@ function backfillWorkflowSummaryColumns() {
 // startup write-lock race between the two processes. The child is forked
 // with AGNT_SKIP_DB_INIT=1 and resolves dbReady immediately; per-connection
 // PRAGMAs above still run (they are connection-scoped, not schema work).
+//
+// Ownership (see dataDirOwnership.js) gates the work that rewrites rows owned
+// by "the previous process": the stale-run sweeps below, journal recovery
+// (server.js), the scheduler's sweep and the WAL checkpoint. Only the process
+// holding the data-dir lock can know the previous process is gone; any other
+// importer (a script, a chat-run tool) would be stamping the LIVE app's runs.
+//
+// Schema init is deliberately NOT gated: createTables() must be queued on the
+// connection synchronously, at module evaluation, so every statement issued
+// during boot is FIFO-ordered behind the DDL (see connectionGate.js). Waiting
+// for the async lock first let early queries overtake CREATE TABLE — caught by
+// ConversationLogModel.replaceHistory.test.js as "no such table".
 const skipSchemaInit = process.env.AGNT_SKIP_DB_INIT === '1';
+
+const ownershipReady = skipSchemaInit
+  ? Promise.resolve({ owner: false, reason: 'AGNT_SKIP_DB_INIT=1' })
+  : acquireDataDirOwnership(dbDir, { waitMs: DEFAULT_OWNER_WAIT_MS });
 
 const dbReady = skipSchemaInit
   ? Promise.resolve().then(() => {
@@ -2498,59 +2515,66 @@ const dbReady = skipSchemaInit
     }
   })
   .then(async () => {
-    // Startup stale-run sweep. The orchestrator's finally block can
-    // never fire across a process restart, so any agent_executions row still
-    // marked 'running' at boot belongs to a process that no longer exists and
-    // would otherwise stay 'running' forever. Mark them interrupted so the UI
-    // and stats reflect reality. Main process only (the workflow child skips
-    // schema init via AGNT_SKIP_DB_INIT=1 and never reaches this chain).
-    // NOTE: if AGNT is ever deployed multi-worker against a shared DB, this
-    // sweep must be scoped to the booting worker's own runs.
-    try {
-      const sweptCount = await new Promise((resolve, reject) => {
-        db.run(
-          `UPDATE agent_executions
-             SET status = 'interrupted',
-                 end_time = CURRENT_TIMESTAMP,
-                 error = 'Run interrupted by app restart'
-           WHERE status = 'running'`,
-          function (err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-          }
-        );
-      });
-      if (sweptCount > 0) {
-        console.log(`Startup sweep: marked ${sweptCount} stale 'running' execution(s) as 'interrupted'`);
+    const ownership = await ownershipReady;
+    if (!ownership.owner) {
+      console.warn(
+        `Startup sweeps skipped: another process owns ${dbDir} (${ownership.reason}); its running rows are not stale.`
+      );
+    } else {
+      // Startup stale-run sweep. The orchestrator's finally block can
+      // never fire across a process restart, so any agent_executions row still
+      // marked 'running' at boot belongs to a process that no longer exists and
+      // would otherwise stay 'running' forever. Mark them interrupted so the UI
+      // and stats reflect reality. Main process only (the workflow child skips
+      // schema init via AGNT_SKIP_DB_INIT=1 and never reaches this chain).
+      // NOTE: if AGNT is ever deployed multi-worker against a shared DB, this
+      // sweep must be scoped to the booting worker's own runs.
+      try {
+        const sweptCount = await new Promise((resolve, reject) => {
+          db.run(
+            `UPDATE agent_executions
+               SET status = 'interrupted',
+                   end_time = CURRENT_TIMESTAMP,
+                   error = 'Run interrupted by app restart'
+             WHERE status = 'running'`,
+            function (err) {
+              if (err) reject(err);
+              else resolve(this.changes);
+            }
+          );
+        });
+        if (sweptCount > 0) {
+          console.log(`Startup sweep: marked ${sweptCount} stale 'running' execution(s) as 'interrupted'`);
+        }
+      } catch (error) {
+        console.error('Startup stale-run sweep failed (non-fatal):', error);
       }
-    } catch (error) {
-      console.error('Startup stale-run sweep failed (non-fatal):', error);
-    }
 
-    // Same reasoning for workflow runs. A run open at boot belonged to the
-    // previous process — on a hosted instance, usually one the fleet put to
-    // sleep. Left open it reads as running forever, and tenant_due_work would
-    // count it as work in flight.
-    try {
-      const sweptRuns = await new Promise((resolve, reject) => {
-        db.run(
-          // 'stopped', not agent_executions' 'interrupted': it is the terminal
-          // status ExecutionModel.update already writes, so the run list and its
-          // terminal-status guard know it.
-          `UPDATE workflow_executions
-             SET status = 'stopped', end_time = CURRENT_TIMESTAMP
-           WHERE end_time IS NULL AND status IN ('started', 'running')`,
-          function (err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-          }
-        );
-      });
-      if (sweptRuns > 0) {
-        console.log(`Startup sweep: marked ${sweptRuns} stale workflow run(s) as 'stopped'`);
+      // Same reasoning for workflow runs. A run open at boot belonged to the
+      // previous process — on a hosted instance, usually one the fleet put to
+      // sleep. Left open it reads as running forever, and tenant_due_work would
+      // count it as work in flight.
+      try {
+        const sweptRuns = await new Promise((resolve, reject) => {
+          db.run(
+            // 'stopped', not agent_executions' 'interrupted': it is the terminal
+            // status ExecutionModel.update already writes, so the run list and its
+            // terminal-status guard know it.
+            `UPDATE workflow_executions
+               SET status = 'stopped', end_time = CURRENT_TIMESTAMP
+             WHERE end_time IS NULL AND status IN ('started', 'running')`,
+            function (err) {
+              if (err) reject(err);
+              else resolve(this.changes);
+            }
+          );
+        });
+        if (sweptRuns > 0) {
+          console.log(`Startup sweep: marked ${sweptRuns} stale workflow run(s) as 'stopped'`);
+        }
+      } catch (error) {
+        console.error('Startup workflow-run sweep failed (non-fatal):', error);
       }
-    } catch (error) {
-      console.error('Startup workflow-run sweep failed (non-fatal):', error);
     }
 
     // Rebuilt every boot: it spans optional tables. See dueWorkView.js. Non-fatal
@@ -2649,16 +2673,17 @@ async function dbRunWithRetry(fn, maxRetries = 5, baseDelay = 500) {
 // skips schema init and must not compete for the checkpoint lock). A
 // TRUNCATE checkpoint resets the -wal file to zero bytes when no reader
 // blocks it; failures are non-fatal and simply retried on the next cycle.
-if (!skipSchemaInit) {
+ownershipReady.then((ownership) => {
+  if (!ownership.owner) return;
   const runWalCheckpoint = () => {
     db.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
       if (err) console.warn('[DB] WAL checkpoint failed (non-fatal):', err.message);
     });
   };
-  dbReady.then(() => runWalCheckpoint());
+  dbReady.then(() => runWalCheckpoint(), () => {});
   const walCheckpointTimer = setInterval(runWalCheckpoint, 5 * 60 * 1000);
   if (typeof walCheckpointTimer.unref === 'function') walCheckpointTimer.unref();
-}
+});
 
 // dbPath: for bulk jobs (restore, reset) that need their OWN connection, so their transactions
 // can never swallow, or be rolled back with, the application's writes on this shared one.
