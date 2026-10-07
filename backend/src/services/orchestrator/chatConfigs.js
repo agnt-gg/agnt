@@ -16,7 +16,7 @@ import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
 import { buildTextRegisterSection } from './system-prompts/textRegister.js';
-import { loadConversationRoleSection } from './system-prompts/conversationRole.js';
+import { loadConversationRoleSection, withoutMainChatOnlyTools } from './system-prompts/conversationRole.js';
 import { buildDeferredCatalog } from './deferredTools.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
@@ -715,7 +715,9 @@ async function getUnifiedToolSchemas(context) {
   // Set only on the auto path below; every other surface loads tools as before.
   context._deferredToolCatalog = null;
   const asyncEnabled = await loadAsyncToolsEnabled(context);
-  const allSchemas = await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null });
+  // start_chat belongs to the Main chat alone (conversationRole.js). Removed at
+  // the registry, so no surface, ceiling or deferred catalog can offer it.
+  const allSchemas = await withoutMainChatOnlyTools(await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null }), context);
 
   if (context.agentId && context.agentId !== 'agent-chat') {
     return getSavedAgentToolSchemas(context, allSchemas);

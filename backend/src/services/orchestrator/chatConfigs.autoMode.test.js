@@ -32,6 +32,7 @@ import { getAvailableToolSchemas } from './tools.js';
 import { DEFAULT_TOOLS, TOOL_GROUPS, GROUP_TRIGGERS } from './toolSelector.js';
 import { ORCHESTRATOR_RESIDENT_GROUPS } from './system-prompts/promptElements.js';
 import { estimateToolTokens } from '../../utils/contextManager.js';
+import { MAIN_CHAT_ONLY_TOOLS } from './system-prompts/conversationRole.js';
 
 // REALISTICALLY SIZED. The degrade rule is a COST rule, so a fixture whose
 // schemas are an order of magnitude cheaper than production cannot exercise
@@ -286,7 +287,8 @@ describe('deferred tool loading (resident array never changes)', () => {
     const catalog = namesOf(ctx._deferredToolCatalog);
     expect(catalog).toEqual([...catalog].sort());
     expect(catalog.some((n) => resident.has(n))).toBe(false);
-    expect(new Set([...resident, ...catalog])).toEqual(new Set(namesOf(registry)));
+    // Everything but the Main chat's own tools: this is an ordinary conversation.
+    expect(new Set([...resident, ...catalog])).toEqual(new Set(namesOf(registry).filter((n) => !MAIN_CHAT_ONLY_TOOLS.has(n))));
   });
 
   it('the catalog never exceeds the channel ceiling', async () => {

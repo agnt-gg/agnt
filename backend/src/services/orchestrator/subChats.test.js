@@ -10,7 +10,8 @@ import { _resetReportsForTests } from './subChatReports.js';
  * (as a report TURN there; subChatReports.test.js covers batching, texting
  * and recovery). Every collaborator is injected.
  */
-function makeDeps({ parent = null, parentRole = null, answer = 'Done: found 3 competitors.', busyPolls = 0, execute, phone = false } = {}) {
+// A parent defaults to the Main chat: the only conversation allowed to delegate.
+function makeDeps({ parent = null, parentRole = parent ? { role: 'main', parent_output_id: null } : null, answer = 'Done: found 3 competitors.', busyPolls = 0, execute, phone = false } = {}) {
   const rows = new Map();
   const calls = { reports: [], segments: [], broadcasts: [], moves: [], subs: [], states: [], texts: [], busyChecks: 0 };
   let release;
@@ -137,24 +138,22 @@ describe('startSubChat', () => {
     expect(calls.reports[0].message.content).toContain('Do NOT claim success');
   });
 
-  it('still runs when the parent conversation is not saved yet, without a sidebar link', async () => {
-    const { deps, calls, finishRun } = makeDeps({ parent: null });
-    const result = await startSubChat({ userId: 'u-new', parentConversationId: 'conv-unsaved', title: 'x', prompt: 'y' }, deps);
-    expect(result.success).toBe(true);
-    expect(calls.subs[0].parentId).toBe(null);
-    expect(calls.moves).toEqual([]);
-    finishRun();
-    await result.finished;
-    expect(calls.reports[0].conversationId).toBe('conv-unsaved');
+  // Reported 2026-10-07: any new conversation could start sub-chats; only the Main chat should.
+  it('refuses an ordinary conversation (saved, no role): only the Main chat delegates', async () => {
+    const { deps, calls } = makeDeps({ parent: PARENT, parentRole: null });
+    const result = await startSubChat({ userId: 'u-plain', parentConversationId: 'conv-main', title: 'x', prompt: 'y' }, deps);
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/Only the Main chat/) });
+    expect(deps.ContentOutputModel.createOrUpdate).not.toHaveBeenCalled();
+    expect(calls.segments).toEqual([]);
   });
 
-  it('with no parent at all, records the work as finished and reports nowhere', async () => {
-    const { deps, calls, finishRun } = makeDeps();
-    const result = await startSubChat({ userId: 'u-orphan', parentConversationId: null, title: 'x', prompt: 'y' }, deps);
-    finishRun();
-    await result.finished;
-    expect(calls.states.map((s) => s.state)).toEqual(['expired']);
-    expect(calls.reports).toEqual([]);
+  it('refuses a brand-new, not-yet-saved conversation and a call with no conversation at all', async () => {
+    for (const parentConversationId of ['conv-unsaved', null]) {
+      const { deps } = makeDeps({ parent: null });
+      const result = await startSubChat({ userId: 'u-new', parentConversationId, title: 'x', prompt: 'y' }, deps);
+      expect(result.success).toBe(false);
+      expect(deps.ContentOutputModel.createOrUpdate).not.toHaveBeenCalled();
+    }
   });
 
   it('refuses to start a sub-chat from a sub-chat', async () => {
@@ -176,7 +175,7 @@ describe('startSubChat', () => {
     const refused = await startSubChat({ userId: 'u-cap', parentConversationId: 'conv-main', title: 'one more', prompt: 'work' }, deps);
     expect(refused.success).toBe(false);
     expect(refused.error).toMatch(/already running/);
-    expect((await startSubChat({ userId: 'u-other', parentConversationId: null, title: 't', prompt: 'w' }, deps)).success).toBe(true);
+    expect((await startSubChat({ userId: 'u-other', parentConversationId: 'conv-main', title: 't', prompt: 'w' }, deps)).success).toBe(true);
 
     finishRun();
     await Promise.all(started.map((r) => r.finished));

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { loadConversationRoleSection, buildMainChatSection, buildSubChatSection } from './conversationRole.js';
 
 const models = (row, role) => ({
@@ -7,7 +7,10 @@ const models = (row, role) => ({
 });
 
 describe('loadConversationRoleSection', () => {
-  const ctx = { conversationId: 'c1', userId: 'u1' };
+  // A fresh context per case: a conversation's role is fixed for its life, and
+  // conversationRoleOf caches it on the context.
+  let ctx;
+  beforeEach(() => { ctx = { conversationId: 'c1', userId: 'u1' }; });
 
   it('gives the Main chat the project-manager brief', async () => {
     const section = await loadConversationRoleSection(ctx, models({ id: 'o1' }, { role: 'main' }));
@@ -21,7 +24,7 @@ describe('loadConversationRoleSection', () => {
 
   it('adds nothing to an ordinary or unsaved conversation', async () => {
     expect(await loadConversationRoleSection(ctx, models({ id: 'o3' }, null))).toBe('');
-    expect(await loadConversationRoleSection(ctx, models(null, null))).toBe('');
+    expect(await loadConversationRoleSection({ conversationId: 'c-unsaved', userId: 'u1' }, models(null, null))).toBe('');
     expect(await loadConversationRoleSection({}, models({ id: 'o4' }, { role: 'main' }))).toBe('');
   });
 

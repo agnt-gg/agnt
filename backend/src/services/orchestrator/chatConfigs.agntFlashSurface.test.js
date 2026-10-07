@@ -15,6 +15,7 @@ import { getAvailableToolSchemas } from './tools.js';
 import { DEFAULT_TOOLS, TOOL_GROUPS, GROUP_TRIGGERS } from './toolSelector.js';
 import { ORCHESTRATOR_RESIDENT_GROUPS } from './system-prompts/promptElements.js';
 import { estimateToolTokens } from '../../utils/contextManager.js';
+import { MAIN_CHAT_ONLY_TOOLS } from './system-prompts/conversationRole.js';
 
 // Realistically sized schemas (~200 tokens each), as in chatConfigs.autoMode.test.js.
 const FILLER = ('Performs the operation described by this tool. Accepts a target identifier and an options object, '
@@ -58,7 +59,7 @@ describe('AGNT Flash first-turn tool surface', () => {
     expect(flashTokens).toBeLessThan(otherTokens * 0.6);
     const names = new Set(namesOf(flash));
     expect(names.has('discover_tools')).toBe(true);
-    for (const n of DEFAULT_TOOLS) if (registry.some((s) => s.function.name === n)) expect(names.has(n), n).toBe(true);
+    for (const n of DEFAULT_TOOLS) if (!MAIN_CHAT_ONLY_TOOLS.has(n) && registry.some((s) => s.function.name === n)) expect(names.has(n), n).toBe(true);
   });
 
   it('a keyword still loads its group, and a loaded group stays on later turns (cache-stable)', async () => {

@@ -10,6 +10,7 @@ import { getChatConfig } from './chatConfigs.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { DEFAULT_TOOLS, TOOL_GROUPS } from './toolSelector.js';
 import { DEFERRED_MODE_RESIDENT_TOOLS } from './system-prompts/promptElements.js';
+import { MAIN_CHAT_ONLY_TOOLS } from './system-prompts/conversationRole.js';
 
 const schema = (name) => ({ type: 'function', function: { name, description: `${name} tool`, parameters: { type: 'object', properties: {} } } });
 const registryNames = () => [...new Set([...DEFAULT_TOOLS, ...Object.values(TOOL_GROUPS).flat(), 'plugin_tool_1', 'mcp__srv__tool_1'])];
@@ -26,7 +27,8 @@ describe('lean resident surface (deferred mode, lean profile)', () => {
   it('is exactly the measured core', async () => {
     const ctx = conversation({ _toolLoadingMode: 'deferred', _residentProfile: 'lean' });
     const resident = new Set(namesOf(await surface(ctx)));
-    const expected = DEFERRED_MODE_RESIDENT_TOOLS.filter((n) => registryNames().includes(n));
+    // An ordinary conversation: no Main-chat-only tools (start_chat).
+    const expected = DEFERRED_MODE_RESIDENT_TOOLS.filter((n) => registryNames().includes(n) && !MAIN_CHAT_ONLY_TOOLS.has(n));
     expect([...resident].sort()).toEqual([...expected].sort());
   });
 
@@ -34,7 +36,8 @@ describe('lean resident surface (deferred mode, lean profile)', () => {
     const ctx = conversation({ _toolLoadingMode: 'deferred', _residentProfile: 'lean' });
     const resident = new Set(namesOf(await surface(ctx)));
     const deferred = new Set(namesOf(ctx._deferredToolCatalog));
-    for (const name of registryNames()) expect(resident.has(name) || deferred.has(name), name).toBe(true);
+    for (const name of registryNames().filter((n) => !MAIN_CHAT_ONLY_TOOLS.has(n))) expect(resident.has(name) || deferred.has(name), name).toBe(true);
+    for (const name of MAIN_CHAT_ONLY_TOOLS) expect(resident.has(name) || deferred.has(name), name).toBe(false);
     for (const name of ['generate_widget', 'computer_use', 'send_email', 'create_and_run_goal']) expect(deferred.has(name), name).toBe(true);
   });
 
@@ -50,7 +53,7 @@ describe('lean resident surface (deferred mode, lean profile)', () => {
 describe('every other conversation keeps the surface it had', () => {
   it('deferred, full profile (started before profiles existed): every static group resident', async () => {
     const resident = new Set(namesOf(await surface(conversation({ _toolLoadingMode: 'deferred', _residentProfile: 'full' }))));
-    for (const name of ['generate_widget', 'create_and_run_goal', ...DEFAULT_TOOLS]) expect(resident.has(name), name).toBe(true);
+    for (const name of ['generate_widget', 'create_and_run_goal', ...DEFAULT_TOOLS].filter((n) => !MAIN_CHAT_ONLY_TOOLS.has(n))) expect(resident.has(name), name).toBe(true);
   });
 
   it('no profile ever makes the browser or the desktop resident — they arrive on intent or discovery', async () => {

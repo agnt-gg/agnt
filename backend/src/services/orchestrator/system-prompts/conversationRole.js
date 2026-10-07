@@ -48,22 +48,49 @@ export function buildSubChatSection() {
   ].join('\n');
 }
 
-/** The role section for this conversation, or '' when it has no role. Never throws. */
-export async function loadConversationRoleSection(context, models = { ContentOutputModel, ConversationRoleModel }) {
+/**
+ * 'main' | 'sub' | null for this conversation. Fixed for its life (the role row
+ * is written before its first turn), so it is resolved once per context. An
+ * unsaved conversation has no role; a lookup failure reads as no role.
+ */
+export async function conversationRoleOf(context, models = { ContentOutputModel, ConversationRoleModel }) {
   const { conversationId, userId } = context || {};
-  if (!conversationId || !userId) return '';
+  if (!conversationId || !userId) return null;
+  // Cached per conversation: a context object may be reused across conversations.
+  if (context._conversationRole?.conversationId === conversationId) return context._conversationRole.role;
+  let role = null;
   try {
     const row = await models.ContentOutputModel.findMetaByConversationId(conversationId, userId);
-    if (!row) return '';
-    const role = await models.ConversationRoleModel.roleOf(row.id, userId);
-    if (role?.role === 'main') return buildMainChatSection();
-    if (role?.role === 'sub') return buildSubChatSection();
-    return '';
+    if (row) role = (await models.ConversationRoleModel.roleOf(row.id, userId))?.role || null;
   } catch (error) {
-    // A missing section costs guidance, never the turn.
     console.warn('[ConversationRole] Could not resolve role:', error?.message || error);
-    return '';
+    return null; // not cached: the next turn tries again
   }
+  const resolved = role === 'main' || role === 'sub' ? role : null;
+  context._conversationRole = { conversationId, role: resolved };
+  return resolved;
 }
 
-export default { loadConversationRoleSection, buildMainChatSection, buildSubChatSection };
+/**
+ * Tools only the Main chat has. Every other conversation would otherwise be
+ * offered start_chat (it rides in DEFAULT_TOOLS) and could spawn "sub-chats"
+ * of its own — reported 2026-10-07. startSubChat refuses them too.
+ */
+export const MAIN_CHAT_ONLY_TOOLS = Object.freeze(new Set(['start_chat']));
+
+/** Drop Main-chat-only tools from any other conversation's surface. */
+export async function withoutMainChatOnlyTools(schemas, context, models) {
+  if (!Array.isArray(schemas) || !schemas.some((s) => MAIN_CHAT_ONLY_TOOLS.has(s?.function?.name))) return schemas;
+  if ((await conversationRoleOf(context, models)) === 'main') return schemas;
+  return schemas.filter((s) => !MAIN_CHAT_ONLY_TOOLS.has(s?.function?.name));
+}
+
+/** The role section for this conversation, or '' when it has no role. Never throws. */
+export async function loadConversationRoleSection(context, models = { ContentOutputModel, ConversationRoleModel }) {
+  const role = await conversationRoleOf(context, models);
+  if (role === 'main') return buildMainChatSection();
+  if (role === 'sub') return buildSubChatSection();
+  return '';
+}
+
+export default { loadConversationRoleSection, conversationRoleOf, withoutMainChatOnlyTools, buildMainChatSection, buildSubChatSection };

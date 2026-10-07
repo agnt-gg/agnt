@@ -86,15 +86,19 @@ export async function startSubChat({ userId, authToken, parentConversationId, ti
   const deps = injected || (await defaultDeps());
   const { ContentOutputModel, ConversationRoleModel } = deps;
 
-  // The parent is the conversation this tool was called from. It may not be
-  // saved yet (the first turn of a brand-new chat): the report still reaches
-  // it by conversation id, there is just no row to link the sidebar to.
+  // Only the Main chat delegates. Every other conversation was offered
+  // start_chat too and spawned "sub-chats" of its own (reported 2026-10-07).
+  // The Main chat is always a saved row with the 'main' role, so an unsaved,
+  // ordinary or sub conversation is refused before anything is created.
   const parent = parentConversationId ? await ContentOutputModel.findMetaByConversationId(parentConversationId, userId) : null;
-  if (parent) {
-    const parentRole = await ConversationRoleModel.roleOf(parent.id, userId);
-    if (parentRole?.role === 'sub') {
-      return { success: false, error: 'This conversation is itself a sub-chat; it cannot start more. Do the work here, and it will be reported back to the chat that started it.' };
-    }
+  const parentRole = parent ? (await ConversationRoleModel.roleOf(parent.id, userId))?.role : null;
+  if (parentRole !== 'main') {
+    return {
+      success: false,
+      error: parentRole === 'sub'
+        ? 'This conversation is itself a sub-chat; it cannot start more. Do the work here, and it will be reported back to the chat that started it.'
+        : 'Only the Main chat can start new chats. Do the work here in this conversation.',
+    };
   }
 
   const outputId = randomUUID();
