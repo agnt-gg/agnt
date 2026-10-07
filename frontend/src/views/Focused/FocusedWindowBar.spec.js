@@ -46,9 +46,14 @@ describe('Focused window bar', () => {
     expect(BAR).toMatch(/\.fwb-win, \.fwb-mac \{[^}]*-webkit-app-region: no-drag;/);
   });
 
-  it('the shell mounts it and reserves its height only in the desktop app', () => {
-    expect(SHELL).toMatch(/<FocusedWindowBar \/>/);
+  it('the bar tops the page column; the sidebar header drags too', () => {
+    // Inside the page column, so the sidebar runs the full height beside it.
+    expect(SHELL).toMatch(/<main class="focused-main">[\s\S]{0,200}<FocusedWindowBar \/>/);
     expect(SHELL).toMatch(/'has-window-bar': isElectron/);
-    expect(CSS).toMatch(/\.ui-focused\.ui-focused\.has-window-bar \{[^}]*padding-top: var\(--focused-window-bar-height\);/);
+    expect(CSS).not.toMatch(/has-window-bar \{[^}]*padding-top/);
+    // The sidebar header's empty space still drags the window; its buttons do not.
+    expect(CSS).toMatch(/\.has-window-bar \.focused-side-head \{\s*-webkit-app-region: drag;/);
+    expect(CSS).toMatch(/\.focused-side-head input \{\s*-webkit-app-region: no-drag;/);
+    expect(CSS).toMatch(/\.has-window-bar \.focused-side-head button,/);
   });
 });

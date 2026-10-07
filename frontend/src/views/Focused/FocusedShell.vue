@@ -1,6 +1,5 @@
 <template>
   <div class="ui-focused" :class="{ 'is-sidebar-closed': !sidebarOpen, 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron }">
-    <FocusedWindowBar />
     <FocusedSidebar
       :open="sidebarOpen"
       :active-page="page"
@@ -15,6 +14,8 @@
     <button v-if="isMobile && sidebarOpen" type="button" class="focused-scrim" aria-label="Close sidebar" @click="setSidebar(false)"></button>
 
     <main class="focused-main">
+      <!-- Above the page only: the sidebar runs the full window height beside it. -->
+      <FocusedWindowBar />
       <!-- One slim bar: sidebar controls when it is closed, and the open
            conversation's title, as in the AGNT One demo. -->
       <header v-if="!sidebarOpen || isMobile || chatTitle" class="focused-topbar" :class="{ 'has-title': !!chatTitle }">

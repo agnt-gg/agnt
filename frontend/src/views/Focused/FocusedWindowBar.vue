@@ -35,8 +35,7 @@ const close = () => electronUtils.window.close();
 <style scoped>
 /* The whole strip drags the window; only the buttons opt out. */
 .focused-window-bar {
-  position: absolute;
-  inset: 0 0 auto 0;
+  flex: 0 0 var(--focused-window-bar-height, 32px);
   height: var(--focused-window-bar-height, 32px);
   display: flex;
   align-items: center;

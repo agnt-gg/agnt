@@ -22,11 +22,18 @@
   color: var(--text-primary);
 }
 
-/* Desktop: the window bar (FocusedWindowBar) sits above sidebar and page. */
+/* Desktop: the window bar (FocusedWindowBar) tops the page column; the sidebar
+   runs the full height beside it, and its header's empty space drags too. */
 .ui-focused.ui-focused.has-window-bar {
   --focused-window-bar-height: 32px;
-  padding-top: var(--focused-window-bar-height);
-  box-sizing: border-box;
+}
+.ui-focused.has-window-bar .focused-side-head {
+  -webkit-app-region: drag;
+}
+.ui-focused.has-window-bar .focused-side-head button,
+.ui-focused.has-window-bar .focused-side-head a,
+.ui-focused.has-window-bar .focused-side-head input {
+  -webkit-app-region: no-drag;
 }
 
 .ui-focused .focused-main {
