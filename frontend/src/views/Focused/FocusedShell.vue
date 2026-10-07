@@ -1,5 +1,6 @@
 <template>
-  <div class="ui-focused" :class="{ 'is-sidebar-closed': !sidebarOpen, 'is-compact': isMobile, 'is-borrowed': borrowed }">
+  <div class="ui-focused" :class="{ 'is-sidebar-closed': !sidebarOpen, 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron }">
+    <FocusedWindowBar />
     <FocusedSidebar
       :open="sidebarOpen"
       :active-page="page"
@@ -83,6 +84,8 @@ import JumpPalette from '@/canvas/JumpPalette.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import FocusedSidebar from './FocusedSidebar.vue';
+import FocusedWindowBar from './FocusedWindowBar.vue';
+import { useElectron } from '@/composables/useElectron';
 import FocusedLibrary from './FocusedLibrary.vue';
 import FocusedConnectors from './FocusedConnectors.vue';
 import FocusedScheduled from './FocusedScheduled.vue';
@@ -96,6 +99,7 @@ import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 import { useMainChat } from '@/composables/useMainChat.js';
 import { isUnstartedConversation } from '@/views/Terminal/CenterPanel/screens/Chat/chatHome.js';
 import { graduationUnlock, GRADUATION_COPY, GRADUATION_ASKED_KEY, readFlag, writeFlag } from '@/services/uiModeDefault.js';
+const { isElectron } = useElectron();
 
 const props = defineProps({
   screenName: { type: String, required: true },

@@ -22,6 +22,13 @@
   color: var(--text-primary);
 }
 
+/* Desktop: the window bar (FocusedWindowBar) sits above sidebar and page. */
+.ui-focused.ui-focused.has-window-bar {
+  --focused-window-bar-height: 32px;
+  padding-top: var(--focused-window-bar-height);
+  box-sizing: border-box;
+}
+
 .ui-focused .focused-main {
   flex: 1;
   min-width: 0;

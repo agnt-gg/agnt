@@ -24,12 +24,12 @@ async function close() {
 }
 </script>
 <style scoped>
-.upgrade-offer { display: flex; align-items: center; gap: 18px; justify-content: space-between; border: 1px solid var(--terminal-border-color); background: var(--color-darker-0); color: var(--text-primary); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.upgrade-offer { display: flex; align-items: center; gap: 18px; justify-content: space-between; color: var(--text-primary); border-radius: 12px; padding: 20px; margin: 16px 0 0; }
 .upgrade-offer strong { font-size: 16px; font-weight: 600; }
 .upgrade-offer p { color: var(--text-secondary); font-size: 13px; line-height: 1.45; margin: 6px 0 0; }
 .upgrade-offer-button { border: 0; border-radius: 8px; background: var(--fill-accent); color: var(--on-fill-accent); font: inherit; font-size: 14px; font-weight: 600; padding: 10px 15px; cursor: pointer; white-space: nowrap; }
 .upgrade-offer-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.compact { flex-direction: column; align-items: stretch; gap: 11px; padding: 14px; margin: 12px 0; }
+.compact { flex-direction: column; align-items: stretch; gap: 11px; padding: 14px; margin: 12px 0 0; }
 .compact strong { font-size: 14px; }
 .compact p { font-size: 12px; }
 @media(max-width:600px) { .upgrade-offer { flex-wrap: wrap; } }
