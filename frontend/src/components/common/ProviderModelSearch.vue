@@ -226,7 +226,7 @@ export default {
         // immediately overrides it with the user's chosen pair. With nothing
         // resolved there is no pair to pin, and dispatching a null model would
         // undo the selection the provider mutation just made.
-        await store.dispatch('aiProvider/setProvider', picked.provider);
+        await store.dispatch('aiProvider/setProvider', { provider: picked.provider, source: 'model-search' });
         if (picked.model) {
           await store.dispatch('aiProvider/setModel', picked.model);
         }

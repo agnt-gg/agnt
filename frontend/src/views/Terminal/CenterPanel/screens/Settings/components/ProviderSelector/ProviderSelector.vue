@@ -228,7 +228,7 @@ export default {
     const selectedProvider = computed({
       get: () => store.state.aiProvider.selectedProvider,
       set: (newProvider) => {
-        store.dispatch('aiProvider/setProvider', newProvider);
+        store.dispatch('aiProvider/setProvider', { provider: newProvider, source: 'settings-picker' });
       },
     });
 
@@ -299,7 +299,7 @@ export default {
     // Handle provider selection
     const handleProviderSelected = (option) => {
       if (!option.disabled) {
-        store.dispatch('aiProvider/setProvider', option.value);
+        store.dispatch('aiProvider/setProvider', { provider: option.value, source: 'settings-picker' });
       }
     };
 
@@ -439,7 +439,7 @@ export default {
 
       // If a new provider was created (or updated), select it
       if (savedProvider && savedProvider.id) {
-        store.dispatch('aiProvider/setProvider', savedProvider.id);
+        store.dispatch('aiProvider/setProvider', { provider: savedProvider.id, source: 'custom-provider-saved' });
       }
     };
 

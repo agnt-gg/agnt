@@ -400,7 +400,7 @@ export default {
         });
         return;
       }
-      store.dispatch('aiProvider/setProvider', option.value);
+      store.dispatch('aiProvider/setProvider', { provider: option.value, source: 'chat-picker' });
       if (props.channelKey) setChannelProvider(props.channelKey, option.value);
     };
 
@@ -723,11 +723,11 @@ export default {
           const firstProvider = connectedAIProviders[0];
           const properCasedProvider = providers.value.find((p) => p.toLowerCase() === firstProvider);
           if (properCasedProvider) {
-            store.dispatch('aiProvider/setProvider', properCasedProvider);
+            store.dispatch('aiProvider/setProvider', { provider: properCasedProvider, source: 'custom-provider-deleted' });
           }
         } else {
           // No connected providers, switch to Local
-          store.dispatch('aiProvider/setProvider', 'Local');
+          store.dispatch('aiProvider/setProvider', { provider: 'Local', source: 'custom-provider-deleted' });
         }
       } catch (error) {
         console.error('Failed to delete custom provider:', error);

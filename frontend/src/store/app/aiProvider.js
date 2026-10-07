@@ -1759,14 +1759,16 @@ const aiProviderModule = {
       return dispatch('fetchLocalModels', { forceRefresh: true });
     },
 
-    async setProviderWithModelFetch({ commit, dispatch, state }, newProvider) {
+    async setProviderWithModelFetch({ dispatch }, payload) {
+      const { provider: newProvider, source } =
+        typeof payload === 'object' && payload !== null ? payload : { provider: payload };
       if (newProvider === 'Local') {
         await dispatch('fetchLocalModels');
       } else {
         await dispatch('fetchProviderModels', { provider: newProvider });
       }
 
-      await dispatch('setProvider', newProvider);
+      await dispatch('setProvider', { provider: newProvider, source });
 
       // After models are loaded and provider is set, ensure model is valid and re-sync
       await dispatch('ensureValidModel');

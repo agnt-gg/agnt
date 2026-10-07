@@ -169,7 +169,7 @@ async function setProvider(p) {
   switching.value = true;
   try {
     // Loads the provider's models, sets it, then keeps the model valid.
-    await store.dispatch('aiProvider/setProviderWithModelFetch', p);
+    await store.dispatch('aiProvider/setProviderWithModelFetch', { provider: p, source: 'focused-settings' });
     nav.toast(`Default model: ${p}.`);
   } catch (e) {
     nav.toast('Couldn’t change it. ' + (e?.message || e));

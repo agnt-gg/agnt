@@ -70,6 +70,11 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
   const showError = (title, message) =>
     modalRef.value?.showModal({ title, message, confirmText: 'OK', showCancel: false });
 
+  let latestClickId = 0;
+  const selectedKey = () => resolveProviderKey(String(store.state.aiProvider?.selectedProvider || ''));
+  const takeClickTicket = () => ({ id: ++latestClickId, selectionAtClick: selectedKey() });
+  const userMovedOn = (click) => Boolean(click) && (click.id !== latestClickId || selectedKey() !== click.selectionAtClick);
+
   /**
    * Show `dialog` while `work` runs; the dialog closes itself when `work`
    * settles. Resolves to work's result, or null if the user cancelled first.
@@ -88,14 +93,18 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return (await finished).result; // "Hide": keep waiting without the dialog
   };
 
-  const selectProvider = async (provider) => {
+  const selectProvider = async (provider, click) => {
+    if (userMovedOn(click)) {
+      console.info(`[AI connect] ${provider.id} is ready; not switching to it, another AI was chosen while it connected.`);
+      return;
+    }
     const storeName = providerStoreName(provider.id);
     // Provider and model saved together in one write (aiProvider/useProvider).
     if (storeName !== 'Local' && (await store.dispatch('aiProvider/useProvider', { provider: storeName, source }))) {
       onSelected(provider);
       return;
     }
-    await store.dispatch('aiProvider/setProvider', storeName);
+    await store.dispatch('aiProvider/setProvider', { provider: storeName, source });
     const fetchAction = PROVIDER_FETCH_ACTIONS[storeName];
     if (fetchAction) {
       try {
@@ -124,11 +133,11 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     }
   };
 
-  const connectCodex = async (provider) => {
+  const connectCodex = async (provider, click) => {
     try {
       const status = await store.dispatch('appAuth/fetchCodexStatus');
       if (status?.available) {
-        await selectProvider(provider);
+        await selectProvider(provider, click);
         return;
       }
       const session = await store.dispatch('appAuth/startCodexDeviceAuth');
@@ -153,7 +162,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       if (result === null) return;
       const latest = await store.dispatch('appAuth/fetchCodexStatus');
       if (result?.state === 'success' && latest?.available) {
-        await selectProvider(provider);
+        await selectProvider(provider, click);
         return;
       }
       const hint = latest?.hint ? `\n\n${latest.hint}` : '';
@@ -174,7 +183,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return { status: 'error', error: 'Sign-in timed out. Please try again.' };
   };
 
-  const connectAntigravity = async (provider) => {
+  const connectAntigravity = async (provider, click) => {
     try {
       const data = await providerAuthService.startOAuth('antigravity');
       if (!data.authUrl) throw new Error('No authUrl returned');
@@ -197,7 +206,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       }
       localStorage.removeItem('Antigravity_models');
       await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-      await selectProvider(provider);
+      await selectProvider(provider, click);
     } catch (error) {
       console.warn('Antigravity OAuth failed:', error.message);
       await showError('Connection Failed', `Sign-in error: ${error.message}`);
@@ -218,10 +227,10 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return value || null;
   };
 
-  const connectClaudeCode = async (provider) => {
+  const connectClaudeCode = async (provider, click) => {
     const status = await store.dispatch('appAuth/fetchClaudeCodeStatus');
     if (status?.available && status?.apiUsable) {
-      await selectProvider(provider);
+      await selectProvider(provider, click);
       return;
     }
     try {
@@ -244,7 +253,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       }
       localStorage.removeItem('Claude-Code_models');
       await store.dispatch('appAuth/fetchConnectedApps');
-      await selectProvider(provider);
+      await selectProvider(provider, click);
     } catch (error) {
       console.warn('Claude Code OAuth failed, falling back to paste-token:', error.message);
       const token = await promptForSecret(
@@ -254,7 +263,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       if (!token) return;
       try {
         const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
-        if (result?.success) await selectProvider(provider);
+        if (result?.success) await selectProvider(provider, click);
         else await showError('Connection Failed', result?.error || 'Failed to connect Claude Code.');
       } catch (manualError) {
         console.error('Error connecting Claude Code:', manualError);
@@ -274,9 +283,9 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
   //      download page.
   const hasModels = (status) => (status?.models?.length || 0) > 0;
 
-  const useLocalModels = async (provider) => {
+  const useLocalModels = async (provider, click) => {
     await store.dispatch('aiProvider/fetchLocalModels', { forceRefresh: true }).catch(() => {});
-    await selectProvider(provider);
+    await selectProvider(provider, click);
   };
 
   const startLmStudioWithDialog = () =>
@@ -347,7 +356,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       model: `Downloading ${name}… ${bytes}`,
       starting: `Starting ${name} on this computer…`,
     }[job.phase] || '';
-    return `<p>${line}</p><p style="font-size:12px;opacity:.8">Hide keeps it going in the background and switches to it when it is ready. Cancel stops it; a later try resumes the download.</p>`;
+    return `<p>${line}</p><p style="font-size:12px;opacity:.8">Hide keeps it going in the background and switches to it when it is ready, unless you choose another AI first. Cancel stops it; a later try resumes the download.</p>`;
   };
 
   /**
@@ -368,7 +377,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     }
   };
 
-  const runManagedSetup = async (provider, status) => {
+  const runManagedSetup = async (provider, status, click) => {
     const { managed } = status;
     const busy = managed.job && !SETUP_DONE_PHASES.includes(managed.job.phase);
     const model = managed.models.find((entry) => entry.id === (busy ? managed.job.modelId : managed.recommendedId));
@@ -399,12 +408,12 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       return;
     }
     const job = final?.managed?.job;
-    if (job?.phase === 'ready' && hasModels(final)) return useLocalModels(provider);
+    if (job?.phase === 'ready' && hasModels(final)) return useLocalModels(provider, click);
     if (job?.phase === 'cancelled') return;
     await showError('Local model setup failed', job?.error || 'The local model could not be set up.');
   };
 
-  const connectLocal = async (provider) => {
+  const connectLocal = async (provider, click) => {
     let status;
     try {
       status = await getLocalStatus();
@@ -412,12 +421,12 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       await showError('Could not check this computer', `AGNT could not look for local models: ${error.message}`);
       return;
     }
-    if (hasModels(status)) return useLocalModels(provider);
+    if (hasModels(status)) return useLocalModels(provider, click);
 
     if (status.canStart) {
       const started = await startLmStudioWithDialog();
       if (started === null) return;
-      if (hasModels(started)) return useLocalModels(provider);
+      if (hasModels(started)) return useLocalModels(provider, click);
       if (!started?.running) {
         const why = started?.error === 'start_timeout'
           ? 'LM Studio did not start its server in time.'
@@ -428,7 +437,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       status = started;
     }
 
-    if (status.managed?.supported) return runManagedSetup(provider, status);
+    if (status.managed?.supported) return runManagedSetup(provider, status, click);
 
     if (status.running) {
       await showError(
@@ -440,13 +449,13 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     if (!status.installed) {
       const found = await offerLmStudioDownload(provider, status);
       if (!found) return;
-      if (hasModels(found)) return useLocalModels(provider);
-      if (found.canStart || found.installed) return connectLocal(provider);
+      if (hasModels(found)) return useLocalModels(provider, click);
+      if (found.canStart || found.installed) return connectLocal(provider, click);
     }
   };
 
   /** Store an API key on the account, then use that provider. */
-  const saveApiKey = async (provider, apiKey) => {
+  const saveApiKey = async (provider, apiKey, click) => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${provider.id}`, {
@@ -458,7 +467,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       const result = await response.json();
       if (!result.success) throw new Error(result.message || 'Failed to save API key');
       await store.dispatch('appAuth/fetchConnectedApps');
-      await selectProvider(provider);
+      await selectProvider(provider, click);
     } catch (error) {
       console.error(`Error saving API key for ${provider.name}:`, error);
       await showError('Error', `Failed to save the API key for ${provider.name}: ${error.message}`);
@@ -469,16 +478,17 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
   const connect = async (provider) => {
     const id = String(provider?.id || '').toLowerCase();
     if (!id) return;
+    const click = takeClickTicket();
     // Included with the account, or nothing to sign in to.
-    if (id === 'agnt') return selectProvider(provider);
-    if (id === 'local') return connectLocal(provider);
+    if (id === 'agnt') return selectProvider(provider, click);
+    if (id === 'local') return connectLocal(provider, click);
     // Local CLIs check their own sign-in first, so a connected seat is one click too.
-    if (id === 'openai-codex') return connectCodex(provider);
-    if (id === 'claude-code') return connectClaudeCode(provider);
+    if (id === 'openai-codex') return connectCodex(provider, click);
+    if (id === 'claude-code') return connectClaudeCode(provider, click);
     if (id === 'antigravity') {
-      return isConnected(provider.id) ? selectProvider(provider) : connectAntigravity(provider);
+      return isConnected(provider.id) ? selectProvider(provider, click) : connectAntigravity(provider, click);
     }
-    if (isConnected(provider.id)) return selectProvider(provider);
+    if (isConnected(provider.id)) return selectProvider(provider, click);
 
     const connectionType = provider.connectionType || provider.connection_type;
     if (connectionType === 'oauth') return connectOAuth(provider);
@@ -486,7 +496,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       // ProviderLanes collects keys in place; this is the fallback for callers
       // that emit a bare connect for a key provider.
       const key = await promptForSecret(`Connect ${provider.name}`, `Paste your ${provider.name} API key:`);
-      if (key) await saveApiKey(provider, key);
+      if (key) await saveApiKey(provider, key, click);
       return;
     }
     await showError('Configuration Required', `${provider.name} has no connection type configured.`);

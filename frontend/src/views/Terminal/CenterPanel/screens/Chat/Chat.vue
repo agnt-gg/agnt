@@ -661,7 +661,7 @@ export default {
         await store.dispatch('aiProvider/fetchLocalModels');
 
         // Set Local as the provider
-        await store.dispatch('aiProvider/setProvider', 'Local');
+        await store.dispatch('aiProvider/setProvider', { provider: 'Local', source: 'local-autodetect' });
 
         // If we're showing the setup screen, refresh the conversation to show Annie
         if (displayMessages.value.length === 1 && displayMessages.value[0].showProviderSetup) {

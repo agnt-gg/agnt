@@ -172,7 +172,7 @@ describe('ProviderModelSearch — selecting a provider-only row', () => {
       type: 'aiProvider/fetchProviderModels',
       payload: { provider: SPARK },
     });
-    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: SPARK });
+    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: { provider: SPARK, source: 'model-search' } });
     expect(dispatched).toContainEqual({
       type: 'aiProvider/setModel',
       payload: 'deepseek-v4-flash-0731',
@@ -193,7 +193,7 @@ describe('ProviderModelSearch — selecting a provider-only row', () => {
     await wrapper.find('.search-result').trigger('mousedown');
     await flushPromises();
 
-    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: OLLAMA });
+    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: { provider: OLLAMA, source: 'model-search' } });
     expect(dispatched.some((d) => d.type === 'aiProvider/setModel')).toBe(false);
   });
 
@@ -227,7 +227,7 @@ describe('ProviderModelSearch — selecting a provider-only row', () => {
     await wrapper.find('.search-result').trigger('mousedown');
     await flushPromises();
 
-    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: OLLAMA });
+    expect(dispatched).toContainEqual({ type: 'aiProvider/setProvider', payload: { provider: OLLAMA, source: 'model-search' } });
     expect(dispatched.some((d) => d.type === 'aiProvider/setModel')).toBe(false);
   });
 });

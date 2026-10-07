@@ -36,10 +36,10 @@ function fakeModal({ answer } = {}) {
   return modal;
 }
 
-function fakeStore({ connected = [], dispatch = {} } = {}) {
+function fakeStore({ connected = [], dispatch = {}, selectedProvider = 'OpenAI-Codex' } = {}) {
   return {
     getters: { 'appAuth/connectedApps': connected },
-    state: { appAuth: { connectedApps: connected } },
+    state: { appAuth: { connectedApps: connected }, aiProvider: { selectedProvider } },
     dispatch: vi.fn(async (type, payload) => (dispatch[type] ? dispatch[type](payload) : true)),
   };
 }
@@ -189,7 +189,7 @@ describe('useAiProviderConnect — run a model on this machine', () => {
     const { connect, onSelected, modal } = setup({ store });
     await connect(LOCAL);
     expect(calls()).toEqual(['GET http://local.test/api/local-models/status']);
-    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', 'Local');
+    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', { provider: 'Local', source: 'test' });
     expect(onSelected).toHaveBeenCalledOnce();
     expect(modal.showModal).not.toHaveBeenCalled();
   });
@@ -331,7 +331,7 @@ describe('useAiProviderConnect — AGNT runs a local model itself', () => {
       expect(calls()).toEqual(['GET status', 'POST managed/setup', 'GET status', 'GET status']);
       expect(JSON.parse(global.fetch.mock.calls[1][1].body)).toEqual({ modelId: 'qwen3.5-4b' });
       expect(modal.confirm).toHaveBeenCalledTimes(2); // the user's click, then the progress dialog closing itself
-      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', 'Local');
+      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', { provider: 'Local', source: 'test' });
       expect(onSelected).toHaveBeenCalledOnce();
     } finally { vi.useRealTimers(); }
   });
@@ -424,6 +424,81 @@ describe('useAiProviderConnect — AGNT runs a local model itself', () => {
     await setup({ store: fakeStore(), modal }).connect(LOCAL);
     expect(modal.shown[0].message).not.toContain('<img');
     expect(modal.shown[0].message).toContain('&lt;img');
+  });
+});
+
+describe('useAiProviderConnect — a flow that finishes late never overrides a newer choice', () => {
+  const LOCAL = { id: 'local', name: 'Local' };
+  const reply = (body) => ({ ok: true, json: async () => body });
+  const localSetupRunning = { ready: false, running: false, models: [], installed: false, canStart: false,
+    managed: { supported: true, hardware: {}, engine: { installed: true }, recommendedId: 'qwen3.5-4b',
+      models: [{ id: 'qwen3.5-4b', name: 'Qwen 3.5 4B', sizeBytes: 1, fit: 'gpu', downloaded: false }],
+      job: { modelId: 'qwen3.5-4b', phase: 'model', bytesDone: 0, bytesTotal: 1 } } };
+  const localReady = { ready: true, running: true, models: ['qwen3.5-4b'],
+    managed: { ...localSetupRunning.managed, job: { modelId: 'qwen3.5-4b', phase: 'ready' } } };
+  const switchedToLocal = (store) =>
+    store.dispatch.mock.calls.some(
+      ([type, payload]) => type === 'aiProvider/setProvider' && (typeof payload === 'string' ? payload : payload?.provider) === 'Local',
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+    localStorage.setItem('token', 't');
+    window.electron = { openExternalUrl: vi.fn() };
+  });
+
+  it('THE REPORTED BUG: a local model that finishes setting up after the user chose another AI does not replace it', async () => {
+    const store = fakeStore({ selectedProvider: 'OpenAI-Codex' });
+    let statusReads = 0;
+    global.fetch.mockImplementation(async () => {
+      statusReads += 1;
+      if (statusReads === 1) return reply(localSetupRunning);
+      store.state.aiProvider.selectedProvider = 'Claude-Code';
+      return reply(localReady);
+    });
+    const { connect, onSelected } = setup({ store });
+    await connect(LOCAL);
+    expect(switchedToLocal(store)).toBe(false);
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('a later tile click supersedes a slower one still in flight', async () => {
+    let finishStart;
+    global.fetch.mockImplementation(async (url) => {
+      if (url.endsWith('/local-models/start')) return new Promise((resolve) => { finishStart = () => resolve(reply(localReady)); });
+      return reply({ running: false, models: [], installed: true, canStart: true });
+    });
+    const store = fakeStore();
+    const { connect, modal } = setup({ store });
+    const slowLocal = connect(LOCAL);
+    await vi.waitFor(() => expect(modal.shown[0]?.title).toBe('Starting LM Studio'));
+    modal.confirm();
+
+    await connect({ id: 'agnt', name: 'AGNT Flash' });
+    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/useProvider', { provider: 'AGNT', source: 'test' });
+
+    finishStart();
+    await slowLocal;
+    expect(switchedToLocal(store)).toBe(false);
+  });
+
+  it('a flow whose selection is untouched still switches when it finishes', async () => {
+    global.fetch
+      .mockResolvedValueOnce(reply(localSetupRunning))
+      .mockResolvedValueOnce(reply(localReady));
+    const store = fakeStore({ selectedProvider: 'OpenAI-Codex' });
+    const { connect, onSelected } = setup({ store });
+    await connect(LOCAL);
+    expect(switchedToLocal(store)).toBe(true);
+    expect(onSelected).toHaveBeenCalledOnce();
+  });
+
+  it('a direct selectProvider call (no click ticket) switches at once', async () => {
+    const store = fakeStore();
+    const { selectProvider, onSelected } = setup({ store });
+    await selectProvider({ id: 'agnt', name: 'AGNT Flash' });
+    expect(onSelected).toHaveBeenCalledOnce();
   });
 });
 
