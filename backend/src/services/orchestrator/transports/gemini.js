@@ -490,7 +490,7 @@ class GeminiAdapter extends BaseAdapter {
 
   async call(messages, tools, context = {}) {
     let lastError;
-    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutbound(messages, 'gemini'), context.computerImages, 'gemini', ProviderRegistry.supportsVision(context.provider || 'gemini', this.model));
+    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'gemini'), context.computerImages, 'gemini', ProviderRegistry.supportsVision(context.provider || 'gemini', this.model));
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -647,7 +647,7 @@ class GeminiAdapter extends BaseAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'gemini');
+    let currentMessages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'gemini');
 
     // Handle vision images - inject into the last user message if model supports vision
     if (context.imageData && context.imageData.length > 0) {

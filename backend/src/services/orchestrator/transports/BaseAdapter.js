@@ -15,6 +15,7 @@ import { manageContext } from '../../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from '../toolValidator.js';
 import { foldBlocksIntoLastToolResult, isImitableStatusTurn } from '../turnContinuity.js';
 import { isReferenceOnlyResult } from '../deferredTools.js';
+import { toOpenAIHistory } from '../nativeHistory.js';
 import * as ProviderRegistry from '../../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../../ai/CustomOpenAIProviderService.js';
 import {
@@ -309,6 +310,18 @@ class BaseAdapter {
       );
     }
     return out;
+  }
+
+  /**
+   * _sanitizeOutbound for every transport written against the OpenAI chat
+   * shape (Responses, Chat Completions, Gemini). The ledger can carry
+   * Anthropic-native blocks — Claude turns run natively, and a provider
+   * failover re-points that same ledger at another tier — so translate first
+   * (nativeHistory.js), then repair pairing on the shape this transport reads.
+   * The Anthropic transport keeps calling _sanitizeOutbound directly.
+   */
+  static _sanitizeOutboundAsOpenAI(messages, label = 'provider') {
+    return BaseAdapter._sanitizeOutbound(toOpenAIHistory(messages), label);
   }
 
   /**

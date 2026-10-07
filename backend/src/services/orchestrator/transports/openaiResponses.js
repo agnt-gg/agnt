@@ -194,7 +194,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         const output = {
           type: 'function_call_output',
           call_id: msg.tool_call_id,
-          output: msg.content,
+          output: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? ''),
         };
         // A discover_tools load: the loaded definitions follow the output as an
         // additional_tools item, at the same point on every request. The tool
@@ -221,7 +221,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           items.push({
             type: 'message',
             role: 'assistant',
-            content: [{ type: 'output_text', text: msg.content }],
+            content: this._toResponsesContent(msg.content, 'output_text'),
           });
         }
 
@@ -245,7 +245,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       return {
         type: 'message',
         role: role,
-        content: [{ type: contentType, text: msg.content || '' }],
+        content: this._toResponsesContent(msg.content, contentType),
       };
     });
 
@@ -292,6 +292,27 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       flattenedInput.push({ type:'message', role:'user', content: typeof message.content === 'string' ? [{type:'input_text',text:message.content}] : message.content.map(part => part.type === 'text' ? {type:'input_text',text:part.text} : {type:'input_image',image_url:part.image_url.url}) });
     }
     return { instructions, input: flattenedInput };
+  }
+
+  /**
+   * Message content as Responses content parts. `text` MUST be a string: an
+   * OpenAI parts array (user text + image_url) is valid input on every other
+   * transport, and passing it through verbatim is what produced
+   * "Invalid type for 'input[0].content[0].text': expected a string".
+   */
+  _toResponsesContent(content, textType) {
+    if (!Array.isArray(content)) {
+      return [{ type: textType, text: typeof content === 'string' ? content : (content == null ? '' : JSON.stringify(content)) }];
+    }
+    const parts = content.map((part) => {
+      if (part?.type === 'image_url' && textType === 'input_text') {
+        const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+        return url ? { type: 'input_image', image_url: url } : null;
+      }
+      if (typeof part?.text === 'string') return { type: textType, text: part.text };
+      return part == null ? null : { type: textType, text: JSON.stringify(part) };
+    }).filter(Boolean);
+    return parts.length > 0 ? parts : [{ type: textType, text: '' }];
   }
 
   _sanitizeResponsesOutputItemsForInput(outputItems) {
@@ -620,7 +641,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
   async call(messages, tools, context = {}) {
     let lastError;
-    messages = BaseAdapter._sanitizeOutbound(messages, 'openai-responses');
+    messages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'openai-responses');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -756,7 +777,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    messages = BaseAdapter._sanitizeOutbound(messages, 'openai-responses');
+    messages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'openai-responses');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
@@ -1474,7 +1495,7 @@ class ConnectionResponsesAdapter extends OpenAIResponsesAdapter {
    * then returns the assembled response.
    */  async call(messages, tools, context = {}) {
     let lastError;
-    let workingMessages = BaseAdapter._sanitizeOutbound(messages, 'codex-responses');
+    let workingMessages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'codex-responses');
     let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -1598,7 +1619,7 @@ class ConnectionResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let workingMessages = BaseAdapter._sanitizeOutbound(messages, 'codex-responses');
+    let workingMessages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'codex-responses');
     let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {

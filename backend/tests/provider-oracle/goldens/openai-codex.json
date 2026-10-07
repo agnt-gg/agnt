@@ -652,10 +652,10 @@
       "stream": {
         "ok": true,
         "surface": "responses.create",
-        "canonical": "{\"body\":{\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":[{\"text\":\"What is in this image?\",\"type\":\"text\"},{\"image_url\":{\"url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"},\"type\":\"image_url\"}],\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"model\":\"gpt-6-astra\",\"prompt_cache_key\":\"agnt-oracle-fixed-conversation-id\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"auto\"},\"store\":false,\"stream\":true},\"options\":{\"headers\":{\"session_id\":\"agnt-oracle-fixed-conversation-id\"}}}",
-        "canonicalHash": "1137d4d43416759e",
-        "orderHash": "3a49d30e8bfb834a",
-        "bytes": 667,
+        "canonical": "{\"body\":{\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"What is in this image?\",\"type\":\"input_text\"},{\"image_url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\",\"type\":\"input_image\"}],\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"model\":\"gpt-6-astra\",\"prompt_cache_key\":\"agnt-oracle-fixed-conversation-id\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"auto\"},\"store\":false,\"stream\":true},\"options\":{\"headers\":{\"session_id\":\"agnt-oracle-fixed-conversation-id\"}}}",
+        "canonicalHash": "50dce9dd30227ace",
+        "orderHash": "5068262495824ce2",
+        "bytes": 636,
         "wire": {
           "body": {
             "model": "gpt-6-astra",
@@ -666,18 +666,11 @@
                 "content": [
                   {
                     "type": "input_text",
-                    "text": [
-                      {
-                        "type": "text",
-                        "text": "What is in this image?"
-                      },
-                      {
-                        "type": "image_url",
-                        "image_url": {
-                          "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-                        }
-                      }
-                    ]
+                    "text": "What is in this image?"
+                  },
+                  {
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
                   }
                 ]
               }
@@ -704,10 +697,10 @@
       "nonStream": {
         "ok": true,
         "surface": "responses.create",
-        "canonical": "{\"body\":{\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":[{\"text\":\"What is in this image?\",\"type\":\"text\"},{\"image_url\":{\"url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"},\"type\":\"image_url\"}],\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"model\":\"gpt-6-astra\",\"prompt_cache_key\":\"agnt-oracle-fixed-conversation-id\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"auto\"},\"store\":false,\"stream\":true},\"options\":{\"headers\":{\"session_id\":\"agnt-oracle-fixed-conversation-id\"}}}",
-        "canonicalHash": "1137d4d43416759e",
-        "orderHash": "3a49d30e8bfb834a",
-        "bytes": 667,
+        "canonical": "{\"body\":{\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"What is in this image?\",\"type\":\"input_text\"},{\"image_url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\",\"type\":\"input_image\"}],\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"model\":\"gpt-6-astra\",\"prompt_cache_key\":\"agnt-oracle-fixed-conversation-id\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"auto\"},\"store\":false,\"stream\":true},\"options\":{\"headers\":{\"session_id\":\"agnt-oracle-fixed-conversation-id\"}}}",
+        "canonicalHash": "50dce9dd30227ace",
+        "orderHash": "5068262495824ce2",
+        "bytes": 636,
         "wire": {
           "body": {
             "model": "gpt-6-astra",
@@ -718,18 +711,11 @@
                 "content": [
                   {
                     "type": "input_text",
-                    "text": [
-                      {
-                        "type": "text",
-                        "text": "What is in this image?"
-                      },
-                      {
-                        "type": "image_url",
-                        "image_url": {
-                          "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-                        }
-                      }
-                    ]
+                    "text": "What is in this image?"
+                  },
+                  {
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
                   }
                 ]
               }

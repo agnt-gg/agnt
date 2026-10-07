@@ -236,7 +236,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
 
   async call(messages, tools, context = {}) {
     let lastError;
-    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutbound(messages, 'openai-like'), context.computerImages, 'openai', ProviderRegistry.supportsVision(context.provider || this.provider || 'openai', this.model));
+    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'openai-like'), context.computerImages, 'openai', ProviderRegistry.supportsVision(context.provider || this.provider || 'openai', this.model));
     const preparedTools = this._prepareTools(tools);
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
@@ -394,7 +394,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'openai-like');
+    let currentMessages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'openai-like');
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
       currentMessages = currentMessages.map((msg) => (msg?.role === 'developer' ? { ...msg, role: 'system' } : msg));
@@ -1167,7 +1167,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
 
   async call(messages, tools, skipTools = false) {
     let lastError;
-    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'cerebras');
+    let currentMessages = BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'cerebras');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
