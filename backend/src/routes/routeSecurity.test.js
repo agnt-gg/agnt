@@ -90,12 +90,9 @@ const PUBLIC_ROUTES = new Map([
   ['ProviderAuthRoutes.js :: GET /:providerId/auth/plugin-oauth/callback', 'OAuth redirect for a plugin-declared provider; same contract as MCPRoutes GET /oauth/callback. Arrives in a browser hop with no AGNT session. The 192-bit CSPRNG `state` IS the credential: minted by the authenticated POST .../plugin-oauth/start, held in memory only, bound to the provider in the path, claimed before the first await (redeemed at most once), expires in 10 minutes; an unknown or stale value is refused before any token exchange. Tokens are saved only for the user who started the flow.'],
 
   // --- public catalogues: vendor metadata and schema shapes, no user data ---
-  ['PluginRoutes.js :: GET /marketplace', 'Public plugin catalogue mirror. Same data the marketplace website serves.'],
-  ['PluginRoutes.js :: GET /installed', 'Installed plugin names/versions. No source, no secrets.'],
-  ['PluginRoutes.js :: GET /installed/:name', 'Single plugin manifest metadata. No source, no secrets.'],
-  ['PluginRoutes.js :: GET /tools', 'Plugin-contributed tool schemas. Rendered in the palette before auth settles.'],
-  ['PluginRoutes.js :: GET /updates', 'Available plugin update versions. Read-only version numbers.'],
-  ['ToolsRoutes.js :: GET /plugins-only', 'Plugin tool schemas for the workflow palette. Shapes only.'],
+  // Plugin routes are NOT here: plugins are per-account, so every PluginRoutes
+  // read (and ToolsRoutes GET /plugins-only) must know whose plugins it serves
+  // and is guarded by router.use(authenticateToken, pluginAccountBoundary).
   ['ToolSchemaRoutes.js :: GET /schemas', 'Node-type catalogue for the workflow palette. Shapes only.'],
   ['ToolSchemaRoutes.js :: GET /schemas/:toolType', 'One node-type schema.'],
   ['ToolSchemaRoutes.js :: GET /schemas/category/:category', 'Node-type schemas by category.'],

@@ -581,6 +581,7 @@ import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import BaseTable from '../../../_components/BaseTable.vue';import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { apiFetch } from '@/utils/apiFetch.js';
 // One definition of what a marketplace card looks like, shared with
 // MarketplaceShelf. See composables/useMarketplaceCard.js for why.
 import {
@@ -620,7 +621,8 @@ export default {
 
     async function loadPluginTrust() {
       try {
-        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/marketplace`);
+        // Plugin routes are per-account and guarded; an unauthenticated call 401s.
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/marketplace`);
         const data = await resp.json();
         const map = {};
         for (const p of data.plugins || []) {

@@ -50,6 +50,10 @@ describe('the stripper this file depends on', () => {
 const main = strip(read('main.js'));
 const preload = strip(read('preload.js'));
 const router = strip(read('frontend/src/router/index.js'));
+// Plugin screens live in their own record factory; /apps and /connectors are
+// declared there as one mapped list of redirects.
+const pluginRoutes = strip(read('frontend/src/router/pluginRoutes.js'));
+const marketplaceLink = strip(read('frontend/src/services/marketplaceLink.js'));
 const bridge = strip(read('frontend/src/deepLinkRouting.js'));
 const marketplace = strip(read('frontend/src/views/Terminal/CenterPanel/screens/Marketplace/Marketplace.vue'));
 const nsis = read('build/installer.nsh'); // ';' comments — stripping JS comments would be wrong
@@ -168,7 +172,14 @@ describe('the renderer bridge', () => {
 });
 
 describe('every allowlisted screen is a real route', () => {
-  const declared = new Set([...router.matchAll(/path:\s*'([^']+)'/g)].map((m) => m[1]));
+  const literalPaths = (src) => [...src.matchAll(/path:\s*'([^']+)'/g)].map((m) => m[1]);
+  const mappedPaths = (src) => [...src.matchAll(/\[((?:\s*'\/[^']*'\s*,?)+)\]\.map\(\(path\)/g)]
+    .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((p) => p[1]));
+  const declared = new Set([...literalPaths(router), ...literalPaths(pluginRoutes), ...mappedPaths(pluginRoutes)]);
+
+  it('the plugin route factory is mounted by the router', () => {
+    expect(router).toMatch(/pluginRouteRecords\(/);
+  });
 
   it('found the route table', () => {
     expect(declared.size).toBeGreaterThan(10);
@@ -199,10 +210,13 @@ describe('the marketplace screen honours a link', () => {
     expect(marketplace).toMatch(/route\.query\.item/);
   });
 
-  it('matches on asset_id, not the listing id', () => {
+  it('matches on asset_id, not only the listing id', () => {
     // Listing UUIDs change on delete-and-republish; asset ids never do, and
-    // the links are compiled into static pages.
-    expect(marketplace).toMatch(/asset_id === assetId/);
+    // the links are compiled into static pages. Matching lives in one shared
+    // helper (also used by the focused market), which must test asset_id.
+    expect(marketplace).toMatch(/findListing\s*=\s*\([^)]*\)\s*=>[^\n]*matchesMarketplaceKey\(/);
+    expect(marketplace).toMatch(/findListing\(assetId\)/);
+    expect(marketplaceLink).toMatch(/String\(listing\.asset_id\)\s*===\s*k/);
   });
 
   it('says so when nothing matches', () => {

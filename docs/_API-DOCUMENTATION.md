@@ -6464,7 +6464,7 @@ Base path: `/api/plugins`
 
 **GET** `/installed`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Get list of installed plugins with their status
 - **Response**:
 
@@ -6492,7 +6492,7 @@ Base path: `/api/plugins`
 
 **GET** `/installed/:name`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Parameters**:
   - `name` (path): Plugin name
 - **Description**: Get details of a specific installed plugin, including each tool's full input schema (use this to discover param types and allowed values without guessing).
@@ -6579,7 +6579,7 @@ Base path: `/api/plugins`
 
 **GET** `/marketplace`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Get list of available plugins from the marketplace
 - **Response**:
 
@@ -6674,7 +6674,7 @@ Base path: `/api/plugins`
 
 **GET** `/tools`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Get all tools provided by plugins
 - **Response**:
 
@@ -6863,7 +6863,7 @@ Plugins are written in the Plugin Forge chat, not through dedicated generation e
 
 **GET** `/updates`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Compares every installed plugin's version against the marketplace catalog. Non-semver installed versions (`local`, `latest`, `unknown`) surface as status `unknown-version` — never compared, never auto-updated over.
 - **Response**: Per-plugin update status list
 
@@ -8153,7 +8153,7 @@ Base path: `/api/tools`
 
 **GET** `/plugins-only`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Get only plugin tools (for real-time updates)
 - **Response**:
 

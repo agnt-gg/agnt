@@ -311,6 +311,7 @@
 import { ref, onMounted, computed, watch, onUnmounted, inject } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
+import { apiFetch } from '@/utils/apiFetch.js';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -366,7 +367,8 @@ export default {
     // Fetch installed plugins from local backend API
     const fetchInstalledPlugins = async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/installed`);
+        // Plugin routes are per-account and guarded; an unauthenticated call 401s.
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/installed`);
         const data = await response.json();
         if (data.success) {
           installedPluginsList.value = data.plugins || [];

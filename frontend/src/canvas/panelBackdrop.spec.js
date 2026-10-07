@@ -27,6 +27,10 @@ describe('PanelBackdrop — exists only where the three-panel frame does', () =>
   it('the component and the body class are driven by ONE predicate, and custom pages are excluded', () => {
     expect(canvasSrc).toMatch(/<PanelBackdrop v-if="showPanelBackdrop"/);
     expect(canvasSrc).toMatch(/classList\.toggle\('has-panel-backdrop', showPanelBackdrop\.value\)/);
-    expect(canvasSrc).toMatch(/showPanelBackdrop = computed\(\(\) => !showLibrary\.value && !showTeamWorkspace\.value && !onCustomPage\.value && screenHasFrame\(props\.screenName\)\)/);
+    // The team-workspace overlay left CanvasScreen when Members moved into
+    // Settings (45315e6d1); the library and custom pages are the only
+    // full-canvas surfaces that still replace the frame.
+    expect(canvasSrc).toMatch(/showPanelBackdrop = computed\(\(\) => !showLibrary\.value && !onCustomPage\.value && screenHasFrame\(props\.screenName\)\)/);
+    expect(canvasSrc).not.toMatch(/showTeamWorkspace/);
   });
 });
