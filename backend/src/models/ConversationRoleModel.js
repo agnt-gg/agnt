@@ -61,7 +61,11 @@ class ConversationRoleModel {
     );
   }
 
-  /** Move sub-chats' work to `state` (running | done | reported | interrupted | expired). */
+  /**
+   * Move sub-chats' work to `state`: running | done | needs_input (asked the
+   * user something, not yet delivered) | waiting (question delivered, awaiting
+   * the answer) | reported | interrupted | expired.
+   */
   static setTaskState(userId, outputIds, state) {
     const ids = (Array.isArray(outputIds) ? outputIds : [outputIds]).filter(Boolean);
     if (!ids.length) return Promise.resolve({ changes: 0 });
@@ -73,7 +77,7 @@ class ConversationRoleModel {
 
   /**
    * Sub-chats whose work never reached their parent: still 'running' (the app
-   * stopped mid-run) or 'done' but unreported. With what a report needs: the
+   * stopped mid-run), or 'done' / 'needs_input' but unreported. With what a report needs: the
    * title, the sub-chat's saved transcript, and the parent's CURRENT
    * conversation id (clearing the Main chat mints a new one; the row id holds).
    */
@@ -84,15 +88,15 @@ class ConversationRoleModel {
        FROM conversation_roles r
        JOIN content_outputs co ON co.id = r.output_id AND co.user_id = r.user_id
        LEFT JOIN content_outputs parent ON parent.id = r.parent_output_id AND parent.user_id = r.user_id
-       WHERE r.role = 'sub' AND r.task_state IN ('running', 'done')
+       WHERE r.role = 'sub' AND r.task_state IN ('running', 'done', 'needs_input')
        ORDER BY r.created_at`,
       [],
     );
   }
 
-  /** { role, parent_output_id } for one row, or null when it has no role. */
+  /** { role, parent_output_id, task_state } for one row, or null when it has no role. */
   static roleOf(outputId, userId) {
-    return get(`SELECT role, parent_output_id FROM conversation_roles WHERE output_id = ? AND user_id = ?`, [outputId, userId]);
+    return get(`SELECT role, parent_output_id, task_state FROM conversation_roles WHERE output_id = ? AND user_id = ?`, [outputId, userId]);
   }
 
   /** Every live sub-chat link for a user: [{ id, parentId }]. Small: one row per delegated task. */

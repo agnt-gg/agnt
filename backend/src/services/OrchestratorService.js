@@ -760,7 +760,29 @@ async function universalChatHandler(req, res, context = {}) {
     transport: createChatTransport(res),
   };
   if (chatType === 'orchestrator' && await admitConversationWork(input)) return;
-  return executeChatSegment(input, context);
+  // A sub-chat that asked the user a question, answered here in the sub-chat
+  // itself: report that turn back to the Main chat once it ends, the same way
+  // an answer relayed by the Main chat (continue_chat) would be.
+  const waiting = chatType === 'orchestrator' ? await findWaitingSubChat(userId, req.body?.conversationId) : null;
+  const result = await executeChatSegment(input, context);
+  if (waiting) {
+    import('./orchestrator/subChats.js')
+      .then(({ reportDirectAnswer }) => reportDirectAnswer(waiting, { userId, authToken }))
+      .catch((error) => console.error('[SubChat] direct answer not reported:', error?.message || error));
+  }
+  return result;
+}
+
+/** Never blocks or fails a turn: a lookup error means "not waiting". */
+async function findWaitingSubChat(userId, conversationId) {
+  if (!userId || !conversationId) return null;
+  try {
+    const { waitingSubChat } = await import('./orchestrator/subChats.js');
+    return await waitingSubChat(userId, conversationId);
+  } catch (error) {
+    console.warn('[SubChat] waiting check failed:', error?.message || error);
+    return null;
+  }
 }
 
 export async function executeChatSegment({ userId, authToken, files = [], body: requestBody, chatType, originClientId = null, transport, signal, assertOwnership, dispatchTool, preparedHistory, preparedState, managedAsyncCallbacks }, context = {}) {

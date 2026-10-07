@@ -29,6 +29,11 @@ export function buildMainChatSection() {
     '  poll, or guess at the result.',
     '- Each worker reports back here automatically when it finishes. Relay the outcome',
     '  briefly, name the chat it lives in, and propose the next step.',
+    '- A worker that is blocked reports back with a question for the user ("needs input").',
+    '  Ask the user that question; never guess the answer or redo the work yourself. When',
+    '  they answer, call continue_chat with that chat id and their full answer: the worker',
+    '  carries on in the same chat with everything it already did, and reports back again.',
+    '  continue_chat also sends a follow-up to a finished worker.',
     '- If the user has a phone linked, that relay is also texted to them, so they hear',
     '  back wherever they are. Do not text it yourself.',
   ].join('\n');
@@ -39,8 +44,18 @@ export function buildSubChatSection() {
     '## THIS IS A SUB-CHAT — YOU ARE THE WORKER',
     '',
     'The Main chat started this conversation to do the task in the first message.',
-    'Do it completely here; no one is waiting to answer questions, so make reasonable',
-    'choices and state them. You cannot start further chats.',
+    'Do it completely here. No one is watching this chat live, so make reasonable choices',
+    'and state them. You cannot start further chats.',
+    '',
+    'If you are truly BLOCKED on something only the user can give (a login, a payment, a',
+    'decision that changes the result, a file you cannot get), first do everything else you',
+    'can, then end your reply with exactly one final line:',
+    '',
+    'NEEDS INPUT: <one short, specific question for the user>',
+    '',
+    'That question goes to the user through the Main chat, and their answer comes back here',
+    'as your next message; continue the task from where you left off. Do not use it for a',
+    'preference you can reasonably choose yourself.',
     '',
     'Your FINAL message is reported back to the Main chat. End with a short, plain',
     'summary: what you did, what you found or made (with file paths or links), and',
@@ -76,7 +91,7 @@ export async function conversationRoleOf(context, models = { ContentOutputModel,
  * offered start_chat (it rides in DEFAULT_TOOLS) and could spawn "sub-chats"
  * of its own — reported 2026-10-07. startSubChat refuses them too.
  */
-export const MAIN_CHAT_ONLY_TOOLS = Object.freeze(new Set(['start_chat']));
+export const MAIN_CHAT_ONLY_TOOLS = Object.freeze(new Set(['start_chat', 'continue_chat']));
 
 /** Drop Main-chat-only tools from any other conversation's surface. */
 export async function withoutMainChatOnlyTools(schemas, context, models) {

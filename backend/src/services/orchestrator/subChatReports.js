@@ -53,13 +53,17 @@ function clip(text, max) {
 }
 
 // The conversation id is what opens the chat; outputId is only its saved row.
-function describe({ title, conversationId, outcome }, maxChars) {
+function describe({ title, conversationId, outputId, outcome }, maxChars) {
+  const status = outcome.needsInput ? 'needs input' : outcome.ok ? 'completed' : 'failed';
   return `Sub-chat: "${title}"${conversationId ? ` (conversation id ${conversationId})` : ''}
-Status: ${outcome.ok ? 'completed' : 'failed'}${outcome.error ? `\nError: ${outcome.error}` : ''}
+Status: ${status}${outcome.error ? `\nError: ${outcome.error}` : ''}${outcome.needsInput ? `\nIts question for the user: ${outcome.needsInput}\nTo answer it: continue_chat with chat "${outputId}"` : ''}
 
 Its final answer:
 ${clip(outcome.content || '(none)', maxChars)}`;
 }
+
+// What the parent says about a sub-chat that stopped on a question.
+const ASK_INSTRUCTIONS = 'It stopped because it needs something only the user can give. Ask the user its question in your own words, naming the chat by its title. Do not guess the answer, do not do the work yourself, and do not start a new chat for it. When the user answers, call continue_chat with that chat id and their answer as the message: it carries on in the same chat with everything it already did, and reports back again.';
 
 /**
  * Machine-readable tail on a report: which sub-chats it is about, so the app
@@ -70,18 +74,36 @@ ${clip(outcome.content || '(none)', maxChars)}`;
  */
 export const SUB_CHAT_MARKER = 'agnt-subchats';
 export function subChatMarker(reports) {
-  const items = reports.map((r) => ({ outputId: r.outputId || null, title: r.title || 'Task', ok: !!r.outcome?.ok }));
+  const items = reports.map((r) => ({
+    outputId: r.outputId || null,
+    title: r.title || 'Task',
+    ok: !!r.outcome?.ok,
+    ...(r.outcome?.needsInput ? { needsInput: true, question: r.outcome.needsInput } : {}),
+  }));
   return `<!-- ${SUB_CHAT_MARKER}:${Buffer.from(JSON.stringify(items)).toString('base64url')} -->`;
 }
 
 /** The message the parent's AI receives when one sub-chat finishes. */
 export function buildReport({ title, conversationId, outcome, outputId }) {
+  if (outcome.needsInput) {
+    return {
+      role: 'user',
+      content: `[System: Sub-chat needs your input]
+
+${describe({ title, conversationId, outputId, outcome }, MAX_REPORTED_CHARS)}
+
+INSTRUCTIONS:
+You started this sub-chat to do work for the user. ${ASK_INSTRUCTIONS}
+
+${subChatMarker([{ title, outcome, outputId }])}`,
+    };
+  }
   const status = outcome.ok ? 'finished' : 'finished with a problem';
   return {
     role: 'user',
     content: `[System: Sub-chat ${status}]
 
-${describe({ title, conversationId, outcome }, MAX_REPORTED_CHARS)}
+${describe({ title, conversationId, outputId, outcome }, MAX_REPORTED_CHARS)}
 
 INSTRUCTIONS:
 You started this sub-chat to do work for the user. Tell the user, briefly and in your own words, what it ${outcome.ok ? 'found or did' : 'ran into'}. Name the sub-chat by its title so they can open it for the full detail. ${outcome.ok ? 'Do not repeat the whole answer.' : 'Do NOT claim success. Suggest a next step.'}
@@ -94,14 +116,15 @@ ${subChatMarker([{ title, outcome, outputId }])}`,
 export function buildBatchReport(reports) {
   if (reports.length === 1) return buildReport(reports[0]);
   const failed = reports.filter((r) => !r.outcome.ok).length;
+  const asking = reports.filter((r) => r.outcome.needsInput).length;
   return {
     role: 'user',
-    content: `[System: ${reports.length} sub-chats finished${failed ? `, ${failed} with a problem` : ''}]
+    content: `[System: ${reports.length} sub-chats finished${failed ? `, ${failed} with a problem` : ''}${asking ? `, ${asking} need${asking === 1 ? 's' : ''} your input` : ''}]
 
 ${reports.map((r, i) => `--- ${i + 1} of ${reports.length} ---\n${describe(r, MAX_BATCH_REPORTED_CHARS)}`).join('\n\n')}
 
 INSTRUCTIONS:
-You started these sub-chats to do work for the user. In ONE reply, tell the user briefly what each one found, did or ran into, naming each by its title so they can open it for the full detail. Do not repeat whole answers. Do NOT claim success for any that failed; suggest a next step for those.
+You started these sub-chats to do work for the user. In ONE reply, tell the user briefly what each one found, did or ran into, naming each by its title so they can open it for the full detail. Do not repeat whole answers. Do NOT claim success for any that failed; suggest a next step for those.${asking ? ` For each with status "needs input": ${ASK_INSTRUCTIONS}` : ''}
 
 ${subChatMarker(reports)}`,
   };
@@ -109,13 +132,18 @@ ${subChatMarker(reports)}`,
 
 /** Plain text for the phone when the report turn itself could not run. */
 export function fallbackText(reports) {
-  const lines = reports.map((r) => `${r.title}: ${r.outcome.ok ? 'finished' : 'hit a problem'}`);
+  const lines = reports.map((r) => (r.outcome.needsInput ? `${r.title} needs you: ${r.outcome.needsInput}` : `${r.title}: ${r.outcome.ok ? 'finished' : 'hit a problem'}`));
   return `${lines.join('\n')}\nThe details are in your AGNT app.`;
 }
 
-/** One text per set of reported sub-chats, however often it is retried. */
-export function reportKey(outputIds) {
-  return `subchat-${createHash('sha256').update([...outputIds].sort().join(',')).digest('hex').slice(0, 40)}`;
+/**
+ * One text per set of reported outcomes, however often it is retried. Keyed on
+ * each chat AND what it said, so a chat that reports again (after continuing)
+ * is texted again, while a retry or boot re-report of the same outcome is not.
+ */
+export function reportKey(reports) {
+  const parts = reports.map((r) => (typeof r === 'string' ? r : `${r.outputId}:${createHash('sha256').update(String(r.outcome?.content ?? r.outcome?.error ?? '')).digest('hex').slice(0, 16)}`));
+  return `subchat-${createHash('sha256').update(parts.sort().join(',')).digest('hex').slice(0, 40)}`;
 }
 
 /** The answer a sub-chat left in its saved transcript, or null. */
@@ -196,13 +224,19 @@ export async function deliverReports(deps, parentConversationId, { userId, authT
     const result = await deps.textUser({
       text: reported ? outcome.content : fallbackText(reports),
       imageIds: reported ? outcome.imageIds : [],
-      key: reportKey(outputIds),
+      key: reportKey(reports),
     });
     texted = result.sent === true;
     if (!texted) console.log(`[SubChatReports] report not texted: ${result.reason}`);
   }
-  // A report that never produced an answer stays 'done': the next boot tries again.
-  if (reported) await deps.ConversationRoleModel.setTaskState(userId, outputIds, 'reported');
+  // A report that never produced an answer stays as it was: the next boot
+  // tries again. A delivered question waits for its answer.
+  if (reported) {
+    const asking = reports.filter((r) => r.outcome.needsInput).map((r) => r.outputId);
+    const rest = outputIds.filter((id) => !asking.includes(id));
+    if (rest.length) await deps.ConversationRoleModel.setTaskState(userId, rest, 'reported');
+    if (asking.length) await deps.ConversationRoleModel.setTaskState(userId, asking, 'waiting');
+  }
   return { delivered: reported, texted, ...(reported ? {} : { reason: 'report_failed' }) };
 }
 
@@ -260,10 +294,12 @@ export async function recoverSubChatReports(deps, { now = Date.now() } = {}) {
     }
     const authToken = deps.freshToken?.(row.userId);
     if (!authToken) { summary.skipped++; continue; }
-    const answer = row.taskState === 'done' ? lastAnswerOf(row.content) : null;
-    const outcome = row.taskState === 'done' && answer
-      ? { ok: true, content: answer, error: null }
-      : { ok: false, content: null, error: row.taskState === 'done' ? 'It finished, but its answer could not be read back.' : INTERRUPTED_ERROR };
+    const ended = row.taskState === 'done' || row.taskState === 'needs_input';
+    const answer = ended ? lastAnswerOf(row.content) : null;
+    const { classifyOutcome } = deps.classifyOutcome ? deps : await import('./subChats.js');
+    const outcome = ended && answer
+      ? classifyOutcome({ ok: true, content: answer, error: null })
+      : { ok: false, content: null, error: ended ? 'It finished, but its answer could not be read back.' : INTERRUPTED_ERROR };
     summary.deliveries.push(queueReport(deps, { userId: row.userId, authToken, parentConversationId: row.parentConversationId, report: { title: row.title || 'Task', outputId: row.outputId, conversationId: row.conversationId, outcome } }));
     summary.queued++;
   }

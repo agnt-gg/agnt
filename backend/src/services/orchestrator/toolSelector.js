@@ -66,6 +66,8 @@ export const DEFAULT_TOOLS = new Set([
   // Main chat delegation: hand a task to a new linked chat that reports back.
   // Always on, because the Main chat's whole job is to route work.
   'start_chat',
+  // ...and carry it on: the user's answer to a sub-chat that asked a question.
+  'continue_chat',
   'get_agnt_api',
   'activate_skill',
   'execute_javascript',

@@ -51,7 +51,7 @@ describe('queueReport', () => {
     expect(content).toContain('Pricing result');
     expect(content).toContain('Hiring result');
     expect(calls.texts).toHaveLength(1);
-    expect(calls.texts[0]).toMatchObject({ text: 'Both tasks are done.', key: reportKey(['o1', 'o2']) });
+    expect(calls.texts[0]).toMatchObject({ text: 'Both tasks are done.', key: reportKey([ok('Pricing', 'o1'), ok('Hiring', 'o2')]) });
     expect(calls.states).toEqual([{ userId: 'u1', ids: ['o1', 'o2'], state: 'reported' }]);
   });
 
@@ -72,7 +72,7 @@ describe('queueReport', () => {
     await Promise.all([first, other]);
     await queueReport(deps, { userId: 'u1', parentConversationId: 'main-a', report: ok('C', 'oc') });
     expect(calls.turns.map((t) => t.body.conversationId)).toEqual(['main-a', 'main-b', 'main-a']);
-    expect(calls.texts.map((t) => t.key)).toEqual([reportKey(['oa']), reportKey(['ob']), reportKey(['oc'])]);
+    expect(calls.texts.map((t) => t.key)).toEqual([reportKey([ok('A', 'oa')]), reportKey([ok('B', 'ob')]), reportKey([ok('C', 'oc')])]);
   });
 });
 
@@ -149,7 +149,11 @@ describe('recoverSubChatReports (boot)', () => {
     expect(content).toContain('Found 3 competitors.');
     expect(content).toContain('conversation id conv-pricing');
     expect(content).not.toContain('o-done');
-    expect(calls.texts[0].key).toBe(reportKey(['o-run', 'o-done']));
+    // Keyed on what each chat said, exactly as recovered: a second boot re-reports as the same text.
+    expect(calls.texts[0].key).toBe(reportKey([
+      { outputId: 'o-run', outcome: { ok: false, content: null, error: INTERRUPTED_ERROR } },
+      { outputId: 'o-done', outcome: { ok: true, content: 'Found 3 competitors.', error: null } },
+    ]));
   });
 
   it('expires workers older than the report window or with no parent; skips live ones and sessionless users', async () => {
@@ -185,6 +189,12 @@ describe('helpers', () => {
     expect(reportKey(['b', 'a'])).toBe(reportKey(['a', 'b']));
     expect(reportKey(['a'])).not.toBe(reportKey(['a', 'b']));
     expect(reportKey(['a']).length).toBeGreaterThanOrEqual(8);
+  });
+
+  // A chat continued after asking a question reports again: that must be a new text.
+  it('the same chat saying something new is a new text; the same outcome again is not', () => {
+    expect(reportKey([ok('T', 'o1', 'NEEDS INPUT: which?')])).not.toBe(reportKey([ok('T', 'o1', 'Done with Sam.')]));
+    expect(reportKey([ok('T', 'o1', 'Done.')])).toBe(reportKey([ok('T', 'o1', 'Done.')]));
   });
 
   it('reads the last answer from a saved transcript, null when unreadable', () => {

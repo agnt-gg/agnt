@@ -167,7 +167,8 @@
               <!-- In a sub-chat: where its work came from, and the way back. -->
               <div v-if="subChatParent && !showFocusedHome" class="sub-chat-origin" data-testid="sub-chat-origin">
                 <i class="fas fa-share" aria-hidden="true"></i>
-                <span>Task from <strong>{{ subChatParent.title }}</strong>. Its result goes back there when it's done.</span>
+                <span v-if="subChatAsking">It needs your answer: reply here, or in <strong>{{ subChatParent.title }}</strong>. Either way it carries on here.</span>
+                <span v-else>Task from <strong>{{ subChatParent.title }}</strong>. Its result goes back there when it's done.</span>
                 <button type="button" class="sub-chat-origin-back" @click="openSubChatParent">
                   <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to {{ subChatParent.title }}
                 </button>
@@ -243,7 +244,8 @@
                       kind="handback"
                       :title="item.title"
                       :output-id="item.outputId"
-                      :status="item.ok ? 'done' : 'problem'"
+                      :status="item.needsInput ? 'needs_input' : item.ok ? 'done' : 'problem'"
+                      :question="item.question"
                     />
                   </div>
 
@@ -355,7 +357,7 @@ import ContextManifest from './components/ContextManifest.vue';
 import ContextTiles from './components/ContextTiles.vue';
 import CompactionCard from './components/CompactionCard.vue';
 import SubChatCard from './components/SubChatCard.vue';
-import { handbackOf, resolveByTitle } from '@/services/subChatLinks.js';
+import { handbackOf, resolveByTitle, needsInputOf } from '@/services/subChatLinks.js';
 import {
   activeCompactionIndex,
   chooseFoldIndex,
@@ -1076,6 +1078,13 @@ export default {
       if (!parentId) return null;
       const row = (store.state.contentOutputs?.outputs || []).find((o) => o.id === parentId);
       return { id: parentId, title: row?.title || 'Main chat' };
+    });
+    // This sub-chat's last reply ended on a question for the user.
+    const subChatAsking = computed(() => {
+      if (!subChatParent.value) return false;
+      const messages = store.state.chat?.messages || [];
+      const last = [...messages].reverse().find((m) => m.role === 'assistant' || m.role === 'user');
+      return last?.role === 'assistant' && !!needsInputOf(last.content);
     });
     const openSubChatParent = () => {
       if (subChatParent.value) router.push({ path: '/chat', query: { 'content-id': subChatParent.value.id } }).catch(() => {});
@@ -3085,6 +3094,7 @@ export default {
       goalEventIcon,
       handbackItems,
       subChatParent,
+      subChatAsking,
       openSubChatParent,
     };
   },

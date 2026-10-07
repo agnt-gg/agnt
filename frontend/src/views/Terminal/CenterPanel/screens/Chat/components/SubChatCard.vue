@@ -6,6 +6,7 @@
     <span class="scc-body">
       <span class="scc-label">{{ label }}</span>
       <span class="scc-title">{{ title }}</span>
+      <span v-if="question" class="scc-question">{{ question }}</span>
     </span>
     <button v-if="outputId" type="button" class="scc-open" @click="open">
       Open chat <i class="fas fa-arrow-right" aria-hidden="true"></i>
@@ -23,6 +24,10 @@ const props = defineProps({
   outputId: { type: String, default: null },
   // handoff: working | started | done | problem | failed ; handback: done | problem
   status: { type: String, default: 'started' },
+  // A handback that is a question: what the chat needs from the user.
+  question: { type: String, default: null },
+  // A continue_chat call: the user's answer sent to a chat already started.
+  continued: { type: Boolean, default: false },
 });
 
 const router = useRouter();
@@ -30,14 +35,17 @@ const open = () => router.push({ path: '/chat', query: { 'content-id': props.out
 
 const LABELS = {
   // The outcome is the handback's to say; the handoff only says where the work went.
-  handoff: { working: 'Working in a new chat', started: 'Handed off to a new chat', done: 'Handed off to a new chat', problem: 'Handed off to a new chat', failed: "Couldn't start a new chat" },
-  handback: { done: 'Back from', problem: 'Hit a problem in' },
+  handoff: { working: 'Working in a new chat', started: 'Handed off to a new chat', waiting: 'Waiting for your answer', done: 'Handed off to a new chat', problem: 'Handed off to a new chat', failed: "Couldn't start a new chat" },
+  continued: { working: 'Working on your answer', started: 'Answer sent to', waiting: 'Waiting for your answer', done: 'Answer sent to', problem: 'Answer sent to', failed: "Couldn't send your answer" },
+  handback: { done: 'Back from', problem: 'Hit a problem in', needs_input: 'Needs you ·' },
 };
-const label = computed(() => LABELS[props.kind]?.[props.status] || LABELS[props.kind]?.started || '');
+const labels = computed(() => (props.kind === 'handoff' && props.continued ? LABELS.continued : LABELS[props.kind]) || {});
+const label = computed(() => labels.value[props.status] || labels.value.started || '');
 // A handoff's icon says only where the work went; its outcome is the
 // handback's to show, so it is never said twice.
 const icon = computed(() => {
-  if (props.kind === 'handoff' && props.status !== 'working' && props.status !== 'failed') return 'fas fa-share';
+  if (props.status === 'needs_input' || props.status === 'waiting') return 'fas fa-question-circle';
+  if (props.kind === 'handoff' && props.status !== 'working' && props.status !== 'failed') return props.continued ? 'fas fa-reply' : 'fas fa-share';
   if (props.status === 'problem' || props.status === 'failed') return 'fas fa-exclamation-circle';
   if (props.kind === 'handback') return 'fas fa-reply';
   if (props.status === 'working') return 'fas fa-circle-notch fa-spin';
@@ -113,4 +121,19 @@ const icon = computed(() => {
 .is-handback .scc-title { max-width: 360px; }
 .is-handback .scc-open { padding: 2px 4px; border: 0; font-size: 12px; color: var(--color-primary); }
 .is-handback .scc-open:hover { text-decoration: underline; }
+
+/* A question from a sub-chat: it needs the user, so it is a full card that
+   shows the question, not a slim line. */
+.sub-chat-card.is-handback.status-needs_input {
+  align-items: flex-start;
+  max-width: 560px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border-color: rgba(var(--yellow-rgb), 0.45);
+  background: rgba(var(--yellow-rgb), 0.06);
+}
+.status-needs_input .scc-icon,
+.status-waiting .scc-icon { background: rgba(var(--yellow-rgb), 0.16); color: var(--text-yellow); }
+.status-needs_input .scc-body { flex-direction: column; align-items: stretch; gap: 3px; }
+.scc-question { color: var(--text-primary); font-size: 13px; line-height: 1.45; white-space: normal; }
 </style>

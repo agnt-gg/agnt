@@ -285,6 +285,7 @@
             :title="h.title"
             :output-id="h.outputId"
             :status="h.status"
+            :continued="h.continued"
           />
 
           <!-- Provider Note (shown after provider buttons) -->

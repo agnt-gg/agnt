@@ -1986,6 +1986,44 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       }
     },
   },
+  continue_chat: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'continue_chat',
+        description:
+          'Send a message into one of the chats you started with start_chat, as its next turn: the user\'s answer to a question it asked ("needs input"), or a follow-up. It carries on in that same chat with everything it already did, in the background, and reports back HERE when that turn ends. Returns immediately. Use the chat id from its report. The message must be complete: relay the user\'s answer in full.',
+        parameters: {
+          type: 'object',
+          properties: {
+            chat: { type: 'string', description: 'The chat id from the report (continue_chat with chat "...").' },
+            message: { type: 'string', description: 'The user\'s answer or the follow-up, in full.' },
+          },
+          required: ['chat', 'message'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { continueSubChat } = await import('./subChats.js');
+        const result = await continueSubChat({
+          userId: context?.userId,
+          authToken,
+          mainConversationId: context?.conversationId || null,
+          outputId: typeof args?.chat === 'string' ? args.chat.trim() : '',
+          message: args?.message,
+        });
+        if (!result.success) return JSON.stringify(result);
+        const { finished: _backgroundRun, ...continued } = result;
+        return JSON.stringify({
+          ...continued,
+          message: `Sent to "${continued.title}". It carries on in the background and reports back here when done — tell the user and move on.`,
+        });
+      } catch (error) {
+        return JSON.stringify({ success: false, error: `Could not continue the chat: ${error.message}` });
+      }
+    },
+  },
   text_user: {
     schema: {
       type: 'function',

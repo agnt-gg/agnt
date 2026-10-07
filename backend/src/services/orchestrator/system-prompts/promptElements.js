@@ -167,6 +167,7 @@ export const DEFERRED_MODE_RESIDENT_TOOLS = Object.freeze([
   'agnt_auth',
   'mention_agent',
   'start_chat',
+  'continue_chat',
   // Memory and history (instructed by the HISTORY AND MEMORY section).
   'save_agent_memory',
   'get_agent_memories',
