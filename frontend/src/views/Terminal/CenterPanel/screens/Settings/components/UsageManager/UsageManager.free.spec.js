@@ -32,18 +32,24 @@ describe('UsageManager — free account', () => {
     });
   });
 
-  it('shows the free AGNT Flash allowance, measured', async () => {
+  it('shows the free AGNT Flash allowance as a bar, with no credit counts', async () => {
     const w = mountUsage();
     await flushPromises();
     const card = w.find('[data-testid="free-flash"]');
     expect(card.text()).toContain('AGNT Flash');
     expect(card.text()).toContain('Free trial');
-    expect(card.text()).toContain('2.5M');
-    expect(card.text()).toContain('10M');
-    expect(card.text()).toContain('7.5M credits left');
-    expect(card.find('button').exists()).toBe(false);
     expect(card.find('.meter-fill').attributes('style')).toContain('width: 25%');
+    // Numbers mean nothing to someone who has not bought credits.
+    expect(card.text()).not.toMatch(/\d+(\.\d+)?\s*[kMB]\b|credits left/);
+    expect(card.find('button').exists()).toBe(false);
     expect(w.find('.pro-gate').exists()).toBe(false);
+  });
+
+  it('says "Used up" when the trial is spent', async () => {
+    flashApi.fetchFlashAccount.mockResolvedValue({ trial: true, usedCredits: 1_000_000, includedCredits: 1_000_000, remainingCredits: 0, balanceMicroUSD: 0 });
+    const w = mountUsage();
+    await flushPromises();
+    expect(w.find('[data-testid="free-flash"]').text()).toContain('Used up');
   });
 
   it('never asks the Pro-gated usage route for a free account', async () => {

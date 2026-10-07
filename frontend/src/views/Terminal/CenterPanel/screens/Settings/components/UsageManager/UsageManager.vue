@@ -24,9 +24,9 @@
           <span class="plan-pill">{{ flash?.trial ? 'Free trial' : 'Free' }}</span>
         </div>
         <div v-if="flash" class="meter">
+          <!-- Bar only on a free account: credit counts mean nothing until you buy them. -->
           <div class="meter-row">
-            <span class="meter-label">{{ fmt(flash.remainingCredits, 'credits') }} credits left<template v-if="flash.balanceMicroUSD > 0"> · ${{ (flash.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
-            <span class="meter-value"><strong>{{ fmt(flash.usedCredits, 'credits') }}</strong><template v-if="flash.includedCredits"> / {{ fmt(flash.includedCredits, 'credits') }}</template></span>
+            <span class="meter-label">{{ flash.includedCredits && flash.remainingCredits <= 0 ? 'Used up' : 'Free AGNT Flash credits' }}<template v-if="flash.balanceMicroUSD > 0"> · ${{ (flash.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
           </div>
           <div v-if="flash.includedCredits" class="meter-bar" v-tooltip="Math.round(flashShare * 100) + '% used'">
             <div class="meter-fill" :class="{ warn: flashShare >= 0.8, full: flashShare >= 1 }" :style="{ width: Math.min(100, flashShare * 100) + '%' }"></div>

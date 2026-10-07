@@ -4,10 +4,14 @@
       <span class="afm-dot" aria-hidden="true"></span>
       <span class="afm-label">AGNT Flash · {{ account.trial ? 'Free trial' : account.planName || 'Credits' }}</span>
       <span class="afm-bar" aria-hidden="true"><i :style="{ width: `${Math.round(share * 100)}%` }"></i></span>
-      <span class="afm-left">{{ formatCredits(account.remainingCredits) }} left<template v-if="account.balanceMicroUSD > 0"> · ${{ (account.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
+      <!-- A free trial shows the bar only: a raw credit count means nothing to
+           someone who has not bought credits. Paid accounts keep the number. -->
+      <span v-if="account.trial" class="afm-left">{{ exhausted ? 'Used up' : '' }}</span>
+      <span v-else class="afm-left">{{ formatCredits(account.remainingCredits) }} left<template v-if="account.balanceMicroUSD > 0"> · ${{ (account.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
     </div>
     <div v-if="showNudge" class="afm-nudge" role="status">
-      <span><b>{{ formatCredits(account.remainingCredits) }} credits left.</b> Top up or upgrade so Annie never stops mid-task.</span>
+      <span v-if="account.trial"><b>Your free AGNT Flash credits are almost used up.</b> Upgrade or top up so Annie never stops mid-task.</span>
+      <span v-else><b>{{ formatCredits(account.remainingCredits) }} credits left.</b> Top up or upgrade so Annie never stops mid-task.</span>
       <button type="button" class="afm-btn" :disabled="busy" @click="topUp">{{ busy ? 'Opening…' : 'Top up $10' }}</button>
       <button type="button" class="afm-btn" @click="upgradeOpen = true">Upgrade</button>
       <button type="button" class="afm-close" aria-label="Dismiss" @click="dismiss"><i class="fas fa-times"></i></button>
@@ -41,6 +45,7 @@ export default {
 
     const share = computed(() => usedShare(account.value));
     const isLow = computed(() => share.value >= LOW_CREDIT_SHARE);
+    const exhausted = computed(() => !!account.value && account.value.includedCredits > 0 && account.value.remainingCredits <= 0);
     // One nudge per allowance: the trial, or each monthly reset.
     const periodKey = computed(() => (account.value ? `${account.value.source}:${account.value.resetAt ?? 'once'}` : ''));
     const showNudge = computed(() => isLow.value && account.value.remainingCredits > 0 && dismissedFor.value !== periodKey.value);
@@ -78,13 +83,24 @@ export default {
     );
     onMounted(refresh);
 
-    return { account, busy, upgradeOpen, share, isLow, showNudge, formatCredits, dismiss, topUp };
+    // An out-of-credits notice in chat means the balance just changed: re-read it,
+    // so the meter never sits on a stale number beside "used up".
+    watch(
+      () => store.state.chat.messages?.length,
+      () => refresh(),
+    );
+
+    return { account, busy, upgradeOpen, share, isLow, exhausted, showNudge, formatCredits, dismiss, topUp };
   },
 };
 </script>
 
 <style scoped>
-.agnt-flash-meter { margin: 0 0 6px; font-size: 11.5px; color: var(--color-text-secondary); }
+/* The conversation's own column (Chat.vue .conversation-container: 800px,
+   centred), so the meter and its low-credit notice never span the panel. In
+   Focused the column is --focused-chat-column-width (focused.css). */
+.agnt-flash-meter { width: min(800px, 100%); margin: 0 auto 6px; box-sizing: border-box; font-size: 11.5px; color: var(--color-text-secondary); }
+:global(.ui-focused) .agnt-flash-meter { width: var(--focused-chat-column-width, min(768px, 100%)); }
 /* One centred line under the conversation, not a left-aligned label. */
 .afm-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 4px; }
 .afm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); flex: none; }
