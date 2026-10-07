@@ -18,8 +18,8 @@ import {
   normalizeReasoningValue,
   isReasoningEnabledValue,
   isOpenAIResponsesReasoningModel as isOpenAIReasoningModel,
-  isAnthropicReasoningModel,
-  anthropicSupportsXHigh,
+  anthropicReasoningEfforts,
+  effortOptionsFromList,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
   supportsDeepSeekThinkingToggle as supportsDeepSeekThinking,
@@ -622,18 +622,11 @@ export function inferReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'anthropic' || lowerProvider === 'claude-code') {
-    if (!isAnthropicReasoningModel(modelId)) return null;
-    const options = [
-      { value: 'default', label: 'Default' },
-      { value: 'off', label: 'Off' },
-      { value: 'low', label: 'Low' },
-      { value: 'medium', label: 'Medium' },
-      { value: 'high', label: 'High' },
-    ];
-    if (anthropicSupportsXHigh(lowerModel)) {
-      options.push({ value: 'xhigh', label: 'Max' });
-    }
-    return buildReasoningControl('effort', options);
+    // Cold-start fallback only: once metadata loads, the server's control —
+    // built from Anthropic's own catalog — takes precedence (see
+    // selectedModelMetadata). Same rule and same builder as the backend.
+    const options = effortOptionsFromList(anthropicReasoningEfforts(modelId));
+    return options ? buildReasoningControl('effort', options) : null;
   }
 
   if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli' || lowerProvider === 'antigravity') {

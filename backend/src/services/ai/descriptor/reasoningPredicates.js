@@ -42,27 +42,132 @@
 const lc = (v) => String(v || '').toLowerCase();
 
 // ── Anthropic ───────────────────────────────────────────────────────────────
-// Matches the whole 4-N family so Opus 4.9 / 4.10 / … are picked up on release
-// rather than requiring an edit in (previously) seven places.
-// The trailing (?:-|$) avoids matching legacy date-suffixed 4-0/4-5 ids such as
-// `claude-opus-4-20250514`, where `2025…` would otherwise satisfy the
-// multi-digit branch.
-export const ANTHROPIC_VERSIONED_REASONING_RE = /^claude-(opus|sonnet)-4-([6-9]|[1-9]\d{1,2})(?:-|$)/;
-export const ANTHROPIC_FAMILY_REASONING_RE = /^claude-(fable|mythos)-/;
-export const ANTHROPIC_XHIGH_RE = /^claude-(opus-4-([7-9]|[1-9]\d{1,2})(?:-|$)|fable-|mythos-)/;
+// The AUTHORITATIVE answer is the vendor's own catalog: Anthropic's /v1/models
+// publishes capabilities.effort.<level>.supported and
+// capabilities.thinking.types.<type>.supported per model, and
+// registerDynamicPricingFromModels records it. Everything below is the
+// FALLBACK for when that catalog has not been fetched yet (cold start, offline,
+// the browser before metadata arrives).
+//
+// It is a GENERATION rule, for the same reason as OpenAI's below. The regex it
+// replaced was /^claude-(opus|sonnet)-4-…/ — a prediction that Claude 5 would
+// never ship. It shipped, and claude-opus-5 / claude-sonnet-5 / -5-5 lost their
+// reasoning selector AND had every effort the user picked silently dropped on
+// the wire, because the transport asks the same question.
+//
+// Facts encoded (platform.claude.com/docs build-with-claude/effort + /thinking,
+// read 2026-10):
+//   adaptive effort  Opus/Sonnet >= 4.6, every Fable/Mythos. (Opus 4.5 takes
+//                    effort only alongside budget_tokens and rejects
+//                    `adaptive`, so it stays out.)
+//   max              every model above.
+//   xhigh            Opus >= 4.7, Sonnet >= 5, versioned Fable/Mythos (not
+//                    Mythos Preview).
+//   thinking off     Opus/Sonnet below 5.5 only. Opus 5.5, Sonnet 5.5 and all
+//                    Fable/Mythos answer `thinking: disabled` with HTTP 400.
+//                    Off is withheld for anything newer: an option that is
+//                    missing until the catalog loads is recoverable; one that
+//                    fails every request is not.
+
+// `(?=-|$)` after an optional 1-2 digit minor keeps legacy date-suffixed ids
+// (claude-opus-4-20250514) parsing as 4.0 rather than 4.20250514.
+const ANTHROPIC_MODEL_RE = /^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?=-|$)/;
+const ANTHROPIC_UNVERSIONED_RE = /^claude-(fable|mythos)-[a-z]/; // claude-mythos-preview
+
+/** `{ line, major, minor }`, `{ line, major: null }` for named previews, or null. */
+export function parseAnthropicModelId(modelId) {
+  const m = lc(modelId);
+  const versioned = ANTHROPIC_MODEL_RE.exec(m);
+  if (versioned) {
+    return { line: versioned[1], major: Number(versioned[2]), minor: Number(versioned[3] || 0) };
+  }
+  const unversioned = ANTHROPIC_UNVERSIONED_RE.exec(m);
+  return unversioned ? { line: unversioned[1], major: null, minor: 0 } : null;
+}
+
+const versionAtLeast = (parsed, major, minor) =>
+  parsed.major > major || (parsed.major === major && parsed.minor >= minor);
+
+/**
+ * Effort levels this Anthropic model accepts under adaptive thinking, in the
+ * same vocabulary as a published catalog: `none` present means thinking may be
+ * turned off. Null when the model has no adaptive-effort control.
+ */
+export function anthropicReasoningEfforts(modelId) {
+  const parsed = parseAnthropicModelId(modelId);
+  if (!parsed) return null;
+
+  const { line } = parsed;
+  const alwaysThinking = line === 'fable' || line === 'mythos';
+  if (!alwaysThinking && !(line === 'opus' || line === 'sonnet')) return null;
+  if (!alwaysThinking && !versionAtLeast(parsed, 4, 6)) return null;
+
+  const efforts = ['low', 'medium', 'high', 'max'];
+  const xhigh = alwaysThinking
+    ? parsed.major !== null
+    : line === 'opus'
+      ? versionAtLeast(parsed, 4, 7)
+      : versionAtLeast(parsed, 5, 0);
+  if (xhigh) efforts.push('xhigh');
+  if (!alwaysThinking && !versionAtLeast(parsed, 5, 5)) efforts.push('none');
+  return efforts;
+}
 
 export function isAnthropicReasoningModel(modelId) {
-  const m = lc(modelId);
-  return ANTHROPIC_VERSIONED_REASONING_RE.test(m) || ANTHROPIC_FAMILY_REASONING_RE.test(m);
+  return anthropicReasoningEfforts(modelId) !== null;
 }
 
 export function anthropicSupportsXHigh(modelId) {
-  return ANTHROPIC_XHIGH_RE.test(lc(modelId));
+  return anthropicReasoningEfforts(modelId)?.includes('xhigh') === true;
 }
 
 /** Anthropic models driven by `thinking: { type: 'adaptive' }`. */
 export function isAnthropicAdaptiveThinkingModel(modelId) {
   return isAnthropicReasoningModel(modelId);
+}
+
+// ── Effort list -> selector options ─────────────────────────────────────────
+// One builder for every effort list, published or derived, so the browser and
+// the backend cannot label or order the same list differently.
+
+/**
+ * Canonical weakest-to-strongest order. Catalogs list efforts strongest-first
+ * and inconsistently; a selector has to read one way every time. `none` is not
+ * a grade, it is the off switch, and is handled separately.
+ */
+export const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+const EFFORT_LABELS = {
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Very High',
+  max: 'Max',
+};
+
+/**
+ * Selector options for an effort list (`none` = may be turned off), or null
+ * when the list grades nothing. Every option offered is one the list names, so
+ * the UI can never render a choice the endpoint rejects.
+ */
+export function effortOptionsFromList(efforts) {
+  if (!Array.isArray(efforts) || !efforts.length) return null;
+  const available = new Set(efforts.map(lc));
+  const graded = EFFORT_ORDER.filter((e) => available.has(e));
+  if (!graded.length) return null;
+
+  const options = [{ value: 'default', label: 'Default' }];
+  if (available.has('none')) options.push({ value: 'off', label: 'Off' });
+  for (const effort of graded) {
+    options.push({
+      value: effort,
+      // Hand-written lists label `xhigh` "Max" where it is the ceiling; once a
+      // real `max` exists that name belongs to it.
+      label: effort === 'xhigh' && !available.has('max') ? 'Max' : EFFORT_LABELS[effort],
+    });
+  }
+  return options;
 }
 
 // ── OpenAI ──────────────────────────────────────────────────────────────────

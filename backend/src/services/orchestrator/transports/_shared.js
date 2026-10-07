@@ -21,6 +21,7 @@ import {
   getModelMetadata,
   getProviderConfig,
   getReasoningControl,
+  getAnthropicReasoningEfforts,
   supportsZaiReasoningEffort,
   // Reasoning predicates are defined ONCE, in providerConfigs, and consumed
   // here to build the wire body. This module used to carry its own copies and
@@ -42,7 +43,6 @@ import {
   supportsKimiReasoningToggle as supportsKimiToggle,
   supportsDeepSeekThinkingToggle as supportsDeepSeekToggle,
 } from '../../ai/providerConfigs.js';
-import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../../ai/reasoningModels.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from '../messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../../utils/promptCacheTtl.js';
 import { normalizeGeminiUsage } from '../../../utils/usageCacheFields.js';
@@ -553,12 +553,11 @@ function logAnthropicPreCall(model, provider, conversationMessages, slimSummary)
 }
 
 function buildAnthropicReasoningConfig(model, reasoningValue) {
-  // Single source: reasoningModels.isAnthropicReasoningModel. This module used
-  // to wrap it under a second name (supportsAnthropicAdaptiveThinking), which
-  // is the same duplicate-predicate disease under a different spelling — and
-  // exactly why the guard test matches a NAMING PATTERN rather than a fixed
-  // list of names.
-  if (!isAnthropicReasoningModel(model)) return null;
+  // Single source: getAnthropicReasoningEfforts, the same answer the selector
+  // is built from. The UI and the wire asking separately is how Claude 5 lost
+  // both at once — and how a UI-only fix would offer levels the wire drops.
+  const efforts = getAnthropicReasoningEfforts(model);
+  if (!efforts) return null;
 
   const normalized = normalizeReasoningValue(reasoningValue);
   const lower = String(model || '').toLowerCase();
@@ -577,17 +576,14 @@ function buildAnthropicReasoningConfig(model, reasoningValue) {
     return { thinking: { type: 'adaptive' }, outputConfig: { effort: 'high' } };
   }
   if (normalized === 'off') {
-    return { thinking: { type: 'disabled' } };
+    // Always-thinking models (Opus/Sonnet 5.5, Fable, Mythos) answer
+    // `disabled` with HTTP 400. A stale saved "Off" falls back to the server
+    // default instead of failing the turn.
+    return efforts.includes('none') ? { thinking: { type: 'disabled' } } : null;
   }
 
   const effort = normalized === 'on' ? 'high' : normalized;
-  // Opus 4.7+ and Fable/Mythos generations expose an `xhigh` ("Max") tier.
-  const supportsXHigh = anthropicSupportsXHigh(lower);
-  const allowed = supportsXHigh
-    ? new Set(['low', 'medium', 'high', 'xhigh'])
-    : new Set(['low', 'medium', 'high']);
-
-  if (!allowed.has(effort)) return null;
+  if (effort === 'none' || !efforts.includes(effort)) return null;
 
   return {
     thinking: { type: 'adaptive' },

@@ -21,7 +21,5 @@
 export {
   isAnthropicReasoningModel,
   anthropicSupportsXHigh,
-  ANTHROPIC_VERSIONED_REASONING_RE,
-  ANTHROPIC_FAMILY_REASONING_RE,
-  ANTHROPIC_XHIGH_RE,
+  anthropicReasoningEfforts,
 } from './descriptor/reasoningPredicates.js';

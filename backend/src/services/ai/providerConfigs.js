@@ -7,7 +7,6 @@
  * To update a provider: change it here and only here.
  */
 
-import { isAnthropicReasoningModel, anthropicSupportsXHigh } from './reasoningModels.js';
 // The GPT-5.6 family boundary. Defined once in promptCacheTtl, which uses it
 // to pick the retention control; reused here because the same boundary decides
 // whether cache writes bill at 1.25x.
@@ -23,6 +22,8 @@ import {
   isOpenAIGen5OrLater,
   isOpenAIGen6OrLater,
   isAnthropicAdaptiveThinkingModel,
+  anthropicReasoningEfforts,
+  effortOptionsFromList,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
   supportsDeepSeekThinkingToggle,
@@ -43,6 +44,34 @@ import {
   isChutesGlmReasoningModel,
   isChutesQwenReasoningModel,
 } from './descriptor/reasoningPredicates.js';
+
+/**
+ * Anthropic's /v1/models publishes, per model,
+ *   capabilities.effort.<level>.supported
+ *   capabilities.thinking.types.<adaptive|enabled>.supported
+ * Re-shaped into the `reasoning.supported_efforts` vocabulary OpenRouter uses,
+ * so registerDynamicPricingFromModels records both catalogs with one parser.
+ *
+ * Only ADAPTIVE models are reported. Our transport drives effort through
+ * `thinking: { type: 'adaptive' }`; Opus 4.5 accepts effort only alongside
+ * budget_tokens and rejects `adaptive`, so advertising its efforts would build
+ * a selector whose every choice fails.
+ *
+ * The catalog says nothing about turning thinking OFF, so `none` is never
+ * inferred here — the generation rule in the descriptor owns that answer.
+ */
+function anthropicCapabilitiesOf(raw) {
+  const capabilities = raw?.capabilities;
+  if (!capabilities || typeof capabilities !== 'object') return {};
+  if (capabilities.thinking?.types?.adaptive?.supported !== true) return {};
+
+  const effort = capabilities.effort;
+  if (!effort || effort.supported !== true) return {};
+  const supportedEfforts = Object.entries(effort)
+    .filter(([level, entry]) => level !== 'supported' && entry?.supported === true)
+    .map(([level]) => level);
+  return supportedEfforts.length ? { reasoning: { supported_efforts: supportedEfforts } } : {};
+}
 
 export {
   isOpenAIResponsesReasoningModel,
@@ -317,6 +346,9 @@ const PROVIDER_CONFIGS = [
       contextLength: raw.max_input_tokens || raw.max_tokens || 0,
       maxOutputTokens: raw.max_tokens || 0,
       createdAt: raw.created_at,
+      // Per-model effort levels and thinking types. Passed through verbatim;
+      // registerDynamicPricingFromModels owns the interpretation.
+      ...anthropicCapabilitiesOf(raw),
     }),
     modelFilter: (m) => m.id && m.display_name,
     compat: {},
@@ -398,6 +430,7 @@ const PROVIDER_CONFIGS = [
       contextLength: raw.max_input_tokens || raw.max_tokens || 0,
       maxOutputTokens: raw.max_tokens || 0,
       createdAt: raw.created_at,
+      ...anthropicCapabilitiesOf(raw),
     }),
     compat: {},
   },
@@ -2641,24 +2674,6 @@ export function getAllModelMetadata(providerKey) {
 }
 
 /**
- * Canonical weakest-to-strongest ordering for published effort names. The
- * catalog lists them strongest-first and inconsistently (`["max","high","low"]`
- * vs `["xhigh","medium","low"]`); a selector has to read one way every time.
- * `none` is deliberately absent — it is not a grade, it is the off switch, and
- * it is handled separately below.
- */
-const PUBLISHED_EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-
-const PUBLISHED_EFFORT_LABELS = {
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Very High',
-  max: 'Max',
-};
-
-/**
  * Build a reasoning control from what the PROVIDER published, for models no
  * hand-written predicate recognises.
  *
@@ -2741,37 +2756,37 @@ function pruneUnsupportedOff(providerKey, modelId, control) {
 
 function buildPublishedReasoningControl(providerKey, modelId) {
   const published = dynamicPricingCache.get(`${providerKey}:${modelId}`);
-  const efforts = published?.reasoningEfforts;
-  if (!Array.isArray(efforts) || !efforts.length) return null;
+  // "Off" is offered only when the vendor lists `none`, so every option shown
+  // is one the endpoint documented. Models with `mandatory: true` never list
+  // it — e.g. stealth/ox-alpha, whose thinking can only be turned down.
+  const options = effortOptionsFromList(published?.reasoningEfforts);
+  return options ? buildReasoningControl('effort', options) : null;
+}
 
-  const available = new Set(efforts);
-  const graded = PUBLISHED_EFFORT_ORDER.filter((e) => available.has(e));
-  // An off switch with nothing to grade is not an effort control. No live
-  // model looks like this today; the guard keeps a malformed row from
-  // rendering an empty selector.
-  if (!graded.length) return null;
+/**
+ * The effort levels a direct Anthropic model accepts, in catalog vocabulary
+ * (`none` = thinking may be turned off), or null when it has no effort
+ * control. The ONE answer read by both the selector (getReasoningControl) and
+ * the request builder (buildAnthropicReasoningConfig), so the UI can never
+ * offer a level the wire then drops.
+ *
+ * Graded levels come from Anthropic's own catalog when it has been fetched —
+ * under either key, since `anthropic` and `claude-code` serve the same models
+ * from the same /v1/models — so a new model is controllable the day Anthropic
+ * lists it. Before that, the descriptor's generation rule answers. Whether
+ * thinking can be turned off is not in the catalog, so that always comes from
+ * the rule.
+ */
+export function getAnthropicReasoningEfforts(modelId) {
+  const derived = anthropicReasoningEfforts(modelId);
+  const published =
+    dynamicPricingCache.get(`anthropic:${modelId}`)?.reasoningEfforts ||
+    dynamicPricingCache.get(`claude-code:${modelId}`)?.reasoningEfforts;
+  if (!Array.isArray(published) || !published.length) return derived;
 
-  const options = [{ value: 'default', label: 'Default' }];
-
-  // Offer "Off" only when the vendor lists `none` among the accepted efforts.
-  // Gating on `none` rather than on `mandatory: false` keeps the UI honest by
-  // construction: every option shown is one the endpoint documented, so we can
-  // never render a switch whose request comes back rejected. Models with
-  // `mandatory: true` never list it, which is exactly the desired outcome for
-  // e.g. stealth/ox-alpha — its thinking cannot be disabled, only turned down.
-  if (available.has('none')) options.push({ value: 'off', label: 'Off' });
-
-  for (const effort of graded) {
-    options.push({
-      value: effort,
-      // Existing hand-written lists label `xhigh` as "Max" because none of them
-      // also offers a distinct `max`. Keep that wording where it still reads
-      // unambiguously, and only demote it when both grades are present.
-      label: effort === 'xhigh' && !available.has('max') ? 'Max' : PUBLISHED_EFFORT_LABELS[effort],
-    });
-  }
-
-  return buildReasoningControl('effort', options);
+  const efforts = published.filter((e) => e !== 'none');
+  if (derived?.includes('none')) efforts.push('none');
+  return efforts;
 }
 
 export function getReasoningControl(providerKey, modelId) {
@@ -2860,21 +2875,8 @@ export function getReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'anthropic' || lowerProvider === 'claude-code') {
-    if (!isAnthropicAdaptiveThinkingModel(modelId)) return null;
-
-    const options = [
-      { value: 'default', label: 'Default' },
-      { value: 'off', label: 'Off' },
-      { value: 'low', label: 'Low' },
-      { value: 'medium', label: 'Medium' },
-      { value: 'high', label: 'High' },
-    ];
-
-    if (anthropicSupportsXHigh(lowerModel)) {
-      options.push({ value: 'xhigh', label: 'Max' });
-    }
-
-    return buildReasoningControl('effort', options);
+    const options = effortOptionsFromList(getAnthropicReasoningEfforts(modelId));
+    return options ? buildReasoningControl('effort', options) : null;
   }
 
   // Antigravity routes Claude models through the Gemini-style gateway; those

@@ -75,4 +75,23 @@ describe('controls the store now derives correctly', () => {
   it('a non-reasoning model still gets nothing', () => {
     expect(inferReasoningControl('groq', 'llama-3.3-70b-versatile')).toBeNull();
   });
+
+  // REGRESSION: the Anthropic gate was 4.x-only, so Claude 5 showed no selector
+  // until (and unless) server metadata arrived.
+  it.each([
+    ['claude-opus-5', ['default', 'off', 'low', 'medium', 'high', 'xhigh', 'max']],
+    ['claude-sonnet-5-5', ['default', 'low', 'medium', 'high', 'xhigh', 'max']],
+    ['claude-fable-5', ['default', 'low', 'medium', 'high', 'xhigh', 'max']],
+    ['claude-opus-4-6', ['default', 'off', 'low', 'medium', 'high', 'max']],
+  ])('Claude %s gets its documented levels on both Anthropic paths', (id, expected) => {
+    expect(inferReasoningControl('claude-code', id)?.options.map((o) => o.value)).toEqual(expected);
+    expect(inferReasoningControl('anthropic', id)?.options.map((o) => o.value)).toEqual(expected);
+  });
+
+  it('the browser fallback and the server agree option-for-option', () => {
+    for (const id of ['claude-opus-5', 'claude-opus-5-5', 'claude-mythos-preview', 'claude-haiku-4-5-20251001']) {
+      const fromShared = shared.effortOptionsFromList(shared.anthropicReasoningEfforts(id));
+      expect(inferReasoningControl('claude-code', id)?.options ?? null).toEqual(fromShared);
+    }
+  });
 });
