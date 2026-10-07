@@ -56,6 +56,29 @@ const ERROR_BACKOFF_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref?.());
 
+// The six iMessage tapbacks: the only reactions mobile.agnt.gg sends, because
+// every iPhone shows them natively. The service enforces the same list.
+const TAPBACKS = { love: '❤️', like: '👍', dislike: '👎', laugh: '😂', emphasize: '‼️', question: '❓' };
+const TAPBACK_BY_KEY = new Map([
+  ...Object.entries(TAPBACKS),
+  ...Object.values(TAPBACKS).map((emoji) => [emoji.replace(/\uFE0F/g, ''), emoji]),
+  ['heart', '❤️'], ['thumbsup', '👍'], ['thumbsdown', '👎'],
+]);
+const REACTION_MARKER = /^\s*\[react:\s*([^\]\n]{1,24}?)\s*\]\s*/i;
+
+/**
+ * Annie reacts to the text she is answering by opening her reply with
+ * [react: 👍] (textRegister.js). Returns the tapback and the reply without the
+ * marker. Anything that is not one of the six is dropped, never sent.
+ */
+export function takeReaction(raw) {
+  const text = String(raw || '');
+  const match = REACTION_MARKER.exec(text);
+  if (!match) return { reaction: null, text };
+  const key = match[1].replace(/\uFE0F/g, '').trim().toLowerCase();
+  return { reaction: TAPBACK_BY_KEY.get(key) ?? null, text: text.slice(match[0].length) };
+}
+
 /**
  * Make an answer fit a text message: no image tokens or local file links, no
  * fenced code. Links to files that go along as attachments say so; others
@@ -213,13 +236,31 @@ export class MobileReceiver {
       const text = [message.text, ...incoming.notes].filter(Boolean).join('\n')
         || `(sent ${incoming.files.length === 1 ? 'an attachment' : incoming.files.length + ' attachments'})`;
       const turn = await this.ask(token, { conversationId: main.conversation_id, text }, history, incoming.files);
-      const outgoing = await findOutboundFiles(turn.text, { imageIds: turn.imageIds, resolveImage: this.resolveImage });
+      const { reaction, text: answer } = takeReaction(turn.text);
+      const outgoing = await findOutboundFiles(answer, { imageIds: turn.imageIds, resolveImage: this.resolveImage });
       const attached = outgoing.length ? await sendMedia(message.id, outgoing, { callService, fetchImpl: this.fetch }) : [];
-      const reply = toTextReply(turn.text, { attached });
-      await callService('mobile', `/messages/${encodeURIComponent(message.id)}/reply`, { method: 'POST', body: { text: reply, media: attached.map((file) => file.mediaId) }, timeoutMs: 30_000, planGate: false });
+      // A tapback alone is a whole answer (👍 to "email grandma at 2").
+      const reply = reaction && !answer.trim() && !attached.length ? '' : toTextReply(answer, { attached });
+      await this.sendReply(message.id, { text: reply, media: attached.map((file) => file.mediaId), reaction });
     } catch (error) {
       console.error('[MobileReceiver] could not answer a text:', error.message);
       await callService('mobile', `/messages/${encodeURIComponent(message.id)}/release`, { method: 'POST', body: {}, timeoutMs: 15_000, planGate: false }).catch(() => {});
+    }
+  }
+
+  /**
+   * Post the answer. A service from before reactions refuses a reply that is
+   * only a tapback; then the emoji goes as the text, so the text is answered
+   * instead of being released and retried until it expires.
+   */
+  async sendReply(id, { text, media, reaction }) {
+    const send = (body) => callService('mobile', `/messages/${encodeURIComponent(id)}/reply`, { method: 'POST', body, timeoutMs: 30_000, planGate: false });
+    if (!reaction) return send({ text, media });
+    try {
+      return await send({ text, media, reaction });
+    } catch (error) {
+      if (!['empty_reply', 'invalid_reaction'].includes(error.code)) throw error;
+      return send({ text: text || reaction, media });
     }
   }
 

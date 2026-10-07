@@ -20,7 +20,7 @@ vi.mock('./auth/sessionTokenCache.js', () => ({
   getSessionUserId: vi.fn(() => 'user-1'),
 }));
 
-const { MobileReceiver, toTextReply, readFinalAnswer, fileThreadStore } = await import('./mobileReceiver.js');
+const { MobileReceiver, toTextReply, readFinalAnswer, fileThreadStore, takeReaction } = await import('./mobileReceiver.js');
 
 const sse = (...events) => new Response(new ReadableStream({
   start(controller) {
@@ -41,6 +41,21 @@ describe('toTextReply', () => {
     expect(toTextReply('[chart](file:///C:/x/chart.png) and file:///C:/x/other.pdf', { attached })).toBe('chart (attached) and (in your AGNT app)');
     expect(toTextReply('Done: file:///C:/x/chart.png.', { attached })).toBe('Done: (attached).');
     expect(toTextReply('{{IMAGE_REF:abc}}', { attached: [{ token: '{{IMAGE_REF:abc}}' }] })).toBe('');
+  });
+});
+
+describe('takeReaction', () => {
+  it('reads an opening [react: ...] as one of the six tapbacks and removes it', () => {
+    expect(takeReaction('[react: 👍]')).toEqual({ reaction: '👍', text: '' });
+    expect(takeReaction('  [React:❤] Done, sent at 2pm.')).toEqual({ reaction: '❤️', text: 'Done, sent at 2pm.' });
+    expect(takeReaction('[react: like]\nScheduled.')).toEqual({ reaction: '👍', text: 'Scheduled.' });
+    expect(takeReaction('[react: ‼]')).toEqual({ reaction: '‼️', text: '' });
+  });
+  it('drops anything else, and ignores a marker that does not open the reply', () => {
+    expect(takeReaction('[react: 🎉] Party time')).toEqual({ reaction: null, text: 'Party time' });
+    expect(takeReaction('Sure [react: 👍]')).toEqual({ reaction: null, text: 'Sure [react: 👍]' });
+    expect(takeReaction('plain answer')).toEqual({ reaction: null, text: 'plain answer' });
+    expect(takeReaction(null)).toEqual({ reaction: null, text: '' });
   });
 });
 
@@ -116,6 +131,28 @@ describe('MobileReceiver.handle', () => {
     // from here could only be shorter than the real Main chat.
     expect(api.requests.some((r) => r.url.includes('/content-outputs/save'))).toBe(false);
     expect(api.requests.some((r) => r.url.includes('/by-conversation/'))).toBe(false);
+  });
+
+  it('a tapback alone is the whole reply: no text, no "Done" filler', async () => {
+    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(message);
+    expect(calls).toEqual([expect.objectContaining({ path: '/messages/m-1/reply', opts: expect.objectContaining({ body: { text: '', media: [], reaction: '👍' } }) })]);
+  });
+
+  it('a tapback with words sends both; an unknown emoji is dropped, not sent', async () => {
+    await receiverWith(localApi({ answer: '[react: ❤️] Sent it to grandma.' })).handle(message);
+    expect(calls[0].opts.body).toEqual({ text: 'Sent it to grandma.', media: [], reaction: '❤️' });
+    calls.length = 0;
+    await receiverWith(localApi({ answer: '[react: 🎉] Sent.' })).handle(message);
+    expect(calls[0].opts.body).toEqual({ text: 'Sent.', media: [] });
+  });
+
+  it('a service from before reactions gets the emoji as the text instead of a stuck reply', async () => {
+    script = [Object.assign(new Error('empty_reply'), { code: 'empty_reply' })];
+    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(message);
+    expect(calls.map((c) => [c.path, c.opts.body])).toEqual([
+      ['/messages/m-1/reply', { text: '', media: [], reaction: '👍' }],
+      ['/messages/m-1/reply', { text: '👍', media: [] }],
+    ]);
   });
 
   it('a Main chat with no turns yet starts with an empty history', async () => {

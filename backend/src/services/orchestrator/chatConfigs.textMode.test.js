@@ -43,6 +43,14 @@ describe('buildTextRegisterSection', () => {
     expect(text).toMatch(/voice notes \(as a transcript\)/);
   });
 
+  it('teaches the tapback marker, the six reactions, and reading the user\'s', () => {
+    const text = buildTextRegisterSection();
+    expect(text).toContain('open your reply with [react: 👍]');
+    expect(text).toContain('❤️ 👍 👎 😂 ‼️ ❓');
+    expect(text).toMatch(/Never react instead of answering a question/);
+    expect(text).toContain('[Reacted 👍 to your message:');
+  });
+
   it('applies to the marked user message only', () => {
     expect(buildTextRegisterSection()).toContain(`A user message that begins with ${TEXT_TURN_MARKER}`);
   });
