@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveProjectSlug as deriveUnfirehoseProjectSlug } from '../../backend/src/services/unfirehose/UnfirehoseLogger.js';
+import { deriveProjectSlug as deriveUnfirehoseProjectSlug } from './UnfirehoseLogger.js';
 
 describe('deriveUnfirehoseProjectSlug', () => {
   it('agent chat → agent-{slug-of-name}', () => {

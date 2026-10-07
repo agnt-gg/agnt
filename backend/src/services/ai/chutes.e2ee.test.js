@@ -16,7 +16,7 @@ import {
   getProviderConfig,
   getReasoningControl,
   registerDynamicPricingFromModels,
-} from '../../backend/src/services/ai/providerConfigs.js';
+} from './providerConfigs.js';
 
 // ---------------------------------------------------------------------------
 // Live transport tests — only run when CHUTES_API_KEY is present
@@ -43,14 +43,15 @@ describe('Chutes Provider Config', () => {
   it('should expose TEE fallback models', () => {
     const cfg = getProviderConfig('chutes');
     assert.deepStrictEqual(cfg.fallbackModels, [
-      'moonshotai/Kimi-K2.5-TEE',
       'moonshotai/Kimi-K2.6-TEE',
-      'zai-org/GLM-5-TEE',
+      'moonshotai/Kimi-K3-TEE',
+      'zai-org/GLM-5.2-TEE',
       'zai-org/GLM-5.1-TEE',
+      'deepseek-ai/DeepSeek-V4-Flash-0731-TEE',
+      'Qwen/Qwen3.8-27B-TEE',
       'Qwen/Qwen3-32B-TEE',
       'Qwen/Qwen3.5-397B-A17B-TEE',
       'Qwen/Qwen3.6-27B-TEE',
-      'MiniMaxAI/MiniMax-M2.5-TEE',
     ]);
     assert.ok(cfg.fallbackModels.every((model) => model.endsWith('-TEE')));
     for (const model of cfg.fallbackModels) {
@@ -239,8 +240,8 @@ describe('Chutes Provider Config', () => {
 
 describe('Chutes E2EE Offline Transport', () => {
   it('should encrypt and route chat completions through mocked E2EE invoke', async () => {
-    const { default: ChutesE2EEFetchTransport } = await import('../../backend/src/services/ai/chutes/ChutesE2EEFetchTransport.js');
-    const { generateKeyPair } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js');
+    const { default: ChutesE2EEFetchTransport } = await import('./chutes/ChutesE2EEFetchTransport.js');
+    const { generateKeyPair } = await import('./chutes/ChutesE2EECrypto.js');
 
     const model = 'Qwen/Qwen3-32B-TEE';
     const chuteId = 'ac059e33-eb27-541c-b9a9-24b214036475';
@@ -364,7 +365,7 @@ describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () 
 
   it('Kimi-TEE: off → chat_template_kwargs.thinking=false (Kimi key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
-      '../../backend/src/services/orchestrator/llmAdapters.js'
+      '../orchestrator/llmAdapters.js'
     );
     assert.deepStrictEqual(
       fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'off'),
@@ -379,7 +380,7 @@ describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () 
 
   it('GLM-TEE: off → chat_template_kwargs.enable_thinking=false (GLM key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
-      '../../backend/src/services/orchestrator/llmAdapters.js'
+      '../orchestrator/llmAdapters.js'
     );
     assert.deepStrictEqual(
       fn('chutes', 'zai-org/GLM-5.1-TEE', 'off'),
@@ -394,7 +395,7 @@ describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () 
 
   it('Qwen3-TEE: off → chat_template_kwargs.enable_thinking=false (Qwen key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
-      '../../backend/src/services/orchestrator/llmAdapters.js'
+      '../orchestrator/llmAdapters.js'
     );
     assert.deepStrictEqual(
       fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'off'),
@@ -409,7 +410,7 @@ describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () 
 
   it('Non-reasoning chutes models (MiniMax) → null regardless of selection', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
-      '../../backend/src/services/orchestrator/llmAdapters.js'
+      '../orchestrator/llmAdapters.js'
     );
     assert.strictEqual(fn('chutes', 'MiniMaxAI/MiniMax-M2.5-TEE', 'off'), null);
     assert.strictEqual(fn('chutes', 'MiniMaxAI/MiniMax-M2.5-TEE', 'on'), null);
@@ -419,7 +420,7 @@ describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () 
 describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
   it('chachaDecrypt: tampered ciphertext throws explicit Chutes E2EE error', async () => {
     const { chachaEncrypt, chachaDecrypt } = await import(
-      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+      './chutes/ChutesE2EECrypto.js'
     );
     const { randomBytes } = await import('crypto');
 
@@ -441,7 +442,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
 
   it('chachaDecrypt: tampered tag throws explicit Chutes E2EE error', async () => {
     const { chachaEncrypt, chachaDecrypt } = await import(
-      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+      './chutes/ChutesE2EECrypto.js'
     );
     const { randomBytes } = await import('crypto');
 
@@ -460,7 +461,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
 
   it('chachaDecrypt: round-trips clean plaintext unchanged', async () => {
     const { chachaEncrypt, chachaDecrypt } = await import(
-      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+      './chutes/ChutesE2EECrypto.js'
     );
     const { randomBytes } = await import('crypto');
 
@@ -474,7 +475,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
 
   it('decryptStreamChunk: tampered chunk throws Chutes E2EE error (not gzip/buffer error)', async () => {
     const { chachaEncrypt, decryptStreamChunk } = await import(
-      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+      './chutes/ChutesE2EECrypto.js'
     );
     const { randomBytes } = await import('crypto');
 
@@ -502,7 +503,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
       decapsulate,
       deriveKey,
       chachaEncrypt,
-    } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js');
+    } = await import('./chutes/ChutesE2EECrypto.js');
     const { randomBytes } = await import('crypto');
     const { gzipSync } = await import('zlib');
 
@@ -514,7 +515,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
     // happen on the provider. Simulate by encapsulating against the response pk.
     // Easier: just build a malformed blob — the MLKEM ciphertext will validate
     // but the symmetric tag will fail. Use a real-shape blob with corrupted tail.
-    const { encapsulate } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js');
+    const { encapsulate } = await import('./chutes/ChutesE2EECrypto.js');
     const responsePk = instancePk; // placeholder; we just need a valid encapsulation
     const { ct: mlkemCt, ss: sharedSecret } = await encapsulate(responsePk);
     const symKey = deriveKey(sharedSecret, mlkemCt, Buffer.from('e2e-resp-v1'));
@@ -539,7 +540,7 @@ describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
 describe('ChutesDiscoveryManager.getNonce — concurrency', () => {
   it('returns distinct nonces to concurrent callers for the same chute', async () => {
     const { default: ChutesDiscoveryManager } = await import(
-      '../../backend/src/services/ai/chutes/ChutesDiscoveryManager.js'
+      './chutes/ChutesDiscoveryManager.js'
     );
     const manager = new ChutesDiscoveryManager({ apiKey: 'test' });
 
@@ -573,7 +574,7 @@ describe('ChutesDiscoveryManager.getNonce — concurrency', () => {
 
   it('parallel chuteIds refresh independently — no global serialization', async () => {
     const { default: ChutesDiscoveryManager } = await import(
-      '../../backend/src/services/ai/chutes/ChutesDiscoveryManager.js'
+      './chutes/ChutesDiscoveryManager.js'
     );
     const manager = new ChutesDiscoveryManager({ apiKey: 'test' });
 
@@ -605,7 +606,7 @@ describe('ChutesDiscoveryManager.getNonce — concurrency', () => {
 
   it('drained shared cache forces one more refresh and bounded retries', async () => {
     const { default: ChutesDiscoveryManager } = await import(
-      '../../backend/src/services/ai/chutes/ChutesDiscoveryManager.js'
+      './chutes/ChutesDiscoveryManager.js'
     );
     const manager = new ChutesDiscoveryManager({ apiKey: 'test' });
 
@@ -650,7 +651,7 @@ describe('ChutesDiscoveryManager.getNonce — concurrency', () => {
 
   it('failed refresh clears in-flight slot so retries can proceed', async () => {
     const { default: ChutesDiscoveryManager } = await import(
-      '../../backend/src/services/ai/chutes/ChutesDiscoveryManager.js'
+      './chutes/ChutesDiscoveryManager.js'
     );
     const manager = new ChutesDiscoveryManager({ apiKey: 'test' });
 
@@ -685,8 +686,8 @@ let buildE2EERequest;
 
 describe.skipIf(!RUN_LIVE)('Chutes E2EE Live Integration', () => {
   it('should be importable', async () => {
-    ({ default: ChutesE2EEFetchTransport } = await import('../../backend/src/services/ai/chutes/ChutesE2EEFetchTransport.js'));
-    ({ buildE2EERequest } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'));
+    ({ default: ChutesE2EEFetchTransport } = await import('./chutes/ChutesE2EEFetchTransport.js'));
+    ({ buildE2EERequest } = await import('./chutes/ChutesE2EECrypto.js'));
     assert.ok(ChutesE2EEFetchTransport, 'ChutesE2EEFetchTransport import failed');
     assert.ok(buildE2EERequest, 'buildE2EERequest import failed');
   });

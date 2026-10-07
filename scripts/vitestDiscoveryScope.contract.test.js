@@ -95,6 +95,21 @@ describe('the exclusions that were already load-bearing survive', () => {
   }
 });
 
+describe('tests/unit holds only node:test files', () => {
+  it('no file there imports vitest, which neither runner would execute', () => {
+    const unitDir = path.join(REPO_ROOT, 'tests', 'unit');
+    const walk = (dir) =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+        entry.isDirectory() ? walk(path.join(dir, entry.name)) : [path.join(dir, entry.name)],
+      );
+    const vitestFiles = walk(unitDir)
+      .filter((file) => /\.(c|m)?js$/.test(file))
+      .filter((file) => /from\s+['"]vitest['"]/.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(REPO_ROOT, file).replace(/\\/g, '/'));
+    expect(vitestFiles).toEqual([]);
+  });
+});
+
 describe('the frontend runner is scoped by its own location', () => {
   it('does not reach above frontend/ to find the worktrees', () => {
     // frontend/vitest.config.js needs no .worktrees exclusion for one reason
