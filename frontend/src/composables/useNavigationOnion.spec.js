@@ -173,14 +173,14 @@ describe('useNavigationOnion', () => {
     expect(tour.tourId.value).toBe('onion-apps');
   });
 
-  it('waits for a screen tutorial already on screen, then points at the row', async () => {
+  it('waits for a coach card already on screen, then points at the row', async () => {
     // Seen live: the Chat screen's own first-visit popup was open when the
     // first workflow landed, and both drew at once.
     const store = makeStore();
     wrapper = mountHost(store);
     await startupDone();
     const screenTutorial = document.createElement('div');
-    screenTutorial.className = 'popup-tutorial';
+    screenTutorial.setAttribute('data-coach-popup', '');
     document.body.appendChild(screenTutorial);
 
     store.commit('workflows/add', { id: 'wf-1' });

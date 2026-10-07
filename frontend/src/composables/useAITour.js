@@ -60,10 +60,10 @@ export function useAITour() {
   };
 }
 
-// Translate the backend step shape into the PopupTutorial step shape.
-// PopupTutorial uses `target` (CSS selector), `position`, `autoProgress`,
-// `enforceStep`, `simulateClick`, `media`, `navigateToScreen`, and an
-// `onBefore` async hook.
+// Translate the backend step shape (tutorialTools.js start_guided_tour) into
+// the step AIGuidedTourHost renders through CoachMark. A missing target no
+// longer skips the step: CoachMark docks the card and keeps looking, so a
+// late-rendering element still gets its highlight.
 export function stepsToPopupConfig(steps) {
   return steps.map((s, index) => {
     const hasTarget = !!s.targetSelector;
@@ -71,28 +71,19 @@ export function stepsToPopupConfig(steps) {
     return {
       title: s.title,
       content: s.content,
-      // PopupTutorial labels every step "Next" unless told otherwise, so a
-      // one-step highlight read "Next" beside a full progress bar.
+      // A one-step highlight read "Next" beside a full progress bar.
       buttonText: s.buttonText || (isLast ? 'Got it' : undefined),
       target: s.targetSelector || undefined,
       position: hasTarget ? (s.position || 'bottom') : 'center',
       autoProgress: s.autoAdvanceMs,
-      enforceStep: s.enforce === true,
       simulateClick: s.action === 'simulateClick',
-      showSkipButton: true,
+      // The tool has always offered waitForClick; nothing honoured it, so the
+      // assistant's "click it yourself" steps advanced on Next like any other.
+      waitForClick: s.action === 'waitForClick',
       media: s.mediaUrl
         ? { type: /\.mp4($|\?)/i.test(s.mediaUrl) ? 'video' : 'gif', src: s.mediaUrl }
         : undefined,
-      // PopupTutorial supports per-step audio URLs. If a real TTS URL is
-      // provided, use it; otherwise leave undefined.
-      audioContent: s.audioUrl || undefined,
       navigateToScreen: s.route,
-      onBefore: s.route
-        ? async () => {
-            // Give the SPA route a beat to settle before the popup measures.
-            await new Promise((r) => setTimeout(r, 200));
-          }
-        : undefined,
     };
   });
 }

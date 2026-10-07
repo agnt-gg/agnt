@@ -32,8 +32,13 @@ export const TOUR_TARGETS = [
 
   // ── Workflows ──────────────────────────────────────────────────────
   { id: 'workflows.add-node-button', screen: 'WorkflowsScreen', description: 'Opens the node picker to add a new workflow node', safeToSimulate: true },
-  { id: 'workflows.canvas',          screen: 'WorkflowsScreen', description: 'The workflow design canvas', safeToSimulate: false },
-  { id: 'workflows.run-button',      screen: 'WorkflowsScreen', description: 'Activates the current workflow (consumes credits)', safeToSimulate: false },
+  { id: 'workflows.canvas',          screen: 'WorkflowForgeScreen', description: 'The workflow design canvas', safeToSimulate: false },
+  { id: 'workflows.run-button',      screen: 'WorkflowForgeScreen', description: 'Activates the current workflow (consumes credits)', safeToSimulate: false },
+
+  // Chat, Runs and Market
+  { id: 'chat.composer',             screen: 'ChatScreen', description: 'The message box where the user types to Annie', safeToSimulate: false },
+  { id: 'traces.list',               screen: 'TracesScreen', description: 'The list of runs (workflows, goals, agents); open one to see each step', safeToSimulate: false },
+  { id: 'market.grid',               screen: 'MarketplaceScreen', description: 'The Market listings: skills, agents, workflows and tools to install', safeToSimulate: false },
 
   // ── Agents ─────────────────────────────────────────────────────────
   { id: 'agents.create-button',      screen: 'AgentsScreen',    description: 'Open AgentForge to create a new agent', safeToSimulate: true },

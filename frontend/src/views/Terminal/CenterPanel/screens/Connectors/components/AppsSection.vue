@@ -51,7 +51,7 @@
           <button type="button" class="apps-primary" data-testid="open-marketplace" @click="emit('open-market')">Open the Marketplace</button>
         </div>
       </div>
-      <div v-else class="apps-grid">
+      <div v-else class="apps-grid" data-tour-id="plugins.catalog">
         <article v-for="app in filtered" :key="app.name" class="apps-card" :data-app="app.name">
           <div class="card-top"><span class="app-logo"><SvgIcon :name="app.icon || 'puzzle-piece'" /></span><span v-if="app.installed" class="card-status"><AppsIcon name="check" /> Installed</span><span v-else class="card-type">{{ app.isPack ? 'Capability pack' : app.category }}</span></div>
           <h3><button type="button" class="card-title" @click="openPlugin(app)">{{ app.displayName }}</button></h3><p>{{ app.description || 'Explore this plugin’s capabilities.' }}</p>

@@ -82,7 +82,7 @@
     />
     <!-- Empty canvas: never a blank page. Only the cards take the pointer, so
          nodes can still be dragged in from the palette behind this. -->
-    <section v-if="!nodes.length && availableQuickstarts.length" class="wf-quickstarts" aria-label="Start from a template">
+    <section v-if="!nodes.length && availableQuickstarts.length" class="wf-quickstarts" data-tour-id="workflows.quickstarts" aria-label="Start from a template">
       <h3>Start from a template</h3>
       <p v-if="compact">Or tap Add node, or describe the workflow to Annie.</p>
       <p v-else>Or drag a node in from the left, or describe the workflow to Annie.</p>
@@ -101,7 +101,6 @@
       <p>Generating Workflow, Please Wait...</p>
     </div>
   </div>
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="workflowDesigner" @close="onTutorialClose" />
   <Teleport to="body">
     <div v-if="isSecurityPolicyModalOpen" class="workflow-security-overlay" @click.self="closeWorkflowSecurityModal">
       <div class="workflow-security-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-security-title">
@@ -164,8 +163,6 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 // The toolLibrary is now accessed via this.toolLibrary computed property from Vuex store
 import generateUUID from '@/views/_utils/generateUUID.js';
 import LoadingOverlay from '@/views/_components/utility/LoadingOverlay.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
-import useWorkflowDesigner from './useWorkflowDesigner';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
@@ -182,7 +179,6 @@ export default {
     WorkflowEngine,
     WorkflowActionsMenu,
     CanvasViewControls,
-    PopupTutorial,
     LoadingOverlay,    SimpleModal,
     SecurityLevelSlider,
     AgentChat,
@@ -2704,12 +2700,6 @@ export default {
       }
     };
 
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeWorkflowDesigner } = useWorkflowDesigner();
-
-    onMounted(() => {
-      initializeWorkflowDesigner();
-    });
-
     onMounted(async () => {
 
       // Always check URL first - this is the source of truth
@@ -2789,9 +2779,6 @@ export default {
 
     return {
       compact, mobilePaletteOpen, mobileConnections, mobileFrom, mobileTo,
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
       loadWorkflow,
       handleWorkflowGeneratorRef,
       pollWorkflowStatusRef,

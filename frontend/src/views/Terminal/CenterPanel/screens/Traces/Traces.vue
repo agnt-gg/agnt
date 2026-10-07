@@ -98,7 +98,7 @@
 
           <!-- Main Content -->
           <div class="screen-content runs-content">
-            <main class="screen-main-content runs-main-content">
+            <main class="screen-main-content runs-main-content" data-tour-id="traces.list">
               <!-- Table View -->
               <div v-if="currentLayout === 'table'" class="table-view-container">
                 <BaseTable
@@ -249,8 +249,6 @@
 </div>        </div>
       </template>
     </BaseScreen>
-
-    <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="runs" @close="onTutorialClose" />
   </div>
 </template>
 
@@ -264,8 +262,6 @@ import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
-import { useTracesTutorial } from './useTracesTutorial.js';
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
@@ -273,7 +269,7 @@ import { isRunningExecution } from '@/canvas/railBadges.js';
 
 export default {
   name: 'TracesScreen',
-  components: { MobileCollection, CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip, FilterTabs },
+  components: { MobileCollection, CustomSelect, BaseScreen, BaseTable, SimpleModal, Tooltip, FilterTabs },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();
@@ -1232,8 +1228,6 @@ ${execution.log}
       }
     };
 
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeTracesTutorial } = useTracesTutorial();
-
     const initializeScreen = () => {
       terminalLines.value = [];
       addLine('Loading execution history...', 'info');
@@ -1292,11 +1286,6 @@ ${execution.log}
       cleanup.addEventListener(document, 'visibilitychange', visibilityHandler);
 
       startPolling();
-
-      // Show tutorial after a short delay
-      cleanup.setTimeout(() => {
-        initializeTracesTutorial();
-      }, 2000);
     };
 
     // ?status=running (toolbar "N running" pill) presets the status tab. Also
@@ -1404,9 +1393,6 @@ ${execution.log}
       isAgentExecution,
       getExecutionTypeIcon,
       getExecutionTypeLabel,
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
       // Date range & sort
       dateRangePreset,
       customStartDate,

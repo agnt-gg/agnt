@@ -58,10 +58,10 @@ const HYDRATE_DELAY_MS = 1200;
 // a workflow made elsewhere since then really is new to them.
 const SETTLE_MS = 5000;
 
-// Every tutorial popup — a screen's own first-visit tour and the AI host —
-// renders this root only while visible. One popup at a time: while another is
-// up, the announcement waits and looks again.
-const OTHER_POPUP = '.popup-tutorial';
+// Every coach card — a journey mission or offer, and the AI host's tours —
+// renders this attribute only while visible (CoachMark.vue). One popup at a
+// time: while another is up, the announcement waits and looks again.
+const OTHER_POPUP = '[data-coach-popup]';
 const RETRY_MS = 1500;
 
 /**

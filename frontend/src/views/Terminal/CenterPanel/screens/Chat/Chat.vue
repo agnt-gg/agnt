@@ -6,7 +6,6 @@
     screenId="ChatScreen"
     channel-key="orchestrator:default"
     :conversation-id="activeConversationIdForSelector"
-    :useTutorialHook="useTutorial"
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
     :panelProps="inspectorProps"
@@ -347,13 +346,11 @@ import { calibrateContextStatus, calibrateManifest } from '@/services/contextCal
 import { applyContextStatusRound, markPrefixBreak } from '@/services/turnRounds.js';
 import ActivityFeed from './components/ActivityFeed.vue';
 import GoalProgressWidget from './components/GoalProgressWidget.vue';
-import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { serializeTranscript } from '@/services/conversationTranscript.js';
 import { editableReplyId } from '@/services/assistantReplyEdit.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
-import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 import { useChatScrollRestore } from '@/composables/useChatScrollRestore.js';
@@ -377,7 +374,6 @@ export default {
     SystemHealthPanel,
     ActivityFeed,
     GoalProgressWidget,
-    PopupTutorial,
     SimpleModal,
     ChatScrollControls,
   },
@@ -594,35 +590,6 @@ export default {
       const conv = convId ? store.state.chat.conversations[convId] : null;
       if (!conv) return { queue: [], turnsUsed: 0 };
       return { queue: conv.floorQueue || [], turnsUsed: conv.floorTurnsUsed || 0 };
-    });
-
-    // No provider tutorial
-    const noProviderTutorial = ref({
-      config: [
-        {
-          target: '.conversation-canvas',
-          position: 'center',
-          title: '⚠️ No AI Provider Connected!',
-          content: "You need to connect an AI provider before you can chat. Let's set one up in the Integrations section.",
-          buttonText: 'Go to Integrations',
-          hideArrow: true,
-        },
-      ],
-      startTutorial: false,
-      currentStep: 0,
-      onTutorialClose: () => {
-        noProviderTutorial.value.startTutorial = false;
-        noProviderTutorial.value.currentStep = 0;
-      },
-      nextStep: () => {
-        // Navigate to Secrets screen
-        emit('screen-change', 'ConnectorsScreen');
-        noProviderTutorial.value.onTutorialClose();
-      },
-      initializeTutorial: () => {
-        noProviderTutorial.value.startTutorial = true;
-        noProviderTutorial.value.currentStep = 0;
-      },
     });
 
     // Check for connected AI providers
@@ -2411,13 +2378,6 @@ export default {
         MathJax.typesetPromise();
       }
 
-      // Check for AI provider connection and show tutorial if needed
-      if (!hasConnectedAIProvider.value) {
-        cleanup.setTimeout(() => {
-          noProviderTutorial.value.initializeTutorial();
-        }, 1000);
-      }
-
       focusInput();
     };
 
@@ -2773,9 +2733,6 @@ export default {
       terminalLines.value.push(`[Provider] Successfully connected to ${provider.name}`);
     };
 
-    // Pass emit function to tutorial so it can emit screen-change directly
-    const tutorialWithCallback = useTutorial(emit);
-
     // Watch for local server status changes
     watch(isLocalServerRunning, async (isRunning, wasRunning) => {
       const selectedProvider = store.state.aiProvider?.selectedProvider;
@@ -2925,11 +2882,6 @@ export default {
         if (baseScreenRef.value) {
           baseScreenRef.value.setInputDisabled(!hasProvider);
         }
-
-        // Show tutorial when provider is disconnected
-        if (!hasProvider && tutorialWithCallback.startTutorial) {
-          tutorialWithCallback.startTutorial.value = true;
-        }
       },
       { immediate: true },
     );
@@ -2992,7 +2944,6 @@ export default {
     );
 
     return {
-      ...tutorialWithCallback,
       showFocusedHome,
       conversationStarted,
       baseScreenRef,
@@ -3061,7 +3012,6 @@ export default {
       chatParticipants,
       annieParticipant,
       floorState,
-      useTutorial,
       initializeScreen,
       isMobile,
       isMonitoringCollapsed,

@@ -144,7 +144,6 @@
     </template>
   </BaseScreen>
 
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="WorkflowsScreen" @close="onTutorialClose" />
   <SimpleModal ref="simpleModalRef" />
 </template>
 
@@ -160,15 +159,13 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
+  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
@@ -198,9 +195,6 @@ export default {
     let clickTimer = null;
 
 
-
-    // Tutorial setup
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeWorkflowsTutorial } = useWorkflowsTutorial();
 
 
 
@@ -552,11 +546,6 @@ export default {
       cleanup.addEventListener(document, 'visibilitychange', visibilityHandler);
 
       startPolling();
-
-      // Show tutorial after a short delay
-      cleanup.setTimeout(() => {
-        initializeWorkflowsTutorial();
-      }, 2000);
     };
 
     // Proper lifecycle hook at component scope
@@ -703,10 +692,6 @@ export default {
       hasToolsOrUptime,
       getWorkflowIcon,
       // Drag and drop
-      // Tutorial
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
       // Marketplace
       // Dynamic panel switching
       activeRightPanel,

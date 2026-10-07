@@ -136,7 +136,6 @@
     </template>
   </BaseScreen>
 
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="ToolsScreen" @close="onTutorialClose" />
   <SimpleModal ref="simpleModalRef" />
 </template>
 
@@ -149,12 +148,10 @@ import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
-import { useToolsTutorial } from './useToolsTutorial.js';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
 
@@ -167,13 +164,10 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
+  components: { BaseScreen, MobileCollection, TerminalHeader, SvgIcon, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
-    // Initialize tutorial
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeToolsTutorial } = useToolsTutorial();
-
     const store = useStore();
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
@@ -389,11 +383,6 @@ export default {
 
     onMounted(() => {
       initializeScreen();
-
-      // Show tutorial after a short delay
-      setTimeout(() => {
-        initializeToolsTutorial();
-      }, 2000);
     });
 
     onUnmounted(() => {
@@ -433,10 +422,6 @@ export default {
       // Provider connection
       isProviderConnected,
       handleProviderToggle,
-      // Tutorial
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
     };
   },
 };

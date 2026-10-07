@@ -18,7 +18,7 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   });
   await page.addInitScript(()=>{
     localStorage.setItem('agnt_last_context_status',JSON.stringify({'compression-fixture':{currentTokens:10000,tokenLimit:128000,messagesCount:8,breakdown:{messagesTokens:8000},cachedAt:Date.now()}}));
-    // Use the persisted auto-start preference honored by PopupTutorial.
+    // Use the persisted auto-start preference honored by the journey's offers.
     localStorage.setItem('tours_auto_start','false');
   });
   const seed=async messages=>page.evaluate(messages=>{
@@ -33,10 +33,10 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   },messages);
   const originals=Array.from({length:8},(_,i)=>({id:'original-'+i,role:i%2?'assistant':'user',content:i%2?'Original answer '+i:'Original request '+i,timestamp:i+1,toolCalls:[]}));
   await gotoApp(page,'/chat');await seed(originals);
-  // Let BaseScreen's 1500ms auto-start elapse: a fast local run used to
-  // outrun the unwanted welcome overlay that intercepted clicks on CI.
+  // Let any offer delay elapse: a fast local run used to outrun the
+  // unwanted welcome overlay that intercepted clicks on CI.
   await page.waitForTimeout(2000);
-  await expect(page.locator('.popup-tutorial')).not.toBeVisible();
+  await expect(page.locator('[data-coach-popup]')).not.toBeVisible();
   // Lite moved the context tiles out of the thread into the right-hand
   // inspector (Chat.vue teleports them into it) and starts that inspector
   // closed. Open it the way a person does, with the toggle above the thread.

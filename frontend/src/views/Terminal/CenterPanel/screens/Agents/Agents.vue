@@ -199,8 +199,6 @@
       </div>
     </template>
   </BaseScreen>
-
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="AgentsScreen" @close="onTutorialClose" />
 </template>
 
 <script>
@@ -214,17 +212,15 @@ import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import AgentDetails from './components/AgentDetails/AgentDetails.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import AgentCreateModal from './components/AgentCreateModal.vue';
 import { agentAvatarSrc, onAvatarError } from '@/utils/agentAvatar.js';
-import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
   name: 'AgentsScreen',
-  components: { BaseScreen, MobileCollection, TerminalHeader, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, PopupTutorial, AgentCreateModal },
+  components: { BaseScreen, MobileCollection, TerminalHeader, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, AgentCreateModal },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
@@ -233,8 +229,6 @@ export default {
     const router = useRouter();
     const playSound = inject('playSound', () => {});
 
-    // Initialize tutorial
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeAgentsTutorial } = useAgentsTutorial();
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const agents = ref([]);
@@ -589,11 +583,6 @@ export default {
         applySelectIntent();
       });
       applyNewIntent();
-
-      // Show tutorial after a short delay
-      setTimeout(() => {
-        initializeAgentsTutorial();
-      }, 2000);
     };
 
     // ?select=agent:ID (Jump palette "Open", entity chips, EntityInspector
@@ -1374,10 +1363,6 @@ export default {
       getAgentToolsWithIcons,
       hasToolsOrUptime,
       getToolIcon,
-      // Tutorial
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
     };
   },
 };

@@ -112,7 +112,7 @@
           </div>
 
           <!-- Input line with textarea and buttons on same row -->
-          <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
+          <div class="terminal-line input-line" data-tour-id="chat.composer" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
             <span v-if="showPrompt && !isFocusedFrame" class="prompt">> </span>
             <div class="input-highlight-container">
               <div class="input-backdrop" ref="inputBackdropRef">
@@ -244,16 +244,6 @@
       />
     </div>
 
-    <!-- Tutorial -->
-    <PopupTutorial
-      v-if="tutorialConfig"
-      :config="tutorialConfig"
-      :startTutorial="startTutorial"
-      :tutorialId="screenId"
-      @close="onTutorialClose"
-      @navigate="handleTutorialNavigate"
-    />
-
     <!-- Provider Selector Dropdown -->
     <Teleport to="body">
       <ChatProviderSelector
@@ -302,7 +292,6 @@ import { useStore } from 'vuex';
 import LeftPanel from '../LeftPanel/LeftPanel.vue';
 import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import RightPanel from '../RightPanel/RightPanel.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ChatProviderSelector from './screens/Chat/components/ChatProviderSelector.vue';
 import { useCornerAnchor, findVisibleAnchor } from '@/utils/cornerAnchor.js';
 import { clickKeepsFocus } from '@/utils/chatFocusClaim.js';
@@ -320,7 +309,7 @@ import { isPanelCollapsed, setPanelCollapsed } from './panelCollapse.js';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, Tooltip, ChatStopButton, CommandMenu },
+  components: { LeftPanel, RightPanel, ChatProviderSelector, ChatToolSelector, Tooltip, ChatStopButton, CommandMenu },
   props: {
     // Layout defaults live in screenRegistry.js, keyed by screenId. An
     // explicitly passed prop always wins (screens with dynamic panels).
@@ -374,11 +363,6 @@ export default {
       type: Boolean,
       default: false,
     },
-    // Optional prop for tutorial configuration hook
-    useTutorialHook: {
-      type: Function,
-      default: null,
-    },
     // Allow passing terminal lines from parent if managed there
     terminalLines: {
       type: Array,
@@ -393,7 +377,7 @@ export default {
   emits: ['screen-change', 'panel-action', 'submit-input', 'base-mounted', 'command-action'],
   setup(props, { emit, expose }) {
     const store = useStore(); // Keep store access if needed for base actions
-    const { screenId, disableInputInitially, useTutorialHook, terminalLines } = toRefs(props);
+    const { screenId, disableInputInitially, terminalLines } = toRefs(props);
 
     // Whether the input line exists on this screen: explicit prop wins,
     // otherwise the screenRegistry default (historically true).
@@ -1228,19 +1212,6 @@ export default {
       }
     };
 
-    // --- Tutorial ---
-    // Focused's own Chat runs no screen tutorial: Chat's tour walks Studio's
-    // composer (model picker, tools, Save/Clear, monitoring panel), most of
-    // which Focused does not show, so it would point at nothing. Borrowed
-    // Studio screens keep their tours: their targets are on screen.
-    const tutorial = useTutorialHook?.value && !focusedChat.value
-      ? useTutorialHook.value()
-      : {
-          tutorialConfig: ref(null),
-          startTutorial: ref(false),
-          onTutorialClose: () => {},
-        };
-
     // --- Left Panel Action Handler ---
     const handleLeftPanelAction = (action, payload) => {
       if (isMobile.value && ['settings-nav','settings-goto','navigate','change-section','select-section','connectors-nav'].includes(action)) closeMobilePanel({ restoreFocus: false });
@@ -1628,25 +1599,9 @@ export default {
       // scrollToBottom(); // Call scrollToBottom after terminalLines might have rendered
       emit('base-mounted');
 
-      if (tutorial.tutorialConfig.value) {
-        setTimeout(() => {
-          tutorial.startTutorial.value = true;
-        }, 1500);
-      }
       // Ensure scroll to bottom after initial lines and slot content are mounted
       await nextTick();
       scrollToBottom();
-    });
-
-    // When onboarding completes, the tutorial was suppressed during mount.
-    // Watch for onboarding to finish and re-trigger the tutorial.
-    const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
-    watch(shouldShowOnboarding, (showing, wasShowing) => {
-      if (wasShowing && !showing && tutorial.tutorialConfig.value) {
-        setTimeout(() => {
-          tutorial.startTutorial.value = true;
-        }, 1500);
-      }
     });
 
     // KeepAlive re-activation — restore data-page and re-emit base-mounted
@@ -1713,11 +1668,6 @@ export default {
         calculateMainContentWidth();
       },
     );
-
-    // Handle tutorial navigation
-    const handleTutorialNavigate = (screenName) => {
-      emit('screen-change', screenName);
-    };
 
     // Add computed properties for automatic panel names
     const computedRightPanel = computed(() => {
@@ -1813,14 +1763,11 @@ export default {
       triggerSubmit,
       handlePanelAction,
       handleLeftPanelAction,
-      handleTutorialNavigate,
       scrollToBottom,
       autoResizeTextarea,
       // 3-Panel Resize Methods
       startLeftResize,
       startRightResize,
-      // Tutorial
-      ...tutorial,
       // Mobile
       isMobile,
       isPanelOpen,

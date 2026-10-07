@@ -32,8 +32,6 @@
           <div class="terminal-modal-text">Please wait while your tool is being executed...</div>
         </div>
       </div>
-
-      <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="toolForge" @close="onTutorialClose" />
     </template>
   </BaseScreen>
 </template>
@@ -45,11 +43,9 @@ import { useSurfaceContribution } from '@/canvas/surfaceFederation.js';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import ToolForgePanel from '../../../RightPanel/types/ToolForgePanel/ToolForgePanel.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ResponseArea from './components/ResponseArea/ResponseArea.vue';
 import ContentActions from './components/ContentActions/ContentActions.vue';
 import useToolForge from './useToolForge';
-import { useToolForgeTutorial } from './useToolForgeTutorial.js';
 import { useContentLoader } from '@/composables/useContentLoader';
 
 export default {
@@ -58,7 +54,6 @@ export default {
     BaseScreen,
     TerminalHeader,
     ToolForgePanel,
-    PopupTutorial,
     ResponseArea,
     ContentActions,
   },
@@ -72,8 +67,6 @@ export default {
     const currentTool = ref(null);
 
     const { initializeToolForge, saveToolTemplate, loadTools, loadTool, deleteToolTemplate, executeToolTemplate } = useToolForge();
-
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeToolForgeTutorial } = useToolForgeTutorial();
 
     const { loadContentFromQuery } = useContentLoader();
 
@@ -221,11 +214,6 @@ export default {
 
       terminalLines.value.push('Tool Forge ready.');
       baseScreenRef.value?.scrollToBottom();
-
-      // Show tutorial after a short delay
-      setTimeout(() => {
-        initializeToolForgeTutorial();
-      }, 2000);
     };
 
     onMounted(() => {
@@ -241,9 +229,6 @@ export default {
       toolStatus,
       toolStatusClass,
       canTestTool,
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
       onResponseAreaLoaded,
       handleUserInputSubmit,
       updateCurrentTool,

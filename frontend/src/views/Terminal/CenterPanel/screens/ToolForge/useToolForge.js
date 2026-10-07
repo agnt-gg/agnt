@@ -25,36 +25,9 @@ export default function useToolForge() {
   const toolOutput = ref('');
   const isExecuting = ref(false);
 
-  // Tutorial configuration
-  const tutorialConfig = [
-    // {
-    //   target: '.tool-metadata',
-    //   content: 'This area shows information about your currently selected tool.',
-    //   placement: 'bottom',
-    // },
-    // {
-    //   target: '.response-area-container',
-    //   content: 'Tool output will be displayed here when you run your tool.',
-    //   placement: 'top',
-    // },
-    // {
-    //   target: '.action-btn.test-btn',
-    //   content: 'Click here to test your tool once it\'s configured.',
-    //   placement: 'left',
-    // }
-  ];
-
-  const startTutorial = ref(false);
-
-  const onTutorialClose = () => {
-    console.log('Tutorial closed');
-    startTutorial.value = false;
-  };
-
   const initializeToolForge = async () => {
     try {
       // Simple initialization without relying on Vuex
-      startTutorial.value = true;
       return true;
     } catch (error) {
       console.error('Failed to initialize Tool Forge:', error);
@@ -355,9 +328,6 @@ export default function useToolForge() {
   };
 
   return {
-    tutorialConfig,
-    startTutorial,
-    onTutorialClose,
     initializeToolForge,
     saveToolTemplate,
     loadTools,

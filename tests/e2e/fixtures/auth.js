@@ -130,6 +130,10 @@ export async function loginUser(page, { token = signTestToken() } = {}) {
   await page.addInitScript((t) => {
     localStorage.setItem('token', t);
     localStorage.setItem('hasCompletedOnboarding', 'true');
+    // The getting-started checklist and page missions (useJourney.js) are a
+    // persistent corner overlay; a spec that is not about them must not have
+    // its clicks land on one. Journey specs turn this back on themselves.
+    localStorage.setItem('tours_enabled', 'false');
     localStorage.setItem('selectedProvider', 'OpenAI');
     localStorage.setItem('selectedModel', 'gpt-4o');
   }, token);

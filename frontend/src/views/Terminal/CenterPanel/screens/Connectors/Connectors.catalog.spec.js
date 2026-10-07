@@ -7,7 +7,6 @@ import { activeInnerSection, setInnerSection, clearInnerSection } from '@/canvas
 
 const route = reactive({ query: {} });
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
-vi.mock('./useTutorial.js', () => ({ useTutorial: () => ({}) }));
 let wrapper;
 function mountCatalog() {
   const store = createStore({ modules: {

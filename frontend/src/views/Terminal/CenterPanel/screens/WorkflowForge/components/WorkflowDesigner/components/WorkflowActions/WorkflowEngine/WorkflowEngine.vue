@@ -1,6 +1,6 @@
 <template>
   <Tooltip :text="getButtonTitle" width="auto" position="bottom">
-    <button id="workflow-engine-toggle" @click="toggleWorkflow" :disabled="isButtonDisabled">
+    <button id="workflow-engine-toggle" data-tour-id="workflows.run-button" @click="toggleWorkflow" :disabled="isButtonDisabled">
       <i :class="getButtonIcon"></i>
     </button>
   </Tooltip>

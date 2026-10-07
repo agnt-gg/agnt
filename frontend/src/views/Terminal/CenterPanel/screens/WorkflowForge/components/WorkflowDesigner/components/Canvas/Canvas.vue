@@ -24,6 +24,7 @@
          the component a fragment, and this.$el stops being an element.) -->
     <div
       id="canvas"
+      data-tour-id="workflows.canvas"
       class="tiny-nodes"
       :class="{ 'canvas-drag-hover': isCanvasDragHover }"
       ref="canvas"

@@ -100,7 +100,7 @@
             </div>
           </div>
 
-          <main ref="mainContentEl" class="marketplace-main-content">
+          <main ref="mainContentEl" class="marketplace-main-content" data-tour-id="market.grid">
             <!-- Earnings Dashboard (My Earnings Tab) -->
             <div v-if="activeTab === 'my-earnings'" class="earnings-dashboard">
               <div class="earnings-header">
@@ -566,8 +566,6 @@
       </div>
     </template>
   </BaseScreen>
-
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="MarketplaceScreen" @close="onTutorialClose" />
 </template>
 
 <script>
@@ -581,10 +579,8 @@ import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import BaseTable from '../../../_components/BaseTable.vue';import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { useMarketplaceTutorial } from './useMarketplaceTutorial.js';
 // One definition of what a marketplace card looks like, shared with
 // MarketplaceShelf. See composables/useMarketplaceCard.js for why.
 import {
@@ -601,11 +597,9 @@ import {
 
 export default {
   name: 'MarketplaceScreen',
-  components: { MobileCollection, CustomSelect, BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
+  components: { MobileCollection, CustomSelect, BaseScreen, BaseTabControls, BaseTable, SimpleModal, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
-    // Initialize tutorial
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeMarketplaceTutorial } = useMarketplaceTutorial();
     const store = useStore();
     const mobileView = inject('isMobile', ref(false));
     const route = useRoute();
@@ -1822,11 +1816,6 @@ export default {
       }).catch((error) => {
         addLine(`Error loading marketplace: ${error.message}`, 'error');
       });
-
-      // Show tutorial after a short delay
-      setTimeout(() => {
-        initializeMarketplaceTutorial();
-      }, 2000);
     };    onMounted(() => {
       // Load confetti library if not already loaded
       if (!window.confetti) {
@@ -1894,9 +1883,6 @@ export default {
       isInstalled,
       isPurchased,
       triggerConfetti,
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
       emit,
       installingIds,
       chipRailEl,

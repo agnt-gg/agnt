@@ -101,8 +101,6 @@
         </div>
       </template>
     </BaseScreen>
-
-    <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="dashboard" @close="onTutorialClose" />
   </div>
 </template>
 
@@ -125,8 +123,6 @@ import RunsQueue from './components/RunsQueue.vue';
 import StatusIncidents from './components/StatusIncidents.vue';
 import BaseDashboardCard from './components/BaseDashboardCard.vue';
 import CumulativeCreditsChart from './components/CumulativeCreditsChart.vue';
-import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
-import { useDashboardTutorial } from './useDashboardTutorial.js';
 
 export default {
   name: 'DashboardScreen',
@@ -146,7 +142,6 @@ export default {
     StatusIncidents,
     BaseDashboardCard,
     CumulativeCreditsChart,
-    PopupTutorial,
   },
   emits: ['screen-change'],
   setup(props, { emit }) {
@@ -583,8 +578,6 @@ export default {
       baseScreenRef.value?.scrollToBottom();
     };
 
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeDashboardTutorial } = useDashboardTutorial();
-
     // --- Initialization ---
     let screenInitialized = false;
     const initializeScreen = () => {
@@ -614,11 +607,6 @@ export default {
     // Set up periodic refresh for real-time data
     onMounted(() => {
       initializeScreen();
-
-      // Wait a couple seconds before showing the tutorial
-      setTimeout(() => {
-        initializeDashboardTutorial();
-      }, 2000); // 2 seconds delay
     });
 
     onUnmounted(() => {
@@ -660,9 +648,6 @@ export default {
       missionDetailsRef,
       scrollAnchorRef,
       handleLogMessage,
-      tutorialConfig,
-      startTutorial,
-      onTutorialClose,
     };
   },
 };

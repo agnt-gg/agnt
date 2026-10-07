@@ -245,12 +245,12 @@
         <!-- Tours Section -->
         <div v-else-if="activeSection === 'tours'" class="settings-content" data-section="tours">
           <div class="content-header">
-            <h2 class="content-title">Tour Settings</h2>
-            <p class="content-subtitle">Manage interactive tours and tutorials</p>
+            <h2 class="content-title">Getting started</h2>
+            <p class="content-subtitle">The checklist, and the short missions each page offers</p>
           </div>
           <div class="settings-grid">
             <div class="settings-section full-width">
-              <TourSettings @start-tour="handleStartTour" />
+              <TourSettings />
             </div>
           </div>
         </div>
@@ -293,14 +293,6 @@
       </template>
 
       </div>
-      <!-- Tutorial - Only show when logged in -->
-      <PopupTutorial
-        v-if="isLoggedIn"
-        :config="tutorialConfig"
-        :startTutorial="startTutorial"
-        tutorialId="settings-tutorial"
-        @close="onTutorialClose"
-      />
     </template>
   </BaseScreen>
 </template>
@@ -343,8 +335,6 @@ import LeaderboardSection from './components/LeaderboardSection/LeaderboardSecti
 import DataExportSection from './components/DataExportSection/DataExportSection.vue';
 import DataRestoreSection from './components/DataExportSection/DataRestoreSection.vue';
 import DataResetSection from './components/DataExportSection/DataResetSection.vue';
-import { useSettingsTutorial } from './useTutorial.js';
-import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
 export default {
   name: 'Settings',
@@ -378,9 +368,8 @@ export default {
     DataExportSection,
     DataRestoreSection,
     DataResetSection,
-    PopupTutorial,
   },
-  emits: ['screen-change', 'start-tour'],
+  emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
     const route = useRoute();
@@ -412,9 +401,6 @@ export default {
       if (!isLoggedIn.value) return null;
       return activeSection.value === 'security' ? 'SecurityActivityPanel' : 'NewsPanel';
     });
-
-    // Tutorial setup
-    const { tutorialConfig, startTutorial, currentStep, onTutorialClose, nextStep, initializeSettingsTutorial } = useSettingsTutorial();
 
     // BaseScreen re-emits `base-mounted` on every KeepAlive re-activation, so
     // bouncing between screens replayed all ten of these requests each time.
@@ -457,11 +443,6 @@ export default {
           .catch((error) => {
             console.error('Failed to refresh settings data:', error);
           });
-
-        // Start tutorial after 2 seconds
-        setTimeout(() => {
-          initializeSettingsTutorial();
-        }, 2000);
       }
     };
 
@@ -477,12 +458,6 @@ export default {
         emit('screen-change', payload);
       }
       // Handle other panel actions if needed
-    };
-
-    const handleStartTour = (tourData) => {
-      console.log('Settings: Starting tour:', tourData);
-      // Emit screen-change event to navigate to the tour's screen
-      emit('screen-change', tourData.screen);
     };
 
     const handleLoginSuccess = async () => {
@@ -504,14 +479,7 @@ export default {
       activeRightPanel,
       activeSection,
       handlePanelAction,
-      handleStartTour,
       handleLoginSuccess,
-      // Tutorial
-      tutorialConfig,
-      startTutorial,
-      currentStep,
-      onTutorialClose,
-      nextStep,
     };
   },
 };

@@ -3,7 +3,7 @@
 //
 // Tag a DOM element with `data-tour-id="<id>"` to make it tour-able. The
 // assistant resolves `targetTourId` → `[data-tour-id="<id>"]` server-side
-// and the PopupTutorial uses that selector to highlight.
+// and CoachMark (via AIGuidedTourHost) uses that selector to highlight.
 //
 // The sidebar block below is held to canvas/sections.js bidirectionally by
 // sections.spec.js: every section must be tour-able, and every sidebar target
@@ -34,8 +34,13 @@ export const TOUR_TARGETS = [
 
   // ── Workflows ──────────────────────────────────────────────────────
   { id: 'workflows.add-node-button', selector: '[data-tour-id="workflows.add-node-button"]', screen: 'WorkflowsScreen', description: 'Opens the node picker to add a new workflow node', safeToSimulate: true },
-  { id: 'workflows.canvas',          selector: '[data-tour-id="workflows.canvas"]',          screen: 'WorkflowsScreen', description: 'The workflow design canvas', safeToSimulate: false },
-  { id: 'workflows.run-button',      selector: '[data-tour-id="workflows.run-button"]',      screen: 'WorkflowsScreen', description: 'Activates the current workflow (consumes credits)', safeToSimulate: false },
+  { id: 'workflows.canvas',          selector: '[data-tour-id="workflows.canvas"]',          screen: 'WorkflowForgeScreen', description: 'The workflow design canvas', safeToSimulate: false },
+  { id: 'workflows.run-button',      selector: '[data-tour-id="workflows.run-button"]',      screen: 'WorkflowForgeScreen', description: 'Activates the current workflow (consumes credits)', safeToSimulate: false },
+
+  // Chat, Runs and Market
+  { id: 'chat.composer',             selector: '[data-tour-id="chat.composer"]',             screen: 'ChatScreen', description: 'The message box where the user types to Annie', safeToSimulate: false },
+  { id: 'traces.list',               selector: '[data-tour-id="traces.list"]',               screen: 'TracesScreen', description: 'The list of runs (workflows, goals, agents); open one to see each step', safeToSimulate: false },
+  { id: 'market.grid',               selector: '[data-tour-id="market.grid"]',               screen: 'MarketplaceScreen', description: 'The Market listings: skills, agents, workflows and tools to install', safeToSimulate: false },
 
   // ── Agents ─────────────────────────────────────────────────────────
   { id: 'agents.create-button',      selector: '[data-tour-id="agents.create-button"]',      screen: 'AgentsScreen', description: 'Open the new-agent modal', safeToSimulate: true },

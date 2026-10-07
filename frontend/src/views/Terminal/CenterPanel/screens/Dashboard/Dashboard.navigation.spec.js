@@ -9,19 +9,13 @@ import LeftPanel from '../../../LeftPanel/LeftPanel.vue';
 import SystemOverviewPanel from '../../../LeftPanel/types/SystemOverviewPanel/SystemOverviewPanel.vue';
 import Traces from '../Traces/Traces.vue';
 
-// Keep the navigation components real; isolate unrelated voice/tutorial IO.
+// Keep the navigation components real; isolate unrelated voice IO.
 vi.mock('@/composables/useVoiceEngines', () => ({
   useVoiceEngines: () => ({
     voiceActive: ref(false), voiceState: ref('idle'), voicePartial: ref(''),
     voiceError: ref(''), voiceNatural: ref(false), voiceLevel: ref(0),
     toggleVoice: vi.fn(), stopVoice: vi.fn(),
   }),
-}));
-vi.mock('./useDashboardTutorial.js', () => ({
-  useDashboardTutorial: () => ({ tutorialConfig: ref(null), startTutorial: ref(false), onTutorialClose: vi.fn(), initializeDashboardTutorial: vi.fn() }),
-}));
-vi.mock('../Traces/useTracesTutorial.js', () => ({
-  useTracesTutorial: () => ({ tutorialConfig: ref(null), startTutorial: ref(false), onTutorialClose: vi.fn(), initializeTracesTutorial: vi.fn() }),
 }));
 
 const wrappers = [];

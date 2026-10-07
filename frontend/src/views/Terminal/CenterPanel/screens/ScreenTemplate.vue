@@ -12,8 +12,8 @@
     at runtime (see Workflows.vue) — an explicitly passed prop wins over
     the registry.
   -->
-  <!-- Optional: add a sibling useTutorial.js (see Chat/ or Settings/) and
-       pass it as :useTutorialHook="useTutorial" for a first-run tour. -->
+  <!-- First-visit guidance: add a mission for this screen to
+       services/journey/missions.js (an outcome to do, not a tour of labels). -->
   <BaseScreen
     ref="baseScreenRef"
     screenId="ScreenTemplate"

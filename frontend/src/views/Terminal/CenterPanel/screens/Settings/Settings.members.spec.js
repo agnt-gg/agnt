@@ -13,7 +13,6 @@ import { screenRoute } from '@/views/Terminal/screenRoute.js';
 
 const route = reactive({ query: {} });
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
-vi.mock('./useTutorial.js', () => ({ useSettingsTutorial: () => ({}) }));
 const mounted = [];
 function store(authenticated = true) {
   const s = createStore({ state: { userAuth: { token: 'fixture', planType: 'personal' }, aiProvider: {} }, getters: { 'userAuth/isAuthenticated': () => authenticated, 'userAuth/planType': () => 'personal' } });

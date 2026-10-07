@@ -804,9 +804,6 @@
       </div>
       <SimpleModal ref="modalRef" />
       <Popup v-if="popup.show" :show="popup.show" :type="popup.type" :message="popup.message" :icon="popup.icon" @close="popup.show = false" />
-
-      <!-- Tutorial -->
-      <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="secrets" @close="onTutorialClose" />
     </template>
   </BaseScreen>
 </template>
@@ -838,8 +835,6 @@ import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/C
 import providerAuthService from '@/services/providerAuthService.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { describeApps } from '@/services/appCards.js';
-import { useTutorial } from './useTutorial.js';
-import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import AppsSection from './components/AppsSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
@@ -860,7 +855,6 @@ export default {
     SvgIcon,
     SimpleModal,
     ConnectorsPanel,
-    PopupTutorial,
     AppsSection,
     Webhooks,
     EmailServer,
@@ -1089,10 +1083,6 @@ export default {
       }
       return false;
     });
-
-    // Tutorial setup
-    const { tutorialConfig, startTutorial, currentStep, onTutorialClose, nextStep, initializeTutorial } = useTutorial();
-    const isLoggedIn = computed(() => store.getters['userAuth/isAuthenticated']);
 
     // PRO status
     const planType = computed(() => store.getters['userAuth/planType'] || 'free');
@@ -1787,13 +1777,6 @@ export default {
       // Pre-refresh marketplace data in background if needed (respects cache)
       store.dispatch('marketplace/fetchMyPurchases');
       store.dispatch('marketplace/fetchMyInstalls');
-
-      // Start tutorial after 2 seconds only if user is logged in
-      // if (isLoggedIn.value) {
-      //   setTimeout(() => {
-      //     initializeTutorial();
-      //   }, 2000);
-      // }
     }
     // AI models are not apps. Every old way in (?section=providers from the
     // "no provider" pill, Jump, saved links) lands on Settings › AI Models.
@@ -2547,12 +2530,6 @@ export default {
       openAddProviderModal,
       closeProviderModal,
       saveProviderFromModal,
-      // Tutorial
-      tutorialConfig,
-      startTutorial,
-      currentStep,
-      onTutorialClose,
-      nextStep,
       // MCP Servers
       mcpServers,
       isLoadingMCPServers,

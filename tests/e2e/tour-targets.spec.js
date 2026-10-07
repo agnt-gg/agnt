@@ -5,7 +5,7 @@
  * ────────────────────
  * tourTargets.js is a promise to the assistant: it lists the elements a guided
  * tour is allowed to point at, and `targetTourId` is resolved server-side to
- * `[data-tour-id="<id>"]` and handed to PopupTutorial to highlight. Nothing
+ * `[data-tour-id="<id>"]` and handed to CoachMark to highlight. Nothing
  * checked that the promise was true. It was not: of the 18 declared targets,
  * FIVE resolved to no element at all, so a tour step naming one of them
  * highlighted nothing and the user saw an explanation attached to empty space.
@@ -41,17 +41,21 @@ import { TOUR_TARGETS } from '../../frontend/src/views/_components/utility/tourT
  */
 const NOT_IMPLEMENTED = new Set([
   'workflows.add-node-button', // no "Add Node" button exists in the designer
-  'workflows.canvas',          // several candidates; which one is "the canvas"?
-  'workflows.run-button',      // no Run/Activate button found on the screen
+  // workflows.canvas and workflows.run-button left this list with the journey
+  // missions: #canvas and the Activate toggle in Workflow Forge carry them.
   // agents.create-button left this list in f20c5ddb ("Make a new agent a
   // modal on the Agents page"): PanelActionBar carries the id now.
 ]);
 
 /** Where a screen-scoped target lives. Sidebar targets (screen: null) are global. */
 const SCREEN_ROUTE = {
+  ChatScreen: '/chat',
   WorkflowsScreen: '/workflows',
+  WorkflowForgeScreen: '/workflow-forge',
   AgentsScreen: '/agents',
   DashboardScreen: '/dashboard',
+  TracesScreen: '/traces',
+  MarketplaceScreen: '/marketplace',
 };
 
 const implemented = TOUR_TARGETS.filter((t) => !NOT_IMPLEMENTED.has(t.id));
