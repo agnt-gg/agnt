@@ -1637,7 +1637,7 @@ export default {
 }
 
 .form-group.output-value p {
-  overflow: scroll;
+  overflow: auto;
   white-space: pre-wrap;
 }
 
@@ -1783,7 +1783,7 @@ p.static-value {
 textarea.code-area {
   font-family: var(--font-family-mono);
   font-size: 14px;
-  overflow-x: scroll;
+  overflow-x: auto;
   white-space: nowrap;
 }
 
@@ -1902,7 +1902,7 @@ body.dark .form-group.output-value p {
 
 .file-content {
   max-height: 160px;
-  overflow: scroll;
+  overflow: auto;
 }
 
 body.dark .file-upload-button {

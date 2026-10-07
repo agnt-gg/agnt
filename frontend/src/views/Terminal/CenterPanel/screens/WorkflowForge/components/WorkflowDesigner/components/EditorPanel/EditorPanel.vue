@@ -488,7 +488,7 @@ body.dark #editor-panel .right-tabs button i {
 
 #editor-panel.full-screen .panel-body {
   height: 100%; /* Fill height in full screen */
-  overflow: scroll; /* Ensure scroll */
+  overflow: auto;
   border-radius: 8px; /* Round corners in full screen */
   border: 1px solid var(--terminal-border-color);
   background: transparent;

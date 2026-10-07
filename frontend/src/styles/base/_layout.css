@@ -74,21 +74,38 @@ app {
   height: 100%;
 }
 
-/* SCROLLBAR — AGNT draws none. Everything still scrolls (wheel, trackpad,
-   touch, keyboard); only the bar is hidden. This is the app's one rule, and
-   it is !important so a page cannot quietly bring a bar back: the default
-   used to be a thin visible bar, so every new scrolling area showed one
-   unless it remembered to opt out, and new pages kept forgetting.
-   Where overflow needs saying, use an edge fade, not a bar. Pinned by
-   styles/noScrollbars.spec.js. */
+/* SCROLLBARS — vertical bars are hidden app-wide; horizontal bars are shown.
+   Everything scrolls by wheel, trackpad, touch and keyboard, but most mice
+   have no sideways wheel, so a wide table or code block needs its bar to be
+   reachable at all. (scrollbar-width: none hid both axes and stranded them.)
+   Chromium ignores every ::-webkit-scrollbar rule on an element whose
+   scrollbar-width or scrollbar-color is not auto, so both are pinned to auto
+   here and the bar is drawn by ::-webkit-scrollbar alone: zero width hides
+   the vertical bar, a thin height shows the horizontal one.
+   - A strip that scrolls sideways on purpose and fades its edge opts out with
+     `.strip::-webkit-scrollbar { display: none; }` (scrollbar-width is ignored).
+   - Use overflow: auto, not scroll: scroll draws the horizontal track even
+     when there is nothing to scroll.
+   Pinned by styles/scrollbars.spec.js. */
 * {
-  scrollbar-width: none !important;
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
 }
 
 *::-webkit-scrollbar {
-  display: none !important;
   width: 0 !important;
-  height: 0 !important;
+  height: 6px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--terminal-border-color);
+  border-radius: 3px;
 }
 
 /* FLEXBOX UTILITIES */

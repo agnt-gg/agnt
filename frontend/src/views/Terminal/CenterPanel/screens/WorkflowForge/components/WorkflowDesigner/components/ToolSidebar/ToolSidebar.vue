@@ -346,8 +346,7 @@ div#sidebar-wrapper {
   padding: 0;
   padding-bottom: 72px;
   box-sizing: border-box;
-  overflow-y: auto;
-  overflow: scroll;
+  overflow: auto;
   flex-direction: column;
   flex-wrap: nowrap;
   align-content: flex-start;

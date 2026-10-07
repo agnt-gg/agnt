@@ -343,9 +343,12 @@ export default {
   border-radius: 0 0 8px 0;
   padding: 0;
   transition: all 0.3s ease;
-  scrollbar-width: none;
-  overflow: scroll;
+  overflow: auto;
   gap: 16px;
+}
+
+.workflow-editor-panel::-webkit-scrollbar {
+  display: none;
 }
 
 /* Add fullscreen styles */

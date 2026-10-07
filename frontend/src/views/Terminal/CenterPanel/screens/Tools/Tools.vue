@@ -631,8 +631,7 @@ export default {
   align-self: flex-start;
   height: calc(100% - 16px);
   z-index: 2;
-  overflow: scroll;
-  scrollbar-width: none;
+  overflow: auto;
 }
 
 .category-list {
@@ -1566,5 +1565,8 @@ export default {
 
 .marketplace-button i {
   font-size: 0.8em;
+}
+.market-sidebar::-webkit-scrollbar {
+  display: none;
 }
 </style>

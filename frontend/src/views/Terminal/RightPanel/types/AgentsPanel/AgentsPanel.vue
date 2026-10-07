@@ -679,8 +679,7 @@ export default {
 .tools-grid {
   display: flex;
   gap: 8px;
-  overflow-x: scroll;
-  scrollbar-width: thin;
+  overflow-x: auto;
   padding-bottom: 8px;
   flex-wrap: wrap;
 }

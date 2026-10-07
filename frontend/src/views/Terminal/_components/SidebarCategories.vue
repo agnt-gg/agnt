@@ -326,7 +326,6 @@ export default {
   height: 100%;
   /* z-index: 2; */
   overflow: auto;
-  scrollbar-width: none;
 }
 
 .category-section-title {
@@ -416,7 +415,7 @@ li.category-item.all-items i {
 
 /* Scrollbar styling */
 .sidebar-categories::-webkit-scrollbar {
-  width: 4px;
+  display: none;
 }
 
 .sidebar-categories::-webkit-scrollbar-track {

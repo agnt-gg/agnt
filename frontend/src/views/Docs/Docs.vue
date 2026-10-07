@@ -339,7 +339,7 @@ body[data-page='docs'] .sidebar {
      near-black panel under near-black text: 1.00:1, body copy invisible. */
   background: var(--color-darker-0);
   border-right: 1px solid var(--terminal-border-color);
-  overflow: scroll;
+  overflow: auto;
 }
 
 body[data-page='docs'].dark .sidebar {

@@ -69,8 +69,12 @@
   .terminal-content.mobile-presentation .mobile-panel-body .detail-row { display: grid !important; grid-template-columns: minmax(84px, 36%) minmax(0,1fr); gap: 4px 12px; align-items: baseline; }
   .terminal-content.mobile-presentation .mobile-panel-body .detail-row > * { min-width: 0; text-align: left !important; overflow-wrap: break-word; word-break: normal; white-space: normal; }
   .terminal-content.mobile-presentation .mobile-panel-body .detail-row.description-display { grid-template-columns: minmax(0,1fr); }
-  /* Every chip / filter strip scrolls sideways with a fade, never shrinks or wraps its chips. */
-  body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.m-filters .view-tabs,.filter-tabs,.chip-row) { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; gap: 6px; max-width: 100%; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
+  /* Every chip / filter strip scrolls sideways with a fade, never shrinks or wraps its chips.
+     These strips (and the tab strips below) fade instead of drawing the
+     horizontal bar base/_layout.css shows on tables. */
+  body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.view-tabs,.filter-tabs,.chip-row,.tab-strip,.tab-bar,.tabs,.panel-tabs,.mk-chips)::-webkit-scrollbar,
+  .cv-root.cv-compact .cv-nav-panels::-webkit-scrollbar { display: none; }
+  body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.m-filters .view-tabs,.filter-tabs,.chip-row) { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; gap: 6px; max-width: 100%; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
   body :is(.category-pills,.filter-chips,.status-filters,.status-tabs,.m-secondary-tabs,.m-filters .view-tabs,.filter-tabs,.chip-row) > * { flex: none !important; width: auto !important; min-width: 0 !important; white-space: nowrap; }
   body .m-filters .view-tabs > button { min-height: 36px; padding: 7px 13px; border: 1px solid var(--terminal-border-color); border-radius: 18px; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 13px; }
   body .m-filters .view-tabs > button:is(.active,[aria-selected=true],[aria-pressed=true]) { color: var(--text-green); border-color: color-mix(in srgb,var(--color-green) 30%,transparent); background: rgba(var(--green-rgb), 0.1); }
@@ -110,7 +114,7 @@
   .cv-mobile-icon { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--color-text-muted); font-size: 16px; cursor: pointer; }
   .cv-mobile-icon:active { background: color-mix(in srgb,var(--color-text) 8%,transparent); }
   .cv-mobile-icon:focus-visible { outline: 2px solid var(--color-green); outline-offset: -2px; }
-  .cv-root.cv-compact .cv-nav-panels { grid-column: 1 / -1; grid-row: 2; width: 100%; box-sizing: border-box; min-height: 44px; gap: 4px; padding: 2px 28px 6px 2px; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
+  .cv-root.cv-compact .cv-nav-panels { grid-column: 1 / -1; grid-row: 2; width: 100%; box-sizing: border-box; min-height: 44px; gap: 4px; padding: 2px 28px 6px 2px; overflow-x: auto; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
   .cv-root.cv-compact .cv-pbtn { flex: 0 0 auto; min-height: 36px; padding: 8px 12px; font-size: 13px; letter-spacing: 0; text-transform: none; border-radius: 18px; }
   .cv-root.cv-compact .cv-pbtn.on { color: var(--text-green); background: rgba(var(--green-rgb), 0.09); }
   .cv-root.cv-compact .cv-right { grid-column: 1 / -1; grid-row: 3; display: flex; width: 100%; overflow-x: auto; flex-wrap: nowrap; justify-content: flex-start; max-height: 40px; }
@@ -154,7 +158,7 @@
   body :is(.half-width,.two-column-row > *) { width: 100% !important; }
   body :is(.screen-toolbar,.wm-header,.runs-controls,.controls-bar,.mk-tb-row,.tabs-header,.screen-header,.wf-toolbar,.category-header) { flex-wrap: wrap; gap: 8px; min-width: 0; height: auto; }
   body :is(.wm-header-left,.wm-header-right,.controls-left,.controls-right,.wm-search,.search-wrapper,.wf-toolbar-right,.tabs-left) { min-width: 0; max-width: 100%; flex-wrap: wrap; }
-  body :is(.view-tabs,.status-tabs,.tab-strip,.filter-tabs,.tab-bar,.tabs,.panel-tabs,.mk-chips,.category-pills) { max-width: 100%; min-width: 0; overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: none; }
+  body :is(.view-tabs,.status-tabs,.tab-strip,.filter-tabs,.tab-bar,.tabs,.panel-tabs,.mk-chips,.category-pills) { max-width: 100%; min-width: 0; overflow-x: auto; flex-wrap: nowrap !important; }
   body :is(.view-tabs,.tab-strip,.filter-tabs,.tabs,.panel-tabs) > button { flex-shrink: 0; min-height: 44px; }
   body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content,.autonomy-screen,.dashboard-inner-content) { padding: 15px !important; min-width: 0; max-width: 100%; box-sizing: border-box !important; }
   /* Skills, Memory and Experiments pad their own tab bar and list; a page
@@ -167,7 +171,7 @@
   .terminal-content.mobile-presentation .scrollable-content > * > :is(form,section,div) { box-sizing: border-box; max-width: 100%; min-width: 0; }
   .terminal-content.mobile-presentation :is(.main-content-grid,.info-card,.code-card) { box-sizing: border-box !important; max-width: 100%; }
   /* In-page tab strips scroll sideways instead of running off the screen. */
-  .terminal-content.mobile-presentation :is(.plugins-container > .tabs,.autonomy-screen .tab-strip,.tab-bar) { display: flex; flex-wrap: nowrap !important; overflow-x: auto; max-width: 100%; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
+  .terminal-content.mobile-presentation :is(.plugins-container > .tabs,.autonomy-screen .tab-strip,.tab-bar) { display: flex; flex-wrap: nowrap !important; overflow-x: auto; max-width: 100%; -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 24px),transparent); }
   .terminal-content.mobile-presentation :is(.plugins-container > .tabs,.autonomy-screen .tab-strip,.tab-bar) > * { flex: 0 0 auto; min-height: 44px; }
   body :is(.settings-content,.connectors-content,.plugins-content,.agentforge-content) .content-header { margin-bottom: 16px; }
   body :is(input,textarea,select) { max-width: 100%; }
