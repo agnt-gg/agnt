@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
-import { createEndpoint, retireEndpoint, pullEvents, eventToTrigger } from '../../services/agntWebhooks.js';
+import { createEndpoint, retireEndpointsFor, pullEvents, eventToTrigger } from '../../services/agntWebhooks.js';
 import { serviceFailure, neverReached, serverNow } from '../../services/agntServices.js';
 import { legacyWebhooks } from '../../services/legacyRelay.js';
 import WebhookModel from '../../models/WebhookModel.js';
@@ -46,6 +46,8 @@ class LocalWebhookReceiver extends EventEmitter {
     this.pollInterval = null;
     /** workflowId -> { endpointId, slug, url, since, method, authType, ... } */
     this.webhooks = new Map();
+    /** workflowId -> tail of that workflow's register/unregister queue (see _serial). */
+    this._lifecycle = new Map();
 
     // Only the Workflow Process polls, so a trigger fires once.
     this.externalPollingDisabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING === 'true';
@@ -99,7 +101,28 @@ class LocalWebhookReceiver extends EventEmitter {
    * re-activations. Throws with the plan message when the account is not
    * entitled — the caller turns that into a node error.
    */
-  async registerWebhook(workflowId, userId, method, authType, authToken, username, password, responseMode = 'Immediate', responseBody, responseContentType) {
+  registerWebhook(workflowId, ...args) {
+    return this._serial(workflowId, () => this._registerWebhook(workflowId, ...args));
+  }
+
+  /**
+   * ONE LIFECYCLE STEP AT A TIME PER WORKFLOW. Registration is "find the
+   * endpoint, else create one"; two overlapping calls (two setup paths, a quick
+   * stop/start, save then start) both found none and both created one, and the
+   * one the row did not record leaked. A stop that overlapped a start could
+   * likewise retire before the start had created. Each step now waits for the
+   * previous step for the same workflow; different workflows still run freely.
+   */
+  _serial(workflowId, step) {
+    const previous = this._lifecycle.get(workflowId) || Promise.resolve();
+    const run = previous.then(step, step);
+    const tail = run.then(() => {}, () => {});
+    this._lifecycle.set(workflowId, tail);
+    tail.then(() => { if (this._lifecycle.get(workflowId) === tail) this._lifecycle.delete(workflowId); });
+    return run;
+  }
+
+  async _registerWebhook(workflowId, userId, method, authType, authToken, username, password, responseMode = 'Immediate', responseBody, responseContentType) {
     const existing = await WebhookModel.findByWorkflowId(workflowId).catch(() => null);
     let endpoint = existing?.endpoint_id
       ? { id: existing.endpoint_id, slug: existing.slug, url: existing.webhook_url }
@@ -382,7 +405,11 @@ class LocalWebhookReceiver extends EventEmitter {
     return null;
   }
 
-  async unregisterWebhook(workflowId, ownerIdHint = null) {
+  unregisterWebhook(workflowId, ownerIdHint = null) {
+    return this._serial(workflowId, () => this._unregisterWebhook(workflowId, ownerIdHint));
+  }
+
+  async _unregisterWebhook(workflowId, ownerIdHint = null) {
     console.log(`LocalWebhookReceiver: Unregistering webhook for workflow ${workflowId}`);
     const entry = this.webhooks.get(workflowId);
     ownerIdHint = ownerIdHint || entry?.userId || null;
@@ -397,8 +424,9 @@ class LocalWebhookReceiver extends EventEmitter {
     // the account's endpoint allowance.
     try {
       const row = await WebhookModel.findByWorkflowId(workflowId).catch(() => null);
-      const endpointId = entry?.endpointId || row?.endpoint_id;
-      if (endpointId) await retireEndpoint(endpointId);
+      // Every live endpoint named for this workflow, so a duplicate left by
+      // an older build is swept too, not only the one the row recorded.
+      await retireEndpointsFor(workflowId, entry?.endpointId || row?.endpoint_id || null);
     } catch (error) {
       console.error(`LocalWebhookReceiver: Error retiring hosted endpoint for workflow ${workflowId}:`, serviceFailure(error).error);
     }

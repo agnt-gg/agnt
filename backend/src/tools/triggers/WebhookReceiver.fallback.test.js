@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * The old api.agnt.gg/webhook/<id> URL keeps delivering alongside
  * webhooks.agnt.gg, and neither source failing stops the other.
  */
-const hooks = { pullEvents: vi.fn(async () => []), createEndpoint: vi.fn(), retireEndpoint: vi.fn(async () => {}), eventToTrigger: (e) => e };
+const hooks = { pullEvents: vi.fn(async () => []), createEndpoint: vi.fn(), retireEndpointsFor: vi.fn(async () => 1), eventToTrigger: (e) => e };
 vi.mock('../../services/agntWebhooks.js', () => hooks);
 const legacy = {
   url: (id) => 'https://api.agnt.gg/webhook/' + id,
@@ -134,6 +134,6 @@ describe('WebhookReceiver: hosted and legacy, side by side', () => {
     receiver.webhooks.set('wf-1', { workflowId: 'wf-1', endpointId: 'ep', userId: 'u1' });
     await receiver.unregisterWebhook('wf-1');
     expect(legacy.unregister).toHaveBeenCalledWith('wf-1');
-    expect(hooks.retireEndpoint).toHaveBeenCalledWith('ep');
+    expect(hooks.retireEndpointsFor).toHaveBeenCalledWith('wf-1', 'ep');
   });
 });

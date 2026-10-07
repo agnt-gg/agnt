@@ -14,7 +14,7 @@ import { callService } from './agntServices.js';
 
 /** Create the hosted endpoint for a workflow. Name is informational on the service. */
 export async function createEndpoint(workflowId, name) {
-  const wanted = name || 'workflow-' + String(workflowId).slice(0, 8);
+  const wanted = name || endpointName(workflowId);
   // The endpoint is named for the workflow, so the service is the record of
   // truth: if one already exists (local row lost, app reinstalled, restart
   // before the row was written) adopt it rather than minting a duplicate that
@@ -51,6 +51,30 @@ async function findEndpointByName(name) {
   // not mint a second one.
   const hit = (list.endpoints || []).find((e) => e.name === name && (e.state === 'active' || e.state === 'provisioning'));
   return hit ? { id: hit.id, slug: hit.slug, url: hit.url, state: hit.state } : null;
+}
+
+/** The service-side name of a workflow's endpoint; the only link between the two. */
+export function endpointName(workflowId) {
+  return 'workflow-' + String(workflowId).slice(0, 8);
+}
+
+/**
+ * Retire EVERY live endpoint for a workflow, not only the one the local row
+ * recorded. Two overlapping registrations used to mint two endpoints; the row
+ * kept one, deleting the workflow retired that one, and the other stayed
+ * active: it answered senders 202 "stored" and nothing ever read it
+ * (measured on charlie 2026-10-07, endpoint drnellw5nkr6). Returns how many
+ * were retired.
+ */
+export async function retireEndpointsFor(workflowId, knownEndpointId = null) {
+  const name = endpointName(workflowId);
+  const list = await callService('webhooks', '/endpoints');
+  const ids = new Set((list.endpoints || [])
+    .filter((e) => e.name === name && (e.state === 'active' || e.state === 'provisioning'))
+    .map((e) => e.id));
+  if (knownEndpointId) ids.add(knownEndpointId);
+  for (const id of ids) await retireEndpoint(id);
+  return ids.size;
 }
 
 export async function retireEndpoint(endpointId) {
