@@ -20,7 +20,12 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { getAvailableToolSchemas } from '../../backend/src/services/orchestrator/tools.js';
+import { isAsyncCapableSchema } from '../../backend/src/services/orchestrator/asyncToolParams.js';
 import { buildUnifiedSystemPrompt } from '../../backend/src/services/orchestrator/system-prompts/buildUnifiedPrompt.js';
+
+const ASYNC_CAPABLE_SURFACE = {
+  toolSchemas: [{ type: 'function', function: { name: 'web_search', parameters: { type: 'object', properties: {} } } }],
+};
 
 const ASYNC_PARAM_KEYS = [
   '_executeAsync',
@@ -37,16 +42,14 @@ function schemaHasAsyncParams(schema) {
 }
 
 describe('Async tools toggle — getAvailableToolSchemas', () => {
-  it('grafts async params on every schema by default (asyncEnabled defaults true)', async () => {
+  it('grafts async params on exactly the async-capable schemas by default', async () => {
     const schemas = await getAvailableToolSchemas();
-    assert.ok(schemas.length > 0, 'expected at least one tool schema');
-    const withParams = schemas.filter(schemaHasAsyncParams).length;
-    // Schemas that lack a `properties` object (rare) won't get params.
-    // The vast majority should — assert > 90% to leave headroom for those.
-    assert.ok(
-      withParams / schemas.length > 0.9,
-      `expected most schemas to have async params; got ${withParams}/${schemas.length}`,
-    );
+    const capable = schemas.filter(isAsyncCapableSchema);
+    assert.ok(capable.length > 0, 'expected at least one async-capable tool schema');
+    const capableWithout = capable.filter((s) => !schemaHasAsyncParams(s)).map((s) => s.function?.name);
+    const instantWith = schemas.filter((s) => !isAsyncCapableSchema(s) && schemaHasAsyncParams(s)).map((s) => s.function?.name);
+    assert.deepEqual(capableWithout, [], 'async-capable schemas missing async params');
+    assert.deepEqual(instantWith, [], 'instant schemas carrying async params');
   });
 
   it('grafts async params when asyncEnabled is explicitly true', async () => {
@@ -79,17 +82,17 @@ describe('Async tools toggle — buildUnifiedSystemPrompt', () => {
   const ASYNC_BLOCK_MARKER = '# Async & Periodic Tool Execution';
 
   it('includes the async guidance when asyncToolsEnabled is true', async () => {
-    const prompt = await buildUnifiedSystemPrompt({}, { asyncToolsEnabled: true });
+    const prompt = await buildUnifiedSystemPrompt(ASYNC_CAPABLE_SURFACE, { asyncToolsEnabled: true });
     assert.match(prompt, new RegExp(ASYNC_BLOCK_MARKER));
   });
 
   it('includes the async guidance by default (no option passed)', async () => {
-    const prompt = await buildUnifiedSystemPrompt({}, {});
+    const prompt = await buildUnifiedSystemPrompt(ASYNC_CAPABLE_SURFACE, {});
     assert.match(prompt, new RegExp(ASYNC_BLOCK_MARKER));
   });
 
   it('omits the async guidance when asyncToolsEnabled is false', async () => {
-    const prompt = await buildUnifiedSystemPrompt({}, { asyncToolsEnabled: false });
+    const prompt = await buildUnifiedSystemPrompt(ASYNC_CAPABLE_SURFACE, { asyncToolsEnabled: false });
     assert.doesNotMatch(prompt, new RegExp(ASYNC_BLOCK_MARKER));
   });
 
@@ -104,7 +107,7 @@ describe('Async tools toggle — buildUnifiedSystemPrompt', () => {
     // marker. If a future prompt section starts mentioning these, the
     // toggle's "the LLM has no idea async exists" guarantee would silently
     // break — this test catches that.
-    const prompt = await buildUnifiedSystemPrompt({}, { asyncToolsEnabled: false });
+    const prompt = await buildUnifiedSystemPrompt(ASYNC_CAPABLE_SURFACE, { asyncToolsEnabled: false });
     for (const param of ASYNC_PARAM_KEYS) {
       assert.doesNotMatch(
         prompt,

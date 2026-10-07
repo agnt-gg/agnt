@@ -138,7 +138,7 @@ Every Annie chat surface is functionally the same assistant. The current page co
   // from emitting bash-flavored commands on Windows (and vice-versa). Without
   // this, the LLM passes multi-line strings to cmd.exe, gets empty stdout,
   // and loops trying alternate syntax — a documented failure mode.
-  add('platform', 'Execution environment', getPlatformContextSection());
+  add('platform', 'Execution environment', getPlatformContextSection({ asyncExecution: on('async_execution') }));
 
   // Image-handling rules only matter if the LLM can actually receive or
   // produce images on this surface.

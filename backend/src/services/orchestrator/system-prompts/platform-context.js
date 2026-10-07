@@ -90,6 +90,7 @@ export function getPlatformContextSection(env = {}) {
   const arch = env.arch ?? process.arch;
   const nodeVersion = env.nodeVersion ?? process.version;
   const comspec = env.comspec ?? process.env.COMSPEC;
+  const asyncExecution = env.asyncExecution ?? true;
 
   const shell = getShellTarget(platform, comspec);
   const osLabel = getOsLabel(platform, release);
@@ -107,8 +108,7 @@ ${rules.map((r) => `- ${r}`).join('\n')}
 Cross-platform rules (all OSes):
 - One logical command per call. Multi-step work: chain with the shell's operator (above) or write a script file first.
 - The shell's default text encoding is the OS native codepage. Python output is forced to UTF-8 (PYTHONIOENCODING=utf-8 is set in the env). Other native programs may emit OS-codepage text — if output looks empty or mojibake'd, run the program with explicit UTF-8 output flags.
-- Long-running commands need \`_executeAsync: true\` so the user retains a Stop button.
-- If a command returns empty stdout but \`success: true\`, the command likely failed to parse in the shell — re-check quoting, newlines, and shell-specific syntax against the rules above before retrying.`;
+${asyncExecution ? '- Long-running commands need `_executeAsync: true` so the user retains a Stop button.\n' : ''}- If a command returns empty stdout but \`success: true\`, the command likely failed to parse in the shell — re-check quoting, newlines, and shell-specific syntax against the rules above before retrying.`;
 }
 
 export default getPlatformContextSection;
