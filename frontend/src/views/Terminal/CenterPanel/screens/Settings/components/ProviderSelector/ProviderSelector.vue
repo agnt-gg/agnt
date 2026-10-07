@@ -189,7 +189,8 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { DEPLOYMENT_CONFIG, API_CONFIG } from '@/tt.config.js';
+import { API_CONFIG } from '@/tt.config.js';
+import { isLocalReady } from '@/services/localModelsService.js';
 
 export default {
   components: {
@@ -217,27 +218,9 @@ export default {
     // Always work with lowercase strings
     const connectedProvidersLower = computed(() => connectedProviders.value.map((p) => p.toLowerCase()));
 
-    // Check if local server is running using the actual LM Studio API endpoint
+    // A Local model is usable (any local server, or AGNT's own); see localModelsService.
     const checkLocalServer = async () => {
-      // Skip polling in hosted mode to avoid CORS errors
-      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
-        isLocalServerRunning.value = false;
-        return;
-      }
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-        const response = await fetch('http://127.0.0.1:1234/v1/models', {
-          method: 'GET',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        isLocalServerRunning.value = response.ok;
-      } catch (error) {
-        isLocalServerRunning.value = false;
-      }
+      isLocalServerRunning.value = await isLocalReady();
     };
 
     const hasConnectedProviders = computed(() => connectedProvidersLower.value.some((p) => AI_PROVIDERS_WITH_API.includes(p)));

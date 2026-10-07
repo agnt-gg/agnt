@@ -11,6 +11,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
+import { getLocalBaseURL } from '../services/localModels/localServers.js';
 import { resolveDefaultModelAsync } from '../services/ai/defaultModel.js';
 import { NoAiConfiguredError } from '../services/ai/accountAi.js';
 import { resolveChain } from '../services/ai/ModelRouter.js';
@@ -105,7 +106,7 @@ class StreamEngine {
       grokai: 'https://api.x.ai/v1/',
       groq: 'https://api.groq.com/openai/v1',
       kimi: 'https://api.moonshot.ai/v1',
-      local: 'http://127.0.0.1:1234/v1',
+      get local() { return getLocalBaseURL(); },
       minimax: 'https://api.minimax.io/v1',
       openai: 'https://api.openai.com/v1',
       togetherai: 'https://api.together.xyz/v1',

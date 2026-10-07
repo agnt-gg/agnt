@@ -292,7 +292,7 @@
           <div v-if="message.showProviderNote" class="provider-note">
             <div class="note-icon">💡</div>
             <div class="note-text">
-              <strong>Local Models:</strong> Any models running at <code>http://127.0.0.1:1234</code> will be automatically detected.
+              <strong>Local Models:</strong> AGNT can download and run a model on this computer for you, and finds models already running in LM Studio, Ollama or llama.cpp.
             </div>
           </div>
 

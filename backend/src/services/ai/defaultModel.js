@@ -14,7 +14,7 @@
  * model, else (catalogue never fetched) the first preferred pick unverified.
  */
 
-import { getProviderConfig, buildBaseURLs } from './providerConfigs.js';
+import { getProviderConfig } from './providerConfigs.js';
 import { getLastSuccessfulModels } from './lastModelsCache.js';
 
 /**
@@ -23,8 +23,6 @@ import { getLastSuccessfulModels } from './lastModelsCache.js';
  * models in the same array as its chat models.
  */
 export const NOT_A_CHAT_MODEL = /whisper|tts|embed|moderat|guard|rerank|transcrib|speech|audio|image|dall-e|orpheus|sora|veo|imagen|lyria/i;
-
-const LOCAL_LIST_TIMEOUT_MS = 3000;
 
 /**
  * The ids AGNT's live fetch last saw for this provider, in vendor order, or
@@ -70,15 +68,12 @@ export function resolveDefaultModel(providerKey, { preferred } = {}) {
  */
 export async function resolveDefaultModelAsync(providerKey, options = {}) {
   if (providerKey !== 'local') return resolveDefaultModel(providerKey, options);
-  const baseURL = String(buildBaseURLs().local || '').replace(/\/$/, '');
   try {
-    const res = await fetch(`${baseURL}/models`, { signal: AbortSignal.timeout(LOCAL_LIST_TIMEOUT_MS) });
-    if (!res.ok) return null;
-    const body = await res.json();
-    const ids = (body?.data || []).map((m) => m?.id).filter((id) => typeof id === 'string');
+    const { listLocalModelIds } = await import('../localModels/index.js');
+    const ids = await listLocalModelIds();
     return ids.find((id) => !NOT_A_CHAT_MODEL.test(id)) || null;
   } catch (error) {
-    console.warn(`[defaultModel] Local model server unreachable at ${baseURL}: ${error.message}`);
+    console.warn(`[defaultModel] Local models unavailable: ${error.message}`);
     return null;
   }
 }

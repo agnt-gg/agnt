@@ -1042,6 +1042,13 @@ function startServer() {
         } catch (err) {
           console.warn('[RunJournal] Shutdown flush skipped:', err?.message || err);
         }
+        // AGNT's own llama-server holds GPU memory; never leave it running
+        // behind a stopped backend. Synchronous kill, safe under the deadline.
+        try {
+          (await import('./src/services/localModels/index.js')).stopManagedRuntime();
+        } catch (err) {
+          console.warn('[localModels] Shutdown stop skipped:', err?.message || err);
+        }
         return WorkflowProcessBridge.shutdown();
       },
     });

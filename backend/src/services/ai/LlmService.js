@@ -161,11 +161,14 @@ async function _createClientFromConfig(config, accessToken) {
  * Returns null if the provider is not a special-auth provider.
  */
 async function _createSpecialAuthClient(lowerCaseProvider, options) {
-  // Local provider — no API key needed
+  // Local provider — no API key needed. Each request is routed to whichever
+  // local server has its model (LM Studio, Ollama, AGNT's own llama-server…),
+  // see services/localModels/localServers.js.
   if (lowerCaseProvider === 'local') {
+    const { localClientOptions } = await import('../localModels/index.js');
     return new OpenAI({
       apiKey: 'dummy-key',
-      baseURL: 'http://127.0.0.1:1234/v1',
+      ...localClientOptions(),
       dangerouslyAllowBrowser: false,
       maxRetries: 0,
       timeout: 60000,

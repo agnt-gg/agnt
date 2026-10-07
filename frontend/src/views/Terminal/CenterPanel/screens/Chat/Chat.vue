@@ -373,7 +373,8 @@ import { applyContextStatusRound, markPrefixBreak } from '@/services/turnRounds.
 import ActivityFeed from './components/ActivityFeed.vue';
 import GoalProgressWidget from './components/GoalProgressWidget.vue';
 import { useAppVersion } from '@/composables/useAppVersion.js';
-import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { API_CONFIG } from '@/tt.config.js';
+import { isLocalReady } from '@/services/localModelsService.js';
 import { serializeTranscript } from '@/services/conversationTranscript.js';
 import { editableReplyId } from '@/services/assistantReplyEdit.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
@@ -622,41 +623,13 @@ export default {
     // Check for connected AI providers
     const isLocalServerRunning = ref(false);
 
-    // Check if local server is running
-    // Note: Browser console may show ERR_CONNECTION_REFUSED when server is not running.
-    // This is expected behavior and the errors are handled silently.
-    // Disabled in hosted environments to prevent CORS errors.
+    // A Local model is usable: some local server serves one, or AGNT's own can
+    // start. Asked of the backend (services/localModelsService), which knows
+    // every local server; false on hosted instances and when signed out.
     const checkLocalServer = async () => {
-      // Skip in hosted mode to prevent CORS errors
-      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
-        isLocalServerRunning.value = false;
-        return;
-      }
-
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
-
-        const response = await fetch('http://127.0.0.1:1234/v1/models', {
-          method: 'GET',
-          signal: controller.signal,
-          cache: 'no-store',
-        });
-
-        clearTimeout(timeoutId);
-        const wasRunning = isLocalServerRunning.value;
-        isLocalServerRunning.value = response.ok;
-
-        // Auto-switch to Local provider if:
-        // 1. Local server just became available (wasn't running before, now is)
-        // 2. No other provider is currently connected
-        if (response.ok && !wasRunning) {
-          await autoSwitchToLocalIfNeeded();
-        }
-      } catch (error) {
-        // Silently handle connection errors - local server is optional
-        isLocalServerRunning.value = false;
-      }
+      const wasRunning = isLocalServerRunning.value;
+      isLocalServerRunning.value = await isLocalReady();
+      if (isLocalServerRunning.value && !wasRunning) await autoSwitchToLocalIfNeeded();
     };
 
     // Automatically switch to Local provider ONLY if no other provider is configured

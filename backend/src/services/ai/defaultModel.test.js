@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const saved = vi.hoisted(() => ({ store: {} }));
+const saved = vi.hoisted(() => ({ store: {}, localIds: async () => [] }));
 vi.mock('./lastModelsCache.js', () => ({
   getLastSuccessfulModels: (key) => saved.store[String(key).toLowerCase()] || null,
 }));
+// The real module probes this machine's ports and reads the user's data dir.
+vi.mock('../localModels/index.js', () => ({ listLocalModelIds: () => saved.localIds() }));
 
 const { resolveDefaultModel, resolveDefaultModelAsync, liveModelIds, NOT_A_CHAT_MODEL } = await import('./defaultModel.js');
 const { getProviderConfig } = await import('./providerConfigs.js');
@@ -57,17 +59,18 @@ describe('resolveDefaultModel', () => {
 });
 
 describe('resolveDefaultModelAsync — local', () => {
-  it("asks the local server and takes its first chat model (was hardcoded 'llama-3.2-1b-instruct')", async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ data: [{ id: 'text-embedding-nomic-embed-text-v1.5' }, { id: 'qwen3.5-4b' }, { id: 'qwen/qwen3.5-9b' }] }),
-    })));
+  it("asks the local servers and takes the first chat model (was hardcoded 'llama-3.2-1b-instruct')", async () => {
+    saved.localIds = async () => ['text-embedding-nomic-embed-text-v1.5', 'qwen3.5-4b', 'qwen/qwen3.5-9b'];
     expect(await resolveDefaultModelAsync('local')).toBe('qwen3.5-4b');
-    expect(fetch.mock.calls[0][0]).toMatch(/\/v1\/models$/);
   });
 
-  it('returns null, not a guess, when the local server is down', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+  it('returns null, not a guess, when no local server has a model', async () => {
+    saved.localIds = async () => [];
+    expect(await resolveDefaultModelAsync('local')).toBeNull();
+  });
+
+  it('returns null when listing local models fails', async () => {
+    saved.localIds = async () => { throw new Error('probe failed'); };
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await resolveDefaultModelAsync('local')).toBeNull();
   });

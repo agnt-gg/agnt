@@ -10,7 +10,7 @@ const authService = vi.hoisted(() => ({
 }));
 vi.mock('@/services/providerAuthService.js', () => ({ default: authService }));
 
-import { useAiProviderConnect } from './useAiProviderConnect.js';
+import { useAiProviderConnect, formatBytes } from './useAiProviderConnect.js';
 
 /**
  * A SimpleModal double that behaves like the real one: showModal resolves when
@@ -262,5 +262,173 @@ describe('useAiProviderConnect — run a model on this machine', () => {
     await connect(LOCAL);
     expect(modal.shown[0].title).toBe('Load a model in LM Studio');
     expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('Ollama (or any local server) already serving: used at once', async () => {
+    global.fetch.mockResolvedValue(reply({ ready: true, running: true, models: ['qwen3:8b'], installed: false, server: { id: 'ollama' } }));
+    const store = fakeStore();
+    const { connect, onSelected, modal } = setup({ store });
+    await connect(LOCAL);
+    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/fetchLocalModels', { forceRefresh: true });
+    expect(onSelected).toHaveBeenCalledOnce();
+    expect(modal.showModal).not.toHaveBeenCalled();
+  });
+});
+
+// AGNT runs the model itself: detect hardware, download llama.cpp + a model, start it.
+describe('useAiProviderConnect — AGNT runs a local model itself', () => {
+  const LOCAL = { id: 'local', name: 'Local' };
+  const GB = 1024 ** 3;
+  const reply = (body) => ({ ok: true, json: async () => body });
+  const calls = () => global.fetch.mock.calls.map(([url, init]) => (init?.method || 'GET') + ' ' + url.replace('http://local.test/api/local-models/', ''));
+  const managed = (overrides = {}) => ({
+    supported: true,
+    hardware: { gpu: 'NVIDIA GeForce GTX 1660 SUPER', vramBytes: 6 * GB, ramBytes: 32 * GB },
+    engine: { build: 'win32-x64-cuda12', label: 'NVIDIA CUDA 12', bytes: 0.6 * GB, installed: false },
+    models: [{ id: 'qwen3.5-4b', name: 'Qwen 3.5 4B', blurb: 'A good everyday model.', sizeBytes: 2.6 * GB, fit: 'gpu', downloaded: false, recommended: true }],
+    recommendedId: 'qwen3.5-4b',
+    job: null,
+    ...overrides,
+  });
+  const nothingRunning = (m = managed()) => ({ ready: false, running: false, models: [], installed: false, canStart: false, managed: m });
+  const job = (phase, extra = {}) => ({ modelId: 'qwen3.5-4b', phase, bytesDone: 0, bytesTotal: 3.2 * GB, error: null, errorCode: null, ...extra });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+    localStorage.setItem('token', 't');
+    window.electron = { openExternalUrl: vi.fn() };
+  });
+
+  it('one click: offers the model that fits this GPU, downloads with live progress, then uses it', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch
+        .mockResolvedValueOnce(reply(nothingRunning()))
+        .mockResolvedValueOnce(reply(nothingRunning(managed({ job: job('engine') }))))
+        .mockResolvedValueOnce(reply(nothingRunning(managed({ job: job('model', { bytesDone: 1.6 * GB }) }))))
+        .mockResolvedValueOnce(reply({ ready: true, running: true, models: ['qwen3.5-4b'], managed: managed({ job: job('ready', { bytesDone: 3.2 * GB }) }) }));
+      const modal = fakeModal();
+      const store = fakeStore();
+      const { connect, onSelected } = setup({ store, modal });
+      const done = connect(LOCAL);
+
+      await vi.waitFor(() => expect(modal.shown.length).toBe(1));
+      expect(modal.shown[0].title).toBe('Run AI on this computer');
+      expect(modal.shown[0].message).toContain('Qwen 3.5 4B');
+      expect(modal.shown[0].message).toContain('runs fully on your NVIDIA GeForce GTX 1660 SUPER');
+      expect(modal.shown[0].confirmText).toBe('Download & run (3.2 GB)');
+      modal.confirm();
+
+      await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+      expect(modal.shown[1].title).toBe('Setting up Qwen 3.5 4B');
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.waitFor(() => expect(modal.message).toContain('Downloading Qwen 3.5 4B'));
+      expect(modal.message).toContain('1.6 GB of 3.2 GB (50%)');
+      await vi.advanceTimersByTimeAsync(1000);
+      await done;
+
+      expect(calls()).toEqual(['GET status', 'POST managed/setup', 'GET status', 'GET status']);
+      expect(JSON.parse(global.fetch.mock.calls[1][1].body)).toEqual({ modelId: 'qwen3.5-4b' });
+      expect(modal.confirm).toHaveBeenCalledTimes(2); // the user's click, then the progress dialog closing itself
+      expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', 'Local');
+      expect(onSelected).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('"Not now": nothing is downloaded', async () => {
+    global.fetch.mockResolvedValue(reply(nothingRunning()));
+    const { connect, onSelected } = setup({ store: fakeStore(), modal: fakeModal({ answer: null }) });
+    await connect(LOCAL);
+    expect(calls()).toEqual(['GET status']);
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('Cancel in the progress dialog cancels the setup on the backend', async () => {
+    // Like the backend: the job runs until cancelled, then reports so.
+    let cancelled = false;
+    let first = true;
+    global.fetch.mockImplementation(async (url, init) => {
+      if (url.endsWith('/managed/cancel')) cancelled = true;
+      if (first) { first = false; return reply(nothingRunning()); }
+      return reply(nothingRunning(managed({ job: job(cancelled ? 'cancelled' : 'model') })));
+    });
+    const modal = fakeModal();
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    const done = connect(LOCAL);
+    await vi.waitFor(() => expect(modal.shown.length).toBe(1));
+    modal.confirm();
+    await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+    modal.cancel();
+    await done;
+    expect(calls()).toContain('POST managed/cancel');
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('a failed setup says why', async () => {
+    global.fetch
+      .mockResolvedValueOnce(reply(nothingRunning(managed({ job: job('model') }))))
+      .mockResolvedValueOnce(reply(nothingRunning(managed({ job: job('error', { error: 'Not enough disk space: this needs 3.2 GB and 1.0 GB is free.' }) }))));
+    const modal = fakeModal();
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    const done = connect(LOCAL);
+    await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+    expect(modal.shown[1].title).toBe('Local model setup failed');
+    expect(modal.shown[1].message).toContain('Not enough disk space');
+    modal.confirm();
+    await done;
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('a setup already running (another window, or Hide) is joined, not restarted', async () => {
+    global.fetch
+      .mockResolvedValueOnce(reply(nothingRunning(managed({ job: job('model') }))))
+      .mockResolvedValueOnce(reply({ ready: true, models: ['qwen3.5-4b'], managed: managed({ job: job('ready') }) }));
+    const modal = fakeModal();
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    await connect(LOCAL);
+    expect(calls()).toEqual(['GET status', 'GET status']);
+    expect(modal.shown[0].title).toBe('Setting up Qwen 3.5 4B');
+    expect(onSelected).toHaveBeenCalledOnce();
+  });
+
+  it('LM Studio running with no model, and AGNT can run one: offers it instead of a dead end', async () => {
+    global.fetch.mockResolvedValue(reply({ ...nothingRunning(), running: true, installed: true }));
+    const modal = fakeModal({ answer: null });
+    const { connect } = setup({ store: fakeStore(), modal });
+    await connect(LOCAL);
+    expect(modal.shown[0].title).toBe('Run AI on this computer');
+    expect(modal.shown[0].confirmText).toMatch(/^Download & run/);
+  });
+
+  it('a model that only fits partly says it will be slower', async () => {
+    const slow = managed({ models: [{ ...managed().models[0], fit: 'mixed' }] });
+    global.fetch.mockResolvedValue(reply(nothingRunning(slow)));
+    const modal = fakeModal({ answer: null });
+    await setup({ store: fakeStore(), modal }).connect(LOCAL);
+    expect(modal.shown[0].message).toContain('slower');
+  });
+
+  it('nothing fits this computer: says so instead of downloading', async () => {
+    global.fetch.mockResolvedValue(reply(nothingRunning(managed({ recommendedId: null }))));
+    const modal = fakeModal({ answer: true });
+    await setup({ store: fakeStore(), modal }).connect(LOCAL);
+    expect(modal.shown[0].title).toBe('Not enough memory for a local model');
+    expect(calls()).toEqual(['GET status']);
+  });
+
+  it('the hardware name is escaped into the dialog', async () => {
+    const hostile = managed({ hardware: { gpu: '<img src=x onerror=alert(1)>' } });
+    global.fetch.mockResolvedValue(reply(nothingRunning(hostile)));
+    const modal = fakeModal({ answer: null });
+    await setup({ store: fakeStore(), modal }).connect(LOCAL);
+    expect(modal.shown[0].message).not.toContain('<img');
+    expect(modal.shown[0].message).toContain('&lt;img');
+  });
+});
+
+describe('formatBytes', () => {
+  it.each([[734003200, '700 MB'], [2740937888, '2.6 GB'], [1000, '1 MB']])('%d → %s', (bytes, text) => {
+    expect(formatBytes(bytes)).toBe(text);
   });
 });

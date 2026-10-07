@@ -1014,9 +1014,14 @@ class GenerateWithAiLlm extends BaseAction {
     const providerKey = params.provider.toLowerCase();
     const sharedConfig = getProviderConfig(providerKey);
     const defaultHeaders = sharedConfig?.sdkOptions?.defaultHeaders;
+    // Local is routed per request to the server that has the model, and may
+    // start AGNT's own one (services/localModels); a fixed URL would miss both.
+    const endpoint = providerKey === 'local'
+      ? (await import('../../../services/localModels/index.js')).localClientOptions()
+      : { baseURL: BASE_URLS[providerKey] };
     const openai = new OpenAI({
       apiKey: params.apiKey,
-      baseURL: BASE_URLS[providerKey],
+      ...endpoint,
       ...(defaultHeaders ? { defaultHeaders } : {}),
     });
 

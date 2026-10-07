@@ -186,7 +186,7 @@ import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
-import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { isLocalReady } from '@/services/localModelsService.js';
 import {
   getChannelConfig,
   setChannelProvider,
@@ -326,27 +326,9 @@ export default {
       return connectedProvidersLower.value.includes(providerKey);
     });
 
-    // Check local server status using the actual LM Studio API endpoint
+    // A Local model is usable (any local server, or AGNT's own); see localModelsService.
     const checkLocalServer = async () => {
-      // Skip polling in hosted mode to avoid CORS errors
-      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
-        isLocalServerRunning.value = false;
-        return;
-      }
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-        const response = await fetch('http://127.0.0.1:1234/v1/models', {
-          method: 'GET',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        isLocalServerRunning.value = response.ok;
-      } catch (error) {
-        isLocalServerRunning.value = false;
-      }
+      isLocalServerRunning.value = await isLocalReady();
     };
 
     // Transform providers into CustomSelect options format

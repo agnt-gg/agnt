@@ -11,6 +11,7 @@
 // to pick the retention control; reused here because the same boundary decides
 // whether cache writes bill at 1.25x.
 import { OPENAI_GPT56_OR_LATER as GPT_56_OR_LATER } from '../../utils/promptCacheTtl.js';
+import { getLocalBaseURL } from '../localModels/localServers.js';
 
 // Reasoning predicates live in the SHARED DESCRIPTOR (invariant I1). That
 // module is isomorphic — the Vue frontend imports the very same file through a
@@ -1694,8 +1695,10 @@ export function buildBaseURLs() {
   for (const config of PROVIDER_CONFIGS) {
     urls[config.key] = config.baseURL;
   }
-  // Add local provider
-  urls.local = 'http://127.0.0.1:1234/v1';
+  // Local is whichever local server last answered (services/localModels).
+  // A getter, because callers keep this map for the process lifetime and the
+  // local server can change underneath them.
+  Object.defineProperty(urls, 'local', { get: getLocalBaseURL, enumerable: true });
   return urls;
 }
 

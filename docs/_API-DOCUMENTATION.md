@@ -2267,19 +2267,40 @@ The account's cloud instances, passed through to `api.agnt.gg/tenants` with the 
 
 Base path: `/api/local-models`
 
-Behind "Run a model on this machine". AGNT's Local provider uses LM Studio's server on `127.0.0.1:1234`; these routes find LM Studio and start that server with its CLI (`lms server start`). Nothing is installed. A hosted instance never looks for or runs a CLI.
+Behind "Run a model on this machine". The Local provider is whichever local server has the requested model: AGNT's own llama.cpp server, LM Studio (`127.0.0.1:1234`), Ollama (`127.0.0.1:11434`) or a llama-server on `127.0.0.1:8080` (`backend/src/services/localModels`). AGNT can also install and run a model itself: it detects the GPU, downloads a pinned llama.cpp build and a catalog model (both SHA-256 verified, resumable), and starts it on a free loopback port. A hosted instance never downloads or runs anything.
 
 ### Get Local Model Status
 
 **GET** `/status`
 
 - **Authentication**: Required
-- **Description**: Whether LM Studio's server is running (with its models), whether LM Studio is installed, and whether AGNT can start it
+- **Description**: Every known local server and its models, LM Studio's install state, and AGNT's own runtime: hardware, the catalog priced against it (`fit`: `gpu` / `mixed` / `too_big`), the recommended model, and setup progress
 - **Response**:
 
 ```json
-{ "running": false, "models": [], "installed": true, "canStart": true, "downloadUrl": "https://lmstudio.ai/download" }
+{
+  "ready": true,
+  "running": true,
+  "models": ["qwen3.5-4b"],
+  "server": { "id": "agnt", "name": "AGNT local runtime", "baseURL": "http://127.0.0.1:54658/v1" },
+  "servers": [{ "id": "ollama", "name": "Ollama", "baseURL": "http://127.0.0.1:11434/v1", "running": false, "models": [] }],
+  "installed": false,
+  "canStart": false,
+  "downloadUrl": "https://lmstudio.ai/download",
+  "managed": {
+    "supported": true,
+    "hardware": { "gpu": "NVIDIA GeForce GTX 1660 SUPER", "vramBytes": 6442450944, "ramBytes": 34234916864 },
+    "engine": { "tag": "b11476", "build": "win32-x64-cuda12", "label": "NVIDIA CUDA 12", "bytes": 655965580, "installed": true },
+    "models": [{ "id": "qwen3.5-4b", "name": "Qwen 3.5 4B", "blurb": "...", "sizeBytes": 2740937888, "fit": "gpu", "downloaded": true, "recommended": true }],
+    "recommendedId": "qwen3.5-4b",
+    "activeModelId": "qwen3.5-4b",
+    "server": { "port": 54658, "modelId": "qwen3.5-4b", "baseURL": "http://127.0.0.1:54658/v1" },
+    "job": null
+  }
+}
 ```
+
+`ready` means a Local model can be used now (AGNT's own model counts once downloaded: it starts on the first request).
 
 ### Start LM Studio
 
@@ -2287,6 +2308,22 @@ Behind "Run a model on this machine". AGNT's Local provider uses LM Studio's ser
 
 - **Authentication**: Required
 - **Description**: Starts LM Studio's server if it is installed and stopped, then waits up to 30 seconds for it to answer. Returns the same shape as `/status`, plus `error` (`not_installed`, `start_failed` with `detail`, `start_timeout`, `not_available_on_hosted`) when it could not.
+
+### Set Up AGNT's Local Model
+
+**POST** `/managed/setup`
+
+- **Authentication**: Required
+- **Body**: `{ "modelId": "qwen3.5-4b" }` (optional; defaults to the model recommended for this machine; must be a catalog id)
+- **Description**: Starts the one-click setup in the background (engine download, model download, start) and returns the status at once. Progress is `managed.job`: `{ modelId, phase: engine | model | starting | ready | error | cancelled, bytesDone, bytesTotal, error, errorCode }`. A second call while one runs joins it.
+- **Errors**: 400 `unknown_model`, `too_big`, `no_model_fits`, `unsupported_platform`, `not_available_on_hosted`; 409 `busy` (a different model is being set up)
+
+### Cancel Setup
+
+**POST** `/managed/cancel`
+
+- **Authentication**: Required
+- **Description**: Stops a running download. Downloaded bytes are kept, so the next setup resumes. Returns the status.
 
 ## AGNT Services Routes
 

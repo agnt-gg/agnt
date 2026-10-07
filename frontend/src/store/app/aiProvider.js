@@ -1,4 +1,5 @@
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { fetchLocalStatus } from '@/services/localModelsService.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from '../auth/licenseIdentity.js';
@@ -1712,16 +1713,11 @@ const aiProviderModule = {
       commit('SET_LOADING_MODELS', { provider, loading: true });
 
       try {
-        const response = await fetch('http://127.0.0.1:1234/v1/models', {
-          method: 'GET',
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        const models = (data.data || []).map((model) => model.id);
+        // The backend knows every local server (LM Studio, Ollama, llama-server,
+        // AGNT's own); the renderer used to ask LM Studio's port directly.
+        const status = await fetchLocalStatus({ fresh: forceRefresh });
+        if (!status) throw new Error('Local model status unavailable');
+        const models = status.models || [];
 
         if (models.length === 0) {
           return state.allModels[provider] || [];
@@ -1737,7 +1733,7 @@ const aiProviderModule = {
           }),
         );
 
-        console.log(`Fetched ${models.length} Local models from LM Studio`);
+        console.log(`Fetched ${models.length} Local models (${status.server?.name || 'local'})`);
         return models;
       } catch (error) {
         console.error('Failed to fetch Local models:', error);
