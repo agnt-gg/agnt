@@ -14,11 +14,11 @@
     <button v-if="isMobile && sidebarOpen" type="button" class="focused-scrim" aria-label="Close sidebar" @click="setSidebar(false)"></button>
 
     <main class="focused-main">
-      <!-- Above the page only: the sidebar runs the full window height beside it. -->
-      <FocusedWindowBar />
-      <!-- One slim bar: sidebar controls when it is closed, and the open
-           conversation's title, as in the AGNT One demo. -->
-      <header v-if="!sidebarOpen || isMobile || chatTitle" class="focused-topbar" :class="{ 'has-title': !!chatTitle }">
+      <!-- ONE top bar: sidebar controls when it is closed, the open
+           conversation's title, and (desktop) the window buttons. In the
+           desktop app it is also what drags the frameless window, so it is
+           always there; the sidebar runs the full height beside it. -->
+      <header v-if="isElectron || !sidebarOpen || isMobile || chatTitle" class="focused-topbar" :class="{ 'has-title': !!chatTitle, 'is-window-bar': isElectron }">
         <template v-if="!sidebarOpen || isMobile">
           <button type="button" class="focused-icon-btn" aria-label="Open sidebar" @click="setSidebar(true)">
             <i class="fas fa-bars" aria-hidden="true"></i>
@@ -28,6 +28,7 @@
           </button>
         </template>
         <h1 v-if="chatTitle" class="focused-chat-title">{{ chatTitle }}</h1>
+        <FocusedWindowControls />
       </header>
 
       <!-- A Studio-only screen (a forge's blank canvas, run traces…): shown in
@@ -85,7 +86,7 @@ import JumpPalette from '@/canvas/JumpPalette.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import FocusedSidebar from './FocusedSidebar.vue';
-import FocusedWindowBar from './FocusedWindowBar.vue';
+import FocusedWindowControls from './FocusedWindowControls.vue';
 import { useElectron } from '@/composables/useElectron';
 import FocusedLibrary from './FocusedLibrary.vue';
 import FocusedConnectors from './FocusedConnectors.vue';

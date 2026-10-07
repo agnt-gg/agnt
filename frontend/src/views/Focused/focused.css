@@ -22,12 +22,30 @@
   color: var(--text-primary);
 }
 
-/* Desktop: the window bar (FocusedWindowBar) tops the page column; the sidebar
-   runs the full height beside it, and its header's empty space drags too. */
-.ui-focused.ui-focused.has-window-bar {
-  --focused-window-bar-height: 32px;
+/* Desktop: the top bar is the window's drag area (the window is frameless).
+   Positioned with its own stacking order, exactly like Studio's toolbar
+   (.cv-toolbar), the drag area known to work; a static bar did not drag. It
+   matches the sidebar header's height, so the two read as one line, and the
+   sidebar header's empty space drags too. Doubled class: it must beat the
+   title bar's own min-height (.has-title), declared later in this file. */
+.ui-focused .focused-topbar.is-window-bar.is-window-bar {
+  position: relative;
+  z-index: 50;
+  min-height: 52px;
+  padding: 0 8px 0 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--terminal-border-color);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.ui-focused .focused-topbar.is-window-bar .focused-icon-btn {
+  -webkit-app-region: no-drag;
 }
 .ui-focused.has-window-bar .focused-side-head {
+  position: relative;
+  z-index: 50;
+  min-height: 52px;
+  box-sizing: border-box;
   -webkit-app-region: drag;
 }
 .ui-focused.has-window-bar .focused-side-head button,
