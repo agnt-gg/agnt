@@ -25,6 +25,9 @@ import providerAuthService from '@/services/providerAuthService.js';
 
 /** How long a browser sign-in may take before AGNT stops waiting for it. */
 export const SIGN_IN_WAIT_MS = 2 * 60 * 1000;
+/** How long AGNT waits for LM Studio to be installed after opening its download page. */
+export const LOCAL_INSTALL_WAIT_MS = 15 * 60 * 1000;
+const LOCAL_POLL_MS = 3000;
 const POLL_INTERVAL_MS = 1500;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -249,6 +252,89 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     }
   };
 
+  // ── Run a model on this machine (LM Studio) ──
+  // This used to select Local straight away: with no LM Studio server running
+  // it picked an empty provider and nothing visible happened. Now the click
+  // ends with a working local model, or says exactly what is missing.
+  const localApi = async (method, path) => {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/local-models/${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  };
+
+  const useRunningLocal = async (provider, status) => {
+    if (!status.models.length) {
+      await showError(
+        'Load a model in LM Studio',
+        'LM Studio is running, but it has no model yet. Open LM Studio, download a model (Qwen 3 8B is a good start), and click "Run a model on this machine" again.',
+      );
+      return;
+    }
+    await store.dispatch('aiProvider/fetchLocalModels', { forceRefresh: true }).catch(() => {});
+    await selectProvider(provider);
+  };
+
+  const startLocal = (provider) =>
+    waitWithDialog(
+      { title: 'Starting LM Studio', message: '<p>Starting LM Studio\'s local server on this computer…</p><p>This closes by itself when it is ready.</p>' },
+      localApi('POST', 'start'),
+    );
+
+  const waitForInstall = async () => {
+    const deadline = Date.now() + LOCAL_INSTALL_WAIT_MS;
+    while (Date.now() < deadline) {
+      await sleep(LOCAL_POLL_MS);
+      const status = await localApi('GET', 'status').catch(() => null);
+      if (status?.running || status?.installed) return status;
+    }
+    return null;
+  };
+
+  const connectLocal = async (provider) => {
+    let status;
+    try {
+      status = await localApi('GET', 'status');
+    } catch (error) {
+      await showError('Could not check this computer', `AGNT could not look for LM Studio: ${error.message}`);
+      return;
+    }
+    if (status.running) return useRunningLocal(provider, status);
+
+    if (!status.installed) {
+      const download = await modalRef.value.showModal({
+        title: 'Run AI on this computer',
+        message: `<div style="text-align:left">
+          <p>Local models run through <strong>LM Studio</strong>, a free app. It isn't installed on this computer yet.</p>
+          <p>Install it and download one model. AGNT will notice and connect on its own.</p>
+          <p style="font-size:12px;opacity:.8">Local models are private and free, but slower than AGNT Flash unless this computer has a strong GPU.</p>
+        </div>`,
+        confirmText: 'Download LM Studio',
+        cancelText: 'Not now',
+        showCancel: true,
+      });
+      if (!download) return;
+      openInBrowser(status.downloadUrl || 'https://lmstudio.ai/download');
+      const found = await waitWithDialog(
+        { title: 'Waiting for LM Studio', message: '<p>Install LM Studio and open it once. This closes by itself when AGNT finds it.</p>' },
+        waitForInstall(),
+      );
+      if (found === null || found === undefined) return;
+      status = found;
+      if (status.running) return useRunningLocal(provider, status);
+    }
+
+    const started = await startLocal(provider);
+    if (started === null) return;
+    if (started?.running) return useRunningLocal(provider, started);
+    const why = started?.error === 'start_timeout'
+      ? 'LM Studio did not start its server in time.'
+      : started?.detail || 'LM Studio could not start its server.';
+    await showError('LM Studio did not start', `${why} Open LM Studio, go to the Developer tab and turn on the local server, then try again.`);
+  };
+
   /** Store an API key on the account, then use that provider. */
   const saveApiKey = async (provider, apiKey) => {
     try {
@@ -274,7 +360,8 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     const id = String(provider?.id || '').toLowerCase();
     if (!id) return;
     // Included with the account, or nothing to sign in to.
-    if (id === 'agnt' || id === 'local') return selectProvider(provider);
+    if (id === 'agnt') return selectProvider(provider);
+    if (id === 'local') return connectLocal(provider);
     // Local CLIs check their own sign-in first, so a connected seat is one click too.
     if (id === 'openai-codex') return connectCodex(provider);
     if (id === 'claude-code') return connectClaudeCode(provider);

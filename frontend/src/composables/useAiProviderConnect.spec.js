@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 
-vi.mock('@/tt.config.js', () => ({ API_CONFIG: { REMOTE_URL: 'https://remote.test' } }));
+vi.mock('@/tt.config.js', () => ({ API_CONFIG: { REMOTE_URL: 'https://remote.test', BASE_URL: 'http://local.test/api' } }));
 vi.mock('@/views/_utils/encryption.js', () => ({ encrypt: (value) => `enc(${value})` }));
 const authService = vi.hoisted(() => ({
   startOAuth: vi.fn(),
@@ -167,6 +167,100 @@ describe('useAiProviderConnect — one click from a tile', () => {
     const { saveApiKey, onSelected } = setup({ store, modal });
     await saveApiKey({ id: 'openai', name: 'OpenAI' }, 'bad');
     expect(modal.shown[0].title).toBe('Error');
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+});
+
+// Reported 2026-10-07: "Run a model on this machine" did nothing when clicked.
+describe('useAiProviderConnect — run a model on this machine', () => {
+  const LOCAL = { id: 'local', name: 'Local' };
+  const reply = (body) => ({ ok: true, json: async () => body });
+  const calls = () => global.fetch.mock.calls.map(([url, init]) => (init?.method || 'GET') + ' ' + url);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+    localStorage.setItem('token', 't');
+    window.electron = { openExternalUrl: vi.fn() };
+  });
+
+  it('LM Studio running with a model: uses it at once', async () => {
+    global.fetch.mockResolvedValue(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+    const store = fakeStore();
+    const { connect, onSelected, modal } = setup({ store });
+    await connect(LOCAL);
+    expect(calls()).toEqual(['GET http://local.test/api/local-models/status']);
+    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', 'Local');
+    expect(onSelected).toHaveBeenCalledOnce();
+    expect(modal.showModal).not.toHaveBeenCalled();
+  });
+
+  it('installed but stopped: starts LM Studio, then uses it', async () => {
+    global.fetch
+      .mockResolvedValueOnce(reply({ running: false, models: [], installed: true, canStart: true }))
+      .mockResolvedValueOnce(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+    const store = fakeStore();
+    const { connect, onSelected, modal } = setup({ store });
+    await connect(LOCAL);
+    expect(calls()).toEqual(['GET http://local.test/api/local-models/status', 'POST http://local.test/api/local-models/start']);
+    expect(modal.shown[0].title).toBe('Starting LM Studio');
+    expect(modal.confirm).toHaveBeenCalled();
+    expect(onSelected).toHaveBeenCalledOnce();
+  });
+
+  it('a failed start says why and selects nothing', async () => {
+    global.fetch
+      .mockResolvedValueOnce(reply({ running: false, models: [], installed: true, canStart: true }))
+      .mockResolvedValueOnce(reply({ running: false, models: [], installed: true, error: 'start_failed', detail: 'LM Studio is not set up' }));
+    const modal = fakeModal();
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    const done = connect(LOCAL);
+    await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+    expect(modal.shown[1].title).toBe('LM Studio did not start');
+    expect(modal.shown[1].message).toContain('LM Studio is not set up');
+    modal.confirm();
+    await done;
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('not installed: offers the download; "Not now" does nothing else', async () => {
+    global.fetch.mockResolvedValue(reply({ running: false, models: [], installed: false, downloadUrl: 'https://lmstudio.ai/download' }));
+    const modal = fakeModal({ answer: null });
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    await connect(LOCAL);
+    expect(modal.shown[0].title).toBe('Run AI on this computer');
+    expect(modal.shown[0].confirmText).toBe('Download LM Studio');
+    expect(window.electron.openExternalUrl).not.toHaveBeenCalled();
+    expect(onSelected).not.toHaveBeenCalled();
+  });
+
+  it('not installed: "Download" opens LM Studio\'s page and waits for it to appear', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch
+        .mockResolvedValueOnce(reply({ running: false, models: [], installed: false, downloadUrl: 'https://lmstudio.ai/download' }))
+        .mockResolvedValueOnce(reply({ running: false, models: [], installed: false }))
+        .mockResolvedValueOnce(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+      const modal = fakeModal();
+      const { connect, onSelected } = setup({ store: fakeStore(), modal });
+      const done = connect(LOCAL);
+      await vi.waitFor(() => expect(modal.shown.length).toBe(1));
+      modal.confirm(); // Download LM Studio
+      await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+      expect(window.electron.openExternalUrl).toHaveBeenCalledWith('https://lmstudio.ai/download');
+      expect(modal.shown[1].title).toBe('Waiting for LM Studio');
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(3000);
+      await done;
+      expect(onSelected).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('running but no model downloaded: says so instead of selecting an empty provider', async () => {
+    global.fetch.mockResolvedValue(reply({ running: true, models: [], installed: true }));
+    const modal = fakeModal({ answer: true });
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    await connect(LOCAL);
+    expect(modal.shown[0].title).toBe('Load a model in LM Studio');
     expect(onSelected).not.toHaveBeenCalled();
   });
 });

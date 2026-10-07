@@ -2263,6 +2263,31 @@ The account's cloud instances, passed through to `api.agnt.gg/tenants` with the 
 
 - **Authentication**: Required (owner or admin, or the member themselves)
 
+## Local Model Routes
+
+Base path: `/api/local-models`
+
+Behind "Run a model on this machine". AGNT's Local provider uses LM Studio's server on `127.0.0.1:1234`; these routes find LM Studio and start that server with its CLI (`lms server start`). Nothing is installed. A hosted instance never looks for or runs a CLI.
+
+### Get Local Model Status
+
+**GET** `/status`
+
+- **Authentication**: Required
+- **Description**: Whether LM Studio's server is running (with its models), whether LM Studio is installed, and whether AGNT can start it
+- **Response**:
+
+```json
+{ "running": false, "models": [], "installed": true, "canStart": true, "downloadUrl": "https://lmstudio.ai/download" }
+```
+
+### Start LM Studio
+
+**POST** `/start`
+
+- **Authentication**: Required
+- **Description**: Starts LM Studio's server if it is installed and stopped, then waits up to 30 seconds for it to answer. Returns the same shape as `/status`, plus `error` (`not_installed`, `start_failed` with `detail`, `start_timeout`, `not_available_on_hosted`) when it could not.
+
 ## AGNT Services Routes
 
 Base path: `/api/agnt-services`
