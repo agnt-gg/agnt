@@ -40,6 +40,7 @@ import pathManager from '../../utils/PathManager.js';
 import SecurityPolicyService from './SecurityPolicyService.js';
 import { resolveCredentialDecision, resolveViolationDecision } from './securityPolicy.js';
 import { buildSecurityAction } from './toolCapabilities.js';
+import { MEMBER_ISOLATION_RULE, memberRefusal } from './memberIsolation.js';
 
 // ── Durable telemetry ───────────────────────────────────────────────────────
 
@@ -219,6 +220,21 @@ export function selectWorkflowSecurityArgs(nodeType, authoredParams = {}, resolv
 }
 
 export async function checkAction({ toolName, args, userId, role, surface, workflowPolicy }) {
+  // Before the policy lookup and OUTSIDE its fail-open catch: this is not a
+  // pattern match that a policy may relax or a gate error may skip. A member
+  // of a shared instance never reaches the owner's code, files or database.
+  const refusal = memberRefusal(toolName, args, userId);
+  if (refusal) {
+    const violation = { rule: MEMBER_ISOLATION_RULE, severity: 'critical', category: 'isolation', decision: 'block', source: 'member-isolation', description: refusal };
+    appendLog({ type: 'check', surface, toolName, userId, role, action: 'blocked', violations: [{ rule: MEMBER_ISOLATION_RULE, severity: 'critical', category: 'isolation', decision: 'block', source: 'member-isolation' }] });
+    return {
+      allowed: false,
+      audited: false,
+      violations: [violation],
+      blockedRules: [MEMBER_ISOLATION_RULE],
+      policy: { mode: 'member-isolation', revision: 0, scope: 'instance', outputScanning: 'report', credentials: 'audit' },
+    };
+  }
   try {
     const { policy, revision, scope } = await SecurityPolicyService.getEffectivePolicy({ userId, workflowPolicy });
     // Declares what this tool can actually do and which arguments reach a
