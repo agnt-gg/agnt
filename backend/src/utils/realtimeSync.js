@@ -2,6 +2,7 @@
  * Real-time Sync Utility
  * Broadcasts database changes to all connected clients via Socket.IO
  */
+import { credentialUserId } from '../services/auth/tenantOwnership.js';
 
 // High-frequency streaming events fire per-token during chat responses.
 // Logging each one floods the console with hundreds of lines per message
@@ -35,12 +36,15 @@ export function broadcast(event, data) {
 export function broadcastToUser(userId, event, data) {
   if (global.io) {
     const room = `user:${userId}`;
+    // A team workspace's events (its workflows' status, outputs, errors) also reach the
+    // instance owner it acts for: nobody's socket ever joins the workspace's own room.
+    const actingFor = credentialUserId(userId);
+    const rooms = actingFor && actingFor !== userId ? [room, `user:${actingFor}`] : [room];
     if (!SILENT_BROADCAST_EVENTS.has(event)) {
-      const socketsInRoom = global.io.sockets.adapter.rooms.get(room);
-      const numClients = socketsInRoom ? socketsInRoom.size : 0;
-      console.log(`[Realtime] Broadcasting ${event} to room ${room} (${numClients} clients)`);
+      const numClients = rooms.reduce((sum, name) => sum + (global.io.sockets.adapter.rooms.get(name)?.size || 0), 0);
+      console.log(`[Realtime] Broadcasting ${event} to room ${rooms.join(' + ')} (${numClients} clients)`);
     }
-    global.io.to(room).emit(event, data);
+    global.io.to(rooms.length === 1 ? room : rooms).emit(event, data);
   } else {
     console.log(`[Realtime] Cannot broadcast - Socket.IO not initialized`);
   }
