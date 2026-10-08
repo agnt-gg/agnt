@@ -40,6 +40,50 @@ export function linkQrPayload(line, code) {
   return `SMSTO:${line}:${code}`;
 }
 
+/**
+ * The link code a phone was given, kept for as long as that code is valid.
+ * The service only ever stores a hash, so leaving Settings used to lose the
+ * code, and the only way back was asking for a new one, which kills the code
+ * the person may already have texted. Session storage: it survives navigation
+ * and reloads, not a restart, and every entry dies with its code.
+ */
+const LINK_CODES_KEY = 'agnt.textAnnie.linkCodes';
+const LINK_CODE = /^AGNT-[A-Z2-9]{6}$/;
+
+function liveCodes(entries, now) {
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return {};
+  return Object.fromEntries(Object.entries(entries).filter(([, entry]) =>
+    LINK_CODE.test(entry?.code || '') && Number.isFinite(entry?.expiresAt) && entry.expiresAt > now));
+}
+
+export function loadLinkCodes(storage = globalThis.sessionStorage, now = Date.now()) {
+  try {
+    return liveCodes(JSON.parse(storage?.getItem(LINK_CODES_KEY) || '{}'), now);
+  } catch {
+    return {}; // corrupt or unavailable storage: no remembered codes, never a crash
+  }
+}
+
+export function saveLinkCodes(codes, storage = globalThis.sessionStorage, now = Date.now()) {
+  try {
+    storage?.setItem(LINK_CODES_KEY, JSON.stringify(liveCodes(codes, now)));
+  } catch {
+    /* storage full or blocked: the code is still on screen for this visit */
+  }
+}
+
+/**
+ * The remembered code for a pending phone, only while it is still THE code:
+ * same issue (the service reports when the current code expires) and unexpired.
+ * A code replaced elsewhere, e.g. on mobile.agnt.gg, is never shown.
+ */
+export function currentLinkCode(codes, phone, now = Date.now()) {
+  const entry = codes?.[phone?.id];
+  if (phone?.state !== 'pending' || !entry || !LINK_CODE.test(entry.code || '')) return null;
+  if (entry.expiresAt !== phone.codeExpiresAt || entry.expiresAt <= now) return null;
+  return entry.code;
+}
+
 /** One sentence for any failure: the service's own message when it gave one. */
 export function explain(error) {
   const data = error?.response?.data;

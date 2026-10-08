@@ -33,7 +33,10 @@
           </small>
         </div>
         <div class="ta-phone-actions">
-          <button v-if="phone.state === 'pending'" class="ta-btn ta-btn-primary" :disabled="busy" @click="refreshCode(phone)">Finish linking</button>
+          <template v-if="phone.state === 'pending'">
+            <button v-if="codeFor(phone)" class="ta-btn ta-btn-primary" :disabled="busy" @click="startLinking(phone, codeFor(phone))">Show code</button>
+            <button v-else class="ta-btn ta-btn-primary" :disabled="busy" @click="requestNewCode(phone)">Get new code</button>
+          </template>
           <CustomSelect
             v-else
             class="ta-select"
@@ -63,7 +66,8 @@
           Or scan with that phone's camera: Messages opens with the code filled in.
           Just tap send.
           This updates by itself once your text arrives · {{ expiresIn }}
-          · <button class="ta-inline" type="button" @click="copy(linking.code)">{{ copied ? 'Copied' : 'Copy code' }}</button>
+          <template v-if="linkingExpired"> · <button class="ta-inline" type="button" :disabled="busy" @click="requestNewCode(linking.phone)">Get new code</button></template>
+          <template v-else> · <button class="ta-inline" type="button" @click="copy(linking.code)">{{ copied ? 'Copied' : 'Copy code' }}</button></template>
         </p>
       </div>
 
@@ -103,6 +107,7 @@ const busy = ref(false);
 const number = ref('');
 const route = ref('');
 const linking = ref(null); // { phone, code }
+const savedCodes = ref(textAnnie.loadLinkCodes()); // { [phoneId]: { code, expiresAt } }
 const copied = ref(false);
 const now = ref(Date.now());
 let poller = null;
@@ -144,10 +149,24 @@ const qrSvg = computed(() => {
     return ''; // never render a corrupt code; the number and code are on screen
   }
 });
+const linkingExpired = computed(() => !!linking.value && (linking.value.phone.codeExpiresAt || 0) <= now.value);
 const expiresIn = computed(() => {
   const left = (linking.value?.phone.codeExpiresAt || 0) - now.value;
-  return left > 0 ? `code expires in ${Math.ceil(left / 60000)} min` : 'code expired — Finish linking for a new one';
+  return left > 0 ? `code expires in ${Math.ceil(left / 60000)} min` : 'code expired';
 });
+
+/** The code this phone was shown, while it still works; otherwise null. */
+const codeFor = (phone) => textAnnie.currentLinkCode(savedCodes.value, phone, now.value);
+function rememberCode(phone, code) {
+  savedCodes.value = { ...savedCodes.value, [phone.id]: { code, expiresAt: phone.codeExpiresAt } };
+  textAnnie.saveLinkCodes(savedCodes.value);
+}
+function forgetCode(phoneId) {
+  if (!(phoneId in savedCodes.value)) return;
+  const { [phoneId]: _forgotten, ...rest } = savedCodes.value;
+  savedCodes.value = rest;
+  textAnnie.saveLinkCodes(rest);
+}
 
 async function load() {
   try {
@@ -156,6 +175,14 @@ async function load() {
     if (!route.value) route.value = thisInstance.value;
     const pending = linking.value && phones.value.find((p) => p.id === linking.value.phone.id);
     if (linking.value && (!pending || pending.state !== 'pending')) stopLinking();
+    for (const phoneId of Object.keys(savedCodes.value)) {
+      if (!phones.value.some((p) => p.id === phoneId && p.state === 'pending')) forgetCode(phoneId);
+    }
+    // Coming back to Settings mid-link shows the code you were given, as it was.
+    if (!linking.value) {
+      const resumable = phones.value.find((p) => codeFor(p));
+      if (resumable) startLinking(resumable, codeFor(resumable));
+    }
   } catch (e) {
     if (!state.value) loadError.value = textAnnie.explain(e);
   } finally {
@@ -164,6 +191,7 @@ async function load() {
 }
 
 function startLinking(phone, code) {
+  rememberCode(phone, code);
   linking.value = { phone, code };
   clearInterval(poller);
   poller = setInterval(load, 4000);
@@ -192,7 +220,11 @@ const onAdd = () => run(async () => {
   await load();
   if (!result.alreadyLinked) startLinking(result.phone, result.code);
 });
-const refreshCode = (phone) => run(async () => {
+// A new code replaces the old one at the service. Never do that silently while
+// the old one still works: the person may already have texted it.
+const requestNewCode = (phone) => run(async () => {
+  const stillValid = (phone.codeExpiresAt || 0) > Date.now();
+  if (stillValid && !window.confirm('Get a new code? The current code stops working. If you already texted it, wait instead: this page updates when it arrives.')) return;
   const result = await textAnnie.newCode(phone.id);
   startLinking(result.phone, result.code);
 });
@@ -203,6 +235,7 @@ const onRoute = (phone, value) => run(async () => {
 const onUnlink = (phone) => run(async () => {
   if (!window.confirm(`Unlink ${formatNumber(phone.number)}? Texts from it will stop reaching AGNT.`)) return;
   await textAnnie.removePhone(phone.id);
+  forgetCode(phone.id);
   if (linking.value?.phone.id === phone.id) stopLinking();
   await load();
 });
