@@ -82,8 +82,8 @@ const ALLOWED = new Map([
   ],
   [
     'tools/library/actions/generate-with-ai-llm.js',
-    'generateWithGoogleGateway and generateWithAnthropic remain. The main '
-    + 'OpenAI-like path (most of the catalog) and the Codex/managed paths now '
+    'generateWithGoogleGateway remains. The OpenAI-like path (most of the '
+    + 'catalog), the Anthropic/claude-code path and the Codex/managed paths '
     + 'route through the adapter.',
   ],
   // CustomOpenAIProviderService was listed here on the assumption that it

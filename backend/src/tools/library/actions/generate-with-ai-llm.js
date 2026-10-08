@@ -5,7 +5,6 @@ const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 import {currentTeamExecution} from '../../../services/authorization/TeamExecutionContext.js';
 import BaseAction from '../BaseAction.js';
-import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai/index.mjs';
 // @google/generative-ai is loaded by the one path that uses it (Gemini image
 // generation), not at boot. See backend/boot.importBudget.test.js.
@@ -19,6 +18,7 @@ import { runWithFallback } from '../../../services/orchestrator/ProviderFallback
 import { providerHealth } from '../../../services/ai/providerHealth.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
+import { usageTotals } from '../../../services/orchestrator/conversationCompaction.js';
 import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
 import {
   generateImageSubscriptionFirst,
@@ -63,6 +63,42 @@ const BASE_URLS = buildBaseURLs();
  */
 function providerDefaultModel(providerKey) {
   return resolveDefaultModel(providerKey);
+}
+
+/**
+ * A provider's usage, counted the way the chat path counts it.
+ *
+ * Anthropic reports `input_tokens` as the UNCACHED remainder only, with cache
+ * reads and writes in their own fields; OpenAI-shaped usage reports the full
+ * total with cached tokens as a subset. Reading `input_tokens` alone recorded
+ * an ~80k-token claude-code prompt as 4. usageTotals is the one rule for both
+ * shapes and is what chat uses, so a node cannot count differently from a turn.
+ */
+function countedUsage(usage) {
+  const totals = usageTotals(usage);
+  return {
+    tokenCount: totals.totalTokens,
+    inputTokens: totals.inputTokens,
+    outputTokens: totals.outputTokens,
+    cacheReadTokens: totals.cacheReadTokens,
+    cacheCreation5mTokens: totals.cacheCreation5mTokens,
+    cacheCreation1hTokens: totals.cacheCreation1hTokens,
+  };
+}
+
+/**
+ * The usage the ledger prices: the TRUE input total plus its cache breakdown.
+ * getModelCost derives the uncached part by subtraction, so the breakdown must
+ * travel with the total — a total alone bills every cached token at full rate.
+ */
+function ledgerUsage(response) {
+  return {
+    inputTokens: response?.inputTokens || 0,
+    outputTokens: response?.outputTokens || 0,
+    cacheReadTokens: response?.cacheReadTokens || 0,
+    cacheCreation5mTokens: response?.cacheCreation5mTokens || 0,
+    cacheCreation1hTokens: response?.cacheCreation1hTokens || 0,
+  };
 }
 
 /** The provider's current default IMAGE model, per the registry. */
@@ -415,7 +451,7 @@ class GenerateWithAiLlm extends BaseAction {
               originId: workflowEngine?.currentExecutionId || null,
               provider: tier.provider,
               model: tierParams.model || response?.model || 'unknown',
-              usage: { inputTokens: response?.inputTokens || 0, outputTokens: response?.outputTokens || 0 },
+              usage: ledgerUsage(response),
               durationMs: Date.now() - startedAt,
               status: failure ? 'error' : 'ok',
               error: failure ? String(failure.message || failure).slice(0, 500) : null,
@@ -537,7 +573,7 @@ class GenerateWithAiLlm extends BaseAction {
       //
       // Deliberately ONE call site rather than one per provider. Every branch
       // of handleTextGeneration/handleVision already normalises its provider's
-      // usage into { inputTokens, outputTokens } and funnels through here, so
+      // usage into ledgerUsage()'s shape and funnels through here, so
       // pricing at the funnel cannot be forgotten when a ninth provider is
       // added — which is precisely how the workflow path came to capture
       // tokens for years without ever pricing them.
@@ -549,10 +585,7 @@ class GenerateWithAiLlm extends BaseAction {
         // served by the ChatGPT subscription is an openai-codex call.
         provider: response?.servedProvider || normalizedProvider,
         model: response?.servedModel || params.model || response?.model || 'unknown',
-        usage: {
-          inputTokens: response?.inputTokens || 0,
-          outputTokens: response?.outputTokens || 0,
-        },
+        usage: ledgerUsage(response),
         durationMs: Date.now() - startedAt,
       });
 
@@ -635,8 +668,7 @@ class GenerateWithAiLlm extends BaseAction {
     return {
       generatedText: response.generatedText,
       tokenCount: response.tokenCount,
-      inputTokens: response.inputTokens || 0,
-      outputTokens: response.outputTokens || 0,
+      ...ledgerUsage(response),
       error: null,
     };
   }
@@ -657,8 +689,7 @@ class GenerateWithAiLlm extends BaseAction {
     return {
       generatedText: response.generatedText,
       tokenCount: response.tokenCount,
-      inputTokens: response.inputTokens || 0,
-      outputTokens: response.outputTokens || 0,
+      ...ledgerUsage(response),
       error: null,
     };
   }
@@ -817,59 +848,21 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithAnthropic(params) {
+    // claude-code and anthropic — the only providers PROVIDER_ROUTES sends
+    // here — use the SAME createLlmClient + createLlmAdapter + adapter.call()
+    // path the orchestrator chat uses. The adapter handles the billing header
+    // block, cache_control, model-specific max_tokens, and retries.
     const provider = params.provider.toLowerCase();
+    const client = await createLlmClient(provider, params.userId);
+    const model = params.model || providerDefaultModel(provider);
+    if (!model) throw new Error(`No model could be resolved for provider: ${provider}`);
+    const adapter = await createLlmAdapter(provider, client, model);
 
-    // For claude-code (and regular anthropic), delegate to the SAME
-    // createLlmClient + createLlmAdapter + adapter.call() path the orchestrator
-    // chat uses. The adapter handles the billing header block, cache_control,
-    // model-specific max_tokens, and retries — no duplication.
-    if (provider === 'claude-code' || provider === 'anthropic') {
-      const client = await createLlmClient(provider, params.userId);
-      const model = params.model || providerDefaultModel(provider);
-      if (!model) throw new Error(`No model could be resolved for provider: ${provider}`);
-      const adapter = await createLlmAdapter(provider, client, model);
-
-      // Build user message content (text + optional image) in Anthropic format.
-      const userContent = [{ type: 'text', text: params.prompt }];
-      const imageData = this.processImageData(params);
-      if (imageData) {
-        userContent.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: imageData.mimeType,
-            data: imageData.base64Data,
-          },
-        });
-      }
-
-      const result = await adapter.call([{ role: 'user', content: userContent }], []);
-
-      // Extract text from Anthropic content blocks
-      const responseContent = result?.responseMessage?.content;
-      const textBlock = Array.isArray(responseContent)
-        ? responseContent.find((b) => b.type === 'text')
-        : null;
-      const generatedText = textBlock?.text || '';
-      const usage = result?.usage || {};
-
-      return {
-        generatedText,
-        tokenCount: (usage.input_tokens || 0) + (usage.output_tokens || 0),
-        inputTokens: usage.input_tokens || 0,
-        outputTokens: usage.output_tokens || 0,
-      };
-    }
-
-    // Fallback: any other anthropic-like provider routes through a direct SDK call.
-    const anthropic = new Anthropic({ apiKey: params.apiKey });
-    const messages = [
-      { role: 'user', content: [{ type: 'text', text: params.prompt }] },
-    ];
-
+    // Build user message content (text + optional image) in Anthropic format.
+    const userContent = [{ type: 'text', text: params.prompt }];
     const imageData = this.processImageData(params);
     if (imageData) {
-      messages[0].content.push({
+      userContent.push({
         type: 'image',
         source: {
           type: 'base64',
@@ -879,21 +872,15 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
-    const anthropicModel = params.model || providerDefaultModel('anthropic');
-    if (!anthropicModel) throw new Error('No model could be resolved for provider: anthropic');
-    const response = await anthropic.messages.create({
-      model: anthropicModel,
-      max_tokens: Number(params.maxTokens) || resolveMaxOutputTokens('anthropic', anthropicModel),
-      temperature: Number(params.temperature) || 0,
-      messages,
-    });
+    const result = await adapter.call([{ role: 'user', content: userContent }], []);
 
-    return {
-      generatedText: response.content[0].text,
-      tokenCount: (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0),
-      inputTokens: response.usage.input_tokens || 0,
-      outputTokens: response.usage.output_tokens || 0,
-    };
+    // Extract text from Anthropic content blocks
+    const responseContent = result?.responseMessage?.content;
+    const textBlock = Array.isArray(responseContent)
+      ? responseContent.find((b) => b.type === 'text')
+      : null;
+
+    return { generatedText: textBlock?.text || '', ...countedUsage(result?.usage) };
   }
 
   async generateWithCodex(params) {
@@ -934,14 +921,7 @@ class GenerateWithAiLlm extends BaseAction {
         .join('');
     }
 
-    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
-    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
-    return {
-      generatedText,
-      tokenCount: inputTokens + outputTokens,
-      inputTokens,
-      outputTokens,
-    };
+    return { generatedText, ...countedUsage(usage) };
   }
 
   /**
@@ -986,14 +966,7 @@ class GenerateWithAiLlm extends BaseAction {
         .join('');
     }
 
-    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
-    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
-    return {
-      generatedText,
-      tokenCount: inputTokens + outputTokens,
-      inputTokens,
-      outputTokens,
-    };
+    return { generatedText, ...countedUsage(usage) };
   }
 
   async generateWithKimiCode(params) {
@@ -1122,14 +1095,12 @@ class GenerateWithAiLlm extends BaseAction {
         .join('');
     }
 
-    const inputTokens = usage?.prompt_tokens || usage?.input_tokens || 0;
-    const outputTokens = usage?.completion_tokens || usage?.output_tokens || 0;
-
+    const counted = countedUsage(usage);
     return {
       generatedText: content,
-      tokenCount: usage?.total_tokens || (inputTokens + outputTokens) || null,
-      inputTokens,
-      outputTokens,
+      ...counted,
+      // Unchanged: the provider's own total wins when it reports one.
+      tokenCount: usage?.total_tokens || counted.tokenCount || null,
     };
   }
 
