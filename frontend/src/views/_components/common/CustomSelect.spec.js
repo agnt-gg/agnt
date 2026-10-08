@@ -215,6 +215,66 @@ describe('CustomSelect', () => {
     });
   });
 
+  // An AI provider with no account connected: the row used to be a dead
+  // `disabled` entry. It now opens the connect flow instead.
+  describe('connect options', () => {
+    const providers = [
+      { label: 'OpenAI', value: 'OpenAI' },
+      { label: 'Cursor', value: 'Cursor', connect: true },
+    ];
+
+    const openAndClickRow = async (wrapper, index) => {
+      await wrapper.find('.selected').trigger('click');
+      await wrapper.vm.$nextTick();
+      const row = document.querySelectorAll('.option')[index];
+      row.dispatchEvent(new Event('click'));
+      await wrapper.vm.$nextTick();
+      return row;
+    };
+
+    it('asks to connect instead of selecting, and keeps the current choice on screen', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: providers, modelValue: 'OpenAI' }, attachTo: document.body });
+      await openAndClickRow(wrapper, 1);
+
+      expect(wrapper.emitted('connect-option')).toHaveLength(1);
+      expect(wrapper.emitted('connect-option')[0][0]).toMatchObject({ value: 'Cursor' });
+      expect(wrapper.emitted('option-selected')).toBeUndefined();
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+      expect(wrapper.find('.selected').text()).toBe('OpenAI');
+      wrapper.unmount();
+    });
+
+    it('renders an actionable row with a Connect pill, not a greyed-out one', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: providers }, attachTo: document.body });
+      await wrapper.find('.selected').trigger('click');
+      await wrapper.vm.$nextTick();
+      const row = document.querySelectorAll('.option')[1];
+
+      expect(row.querySelector('.connect-pill').textContent.trim()).toBe('Connect');
+      expect(row.classList.contains('connect')).toBe(true);
+      expect(row.classList.contains('disabled')).toBe(false);
+      expect(row.getAttribute('aria-disabled')).toBeNull();
+      wrapper.unmount();
+    });
+
+    it('a connected row still selects normally', async () => {
+      const wrapper = mount(CustomSelect, { props: { options: providers, modelValue: 'Cursor' }, attachTo: document.body });
+      await openAndClickRow(wrapper, 0);
+
+      expect(wrapper.emitted('update:modelValue')[0]).toEqual(['OpenAI']);
+      expect(wrapper.emitted('connect-option')).toBeUndefined();
+      wrapper.unmount();
+    });
+
+    it('does nothing while the whole select is disabled', () => {
+      const wrapper = mount(CustomSelect, { props: { options: providers, disabled: true } });
+      wrapper.vm.selectOption(providers[1]);
+
+      expect(wrapper.emitted('connect-option')).toBeUndefined();
+      wrapper.unmount();
+    });
+  });
+
   describe('long labels', () => {
     const long = [{ label: 'An extremely long option label that cannot fit an 80px control', value: 'x' }];
 

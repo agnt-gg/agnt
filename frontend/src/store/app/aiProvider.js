@@ -532,6 +532,27 @@ export function providerStoreName(identifier) {
   return BUILT_IN_PROVIDERS.find((p) => p.key === key)?.displayName || identifier;
 }
 
+/**
+ * Whether a provider picker should offer "Connect" for this provider rather
+ * than letting it be picked.
+ *
+ * One answer for every picker. Each used to compare for itself, and the copy
+ * that lower-cased the store name instead of resolving it ("Cursor" ->
+ * 'cursor', but the connection is 'cursor-cli'; "Z.AI" -> 'z.ai', not 'zai')
+ * called those providers unconnected while they were connected.
+ *
+ * Local has no account to connect; whether a local server is running is a
+ * separate check the pickers already make.
+ *
+ * @param {string} provider       store name or key ('Cursor', 'cursor-cli')
+ * @param {string[]} connectedIds appAuth connectedApps
+ */
+export function providerNeedsConnecting(provider, connectedIds) {
+  const key = resolveProviderKey(String(provider || ''));
+  if (!key || key === 'local') return false;
+  return !(connectedIds || []).some((id) => String(id).toLowerCase() === key);
+}
+
 export const AI_PROVIDERS_WITH_API = BUILT_IN_PROVIDERS.filter((p) => p.key !== 'local').map((p) => p.key);
 
 // Mapping of provider display names to their fetch action names (auto-generated)

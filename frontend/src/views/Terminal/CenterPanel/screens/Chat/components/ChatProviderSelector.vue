@@ -61,6 +61,7 @@
             :zIndex="10001"
             maxHeight="156px"
             @option-selected="handleProviderSelected"
+            @connect-option="connectFromPicker"
           />
         </div>
 
@@ -184,9 +185,10 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey, providerNeedsConnecting } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import { isLocalReady } from '@/services/localModelsService.js';
+import { useProviderPickerConnect } from '@/composables/useProviderPickerConnect.js';
 import {
   getChannelConfig,
   setChannelProvider,
@@ -346,7 +348,7 @@ export default {
         return {
           label: PROVIDER_DISPLAY_NAMES[provider] || provider,
           value: provider,
-          disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(key),
+          connect: providerNeedsConnecting(provider, connectedProviders.value),
         };
       });
 
@@ -403,6 +405,14 @@ export default {
       store.dispatch('aiProvider/setProvider', { provider: option.value, source: 'chat-picker' });
       if (props.channelKey) setChannelProvider(props.channelKey, option.value);
     };
+
+    // An unconnected provider was clicked: connect it, then pick it through
+    // handleProviderSelected so it lands in this picker's scope (this
+    // conversation, this channel, or the global default).
+    const { connectFromPicker } = useProviderPickerConnect(simpleModal, {
+      select: handleProviderSelected,
+      currentSelection: () => selectedProvider.value,
+    });
 
     const handleModelSelected = (option) => {
       if (option.disabled) return;
@@ -590,8 +600,11 @@ export default {
       // Don't close if clicking inside the selector
       if (selectorRef.value.contains(event.target)) return;
 
-      // Don't close if clicking inside the dialog (which is teleported to body)
-      const dialogElement = event.target.closest('.dialog-overlay');
+      // Don't close if clicking inside a dialog (teleported to body): the
+      // custom-provider dialog, or the SimpleModal a connect flow prompts in.
+      // Every parent mounts this picker with v-if, so closing it mid-sign-in
+      // would unmount that modal and drop the flow.
+      const dialogElement = event.target.closest('.dialog-overlay, .modal-overlay');
       if (dialogElement) return;
 
       // Close if clicking outside both the selector and dialog
@@ -600,6 +613,8 @@ export default {
 
     // Handle escape key
     const handleEscape = (event) => {
+      // Escape inside an open modal is that modal's cancel, not ours.
+      if (event.defaultPrevented || simpleModal.value?.isOpen) return;
       if (event.key === 'Escape' && props.isOpen) {
         closeDropdown();
       }
@@ -760,6 +775,7 @@ export default {
       reasoningStatusText,
       isProviderConnected,
       handleProviderSelected,
+      connectFromPicker,
       handleModelSelected,
       handleSearchSelected,
       resetConversationAi,

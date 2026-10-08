@@ -20,7 +20,7 @@
           v-for="(option, index) in options"
           :key="index"
           class="option"
-          :class="[{ highlighted: index === selectedIndex }, { selected: isCurrent(option) }, { disabled: option.disabled || option.locked }, { locked: option.locked }, option.class]"
+          :class="[{ highlighted: index === selectedIndex }, { selected: isCurrent(option) }, { disabled: option.disabled || option.locked }, { locked: option.locked }, { connect: option.connect }, option.class]"
           :aria-disabled="option.disabled || option.locked ? 'true' : undefined"
           tabindex="0"
           role="option"
@@ -28,9 +28,10 @@
           @click="selectOption(option)"
           @keydown.enter="selectOption(option)"
         >
-          <div class="option-inner" v-tooltip="option.locked ? option.lockedHint || 'Upgrade needed' : option.label">
+          <div class="option-inner" v-tooltip="option.locked ? option.lockedHint || 'Upgrade needed' : option.connect ? `Connect ${option.label}` : option.label">
             {{ option.label }}
             <span v-if="option.locked" class="locked-pill"><i class="fas fa-lock"></i> Upgrade</span>
+            <span v-else-if="option.connect" class="locked-pill connect-pill"><i class="fas fa-plug"></i> Connect</span>
             <span v-else-if="option.disabled" class="not-connected"></span>
           </div>
         </div>
@@ -132,7 +133,10 @@ export default {
   // clicked. It is never selected; the consumer decides what to show (usually
   // the upgrade modal). Locked options stay VISIBLE so the upgrade that
   // unlocks them is discoverable.
-  emits: ['option-selected', 'update:modelValue', 'locked-option'],
+  // 'connect-option': the same contract for an option that needs an account
+  // connected first (an AI provider with no key yet). Never selected, so a
+  // sign-in the user abandons leaves the previous choice on screen.
+  emits: ['option-selected', 'update:modelValue', 'locked-option', 'connect-option'],
   methods: {
     isCurrent(option) {
       return !!this.currentOption && this.currentOption.value === option.value;
@@ -348,6 +352,11 @@ export default {
     selectOption(option) {
       if (option.locked && !this.disabled) {
         this.$emit('locked-option', option);
+        this.toggleDropdown(false);
+        return;
+      }
+      if (option.connect && !this.disabled) {
+        this.$emit('connect-option', option);
         this.toggleDropdown(false);
         return;
       }
@@ -584,15 +593,18 @@ select.custom-select {
   cursor: default;
 }
 
-/* Locked by plan: clickable (it opens the upgrade), so a pointer, and the
-   pill stays readable while the label is dimmed. */
-.option.locked {
+/* Locked by plan (opens the upgrade) or not connected yet (opens the
+   connect flow): clickable, so a pointer, and the pill stays readable while
+   the label is dimmed. */
+.option.locked,
+.option.connect {
   opacity: 1;
   cursor: pointer;
   color: var(--color-text-muted, rgba(127, 127, 127, 0.9));
 }
 
-.option.locked .option-inner {
+.option.locked .option-inner,
+.option.connect .option-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;

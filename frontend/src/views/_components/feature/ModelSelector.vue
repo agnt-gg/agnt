@@ -2,24 +2,34 @@
   <div id="model-selector" class="field-group model-selector">
     <div class="select-wrapper">
       <p class="label">Provider:</p>
-      <CustomSelect :options="providerOptions" placeholder="Select Provider" @option-selected="updateSelectorProvider" ref="providerSelect" />
+      <CustomSelect
+        :options="providerOptions"
+        placeholder="Select Provider"
+        @option-selected="updateSelectorProvider"
+        @connect-option="connectFromPicker"
+        ref="providerSelect"
+      />
     </div>
     <div class="select-wrapper">
       <p class="label">Model:</p>
       <CustomSelect :options="modelOptions" placeholder="Select Model" @option-selected="updateSelectorModel" ref="modelSelect" />
     </div>
+    <SimpleModal ref="simpleModal" />
   </div>
 </template>
 
 <script>
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useStore } from 'vuex';
 import { computed, onMounted, ref, watch } from 'vue';
-import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
+import { PROVIDER_DISPLAY_NAMES, providerNeedsConnecting } from '@/store/app/aiProvider.js';
+import { useProviderPickerConnect } from '@/composables/useProviderPickerConnect.js';
 
 export default {
   components: {
     CustomSelect,
+    SimpleModal,
   },
   /**
    * initialProvider/initialModel are only used to initialize the UI for the Model Selector.
@@ -45,6 +55,7 @@ export default {
     const localModel = ref(props.initialModel);
     const providerSelect = ref(null);
     const modelSelect = ref(null);
+    const simpleModal = ref(null);
 
     const connectedProviders = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps));
     const providers = computed(() => store.getters['aiProvider/filteredProviders']);
@@ -58,9 +69,9 @@ export default {
 
     const providerOptions = computed(() =>
       providers.value.map((p) => ({
-        label: `${PROVIDER_DISPLAY_NAMES[p] || p}${connectedProviders.value.includes(p.toLowerCase()) ? '' : ' (not connected)'}`,
+        label: PROVIDER_DISPLAY_NAMES[p] || p,
         value: p,
-        disabled: !connectedProviders.value.includes(p.toLowerCase()),
+        connect: providerNeedsConnecting(p, connectedProviders.value),
       }))
     );
 
@@ -115,6 +126,13 @@ export default {
         localModel.value = newModel;
       }
     };
+
+    // Connecting picks the provider HERE only, like any other pick in this
+    // selector; the global default is never touched.
+    const { connectFromPicker } = useProviderPickerConnect(simpleModal, {
+      select: updateSelectorProvider,
+      currentSelection: () => localProvider.value,
+    });
 
     onMounted(async () => {
       // Use existing connected apps data from initializeStore (deduplicated if re-fetched)
@@ -244,8 +262,10 @@ export default {
       modelOptions,
       updateSelectorProvider,
       updateSelectorModel,
+      connectFromPicker,
       providerSelect,
       modelSelect,
+      simpleModal,
       localProvider,
       localModel,
     };

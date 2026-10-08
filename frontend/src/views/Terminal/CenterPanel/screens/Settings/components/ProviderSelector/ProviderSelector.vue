@@ -58,6 +58,7 @@
             :options="providerOptions"
             :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
             @option-selected="handleProviderSelected"
+            @connect-option="connectFromPicker"
           />
         </div>
 
@@ -183,8 +184,9 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from './CustomProviderDialog.vue';
-import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, providerNeedsConnecting } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
+import { useProviderPickerConnect } from '@/composables/useProviderPickerConnect.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
@@ -268,9 +270,8 @@ export default {
       const builtInOptions = providers.value.map((provider) => ({
         label: PROVIDER_DISPLAY_NAMES[provider] || provider,
         value: provider,
-        // Local provider is always enabled (user can select it anytime)
-        // Other providers are enabled only if they're in the connected apps list
-        disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(resolveProviderKey(provider)),
+        // Unconnected providers stay clickable and open their connect flow.
+        connect: providerNeedsConnecting(provider, connectedProviders.value),
       }));
 
       // Custom providers (always enabled)
@@ -302,6 +303,11 @@ export default {
         store.dispatch('aiProvider/setProvider', { provider: option.value, source: 'settings-picker' });
       }
     };
+
+    const { connectFromPicker } = useProviderPickerConnect(simpleModal, {
+      select: handleProviderSelected,
+      currentSelection: () => store.state.aiProvider.selectedProvider,
+    });
 
     // Handle model selection
     const handleModelSelected = (option) => {
@@ -604,6 +610,7 @@ export default {
       providerOptions,
       modelOptions,
       handleProviderSelected,
+      connectFromPicker,
       handleModelSelected,
       providerSelect,
       modelSelect,

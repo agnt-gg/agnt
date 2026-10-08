@@ -51,7 +51,7 @@ function mountWith({ selectedProvider, connectedApps }) {
         namespaced: true,
         state: () => ({ connectedApps }),
         mutations: { SET_CONNECTED_APPS: (state, apps) => { state.connectedApps = apps; } },
-        actions: { fetchConnectedApps: vi.fn() },
+        actions: { fetchConnectedApps: vi.fn(), fetchAllProviders: vi.fn() },
       },
     },
   });
