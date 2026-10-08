@@ -43,7 +43,12 @@
 
               <!-- MODEL SELECTOR (AI tools only) -->
               <div class="form-field half-width" v-if="formData.toolType === 'AI'">
-                <ModelSelector v-model:provider="formData.provider" v-model:model="formData.model" />
+                <ModelSelector
+                  :provider="formData.provider"
+                  :model="formData.model"
+                  @update:provider="updateFormData('provider', $event)"
+                  @update:model="updateFormData('model', $event)"
+                />
               </div>
             </div>
           </div>

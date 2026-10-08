@@ -4,15 +4,15 @@
       <p class="label">Provider:</p>
       <CustomSelect
         :options="providerOptions"
+        :model-value="provider"
         placeholder="Select Provider"
         @option-selected="updateSelectorProvider"
         @connect-option="connectFromPicker"
-        ref="providerSelect"
       />
     </div>
     <div class="select-wrapper">
       <p class="label">Model:</p>
-      <CustomSelect :options="modelOptions" placeholder="Select Model" @option-selected="updateSelectorModel" ref="modelSelect" />
+      <CustomSelect :options="modelOptions" :model-value="model" placeholder="Select Model" @option-selected="updateSelectorModel" />
     </div>
     <SimpleModal ref="simpleModal" />
   </div>
@@ -22,7 +22,7 @@
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useStore } from 'vuex';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { PROVIDER_DISPLAY_NAMES, providerNeedsConnecting } from '@/store/app/aiProvider.js';
 import { useProviderPickerConnect } from '@/composables/useProviderPickerConnect.js';
 
@@ -31,231 +31,95 @@ export default {
     CustomSelect,
     SimpleModal,
   },
-  /**
-   * initialProvider/initialModel are only used to initialize the UI for the Model Selector.
-   * They have NO impact on the global provider/model stored in localStorage.
-   */
   props: {
-    initialProvider: {
+    provider: {
       type: String,
       default: '',
     },
-    initialModel: {
+    model: {
       type: String,
       default: '',
     },
   },
-  // We removed any event emission that could alter the global state.
-  emits: [],
-  setup(props) {
+  emits: ['update:provider', 'update:model'],
+  setup(props, { emit }) {
     const store = useStore();
-
-    // Local UI variables for the Model Selector.
-    const localProvider = ref(props.initialProvider);
-    const localModel = ref(props.initialModel);
-    const providerSelect = ref(null);
-    const modelSelect = ref(null);
     const simpleModal = ref(null);
+    let latestSync = 0;
 
-    const connectedProviders = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps));
-    const providers = computed(() => store.getters['aiProvider/filteredProviders']);
-    const modelsByProvider = computed(() => store.state.aiProvider.allModels);
+    const connectedProviders = computed(() => store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps ?? []);
+    const providers = computed(() => store.getters['aiProvider/filteredProviders'] || []);
 
-    // Get the global provider from the aiProvider module.
-    const globalProvider = computed(() => store.state.aiProvider.selectedProvider);
+    const modelIdsFor = (provider) =>
+      (store.state.aiProvider.allModels?.[provider] || [])
+        .map((entry) => (typeof entry === 'string' ? entry : entry?.id || entry?.name))
+        .filter(Boolean);
 
-    // The list of available models is based solely on the component’s own provider selection.
-    const availableModels = computed(() => modelsByProvider.value[localProvider.value] || []);
-
-    const providerOptions = computed(() =>
-      providers.value.map((p) => ({
+    const providerOptions = computed(() => {
+      const list = props.provider && !providers.value.includes(props.provider) ? [props.provider, ...providers.value] : providers.value;
+      return list.map((p) => ({
         label: PROVIDER_DISPLAY_NAMES[p] || p,
         value: p,
         connect: providerNeedsConnecting(p, connectedProviders.value),
-      }))
-    );
+      }));
+    });
 
-    const modelOptions = computed(() => availableModels.value.map((m) => ({ label: m, value: m })));
+    const modelOptions = computed(() => {
+      const ids = modelIdsFor(props.provider);
+      const list = props.model && !ids.includes(props.model) ? [props.model, ...ids] : ids;
+      return list.map((m) => ({ label: m, value: m }));
+    });
 
-    /**
-     * When the user selects a provider from the dropdown,
-     * only update the local provider and then update the local model.
-     * (No event is emitted so the global provider is not affected.)
-     */
-    const updateSelectorProvider = async (option) => {
-      const newProvider = option.value;
-      if (newProvider !== localProvider.value) {
-        localProvider.value = newProvider;
-        if (providerSelect.value?.setSelectedOption) {
-          providerSelect.value.setSelectedOption({
-            label: newProvider,
-            value: newProvider,
-          });
-        }
+    const isUsable = (provider) => Boolean(provider) && !providerNeedsConnecting(provider, connectedProviders.value);
 
-        // Fetch models for the new provider
-        await store.dispatch('aiProvider/fetchProviderModels', { provider: newProvider });
+    const defaultProvider = () => {
+      const globalProvider = store.state.aiProvider.selectedProvider;
+      if (providers.value.includes(globalProvider) && isUsable(globalProvider)) return globalProvider;
+      return providers.value.find(isUsable) || '';
+    };
 
-        updateSelectorModels(newProvider);
+    const loadModels = async (provider) => {
+      try {
+        await store.dispatch('aiProvider/fetchProviderModels', { provider });
+      } catch (error) {
+        console.error(`[ModelSelector] could not load models for ${provider}:`, error);
       }
     };
 
-    /**
-     * Update the model dropdown based on the given provider.
-     * Only update local state (without emitting any update).
-     */
-    const updateSelectorModels = (newProvider) => {
-      const newModels = modelsByProvider.value[newProvider] || [];
-      const newModel = newModels[0] || '';
-      localModel.value = newModel;
-      if (modelSelect.value?.setSelectedOption) {
-        modelSelect.value.setSelectedOption({
-          label: newModel,
-          value: newModel,
-        });
+    const syncToProvider = async (provider) => {
+      const sync = ++latestSync;
+      if (!provider) {
+        if (!connectedProviders.value.length) await store.dispatch('appAuth/fetchConnectedApps');
+        if (sync !== latestSync) return;
+        const fallback = defaultProvider();
+        if (fallback) emit('update:provider', fallback);
+        return;
       }
+      await loadModels(provider);
+      if (sync !== latestSync || props.model) return;
+      const firstModel = modelIdsFor(provider)[0];
+      if (firstModel) emit('update:model', firstModel);
     };
 
-    /**
-     * When the user picks a model manually, update only the local model.
-     * (No update event is emitted so the global selectedModel remains untouched.)
-     */
+    watch(() => props.provider, syncToProvider, { immediate: true });
+
+    const updateSelectorProvider = (option) => {
+      const provider = option?.value;
+      if (!provider || provider === props.provider) return;
+      emit('update:model', '');
+      emit('update:provider', provider);
+    };
+
     const updateSelectorModel = (option) => {
-      const newModel = option.value;
-      if (newModel !== localModel.value) {
-        localModel.value = newModel;
-      }
+      if (option?.value && option.value !== props.model) emit('update:model', option.value);
     };
 
     // Connecting picks the provider HERE only, like any other pick in this
     // selector; the global default is never touched.
     const { connectFromPicker } = useProviderPickerConnect(simpleModal, {
       select: updateSelectorProvider,
-      currentSelection: () => localProvider.value,
+      currentSelection: () => props.provider,
     });
-
-    onMounted(async () => {
-      // Use existing connected apps data from initializeStore (deduplicated if re-fetched)
-      if (!store.getters['appAuth/connectedApps']?.length) {
-        await store.dispatch('appAuth/fetchConnectedApps');
-      }
-
-      {
-        // If many providers are connected and the global provider is among them,
-        // default the Model Selector to display the same provider as the global one.
-        if (connectedProviders.value.length > 1 && connectedProviders.value.includes(globalProvider.value.toLowerCase())) {
-          if (!props.initialProvider) {
-            localProvider.value = globalProvider.value;
-          }
-          if (providerSelect.value?.setSelectedOption) {
-            providerSelect.value.setSelectedOption({
-              label: globalProvider.value,
-              value: globalProvider.value,
-            });
-          }
-
-          // Ensure models are fetched
-          await store.dispatch('aiProvider/fetchProviderModels', { provider: globalProvider.value });
-
-          const defaultModel =
-            modelsByProvider.value[globalProvider.value] && modelsByProvider.value[globalProvider.value][0]
-              ? modelsByProvider.value[globalProvider.value][0]
-              : '';
-          if (!props.initialModel && defaultModel) {
-            localModel.value = defaultModel;
-            if (modelSelect.value?.setSelectedOption) {
-              modelSelect.value.setSelectedOption({
-                label: defaultModel,
-                value: defaultModel,
-              });
-            }
-          } else if (props.initialProvider) {
-            updateSelectorModels(props.initialProvider);
-          }
-        }
-        // Otherwise, if only one provider is connected, use that.
-        else if (connectedProviders.value.length > 0) {
-          const firstConnectedProvider = connectedProviders.value[0];
-          const providerConfig = providers.value.find((p) => p.toLowerCase() === firstConnectedProvider);
-          if (providerConfig) {
-            if (!props.initialProvider) {
-              localProvider.value = providerConfig;
-            }
-            if (providerSelect.value?.setSelectedOption) {
-              providerSelect.value.setSelectedOption({
-                label: providerConfig,
-                value: providerConfig,
-              });
-            }
-
-            // Ensure models are fetched
-            await store.dispatch('aiProvider/fetchProviderModels', { provider: providerConfig });
-
-            const defaultModel =
-              modelsByProvider.value[providerConfig] && modelsByProvider.value[providerConfig][0] ? modelsByProvider.value[providerConfig][0] : '';
-            if (!props.initialModel && defaultModel) {
-              localModel.value = defaultModel;
-              if (modelSelect.value?.setSelectedOption) {
-                modelSelect.value.setSelectedOption({
-                  label: defaultModel,
-                  value: defaultModel,
-                });
-              }
-            } else if (props.initialProvider) {
-              updateSelectorModels(props.initialProvider);
-            }
-          }
-        }
-        // Fallback in the unlikely case that there are no connected providers.
-        else if (!props.initialProvider && providers.value.length > 0) {
-          localProvider.value = providers.value[0];
-          if (providerSelect.value?.setSelectedOption) {
-            providerSelect.value.setSelectedOption({
-              label: providers.value[0],
-              value: providers.value[0],
-            });
-          }
-
-          // Ensure models are fetched
-          await store.dispatch('aiProvider/fetchProviderModels', { provider: providers.value[0] });
-
-          const defaultModel =
-            modelsByProvider.value[providers.value[0]] && modelsByProvider.value[providers.value[0]][0]
-              ? modelsByProvider.value[providers.value[0]][0]
-              : '';
-          if (!props.initialModel && defaultModel) {
-            localModel.value = defaultModel;
-            if (modelSelect.value?.setSelectedOption) {
-              modelSelect.value.setSelectedOption({
-                label: defaultModel,
-                value: defaultModel,
-              });
-            }
-          }
-        } else if (props.initialProvider) {
-          // Ensure models are fetched for initial provider
-          await store.dispatch('aiProvider/fetchProviderModels', { provider: props.initialProvider });
-          updateSelectorModels(props.initialProvider);
-        }
-      }
-    });
-
-    // Optionally, watch for changes in the initialModel prop to update the UI.
-    watch(
-      () => props.initialModel,
-      (newModel) => {
-        if (newModel !== localModel.value) {
-          localModel.value = newModel;
-          if (modelSelect.value?.setSelectedOption) {
-            modelSelect.value.setSelectedOption({
-              label: newModel || availableModels.value[0] || '',
-              value: newModel || availableModels.value[0] || '',
-            });
-          }
-        }
-      },
-      { immediate: true }
-    );
 
     return {
       providerOptions,
@@ -263,11 +127,7 @@ export default {
       updateSelectorProvider,
       updateSelectorModel,
       connectFromPicker,
-      providerSelect,
-      modelSelect,
       simpleModal,
-      localProvider,
-      localModel,
     };
   },
 };
