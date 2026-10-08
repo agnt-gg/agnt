@@ -1,5 +1,5 @@
 import BaseAction from '../BaseAction.js';
-import { spawn } from 'child_process';
+import { spawn } from '../../../services/security/toolProcess.js';
 import path from 'path';
 
 class ExecutePython extends BaseAction {

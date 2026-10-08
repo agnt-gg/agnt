@@ -1,0 +1,3 @@
+#!/bin/sh
+# Traffic policy is enforced by the private network namespace, not this flag.
+exec /usr/bin/chromium-browser --proxy-server=http://127.0.0.1:3128 --proxy-bypass-list=localhost\;127.0.0.1 --no-sandbox "$@"

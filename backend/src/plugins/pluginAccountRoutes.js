@@ -1,4 +1,5 @@
 import PluginAccounts from './PluginAccountStore.js';
+import { isRestrictedInstance, tenantOwnerId } from '../services/auth/tenantOwnership.js';
 
 /** Keep every installed-package read/write behind the same account check. */
 export async function pluginAccountBoundary(req, res, next) {
@@ -6,6 +7,11 @@ export async function pluginAccountBoundary(req, res, next) {
     await PluginAccounts.ready();
     const userId = req.user?.userId || req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+    // Installing an extension executes trusted backend code. Membership alone
+    // must never confer that administrative authority over a shared instance.
+    if (isRestrictedInstance() && req.method !== 'GET' && userId !== tenantOwnerId()) {
+      return res.status(403).json({ success: false, error: 'Only the instance owner may change installed extensions' });
+    }
     const suppliedName = req.body?.name || req.body?.pluginName || req.body?.manifest?.name;
     if (suppliedName && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(suppliedName)) return res.status(400).json({ success: false, error: 'Invalid plugin name' });
     const ownedPath = req.path.match(/^\/(?:installed|update|update-policy)\/([^/]+)/);

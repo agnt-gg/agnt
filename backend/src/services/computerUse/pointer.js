@@ -24,7 +24,7 @@
 // a screenshot are translated by the caller using the window's bounds -- the
 // same bounds get_window_state / list_windows report -- so the pointer lands
 // on the pixel the model pointed at in the image it was shown.
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../security/toolProcess.js';
 import os from 'node:os';
 
 const BUTTONS = new Set(['left', 'right', 'middle']);

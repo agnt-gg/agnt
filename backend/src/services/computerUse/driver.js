@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { spawn } from 'child_process';
+import { spawn } from '../security/toolProcess.js';
 
 export function asBool(v) {
   if (typeof v === 'boolean') return v;

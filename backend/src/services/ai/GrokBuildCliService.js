@@ -12,7 +12,7 @@ import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn } from '../security/toolProcess.js';
 import readline from 'readline';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import { augmentEnvPath } from '../../utils/envPath.js';

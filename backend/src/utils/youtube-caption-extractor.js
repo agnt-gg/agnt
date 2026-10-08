@@ -1,4 +1,4 @@
-import { execFile, exec } from 'child_process';
+import { execFile, exec } from '../services/security/toolProcess.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';

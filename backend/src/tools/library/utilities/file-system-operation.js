@@ -1,7 +1,8 @@
 import BaseAction from '../BaseAction.js';
+import { hostedToolBoundaryRequired } from '../../../services/security/toolRunAuthority.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec } from '../../../services/security/toolProcess.js';
 import { promisify } from 'util';
 import { prepareWrite } from '../../../utils/lineEndings.js';
 
@@ -85,6 +86,10 @@ class FileSystemOperation extends BaseAction {
   }
 
   async execute(params, inputData, workflowEngine) {
+    if (hostedToolBoundaryRequired()) {
+      const { isolatedFileCall } = await import('../../../services/security/toolFiles.js');
+      return isolatedFileCall('workflow-file', 'file-system-operation', params);
+    }
     console.log('File System Operation params:', JSON.stringify(params, null, 2));
 
     try {

@@ -1,5 +1,5 @@
 import BaseAction from '../BaseAction.js';
-import { spawn } from 'child_process';
+import { spawn } from '../../../services/security/toolProcess.js';
 import {
   waitForSurface, forgetSurfaceByUrl, getActiveSurface, announceHostSurface, surfaceKind, hostInstanceId,
 } from '../../../services/browserSurfaces.js';

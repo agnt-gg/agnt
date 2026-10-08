@@ -1,5 +1,5 @@
 import BaseAction from '../BaseAction.js';
-import { fork } from 'child_process';
+import { fork } from '../../../services/security/toolProcess.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

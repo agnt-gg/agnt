@@ -11,7 +11,7 @@
  * NAMES a version and the thing that INSTALLS it should not be able to disagree.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from '../../../services/security/toolProcess.js';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';

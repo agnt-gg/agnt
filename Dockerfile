@@ -127,6 +127,8 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont \
     sqlite \
+    bubblewrap \
+    libseccomp \
     ffmpeg \
     su-exec \
     bash \
@@ -167,8 +169,26 @@ COPY --chown=root:root preload.js /app/
 COPY --chown=root:root package*.json /app/
 COPY --chown=root:root assets/ /app/assets/
 
-# Expose backend/.env to dotenv (which loads from cwd=/app)
-RUN ln -sf /app/backend/.env /app/.env
+# Tool code gets a kernel-enforced namespace, never the server's credentials.
+COPY --chown=root:root scripts/agnt-tool-run.py /usr/local/bin/agnt-tool-run
+COPY --chown=root:root scripts/sandbox-network.cjs scripts/egress-fetch.cjs /usr/local/lib/agnt/
+COPY --chown=root:root scripts/agnt-chromium /usr/local/bin/agnt-chromium
+COPY --chown=root:root scripts/tool-seccomp.c /tmp/agnt-tool-seccomp.c
+COPY --chown=root:root scripts/remove-tool-fixtures.py /tmp/remove-tool-fixtures.py
+RUN apk add --no-cache --virtual .tool-filter-build build-base libseccomp-dev \
+    && mkdir -p /usr/local/lib/agnt \
+    && cc -O2 /tmp/agnt-tool-seccomp.c -lseccomp -o /tmp/agnt-tool-filter \
+    && /tmp/agnt-tool-filter > /usr/local/lib/agnt/tool-seccomp.bpf \
+    && chmod 755 /usr/local/bin/agnt-tool-run /usr/local/bin/agnt-chromium \
+    && ln -s /usr/local/bin/agnt-chromium /usr/local/bin/chromium-browser \
+    && chmod 644 /usr/local/lib/agnt/tool-seccomp.bpf \
+    && chmod u-s /usr/lib/chromium/chrome-sandbox \
+    && rm /tmp/agnt-tool-seccomp.c /tmp/agnt-tool-filter \
+    && apk del .tool-filter-build \
+    && python3 /tmp/remove-tool-fixtures.py \
+    && rm /tmp/remove-tool-fixtures.py
+# No /app/.env symlink: hosted secrets are loaded by the trusted bootstrap,
+# and are never part of a tool's filesystem or launch environment.
 
 # ---------------------------------------------------------------------------
 # THE APPLICATION TREE IS ROOT-OWNED; THE APP RUNS AS `node`.
@@ -214,6 +234,10 @@ RUN ln -sf /app/backend/.env /app/.env
 RUN mkdir -p /app/unfirehose \
     && chown -R node:node /app/data /app/logs /app/unfirehose \
     && chmod 755 /app
+
+# Fleet enables the matching per-guest profile and file-backed secret bootstrap
+# only for images carrying this contract. Old images remain rollback-compatible.
+LABEL org.agnt.tool-sandbox="1"
 
 # Copy and set up entrypoint script
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/

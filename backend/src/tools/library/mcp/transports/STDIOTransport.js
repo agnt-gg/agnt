@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from '../../../../services/security/toolProcess.js';
 import { createInterface } from 'readline';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes

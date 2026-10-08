@@ -1,5 +1,6 @@
 import BaseAction from '../BaseAction.js';
 import db from '../../../models/database/index.js';
+import { validateVirtualSql } from '../../../services/security/virtualSqlBoundary.js';
 
 class DatabaseOperation extends BaseAction {
   static schema = {
@@ -76,6 +77,7 @@ class DatabaseOperation extends BaseAction {
     this.workflowEngine = workflowEngine;
     try {
       this.validateParams(params);
+      if (process.env.AGNT_TENANT_SLUG) validateVirtualSql(params);
 
       console.log(params);
 

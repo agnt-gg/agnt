@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import fs from 'fs';
-import { execFile } from 'child_process';
+import { execFile } from '../services/security/toolProcess.js';
 import { promisify } from 'util';
 import path from 'path';
 import os from 'os';

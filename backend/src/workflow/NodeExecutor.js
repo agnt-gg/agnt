@@ -1,4 +1,5 @@
 import ToolConfig from '../tools/ToolConfig.js';
+import { withToolActor } from '../services/security/toolRunAuthority.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import CustomToolExecutor from './CustomToolExecutor.js';
@@ -24,7 +25,11 @@ class NodeExecutor {
     this.nonChargingNodes = ['delay'];
     this.customToolExecutor = new CustomToolExecutor(workflowEngine);
   }
-  async executeNode(node, inputData) {
+  executeNode(node, inputData) {
+    return withToolActor(this.workflowEngine.userId, () => this.executeNodeWithActor(node, inputData));
+  }
+
+  async executeNodeWithActor(node, inputData) {
     const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');
     const {SAFE_TEAM_NODES}=await import('../services/authorization/TeamToolPolicy.js');
     if(currentTeamExecution()&&!SAFE_TEAM_NODES.has(node.type))throw new Error('Node is not enabled for team execution: '+node.type);

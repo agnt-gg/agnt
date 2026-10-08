@@ -92,7 +92,7 @@ const BOUNDARIES = [
     mustNotContain: [],
   },
   {
-    rel: 'services/orchestrator/tools.js',
+    rel: 'services/orchestrator/legacyFileOperation.js',
     what: 'file_operations write',
     mustContain: [/isTextEncoding[\s\S]{0,200}prepareWrite\(filePath, content\)/, /fs\.writeFile\(filePath, toWrite, encoding\)/],
     mustNotContain: [/fs\.writeFile\(filePath, content, encoding\)/],

@@ -1,9 +1,14 @@
 import vm from 'node:vm';
-import fetch from 'node-fetch';
+import desktopFetch from 'node-fetch';
+const fetch = process.env.AGNT_TOOL_SANDBOX === '1' ? globalThis.fetch : desktopFetch;
 import { Blob } from 'node:buffer';
 import { TextEncoder, TextDecoder } from 'util';
 import crypto from 'crypto';
-import AuthManager from '../../../services/auth/AuthManager.js';
+// Hosted code must not import the backend credential manager into its process.
+// Credentials stay behind authenticated provider tools, never returned as keys.
+const AuthManager = process.env.AGNT_TOOL_SANDBOX === '1'
+  ? new Proxy(Object.freeze({}), { get: () => () => { throw new Error('Credential access is unavailable inside tool code. Use an authenticated provider tool.'); } })
+  : (await import('../../../services/auth/AuthManager.js')).default;
 
 // Note: this is an API-surface restriction, not a security boundary. The
 // curated `sandbox` object below limits which globals are visible to user code,

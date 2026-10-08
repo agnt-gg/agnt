@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
 import path from 'path';
 import PathManager from '../../utils/PathManager.js';
 import {
@@ -365,6 +366,10 @@ const PATH_SERIALIZED_TOOLS = new Set(['read_file', 'write_file', 'edit_file']);
  * real implementation. Every other tool dispatches straight through.
  */
 export async function executeCodeFunction(name, args) {
+  if (hostedToolBoundaryRequired()) {
+    const { isolatedFileCall } = await import('../security/toolFiles.js');
+    return isolatedFileCall('code-file', name, args);
+  }
   if (!PATH_SERIALIZED_TOOLS.has(name) || typeof args?.path !== 'string') {
     return executeCodeFunctionUnlocked(name, args);
   }

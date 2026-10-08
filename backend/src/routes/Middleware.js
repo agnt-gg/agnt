@@ -7,6 +7,7 @@ import { trustedScopeRequest } from '../services/authorization/ScopeRequestConte
 import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
 import { isApiKey } from "../services/auth/apiKey.js";
 import { isPermittedUser, NOT_A_MEMBER } from "../services/auth/tenantOwnership.js";
+import { isToolToken, verifyToolToken, toolRequestPermitted } from '../services/security/toolRunAuthority.js';
 
 dotenv.config();
 
@@ -157,6 +158,20 @@ class Middleware {
         error: 'Authentication required',
         reason: 'missing',
       });
+    }
+
+    if (isToolToken(token)) {
+      try {
+        const claims = verifyToolToken(token);
+        if (!toolRequestPermitted(req.method, req.originalUrl || req.url)) {
+          return res.status(403).json({ success: false, reason: 'tool_scope_denied', error: 'This tool-run token does not authorize that API. Use the corresponding authenticated AGNT tool.' });
+        }
+        if (this.refuseNonMember(res, claims.sub)) return;
+        req.user = { id: claims.sub, userId: claims.sub, isAuthenticated: true, auth_type: 'tool-run' };
+        return next();
+      } catch {
+        return res.status(401).json({ success: false, reason: 'tool_token_invalid', error: 'Tool-run authorization expired or invalid' });
+      }
     }
 
     // If TRUST_REMOTE_AUTH is enabled, decode token without verification

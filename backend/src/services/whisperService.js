@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
-import { exec } from 'child_process';
+import { exec } from './security/toolProcess.js';
 import { promisify } from 'util';
 import pathManager from '../utils/PathManager.js';
 

@@ -4,7 +4,7 @@ const responseConnection = getConnection('openai-codex');
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn } from '../security/toolProcess.js';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 import { augmentEnvPath } from '../../utils/envPath.js';

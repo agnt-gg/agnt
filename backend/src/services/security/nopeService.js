@@ -40,6 +40,7 @@ import pathManager from '../../utils/PathManager.js';
 import SecurityPolicyService from './SecurityPolicyService.js';
 import { resolveCredentialDecision, resolveViolationDecision } from './securityPolicy.js';
 import { buildSecurityAction } from './toolCapabilities.js';
+import { redactToolSecrets } from './redactToolSecrets.js';
 import { MEMBER_ISOLATION_RULE, memberRefusal } from './memberIsolation.js';
 
 // ── Durable telemetry ───────────────────────────────────────────────────────
@@ -357,6 +358,12 @@ export function sanitizeArguments(args, toolName, outputScanning = 'report', cre
 }
 
 export function scanOutput(result, toolName, outputScanning = 'report', credentialDecision = 'audit') {
+  // Hosted tool output must never preserve bearer credentials, including when
+  // an account kept the old report-only policy or output exceeds scan limits.
+  if (process.env.AGNT_TENANT_SLUG) {
+    try { result = redactToolSecrets(result); }
+    catch { return { success: false, error: 'Tool output withheld: credential redaction failed' }; }
+  }
   if (outputScanning === 'off' || credentialDecision === 'allow') return result;
   if (typeof result === 'string' && result.length >= SCAN_CEILING) return result;
   if (result === null || result === undefined) return result;

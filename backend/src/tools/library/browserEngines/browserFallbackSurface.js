@@ -40,7 +40,7 @@
  * race-free and is the same mechanism browser-harness itself uses.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from '../../../services/security/toolProcess.js';
 import { WebSocket } from 'ws';
 import fs from 'fs';
 import path from 'path';

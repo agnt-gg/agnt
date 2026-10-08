@@ -1,5 +1,5 @@
 import BaseAction from '../BaseAction.js';
-import { spawn } from 'child_process';
+import { spawn } from '../../../services/security/toolProcess.js';
 import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';

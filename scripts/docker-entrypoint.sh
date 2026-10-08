@@ -2,6 +2,14 @@
 # Docker entrypoint script for AGNT
 # Ensures proper permissions on mounted volumes before starting the app
 
+# A fresh hosted volume must have a real workspace before any tool launches.
+# Never silently substitute an unsandboxed working directory.
+if [ -n "${AGNT_TENANT_SLUG:-}" ] && [ -L /app/data/projects ]; then
+    echo 'Refusing a symlink as the hosted workspace' >&2
+    exit 1
+fi
+mkdir -p /app/data/projects || exit 1
+
 # Fix ownership of mounted volumes (they may be created as root by Docker)
 # Only fix if running as root (which we do initially)
 if [ "$(id -u)" = "0" ]; then

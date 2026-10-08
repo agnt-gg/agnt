@@ -18,7 +18,7 @@ import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import { spawn } from 'child_process';
+import { spawn } from '../security/toolProcess.js';
 import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const DEFAULT_MODEL = process.env.AGNT_CURSOR_DEFAULT_MODEL || 'cursor-grok-4.5-high';

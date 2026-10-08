@@ -26,7 +26,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawnSync } from '../../../services/security/toolProcess.js';
 
 /** A plausible desktop viewport. The old default (800x600) is itself a tell. */
 export const HEADLESS_WINDOW = { width: 1920, height: 1080 };
