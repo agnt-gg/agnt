@@ -73,6 +73,7 @@ describe('MobileReceiver.handle', () => {
   beforeEach(() => { calls.length = 0; script = []; });
 
   const message = { id: 'm-1', text: "what's on today?", conversationId: 'mobile-p1-1', receivedAt: 1 };
+  const fromIPhone = { ...message, service: 'iMessage' };
   const MAIN = { id: 'out-main', conversation_id: 'conv-main' };
   const LOG = [
     { role: 'system', content: 'old system prompt' },
@@ -134,21 +135,35 @@ describe('MobileReceiver.handle', () => {
   });
 
   it('a tapback alone is the whole reply: no text, no "Done" filler', async () => {
-    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(message);
+    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(fromIPhone);
     expect(calls).toEqual([expect.objectContaining({ path: '/messages/m-1/reply', opts: expect.objectContaining({ body: { text: '', media: [], reaction: '👍' } }) })]);
   });
 
   it('a tapback with words sends both; an unknown emoji is dropped, not sent', async () => {
-    await receiverWith(localApi({ answer: '[react: ❤️] Sent it to grandma.' })).handle(message);
+    await receiverWith(localApi({ answer: '[react: ❤️] Sent it to grandma.' })).handle(fromIPhone);
     expect(calls[0].opts.body).toEqual({ text: 'Sent it to grandma.', media: [], reaction: '❤️' });
     calls.length = 0;
-    await receiverWith(localApi({ answer: '[react: 🎉] Sent.' })).handle(message);
+    await receiverWith(localApi({ answer: '[react: 🎉] Sent.' })).handle(fromIPhone);
     expect(calls[0].opts.body).toEqual({ text: 'Sent.', media: [] });
+  });
+
+  it('off iMessage no tapback is ever sent: alone it goes as the emoji, beside words it is dropped', async () => {
+    // 2026-10-07: an RCS conversation through Apple's relay wedged for good.
+    // A gateway that does not report the service (undefined) gets none either.
+    for (const service of ['RCS', 'SMS', undefined]) {
+      calls.length = 0;
+      await receiverWith(localApi({ answer: '[react: 👍]' })).handle({ ...message, service });
+      await receiverWith(localApi({ answer: '[react: ❤️] Sent it to grandma.' })).handle({ ...message, service });
+      expect(calls.map((c) => c.opts.body), String(service)).toEqual([
+        { text: '👍', media: [] },
+        { text: 'Sent it to grandma.', media: [] },
+      ]);
+    }
   });
 
   it('a service from before reactions gets the emoji as the text instead of a stuck reply', async () => {
     script = [Object.assign(new Error('empty_reply'), { code: 'empty_reply' })];
-    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(message);
+    await receiverWith(localApi({ answer: '[react: 👍]' })).handle(fromIPhone);
     expect(calls.map((c) => [c.path, c.opts.body])).toEqual([
       ['/messages/m-1/reply', { text: '', media: [], reaction: '👍' }],
       ['/messages/m-1/reply', { text: '👍', media: [] }],

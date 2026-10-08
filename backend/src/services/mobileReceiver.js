@@ -236,7 +236,13 @@ export class MobileReceiver {
       const text = [message.text, ...incoming.notes].filter(Boolean).join('\n')
         || `(sent ${incoming.files.length === 1 ? 'an attachment' : incoming.files.length + ' attachments'})`;
       const turn = await this.ask(token, { conversationId: main.conversation_id, text }, history, incoming.files);
-      const { reaction, text: answer } = takeReaction(turn.text);
+      const { reaction: asked, text: said } = takeReaction(turn.text);
+      // Tapbacks go to iMessage only. Over RCS and SMS they ride Apple's relay to
+      // Android, where one conversation wedged for good on 2026-10-07; a gateway
+      // that does not say which service the text came over gets none either.
+      // There a reaction-only answer goes as the emoji, never as silence.
+      const reaction = message.service === 'iMessage' ? asked : null;
+      const answer = !reaction && asked && !said.trim() ? asked : said;
       const outgoing = await findOutboundFiles(answer, { imageIds: turn.imageIds, resolveImage: this.resolveImage });
       const attached = outgoing.length ? await sendMedia(message.id, outgoing, { callService, fetchImpl: this.fetch }) : [];
       // A tapback alone is a whole answer (👍 to "email grandma at 2").
