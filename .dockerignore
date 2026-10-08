@@ -83,10 +83,12 @@ coverage/
 # MCP config
 *mcp.json
 
-# Documentation (not needed in container)
+# Documentation (not needed in container), except the API reference that
+# get_agnt_api serves to Annie and plugins at runtime.
 README.md
 LICENSE
-docs/
+docs/*
+!docs/_API-DOCUMENTATION.md
 
 # Build resources (not needed in runtime)
 build/

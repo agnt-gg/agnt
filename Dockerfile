@@ -168,6 +168,9 @@ COPY --chown=root:root main.js /app/
 COPY --chown=root:root preload.js /app/
 COPY --chown=root:root package*.json /app/
 COPY --chown=root:root assets/ /app/assets/
+# get_agnt_api reads this at ../../../../docs from orchestrator/apiReference.js;
+# without it Annie cannot look up any AGNT endpoint on a hosted instance.
+COPY --chown=root:root docs/_API-DOCUMENTATION.md /app/docs/_API-DOCUMENTATION.md
 
 # Tool code gets a kernel-enforced namespace, never the server's credentials.
 COPY --chown=root:root scripts/agnt-tool-run.py /usr/local/bin/agnt-tool-run

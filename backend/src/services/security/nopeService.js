@@ -220,6 +220,23 @@ export function selectWorkflowSecurityArgs(nodeType, authoredParams = {}, resolv
   return selected;
 }
 
+// AGNT's own API on loopback is how Annie and plugins drive AGNT (the documented
+// `http://localhost:3333/api` pattern), and inside the hosted tool sandbox
+// loopback reaches nothing but that API's broker. Calling it is not SSRF. The
+// finding is dropped only when EVERY loopback address in the call names the
+// AGNT port; another port, or a bare `localhost`, is still judged by policy.
+const AGNT_LOOPBACK_RULE = 'net-ssrf-localhost';
+const LOOPBACK_ADDRESS = /(?:\blocalhost|\b127(?:\.\d{1,3}){3}|\b0\.0\.0\.0|\[::1\])(?::(\d{1,5}))?/gi;
+export function targetsOnlyAgntApi(args) {
+  const agntPort = String(process.env.PORT || 3333);
+  let found = false;
+  for (const match of JSON.stringify(args ?? '').matchAll(LOOPBACK_ADDRESS)) {
+    if (match[1] !== agntPort) return false;
+    found = true;
+  }
+  return found;
+}
+
 export async function checkAction({ toolName, args, userId, role, surface, workflowPolicy }) {
   // Before the policy lookup and OUTSIDE its fail-open catch: this is not a
   // pattern match that a policy may relax or a gate error may skip. A member
@@ -242,8 +259,11 @@ export async function checkAction({ toolName, args, userId, role, surface, workf
     // sink. Action rules are matched against the sink; credential/DLP rules
     // are unscoped in the library and still see full params.
     const result = nope.check(buildSecurityAction(toolName, args), { userId, role: role || 'user' });
+    const policyViolations = targetsOnlyAgntApi(args)
+      ? result.violations.filter((violation) => violation.rule !== AGNT_LOOPBACK_RULE)
+      : result.violations;
 
-    const combinedViolations = [...result.violations, ...detectCommonSecretViolations(args)];
+    const combinedViolations = [...policyViolations, ...detectCommonSecretViolations(args)];
     const uniqueViolations = [...new Map(combinedViolations.map((violation) => [`${violation.rule}:${violation.description}`, violation])).values()];
     const evaluated = uniqueViolations.map((violation) => ({
       ...violation,
