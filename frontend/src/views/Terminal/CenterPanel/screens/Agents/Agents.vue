@@ -206,6 +206,7 @@ import { ref, onMounted, onUnmounted, nextTick, inject, computed, watch } from '
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { API_CONFIG } from '@/tt.config.js';
+import { authHeaders } from '@/utils/apiFetch.js';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
@@ -1103,9 +1104,7 @@ export default {
     const fetchGoals = async () => {
       try {
         const response = await fetch(`${API_CONFIG.BASE_URL}/goals`, {
-          headers: {
-            Authorization: `Bearer ${store.getters['auth/token']}`,
-          },
+          headers: authHeaders(),
         });
 
         if (!response.ok) throw new Error('Failed to fetch goals');
@@ -1130,9 +1129,7 @@ export default {
     const fetchGoalTasks = async (goalId) => {
       try {
         const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}`, {
-          headers: {
-            Authorization: `Bearer ${store.getters['auth/token']}`,
-          },
+          headers: authHeaders(),
         });
 
         if (!response.ok) return;

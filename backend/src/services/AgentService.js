@@ -6,6 +6,7 @@ import generateUUID from '../utils/generateUUID.js';
 import universalChatHandler from './OrchestratorService.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { resolveRuntimeOptions } from './orchestrator/runtimeOptions.js';
+import { trustedScopeRequest } from './authorization/ScopeRequestContext.js';
 
 /**
  * The agent's own provider/model wins — unless the caller pins one with
@@ -60,6 +61,9 @@ class AgentService {
     try {
       const { agent } = req.body;
       const userId = req.user.userId;
+      // The shared storage principal owns the record, but it is not a signed-in
+      // person and has no UI settings. Defaults belong to the authenticated actor.
+      const settingsUserId = trustedScopeRequest(req)?.actorId || userId;
 
       console.log('Received agent data:', agent);
 
@@ -87,11 +91,11 @@ class AgentService {
         // hardcoded model name, which silently breaks Codex users (whose
         // OAuth client can't serve a non-Responses-API model) and any
         // non-default provider setup.
-        await applyUserDefaultProviderModel(agent, userId, 'new agent');
+        await applyUserDefaultProviderModel(agent, settingsUserId, 'new agent');
       } else if (existingAgent.created_by !== userId) {
         agent.id = generateUUID();
         isNewAgent = true;
-        await applyUserDefaultProviderModel(agent, userId, 'cloned agent');
+        await applyUserDefaultProviderModel(agent, settingsUserId, 'cloned agent');
       }
 
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);
