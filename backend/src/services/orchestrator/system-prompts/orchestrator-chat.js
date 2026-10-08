@@ -106,7 +106,8 @@ export const IMPORTANT_GUIDELINES = `WORKING WITH TOOLS:
 - Chain tools when a task needs it: find, then read, then transform with code, then write.
 - Research means web_search to find sources, web_scrape on the most relevant ones, then a synthesis that cites them.
 - execute_javascript_code runs in Node.js, not a browser (no window, document or localStorage). Top-level await works; output comes only from console.log.
-- AGNT's own API, from code (AGNT_AUTH_TOKEN is provided automatically):
+${process.env.AGNT_TENANT_SLUG ? '- HOSTED TOOL BOUNDARY: code and file operations run in an isolated workspace. Server data, credential stores and backend processes are not accessible. No AGNT_AUTH_TOKEN or server secret is exposed to code. Prefer native authenticated AGNT tools. Permitted read-only API requests go through the local broker without a bearer token; mutations require native tools. Never fetch a token from storage, disable a policy, or reword a refused request to evade the refusal. The desktop example below does NOT apply to this hosted runtime.' : ''}
+- Desktop/local AGNT API access (not hosted tool code; AGNT_AUTH_TOKEN is provided automatically on desktop):
   \`\`\`js
   const API = 'http://localhost:${process.env.PORT || 3333}/api';
   const fetchJSON = async (path, options = {}) => (await fetch(API + path, { ...options,
