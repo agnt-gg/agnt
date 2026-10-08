@@ -2052,16 +2052,17 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       const text = typeof args?.text === 'string' ? args.text.trim() : '';
       if (!text) return JSON.stringify({ success: false, error: 'text is required.' });
       try {
-        const { textUser } = await import('../mobileOutbound.js');
+        const { textUser, textQueueReceipt } = await import('../mobileOutbound.js');
         // One key per call: a network retry inside it is one text, a
         // scheduled repeat is a new one.
         const result = await textUser({ text, key: `tool-${randomUUID()}` });
-        if (result.sent) return JSON.stringify({ success: true, message: 'Texted the user.' });
+        if (result.sent) return JSON.stringify(textQueueReceipt(result));
         const why = {
           no_phone: 'No phone is linked. The user can link one in Settings → Text Annie.',
           allowance_exhausted: "This month's texts are used up, so nothing was sent.",
           not_subscribed: 'Texting needs AGNT Pro.',
           signed_out: 'Not signed in to AGNT.',
+          queue_unconfirmed: 'The gateway did not confirm a queue entry. Delivery is unknown; do not claim the user was texted.',
         }[result.reason];
         return JSON.stringify({ success: false, error: why || `The text was not sent (${result.reason}).` });
       } catch (error) {

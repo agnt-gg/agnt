@@ -41,6 +41,10 @@ export async function hasLinkedPhone({ callService = defaultCallService } = {}) 
  * Text the user. `text` may be a full chat answer: images and file:/// links
  * in it travel as attachments, the rest is cut down to a text.
  *
+ * `sent` is retained for existing worker-report callers: it means submitted to
+ * the gateway queue, NOT delivered to the phone. User-facing receipts must use
+ * textQueueReceipt so queue acceptance cannot be mistaken for delivery.
+ *
  * @returns {Promise<{sent:boolean, id?:string, duplicate?:boolean, reason?:string}>}
  */
 export async function textUser({ text, imageIds = [], key }, { callService = defaultCallService, fetchImpl = fetch, resolveImage = defaultResolveImage } = {}) {
@@ -55,12 +59,31 @@ export async function textUser({ text, imageIds = [], key }, { callService = def
       timeoutMs: 30_000,
       planGate: false,
     });
-    return { sent: true, id: result?.id, duplicate: result?.duplicate === true };
+    if (typeof result?.id !== 'string' || !result.id.trim()) {
+      console.warn('[mobileOutbound] queue acceptance unconfirmed: no message id');
+      return { sent: false, reason: 'queue_unconfirmed' };
+    }
+    return { sent: true, id: result.id, duplicate: result.duplicate === true };
   } catch (error) {
     const reason = REFUSALS[error?.code] || error?.code || error?.message || 'send_failed';
     if (!REFUSALS[error?.code]) console.warn('[mobileOutbound] text not sent:', reason);
     return { sent: false, reason };
   }
+}
+
+/** The outbound endpoint acknowledges a queue entry; it cannot certify delivery. */
+export function textQueueReceipt(result) {
+  if (!result?.sent || typeof result.id !== 'string' || !result.id.trim()) {
+    return { success: false, deliveryConfirmed: false, error: 'Text queue acceptance could not be confirmed.' };
+  }
+  return {
+    success: true,
+    id: result.id,
+    queued: true,
+    deliveryConfirmed: false,
+    duplicate: result.duplicate === true,
+    message: 'Queued the text for delivery. This is not confirmation that the phone received it.',
+  };
 }
 
 export default { textUser, hasLinkedPhone };

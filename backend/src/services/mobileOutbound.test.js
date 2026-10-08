@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textUser, hasLinkedPhone } from './mobileOutbound.js';
+import { textUser, hasLinkedPhone, textQueueReceipt } from './mobileOutbound.js';
 
 /** mobile.agnt.gg is the fake here: every call it receives is recorded. */
 function fakeService(handlers = {}) {
@@ -60,6 +60,30 @@ describe('textUser', () => {
     expect(result.sent).toBe(true);
     expect(calls.map((c) => c.route)).toEqual(['/outbound/media', '/outbound']);
     expect(calls[1].body.media).toEqual(['med-1']);
+  });
+});
+
+describe('text delivery evidence', () => {
+  it('reports queue acceptance, never phone delivery, even for duplicate entries', async () => {
+    for (const duplicate of [false, true]) {
+      const { callService } = fakeService({ '/outbound': { id: 'out-1', duplicate } });
+      const result = await textUser({ text: 'test', key: 'diagnostic-test' }, { callService });
+      expect(textQueueReceipt(result)).toEqual({
+        success: true, id: 'out-1', queued: true, deliveryConfirmed: false, duplicate,
+        message: 'Queued the text for delivery. This is not confirmation that the phone received it.',
+      });
+    }
+  });
+
+  it('does not report success for an empty or malformed gateway acknowledgement', async () => {
+    for (const response of [null, {}, { id: '' }, { id: '  ' }, { id: 123 }]) {
+      const { calls, callService } = fakeService({ '/outbound': () => response });
+      const result = await textUser({ text: 'test', key: 'diagnostic-test' }, { callService });
+      expect(result).toEqual({ sent: false, reason: 'queue_unconfirmed' });
+      expect(textQueueReceipt(result)).toMatchObject({ success: false, deliveryConfirmed: false });
+      expect(calls).toHaveLength(1); // No blind retry of an ambiguous send.
+    }
+    expect(textQueueReceipt({ sent: true })).toMatchObject({ success: false, deliveryConfirmed: false });
   });
 });
 
