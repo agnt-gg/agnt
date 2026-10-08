@@ -157,6 +157,27 @@ export function tenantOwnerId() {
   return clean(process.env[TENANT_OWNER_ENV]);
 }
 
+/**
+ * The account whose credentials, plan and tool rights an identity uses.
+ *
+ * A team workspace stores its shared records under a storage principal
+ * (`scope:…`). That principal is not a person: it holds no keys, no plan and
+ * no rights of its own, so every check keyed to it used to refuse: shared
+ * workflows could not reach a model, the owner could not schedule, and so on.
+ * The instance and its workspace belong to the instance owner, so on a hosted
+ * instance the workspace principal resolves to that owner. Anyone else is
+ * returned unchanged.
+ *
+ * Safe because members cannot start runs directly (ScopeApiMiddleware keeps
+ * the publish rule for them) and tool code runs sandboxed with a run-scoped
+ * key, so no member ever handles the owner's secrets.
+ */
+export function credentialUserId(userId) {
+  if (typeof userId !== 'string' || !userId.startsWith('scope:') || !isTenantInstance()) return userId;
+  const owner = tenantOwnerId();
+  return owner && !owner.includes('@') ? owner : userId;
+}
+
 /** Did the operator write `*` into the member list? Not the same as being honoured. */
 function membersListHasWildcard() {
   return clean(process.env[TENANT_MEMBERS_ENV])
@@ -245,7 +266,7 @@ export function tenantMemberIds() {
 export function isPermittedUser(userId, verdict = null, email = '') {
   if (!isRestrictedInstance()) return true;
   if (admitsEveryone()) return true;
-  const id = clean(userId);
+  const id = clean(credentialUserId(userId));
   if (!id) return false;
 
   if (verdict && verdict.known === true) return verdict.isMember === true;

@@ -2,6 +2,7 @@ import axios from 'axios';
 import fs from 'fs';
 import pathManager from '../../utils/PathManager.js';
 import { getSessionToken, getSessionUserId } from './sessionTokenCache.js';
+import { credentialUserId } from './tenantOwnership.js';
 
 /**
  * What this install's user is entitled to.
@@ -210,7 +211,8 @@ export function __resetPlanEntitlementsForTests() {
  * for the schedule OWNER, never whichever account authenticated most recently. */
 export async function canRunScheduledGoals(userId) {
   if (!userId) return false;
-  const plan = await getPlanType({ userId });
+  // A team workspace has no plan of its own; it schedules on the instance owner's.
+  const plan = await getPlanType({ userId: credentialUserId(userId) });
   return PAID_PLANS.has(plan);
 }
 export async function requireScheduledGoals(req, res, next) {

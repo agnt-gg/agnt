@@ -34,7 +34,7 @@
  * a custom tool) could do anything, so a non-owner is refused it too. The
  * owner, and every single-user install, is unaffected.
  */
-import { isRestrictedInstance, tenantOwnerId } from '../auth/tenantOwnership.js';
+import { isRestrictedInstance, tenantOwnerId, credentialUserId } from '../auth/tenantOwnership.js';
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { resolveToolCapabilities } from './toolCapabilities.js';
 
@@ -53,7 +53,8 @@ const OWNER_ONLY = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'sql'])
 export function isNonOwnerMember(userId) {
   if (!isRestrictedInstance()) return false;
   const owner = tenantOwnerId();
-  const id = typeof userId === 'string' ? userId.trim() : '';
+  // The team workspace principal acts for the owner; it is not a member.
+  const id = typeof userId === 'string' ? credentialUserId(userId.trim()) : '';
   if (!owner || owner.includes('@') || !id) return false;
   return id !== owner;
 }

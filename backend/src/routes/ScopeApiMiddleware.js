@@ -31,8 +31,10 @@ export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWor
     if(existing){const resolved=await authorization.require(context,action,reference.table,reference.id);if(resolved.scope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});}
   }
   // Team runs go through a PUBLISHED version with a team connection (NativeTeamExecution), never the
-  // personal execution path, which would reach for credentials the team does not have.
-  if(action==='run')throw Object.assign(new Error('Publish this in Team → Projects, then run it from there'),{status:409,code:'publish_required'});
+  // personal execution path, which would reach for credentials the team does not have. The instance
+  // OWNER is the exception: the workspace runs on the owner's own connections (credentialUserId),
+  // so the owner runs anything directly, exactly as on a personal instance.
+  if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER)throw Object.assign(new Error('Publish this in Team → Projects, then run it from there'),{status:409,code:'publish_required'});
   await repository.run('INSERT INTO scope_api_audit(scope_id,actor_id,action) VALUES(?,?,?)',[scope.id,context.actorId,req.method+' '+api]);
   req.user={...req.user,id:scope.resourceOwnerId,userId:scope.resourceOwnerId};
   return withScopeRequest(req,context,next);

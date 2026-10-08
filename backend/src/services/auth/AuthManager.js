@@ -15,6 +15,7 @@ import { getPluginOAuthAccessToken, CLIENT_ROW_SUFFIX, clientRowId } from '../..
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
 import { authHeader, getSessionToken } from './sessionTokenCache.js';
 import { assertPersonalCredentialContext } from '../authorization/TeamExecutionContext.js';
+import { credentialUserId } from './tenantOwnership.js';
 import { resolveDefaultModel } from '../ai/defaultModel.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
@@ -46,6 +47,7 @@ class AuthManager {
   // remote-stored keys keep working without any opt-in.
   async getValidAccessToken(userId, providerId) {
     assertPersonalCredentialContext();
+    userId = credentialUserId(userId); // a team workspace runs with the instance owner's connections
     if(String(userId).startsWith('scope:'))throw new Error('Shared resource owners cannot use personal credentials');
     if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team connections');
     // AGNT Models is credentialed by the account itself: the session token the

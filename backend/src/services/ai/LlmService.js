@@ -1,4 +1,5 @@
 import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
+import { credentialUserId } from '../auth/tenantOwnership.js';
 import { getConnection } from './connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
@@ -39,6 +40,7 @@ const loadCerebras = async () => (await import('@cerebras/cerebras_cloud_sdk')).
 export async function createLlmClient(provider, userId, options = {}) {
   const teamExecution=currentTeamExecution();
   if(teamExecution){if(String(provider).toLowerCase()!==teamExecution.provider)throw new Error('Provider is not granted to this team run');return teamExecution.broker.sdk();}
+  userId = credentialUserId(userId); // a team workspace runs with the instance owner's connections
   if(String(userId).startsWith('scope:'))throw new Error('Shared execution requires its approved principal');
   if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team model connections');
   const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
