@@ -94,3 +94,26 @@ describe('WorkflowService.getWorkflowById — authoritative status', () => {
     expect(res.body.workflow.nodes).toHaveLength(1);
   });
 });
+
+// On a team instance the record belongs to the workspace's storage principal,
+// and the request is authenticated as that principal; the person's account id
+// never equals user_id. The editor needs the server's verdict, not a guess.
+describe('WorkflowService.getWorkflowById — ownership verdict', () => {
+  const scopeReq = { params: { id: 'wf-1' }, user: { userId: 'scope:5a8e' } };
+
+  it('is_owner is true for a workspace-owned workflow read by that workspace', async () => {
+    WorkflowModel.findOne.mockResolvedValue({ id: 'wf-1', user_id: 'scope:5a8e', status: 'stopped', workflow_data: '{}' });
+    const res = makeRes();
+    await WorkflowService.getWorkflowById(scopeReq, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.is_owner).toBe(true);
+  });
+
+  it('is_owner is false for someone else\'s shared workflow', async () => {
+    WorkflowModel.findOne.mockResolvedValue({ id: 'wf-1', user_id: 'other', is_shareable: 1, status: 'stopped', workflow_data: '{}' });
+    const res = makeRes();
+    await WorkflowService.getWorkflowById(scopeReq, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.is_owner).toBe(false);
+  });
+});

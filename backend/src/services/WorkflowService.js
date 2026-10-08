@@ -268,10 +268,16 @@ class WorkflowService {
       if (!workflow) {
         return res.status(404).json({ error: 'Workflow not found' });
       }
-      if (workflow.is_shareable || workflow.user_id === req.user.userId) {
+      const isOwner = workflow.user_id === req.user.userId;
+      if (workflow.is_shareable || isOwner) {
         res.json({
           id: workflow.id,
           user_id: workflow.user_id,
+          // The server's own ownership verdict. On a team instance the record
+          // belongs to the workspace's storage principal, never the person's
+          // account id, so a client comparing user_id to its token can only
+          // ever conclude "not mine" and refuse to edit.
+          is_owner: isOwner,
           // F4: list/detail share the authoritative status. The workflows.status
           // column is what every list endpoint returns and what the engine
           // writes; the workflow JSON never carries one (saveWorkflow strips

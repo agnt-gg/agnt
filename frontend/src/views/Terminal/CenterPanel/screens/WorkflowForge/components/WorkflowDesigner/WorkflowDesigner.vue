@@ -2545,7 +2545,7 @@ export default {
 
         const data = await response.json();
         if (handleWorkflowGeneratorRef.value) {
-          const isOwner = data.user_id === getUserIdFromToken(token);
+          const isOwner = isWorkflowOwner(data, getUserIdFromToken(token));
 
           if (!isOwner && !data.workflow.isShareable) {
             throw new Error('This workflow is not shared.');
