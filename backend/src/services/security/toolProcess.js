@@ -2,14 +2,14 @@ import * as childProcess from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { currentToolActor, hostedToolBoundaryRequired } from './toolRunAuthority.js';
+import { currentToolActor, hostedToolBoundaryRequired, issueToolToken } from './toolRunAuthority.js';
 import { createToolNetwork } from './toolNetwork.js';
 
 export const TOOL_WORKSPACE = '/app/data/projects';
 const LAUNCHER = '/usr/local/bin/agnt-tool-run';
 const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE'];
 
-export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork } = {}) {
+export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken } = {}) {
   if (!hosted) return { command, args, options };
   if (!fs.existsSync(LAUNCHER)) throw Object.assign(new Error('Hosted tool sandbox is unavailable; execution refused'), { code: 'tool_sandbox_unavailable' });
   const cwd = path.posix.resolve(options.cwd || TOOL_WORKSPACE);
@@ -18,8 +18,16 @@ export function sandboxPlan(command, args = [], options = {}, { hosted = hostedT
   for (const key of SAFE_ENV) if (options.env?.[key] !== undefined) environment[key] = String(options.env[key]);
   // NEVER forward a caller-supplied bearer. This run gets a socket bound to
   // the authenticated actor; API credentials stay in the trusted broker.
-  const broker = networkFactory(actor, { lifetimeMs: options.timeout || 3600000 });
+  const lifetimeMs = options.timeout || 3600000;
+  const broker = networkFactory(actor, { lifetimeMs });
   environment.AGNT_TOOL_SOCKET = broker.socketPath;
+  // The run's proxy key: a temporary stand-in for the user's session, valid
+  // only on this instance and only for this run, so code can call the AGNT API
+  // exactly as documented. The real session token never enters the sandbox.
+  if (actor) {
+    try { environment.AGNT_AUTH_TOKEN = issueProxyKey(actor, { ttlSeconds: lifetimeMs / 1000 }); }
+    catch (error) { console.error('[toolProcess] proxy key unavailable; API calls still go through the broker:', error.message); }
+  }
   const invocation = options.shell ? ['/bin/sh', '-c', [command, ...args].join(' ')] : [command, ...args];
   return { command: LAUNCHER, args: invocation, options: { ...options, shell: false, env: environment, cwd }, dispose: broker.close };
 }

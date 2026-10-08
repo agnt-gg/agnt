@@ -42,6 +42,7 @@ import {
   verifyViaIssuer,
 } from '../services/auth/remoteTokenVerifier.js';
 import { isApiKey } from '../services/auth/apiKey.js';
+import { isToolToken, toolTokenUser, toolRequestPermitted, TOOL_SCOPE_DENIED } from '../services/security/toolRunAuthority.js';
 
 /**
  * "I have no answer for this token", as distinct from "this token is bad".
@@ -151,6 +152,13 @@ export function verifyAuthToken(token) {
     isPermittedUser(user.id, tenantVerdictSync(token), user.email)
       ? { ok: true, user }
       : { ok: false, reason: NOT_A_MEMBER };
+
+  // A tool run's proxy key: signed by this instance, bound to it, short-lived.
+  // The same identity Middleware.authenticateToken admits for it.
+  if (isToolToken(token)) {
+    const user = toolTokenUser(token);
+    return user ? admit(user) : { ok: false, reason: 'invalid' };
+  }
 
   if (process.env.TRUST_REMOTE_AUTH === 'true') {
     try {
@@ -274,6 +282,9 @@ export function requireAuth(opts = {}) {
     const token = extractToken(req, opts);
     const result = verifyAuthToken(token);
 
+    if (result.ok && result.user.auth_type === 'tool-run' && !toolRequestPermitted(req.method, req.originalUrl || req.url)) {
+      return res.status(403).json({ success: false, reason: 'tool_scope_denied', error: TOOL_SCOPE_DENIED });
+    }
     if (result.ok) return admit(req, token, result.user, next);
     if (result.reason !== UNVERIFIED) return refuse(res, result.reason);
 

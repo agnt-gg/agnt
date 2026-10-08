@@ -9,7 +9,13 @@ import sys
 
 WORKSPACE = '/app/data/projects'
 RUNTIME = ['/usr', '/lib', '/bin', '/sbin', '/etc/ssl', '/etc/fonts', '/etc/ca-certificates', '/etc/pki', '/etc/services', '/etc/protocols', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group']
-SAFE_ENV = {'LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE'}
+SAFE_ENV = {'LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE',
+            # The run's temporary, instance-bound proxy key, never the user's session.
+            'AGNT_AUTH_TOKEN'}
+# /tmp survives between tool calls, as it did before the sandbox. It sits OUTSIDE
+# the workspace, so workload code can fill it but can never swap the directory
+# itself for a symlink to backend state.
+TOOL_TMP = '/app/data/.tool-tmp'
 
 
 def fail(message):
@@ -30,6 +36,9 @@ def main():
     os.makedirs(home, mode=0o700, exist_ok=True)
     if os.path.realpath(home) != home:
         fail('tool home cannot be a symlink')
+    os.makedirs(TOOL_TMP, mode=0o700, exist_ok=True)
+    if os.path.realpath(TOOL_TMP) != TOOL_TMP:
+        fail('tool tmp cannot be a symlink')
     args = ['/usr/bin/bwrap', '--unshare-user', '--uid', '1000', '--gid', '1000',
             '--unshare-pid', '--unshare-ipc', '--unshare-uts', '--unshare-net', '--hostname', 'tool',
             '--die-with-parent', '--new-session', '--cap-drop', 'ALL', '--clearenv']
@@ -41,7 +50,7 @@ def main():
         if os.path.exists(source):
             args += ['--ro-bind', source, source]
     args += ['--bind', WORKSPACE, WORKSPACE, '--proc', '/proc', '--dev', '/dev',
-             '--tmpfs', '/tmp', '--tmpfs', '/var/tmp', '--dir', '/run',
+             '--bind', TOOL_TMP, '/tmp', '--tmpfs', '/var/tmp', '--dir', '/run',
              '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
              '--setenv', 'HOME', home, '--setenv', 'TMPDIR', '/tmp',
              '--setenv', 'NODE_PATH', WORKSPACE + '/node_modules:/app/node_modules',

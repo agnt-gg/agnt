@@ -1,5 +1,6 @@
 // Inside the private PID + network namespace. This exposes only the per-run
-// Unix broker as local HTTP proxy and scoped API; no bearer enters the workload.
+// Unix broker as local HTTP proxy and the AGNT API. The only credential in the
+// workload is AGNT_AUTH_TOKEN: the run's temporary, instance-bound proxy key.
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const servers=[];
@@ -16,7 +17,7 @@ function listen(port) { return new Promise((resolve,reject)=>{
  const [command,...args]=process.argv.slice(2);
  if(!command)throw Error('Missing tool command');
  const env={...process.env, HTTP_PROXY:'http://127.0.0.1:3128',HTTPS_PROXY:'http://127.0.0.1:3128',http_proxy:'http://127.0.0.1:3128',https_proxy:'http://127.0.0.1:3128',NO_PROXY:'localhost,127.0.0.1',no_proxy:'localhost,127.0.0.1',NODE_OPTIONS:'--require=/usr/local/lib/agnt/egress-fetch.cjs',PUPPETEER_EXECUTABLE_PATH:'/usr/local/bin/agnt-chromium'};
- delete env.AGNT_AUTH_TOKEN;delete env.NODE_CHANNEL_FD;delete env.NODE_CHANNEL_SERIALIZATION_MODE;
+ delete env.NODE_CHANNEL_FD;delete env.NODE_CHANNEL_SERIALIZATION_MODE;
  const ipc=typeof process.send==='function';
  const child=spawn(command,args,{env,stdio:ipc?['inherit','inherit','inherit','ipc']:['inherit','inherit','inherit']});
  if(ipc){process.on('message',message=>{if(child.connected)child.send(message);});child.on('message',message=>{if(process.connected)process.send(message);});process.on('disconnect',()=>child.kill());}
