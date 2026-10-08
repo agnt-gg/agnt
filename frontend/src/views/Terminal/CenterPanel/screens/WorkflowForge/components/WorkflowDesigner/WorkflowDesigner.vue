@@ -168,6 +168,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
 import AgentChat from './components/AgentChat/AgentChat.vue';
 import { WORKFLOW_QUICKSTARTS, quickstartAvailable, layoutQuickstart } from './workflowQuickstarts.js';
+import { isWorkflowOwner } from './workflowOwnership.js';
 
 export default {
   name: 'WorkflowDesignerView',
