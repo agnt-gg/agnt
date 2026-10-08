@@ -16,6 +16,23 @@ function open(){
 const scopeOf=async(r,table,id)=>(await r.get(`SELECT scope_id FROM "${table}" WHERE id=?`,[id])).scope_id;
 
 describe('ownership migration', () => {
+ it('restarts after skill-folder grants were lazily created, preserving private owners and census rows', async () => {
+  const {repository:r,close}=open();
+  try {
+   await migrateOwnership(r);
+   await r.run('CREATE TABLE skill_folder_access(skill_name TEXT NOT NULL,user_id TEXT NOT NULL,PRIMARY KEY(skill_name,user_id))');
+   await r.run('CREATE TABLE skill_folder_seen(skill_name TEXT PRIMARY KEY)');
+   await r.run("INSERT INTO skill_folder_access VALUES('alpha-skill','alice'),('beta-skill','bob')");
+   await r.run("INSERT INTO skill_folder_seen VALUES('alpha-skill')");
+   await migrateOwnership(r);
+   const rows=await r.all('SELECT g.user_id,s.kind,s.owner_user_id FROM skill_folder_access g JOIN ownership_scopes s ON s.id=g.scope_id ORDER BY g.user_id');
+   expect(rows).toEqual([{user_id:'alice',kind:'personal',owner_user_id:'alice'},{user_id:'bob',kind:'personal',owner_user_id:'bob'}]);
+   expect((await r.get('SELECT COUNT(*) AS n FROM skill_folder_seen')).n).toBe(1);
+   await migrateOwnership(r);
+   await r.run('CREATE TABLE unknown_future_table(id TEXT)');
+   await expect(migrateOwnership(r)).rejects.toThrow('unclassified');
+  } finally { await close(); }
+ });
  it('children inherit their goal\'s scope, and a second run changes nothing', async () => {
   const {repository:r,close}=open();
   try{
