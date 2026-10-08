@@ -266,7 +266,6 @@ export const TOOLS = {
       function: {
         name: 'execute_javascript_code',
         description:
-          hostedToolBoundaryRequired() ? 'Executes JavaScript in an isolated hosted workspace. Use console.log for output; top-level await works. Server secrets, database files and credentials are inaccessible. No AGNT_AUTH_TOKEN is exposed. Use native AGNT tools for platform operations. Permitted read-only AGNT API calls use the local broker at http://127.0.0.1:3333/api without a bearer; other calls are denied. Internet HTTP(S) is proxied; raw sockets are blocked. Never work around a security-policy refusal.' :
           'Executes JavaScript code in Node.js (NOT a browser — no localStorage/document/window). Code is auto-wrapped in async IIFE so top-level await works. Use console.log() for output (return does nothing). For AGNT API calls: define a fetchJSON helper using process.env.AGNT_AUTH_TOKEN (auto-provided) as Bearer token, then call it. Pattern: `async function fetchJSON(ep, opts={}) { const r = await fetch("http://localhost:' + (process.env.PORT || 3333) + '/api"+ep, {...opts, headers:{"Authorization":"Bearer "+process.env.AGNT_AUTH_TOKEN,"Content-Type":"application/json",...opts.headers}}); return r.json(); } const data = await fetchJSON("/agents/"); console.log(JSON.stringify(data,null,2));`',
         parameters: {
           type: 'object',
@@ -274,7 +273,6 @@ export const TOOLS = {
             code: {
               type: 'string',
               description:
-                hostedToolBoundaryRequired() ? 'JavaScript code in the hosted tool sandbox. Top-level await works; print with console.log. No server credentials or session token are available. Prefer native authenticated tools; respect policy refusals.' :
                 "JavaScript code to execute in Node.js. Top-level await works. Use console.log() for output. For AGNT API calls, always define a fetchJSON() helper with process.env.AGNT_AUTH_TOKEN as Bearer token — never use localStorage (doesn't exist in Node.js).",
             },
           },
