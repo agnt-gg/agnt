@@ -1,5 +1,6 @@
 import CustomToolExecutor from '../../workflow/CustomToolExecutor.js';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
+import { credentialUserId } from '../auth/tenantOwnership.js';
 
 /**
  * Shared runner for user-authored Tool Forge tools (rows in the `tools` table,
@@ -84,7 +85,8 @@ function toExecutableNode(tool, args) {
  *          result or { error }.
  */
 export async function runCustomTool(tool, args, userId) {
-  if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER){const {currentTeamExecution}=await import('../authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Hosted members must use approved shared execution');}
+  // A team workspace runs its custom tools as the instance owner (credentialUserId).
+  if(process.env.AGNT_TENANT_SLUG && credentialUserId(userId)!==process.env.AGNT_TENANT_OWNER){const {currentTeamExecution}=await import('../authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Hosted members must use approved shared execution');}
   const node = toExecutableNode(tool, args);
   const engine = makeMinimalEngine(userId);
   const executor = new CustomToolExecutor(engine);

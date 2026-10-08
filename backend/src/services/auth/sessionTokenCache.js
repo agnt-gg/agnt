@@ -77,6 +77,7 @@
  */
 import { createHash } from 'crypto';
 import { isApiKey } from './apiKey.js';
+import { credentialUserId } from './tenantOwnership.js';
 
 /** @typedef {{token: string, userId: string, seenAt: number, expiresAt: number|null}} SessionEntry */
 
@@ -340,6 +341,8 @@ function instanceCredential() {
  * @param {string} [userId]
  */
 export function getSessionToken(userId) {
+  // A team workspace's work (its workflows, schedules, agents) acts for the instance owner.
+  if (userId != null) userId = credentialUserId(String(userId));
   const target = userId == null ? defaultUserId() : String(userId);
   const remembered = target ? liveEntry(target)?.token : null;
   if (remembered) return remembered;

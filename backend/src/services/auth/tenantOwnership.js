@@ -178,6 +178,23 @@ export function credentialUserId(userId) {
   return owner && !owner.includes('@') ? owner : userId;
 }
 
+/**
+ * Why a workflow owned by `userId` may not run on this instance, or null.
+ *
+ * A team workspace's workflows run as the instance owner (credentialUserId),
+ * like everything else in that workspace; any other scope still needs a
+ * published team run; on a hosted instance nobody but the owner runs their
+ * own personal workflows directly. Desktop installs always run.
+ */
+export function hostedWorkflowRunRefusal(userId, inTeamExecution = false) {
+  const runAs = credentialUserId(userId);
+  if (typeof runAs === 'string' && runAs.startsWith('scope:')) {
+    return inTeamExecution ? null : 'Shared workflow requires its approved execution principal';
+  }
+  if (isTenantInstance() && runAs !== tenantOwnerId()) return 'Hosted member workflows must use an approved shared execution principal';
+  return null;
+}
+
 /** Did the operator write `*` into the member list? Not the same as being honoured. */
 function membersListHasWildcard() {
   return clean(process.env[TENANT_MEMBERS_ENV])
