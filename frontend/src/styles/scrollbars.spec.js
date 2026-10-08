@@ -51,6 +51,22 @@ describe('scrollbars: vertical hidden, horizontal shown', () => {
     expect(bar).not.toMatch(/display:\s*none/);
   });
 
+  it('shows the arrow over every styled scrollbar part, as over a native bar', () => {
+    // A styled part inherits cursor from the scroller (the app root sets
+    // cursor: text), so each part Chromium resolves a cursor from needs it.
+    const parts = ['*::-webkit-scrollbar', '*::-webkit-scrollbar-track', '*::-webkit-scrollbar-corner', '*::-webkit-scrollbar-thumb'];
+    const cursorFor = (part) => {
+      let cursor = null;
+      for (const [, selectors, body] of layout.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+        if (!selectors.split(',').some((selector) => selector.trim() === part)) continue;
+        const declared = /(?:^|[;\s])cursor:\s*([^;]+);/.exec(body);
+        if (declared) cursor = declared[1].trim();
+      }
+      return cursor;
+    };
+    for (const part of parts) expect(cursorFor(part), part).toBe('default');
+  });
+
   it('no element uses overflow: scroll, which draws an empty horizontal track', () => {
     const offenders = [];
     for (const file of styleFiles(SRC)) {

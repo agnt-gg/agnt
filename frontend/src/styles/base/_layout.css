@@ -108,6 +108,18 @@ app {
   border-radius: 3px;
 }
 
+/* Arrow over every scrollbar, as a native one shows. Chromium gives a native
+   bar the arrow unconditionally, but takes a styled bar's cursor from the
+   hovered part's style, which inherits from the scrolling element — and so
+   from the app root's cursor: text, or a clickable list's pointer. Button
+   and track-piece hovers fall back to the bar and track styled here. */
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-thumb {
+  cursor: default;
+}
+
 /* FLEXBOX UTILITIES */
 .flex {
   display: flex;

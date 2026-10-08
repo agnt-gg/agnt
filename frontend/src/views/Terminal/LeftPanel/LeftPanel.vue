@@ -324,7 +324,6 @@ export default {
   background-color: transparent;
   border-radius: 16px 0px 0px 16px;
   border: 1px solid var(--color-duller-navy);
-  cursor: default;
 }
 
 .left-panel::-webkit-scrollbar-thumb:hover {
