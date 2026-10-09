@@ -154,18 +154,20 @@ export async function adoptAnnouncedRun(store, { conversationId, chatType, origi
  *          reattached run has FINISHED, so tests can await it. Callers in app
  *          code should not.
  */
+function hasSessionToken() {
+  try {
+    return Boolean(localStorage.getItem('token'));
+  } catch {
+    return false;
+  }
+}
+
 export async function resumeInflightRuns(store) {
   if (!store) return { attempted: 0, resumed: 0 };
 
   // No credentials means every reattach would 401 and clear markers that a
   // logged-in session could still have used.
-  let token = null;
-  try {
-    token = localStorage.getItem('token');
-  } catch {
-    /* storage unavailable */
-  }
-  if (!token) return { attempted: 0, resumed: 0 };
+  if (!hasSessionToken()) return { attempted: 0, resumed: 0 };
 
   const localRuns = listInflightRuns();
 
@@ -199,6 +201,56 @@ export async function resumeInflightRuns(store) {
   const resumed = results.filter((r) => r.status === 'fulfilled' && r.value === true).length;
   console.log(`[runResume] Reattached ${resumed}/${runs.length} run(s)`);
   return { attempted: runs.length, resumed };
+}
+
+export const CATCH_UP_MIN_INTERVAL_MS = 5000;
+
+let catchUpInFlight = null;
+let catchUpRerunRequested = false;
+let lastCatchUpStartedAt = 0;
+
+export function pendingCatchUp() {
+  return catchUpInFlight;
+}
+
+export function catchUpAfterResume(store, { reason = 'visible' } = {}) {
+  if (!store || !hasSessionToken()) return Promise.resolve(null);
+  if (catchUpInFlight) {
+    catchUpRerunRequested = true;
+    return catchUpInFlight;
+  }
+  if (reason === 'visible' && Date.now() - lastCatchUpStartedAt < CATCH_UP_MIN_INTERVAL_MS) {
+    return Promise.resolve(null);
+  }
+  lastCatchUpStartedAt = Date.now();
+  catchUpInFlight = (async () => {
+    let result = null;
+    try {
+      do {
+        catchUpRerunRequested = false;
+        const [channels, conversations] = await Promise.all([
+          store.dispatch('chatUnified/catchUpChannels'),
+          store.dispatch('chat/catchUpConversations'),
+        ]);
+        result = { channels, conversations };
+        Promise.resolve(resumeInflightRuns(store)).catch((err) => {
+          console.warn('[runResume] reattach after resume failed:', err?.message || err);
+        });
+      } while (catchUpRerunRequested);
+    } catch (err) {
+      console.warn('[runResume] catch-up after resume failed:', err?.message || err);
+    } finally {
+      catchUpInFlight = null;
+    }
+    return result;
+  })();
+  return catchUpInFlight;
+}
+
+export function resetCatchUpStateForTests() {
+  catchUpInFlight = null;
+  catchUpRerunRequested = false;
+  lastCatchUpStartedAt = 0;
 }
 
 export default resumeInflightRuns;

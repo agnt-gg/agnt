@@ -2257,6 +2257,7 @@ export default {
           store.commit('chat/ENSURE_CONVERSATION', convId);
           store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: convId, messages: conversationData.messages });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: contentId });
+          store.commit('chat/SCOPED_SET_SAVED_CONTENT_HASH', { conversationId: convId, contentHash: data.content_hash || null });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: conversationData.title || null });
           // Before activation, so the switch watcher sees the saved set and
           // does not regenerate one this conversation already has.

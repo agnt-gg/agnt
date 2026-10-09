@@ -27,6 +27,8 @@ vi.mock('socket.io-client', () => {
   });
   return { io: fake.io };
 });
+const catchUpAfterResume = vi.hoisted(() => vi.fn(async () => null));
+vi.mock('../services/runResume.js', () => ({ catchUpAfterResume }));
 vi.mock('vuex', () => ({ useStore: () => ({ state: { userAuth: { user: { id: 'u1' } } }, dispatch: vi.fn(), commit: vi.fn() }) }));
 
 const { useRealtimeSync, ensureRealtimeConnected } = await import('./useRealtimeSync.js');
@@ -68,6 +70,30 @@ describe('the realtime socket never gives up', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     document.dispatchEvent(new Event('visibilitychange'));
     expect(fake.socket.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('catches the chats up when the window is looked at again', async () => {
+    catchUpAfterResume.mockClear();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flushPromises();
+    expect(catchUpAfterResume).toHaveBeenCalledWith(expect.anything(), { reason: 'visible' });
+  });
+
+  it('catches the chats up once the socket signs back in after a drop, not on every sign-in', async () => {
+    fake.socket.fire('authenticated', { success: true, userId: 'u1' });
+    await flushPromises();
+    catchUpAfterResume.mockClear();
+
+    fake.socket.fire('authenticated', { success: true, userId: 'u1' });
+    await flushPromises();
+    expect(catchUpAfterResume).not.toHaveBeenCalled();
+
+    fake.socket.fire('disconnect', 'transport close');
+    fake.socket.fire('authenticated', { success: true, userId: 'u1' });
+    await flushPromises();
+    expect(catchUpAfterResume).toHaveBeenCalledTimes(1);
+    expect(catchUpAfterResume).toHaveBeenCalledWith(expect.anything(), { reason: 'reconnect' });
   });
 
   it('never disturbs a socket that is already connected', () => {

@@ -2267,6 +2267,13 @@ function runMigrations() {
           console.log('✓ Added participants column to content_outputs table');
         }
       });
+      db.run(`ALTER TABLE content_outputs ADD COLUMN content_hash TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding content_hash column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added content_hash column to content_outputs table');
+        }
+      });
       // After every list column exists (participants is the last). Queued on
       // this connection, so it runs after the ALTERs above.
       ensureGuardedIndex(CONTENT_LIST_INDEX, 'content_outputs');

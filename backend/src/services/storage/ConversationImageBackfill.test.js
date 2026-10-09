@@ -11,6 +11,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import zlib from 'zlib';
+import crypto from 'crypto';
 import { createRequire } from 'module';
 import {
   extractInlineImages,
@@ -77,7 +78,7 @@ describe('ConversationImageBackfill', () => {
     fs.mkdirSync(path.join(tmp, 'images'));
     h = openDb();
     await h.run(`CREATE TABLE content_outputs (
-      id TEXT PRIMARY KEY, user_id TEXT, content TEXT, content_type TEXT, updated_at DATETIME
+      id TEXT PRIMARY KEY, user_id TEXT, content TEXT, content_hash TEXT, content_type TEXT, updated_at DATETIME
     )`);
     logs = [];
     deps = {
@@ -148,8 +149,9 @@ describe('ConversationImageBackfill', () => {
     expect(stats.verifyFailed).toBe(0);
     expect(stats.error).toBe(0);
 
-    const row = await h.get(`SELECT content, updated_at FROM content_outputs WHERE id='row-1'`);
+    const row = await h.get(`SELECT content, content_hash, updated_at FROM content_outputs WHERE id='row-1'`);
     expect(row.updated_at).toBe('2026-03-15 12:00:00'); // ordering never shuffles
+    expect(row.content_hash).toBe(crypto.createHash('sha256').update(row.content).digest('hex'));
     const conv = JSON.parse(row.content);
     expect(conv.messages).toHaveLength(2);
     expect(conv.messages[1].content).toMatch(/\{\{IMAGE_REF:img-bf-[0-9a-f]{16}\}\}/);

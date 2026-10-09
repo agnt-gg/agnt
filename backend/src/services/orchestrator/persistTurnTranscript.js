@@ -68,6 +68,7 @@ import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { deriveTitle, serializeTranscript, transcriptSubstance } from './transcriptProjection.js';
 import { serverMessagesToUi } from './chatStreamReducer.mirror.js';
 import { reconcileCompactedTranscript } from '../../utils/compactedTranscript.js';
+import { missingReportTurns } from '../../utils/reportTurns.js';
 
 /**
  * The messages the client has already saved, or [] when the column will not
@@ -261,6 +262,14 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
 
     if (transcriptSubstance(incoming) < transcriptSubstance(stored)) {
       return { written: false, reason: 'saved_copy_is_richer' };
+    }
+
+    // A turn whose history came from a client that slept through a sub-chat
+    // reporting back lacks that report. Writing its projection would erase
+    // the report from the saved row; the client catches up and saves both.
+    const storedReports = stored.filter((m) => m?.role === 'user').map((m) => m.content);
+    if (missingReportTurns(JSON.stringify({ messages: incoming }), storedReports).length) {
+      return { written: false, reason: 'would_drop_report_turns' };
     }
 
     await ContentOutputModel.createOrUpdate(

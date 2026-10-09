@@ -105,6 +105,47 @@ afterAll(async () => {
 
 beforeEach(() => { broadcasts.length = 0; });
 
+describe('a turn built on a client that slept through a sub-chat report', () => {
+  const REPORT = '[System: Sub-chat finished]\n\nSub-chat: "Landing page rebuild" (conversation id c9)\nStatus: completed\n\nIts final answer:\nBuilt it.';
+  const withReport = [
+    { role: 'user', content: 'build a landing page' },
+    { role: 'assistant', content: 'Started a sub-chat for the build.' },
+    { role: 'user', content: REPORT },
+    { role: 'assistant', content: 'Built and checked: Bramble & Bloom Coffee.' },
+  ];
+
+  it('does not write a projection that would erase the report', async () => {
+    const conversationId = 'conv-stale-history';
+    await ContentOutputModel.createOrUpdate('out-stale-history', USER, null, null, storedTranscript(withReport), false, 'conversation', conversationId, 'Main chat');
+
+    const result = await persistTurnTranscript({
+      conversationId,
+      userId: USER,
+      providerMessages: [
+        withReport[0], withReport[1],
+        { role: 'user', content: 'and add a gallery' },
+        { role: 'assistant', content: 'Added a gallery. '.repeat(40) },
+      ],
+    });
+
+    expect(result).toMatchObject({ written: false, reason: 'would_drop_report_turns' });
+    expect(JSON.parse((await getRow('out-stale-history')).content).messages.map((m) => m.content)).toContain(REPORT);
+  });
+
+  it('writes a turn whose history holds the report, as every up-to-date turn does', async () => {
+    const conversationId = 'conv-current-history';
+    await ContentOutputModel.createOrUpdate('out-current-history', USER, null, null, storedTranscript(withReport), false, 'conversation', conversationId, 'Main chat');
+
+    const result = await persistTurnTranscript({
+      conversationId,
+      userId: USER,
+      providerMessages: [...withReport, { role: 'user', content: 'and add a gallery' }, { role: 'assistant', content: 'Added a gallery.' }],
+    });
+
+    expect(result).toMatchObject({ written: true, outputId: 'out-current-history' });
+  });
+});
+
 describe('finishing the row a departed client left behind', () => {
   it('retains originals and the undo marker when the compressed answer becomes longer than the original', async () => {
     const cid='compressed-late-answer', id='compressed-output';

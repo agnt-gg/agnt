@@ -170,6 +170,7 @@ export async function saveTranscript({
   agentName = null,
   channelKey = null,
   suggestions = null,
+  baseContentHash = null,
 } = {}) {
   if (!conversationId) return { ok: false, error: 'no_conversation_id' };
   if (!messages.length) return { ok: false, error: 'empty' };
@@ -190,11 +191,19 @@ export async function saveTranscript({
         // to the workspace/artifact/widget it was typed into, and the list
         // must not show it.
         channelKey,
+        ...(baseContentHash ? { baseContentHash } : {}),
       }),
     });
+    if (res.status === 409) {
+      const refusal = await res.json().catch(() => null);
+      if (refusal?.error === 'transcript_stale') {
+        return { ok: false, error: 'stale', outputId: refusal.id || outputId || null, contentHash: refusal.contentHash || null };
+      }
+      return { ok: false, error: refusal?.error || 'http_409' };
+    }
     if (!res.ok) return { ok: false, error: `http_${res.status}` };
     const json = await res.json().catch(() => null);
-    return { ok: true, outputId: json?.id || outputId || null };
+    return { ok: true, outputId: json?.id || outputId || null, contentHash: json?.contentHash || null };
   } catch (e) {
     // A failed save is not fatal — localStorage still holds this transcript,
     // and the next turn retries. It must never be silent, though.
@@ -232,6 +241,7 @@ export async function loadTranscriptByConversationId(conversationId) {
       messages: parsed.messages,
       suggestions: parsed.suggestions,
       updatedAt: row.updated_at || row.updatedAt || null,
+      contentHash: row.content_hash || null,
     };
   } catch (e) {
     console.warn('[conversationTranscript] load failed:', e?.message || e);

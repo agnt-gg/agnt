@@ -49,6 +49,7 @@ COPY backend/src/services/ai/descriptor /app/backend/src/services/ai/descriptor
 # tells you to, one file at a time, never backend/ wholesale.
 COPY backend/src/utils/compactedTranscript.js /app/backend/src/utils/compactedTranscript.js
 COPY backend/src/utils/artifactPreviewUrls.js /app/backend/src/utils/artifactPreviewUrls.js
+COPY backend/src/utils/reportTurns.js /app/backend/src/utils/reportTurns.js
 
 # The in-app Docs and legal modal render the repository LICENSE.md directly, so
 # the app can never show a different license than the one governing the code.

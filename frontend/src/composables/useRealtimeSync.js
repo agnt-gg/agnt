@@ -41,17 +41,27 @@ export function ensureRealtimeConnected() {
   if (socket && !socket.connected) socket.connect();
 }
 
+function catchUpChats(store, reason) {
+  import('../services/runResume.js')
+    .then(({ catchUpAfterResume }) => catchUpAfterResume(store, { reason }))
+    .catch((e) => console.warn('[Realtime] Could not catch chats up:', e?.message || e));
+}
+
 let reconnectNudgesInstalled = false;
-function installReconnectNudges() {
+function installReconnectNudges(store) {
   if (reconnectNudgesInstalled || typeof window === 'undefined') return;
   reconnectNudgesInstalled = true;
   // After sleep or a network change the backoff timer may be minutes stale in
   // wall-clock terms; the user is looking now, so reconnect now.
   window.addEventListener('online', ensureRealtimeConnected);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') ensureRealtimeConnected();
+    if (document.visibilityState !== 'visible') return;
+    ensureRealtimeConnected();
+    catchUpChats(store, 'visible');
   });
 }
+
+let missedEventsWhileDisconnected = false;
 
 export function emitSteer(conversationId, content) {
   return new Promise((resolve) => {
@@ -153,7 +163,7 @@ export function useRealtimeSync() {
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
     });
-    installReconnectNudges();
+    installReconnectNudges(store);
 
     socket.on('connect', () => {
       console.log('[Realtime] Connected to server');
@@ -168,6 +178,10 @@ export function useRealtimeSync() {
       if (data.success) {
         console.log('[Realtime] Authenticated successfully for user:', data.userId);
         isAuthenticated.value = true;
+        if (missedEventsWhileDisconnected) {
+          missedEventsWhileDisconnected = false;
+          catchUpChats(store, 'reconnect');
+        }
       } else {
         console.error('[Realtime] Authentication failed:', data.error);
         isAuthenticated.value = false;
@@ -178,6 +192,7 @@ export function useRealtimeSync() {
       console.log('[Realtime] Disconnected from server:', reason);
       isConnected.value = false;
       isAuthenticated.value = false;
+      missedEventsWhileDisconnected = true;
       // A server-initiated disconnect is the one case socket.io deliberately
       // does not retry. For this app it only ever means "the backend is
       // restarting", so reconnect.

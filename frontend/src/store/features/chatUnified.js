@@ -7,6 +7,8 @@ import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, s
 import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
 import { applySteerToTranscript, captureReplaySteers, restoreReplaySteers, repairLegacySteerReplayBlocks } from '@/services/steeredTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { pendingCatchUp } from '@/services/runResume.js';
+import { catchUpTranscript } from '@/services/transcriptCatchUp.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
@@ -133,7 +135,22 @@ const blankConversation = () => ({
   // The content_outputs row this channel's transcript is saved to. Held so
   // every save UPDATES one row instead of creating a new one per turn.
   savedOutputId: null,
+  savedContentHash: null,
 });
+
+const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
+const CATCH_UP_MAX_CHANNELS = 8;
+const CATCH_UP_WAIT_BEFORE_SEND_MS = 4000;
+const STREAM_RECOVERY_RETRY_MS = 1500;
+const TERMINAL_STREAM_EVENTS = new Set(['done', 'error']);
+const RECOVERED_HYDRATIONS = new Set(['hydrated', 'local_newer_or_equal']);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForPendingCatchUp() {
+  const pending = pendingCatchUp();
+  if (!pending) return;
+  await Promise.race([pending.catch(() => {}), sleep(CATCH_UP_WAIT_BEFORE_SEND_MS)]);
+}
 
 const loadPersisted = () => {
   try {
@@ -548,6 +565,11 @@ export default {
       state.conversations[channelKey].savedOutputId = outputId;
       persistConversations(state.conversations);
     },
+    SET_SAVED_CONTENT_HASH(state, { channelKey, contentHash }) {
+      ensureChannel(state, channelKey);
+      state.conversations[channelKey].savedContentHash = contentHash || null;
+      persistConversations(state.conversations);
+    },
     /** Store an anchored set (`{ items, anchor }`); anything else clears. */
     SET_SUGGESTIONS(state, { channelKey, suggestions }) {
       ensureChannel(state, channelKey);
@@ -808,6 +830,7 @@ export default {
         if (saved.outputId && local.savedOutputId !== saved.outputId) {
           commit('SET_SAVED_OUTPUT_ID', { channelKey, outputId: saved.outputId });
         }
+        commit('SET_SAVED_CONTENT_HASH', { channelKey, contentHash: saved.contentHash || null });
         const localSubstance = transcriptSubstance(local.messages);
         const savedSubstance = transcriptSubstance(saved.messages);
         if (localCount > 0 && savedSubstance <= localSubstance) {
@@ -819,6 +842,7 @@ export default {
             messages: saved.messages,
             conversationId,
             savedOutputId: saved.outputId || null,
+            savedContentHash: saved.contentHash || null,
             lastUpdate: saved.updatedAt ? Date.parse(saved.updatedAt) || Date.now() : Date.now(),
             // The adopted conversation's own set. The channel's previous set
             // belongs to whatever conversation this channel held before, so
@@ -860,6 +884,7 @@ export default {
           messages: remoteMessages,
           conversationId: remote.conversationId || conversationId,
           savedOutputId: local.savedOutputId || null,
+          savedContentHash: local.savedContentHash || null,
           lastUpdate: remote.updatedAt ? Date.parse(remote.updatedAt) || Date.now() : Date.now(),
           // The provider log carries no suggestions; keep the channel's only
           // when it was already this conversation (see the transcript path).
@@ -882,7 +907,7 @@ export default {
      * rendered transcript to content_outputs — the same table, same shape, and
      * now the same serializer as the main chat.
      */
-    async saveChannelTranscript({ commit, state }, { channelKey } = {}) {
+    async saveChannelTranscript({ commit, state, dispatch }, { channelKey, rebased = false } = {}) {
       const conv = channelKey ? state.conversations[channelKey] : null;
       if (!conv?.conversationId) return { ok: false, reason: 'no_conversation_id' };
 
@@ -903,13 +928,61 @@ export default {
         // user's main conversation list. Without this the sidebar lists every
         // workspace, artifact and widget chat alongside real conversations.
         channelKey,
+        baseContentHash: conv.savedContentHash || null,
       });
       // Record the row id so the next save updates it instead of inserting a
       // second row for the same conversation.
       if (result.ok && result.outputId && result.outputId !== conv.savedOutputId) {
         commit('SET_SAVED_OUTPUT_ID', { channelKey, outputId: result.outputId });
       }
+      if (result.ok && result.contentHash) {
+        commit('SET_SAVED_CONTENT_HASH', { channelKey, contentHash: result.contentHash });
+      }
+      if (result.error === 'stale' && !rebased) {
+        // The server holds turns this chat missed. Adopt them (keeping anything
+        // typed here), then save once on top. If nothing is missing there is
+        // nothing to save over, so the stored copy is left as it is.
+        const saved = await loadTranscriptByConversationId(conv.conversationId);
+        const latest = state.conversations[channelKey];
+        const next = saved && latest && !state.streamingChannels[channelKey] ? catchUpTranscript(latest.messages, saved.messages) : null;
+        if (!next) return result;
+        commit('SET_CONVERSATION', {
+          channelKey,
+          conversation: { ...latest, messages: next, savedOutputId: saved.outputId || latest.savedOutputId, savedContentHash: saved.contentHash || null },
+        });
+        return dispatch('saveChannelTranscript', { channelKey, rebased: true });
+      }
       return result;
+    },
+
+    async catchUpChannels({ state, dispatch }) {
+      const now = Date.now();
+      const channelKeys = Object.entries(state.conversations || {})
+        .filter(([channelKey, conv]) => (
+          conv?.conversationId
+          && !String(conv.conversationId).startsWith('temp-')
+          && !state.streamingChannels[channelKey]
+          && now - (conv.lastUpdate || 0) <= CATCH_UP_WINDOW_MS
+        ))
+        .sort(([, a], [, b]) => (b.lastUpdate || 0) - (a.lastUpdate || 0))
+        .slice(0, CATCH_UP_MAX_CHANNELS)
+        .map(([channelKey]) => channelKey);
+      const results = await Promise.allSettled(
+        channelKeys.map((channelKey) => dispatch('hydrateWorkspaceChannel', { channelKey })),
+      );
+      const updated = results.filter((r) => r.status === 'fulfilled' && r.value?.reason === 'hydrated').length;
+      return { checked: channelKeys.length, updated };
+    },
+
+    async recoverChannelStream({ dispatch }, { channelKey, conversationId } = {}) {
+      if (!channelKey || !conversationId || String(conversationId).startsWith('temp-')) return false;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const resumed = await dispatch('reattachChannel', { channelKey, conversationId }).catch(() => false);
+        if (resumed) return true;
+        if (attempt === 0) await sleep(STREAM_RECOVERY_RETRY_MS);
+      }
+      const hydrated = await dispatch('hydrateWorkspaceChannel', { channelKey }).catch(() => null);
+      return RECOVERED_HYDRATIONS.has(hydrated?.reason);
     },
 
     /**
@@ -1010,6 +1083,7 @@ export default {
       const hasFiles = Array.isArray(files) && files.length > 0;
       if (!channelKey || !chatType) return;
       if (!trimmedContent && !hasFiles) return;
+      await waitForPendingCatchUp();
       if (state.streamingChannels[channelKey]) return;
 
       // When the user drops files without typing, put a short placeholder in
@@ -1084,6 +1158,8 @@ export default {
       const resolvedReasoningValue = rootState.aiProvider?.reasoningValue || 'default';
       const resolvedReasoningEnabled = rootState.aiProvider?.reasoningEnabled || false;
 
+      let sawTerminalEvent = false;
+      let streamError = null;
       try {
         await streamChat({
           chatType,
@@ -1109,6 +1185,7 @@ export default {
           files,
           signal: controller.signal,
           onEvent: (eventName, data) => {
+            if (TERMINAL_STREAM_EVENTS.has(eventName)) sawTerminalEvent = true;
             // Record the run the instant the server names it. This marker is
             // what a future page load reads to know a turn was left mid-flight.
             if (eventName === 'conversation_started' && data?.conversationId) {
@@ -1125,19 +1202,33 @@ export default {
           commit('CLEAR_PENDING_STEER', { channelKey });
         } else {
           console.error('[chatUnified] sendMessage error:', error);
+          streamError = error;
+        }
+      } finally {
+        commit('SET_STREAMING', { channelKey, isStreaming: false });
+        commit('CLEAR_ABORT_CONTROLLER', { channelKey });
+        // A stream that ended without 'done' or 'error' lost its transport;
+        // the run usually carried on server-side. Rejoin it, or adopt the
+        // finished transcript, and say so only when neither worked.
+        const recovered = !controller.signal.aborted && !sawTerminalEvent
+          ? await dispatch('recoverChannelStream', {
+            channelKey,
+            conversationId: state.conversations[channelKey]?.conversationId,
+          }).catch(() => false)
+          : null;
+        if (recovered === false || (recovered === null && streamError)) {
           commit('ADD_MESSAGE', {
             channelKey,
             message: {
               id: generateMessageId(channelKey),
               role: 'assistant',
-              content: `Sorry, I encountered an error: ${error.message || 'unknown error'}`,
+              content: streamError
+                ? `Sorry, I encountered an error: ${streamError.message || 'unknown error'}`
+                : 'The connection dropped before this reply finished. Reopen the conversation to see whether it completed.',
               timestamp: Date.now(),
             },
           });
         }
-      } finally {
-        commit('SET_STREAMING', { channelKey, isStreaming: false });
-        commit('CLEAR_ABORT_CONTROLLER', { channelKey });
         // The turn is over for this tab. Note that an AbortError lands here too:
         // the local reader stopped, so this tab has nothing left to resume.
         markRunEnded(state.conversations[channelKey]?.conversationId);

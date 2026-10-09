@@ -1,4 +1,5 @@
 import db from './database/index.js';
+import { contentHashOf } from '../utils/contentHash.js';
 
 // The metadata column set every list/meta read shares. ONE definition: the
 // sidebar list, the save response, and the realtime broadcast must all carry
@@ -125,13 +126,14 @@ class ContentOutputModel {
       // it unconditionally is what would erase an auto-title seconds after it
       // was written, or a user's rename on a tab that never saw it.
       db.run(
-        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, title_source, channel_key, participants, last_read_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, content_hash, is_shareable, content_type, conversation_id, title, title_source, channel_key, participants, last_read_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
            tool_id = excluded.tool_id,
            content = excluded.content,
+           content_hash = excluded.content_hash,
            is_shareable = excluded.is_shareable,
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
@@ -141,7 +143,7 @@ class ContentOutputModel {
            participants = COALESCE(excluded.participants, content_outputs.participants),
            last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, normalizedTitleSource, channelKey || null, participants || null],
+        [id, userId, workflowId || null, toolId || null, content, contentHashOf(content), isShareable ? 1 : 0, contentType, conversationId, title, normalizedTitleSource, channelKey || null, participants || null],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
@@ -518,6 +520,39 @@ class ContentOutputModel {
    * zero — a guard that reads "corrupt" as "empty" would authorise the very
    * overwrite it exists to prevent.
    */
+  static contentHashById(id) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT content_hash FROM content_outputs WHERE id = ?', [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row?.content_hash ?? null);
+      });
+    });
+  }
+
+  /**
+   * User-role messages with a "[System: " heading in their first 64 chars, in
+   * order. A cheap prefilter run inside SQLite; utils/reportTurns.js decides.
+   */
+  static systemUserTurnsById(id) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT json_extract(m.value, '$.content') AS text
+         FROM content_outputs c
+         JOIN json_each(CASE WHEN json_valid(c.content) THEN c.content ELSE '{}' END, '$.messages') m
+         WHERE c.id = ?
+           AND json_extract(m.value, '$.role') = 'user'
+           AND json_type(m.value, '$.content') = 'text'
+           AND instr(substr(json_extract(m.value, '$.content'), 1, 64), '[System: ') > 0
+         ORDER BY m.key`,
+        [id],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve((rows || []).map((row) => row.text));
+        }
+      );
+    });
+  }
+
   static transcriptStatsById(id) {
     return new Promise((resolve, reject) => {
       db.get(

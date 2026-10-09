@@ -19,6 +19,8 @@ import {
   suggestionsFor,
 } from '@/services/conversationSuggestions.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { pendingCatchUp } from '@/services/runResume.js';
+import { catchUpTranscript } from '@/services/transcriptCatchUp.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
@@ -58,6 +60,17 @@ function throttledStreamAutosave(dispatch, conversationId) {
   if (now - last < STREAM_AUTOSAVE_INTERVAL_MS) return;
   lastStreamAutosaveAt.set(conversationId, now);
   dispatch('autosaveConversation', { debounce: false, conversationId });
+}
+
+// Catch-up after the page was away: how many saved conversations to refresh,
+// and how long a send waits for a refresh already under way.
+const CATCH_UP_MAX_CONVERSATIONS = 8;
+const CATCH_UP_WAIT_BEFORE_SEND_MS = 4000;
+
+async function waitForPendingCatchUp() {
+  const pending = pendingCatchUp();
+  if (!pending) return;
+  await Promise.race([pending.catch(() => {}), new Promise((resolve) => setTimeout(resolve, CATCH_UP_WAIT_BEFORE_SEND_MS))]);
 }
 
 // The orchestrator chat surface owns this channelKey; every send from chat.js
@@ -485,6 +498,10 @@ function createConversationState(conversationId) {
     dataCache: new Map(),
     savedOutputId: null,
     savedOutputTitle: null,
+    // Hash of the stored content this slot last loaded or saved. Sent with
+    // every save, so the server can refuse one that would erase turns it ran
+    // while this client was away (RunService stale-client guard).
+    savedContentHash: null,
     isSaving: false,
     saveStatus: null,
     lastSaveTimestamp: null,
@@ -1561,6 +1578,11 @@ export default {
       }
     },
 
+    SCOPED_SET_SAVED_CONTENT_HASH(state, { conversationId, contentHash }) {
+      const conv = state.conversations[conversationId];
+      if (conv) conv.savedContentHash = contentHash || null;
+    },
+
     SCOPED_SET_SAVED_OUTPUT_TITLE(state, { conversationId, title }) {
       const conv = state.conversations[conversationId];
       if (conv) {
@@ -1974,6 +1996,10 @@ export default {
       { commit, state, dispatch, rootState },
       { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null, isFloorDispatch = false, conversationId = null },
     ) {
+      // A send right after the page wakes must build on the turns the server
+      // ran meanwhile, not on the copy this tab held when it went to sleep.
+      await waitForPendingCatchUp();
+
       // Determine which conversation to stream in. An EXPLICIT conversationId
       // (floor dispatches) is authoritative — resolving the ACTIVE conversation
       // at dispatch time is the cross-conversation bleed bug: the user switches
@@ -2879,6 +2905,57 @@ export default {
     },
 
     /**
+     * Bring one saved conversation up to date with the server's copy.
+     * See services/transcriptCatchUp.js for what counts as "behind".
+     *
+     * @returns {Promise<{adopted: boolean, reason?: string}>}
+     */
+    async catchUpConversation({ commit, state }, { conversationId }) {
+      const conv = conversationId ? state.conversations[conversationId] : null;
+      if (!conv?.savedOutputId || conv.agentId || conv.discarded) return { adopted: false, reason: 'not_saved' };
+      if (conv.isStreaming || conv.isReattaching || (conv._activeStreams || 0) > 0) return { adopted: false, reason: 'streaming' };
+      const token = localStorage.getItem('token');
+      if (!token) return { adopted: false, reason: 'signed_out' };
+
+      const outputId = conv.savedOutputId;
+      const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${outputId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      if (!response?.ok) return { adopted: false, reason: 'unreachable' };
+      const row = await response.json().catch(() => null);
+      const latest = state.conversations[conversationId];
+      // The user may have switched it, started a turn or cleared it while the
+      // request was out; only an idle slot on the same row is caught up.
+      if (!row || !latest || latest.savedOutputId !== outputId || latest.isStreaming || latest.isReattaching) {
+        return { adopted: false, reason: 'changed' };
+      }
+      if (row.content_hash && row.content_hash === latest.savedContentHash) return { adopted: false, reason: 'current' };
+
+      const stored = parseTranscript(row.content);
+      const next = catchUpTranscript(latest.messages, stored.messages);
+      commit('SCOPED_SET_SAVED_CONTENT_HASH', { conversationId, contentHash: row.content_hash || null });
+      if (!next) return { adopted: false, reason: 'local_current' };
+      commit('SCOPED_SET_MESSAGES', { conversationId, messages: next });
+      console.log(`[Chat] Caught up ${conversationId} with the saved copy (${stored.messages.length} messages).`);
+      return { adopted: true };
+    },
+
+    /**
+     * Catch up every recently used saved conversation, the open one first.
+     * Run when the page is seen again and when the realtime socket reconnects.
+     */
+    async catchUpConversations({ state, dispatch }) {
+      const active = state.activeConversationId;
+      const ids = Object.entries(state.conversations || {})
+        .filter(([, conv]) => conv?.savedOutputId && !conv.agentId && !conv.discarded)
+        .sort(([idA, a], [idB, b]) => (idB === active) - (idA === active) || (b.lastSaveTimestamp || 0) - (a.lastSaveTimestamp || 0))
+        .slice(0, CATCH_UP_MAX_CONVERSATIONS)
+        .map(([id]) => id);
+      const results = await Promise.allSettled(ids.map((conversationId) => dispatch('catchUpConversation', { conversationId })));
+      return { checked: ids.length, updated: results.filter((r) => r.status === 'fulfilled' && r.value?.adopted).length };
+    },
+
+    /**
      * Adopt the server's stored transcript after it refused a truncating save.
      *
      * Runs when this tab holds FEWER messages than the row on disk — the
@@ -2913,6 +2990,7 @@ export default {
 
       commit('SCOPED_SET_MESSAGES', { conversationId, messages: mergeSteeredTranscripts(stored.messages, local) });
       commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId, id: outputId });
+      commit('SCOPED_SET_SAVED_CONTENT_HASH', { conversationId, contentHash: row.content_hash || null });
       if (row.title) commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId, title: row.title });
       // Adopt the stored suggestions only when this tab has none of its own
       // for the adopted transcript; the anchor decides whether they still show.
@@ -3244,6 +3322,7 @@ export default {
             conversationId: currentConvId,
             isShareable: false,
             title: conversationTitle,
+            ...(conv?.savedContentHash ? { baseContentHash: conv.savedContentHash } : {}),
           }),
         });
 
@@ -3264,6 +3343,20 @@ export default {
           const refusal = await response.json().catch(() => ({}));
           if (refusal.error === 'conversation_reset') {
             await dispatch('detachSavedOutput', savedOutputId);
+            return;
+          }
+          if (refusal.error === 'transcript_stale') {
+            // The server ran turns here while this tab was away (a sub-chat
+            // reporting back) and kept them. Catch up, then save once more on
+            // top of them. Never mid-stream: the turn's own end-of-stream save
+            // comes back here once the slot is idle.
+            console.warn(`[Autosave] ${convId} is behind the saved copy; catching up before saving.`);
+            commit('SCOPED_SET_IS_SAVING', { conversationId: convId, value: false });
+            commit('SCOPED_SET_SAVE_STATUS', { conversationId: convId, status: null });
+            const caughtUp = await dispatch('catchUpConversation', { conversationId: convId });
+            if (caughtUp?.adopted) dispatch('autosaveConversation', { debounce: false, conversationId: convId });
+            // Busy right now (a turn is streaming): try again once it settles.
+            else if (caughtUp?.reason === 'streaming' || caughtUp?.reason === 'changed') dispatch('autosaveConversation', { debounce: true, conversationId: convId });
             return;
           }
           console.warn(
@@ -3312,6 +3405,7 @@ export default {
         const storedTitle = result.output?.title || conversationTitle;
         if (conv) {
           commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: result.id });
+          if (result.contentHash) commit('SCOPED_SET_SAVED_CONTENT_HASH', { conversationId: convId, contentHash: result.contentHash });
           commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: storedTitle });
           commit('SCOPED_SET_IS_SAVING', { conversationId: convId, value: false });
           commit('SCOPED_SET_SAVE_STATUS', { conversationId: convId, status: 'saved' });

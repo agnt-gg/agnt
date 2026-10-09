@@ -57,6 +57,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import crypto from 'crypto';
+import { contentHashOf } from '../../utils/contentHash.js';
 
 // Matches the frontend's save-time inlining format exactly: a raw data URI
 // inside a JS string (post-JSON.parse, so no escaping to worry about).
@@ -229,8 +230,8 @@ export async function backfillRow(deps, row) {
   let changes;
   try {
     changes = await dbRun(
-      `UPDATE content_outputs SET content = ? WHERE id = ? AND content = ?`,
-      [rewritten, row.id, original]
+      `UPDATE content_outputs SET content = ?, content_hash = ? WHERE id = ? AND content = ?`,
+      [rewritten, contentHashOf(rewritten), row.id, original]
     );
   } catch (err) {
     log(`[ConversationImageBackfill] update for row ${row.id} failed: ${err.message}`);

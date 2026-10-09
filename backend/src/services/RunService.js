@@ -6,6 +6,8 @@ import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { serializeParticipants } from '../utils/transcriptParticipants.js';
+import { contentHashOf } from '../utils/contentHash.js';
+import { missingReportTurns } from '../utils/reportTurns.js';
 import { closeConversationLane } from './browserLanes.js';
 
 /**
@@ -112,7 +114,7 @@ class RunService {
       }
       // Saves never mark read — the read watermark moves only via the
       // explicit read PATCH (the email model). See ContentOutputModel.
-      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey, allowTruncate } = req.body;
+      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey, allowTruncate, baseContentHash } = req.body;
       const userId = req.user.userId || req.user.id;
 
       // WHICH ROW DOES THIS SAVE BELONG TO?
@@ -204,6 +206,34 @@ class RunService {
         }
       }
 
+      // ── STALE-CLIENT GUARD ────────────────────────────────────────────
+      //
+      // A sub-chat reports back into its parent as a server-run turn. A
+      // client that was asleep never saw it, and its next save, naming the
+      // row by id, would write its older transcript over the report. The
+      // client says which stored content it last synced; when that changed
+      // AND the stored copy holds report turns this save lacks, refuse. The
+      // client then catches up and saves again.
+      if (existingOutput && !adoptedByConversation && !allowTruncate && contentType === 'conversation' && typeof baseContentHash === 'string' && baseContentHash) {
+        const storedHash = await ContentOutputModel.contentHashById(outputId);
+        if (storedHash && storedHash !== baseContentHash) {
+          const missing = missingReportTurns(content, await ContentOutputModel.systemUserTurnsById(outputId));
+          if (missing.length) {
+            console.warn(
+              `[ContentOutput] REFUSED a stale write to ${outputId} (conversation ${conversationId}): `
+              + `it would erase ${missing.length} sub-chat report turn(s) this client has not synced.`
+            );
+            return res.status(409).json({
+              error: 'transcript_stale',
+              message: 'This conversation changed since this client last synced. Reload it before saving.',
+              id: outputId,
+              contentHash: storedHash,
+              output: await ContentOutputModel.findMetaById(outputId),
+            });
+          }
+        }
+      }
+
       // WHO IS IN THIS CONVERSATION, derived from the transcript we are about
       // to store rather than accepted from the client. The sidebar needs a
       // roster to draw avatars against, and it cannot read the transcript —
@@ -253,6 +283,7 @@ class RunService {
         message: isNewOutput ? 'New content output created' : 'Content output updated',
         id: outputId,
         output,
+        contentHash: contentHashOf(content),
       });
     } catch (error) {
       console.error('Error saving/updating content output:', error);

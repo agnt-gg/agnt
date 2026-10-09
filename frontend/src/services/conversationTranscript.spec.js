@@ -142,7 +142,7 @@ describe('saveTranscript', () => {
   it('POSTs the transcript and returns the row id to update next time', async () => {
     const res = await saveTranscript({ conversationId: 'c1', title: 'T', messages: LIVE_TURN });
 
-    expect(res).toEqual({ ok: true, outputId: 'out-9' });
+    expect(res).toEqual({ ok: true, outputId: 'out-9', contentHash: null });
     const [url, init] = global.fetch.mock.calls[0];
     expect(url).toMatch(/\/content-outputs\/save$/);
     const body = JSON.parse(init.body);
@@ -175,6 +175,34 @@ describe('saveTranscript', () => {
   it('does not create a row for an empty conversation', async () => {
     expect(await saveTranscript({ conversationId: 'c1', messages: [] })).toEqual({ ok: false, error: 'empty' });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends the content hash it last synced and returns the new one', async () => {
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'out-9', contentHash: 'h-new' }) }));
+    const res = await saveTranscript({ outputId: 'out-9', conversationId: 'c1', messages: LIVE_TURN, baseContentHash: 'h-old' });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).baseContentHash).toBe('h-old');
+    expect(res).toEqual({ ok: true, outputId: 'out-9', contentHash: 'h-new' });
+  });
+
+  it('sends no base hash when it has none', async () => {
+    await saveTranscript({ conversationId: 'c1', messages: LIVE_TURN });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).not.toHaveProperty('baseContentHash');
+  });
+
+  it('reports a stale save as stale, with what the server holds', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'transcript_stale', id: 'out-9', contentHash: 'h-server' }),
+    }));
+    const res = await saveTranscript({ outputId: 'out-9', conversationId: 'c1', messages: LIVE_TURN, baseContentHash: 'h-old' });
+    expect(res).toEqual({ ok: false, error: 'stale', outputId: 'out-9', contentHash: 'h-server' });
+  });
+
+  it('reports any other refusal by its own error', async () => {
+    global.fetch = vi.fn(async () => ({ ok: false, status: 409, json: async () => ({ error: 'transcript_truncation_refused' }) }));
+    const res = await saveTranscript({ conversationId: 'c1', messages: LIVE_TURN });
+    expect(res).toEqual({ ok: false, error: 'transcript_truncation_refused' });
   });
 
   it('reports a network failure instead of throwing into the caller', async () => {
@@ -235,12 +263,14 @@ describe('loadTranscriptByConversationId', () => {
       json: async () => ({
         id: 'out-9',
         content: serializeTranscript({ conversationId: 'c1', title: 'T', messages: LIVE_TURN }),
+        content_hash: 'h-stored',
         updated_at: '2026-08-04T14:16:58Z',
       }),
     }));
 
     const got = await loadTranscriptByConversationId('c1');
     expect(got.outputId).toBe('out-9');
+    expect(got.contentHash).toBe('h-stored');
     expect(got.title).toBe('T');
     expect(got.messages).toHaveLength(2);
     expect(got.messages[1].contentParts.map((p) => p.type)).toEqual(['text', 'tool_call', 'tool_call', 'text']);
