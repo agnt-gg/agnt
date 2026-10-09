@@ -35,6 +35,31 @@ describe('Focused top bar: window drag + window buttons', () => {
     w.unmount();
   });
 
+  // Reported 2026-10-09 on a Mac: red alone in the top-right corner, yellow and
+  // green at the far left. The red button's bare "close" class met the global
+  // button.close rule (absolute, top 0, right 0) and the group had order: -1.
+  // Positions are pinned in a real browser by tests/e2e/mac-window-controls.spec.js.
+  it('macOS: red, yellow, green, with classes no global rule can catch, never moved left', () => {
+    window.electron = {};
+    Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+    try {
+      const w = mount(FocusedWindowControls);
+      const buttons = w.findAll('button');
+      expect(buttons.map((b) => b.attributes('aria-label'))).toEqual(['Close window', 'Minimize window', 'Maximize window']);
+      for (const button of buttons) {
+        expect(button.classes()).not.toContain('close');
+        expect(button.classes()).not.toContain('min');
+        expect(button.classes()).not.toContain('max');
+      }
+      w.unmount();
+    } finally {
+      delete navigator.platform; // back to the prototype's own value
+    }
+    const macRule = BAR.match(/\.focused-window-controls\.mac \{([^}]*)\}/)[1];
+    expect(macRule).not.toMatch(/order:/);
+    expect(macRule).not.toMatch(/margin(-left)?:\s*0 /);
+  });
+
   it('browser: renders nothing (the browser owns its own window)', () => {
     const w = mount(FocusedWindowControls);
     expect(w.find('[data-testid="focused-window-controls"]').exists()).toBe(false);

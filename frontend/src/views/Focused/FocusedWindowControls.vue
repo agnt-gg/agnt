@@ -3,10 +3,14 @@
        of Focused's one top bar (FocusedShell), which is also the drag area.
        Desktop app only: in a browser the browser owns its window. -->
   <div v-if="isElectron" class="focused-window-controls" :class="{ mac: isMac }" data-testid="focused-window-controls">
+    <!-- Classes are this component's own: a bare "close" is caught by the
+         global legacy rule button.close { position: absolute; top: 0; right: 0 }
+         (styles/components/_buttons.css), which pinned the red button alone to
+         the window corner. -->
     <template v-if="isMac">
-      <button type="button" class="fwc-mac close" aria-label="Close window" @click="close"></button>
-      <button type="button" class="fwc-mac min" aria-label="Minimize window" @click="minimize"></button>
-      <button type="button" class="fwc-mac max" aria-label="Maximize window" @click="maximize"></button>
+      <button type="button" class="fwc-mac fwc-mac-close" aria-label="Close window" @click="close"></button>
+      <button type="button" class="fwc-mac fwc-mac-min" aria-label="Minimize window" @click="minimize"></button>
+      <button type="button" class="fwc-mac fwc-mac-max" aria-label="Maximize window" @click="maximize"></button>
     </template>
     <template v-else>
       <button type="button" class="fwc-btn" aria-label="Minimize window" @click="minimize">
@@ -35,7 +39,9 @@ const close = () => electronUtils.window.close();
 <style scoped>
 /* The bar around them drags the window; the buttons must not. */
 .focused-window-controls { display: flex; align-items: center; gap: 2px; margin-left: auto; -webkit-app-region: no-drag; }
-.focused-window-controls.mac { order: -1; gap: 8px; margin: 0 10px 0 4px; }
+/* Top right on every platform, as in Studio (CanvasScreen .cv-mac-controls):
+   the Mac group keeps margin-left: auto from the rule above. */
+.focused-window-controls.mac { gap: 8px; margin-right: 10px; }
 .fwc-btn {
   width: 36px;
   height: 28px;
@@ -52,7 +58,7 @@ const close = () => electronUtils.window.close();
 .fwc-close:hover { background: var(--color-red); color: var(--text-on-fill); }
 .fwc-btn:focus-visible, .fwc-mac:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .fwc-mac { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; }
-.fwc-mac.close { background: var(--color-red); }
-.fwc-mac.min { background: var(--color-yellow); }
-.fwc-mac.max { background: var(--color-green); }
+.fwc-mac-close { background: var(--color-red); }
+.fwc-mac-min { background: var(--color-yellow); }
+.fwc-mac-max { background: var(--color-green); }
 </style>
