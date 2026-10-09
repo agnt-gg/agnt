@@ -43,7 +43,10 @@ const PROFILE_MAX_BYTES = 200 * 1024 * 1024;
 export const SEARCH_CHROME_ARGS = Object.freeze([
   '--disable-blink-features=AutomationControlled',
   '--window-position=-32000,-32000',
-  '--window-size=1,1',
+  // The page's own size, not 1x1: on Linux a 1x1 window stops drawing about a second after
+  // the page goes idle, and anything waiting for a frame waits forever (see SCRAPE_VIEWPORT
+  // in localScrape.js, where it stalled every screenshot).
+  '--window-size=1366,900',
   '--lang=en-US',
   // Google's results page carries speculation rules that make Chrome prefetch the top results:
   // megabytes per search of pages nobody opens.

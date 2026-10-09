@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import { zipSync, strToU8 } from 'fflate';
 import { getBestChromePath } from '../../utils/chrome-detector.js';
-import { scrapeUrl, normalizeScrapeInput, closeScrapeBrowser, scrapeBrowserIsOpen, SCRAPE_ERROR_MESSAGES } from './localScrape.js';
+import { scrapeUrl, normalizeScrapeInput, closeScrapeBrowser, scrapeBrowserIsOpen, SCRAPE_ERROR_MESSAGES, SCRAPE_VIEWPORT, SCRAPE_CHROME_ARGS } from './localScrape.js';
 
 /**
  * The desktop scraper against a local server, in real Chrome. What each case pins came out of
@@ -11,6 +11,14 @@ import { scrapeUrl, normalizeScrapeInput, closeScrapeBrowser, scrapeBrowserIsOpe
  * shadow-DOM code, returned 404 pages and bot walls as content, and reported failures as
  * success. The conversion itself is covered by the hosted suites (upstream.integrity.test.js).
  */
+describe('the scrape browser launch', () => {
+  it('regression: the window is the page\'s size; on Linux a 1x1 window stalled every screenshot to the 45s deadline', () => {
+    expect(SCRAPE_CHROME_ARGS).toContain(`--window-size=${SCRAPE_VIEWPORT.width},${SCRAPE_VIEWPORT.height}`);
+    expect(SCRAPE_CHROME_ARGS).toContain('--window-position=-32000,-32000');
+    expect(SCRAPE_CHROME_ARGS.some((arg) => arg.startsWith('--headless'))).toBe(false);
+  });
+});
+
 describe('normalizeScrapeInput', () => {
   it('defaults to markdown only, like the hosted API', () => {
     expect(normalizeScrapeInput({ url: 'example.com' })).toEqual({ url: 'https://example.com/', formats: ['markdown'], mainContentOnly: true, waitForMs: 0, allowLocal: false });
@@ -149,6 +157,8 @@ describe.skipIf(!chrome)('scrapeUrl in real Chrome', () => {
 
   it('returns exactly the formats asked for, from one visit', async () => {
     const result = await scrapeUrl({ allowLocal: true, url: `${base}/article`, formats: ['links', 'code', 'screenshot', 'bytes'] });
+    // A failed scrape names its error here, rather than a TypeError on `formats` below.
+    expect(result).toMatchObject({ success: true });
     expect(Object.keys(result.formats).sort()).toEqual(['bytes', 'code', 'links', 'screenshot']);
     expect(result.formats.links.data).toEqual([`${base}/home`, `${base}/docs/next`]);
     expect(result.formats.screenshot.data).toMatch(/^data:image\/jpeg;base64,/);

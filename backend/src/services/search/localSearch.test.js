@@ -11,6 +11,10 @@ describe('the search browser launch', () => {
     expect(SEARCH_CHROME_ARGS).toContain('--window-position=-32000,-32000');
     expect(SEARCH_CHROME_ARGS.some((arg) => arg.startsWith('--headless'))).toBe(false);
   });
+
+  it('regression: the window is the page\'s size, because a 1x1 window stops drawing on Linux', () => {
+    expect(SEARCH_CHROME_ARGS).toContain('--window-size=1366,900');
+  });
 });
 
 /**

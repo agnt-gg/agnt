@@ -102,6 +102,20 @@ let browserPromise = null;
 let activeScrapes = 0;
 let idleTimer = null;
 
+/**
+ * The page size, and the browser window's size with it. On Linux a 1x1 window stops producing
+ * frames about a second after a page goes idle, and a screenshot waits for a frame: every
+ * screenshot scrape there ran to the 45s deadline (cloud tenants, Linux CI). Measured in the
+ * tenant image, Chromium 149: 1x1 hung after a 1.5s idle; a window the page's size never did.
+ * The window is off-screen and headless either way.
+ */
+export const SCRAPE_VIEWPORT = Object.freeze({ width: 1366, height: 900 });
+export const SCRAPE_CHROME_ARGS = Object.freeze([
+  '--window-position=-32000,-32000',
+  `--window-size=${SCRAPE_VIEWPORT.width},${SCRAPE_VIEWPORT.height}`,
+  '--lang=en-US',
+]);
+
 async function launchBrowser() {
   const executablePath = getBestChromePath();
   if (!executablePath) throw Object.assign(new Error('browser_not_found'), { detail: getChromeNotFoundMessage() });
@@ -117,7 +131,7 @@ async function launchBrowser() {
     timeout: 15000,
     // The sandbox stays ON except where Chrome cannot run with it (a container, or root on
     // Linux): this browser opens pages an agent chose, which is what the sandbox is for.
-    args: [...sandboxFlags(), '--window-position=-32000,-32000', '--window-size=1,1', '--lang=en-US'],
+    args: [...sandboxFlags(), ...SCRAPE_CHROME_ARGS],
   });
 }
 
@@ -362,7 +376,7 @@ export async function scrapeUrl(request = {}) {
     context = opened.context;
     if (deadline) throw new Error('scrape_timeout');
     const page = await context.newPage();
-    await page.setViewport({ width: 1366, height: 900 });
+    await page.setViewport(SCRAPE_VIEWPORT);
     // Report the browser we actually are. A fixed, years-old version string next to a current
     // engine is one of the cheapest bot signals there is.
     const userAgent = (await opened.browser.userAgent()).replace('HeadlessChrome', 'Chrome');
