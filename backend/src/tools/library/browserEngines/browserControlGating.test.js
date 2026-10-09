@@ -80,7 +80,9 @@ describe('the engine still declares what it reads', () => {
   });
 });
 
-describe('it is not offered as a workflow node', () => {
+// The first import of the catalogue loads every tool module, cold: about 2s alone and past
+// vitest's 5s default under a parallel run (timed out in 1 of 3 local runs, 2026-10-09).
+describe('it is not offered as a workflow node', { timeout: 60000 }, () => {
   it('is absent from the node catalogue, while the Browser Agent is present', async () => {
     const { loadAllNodeTypes } = await import('../../../services/orchestrator/nodeTypeCatalog.js');
     const { flat } = await loadAllNodeTypes();

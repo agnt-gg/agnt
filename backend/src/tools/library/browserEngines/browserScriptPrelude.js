@@ -31,6 +31,17 @@
 
 const PRELUDE = String.raw`
 import ast as _bh_ast, asyncio, base64 as _bh_base64, inspect as _bh_inspect, linecache as _bh_linecache, time
+import sys as _bh_sys, traceback as _bh_traceback
+
+# Python 3.12 and older print an uncaught error in C, which reads source only
+# from files on disk, so the script's "<script>" frames showed no text. The
+# traceback module reads linecache, where _bh_run registers the script. This
+# replaces only the built-in printer and Ubuntu's apport hook (installed in
+# every system Python, it prints through the same C path); a harness's own
+# handler stays.
+if (_bh_sys.excepthook is _bh_sys.__excepthook__
+        or getattr(_bh_sys.excepthook, "__module__", None) == "apport_python_hook"):
+    _bh_sys.excepthook = _bh_traceback.print_exception
 
 async def _bh_resolve(value):
     return (await value) if _bh_inspect.isawaitable(value) else value

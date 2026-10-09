@@ -57,6 +57,19 @@ let lifecycle;
 const fakeBrowsersByPid = new Map();
 let nextPid = 4242;
 
+/** A killed fake dies the way a real browser does: a moment after it is told to. */
+function dieAfterKill(target) {
+  if (!target || target.exitCode !== null) return;
+  // Bound now: a kill issued by beforeEach must not land in the next test's record.
+  const record = lifecycle;
+  setTimeout(() => {
+    if (target.exitCode !== null) return;
+    target.exitCode = 1;
+    record.push(`exit:${target.pid}`);
+    target.emit('exit', 1);
+  }, killExitDelayMs);
+}
+
 function fakeBrowser() {
   const child = new EventEmitter();
   child.pid = nextPid;
@@ -65,9 +78,16 @@ function fakeBrowser() {
   child.killed = false;
   // Real ChildProcess methods the launcher calls. A double that is missing one
   // fails with "x is not a function" from inside the code under test, which
-  // reads like a product bug and is not one.
+  // reads like a product bug and is not one. kill() is how macOS and Linux
+  // close the browser (Windows uses taskkill): without it the close threw
+  // inside a catch, the fake never exited, and every switch test hung on Linux.
   child.unref = vi.fn();
   child.ref = vi.fn();
+  child.kill = vi.fn(() => {
+    child.killed = true;
+    dieAfterKill(child);
+    return true;
+  });
   return child;
 }
 
@@ -106,16 +126,7 @@ beforeEach(() => {
     // taskkill is the teardown path, not a browser launch. Like the real one,
     // it returns before the browser it names has finished dying.
     if (/taskkill/i.test(command)) {
-      const target = fakeBrowsersByPid.get(Number(args[args.indexOf('/PID') + 1]));
-      if (target && target.exitCode === null) {
-        // Bound now: a kill issued by beforeEach must not land in the next test's record.
-        const record = lifecycle;
-        setTimeout(() => {
-          target.exitCode = 1;
-          record.push(`exit:${target.pid}`);
-          target.emit('exit', 1);
-        }, killExitDelayMs);
-      }
+      dieAfterKill(fakeBrowsersByPid.get(Number(args[args.indexOf('/PID') + 1])));
       return fakeBrowser();
     }
 
@@ -710,6 +721,26 @@ describe('choosing a browser by name', () => {
 
     const newPid = _fallbackSessionForTests().child.pid;
     expect(lifecycle).toEqual([`launch:${oldPid}`, `exit:${oldPid}`, `launch:${newPid}`]);
+  });
+
+  it('on macOS and Linux the switch closes the old browser with kill() and still waits for it to exit', async () => {
+    // CI runs Linux: before the fake had kill(), this path hung every switch test.
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      killExitDelayMs = 200;
+      await ensureFallbackSurface({ log: () => {}, browser: process.execPath });
+      const old = _fallbackSessionForTests().child;
+
+      onlyInstalled('brave');
+      await ensureFallbackSurface({ log: () => {}, browser: 'brave' });
+
+      expect(old.kill).toHaveBeenCalled();
+      expect(spawned.some((s) => /taskkill/i.test(s.command))).toBe(false);
+      expect(lifecycle).toEqual([`launch:${old.pid}`, `exit:${old.pid}`, `launch:${_fallbackSessionForTests().child.pid}`]);
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
   });
 
   it('does not hand a caller arriving mid-switch the browser being closed', async () => {

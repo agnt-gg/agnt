@@ -11,6 +11,16 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import './nope-test-environment.js';
 
+// The gate under test is the member one. The hosted tool SANDBOX is a separate
+// layer: on Linux the tenant slug below turns it on, and it fails closed without
+// its launcher (/usr/local/bin/agnt-tool-run), which exists only in the image.
+// So on Linux CI the owner's command was refused by the sandbox, not this gate.
+// The sandbox has its own tests (toolProcess); here it is off on every platform.
+vi.mock('../src/services/security/toolRunAuthority.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  hostedToolBoundaryRequired: () => false,
+}));
+
 vi.mock('../src/services/CloudTeamClient.js', () => ({
   CloudTeamClient: class {
     async request() { return [{ id: 'team-1', tenantSlug: 'bravo', role: 'admin' }]; }

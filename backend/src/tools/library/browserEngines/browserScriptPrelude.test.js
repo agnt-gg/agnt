@@ -142,6 +142,15 @@ describe.skipIf(!python)('scripts written the way models write them', { timeout:
     expect(run.stderr).toMatch(/NameError/);
   });
 
+  it('leaves a harness\'s own error handler in charge', () => {
+    // The line-text fix replaces only Python\'s built-in printer and Ubuntu\'s
+    // apport hook; a handler the harness installed must still be the one that runs.
+    const run = runScript('undefined_helper()\n', { extraStubs: 'import sys\ndef harness_hook(*args):\n    sys.stderr.write("HARNESS HOOK\\n")\nsys.excepthook = harness_hook' });
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain('HARNESS HOOK');
+    expect(run.stderr).not.toMatch(/NameError/);
+  });
+
   it('carries quotes, backslashes, triple quotes and unicode through intact', () => {
     // U+2028 mid-string: String.prototype.trim() would strip it at an end.
     const script = String.raw`print("é \"q\" \u2028 \\ ''' 😀")`;
