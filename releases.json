@@ -24,13 +24,15 @@
         { "name": "The Main chat hands work to sub-chats, they report back, and a stuck sub-chat asks you through the Main chat", "status": "new" },
         { "name": "[Pro] Annie reacts to your texts with tapbacks on iPhone", "status": "new" },
         { "name": "[Team] Team instances: some tools are owner-only, and team workflows, agents and tools run for everyone", "status": "updated" },
+        { "name": "One Plugins page in both modes: Installed, Browse, Accounts & keys and Built by me, with every plugin's tools, access and updates in one place", "status": "updated" },
         { "name": "Updating never deletes files you kept inside the AGNT install folder, and the installer offers to move any it finds to safety first", "status": "bug" },
         { "name": "Connecting a provider no longer replaces the AI you chose", "status": "bug" },
         { "name": "Saving no longer fails with a \"database busy\" error", "status": "bug" },
         { "name": "Chats catch up after your phone or computer sleeps, and sub-chat reports are never lost", "status": "bug" },
         { "name": "Marketplace pages load properly when you are signed in", "status": "bug" },
         { "name": "Tool Forge uses the provider and model you pick", "status": "bug" },
-        { "name": "On phones, navigation, message actions and the Vault work properly", "status": "bug" },
+        { "name": "On phones, navigation and message actions work properly", "status": "bug" },
+        { "name": "On a Mac, the window buttons in Focused sit in the top-right corner, as in Studio", "status": "bug" },
         { "name": "Previews and files load on cloud instances", "status": "bug" }
       ],
       "tags": ["Backwards Compatible"]

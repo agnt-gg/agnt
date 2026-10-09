@@ -66,7 +66,7 @@ test('library shelves contain real ranked listings across every Focused asset ta
   await expect(page).toHaveURL(/\/marketplace/);
 });
 
-test('Studio has a working left chat-panel toggle and legacy Vault opens API/OAuth @ci', async ({ appPage: page }) => {
+test('Studio has a working left chat-panel toggle and the legacy keys link opens Accounts & keys @ci', async ({ appPage: page }) => {
   await freeAccount(page);
   await page.goto('/chat'); await ready(page); await mode(page, 'studio');
   const toggle = page.locator('.chat-library-toggle');
@@ -76,11 +76,13 @@ test('Studio has a working left chat-panel toggle and legacy Vault opens API/OAu
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(!before);
   await toggle.click();
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(before);
-  // The legacy ?section=api-keys link lands on the keys-and-sign-ins section,
-  // named Vault since fef1f2311, with its own row of the Plugins sidebar active.
+  // The legacy ?section=api-keys link lands on the keys-and-sign-ins section:
+  // the Plugins page's Accounts & keys tab since 18cd7123c (Vault before it),
+  // with that row of the Plugins sidebar active.
   await page.goto('/connectors?section=api-keys'); await ready(page); await mode(page, 'studio');
-  await expect(page.locator('.content-title').filter({ hasText: 'Vault' })).toBeVisible();
+  await expect(page.locator('.ap-tabs [role="tab"][data-tab="accounts"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.connectors-panel [data-nav="oauth"]')).toHaveClass(/active/);
+  await expect(page.locator('.connectors-panel [data-nav="oauth"]')).toContainText('Accounts & keys');
 });
 
 test('business plugin marks fit their dashboard slots, including ViewBox-only SVGs @ci', async ({ appPage: page }) => {
