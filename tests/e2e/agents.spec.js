@@ -43,6 +43,10 @@ test.describe('Agents Feature', () => {
 
     await appPage.locator('[data-tour-id="sidebar.agents"]').click();
     await appPage.waitForURL('**/agents');
+    // The screen is a lazy chunk. Under the full suite (two workers, each with a
+    // backend) it mounted after the 5s default once in 158 runs; 20 of 20 alone.
+    // Wait for it as the test above does, then hold the list to the default.
+    await expect(appPage.getByRole('heading', { name: '/ Agents', exact: true })).toBeVisible({ timeout: 20000 });
 
     await expect(appPage.getByText('Test Agent 1')).toBeVisible();
     await expect(appPage.getByText('Test Agent 2')).toBeVisible();

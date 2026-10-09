@@ -123,6 +123,13 @@ export async function loginUser(page, { token = signTestToken() } = {}) {
   await page.route('**/users/subscription/status', (route) => route.fulfill(json(mockSubscription)));
   await page.route('**/referrals/user/**', (route) => route.fulfill(json({ pseudonym: 'TestUser' })));
   await page.route('**/auth/connected', (route) => route.fulfill(json(['OpenAI', 'Anthropic'])));
+  // Every spec in a worker signs in as ONE account on ONE backend, so a
+  // preference one spec saves (uiMode=focused, a theme) is synced to that
+  // account and hydrated into the next spec ~4s after load. Which spec runs
+  // next depends on the worker split, so a Studio spec flipped into Focused
+  // mid-test only sometimes (CI, 2026-10-09). Each spec owns its preferences
+  // through localStorage; a spec about preference sync unroutes this.
+  await page.route('**/users/preferences**', (route) => route.fulfill(json({})));
 
   // addInitScript, not evaluate: the store reads localStorage during module
   // init, so a token written after load is a token the app has already decided
