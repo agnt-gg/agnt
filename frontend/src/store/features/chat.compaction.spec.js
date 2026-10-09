@@ -187,4 +187,36 @@ describe('chat/compressConversation and chat/undoCompaction', () => {
     expect(wire[0].content).toBe(`${WIRE_PREAMBLE}\n\nEDITED`);
     expect(messages().length).toBe(HISTORY.length + 1);
   });
+
+  // 2026-10-09: an edit saved ~6s after Save was clicked (typing debounce), and
+  // any save asked for while another was in flight was dropped outright.
+  it('a saved edit is written at once, and an edit made during a save is written after it', async () => {
+    const marker = createCompactionMessage({ summary: 'SUMMARY', foldedCount: 4, tokensBefore: 100, tokensAfter: 20 });
+    store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: CONV, messages: [...HISTORY.slice(0, 4), marker, ...HISTORY.slice(4)] });
+    const saves = [];
+    let release;
+    const ok = () => ({ ok: true, status: 200, json: async () => ({ id: 'out-1', output: { id: 'out-1' } }) });
+    vi.stubGlobal('fetch', vi.fn((url, init) => {
+      if (!String(url).includes('/content-outputs/save')) return fetchMock(url, init);
+      saves.push(JSON.parse(init.body));
+      return saves.length === 1 ? new Promise((resolve) => { release = () => resolve(ok()); }) : Promise.resolve(ok());
+    }));
+    const summaryIn = (save) => JSON.parse(save.content).messages.find((m) => m.role === 'compaction').content;
+
+    const inFlight = store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: CONV });
+    expect(saves).toHaveLength(1);
+    await store.dispatch('chat/updateCompactionSummary', { conversationId: CONV, messageId: marker.id, content: 'EDITED' });
+    expect(saves).toHaveLength(1); // one save at a time
+
+    release();
+    await inFlight;
+    await vi.waitFor(() => expect(saves).toHaveLength(2));
+    expect(summaryIn(saves[0])).toBe('SUMMARY');
+    expect(summaryIn(saves[1])).toBe('EDITED');
+
+    // With nothing in flight, Save writes immediately, not after a debounce.
+    await store.dispatch('chat/updateCompactionSummary', { conversationId: CONV, messageId: marker.id, content: 'EDITED AGAIN' });
+    expect(saves).toHaveLength(3);
+    expect(summaryIn(saves[2])).toBe('EDITED AGAIN');
+  });
 });

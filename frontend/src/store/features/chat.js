@@ -62,6 +62,26 @@ function throttledStreamAutosave(dispatch, conversationId) {
   dispatch('autosaveConversation', { debounce: false, conversationId });
 }
 
+/**
+ * A save asked for while another save of the same conversation is in flight.
+ * That save serialised the transcript before the change, so returning early
+ * (as autosave did) dropped the change: a summary edit, an undo or a reply
+ * edit made mid-save never reached the server. It is remembered instead and
+ * saved once the in-flight save ends. Keyed per store, because tests build several.
+ */
+const resaveRequests = new WeakMap();
+const ACTIVE_SLOT = Symbol('active conversation');
+
+function requestResave(state, key) {
+  let pending = resaveRequests.get(state);
+  if (!pending) resaveRequests.set(state, (pending = new Set()));
+  pending.add(key);
+}
+
+function takeResave(state, key) {
+  return !!resaveRequests.get(state)?.delete(key);
+}
+
 // Catch-up after the page was away: how many saved conversations to refresh,
 // and how long a send waits for a refresh already under way.
 const CATCH_UP_MAX_CONVERSATIONS = 8;
@@ -3108,7 +3128,10 @@ export default {
       const convId = conversationId || state.activeConversationId;
       if (!convId || !messageId) return false;
       commit('SCOPED_SET_MESSAGE_CONTENT', { conversationId: convId, messageId, content });
-      dispatch('autosaveConversation', { debounce: true, conversationId: convId });
+      // An explicit Save, like undo and editLastReply: written now, not after the
+      // typing debounce. Debounced, it reached the server ~6s after the click
+      // (measured), so closing the app in that window lost the edit.
+      dispatch('autosaveConversation', { debounce: false, conversationId: convId });
       return true;
     },
 
@@ -3209,8 +3232,12 @@ export default {
       const savedOutputTitle = conv ? conv.savedOutputTitle : state.savedOutputTitle;
       const currentConvId = conv ? conv.conversationId : state.currentConversationId;
 
-      if (!state.autosaveEnabled || isSaving || conv?.discarded) return;
+      if (!state.autosaveEnabled || conv?.discarded) return;
       if (agentId) return; // Don't autosave agent chats
+      if (isSaving) {
+        requestResave(state, convId || ACTIVE_SLOT);
+        return;
+      }
 
       const meaningfulMessages = messages.filter((msg) => msg.role === 'user' || (msg.role === 'assistant' && !msg.showProviderSetup));
       if (meaningfulMessages.length === 0) return;
@@ -3416,6 +3443,7 @@ export default {
           commit('SET_SAVE_STATUS', 'saved');
         }
         commit('SET_LAST_SAVE_TIMESTAMP', Date.now());
+        if (takeResave(state, convId || ACTIVE_SLOT)) dispatch('autosaveConversation', { debounce: false, conversationId: convId });
 
         window.dispatchEvent(new CustomEvent('conversation-saved', { detail: { id: result.id } }));
 
@@ -3440,6 +3468,9 @@ export default {
           commit('SET_IS_SAVING', false);
           commit('SET_SAVE_STATUS', 'error');
         }
+        // One more attempt carries the change that arrived during this one;
+        // it runs only when such a change exists, so a failure cannot loop.
+        if (takeResave(state, convId || ACTIVE_SLOT)) dispatch('autosaveConversation', { debounce: false, conversationId: convId });
 
         setTimeout(() => {
           const currentStatus = conv ? conv.saveStatus : state.saveStatus;
