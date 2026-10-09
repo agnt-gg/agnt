@@ -143,10 +143,11 @@ import { useAppCards } from '@/composables/useAppCards.js';
 import { findAppCard, describeApps } from '@/services/appCards.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
-/** Legacy account links still work; in-app sign-in can return to its package details. */
+/** Legacy account links still work; in-app sign-in returns where it started: a plugin's details or a tab. */
 const props = defineProps({
   cardId: { type: String, required: true },
   returnItem: { type: String, default: null },
+  returnTab: { type: String, default: null },
 });
 const store = useStore();
 const nav = inject('focusedNav');
@@ -173,7 +174,11 @@ const catalogueEntry = computed(() =>
 const providerId = computed(() => (catalogueEntry.value ? String(catalogueEntry.value.id) : card.value?.providerId));
 const providerName = computed(() => catalogueEntry.value?.name || card.value?.providerId || '');
 
-const back = () => nav.go(props.returnItem ? { page: 'connectors', item: props.returnItem } : { page: 'connectors' });
+const back = () => nav.go({
+  page: 'connectors',
+  ...(props.returnItem ? { item: props.returnItem } : {}),
+  ...(props.returnTab ? { tab: props.returnTab } : {}),
+});
 
 // OAuth opens the provider's consent page in a popup (as Connectors does) and
 // re-reads the connections once it closes. The interval is cleared on close

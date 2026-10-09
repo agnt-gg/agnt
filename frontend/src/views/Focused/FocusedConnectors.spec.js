@@ -14,6 +14,11 @@ const getters = reactive({
 });
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, state, getters }) }));
 vi.mock('@/utils/apiFetch.js', () => ({ apiFetch: vi.fn() }));
+// The provider editor is Studio's Connectors screen, embedded; its own spec covers it.
+vi.mock('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue', () => ({
+  __esModule: true,
+  default: { name: 'IntegrationsStub', props: { embedded: Boolean }, template: '<div class="integrations-stub">{{ embedded ? "embedded" : "" }}</div>' },
+}));
 const confirm = vi.fn();
 const modalStub = defineComponent({ setup(_, { expose }) { expose({ showModal: confirm }); return () => null; } });
 const nav = { go: vi.fn(), ask: vi.fn(), studio: vi.fn(), toast: vi.fn(), confirm: vi.fn() };
@@ -25,18 +30,21 @@ const pack = {
   skills: [{ slug: 'source-check' }], workflows: [{ slug: 'digest' }],
 };
 let wrapper;
-function mountPage(item = null) {
+function mountPage(item = null, tab = '') {
   wrapper = mount(FocusedConnectors, {
-    props: { item },
+    props: { item, tab },
     global: { provide: { focusedNav: nav }, stubs: { SvgIcon: true, SimpleModal: modalStub, FocusedConnectorLogo: true } },
   });
   // Follow the same route-prop contract as FocusedShell without mocking the browser itself.
-  nav.go.mockImplementation((location) => location.page === 'connectors' ? wrapper.setProps({ item: location.item || null }) : undefined);
+  nav.go.mockImplementation((location) => location.page === 'connectors' ? wrapper.setProps({ item: location.item || null, tab: location.tab || '' }) : undefined);
   return wrapper;
 }
-async function open(name) {
+const tabButton = (id) => wrapper.find(`[data-tab="${id}"]`);
+const detail = () => wrapper.find('.ap-detail');
+async function openListing(name) {
   await flushPromises();
-  await wrapper.find(`[data-app="${name}"] .card-title`).trigger('click');
+  await tabButton('browse').trigger('click');
+  await wrapper.find(`[data-listing="${name}"] .ap-row-open`).trigger('click');
   await flushPromises();
 }
 beforeEach(() => {
@@ -56,46 +64,46 @@ beforeEach(() => {
 });
 afterEach(() => wrapper?.unmount());
 
-describe('Focused shared plugin catalog', () => {
-  it('mounts the same browser as Studio, showing all packages including no-auth apps', async () => {
+describe('Focused shared Plugins page', () => {
+  it('mounts the same page as Studio, with every Market package including no-auth ones', async () => {
     mountPage(); await flushPromises();
     expect(wrapper.findComponent(AppsSection).exists()).toBe(true);
-    expect(wrapper.findAll('.apps-card')).toHaveLength(3);
-    expect(wrapper.find('.apps-nav').text()).toContain('All plugins');
-    expect(wrapper.find('.apps-nav').text()).toContain('Installed');
+    expect(wrapper.findAll('[data-tab]').map((t) => t.attributes('data-tab'))).toEqual(['installed', 'browse', 'accounts', 'mine']);
+    await tabButton('browse').trigger('click');
+    expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
   });
-  it('search and Installed filtering operate on packages, not sign-ins', async () => {
+  it('Installed shows what you have; Browse search finds what you do not', async () => {
     getters['apps/installed'] = [gmail]; mountPage(); await flushPromises();
+    expect(wrapper.findAll('[data-card]').map((c) => c.attributes('data-card'))).toEqual(['google']);
+    expect(wrapper.find('[data-card="google"]').text()).toContain('Gmail');
+    await tabButton('browse').trigger('click');
     await wrapper.find('input[type="search"]').setValue('research');
-    expect(wrapper.findAll('.apps-card')).toHaveLength(1);
-    await wrapper.find('input[type="search"]').setValue('');
-    await wrapper.findAll('.apps-nav nav button')[1].trigger('click');
-    expect(wrapper.findAll('.apps-card')).toHaveLength(1);
-    expect(wrapper.find('.apps-card').text()).toContain('Gmail');
+    expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['research']);
   });
-  it('card selection creates a deep link and renders all five content groups', async () => {
-    mountPage(); await open('research');
+  it('selecting a plugin creates a deep link and shows every kind of content', async () => {
+    mountPage(); await openListing('research');
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'app:research' });
-    expect(wrapper.findAll('.asset-group')).toHaveLength(5);
-    expect(wrapper.find('.detail-identity h1').text()).toBe('Research');
+    expect(detail().findAll('[data-group]')).toHaveLength(5);
+    expect(detail().find('.ap-detail-name').text()).toBe('Research');
     expect(nav.studio).not.toHaveBeenCalled();
-    await wrapper.find('.apps-back').trigger('click'); await flushPromises();
-    expect(wrapper.findAll('.apps-card')).toHaveLength(3);
+    await wrapper.find('[data-action="back"]').trigger('click'); await flushPromises();
+    expect(wrapper.find('.ap-detail').exists()).toBe(false);
+    expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
   });
   it('opens direct and browser-back plugin links, including packages loaded after mount', async () => {
     getters['apps/available'] = []; mountPage('app:research'); await flushPromises();
     expect(wrapper.text()).toContain('This plugin isn’t available');
     getters['apps/available'] = [pack, gmail]; await flushPromises();
-    expect(wrapper.find('.detail-identity h1').text()).toBe('Research');
+    expect(detail().find('.ap-detail-name').text()).toBe('Research');
     await wrapper.setProps({ item: 'app:gmail-plugin' }); await flushPromises();
-    expect(wrapper.find('.detail-identity h1').text()).toBe('Gmail');
+    expect(detail().find('.ap-detail-name').text()).toBe('Gmail');
     await wrapper.setProps({ item: null }); await flushPromises();
-    expect(wrapper.findAll('.apps-card')).toHaveLength(2);
+    expect(wrapper.find('.ap-detail').exists()).toBe(false);
   });
   it('uses the inspected shared install flow, including consent and refreshed installed state', async () => {
     mountPage('app:research'); await flushPromises();
-    await wrapper.find('.apps-primary').trigger('click'); await flushPromises();
+    await detail().find('[data-action="install"]').trigger('click'); await flushPromises();
     expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/plugins/inspect/research'));
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('full access') }));
     expect(dispatch.mock.calls.filter(([a]) => a === 'marketplace/installPlugin')).toEqual([['marketplace/installPlugin', { pluginName: 'research' }]]);
@@ -104,46 +112,49 @@ describe('Focused shared plugin catalog', () => {
   });
   it('cancelled installation never invokes the installer', async () => {
     confirm.mockResolvedValue(false); mountPage('app:research'); await flushPromises();
-    await wrapper.find('.apps-primary').trigger('click'); await flushPromises();
+    await detail().find('[data-action="install"]').trigger('click'); await flushPromises();
     expect(dispatch.mock.calls.some(([a]) => a === 'marketplace/installPlugin')).toBe(false);
   });
-  it('Connect opens the existing account page and Back returns to the same plugin', async () => {
+  it('Connect opens the existing account page and Back returns to the same plugin and search', async () => {
     mountPage(); await flushPromises();
+    await tabButton('browse').trigger('click');
     await wrapper.find('input[type="search"]').setValue('gmail');
-    await open('gmail-plugin');
+    await wrapper.find('[data-listing="gmail-plugin"] .ap-row-open').trigger('click'); await flushPromises();
     const sharedElement = wrapper.findComponent(AppsSection).element;
-    await wrapper.find('.app-connection button').trigger('click'); await flushPromises();
+    await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
     expect(wrapper.findComponent(FocusedConnection).props()).toMatchObject({ cardId: 'google', returnItem: 'app:gmail-plugin' });
     expect(wrapper.findComponent(AppsSection).element).toBe(sharedElement);
     await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
-    expect(wrapper.find('.detail-identity h1').text()).toBe('Gmail');
+    expect(detail().find('.ap-detail-name').text()).toBe('Gmail');
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
-    await wrapper.find('.apps-back').trigger('click'); await flushPromises();
+    await wrapper.find('[data-action="back"]').trigger('click'); await flushPromises();
     expect(wrapper.find('input[type="search"]').element.value).toBe('gmail');
-    expect(wrapper.findAll('.apps-card')).toHaveLength(1);
+    expect(wrapper.findAll('[data-listing]')).toHaveLength(1);
   });
-  it('Reconnect preserves the existing failing-account state and refreshes on return', async () => {
+  it('Reconnect preserves the failing-account state and refreshes on return', async () => {
     getters['appAuth/connectedApps'] = ['google'];
     state.appAuth.connectionHealth = { providers: [{ provider: 'google', status: 'error' }] };
     mountPage('app:gmail-plugin'); await flushPromises();
-    expect(wrapper.find('.app-connection button').text()).toBe('Reconnect');
-    await wrapper.find('.app-connection button').trigger('click'); await flushPromises();
+    const button = detail().find('[data-section="sign-in"] [data-action="connect"]');
+    expect(button.text()).toBe('Reconnect');
+    await button.trigger('click'); await flushPromises();
     expect(wrapper.findComponent(FocusedConnection).text()).toContain('sign-in stopped working');
     state.appAuth.connectionHealth = { providers: [{ provider: 'google', status: 'healthy' }] };
     await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
-    expect(wrapper.find('.app-connection .connection-check').exists()).toBe(true);
+    expect(detail().find('[data-section="sign-in"] .ap-connected').exists()).toBe(true);
   });
-  it('legacy provider links still render setup and return to the catalog', async () => {
+  it('legacy provider links still render setup and return to the page', async () => {
     mountPage('google'); await flushPromises();
     expect(wrapper.findComponent(FocusedConnection).props('returnItem')).toBeNull();
     await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
-    expect(wrapper.findAll('.apps-card')).toHaveLength(3);
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
+    expect(wrapper.findComponent(AppsSection).isVisible()).toBe(true);
   });
   it('keeps API-key setup in the existing Focused account form', async () => {
     getters['apps/available'] = [{ name: 'notion-plugin', tools: [tool('notion-api', 'notion')] }];
     mountPage('app:notion-plugin'); await flushPromises();
-    await wrapper.find('.app-connection button').trigger('click'); await flushPromises();
+    await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
     await wrapper.find('input[aria-label="API key"]').setValue('test-key');
     await wrapper.find('form').trigger('submit'); await flushPromises();
     expect(dispatch).toHaveBeenCalledWith('appAuth/saveApiKey', { providerId: 'notion', apiKey: 'test-key' });
@@ -152,24 +163,60 @@ describe('Focused shared plugin catalog', () => {
     state.appAuth.allProviders.push({ id: 'openrouter', name: 'OpenRouter', connection_type: 'apikey' });
     getters['apps/available'] = [{ name: 'video', tools: [tool('video-generate', 'openrouter')] }];
     mountPage('app:video'); await flushPromises();
-    await wrapper.find('.app-connection button').trigger('click');
+    await detail().find('[data-section="sign-in"] [data-action="ai-models"]').trigger('click');
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'settings' });
     expect(nav.studio).not.toHaveBeenCalled();
   });
-  it('installed widgets open in Focused Library; advanced management explicitly uses Studio', async () => {
+  it('installed widgets open in Focused Library; the Forge explicitly uses Studio', async () => {
     getters['apps/installed'] = [pack]; getters['widgetDefinitions/allDefinitions'] = [{ id: 'w1' }];
     apiFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true, assets: [{ asset_type: 'widget', asset_slug: 'board', local_id: 'w1' }] }) });
     mountPage('app:research'); await flushPromises();
-    await wrapper.findAll('.asset-group')[2].find('button').trigger('click');
+    await detail().find('[data-group="widgets"] [data-action="open-widget"]').trigger('click');
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'library', tab: 'widgets', item: 'w1' });
-    await wrapper.find('.hero-action button').trigger('click');
+    await detail().find('[data-action="open-forge"]').trigger('click');
     expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen', { select: { kind: 'plugin', id: 'research' } });
   });
-  it('builder and a direct Vault tab remain available', async () => {
+  it('Build opens the Forge in Studio on the chosen view', async () => {
     mountPage(); await flushPromises();
-    await wrapper.findAll('.apps-nav-actions button')[0].trigger('click');
+    await wrapper.find('[data-action="build"]').trigger('click');
+    await wrapper.find('.ap-menu [data-forge="builder"]').trigger('click');
+    expect(dispatch).toHaveBeenCalledWith('connectors/setActiveTab', 'builder');
     expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen');
-    await wrapper.findAll('.apps-nav nav button').find((button) => button.text() === 'Vault').trigger('click');
+  });
+});
+
+describe('Focused Accounts & keys', () => {
+  it('the Accounts tab is the route’s vault tab, both ways', async () => {
+    mountPage(); await flushPromises();
+    await tabButton('accounts').trigger('click');
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'vault' });
+    expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
+    await tabButton('installed').trigger('click');
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors' });
+    expect(tabButton('installed').attributes('aria-selected')).toBe('true');
+  });
+  it('a vault deep link opens Accounts & keys; Connect and Sign out go to the account page', async () => {
+    getters['apps/installed'] = [gmail]; getters['appAuth/connectedApps'] = ['google'];
+    mountPage(null, 'vault'); await flushPromises();
+    expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
+    await wrapper.find('[data-service="notion"] [data-action="connect"]').trigger('click'); await flushPromises();
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'notion' });
+    expect(wrapper.findComponent(FocusedConnection).props()).toMatchObject({ cardId: 'notion', returnTab: 'vault' });
+    // Back returns to the tab the sign-in started from.
+    await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'vault' });
+    expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
+    await wrapper.find('[data-account="google"] .ap-row-open').trigger('click'); await flushPromises();
+    await detail().find('[data-action="disconnect"]').trigger('click'); await flushPromises();
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
+  });
+  it('Edit integrations opens the embedded provider editor, and Back returns to Accounts & keys', async () => {
+    mountPage(null, 'vault'); await flushPromises();
+    await wrapper.find('[data-action="integrations"]').trigger('click'); await flushPromises();
+    expect(wrapper.find('.integrations-stub').text()).toBe('embedded');
+    expect(wrapper.findComponent(AppsSection).isVisible()).toBe(false);
+    await wrapper.find('.focused-integrations .focused-page-back').trigger('click'); await flushPromises();
+    expect(wrapper.find('.integrations-stub').exists()).toBe(false);
+    expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
   });
 });

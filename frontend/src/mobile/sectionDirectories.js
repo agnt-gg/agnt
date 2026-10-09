@@ -189,8 +189,8 @@ export const appsDirectory = [
       {
         "id": "oauth",
         "icon": "fas fa-key",
-        "label": "Vault",
-        "description": "Every stored key and sign-in, with health"
+        "label": "Accounts & keys",
+        "description": "Every sign-in and key, and the plugins each one turns on"
       }
     ]
   }

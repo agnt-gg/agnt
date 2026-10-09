@@ -13,10 +13,12 @@
       <MobileDirectory v-if="mobileView" v-show="mobileDirectoryOpen" title="Plugins" view-id="apps" :groups="appsDirectory" @select="mobileSelectSection" />
       <div v-show="!mobileView || !mobileDirectoryOpen" class="mobile-section-body">
       <button v-if="mobileView" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Plugins</button>
-      <!-- Plugin catalog shared by both modes. Model credentials stay in Settings. -->
-      <div v-if="activeSection === 'apps'" class="connectors-content">
+      <!-- The Plugins page, shared by both modes: Installed, Browse, Accounts & keys
+           (section 'oauth', the old Vault), Built by me. Model credentials stay in Settings. -->
+      <div v-if="activeSection === 'apps' || activeSection === 'oauth'" class="connectors-content">
         <AppsSection
           :selected-plugin="selectedCatalogPlugin"
+          :vault-active="activeSection === 'oauth'"
           @select-app="openCatalogPlugin"
           @close-app="closeCatalogPlugin"
           @connect="connectAppCard"
@@ -27,16 +29,21 @@
           @build-app="emit('screen-change', 'PluginsScreen')"
           @open-market="emit('screen-change', 'MarketplaceScreen')"
           @add-account="openAddProviderModal"
-          @open-vault="showSection('oauth'); mobileDirectoryOpen = false"
+          @open-vault="openInnerSection('oauth')"
+          @open-plugins="openInnerSection('apps')"
+          @open-integrations="openInnerSection('integrations')"
+          @open-section="openInnerSection"
+          @open-ai-models="openAiModels"
         />
       </div>
 
-      <!-- OAuth Connections Section -->
-      <div v-else-if="activeSection === 'oauth'" class="connectors-content vault-content">
-        <button v-if="!embedded" type="button" class="vault-back" @click="showSection('apps')">← Plugins</button>
+      <!-- Integrations: every provider AGNT can connect to, with the editor for each
+           one's sign-in setup. Reached from Plugins › Accounts & keys › Edit integrations. -->
+      <div v-else-if="activeSection === 'integrations'" class="connectors-content vault-content">
+        <button v-if="!embedded" type="button" class="vault-back" @click="openInnerSection('oauth')">← Accounts &amp; keys</button>
         <div class="content-header">
           <div class="content-title-row">
-            <h2 class="content-title">Vault</h2>
+            <h2 class="content-title">Integrations</h2>
             <div class="health-summary-inline" v-if="connectionHealth">
               <span class="health-status-text" :class="'status-' + (connectionHealth.overall || 'unknown')">
                 {{
@@ -58,7 +65,7 @@
               <i class="fas fa-sync-alt" :class="{ 'fa-spin': refreshingHealth }"></i> Check Health
             </button>
           </div>
-          <p class="content-subtitle">Your connected accounts and keys, in one place.</p>
+          <p class="content-subtitle">Every service AGNT can connect to. Edit how one signs in, or add your own.</p>
         </div>
         <div class="connectors-grid">
           <div class="connectors-section">
@@ -755,7 +762,7 @@ export default {
     }
     const terminalLines = ref(['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.']);
     // Opens on the first row of the panel's nav: Your apps.
-    const activeSection = ref(props.embedded ? 'oauth' : 'apps');
+    const activeSection = ref(props.embedded ? 'integrations' : 'apps');
     watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
     const searchQuery = ref('');
     const selectedSecret = ref(null);
@@ -1595,6 +1602,13 @@ export default {
       store.dispatch('marketplace/fetchMyPurchases');
       store.dispatch('marketplace/fetchMyInstalls');
     }
+    // Tabs and links inside the Plugins page navigate like the sidebar rows do:
+    // through the route, so Back and reload land on the same view.
+    function openInnerSection(section) {
+      mobileDirectoryOpen.value = false;
+      emit('screen-change', 'ConnectorsScreen', { section });
+    }
+
     // AI models are not apps. Every old way in (?section=providers from the
     // "no provider" pill, Jump, saved links) lands on Settings › AI Models.
     function openAiModels() {
@@ -1602,7 +1616,7 @@ export default {
     }
 
     function showSection(next) {
-      if (props.embedded) { activeSection.value = 'oauth'; return; }
+      if (props.embedded) { activeSection.value = 'integrations'; return; }
       if (next === 'providers') {
         setInnerSection('apps');
         openAiModels();
@@ -2315,6 +2329,7 @@ export default {
       reconnectAppCard,
       disconnectAppCard,
       openAiModels,
+      openInnerSection,
       emit,
       isLoadingProviders,
       connectionHealth,

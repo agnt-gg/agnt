@@ -21,7 +21,7 @@ beforeEach(() => setInnerSection(null));
 describe('Plugins sidebar', () => {
   it('is one list: Plugins, Email and Webhooks first, with no Advanced caption and no Plugin Forge row', () => {
     const w = mount(ConnectorsPanel);
-    expect(rowText(w)).toEqual(['Plugins', 'Email Inbox', 'Webhooks', 'MCP Servers', 'Vault']);
+    expect(rowText(w)).toEqual(['Plugins', 'Email Inbox', 'Webhooks', 'MCP Servers', 'Accounts & keys']);
     expect(w.findAll('h4')).toHaveLength(0);
     expect(w.text()).not.toMatch(/Advanced/);
     expect(w.text()).not.toMatch(/AI Provider|App Forge|Your apps|Your plugins|Plugin Forge/);

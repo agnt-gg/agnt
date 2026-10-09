@@ -6,14 +6,16 @@
  * drifting into two definitions of "what is connected".
  *
  * Loads only what is missing (each store keeps its own freshness), so opening
- * the page twice does not refetch everything twice.
+ * the page twice does not refetch everything twice. A caller that runs its own
+ * reload (AppsSection reports load failures; this loader stays quiet) passes
+ * { autoload: false } and still shares the one card computation.
  */
 import { computed, onMounted, unref } from 'vue';
 import { useStore } from 'vuex';
 import { buildAppCards } from '@/services/appCards.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
-export function useAppCards(queryRef = '') {
+export function useAppCards(queryRef = '', { autoload = true } = {}) {
   const store = useStore();
 
   const cards = computed(() =>
@@ -47,7 +49,7 @@ export function useAppCards(queryRef = '') {
     ]);
   }
 
-  onMounted(() => load());
+  if (autoload) onMounted(() => load());
 
   return { cards, loading, reload: () => load({ force: true }) };
 }

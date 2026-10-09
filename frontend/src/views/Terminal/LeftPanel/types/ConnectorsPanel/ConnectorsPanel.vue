@@ -93,7 +93,8 @@ export default {
     const store = useStore();
     // Not local state: reading the shared value is what keeps this panel in
     // step with the sidebar when navigation starts from the rail.
-    const activeSection = computed(() => (activeInnerSection.value === 'api-keys' ? 'oauth' : activeInnerSection.value || DEFAULT_SECTION));
+    // api-keys (legacy links) and integrations (the provider editor) both live under Accounts & keys.
+    const activeSection = computed(() => (['api-keys', 'integrations'].includes(activeInnerSection.value) ? 'oauth' : activeInnerSection.value || DEFAULT_SECTION));
 
     const totalSecrets = computed(() => {
       const secrets = store.getters['connectors/allSecrets'] || [];
