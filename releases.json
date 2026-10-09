@@ -2,7 +2,7 @@
   "releases": [
     {
       "version": "0.6.7",
-      "date": "October 6, 2026",
+      "date": "October 9, 2026",
       "title": "AGNT Everywhere: Cloud, Phone & Teams — AGNT v0.6.7",
       "type": "patch",
       "features": [
@@ -15,7 +15,23 @@
         { "name": "Agents drive a real browser and your real desktop, and you can watch them work live in the chat", "status": "new" },
         { "name": "AGNT picks the best model for every turn and uses the AI subscriptions you already have, no setup needed", "status": "new" },
         { "name": "Spread one goal across every machine you own: add a computer and it starts picking up work", "status": "new" },
-        { "name": "Runs survive crashes, restarts and switching devices, and AGNT now updates itself", "status": "new" }
+        { "name": "Runs survive crashes, restarts and switching devices, and AGNT now updates itself (coming from 0.6.6, install 0.6.7 by hand once)", "status": "new" },
+        { "name": "Connect any AI provider in one click, from setup or straight from any model picker", "status": "new" },
+        { "name": "Choose the provider and model for each chat", "status": "new" },
+        { "name": "Run an AI model on your own computer with one click", "status": "new" },
+        { "name": "AGNT Flash: AI models at near cost, with a credit meter right in the chat", "status": "new" },
+        { "name": "Missions take you from zero to hero, replacing the old page tours", "status": "new" },
+        { "name": "The Main chat hands work to sub-chats, they report back, and a stuck sub-chat asks you through the Main chat", "status": "new" },
+        { "name": "[Pro] Annie reacts to your texts with tapbacks on iPhone", "status": "new" },
+        { "name": "[Team] Team instances: some tools are owner-only, and team workflows, agents and tools run for everyone", "status": "updated" },
+        { "name": "Updating never deletes files you kept inside the AGNT install folder, and the installer offers to move any it finds to safety first", "status": "bug" },
+        { "name": "Connecting a provider no longer replaces the AI you chose", "status": "bug" },
+        { "name": "Saving no longer fails with a \"database busy\" error", "status": "bug" },
+        { "name": "Chats catch up after your phone or computer sleeps, and sub-chat reports are never lost", "status": "bug" },
+        { "name": "Marketplace pages load properly when you are signed in", "status": "bug" },
+        { "name": "Tool Forge uses the provider and model you pick", "status": "bug" },
+        { "name": "On phones, navigation, message actions and the Vault work properly", "status": "bug" },
+        { "name": "Previews and files load on cloud instances", "status": "bug" }
       ],
       "tags": ["Backwards Compatible"]
     },
