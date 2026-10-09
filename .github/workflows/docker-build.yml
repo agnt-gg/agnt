@@ -151,10 +151,14 @@ jobs:
     needs: [prep, build-full]
     runs-on: ubuntu-latest
     steps:
+      # The harness comes from the workflow's own commit, not build_ref, as the
+      # moving-tag checker below does: the image under test is pulled by digest
+      # from build_ref's build, so a dispatch rebuilding an existing tag still
+      # tests exactly that tag's image, with a harness fixed since it was cut.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prep.outputs.build_ref }}
+          sparse-checkout: scripts
 
       - name: Download digests
         uses: actions/download-artifact@v8

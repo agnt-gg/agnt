@@ -140,10 +140,33 @@ function forgeInContainer(payload, secret) {
   return r.stdout.trim();
 }
 
+/**
+ * The container takes /app/data for its own user (node, mode 700) and writes
+ * mode-600 keyfiles into it, so this process may no longer read the bind-mounted
+ * directory at all. On CI (runner uid 1001, node uid 1000) the plain rmSync threw
+ * EACCES after every check had passed, and failed the v0.6.7 release. Empty it
+ * from inside the image, as root, and hand the directory back first.
+ *
+ * Cleanup never decides the verdict: assertions do. A temp dir it could not
+ * remove is reported, not fatal.
+ */
+function removeDataDir() {
+  const owner = typeof process.getuid === 'function' ? `${process.getuid()}:${process.getgid()}` : null;
+  if (owner) {
+    docker(['run', '--rm', '--user', '0', '--entrypoint', 'sh', '-v', `${dataDir}:/smoke-data`, image, '-c',
+      `find /smoke-data -mindepth 1 -delete; chown ${owner} /smoke-data`]);
+  }
+  try {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  } catch (error) {
+    console.log(`  note: could not remove ${dataDir} (${error.code || error.message}); not part of the verdict`);
+  }
+}
+
 function cleanup() {
   docker(['rm', '-f', NAME]);
   docker(['rm', '-f', `${NAME}-exit`]);
-  if (!KEEP) fs.rmSync(dataDir, { recursive: true, force: true });
+  if (!KEEP) removeDataDir();
 }
 
 process.on('SIGINT', () => {
