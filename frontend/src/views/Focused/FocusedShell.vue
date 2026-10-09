@@ -44,7 +44,7 @@
       </div>
 
       <FocusedLibrary v-if="page === 'library'" :location="location" />
-      <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" />
+      <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" :tab="location.tab" />
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />

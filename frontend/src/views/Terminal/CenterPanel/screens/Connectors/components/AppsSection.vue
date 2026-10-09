@@ -4,16 +4,18 @@
     <SimpleModal ref="modal" />
     <div class="apps-nav">
       <nav aria-label="Plugin library">
-        <button type="button" :class="{ active: tab === 'explore' }" @click="switchTab('explore')">Explore</button>
-        <button type="button" :class="{ active: tab === 'installed' }" @click="switchTab('installed')">Installed <span>{{ installedCount }}</span></button>
-        <button type="button" :class="{ active: tab === 'market' }" @click="switchTab('market')">Market <span>{{ marketCount }}</span></button>
+        <button type="button" :class="{ active: !vaultActive && tab === 'explore' }" @click="switchTab('explore')">All plugins</button>
+        <button type="button" :class="{ active: !vaultActive && tab === 'installed' }" @click="switchTab('installed')">Installed <span>{{ installedCount }}</span></button>
+        <button type="button" :class="{ active: !vaultActive && tab === 'market' }" @click="switchTab('market')">Market <span>{{ marketCount }}</span></button>
+        <button type="button" :class="{ active: vaultActive }" @click="emit('open-vault')">Vault</button>
       </nav>
       <div class="apps-nav-actions">
         <button type="button" @click="emit('build-app')"><AppsIcon name="plus" /> New plugin</button>
-        <button type="button" @click="emit('add-account')">Custom sign-in</button>
       </div>
     </div>
 
+    <slot v-if="vaultActive" name="vault" />
+    <template v-else>
     <p v-if="error" class="apps-notice error" role="alert">{{ error }} <button type="button" @click="reload">Retry</button></p>
     <p v-if="notice" class="apps-notice" role="status">{{ notice }}</p>
 
@@ -24,29 +26,17 @@
     </div>
     <template v-else-if="!selected">
       <div class="apps-heading">
-        <div><h1>A little more capable.</h1><p>Good tools. Great agents. Find your next plugin.</p></div>
+        <div><h1>Plugins</h1><p>Add capabilities. Connect their accounts in Vault.</p></div>
         <label class="apps-search"><AppsIcon name="search" /><input v-model="query" type="search" placeholder="Search plugins" aria-label="Search plugins" /></label>
       </div>
-      <div class="apps-toolbar">
-        <div class="apps-categories" aria-label="Categories">
-          <button v-for="name in categories" :key="name" type="button" :aria-pressed="category === name" :class="{ active: category === name }" @click="category = name">{{ name }}</button>
-        </div>
-        <span>{{ filtered.length }} {{ filtered.length === 1 ? 'plugin' : 'plugins' }}</span>
-      </div>
-
-      <section v-if="featured && !query && category === 'All plugins' && tab === 'explore'" class="apps-feature">
-        <div class="feature-copy"><span class="eyebrow">{{ featured.isPack ? 'MADE TO WORK TOGETHER' : 'EXTEND YOUR TOOLKIT' }}</span><h2>{{ featured.displayName }}.<br>A little more possibility.</h2><p>{{ featured.description || 'Explore what this plugin brings to AGNT.' }}</p><button type="button" @click="openPlugin(featured)">Explore {{ featured.isPack ? 'the pack' : 'the plugin' }} <AppsIcon name="arrow" /></button></div>
-        <div class="feature-art" aria-hidden="true"><div class="feature-orbit"></div><div class="feature-sheet"><span class="eyebrow">YOUR NEXT CAPABILITY</span><span class="app-logo feature-logo"><SvgIcon :name="featured.icon || 'puzzle-piece'" /></span><strong>{{ featured.displayName }}</strong><div class="feature-lines"><i></i><i></i></div><span class="feature-chip">{{ composition(featured) }}</span></div><span class="feature-float"><AppsIcon name="plugin" /> Built for AGNT</span></div>
-      </section>
-
       <div class="apps-section-label"><h2>{{ sectionTitle }}</h2><span>{{ tab === 'market' ? 'Every plugin on the AGNT Market.' : 'Pick a capability. Make it yours.' }}</span></div>
       <p v-if="loading && !catalog.length" class="apps-empty" role="status">Loading plugins…</p>
       <div v-else-if="!filtered.length" class="apps-empty">
         <AppsIcon name="search" />
         <h2>{{ query ? 'No matching plugins' : tab === 'installed' ? 'No plugins installed yet' : 'No plugins here yet' }}</h2>
-        <p>{{ query ? 'Try another name or category.' : 'Find one on the Market to add your first plugin.' }}</p>
+        <p>{{ query ? 'Try another name.' : 'Find a plugin below to add your first capability.' }}</p>
         <div class="apps-empty-actions">
-          <button v-if="query || category !== 'All plugins'" type="button" class="apps-secondary" @click="resetFilters">Clear filters</button>
+          <button v-if="query" type="button" class="apps-secondary" @click="resetFilters">Clear filters</button>
           <button v-else-if="tab !== 'market' && marketCount" type="button" class="apps-secondary" @click="switchTab('market')">Browse {{ marketCount }} on the Market</button>
           <button type="button" class="apps-primary" data-testid="open-marketplace" @click="emit('open-market')">Open the Marketplace</button>
         </div>
@@ -55,7 +45,8 @@
         <article v-for="app in filtered" :key="app.name" class="apps-card" :data-app="app.name">
           <div class="card-top"><span class="app-logo"><SvgIcon :name="app.icon || 'puzzle-piece'" /></span><span v-if="app.installed" class="card-status"><AppsIcon name="check" /> Installed</span><span v-else class="card-type">{{ app.isPack ? 'Capability pack' : app.category }}</span></div>
           <h3><button type="button" class="card-title" @click="openPlugin(app)">{{ app.displayName }}</button></h3><p>{{ app.description || 'Explore this plugin’s capabilities.' }}</p>
-          <div class="card-bottom"><span>{{ composition(app) }}</span><AppsIcon name="arrow" /></div>
+          <div class="card-capabilities">{{ composition(app) }}</div>
+          <div class="card-bottom"><button type="button" class="apps-secondary" @click="openPlugin(app)">Details</button><button v-if="app.installed" type="button" class="apps-primary" @click="emit('open-app', app.name)">Manage</button><button v-else type="button" class="apps-primary" :disabled="!!installing" @click="install(app)">{{ installing === app.name ? 'Preparing…' : price(app) ? 'Get · ' + price(app) : 'Install' }}</button></div>
         </article>
       </div>
     </template>
@@ -91,6 +82,7 @@
         </aside>
       </div>
     </template>
+    </template>
   </div>
 </template>
 
@@ -105,12 +97,11 @@ import { apiFetch } from '@/utils/apiFetch.js';
 import { studioCatalog, pluginContents, pluginConnections, installDisclosure, escapeDisclosure } from '@/services/studioApps.js';
 
 // Undefined keeps Studio's local selection; Focused supplies a route-backed name (or null).
-const props = defineProps({ selectedPlugin: { type: String, default: undefined } });
-const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'select-app', 'close-app', 'open-market']);
+const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean });
+const emit = defineEmits(['connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'open-vault', 'open-plugins', 'select-app', 'close-app', 'open-market']);
 const store = useStore();
 const modal = ref(null);
 const query = ref('');
-const category = ref('All plugins');
 const tab = ref('explore');
 const selectedName = ref(null);
 const detailHeading = ref(null);
@@ -128,11 +119,9 @@ const installedCount = computed(() => catalog.value.filter((app) => app.installe
 const marketCount = computed(() => catalog.value.filter((app) => app.onMarket).length);
 // Which plugins each tab lists, before category and search narrow it.
 const inTab = (app) => (tab.value === 'installed' ? app.installed : tab.value === 'market' ? app.onMarket : true);
-const sectionTitle = computed(() => (tab.value === 'installed' ? 'Installed plugins' : tab.value === 'market' ? `On the Market${category.value === 'All plugins' ? '' : ' · ' + category.value}` : category.value));
+const sectionTitle = computed(() => tab.value === 'installed' ? 'Installed plugins' : tab.value === 'market' ? 'On the Market' : 'All plugins');
 const selected = computed(() => catalog.value.find((app) => app.name === selectedName.value));
-const categories = computed(() => ['All plugins', ...new Set(catalog.value.map((app) => app.category))]);
-const filtered = computed(() => catalog.value.filter((app) => inTab(app) && (category.value === 'All plugins' || app.category === category.value) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
-const featured = computed(() => catalog.value.find((app) => app.isPack && !app.installed) || catalog.value.find((app) => app.isPack) || catalog.value.find((app) => !app.installed));
+const filtered = computed(() => catalog.value.filter((app) => inTab(app) && `${app.displayName} ${app.description} ${app.category}`.toLowerCase().includes(query.value.trim().toLowerCase())));
 const groups = computed(() => pluginContents(selected.value, assets.value));
 const capabilityCount = computed(() => groups.value.reduce((total, group) => total + group.items.length, 0));
 const firstPopulatedGroup = computed(() => groups.value.findIndex((group) => group.items.length));
@@ -146,8 +135,8 @@ function price(app) {
   const amount = Number(app.price);
   return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';
 }
-function switchTab(value) { tab.value = value; closePlugin(); }
-function resetFilters() { query.value = ''; category.value = 'All plugins'; }
+function switchTab(value) { tab.value = value; closePlugin(); if (props.vaultActive) emit('open-plugins'); }
+function resetFilters() { query.value = ''; }
 async function openPlugin(app) {
   selectedName.value = app.name;
   notice.value = '';
@@ -382,4 +371,13 @@ onBeforeUnmount(() => { alive = false; detailRequest++; });
 @container (max-width: 620px) { .apps-heading { flex-direction: column; align-items: stretch; gap: 20px; } .apps-search { width: 100%; } .apps-heading h1 { font-size: 33px; } .apps-nav { flex-wrap: wrap; gap: 3px; } .apps-nav-actions { gap: 15px; } .apps-toolbar > span { display: none; } .apps-feature { grid-template-columns: 1.25fr .8fr; } .feature-art { padding: 20px 0; } .feature-sheet { margin-right: -60px; width: 190px; max-width: none; } .feature-float { display: none; } .feature-copy h2 { font-size: 25px; } .feature-copy .eyebrow { font-size: 8px; } .apps-section-label > span { display: none; } .apps-detail-columns { grid-template-columns: 1fr; } .apps-detail-hero { gap: 15px; } .hero-action { width: 100%; flex-direction: row; justify-content: space-between; } .detail-identity h1 { font-size: 30px; } .apps-card { padding: 16px 15px 0; } .card-type { display: none; } .apps-card h3 { font-size: 18px; } .apps-card p { font-size: 12px; min-height: 34px; } .card-bottom { font-size: 10px; } }
 @container (max-width: 360px) { .apps-grid { grid-template-columns: 1fr; } .apps-feature { grid-template-columns: 1fr; } .feature-art { display: none; } .apps-nav nav { gap: 16px; } .apps-preview { padding: 18px; } .preview-flow { gap: 5px; } .preview-flow > i { width: 15px; } .preview-flow > span { font-size: 10px; } }
 @media (prefers-reduced-motion: reduce) { .apps-card { transition: none; } }
+.apps-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); }
+.apps-card { display: flex; flex-direction: column; gap: 12px; padding: 20px; min-width: 0; }
+.apps-card h3, .apps-card p { margin: 0; }
+.apps-card > p { flex: 1; line-height: 1.6; }
+.card-capabilities { font-size: 12px; color: var(--color-text-muted); }
+.apps-card .card-bottom { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.apps-card .card-bottom button { min-height: 40px; flex: 1; justify-content: center; }
+.apps-nav nav { min-width: 0; overflow-x: auto; }
+@media (max-width: 800px) { .apps-heading { align-items: stretch; flex-direction: column; gap: 16px; } .apps-search { width: 100%; box-sizing: border-box; } .apps-nav { gap: 10px; flex-wrap: wrap; } .apps-nav nav { width: 100%; } .apps-nav-actions { margin-left: auto; } }
 </style>

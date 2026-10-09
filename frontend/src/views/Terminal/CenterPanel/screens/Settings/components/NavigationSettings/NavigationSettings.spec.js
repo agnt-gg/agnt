@@ -39,6 +39,15 @@ function setup() {
 
 describe('Settings → Navigation', () => {
   beforeEach(() => localStorage.clear());
+  it('creates a group with one click and reports duplicate names', async () => {
+    const wrapper = setup();
+    await wrapper.find('.group-creator button').trigger('click');
+    expect(wrapper.findAll('.group-name').map((input) => input.element.value)).toContain('NEW GROUP');
+    await wrapper.find('.group-creator input').setValue('NEW GROUP');
+    await wrapper.find('.group-creator button').trigger('click');
+    expect(wrapper.find('[role="status"]').text()).toContain('already exists');
+    wrapper.unmount();
+  });
 
   it('arranges the same custom pages the rail renders — routed ones included', () => {
     const labels = setup().findAll('.nav-row .item-copy strong').map((node) => node.text());

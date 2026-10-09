@@ -12,6 +12,7 @@
       v-tooltip="message.agentName || ''"
     >{{ emojiAvatar }}</div>
     <img v-else-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
+    <MobileMessageActions :target="messageRef" :text="typeof message.content === 'string' ? message.content : ''" :can-edit="message.role === 'user' || isReplyEdit" :disabled="isEditing || !!status" @edit="startEditing" />
     <div class="message-content">
       <div v-if="message.role === 'assistant'" class="compact-speaker"><span>a</span>{{ message.agentName || 'Annie' }}</div>
       <div class="message-card">
@@ -643,9 +644,12 @@ const loadThreeJs = async () => {
  * comment or a second sibling in <template> turns it into a fragment, and Vue
  * silently stops applying fallthrough attributes to the wrapper.
  */
+import MobileMessageActions from './MobileMessageActions.vue';
+
 export default {
   name: 'MessageItem',
   components: {
+    MobileMessageActions,
     ProviderSetup,
     AgntFlashCard,
     SubChatCard,
@@ -3306,6 +3310,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 </script>
 
 <style scoped>
+@media (max-width: 800px) {
+  .message-wrapper .message-edit-btn { display: none !important; }
+  .message-wrapper:not(.editing) .message-text { -webkit-touch-callout: none; }
+}
 .message-avatar {
   width: 36px;
   height: 36px;

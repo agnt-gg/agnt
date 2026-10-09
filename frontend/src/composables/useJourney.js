@@ -204,13 +204,7 @@ function offerMission(screen) {
   clearTimeout(runtimeRef.value.offerTimer);
   runtimeRef.value.offerTimer = setTimeout(() => {
     if (run.value || currentScreen() !== screen || !canShow.value) return;
-    // On the page where step one happens, the step IS the offer: no
-    // "Show me" click in between. Anything that would navigate or open a
-    // dialog asks first.
-    const first = MISSIONS[id].steps[0];
-    const inPlace = !first.route || (first.route.screen === screen && !first.route.options);
-    if (inPlace) startMission(id);
-    else run.value = { kind: 'offer', missionId: id };
+    run.value = { kind: 'offer', missionId: id };
   }, OFFER_DELAY_MS);
 }
 
@@ -268,6 +262,7 @@ const view = computed(() => {
   if (kind === 'offer') {
     return {
       key: `offer:${run.value.missionId}`,
+      compact: true,
       eyebrow: steps === 1 ? 'One step' : `${steps} steps`,
       title: mission.title,
       content: mission.pitch,

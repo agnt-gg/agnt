@@ -142,3 +142,13 @@ it('selected() reads only its own kind', () => {
   expect(selected({ select: 'tool:x' }, 'agent')).toBeNull();
   expect(selected({}, 'agent')).toBeNull();
 });
+
+describe('Vault routing', () => {
+  it.each(['oauth', 'vault', 'api-keys'])('keeps %s connections inside Focused mode', (section) => {
+    expect(focusedLocation('ConnectorsScreen', { section })).toEqual({ page: 'connectors', tab: 'vault', item: null });
+  });
+  it('the direct Vault tab round-trips through the shared route', () => {
+    const [screen, options] = routeFor({ page: 'connectors', tab: 'vault' });
+    expect(via(screen, options)).toEqual({ page: 'connectors', tab: 'vault', item: null });
+  });
+});

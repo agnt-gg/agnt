@@ -75,10 +75,13 @@ describe('useJourney', () => {
     expect(readFacts(store)).toMatchObject({ aiModels: 1, apps: 2, agents: 0 });
   });
 
-  it('on the page where step one happens, starts the mission in place (no "Show me")', async () => {
+  it('offers a compact invitation and starts only after acceptance', async () => {
     const store = makeStore();
     await boot(store, '/chat');
-    const { run, view } = useJourney();
+    const { run, view, handleAction } = useJourney();
+    expect(run.value).toMatchObject({ kind: 'offer', missionId: 'first-chat' });
+    expect(view.value.compact).toBe(true);
+    await handleAction('start');
     expect(run.value).toMatchObject({ kind: 'mission', missionId: 'first-chat', index: 0 });
     expect(view.value.prompts.length).toBeGreaterThan(0);
     expect(view.value.actions.find((action) => action.id === 'next')).toBeUndefined(); // waits for the person
@@ -140,7 +143,7 @@ describe('useJourney', () => {
     await flushPromises();
     await vi.advanceTimersByTimeAsync(1300);
     await flushPromises();
-    expect(useJourney().run.value).toMatchObject({ kind: 'mission', missionId: 'first-chat' });
+    expect(useJourney().run.value).toMatchObject({ kind: 'offer', missionId: 'first-chat' });
   });
 
   it('respects the switches: auto-start off means no offers, tours off means nothing', async () => {

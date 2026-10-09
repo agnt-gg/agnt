@@ -36,6 +36,19 @@ describe('CoachMark', () => {
     vi.useRealTimers();
   });
 
+  it('keeps invitations compact until opened and allows minimizing without a blackout', async () => {
+    placeTarget('invitation');
+    wrapper = mount(CoachMark, { props: { view: view({ compact: true, target: '#invitation' }) }, attachTo: document.body });
+    await vi.advanceTimersByTimeAsync(450); await flushPromises();
+    expect(card().classList.contains('coach-collapsed')).toBe(true);
+    expect(document.body.querySelector('.coach-ring')).toBeNull();
+    expect(card().querySelector('.coach-body')).toBeNull();
+    card().querySelector('.coach-expand').click(); await flushPromises();
+    expect(card().querySelector('.coach-body')).not.toBeNull();
+    expect(document.body.querySelector('.coach-ring-dim')).toBeNull();
+    card().querySelector('[aria-label="Minimize guide"]').click(); await flushPromises();
+    expect(card().querySelector('.coach-body')).toBeNull();
+  });
   it('renders nothing without a view', () => {
     wrapper = mount(CoachMark, { props: { view: null }, attachTo: document.body });
     expect(card()).toBeNull();

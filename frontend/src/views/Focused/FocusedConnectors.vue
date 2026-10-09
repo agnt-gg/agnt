@@ -9,6 +9,9 @@
   <section v-show="!providerId" class="focused-page focused-apps" aria-label="Plugins">
     <AppsSection
       :selected-plugin="selectedPlugin"
+      :vault-active="tab === 'vault'"
+      @open-vault="nav.go({ page: 'connectors', tab: 'vault' })"
+      @open-plugins="nav.go({ page: 'connectors' })"
       @select-app="openPlugin"
       @close-app="closePlugin"
       @connect="connect"
@@ -17,8 +20,9 @@
       @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
       @build-app="nav.studio('PluginsScreen')"
       @open-market="nav.go({ page: 'market' })"
-      @add-account="nav.studio('ConnectorsScreen', { section: 'oauth' })"
-    />
+    >
+      <template #vault><VaultScreen embedded @screen-change="(screen, options) => nav.studio(screen, options)" /></template>
+    </AppsSection>
   </section>
 </template>
 
@@ -26,11 +30,13 @@
 // The same component supplies both shells' catalog, details, purchase checks and installer.
 // Focused owns only route navigation and its existing account-connection pages.
 import { computed, inject, ref, watch } from 'vue';
+import { lazyComponent } from '@/utils/chunkRecovery.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import FocusedConnection from './FocusedConnection.vue';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
-const props = defineProps({ item: { type: String, default: null } });
+const VaultScreen = lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue'));
+const props = defineProps({ item: { type: String, default: null }, tab: { type: String, default: '' } });
 const nav = inject('focusedNav');
 const lastPlugin = ref(null);
 const providerId = computed(() => props.item && !props.item.startsWith('app:') ? props.item : null);

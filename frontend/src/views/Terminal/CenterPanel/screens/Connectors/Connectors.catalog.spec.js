@@ -8,20 +8,30 @@ import { activeInnerSection, setInnerSection, clearInnerSection } from '@/canvas
 const route = reactive({ query: {} });
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 let wrapper;
-function mountCatalog() {
+function mountCatalog(props = {}) {
   const store = createStore({ modules: {
     appAuth: { namespaced: true, state: () => ({ allProviders: [], connectedApps: [], connectionHealth: null }) },
     mcpServers: { namespaced: true, state: () => ({ servers: [], loading: false }), getters: { allServers: () => [] } },
     connectors: { namespaced: true, getters: { allSecrets: () => [] } },
   } });
   vi.spyOn(store, 'dispatch').mockResolvedValue([]);
-  wrapper = shallowMount(Connectors, { global: { plugins: [store], stubs: { BaseScreen: { template: '<div><slot /></div>' }, AppsSection: { name: 'AppsSection', props: ['selectedPlugin'], template: '<div class="catalog" />' } } } });
+  wrapper = shallowMount(Connectors, { props, global: { plugins: [store], stubs: { BaseScreen: { template: '<div><slot /></div>' }, AppsSection: { name: 'AppsSection', props: ['selectedPlugin'], template: '<div class="catalog" />' } } } });
   return wrapper;
 }
 beforeEach(() => { route.query = {}; clearInnerSection(); });
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); clearInnerSection(); });
 
 describe('Studio canonical plugin catalog', () => {
+  it('renders every Vault connection in embedded mode without the Studio shell or category bar', async () => {
+    setInnerSection('apps'); route.query = { section: 'apps' };
+    mountCatalog({ embedded: true }); await flushPromises();
+    expect(wrapper.find('.embedded-vault').exists()).toBe(true);
+    expect(wrapper.find('.vault-content').exists()).toBe(true);
+    expect(wrapper.find('.content-title').text()).toBe('Vault');
+    expect(wrapper.find('.category-filter-bar').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'BaseScreen' }).exists()).toBe(false);
+    expect(activeInnerSection.value).toBe('apps');
+  });
   it('opens a plugin deep link even if a different section was previously active', async () => {
     setInnerSection('oauth'); route.query = { select: 'plugin:proofkit' };
     mountCatalog(); await flushPromises();

@@ -124,6 +124,8 @@
     </div>
 
     <!-- ══ canvas — a pure widget grid, chat included ══ -->
+    <div v-if="compact && activeWidgets.length" class="ws-mobile-picker"><span>Open widget</span><CustomSelect v-model="mobileWidgetId" :options="activeWidgets.map(widget => ({ label: widget.title || getWidget(widget.widgetId)?.name || widget.widgetId, value: widget.instanceId }))" placeholder="Open widget" aria-label="Open widget" /></div>
+    <div v-if="compact && !activeWidgets.length" class="ws-mobile-empty"><h2>Your canvas</h2><p>Add a widget to get started.</p><button type="button" @click="togglePalette">Add widget</button></div>
     <div class="ws-canvas" :tabindex="compact ? 0 : undefined" :role="compact ? 'region' : undefined" :aria-label="compact ? 'Workspace widgets' : undefined">
       <div
         ref="gridRef"
@@ -147,7 +149,8 @@
 
         <WidgetFrame
           v-for="instance in renderedWidgets"
-          v-show="workspaceIdFor(instance.instanceId) === activeId"
+          v-show="workspaceIdFor(instance.instanceId) === activeId && (!compact || instance.instanceId === mobileWidgetId)"
+          :class="{ 'ws-mobile-frame': compact }"
           :key="instance.instanceId"
           :widget="instance"
           :cellWidth="cellWidth"
@@ -254,7 +257,7 @@
             :key="item.key"
             class="ws-palette-item"
             :class="{ open: isOpen(item.widgetId) }"
-            draggable="true"
+            :draggable="!compact"
             @click="pick(item)"
             @dragstart="onPaletteDragStart(item, $event)"
             @dragend="onPaletteDragEnd"
@@ -348,6 +351,13 @@ export default {
     // Return the ORIGINAL instance objects. WidgetFrame mutates their geometry
     // during drag/resize; cloning here would make the frame edit a disposable
     // copy and silently lose the gesture on the next computed refresh.
+    const mobileWidgetId = ref('');
+    watch(() => activeWidgets.value.map((widget) => widget.instanceId), (ids, previous = []) => {
+      const added = ids.find((id) => !previous.includes(id));
+      if (added) mobileWidgetId.value = added;
+      else if (!ids.includes(mobileWidgetId.value)) mobileWidgetId.value = ids[0] || '';
+    }, { immediate: true });
+
     const renderedWidgets = computed(() => workspaces.value.flatMap((ws) =>
       ws.widgets.filter((instance) => instance.visible !== false
         && (ws.id === activeId.value || instance.widgetId === 'browser')),
@@ -1269,6 +1279,8 @@ export default {
 
     return {
       compact,
+      mobileWidgetId,
+      getWidget,
       // workspace state
       workspaces,
       activeId,
@@ -2188,5 +2200,19 @@ body.custom-bg .ws-root {
   text-align: center;
   font-size: 12px;
   color: var(--text-quaternary);
+}
+.ws-mobile-picker { display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-width: 0; }
+.ws-mobile-picker span { font-size: 12px; color: var(--color-text-muted); }
+.ws-mobile-picker :deep(.custom-select) { flex: 1; min-width: 0; }
+.ws-mobile-empty { padding: 32px 20px; text-align: center; }
+.ws-mobile-empty button { min-height: 44px; padding: 8px 20px; border-radius: 8px; background: var(--color-green); color: var(--color-black); border: 0; }
+@media (max-width: 800px) {
+  .ws-root.ws-compact > .ws-canvas { min-height: 0; overflow: hidden; flex: 1; }
+  .ws-root.ws-compact .ws-surfaces { height: 100%; min-height: 0; padding: 0 8px 8px; display: block; box-sizing: border-box; }
+  .ws-root.ws-compact :deep(.widget-frame.compact-widget.ws-mobile-frame) { height: 100% !important; min-height: 0 !important; max-height: 100%; }
+  .ws-root.ws-compact :deep(.widget-frame.compact-widget.ws-mobile-frame .wf-body) { min-height: 0; overflow: auto; }
+  .ws-root.ws-compact .ws-tabbar-right { flex-wrap: wrap; min-width: 0; }
+  .ws-root.ws-compact .ws-ai-pill { max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
+  .ws-root.ws-compact .ws-palette { position: fixed; top: auto; bottom: max(12px, env(safe-area-inset-bottom)); left: 8px; right: 8px; transform: none; width: auto; max-height: 70dvh; }
 }
 </style>

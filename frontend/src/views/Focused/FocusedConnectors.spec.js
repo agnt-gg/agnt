@@ -61,7 +61,7 @@ describe('Focused shared plugin catalog', () => {
     mountPage(); await flushPromises();
     expect(wrapper.findComponent(AppsSection).exists()).toBe(true);
     expect(wrapper.findAll('.apps-card')).toHaveLength(3);
-    expect(wrapper.find('.apps-nav').text()).toContain('Explore');
+    expect(wrapper.find('.apps-nav').text()).toContain('All plugins');
     expect(wrapper.find('.apps-nav').text()).toContain('Installed');
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
   });
@@ -165,11 +165,11 @@ describe('Focused shared plugin catalog', () => {
     await wrapper.find('.hero-action button').trigger('click');
     expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen', { select: { kind: 'plugin', id: 'research' } });
   });
-  it('builder and custom account entry points remain available', async () => {
+  it('builder and a direct Vault tab remain available', async () => {
     mountPage(); await flushPromises();
     await wrapper.findAll('.apps-nav-actions button')[0].trigger('click');
     expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen');
-    await wrapper.findAll('.apps-nav-actions button')[1].trigger('click');
-    expect(nav.studio).toHaveBeenLastCalledWith('ConnectorsScreen', { section: 'oauth' });
+    await wrapper.findAll('.apps-nav nav button').find((button) => button.text() === 'Vault').trigger('click');
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'vault' });
   });
 });

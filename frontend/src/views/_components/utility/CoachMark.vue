@@ -1,25 +1,29 @@
 <template>
   <Teleport to="body">
-    <div v-if="view && ringStyle" class="coach-ring" :class="{ 'coach-ring-dim': dim }" :style="ringStyle" aria-hidden="true"></div>
+    <div v-if="view && !collapsed && ringStyle" class="coach-ring" :style="ringStyle" aria-hidden="true"></div>
     <section
       v-if="view"
       ref="cardRef"
       :key="view.key"
       class="coach-card"
-      :class="{ 'coach-docked': docked }"
+      :class="{ 'coach-docked': docked, 'coach-collapsed': collapsed }"
       :style="cardStyle"
       role="dialog"
       aria-modal="false"
-      :aria-labelledby="titleId"
+      :aria-labelledby="collapsed ? undefined : titleId"
+      :aria-label="collapsed ? view.title : undefined"
       data-coach-popup
       @keydown.esc.stop="emit('close')"
     >
       <header class="coach-head">
-        <span class="coach-eyebrow">
+        <button v-if="collapsed" type="button" class="coach-expand" @click="collapsed = false">{{ view.title }} <span>Show guide</span></button>
+        <span v-if="!collapsed" class="coach-eyebrow">
           {{ view.eyebrow }}<template v-if="view.progress"> · {{ view.progress }}</template>
         </span>
+        <button v-if="!collapsed" type="button" class="coach-close" aria-label="Minimize guide" @click="collapsed = true">−</button>
         <button type="button" class="coach-close" aria-label="Close" @click="emit('close')">&times;</button>
       </header>
+      <template v-if="!collapsed">
       <h3 :id="titleId" class="coach-title">{{ view.title }}</h3>
       <p class="coach-body">{{ view.content }}</p>
 
@@ -53,6 +57,7 @@
           {{ action.label }}
         </button>
       </footer>
+      </template>
       <span v-if="arrowStyle" class="coach-arrow" :class="`coach-arrow-${side}`" :style="arrowStyle" aria-hidden="true"></span>
     </section>
   </Teleport>
@@ -92,6 +97,8 @@ const LOOK_EVERY_MS = 400;
 const HUGE_SHARE = 0.45; // a target covering this much of the viewport is "the page": dock beside it
 
 const cardRef = ref(null);
+const collapsed = ref(false);
+watch(() => props.view?.key, () => { collapsed.value = props.view?.compact === true; }, { immediate: true });
 const targetRect = ref(null);
 const cardSize = ref({ width: CARD_WIDTH, height: 180 });
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
@@ -110,7 +117,6 @@ const huge = computed(() => {
 });
 
 const lost = computed(() => !!props.view?.target && !targetRect.value && !searching.value && !!props.view?.canReturn);
-const dim = computed(() => !!targetRect.value && !huge.value && props.view?.dim !== false);
 
 const ringStyle = computed(() => {
   const rect = targetRect.value;
@@ -121,7 +127,7 @@ const ringStyle = computed(() => {
 /** Which side of the target the card sits on, or null to dock. */
 const side = computed(() => {
   const rect = targetRect.value;
-  if (!rect || huge.value) return null;
+  if (collapsed.value || !rect || huge.value) return null;
   const { width: vw, height: vh } = viewport.value;
   const { width: w, height: h } = cardSize.value;
   const fits = {
@@ -236,7 +242,7 @@ watch(
 );
 
 // The card's own height changes with its content (prompts, "Take me there").
-watch([() => props.view, lost], () => nextTick(measureCard), { deep: true });
+watch([() => props.view, lost, collapsed], () => nextTick(measureCard), { deep: true });
 
 window.addEventListener('scroll', scheduleMeasure, true);
 window.addEventListener('resize', scheduleMeasure);
@@ -260,9 +266,6 @@ onBeforeUnmount(() => {
   animation: coach-pulse 1.8s ease-in-out infinite;
 }
 
-.coach-ring-dim {
-  box-shadow: 0 0 0 9999px var(--scrim);
-}
 
 .coach-card {
   position: fixed;
@@ -484,4 +487,9 @@ onBeforeUnmount(() => {
     transition: none;
   }
 }
+.coach-collapsed { padding: 10px 12px; width: min(340px, calc(100vw - 24px)); }
+.coach-collapsed .coach-head { margin: 0; }
+.coach-expand { border: 0; background: none; color: inherit; font: inherit; text-align: left; flex: 1; cursor: pointer; }
+.coach-expand span { display: block; font-size: 11px; color: var(--color-text-muted); margin-top: 3px; }
+@media (max-width: 800px) { .coach-card { max-height: 38dvh; overflow-y: auto; } }
 </style>

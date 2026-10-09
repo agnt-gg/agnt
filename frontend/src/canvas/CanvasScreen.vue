@@ -606,7 +606,17 @@ export default {
     function toggleProfile() {
       if (!profileOpen.value) {
         const rect = profileButton.value?.getBoundingClientRect?.();
-        if (rect) profileMenuStyle.value = { left: `${Math.round(rect.right + 8)}px`, bottom: `${Math.max(8, Math.round(window.innerHeight - rect.bottom))}px` };
+        if (rect) {
+          const width = Math.min(300, window.innerWidth - 24);
+          profileMenuStyle.value = {
+            width: `${width}px`,
+            boxSizing: 'border-box',
+            left: `${Math.max(12, Math.min(Math.round(rect.right + 8), window.innerWidth - width - 12))}px`,
+            bottom: `${Math.max(12, Math.min(Math.round(window.innerHeight - rect.bottom), window.innerHeight - 260))}px`,
+            maxHeight: 'calc(100dvh - 24px)',
+            overflowY: 'auto',
+          };
+        }
       }
       profileOpen.value = !profileOpen.value;
     }

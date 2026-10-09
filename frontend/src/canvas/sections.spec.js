@@ -399,7 +399,7 @@ describe('canvas sections registry', () => {
     expect(main.items[0].label).toBe('Plugins');
     expect(main.items.some((i) => i.screen === 'PluginsScreen' || /forge/i.test(i.label))).toBe(false);
     expect(appsDirectory.flatMap((g) => g.items).map((i) => i.label).join(' ')).not.toMatch(/advanced/i);
-    expect(connectorsScreenSrc).toMatch(/const activeSection = ref\('apps'\)/);
+    expect(connectorsScreenSrc).toMatch(/const activeSection = ref\(props\.embedded \? 'oauth' : 'apps'\)/);
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
 
     // Models are not a row of the Apps nav, and no screen of its own.

@@ -59,8 +59,9 @@ function emptyPreferences() {
  * safe to run on every load and never needs a version bump.
  */
 export function migrateLegacyGroups(preferences) {
-  if (!preferences.groups.some((group) => LEGACY_GROUPS.has(group))) return preferences;
-  const custom = preferences.groups.filter((group) => !LEGACY_GROUPS.has(group) && !DEFAULT_GROUPS.includes(group) && group !== PERSONAL_GROUP);
+  const legacy = new Set([...LEGACY_GROUPS].filter((group) => !preferences.customGroups?.includes(group)));
+  if (!preferences.groups.some((group) => legacy.has(group))) return preferences;
+  const custom = preferences.groups.filter((group) => !legacy.has(group) && !DEFAULT_GROUPS.includes(group) && group !== PERSONAL_GROUP);
   const items = {};
   for (const [key, item] of Object.entries(preferences.items)) {
     if (!item || typeof item !== 'object') continue;
@@ -69,7 +70,7 @@ export function migrateLegacyGroups(preferences) {
     // person chose that still exists, are kept. A row parked under an old
     // caption returns to its built-in group.
     const { order: _order, ...rest } = item;
-    if (LEGACY_GROUPS.has(cleanGroup(rest.group))) delete rest.group;
+    if (legacy.has(cleanGroup(rest.group))) delete rest.group;
     items[key] = rest;
   }
   return { ...preferences, groups: [...DEFAULT_GROUPS, PERSONAL_GROUP, ...custom], items };
@@ -79,7 +80,7 @@ export function migrateLegacyGroups(preferences) {
  * Custom pages or rows deliberately assigned to SYSTEM remain untouched. */
 export function migrateMembersNavigation(preferences) {
   const { ['virtual:teams']: retired, ...items } = preferences.items;
-  const systemInUse = Object.values(items).some(item => item && typeof item === 'object' && cleanGroup(item.group) === 'SYSTEM');
+  const systemInUse = preferences.customGroups?.includes('SYSTEM') || Object.values(items).some(item => item && typeof item === 'object' && cleanGroup(item.group) === 'SYSTEM');
   if (!retired && (systemInUse || !preferences.groups.includes('SYSTEM'))) return preferences;
   return { ...preferences, items, groups: preferences.groups.filter(group => group !== 'SYSTEM' || systemInUse) };
 }
@@ -94,6 +95,7 @@ export function loadNavigationPreferences() {
       version: 1,
       groups: [...new Set(parsed.groups.map((group) => cleanGroup(group)).filter(Boolean))],
       items: { ...parsed.items },
+      ...(Array.isArray(parsed.customGroups) ? { customGroups: parsed.customGroups.map((group) => cleanGroup(group)) } : {}),
     }));
   } catch {
     return emptyPreferences();
@@ -216,7 +218,10 @@ export function reorderNavigationItem(key, direction, customPages = []) {
 export function addNavigationGroup(name) {
   const preferences = loadNavigationPreferences();
   const group = cleanGroup(name, '');
-  if (group && !preferences.groups.includes(group)) preferences.groups.push(group);
+  if (group && !preferences.groups.includes(group)) {
+    preferences.groups.push(group);
+    preferences.customGroups = [...new Set([...(preferences.customGroups || []), group])];
+  }
   return persist(preferences);
 }
 
@@ -226,6 +231,7 @@ export function renameNavigationGroup(previousName, nextName) {
   if (!next || previous === next) return loadNavigationPreferences();
   const preferences = loadNavigationPreferences();
   preferences.groups = [...new Set(preferences.groups.map((group) => (group === previous ? next : group)))];
+  preferences.customGroups = [...new Set([...(preferences.customGroups || []).filter((group) => group !== previous), next])];
   for (const [key, item] of Object.entries(preferences.items)) {
     if (cleanGroup(item.group) === previous) preferences.items[key] = { ...item, group: next };
   }

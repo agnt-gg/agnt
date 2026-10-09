@@ -41,6 +41,21 @@ describe('AGNT-One mobile navigation', () => {
    expect(labels.some(t=>t.includes('Search'))).toBe(false);
    expect(wrapper.find('.cv-sidebar').attributes('aria-modal')).toBe('true'); wrapper.unmount();
  });
+ it('keeps the Focused mode action within a phone viewport', async () => {
+   const originalWidth = window.innerWidth;
+   window.innerWidth = 390;
+   const { wrapper } = setup();
+   await wrapper.find('.cv-mobile-menu').trigger('click');
+   const button = wrapper.find('.cv-sb-profile');
+   button.element.getBoundingClientRect = () => ({ left: 12, right: 300, top: 700, bottom: 740, width: 288, height: 40 });
+   await button.trigger('click'); await nextTick();
+   const menu = document.querySelector('.cv-profile-menu');
+   expect(menu).not.toBeNull();
+   expect(parseFloat(menu.style.left)).toBeGreaterThanOrEqual(12);
+   expect(parseFloat(menu.style.left) + parseFloat(menu.style.width)).toBeLessThanOrEqual(378);
+   expect(menu.querySelector('[data-testid="switch-to-focused"]')).not.toBeNull();
+   wrapper.unmount(); window.innerWidth = originalWidth;
+ });
  it('navigation closes the drawer and emits the original screen intent', async () => {
    const { wrapper } = setup(); await wrapper.find('.cv-mobile-menu').trigger('click');await wrapper.find('[data-tour-id="sidebar.goals"]').trigger('click');
    expect(wrapper.emitted('screen-change').at(-1)[0]).toBe('GoalsScreen'); expect(wrapper.find('.cv-sidebar').attributes('aria-hidden')).toBe('true'); wrapper.unmount();

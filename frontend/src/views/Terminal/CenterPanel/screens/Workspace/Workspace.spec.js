@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createStore } from 'vuex';
 
 // Stable spies: the factory returns THE SAME router object on every
@@ -858,10 +858,11 @@ describe('Workspace.vue', () => {
     });
   });
 
-  const mountPage = async () => {
+  const mountPage = async (compact = ref(false)) => {
     const Workspace = (await import('./Workspace.vue')).default;
     return mount(Workspace, {
       global: {
+        provide: { isMobile: compact },
         plugins: [store],
         stubs: {
           UnifiedChatContainer: {
@@ -885,6 +886,28 @@ describe('Workspace.vue', () => {
       },
     });
   };
+
+  it('switches phone widgets without remounting them or rewriting desktop positions', async () => {
+    const compact = ref(true);
+    const wrapper = await mountPage(compact);
+    const ws = (await import('./useWorkspaces.js')).useWorkspaces();
+    const id = ws.addWidget('traces');
+    await nextTick();
+    const widgets = JSON.stringify(ws.activeWidgets.value);
+    const first = wrapper.findAll('.stub-frame')[0].element;
+    expect(wrapper.findAll('.stub-frame').filter((frame) => frame.isVisible())).toHaveLength(1);
+    const picker = wrapper.findComponent('.ws-mobile-picker .custom-select');
+    expect(picker.props('modelValue')).toBe(id);
+    picker.vm.$emit('update:modelValue', ws.activeWidgets.value[0].instanceId);
+    await nextTick();
+    compact.value = false; await nextTick();
+    expect(wrapper.vm.compact).toBe(false);
+    expect(wrapper.findAll('.stub-frame').map((frame) => frame.attributes('style'))).toEqual(['', '']);
+    expect(wrapper.findAll('.stub-frame').every((frame) => frame.element.style.display !== 'none')).toBe(true);
+    expect(wrapper.findAll('.stub-frame')[0].element).toBe(first);
+    expect(JSON.stringify(ws.activeWidgets.value)).toBe(widgets);
+    wrapper.unmount();
+  });
 
   it('starts with the workspace-chat widget as a frame on the grid', async () => {
     const wrapper = await mountPage();

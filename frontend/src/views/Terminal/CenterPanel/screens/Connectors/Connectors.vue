@@ -1,5 +1,5 @@
 <template>
-  <BaseScreen
+  <component :is="embedded ? 'div' : 'BaseScreen'" :class="{ 'embedded-vault': embedded }"
     ref="baseScreenRef"
     :activeRightPanel="activeRightPanel"
     screenId="ConnectorsScreen"
@@ -27,14 +27,16 @@
           @build-app="emit('screen-change', 'PluginsScreen')"
           @open-market="emit('screen-change', 'MarketplaceScreen')"
           @add-account="openAddProviderModal"
+          @open-vault="showSection('oauth'); mobileDirectoryOpen = false"
         />
       </div>
 
       <!-- OAuth Connections Section -->
-      <div v-else-if="activeSection === 'oauth'" class="connectors-content">
+      <div v-else-if="activeSection === 'oauth'" class="connectors-content vault-content">
+        <button v-if="!embedded" type="button" class="vault-back" @click="showSection('apps')">← Plugins</button>
         <div class="content-header">
           <div class="content-title-row">
-            <h2 class="content-title">Auth Connections</h2>
+            <h2 class="content-title">Vault</h2>
             <div class="health-summary-inline" v-if="connectionHealth">
               <span class="health-status-text" :class="'status-' + (connectionHealth.overall || 'unknown')">
                 {{
@@ -56,14 +58,14 @@
               <i class="fas fa-sync-alt" :class="{ 'fa-spin': refreshingHealth }"></i> Check Health
             </button>
           </div>
-          <p class="content-subtitle">Manage your API key and OAuth connections. Add, connect, use.</p>
+          <p class="content-subtitle">Your connected accounts and keys, in one place.</p>
         </div>
         <div class="connectors-grid">
           <div class="connectors-section">
             <!-- Search and Controls Bar -->
             <div class="controls-bar">
               <div class="search-wrapper">
-                <BaseInput v-model="oauthSearch" placeholder="Search App Connections..." :clearable="true" @input="handleOAuthSearch" />
+                <BaseInput v-model="oauthSearch" placeholder="Search connections" :clearable="true" @input="handleOAuthSearch" />
               </div>
               <div class="controls-group">
                 <BaseSelect
@@ -74,172 +76,22 @@
                     { value: 'not-connected', label: 'Not Connected' },
                   ]"
                 />
-                <div class="view-toggle">
-                  <Tooltip text="Grid View" width="auto">
-                    <button class="view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'">
-                      <i class="fas fa-th"></i>
-                    </button>
-                  </Tooltip>
-                  <Tooltip text="List View" width="auto">
-                    <button class="view-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">
-                      <i class="fas fa-list"></i>
-                    </button>
-                  </Tooltip>
-                </div>
-                <button class="add-btn" @click="openAddProviderModal"><i class="fas fa-plus"></i> Add</button>
+                <button class="add-btn" @click="openAddProviderModal"><i class="fas fa-plus"></i> Add connection</button>
               </div>
-            </div>
-
-            <!-- Category Filter Pills -->
-            <div class="category-pills">
-              <button
-                class="category-pill"
-                :class="{ active: selectedCategory === 'all' }"
-                @click="
-                  selectedCategory = 'all';
-                  currentPage = 1;
-                "
-              >
-                All ({{ categoryCounts.all || 0 }})
-              </button>
-              <button
-                v-for="category in availableCategories"
-                :key="category"
-                class="category-pill"
-                :class="{ active: selectedCategory === category }"
-                @click="
-                  selectedCategory = category;
-                  currentPage = 1;
-                "
-              >
-                {{ category }} ({{ categoryCounts[category] || 0 }})
-              </button>
             </div>
 
             <!-- Results Count -->
             <div class="results-info">Showing {{ paginatedProviders.length }} of {{ filteredOAuthProviders.length }} providers</div>
 
-            <!-- Providers List -->
-            <div class="oauth-providers-list">
-              <div v-if="isLoadingProviders" class="loading">Loading providers...</div>
-              <div v-else-if="filteredOAuthProviders.length === 0" class="loading">No providers found. Try adjusting your filters.</div>
-
-              <!-- Grid View -->
-              <div v-else-if="viewMode === 'grid'" class="oauth-app-grid">
-                <Tooltip
-                  v-for="provider in paginatedProviders"
-                  :key="provider.id"
-                  :text="
-                    provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected
-                      ? `${provider.name}: ${provider.healthMetric}`
-                      : provider.name
-                  "
-                  width="auto"
-                >
-                  <div
-                    class="oauth-app-item"
-                    :class="{
-                      connected: provider.connected,
-                      healthy: provider.healthStatus === 'healthy',
-                      degraded: provider.healthStatus === 'degraded',
-                      unhealthy: provider.healthStatus === 'error',
-                    }"
-                  >
-                    <Tooltip text="Edit Provider" width="auto">
-                      <button class="edit-provider-btn" @click.stop="editProvider(provider)">
-                        <i class="fas fa-edit"></i>
-                      </button>
-                    </Tooltip>
-                    <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
-                    <div class="oauth-app-content" @click="handleOAuthAppClick(provider)">
-                      <div class="oauth-app-icon">
-                        <SvgIcon :name="provider.icon" />
-                      </div>
-                      <span class="oauth-app-name">{{ providerLabel(provider) }}</span>
-                      <span
-                        class="connection-status"
-                        :class="{
-                          connected: provider.connected && provider.healthStatus === 'healthy',
-                          degraded: provider.healthStatus === 'degraded',
-                          unhealthy: provider.healthStatus === 'error',
-                        }"
-                      >
-                        {{
-                          !provider.connected
-                            ? 'Not Connected'
-                            : provider.healthStatus === 'error'
-                              ? 'Error'
-                              : provider.healthStatus === 'degraded'
-                                ? 'Degraded'
-                                : 'Connected'
-                        }}
-                      </span>
-                    </div>
-                  </div>
-                </Tooltip>
-              </div>
-
-              <!-- List View -->
-              <div v-else class="oauth-app-list">
-                <div
-                  v-for="provider in paginatedProviders"
-                  :key="provider.id"
-                  class="oauth-list-item"
-                  :class="{
-                    connected: provider.connected,
-                    healthy: provider.healthStatus === 'healthy',
-                    degraded: provider.healthStatus === 'degraded',
-                    unhealthy: provider.healthStatus === 'error',
-                  }"
-                >
-                  <div class="list-item-icon">
-                    <SvgIcon :name="provider.icon" />
-                    <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
-                  </div>
-                  <div class="list-item-content" @click="handleOAuthAppClick(provider)">
-                    <div class="list-item-name">{{ providerLabel(provider) }}</div>
-                    <div class="list-item-categories">
-                      <span v-for="cat in provider.categories" :key="cat" class="category-tag">{{ cat }}</span>
-                    </div>
-                  </div>
-                  <div class="list-item-status">
-                    <Tooltip
-                      v-if="provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected"
-                      :text="provider.healthMetric"
-                      width="auto"
-                    >
-                      <span
-                        class="connection-status"
-                        :class="{
-                          connected: provider.connected && provider.healthStatus === 'healthy',
-                          degraded: provider.healthStatus === 'degraded',
-                          unhealthy: provider.healthStatus === 'error',
-                        }"
-                      >
-                        {{ provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
-                      </span>
-                    </Tooltip>
-                    <span v-else class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy' }">
-                      {{
-                        !provider.connected
-                          ? 'Not Connected'
-                          : provider.healthStatus === 'error'
-                            ? 'Error'
-                            : provider.healthStatus === 'degraded'
-                              ? 'Degraded'
-                              : 'Connected'
-                      }}
-                    </span>
-                  </div>
-                  <div class="list-item-actions">
-                    <Tooltip text="Edit" width="auto">
-                      <button class="action-btn" @click.stop="editProvider(provider)">
-                        <i class="fas fa-edit"></i>
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </div>
+            <div class="vault-connections">
+              <p v-if="isLoadingProviders" role="status">Loading connections…</p>
+              <p v-else-if="!filteredOAuthProviders.length">No matching connections.</p>
+              <article v-for="provider in paginatedProviders" v-else :key="provider.id" class="vault-connection">
+                <span class="vault-icon"><SvgIcon :name="provider.icon" /></span>
+                <div class="vault-identity"><strong>{{ providerLabel(provider) }}</strong><span :class="{ connected: provider.connected }">{{ provider.connected ? provider.healthStatus === 'error' ? 'Needs attention' : 'Connected' : 'Not connected' }}</span></div>
+                <button type="button" class="vault-connect" @click="handleOAuthAppClick(provider)">{{ provider.connected ? 'Manage' : 'Connect' }}</button>
+                <button type="button" class="vault-edit" :aria-label="'Edit ' + providerLabel(provider)" @click="editProvider(provider)"><i class="fas fa-ellipsis-h"></i></button>
+              </article>
             </div>
 
             <!-- Pagination -->
@@ -805,7 +657,7 @@
       <SimpleModal ref="modalRef" />
       <Popup v-if="popup.show" :show="popup.show" :type="popup.type" :message="popup.message" :icon="popup.icon" @close="popup.show = false" />
     </template>
-  </BaseScreen>
+  </component>
 </template>
 
 <script>
@@ -842,6 +694,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'ConnectorsScreen',
+  props: { embedded: Boolean },
   components: { MobileDirectory,
     BaseScreen,
     BaseTable,
@@ -877,8 +730,9 @@ export default {
       if (selectedCatalogPlugin.value) emit('screen-change', 'ConnectorsScreen', { section: 'apps' });
     }
     const baseScreenRef = ref(null);
-    const mobileView = inject('isMobile', ref(false));
-    const mobileDirectoryOpen = ref(!route?.query?.section);
+    const mobile = inject('isMobile', ref(false));
+    const mobileView = computed(() => !props.embedded && mobile.value);
+    const mobileDirectoryOpen = ref(!props.embedded && !route?.query?.section);
     const mobileSelectSection = item => {
       if (item.screen) { emit('screen-change', item.screen); return; }
       mobileDirectoryOpen.value = false; setInnerSection(item.id); showSection(item.id);
@@ -901,7 +755,7 @@ export default {
     }
     const terminalLines = ref(['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.']);
     // Opens on the first row of the panel's nav: Your apps.
-    const activeSection = ref('apps');
+    const activeSection = ref(props.embedded ? 'oauth' : 'apps');
     watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
     const searchQuery = ref('');
     const selectedSecret = ref(null);
@@ -1028,9 +882,7 @@ export default {
     const isLoadingProviders = ref(false);
 
     // New filtering state
-    const selectedCategory = ref('all');
     const connectionStatusFilter = ref('all'); // 'all', 'connected', 'not-connected'
-    const viewMode = ref('grid'); // 'grid' or 'list'
     const itemsPerPage = ref(50);
     const currentPage = ref(1);
 
@@ -1088,30 +940,6 @@ export default {
     const planType = computed(() => store.getters['userAuth/planType'] || 'free');
     const isPro = computed(() => planType.value !== 'free');
 
-    // Helper function to capitalize first letter of each word
-    const capitalizeCategory = (category) => {
-      return category
-        .split(' ')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    };
-
-    // Get unique categories from all providers (normalized and capitalized)
-    const availableCategories = computed(() => {
-      const categoriesMap = new Map(); // Use Map to track normalized -> display name
-      oauthProviders.value.forEach((p) => {
-        if (Array.isArray(p.categories)) {
-          p.categories.forEach((cat) => {
-            const normalized = cat.toLowerCase();
-            if (!categoriesMap.has(normalized)) {
-              categoriesMap.set(normalized, capitalizeCategory(cat));
-            }
-          });
-        }
-      });
-      return Array.from(categoriesMap.values()).sort();
-    });
-
     // Debounced search
     let searchTimeout = null;
     const debouncedSearch = ref('');
@@ -1124,12 +952,6 @@ export default {
 
     const filteredOAuthProviders = computed(() => {
       let filtered = oauthProviders.value;
-
-      // Apply category filter (case-insensitive)
-      if (selectedCategory.value !== 'all') {
-        const selectedLower = selectedCategory.value.toLowerCase();
-        filtered = filtered.filter((p) => Array.isArray(p.categories) && p.categories.some((cat) => cat.toLowerCase() === selectedLower));
-      }
 
       // Apply connection status filter
       if (connectionStatusFilter.value === 'connected') {
@@ -1165,20 +987,10 @@ export default {
       return filteredOAuthProviders.value.slice(start, end);
     });
 
+    watch([oauthSearch, connectionStatusFilter], () => { currentPage.value = 1; });
+
     const totalPages = computed(() => {
       return Math.ceil(filteredOAuthProviders.value.length / itemsPerPage.value);
-    });
-
-    // Category counts (case-insensitive)
-    const categoryCounts = computed(() => {
-      const counts = { all: oauthProviders.value.length };
-      availableCategories.value.forEach((cat) => {
-        const catLower = cat.toLowerCase();
-        counts[cat] = oauthProviders.value.filter(
-          (p) => Array.isArray(p.categories) && p.categories.some((c) => c.toLowerCase() === catLower),
-        ).length;
-      });
-      return counts;
     });
 
     // Provider form validation
@@ -1250,7 +1062,7 @@ export default {
 
           // Add to terminal log
           terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           throw new Error('Disconnection failed');
         }
@@ -1259,7 +1071,7 @@ export default {
 
         // Add error to terminal log
         terminalLines.value.push(`[Disconnect] Failed to disconnect from ${app.name}: ${error.message}`);
-        nextTick(() => baseScreenRef.value?.scrollToBottom());
+        nextTick(() => baseScreenRef.value?.scrollToBottom?.());
       }
     }
 
@@ -1327,14 +1139,14 @@ export default {
           store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
           terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           await showAlert('Error', result?.error || 'Failed to disconnect.');
         }
       } catch (error) {
         await showAlert('Disconnection Error', `Failed to disconnect from ${app.name}: ${error.message}`);
         terminalLines.value.push(`[Disconnect] Failed to disconnect from ${app.name}: ${error.message}`);
-        nextTick(() => baseScreenRef.value?.scrollToBottom());
+        nextTick(() => baseScreenRef.value?.scrollToBottom?.());
       }
     }
 
@@ -1403,7 +1215,7 @@ export default {
             const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
             await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
             terminalLines.value.push(`[Connect] Gemini CLI connected via Google account${tierMsg}`);
-            nextTick(() => baseScreenRef.value?.scrollToBottom());
+            nextTick(() => baseScreenRef.value?.scrollToBottom?.());
             return;
           }
           if (status.status === 'error') {
@@ -1487,7 +1299,7 @@ export default {
             await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
             await showAlert('Success', 'Antigravity connected via Google account.');
             terminalLines.value.push('[Connect] Antigravity connected via Google account');
-            nextTick(() => baseScreenRef.value?.scrollToBottom());
+            nextTick(() => baseScreenRef.value?.scrollToBottom?.());
             return;
           }
           if (status.status === 'error') {
@@ -1546,7 +1358,7 @@ export default {
           await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await showAlert('Success', 'OpenAI Codex connected successfully.');
           terminalLines.value.push('[Connect] OpenAI Codex connected via device login');
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           await showAlert('Connection Failed', result?.message || 'Device login not completed yet.');
         }
@@ -1597,7 +1409,7 @@ export default {
           await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await showAlert('Success', 'Claude Code connected successfully.');
           terminalLines.value.push('[Connect] Claude Code connected via OAuth');
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
         }
@@ -1623,7 +1435,7 @@ export default {
             await showAlert('Success', result.message || 'Claude Code connected successfully.');
             await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
             terminalLines.value.push('[Connect] Claude Code connected via manual token');
-            nextTick(() => baseScreenRef.value?.scrollToBottom());
+            nextTick(() => baseScreenRef.value?.scrollToBottom?.());
           } else {
             await showAlert('Connection Failed', result?.error || 'Failed to connect Claude Code.');
           }
@@ -1734,7 +1546,7 @@ export default {
         terminalLines.value.push(`[Secrets] Added secret: ${form.value.key}`);
       }
       resetForm();
-      nextTick(() => baseScreenRef.value?.scrollToBottom());
+      nextTick(() => baseScreenRef.value?.scrollToBottom?.());
     }
     async function deleteSecretConfirm(secret) {
       const confirmed = await modalRef.value?.showModal({
@@ -1752,9 +1564,14 @@ export default {
       showPopup('success', 'Secret deleted.', 'fas fa-trash');
       terminalLines.value.push(`[Secrets] Deleted secret: ${secret.key}`);
       resetForm();
-      nextTick(() => baseScreenRef.value?.scrollToBottom());
+      nextTick(() => baseScreenRef.value?.scrollToBottom?.());
     }
     function initializeScreen() {
+      if (props.embedded) {
+        store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+        store.dispatch('appAuth/fetchAllProviders');
+        return;
+      }
       // ?section=providers (toolbar "no provider" pill, Jump palette) lands on
       // a specific view; otherwise keep whatever was open.
       const wanted = typeof route.query?.section === 'string' ? route.query.section : '';
@@ -1764,7 +1581,7 @@ export default {
       store.dispatch('connectors/loadSecrets');
       terminalLines.value = ['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.'];
       resetForm();
-      nextTick(() => baseScreenRef.value?.scrollToBottom());
+      nextTick(() => baseScreenRef.value?.scrollToBottom?.());
 
       // Load auth connections data and check health
       store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
@@ -1785,12 +1602,13 @@ export default {
     }
 
     function showSection(next) {
+      if (props.embedded) { activeSection.value = 'oauth'; return; }
       if (next === 'providers') {
         setInnerSection('apps');
         openAiModels();
         return;
       }
-      activeSection.value = next === 'api-keys' ? 'oauth' : next;
+      activeSection.value = ['api-keys', 'vault'].includes(next) ? 'oauth' : next;
       resetForm();
       selectedSecret.value = null;
     }
@@ -1812,6 +1630,7 @@ export default {
     // Route-driven details must work after a same-screen navigation and on reload,
     // not only after initializeScreen. Keep the sidebar in sync as well.
     watch([() => route.query.section, selectedCatalogPlugin], ([section, plugin]) => {
+      if (props.embedded) return;
       if (plugin) {
         mobileDirectoryOpen.value = false;
         setInnerSection('apps');
@@ -1888,7 +1707,7 @@ export default {
 
         // Add to terminal log
         terminalLines.value.push(`[Providers] Created new provider: ${providerData.name}`);
-        nextTick(() => baseScreenRef.value?.scrollToBottom());
+        nextTick(() => baseScreenRef.value?.scrollToBottom?.());
 
         // Reset form and refresh providers list
         resetProviderForm();
@@ -1999,7 +1818,7 @@ export default {
         if (result.success) {
           await showAlert('Success', `Provider "${providerForm.value.name}" updated successfully!`);
           terminalLines.value.push(`[Providers] Updated provider: ${providerForm.value.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
           closeEditProviderModal();
         } else {
           throw new Error(result.error || 'Failed to update provider');
@@ -2027,7 +1846,7 @@ export default {
         if (result.success) {
           await showAlert('Success', `Provider "${providerForm.value.name}" deleted successfully!`);
           terminalLines.value.push(`[Providers] Deleted provider: ${providerForm.value.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
           closeEditProviderModal();
         } else {
           throw new Error(result.error || 'Failed to delete provider');
@@ -2090,7 +1909,7 @@ export default {
 
         await showAlert('Success', `Provider "${providerData.name}" created successfully!`);
         terminalLines.value.push(`[Providers] Created new provider: ${providerData.name}`);
-        nextTick(() => baseScreenRef.value?.scrollToBottom());
+        nextTick(() => baseScreenRef.value?.scrollToBottom?.());
 
         closeProviderModal();
         await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
@@ -2137,7 +1956,7 @@ export default {
 
           // Add to terminal log
           terminalLines.value.push(`[OAuth] Successfully connected to ${data.provider || provider}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           throw new Error('OAuth completion failed');
         }
@@ -2147,7 +1966,7 @@ export default {
 
         // Add error to terminal log
         terminalLines.value.push(`[OAuth] Failed to complete OAuth: ${error.message}`);
-        nextTick(() => baseScreenRef.value?.scrollToBottom());
+        nextTick(() => baseScreenRef.value?.scrollToBottom?.());
       }
     }
 
@@ -2181,7 +2000,7 @@ export default {
         } catch (error) {
           console.error('Error completing OAuth:', error);
           terminalLines.value.push(`[OAuth] Failed to complete OAuth: ${error.message}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
           await showAlert('Connection Error', `Failed to connect to ${provider || 'the service'}: ${error.message}`);
         }
       }
@@ -2276,7 +2095,7 @@ export default {
 
           await showAlert('Success', result.message || 'Server saved successfully!');
           terminalLines.value.push(`[MCP] ${editingMCPServer.value ? 'Updated' : 'Added'} server: ${serverConfig.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
           closeMCPServerForm();
         } else {
           throw new Error(result.error || 'Failed to save server');
@@ -2306,7 +2125,7 @@ export default {
 
           await showAlert('Success', result.message || 'Server deleted successfully!');
           terminalLines.value.push(`[MCP] Deleted server: ${server.name}`);
-          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          nextTick(() => baseScreenRef.value?.scrollToBottom?.());
         } else {
           throw new Error(result.error || 'Failed to delete server');
         }
@@ -2417,7 +2236,7 @@ export default {
       showAddMCPServerForm.value = true;
 
       terminalLines.value.push(`[NPM] Selected package: ${pkg.name}`);
-      nextTick(() => baseScreenRef.value?.scrollToBottom());
+      nextTick(() => baseScreenRef.value?.scrollToBottom?.());
     }
 
     // Watch for NPM browser opening to load popular servers
@@ -2429,6 +2248,7 @@ export default {
     }
 
     onMounted(async () => {
+      if (props.embedded) initializeScreen();
       window.addEventListener('message', handleOAuthMessage);
 
       // Load MCP servers for all users
@@ -2454,6 +2274,7 @@ export default {
 
     onUnmounted(() => {
       window.removeEventListener('message', handleOAuthMessage);
+      clearTimeout(searchTimeout);
     });
 
     function openWorkflow(workflowId) {
@@ -2505,14 +2326,10 @@ export default {
       handlePanelAction,
       filteredOAuthProviders,
       // New filtering features
-      selectedCategory,
       connectionStatusFilter,
-      viewMode,
       currentPage,
-      availableCategories,
       paginatedProviders,
       totalPages,
-      categoryCounts,
       handleOAuthSearch,
       // Provider form
       providerForm,
@@ -3693,4 +3510,20 @@ body.dark .page-btn {
     margin-top: 8px;
   }
 }
+.embedded-vault { min-width: 0; height: auto; }
+.vault-content { max-width: 1100px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.vault-back { border: 0; background: transparent; color: var(--color-text-muted); font: inherit; padding: 8px 0 16px; cursor: pointer; }
+.vault-connections { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 10px; }
+.vault-connection { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--terminal-border-color); border-radius: 12px; background: var(--color-darker-0); min-width: 0; }
+.vault-icon { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; }
+.vault-icon :deep(svg) { width: 28px; height: 28px; }
+.vault-identity { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.vault-identity strong { overflow-wrap: anywhere; font-size: 14px; }
+.vault-identity span { color: var(--color-text-muted); font-size: 12px; }
+.vault-identity .connected { color: var(--text-green); }
+.vault-connect, .vault-edit { min-height: 40px; border-radius: 8px; border: 1px solid var(--terminal-border-color); background: transparent; color: var(--color-text); font: inherit; cursor: pointer; }
+.vault-connect { padding: 8px 12px; }
+.vault-edit { min-width: 36px; border: 0; }
+.vault-connect:hover { border-color: var(--color-green); }
+@media (max-width: 800px) { .vault-content { padding: 12px; } .vault-content .controls-bar { flex-wrap: wrap; gap: 12px; } .vault-content .search-wrapper { width: 100%; flex: 1 0 100%; } .vault-content .controls-group { justify-content: space-between; width: 100%; } .vault-content .content-title-row { flex-wrap: wrap; gap: 10px; } .vault-connection { padding: 12px; gap: 8px; } }
 </style>

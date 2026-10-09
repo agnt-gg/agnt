@@ -29,13 +29,22 @@ const screenRoots = () => {
       if (!f.endsWith('.vue')) continue;
       const p = path.join(SCREENS_DIR, entry.name, f);
       const raw = fs.readFileSync(p, 'utf8');
-      if (raw.includes('<BaseScreen')) out.push({ dir: entry.name, file: f, raw });
+      if (baseScreenTag(raw)) out.push({ dir: entry.name, file: f, raw });
     }
   }
   return out;
 };
 
-const baseScreenTag = (raw) => raw.match(/<BaseScreen[\s\S]*?>/)?.[0] ?? '';
+const baseScreenTag = (raw) =>
+  raw.match(/<BaseScreen[\s\S]*?>/)?.[0] ??
+  raw.match(/<component\b(?=[^>]*:is="[^"\n]*\bBaseScreen\b[^"\n]*")[^>]*>/)?.[0] ?? '';
+
+describe('screen root detection', () => {
+  it('recognizes embedded screens without skipping their registry checks', () => {
+    expect(baseScreenTag(`<component :is="embedded ? 'div' : 'BaseScreen'" screenId="ConnectorsScreen">`)).toContain('screenId="ConnectorsScreen"');
+    expect(baseScreenTag('<component :is="Other" screenId="FakeScreen">')).toBe('');
+  });
+});
 
 describe('every screen is declared in the registry', () => {
   it('finds a plausible number of screens', () => {

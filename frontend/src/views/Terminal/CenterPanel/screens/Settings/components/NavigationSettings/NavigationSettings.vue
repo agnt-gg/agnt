@@ -15,9 +15,10 @@
       </div>
 
       <div class="group-creator">
-        <input v-model="newGroup" maxlength="32" placeholder="New group name" @keydown.enter="createGroup" />
-        <button type="button" :disabled="!newGroup.trim()" @click="createGroup">Add group</button>
+        <input v-model="newGroup" maxlength="32" placeholder="New group name" aria-label="New group name" @keydown.enter.prevent="createGroup" />
+        <button type="button" @click="createGroup">Add group</button>
       </div>
+      <p v-if="groupFeedback" role="status">{{ groupFeedback }}</p>
     </section>
 
     <section v-for="(group, groupIndex) in groups" :key="group.name" class="nav-card">
@@ -99,6 +100,7 @@ export default {
     const store = useStore();
     const revision = ref(0);
     const newGroup = ref('');
+    const groupFeedback = ref('');
     // Same predicate the rail uses — this screen may not describe a different
     // set of pages than the one the user is looking at.
     const customPages = computed(() => customNavigationPages(store.getters['widgetLayout/allPages']));
@@ -119,8 +121,18 @@ export default {
     const moveGroup = (name, direction) => { moveNavigationGroup(name, direction); refresh(); };
     const renameGroup = (previous, next) => { renameNavigationGroup(previous, next); refresh(); };
     const createGroup = () => {
-      if (!newGroup.value.trim()) return;
-      addNavigationGroup(newGroup.value);
+      let name = newGroup.value.trim().toUpperCase();
+      if (!name) {
+        name = 'NEW GROUP';
+        let suffix = 2;
+        while (groupNames.value.includes(name)) name = `NEW GROUP ${suffix++}`;
+      }
+      if (groupNames.value.includes(name)) {
+        groupFeedback.value = `${name} already exists. Choose another name.`;
+        return;
+      }
+      addNavigationGroup(name);
+      groupFeedback.value = `${name} added. Move pages into it using the group picker below.`;
       newGroup.value = '';
       refresh();
     };
@@ -134,7 +146,7 @@ export default {
       refresh();
     };
 
-    return { groups, groupOptions, newGroup, setVisible, setGroup, moveItem, moveGroup, renameGroup, createGroup, addPage, resetAll, showAll, removePage, rowNote };
+    return { groups, groupOptions, newGroup, groupFeedback, setVisible, setGroup, moveItem, moveGroup, renameGroup, createGroup, addPage, resetAll, showAll, removePage, rowNote };
   },
 };
 </script>

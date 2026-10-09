@@ -22,6 +22,12 @@ const unlock = (...ids) =>
 describe('navigation preferences', () => {
   beforeEach(() => localStorage.clear());
 
+  it.each(['TODAY', 'SYSTEM', 'CREATE', 'MY WORK'])('keeps explicitly added %s groups on reload', (name) => {
+    addNavigationGroup(name);
+    expect(loadNavigationPreferences().groups).toContain(name);
+    expect(groupedNavigation([], { includeHidden: true }).map((group) => group.name)).toContain(name);
+  });
+
   it('starts a new account on Chat alone while keeping every section configurable', () => {
     const items = groupedNavigation().flatMap((group) => group.items);
     expect(items.map((item) => item.id)).toEqual(['chat']);
