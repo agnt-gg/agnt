@@ -134,6 +134,15 @@ export async function loginUser(page, { token = signTestToken() } = {}) {
     // persistent corner overlay; a spec that is not about them must not have
     // its clicks land on one. Journey specs turn this back on themselves.
     localStorage.setItem('tours_enabled', 'false');
+    // Same for the one-time "Try Focused" note (useUiModeDefault.js): a modal
+    // whose scrim took every click in Studio, failing 47 specs on 2026-10-09.
+    // A spec about the note clears this key itself.
+    localStorage.setItem('agnt:focused-intro-seen', 'true');
+    // These specs drive Studio. An account with no chats, agents or workflows is
+    // otherwise switched to Focused on first load (useUiModeDefault.js), which
+    // has no Studio sidebar, and the spec waits for one that never comes. Only
+    // when unset: a spec that picks Focused, or switches and reloads, keeps it.
+    if (!localStorage.getItem('uiMode')) localStorage.setItem('uiMode', 'studio');
     localStorage.setItem('selectedProvider', 'OpenAI');
     localStorage.setItem('selectedModel', 'gpt-4o');
   }, token);

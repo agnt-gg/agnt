@@ -24,10 +24,13 @@ app.directive('tooltip', {});
 app.mount('#transcript');
 window.leaveChat = () => { visible.value = false; };
 `;
-const stream = `import { defineComponent, h } from 'vue';
+// Since 548273ece the card stays hidden until its stream reports real frames
+// (@showing), so the stand-in reports them as soon as it mounts.
+const stream = `import { defineComponent, h, onMounted } from 'vue';
 export const lazyComponent = () => defineComponent({
  props: ['highQuality'],
- setup() { window.streamMounts = (window.streamMounts || 0) + 1; return () => h('canvas', {tabindex:0, class:'stream-stub', onKeydown:e=>e.stopPropagation()}); }
+ emits: ['showing', 'page'],
+ setup(_, { emit }) { window.streamMounts = (window.streamMounts || 0) + 1; onMounted(() => emit('showing', true)); return () => h('canvas', {tabindex:0, class:'stream-stub', onKeydown:e=>e.stopPropagation()}); }
 });`;
 
 // Use the owning shell's REAL rules, not a reconstruction of their sizing.

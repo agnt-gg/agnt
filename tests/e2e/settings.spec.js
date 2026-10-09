@@ -39,6 +39,9 @@ test.describe('Settings', () => {
     await gotoApp(appPage, '/');
     await appPage.locator('[data-tour-id="sidebar.settings"]').click();
     await appPage.waitForURL('**/settings');
+    // Settings opens on AI Models (DEFAULT_SETTINGS_SECTION, since ca4e95435);
+    // the account lives under Profile.
+    await appPage.getByText('Profile', { exact: true }).first().click();
 
     // Screen-specific: this container exists on no other screen.
     const profile = appPage.locator('.profile-header');
@@ -55,6 +58,10 @@ test.describe('Settings', () => {
     await gotoApp(appPage, '/settings');
 
     const title = appPage.locator('.content-title').first();
+    // The default section (sectionDirectories.js; pinned by SettingsPanel.spec.js).
+    await expect(title).toHaveText('AI Models');
+
+    await appPage.getByText('Profile', { exact: true }).first().click();
     await expect(title).toHaveText('User Profile');
 
     // A different section must actually replace the detail pane.

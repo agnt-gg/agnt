@@ -41,7 +41,10 @@ test.describe('Chat Feature', () => {
     await expect(input).toHaveValue('Hello AGNT Test');
   });
 
-  test('without a provider the input is locked and says what to do @ci', async ({ appPage }) => {
+  // Since d916cc445 a signed-in account always has AGNT Flash, so the
+  // "connect a provider" lock is for signed-out visitors only. A selected
+  // provider that is not connected must never lock a signed-in user out.
+  test('a signed-in account with nothing connected can still chat (AGNT Flash), never the connect lock @ci', async ({ appPage }) => {
     // Every input to Chat.vue hasConnectedAIProvider, pinned: a selected
     // provider with nothing connected, no custom provider, no local server.
     // store/auth/appAuth.js fetchConnectedApps merges THREE lanes (local
@@ -60,7 +63,8 @@ test.describe('Chat Feature', () => {
     await expect.poll(() => appPage.evaluate(() => localStorage.getItem('selectedProvider')), { timeout: 30000 }).toMatch(/^openai$/i);
     const input = appPage.locator('.chat-input-textarea').first();
     await expect(input).toBeVisible({ timeout: 30000 });
-    await expect(input).toBeDisabled();
-    await expect(input).toHaveAttribute('placeholder', 'Connect a provider to start chatting...');
+    await expect(input).toBeEnabled();
+    await expect(input).not.toHaveAttribute('placeholder', 'Connect a provider to start chatting...');
+    await expect(appPage.locator('.setup-message')).toHaveCount(0);
   });
 });

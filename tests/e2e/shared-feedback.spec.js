@@ -44,8 +44,11 @@ test('a free account with zero external providers gets AGNT connected, selected 
   await expect(page.locator('.chat-provider-selector .connection-status .status-text').filter({ hasText: /^Connected$/ }).first()).toBeVisible();
   await mode(page, 'focused');
   await expect(page.locator('.ui-focused .input-container textarea')).toBeEnabled();
-  await page.goto('/plugins'); await ready(page); await mode(page, 'focused');
-  await expect(page.locator('.focused-card').filter({ hasText: /AGNT Flash|agnt/i }).first()).toContainText('Connected');
+  // AI models are not plugins (Connectors.vue openAiModels): Focused shows the
+  // account's model under Settings, Default model.
+  await page.goto('/settings'); await ready(page); await mode(page, 'focused');
+  await expect(page.locator('.ui-focused .selected-label').filter({ hasText: /^AGNT$/ }).first()).toBeVisible();
+  await expect(page.locator('.ui-focused .selected-label').filter({ hasText: /^agnt-flash$/ }).first()).toBeVisible();
 });
 
 test('library shelves contain real ranked listings across every Focused asset tab and Market is directly below Plugins @ci', async ({ appPage: page }) => {
@@ -73,9 +76,11 @@ test('Studio has a working left chat-panel toggle and legacy Vault opens API/OAu
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(!before);
   await toggle.click();
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(before);
+  // The legacy ?section=api-keys link lands on the keys-and-sign-ins section,
+  // named Vault since fef1f2311, with its own row of the Plugins sidebar active.
   await page.goto('/connectors?section=api-keys'); await ready(page); await mode(page, 'studio');
-  await expect(page.locator('.content-title').filter({ hasText: 'Auth Connections' })).toBeVisible();
-  expect(await page.locator('.left-panel-component').getByText('Vault', { exact: true }).count()).toBe(0);
+  await expect(page.locator('.content-title').filter({ hasText: 'Vault' })).toBeVisible();
+  await expect(page.locator('.connectors-panel [data-nav="oauth"]')).toHaveClass(/active/);
 });
 
 test('business plugin marks fit their dashboard slots, including ViewBox-only SVGs @ci', async ({ appPage: page }) => {
@@ -95,14 +100,9 @@ test('business plugin marks fit their dashboard slots, including ViewBox-only SV
 
 test('free workspace gate is readable in light and dark themes and opens Team pricing immediately @ci', async ({ appPage: page }, testInfo) => {
   await freeAccount(page);
-  await page.goto('/chat'); await ready(page); await mode(page, 'studio');
-  // Open the actual rail Members destination, even when a fresh account has
-  // not yet earned the row. Its registry is the source of navigation.
-  await page.evaluate(() => {
-    localStorage.setItem('agnt:sidebarNavigation:v1', JSON.stringify({ version: 1, groups: ['ASSETS'], items: { 'virtual:teams': { visible: true } } }));
-    window.dispatchEvent(new CustomEvent('agnt:navigation-changed'));
-  });
-  await page.getByRole('button', { name: 'Members', exact: true }).click();
+  // Members is a section of Settings since 45315e6d1, not a rail row.
+  await page.goto('/settings'); await ready(page); await mode(page, 'studio');
+  await page.locator('[data-nav="members"]').click();
   const gate = page.locator('.pro-gate-locked');
   await expect(gate).toBeVisible();
   await expect(gate).toContainText('Workspaces with AGNT Team');
@@ -122,8 +122,9 @@ test('free workspace gate is readable in light and dark themes and opens Team pr
   }
   await gate.getByRole('button', { name: 'Upgrade' }).click();
   await expect(page.locator('.upgrade-backdrop[role="dialog"]')).toBeVisible();
-  await expect(page.locator('.upgrade-tabs [aria-selected="true"]')).toContainText('AGNT Team');
-  await expect(page.locator('.upgrade-tabs [aria-selected="true"]')).toContainText('$99');
+  // The plan tabs are PlanPicker's since 7f59642de (.plan-tabs, still a tablist).
+  await expect(page.locator('.plan-tabs [role="tab"][aria-selected="true"]')).toContainText('AGNT Team');
+  await expect(page.locator('.plan-tabs [role="tab"][aria-selected="true"]')).toContainText('$99');
 });
 
 
@@ -209,7 +210,10 @@ test('a fresh /chat is a new conversation, never the Main chat @ci', async ({ ap
 // draws the greeting; an account switch did not, and never redrew it. Here
 // the session ends and a new one starts in the same page, as a sign-in does,
 // and the new account's connections arrive late.
-test('after an account switch the greeting catches up when connections arrive late @ci', async ({ appPage: page }) => {
+// A signed-in account always has AGNT Flash (chatProvider.js, d916cc445), so
+// the greeting no longer depends on connections at all: the new session must
+// never show the setup card, even while its connections are still loading.
+test('after an account switch the greeting is Annie at once, even while connections arrive late @ci', async ({ appPage: page }) => {
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'studio'); });
   await isolatePreferences(page);
   let connectedDelayMs = 0;
@@ -227,12 +231,15 @@ test('after an account switch the greeting catches up when connections arrive la
     await new Promise(done => setTimeout(done, 200));
     store.commit('userAuth/SET_SESSION_STATE', 'valid');
   });
-  // The new session's chat is drawn before its connections land...
-  await expect(page.locator('.setup-message')).toBeVisible({ timeout: 2500 });
-  // ...and must catch up when they do, without a reload.
-  await expect(page.locator('.setup-message')).toHaveCount(0, { timeout: 15000 });
+  // Connections land 3s after the switch; well before that, the chat is ready.
+  await page.waitForTimeout(1000);
+  await expect(page.locator('.setup-message')).toHaveCount(0);
   await expect(page.getByText("Hi! I'm Annie, your personal AI assistant.")).toBeVisible();
   await expect(page.locator('.input-container textarea')).toBeEnabled();
+  // ...and nothing changes when they do arrive.
+  await page.waitForTimeout(3000);
+  await expect(page.locator('.setup-message')).toHaveCount(0);
+  await expect(page.getByText("Hi! I'm Annie, your personal AI assistant.")).toBeVisible();
 });
 
 
@@ -275,19 +282,20 @@ for (const themeName of ['cyberpunk', 'light']) test('API Key page has real spac
   await page.screenshot({ path: 'C:/Users/Studio/AppData/Roaming/AGNT/projects/updater-067-mobile-evidence-01/api-key-' + themeName + '.png' });
 });
 
-test('Plugins is a row of the Apps sidebar, not a toolbar tab, and the sidebar stays on Plugins @ci', async ({ appPage: page }) => {
+// Since 5cff76b65: the sidebar's first row is Plugins (everything installed
+// and connected), and Plugin Forge is a toolbar tab beside PLUGINS, like
+// every other forge, never a sidebar row.
+test('Plugins leads its sidebar, Plugin Forge is a toolbar tab, and sidebar rows switch the section @ci', async ({ appPage: page }) => {
   await studio(page, '/connectors');
   const sidebar = page.locator('.connectors-panel');
-  await expect(sidebar.locator('[data-nav="plugins"]')).toBeVisible();
-  // The toolbar row of tabs for Apps no longer offers Plugins.
-  await expect(page.locator('.cv-nav-panels .cv-pbtn').first()).toBeVisible();
-  expect(await page.locator('.cv-nav-panels .cv-pbtn').filter({ hasText: /plugins/i }).count()).toBe(0);
-  await sidebar.locator('[data-nav="plugins"]').click();
-  await expect(page).toHaveURL(/\/plugins/);
-  await expect(page.locator('.connectors-panel [data-nav="plugins"]')).toHaveClass(/active/);
-  await expect(page.getByRole('heading', { name: 'My Plugins' })).toBeVisible();
-  // And back to a section of Apps from the Plugins screen.
-  await page.locator('.connectors-panel [data-nav="mcp-servers"]').click();
-  await expect(page).toHaveURL(/\/connectors/);
-  await expect(page.locator('.connectors-panel [data-nav="mcp-servers"]')).toHaveClass(/active/);
+  await expect(sidebar.locator('.nav-item').first()).toHaveAttribute('data-nav', 'apps');
+  await expect(sidebar.locator('[data-nav="apps"]')).toContainText('Plugins');
+  await expect(sidebar.locator('[data-nav="apps"]')).toHaveClass(/active/);
+  expect(await sidebar.locator('.nav-item').filter({ hasText: /forge/i }).count()).toBe(0);
+  const tabs = page.locator('.cv-nav-panels .cv-pbtn');
+  await expect(tabs.first()).toBeVisible();
+  expect((await tabs.allTextContents()).map((label) => label.trim())).toEqual(['PLUGINS', 'PLUGIN FORGE']);
+  await sidebar.locator('[data-nav="mcp-servers"]').click();
+  await expect(sidebar.locator('[data-nav="mcp-servers"]')).toHaveClass(/active/);
+  await expect(sidebar.locator('[data-nav="apps"]')).not.toHaveClass(/active/);
 });
