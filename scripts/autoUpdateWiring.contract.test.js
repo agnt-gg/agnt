@@ -163,6 +163,28 @@ describe('main must not load a native module to decide about updating', () => {
   });
 });
 
+describe('the update rehearsal can read what the app prints', () => {
+  // 2026-10-09: every platform failed at "old build starts". The app had
+  // stopped printing info lines (7cc7dc412) and dropped its version line,
+  // so the rehearsal waited 2 minutes for text that never came.
+  const rehearsal = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'release', 'rehearse-update.mjs'), 'utf8');
+  const main = fs.readFileSync(path.join(REPO_ROOT, 'main.js'), 'utf8');
+  const updater = fs.readFileSync(path.join(REPO_ROOT, 'electron', 'autoUpdate.js'), 'utf8');
+
+  it('launches the app with info lines printed', () => {
+    expect(rehearsal).toMatch(/AGNT_CONSOLE_PASSTHROUGH: 'all'/);
+  });
+
+  it('waits only for lines the app still logs', () => {
+    expect(rehearsal).toContain('App version from package.json: ');
+    expect(main).toContain('console.log(`[Update] App version from package.json: ${APP_VERSION}`)');
+    for (const line of ['auto-update disabled: ', ' downloaded`', ' ready`']) {
+      expect(updater, line).toContain(line);
+    }
+    expect(rehearsal).toMatch(/\\\[update\\\] auto-update disabled: linux-package-manager/);
+  });
+});
+
 describe('the changelog does not claim what does not exist', () => {
   it('no longer advertises auto-update as a shipped v0.3.3 feature', () => {
     // releases.json listed "Auto-Update System" under v0.3.3 while the app

@@ -857,6 +857,11 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
 const packageJsonPath = path.join(__dirname, 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 const APP_VERSION = packageJson.version;
+// Which build is running, in the diagnostics log (and the terminal with
+// AGNT_CONSOLE_PASSTHROUGH=all). The update rehearsal (scripts/release/
+// rehearse-update.mjs) reads exactly this line to tell the old build from the
+// new one; removing it on 2026-10-04 failed every rehearsal at "old build starts".
+console.log(`[Update] App version from package.json: ${APP_VERSION}`);
 
 // ─────────────────── Browser widget: CDP bridge lifecycle ───────────────────
 // The Browser widget renders a real Chromium surface inside AGNT and lets an

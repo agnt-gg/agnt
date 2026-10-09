@@ -202,7 +202,10 @@ function launch(label, file) {
   const fd = fs.openSync(logPath, 'a');
   const args = kind === 'mac' ? [] : ['--no-sandbox'];
   const child = spawn(file, args, {
-    env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' },
+    // The app prints only warnings by default and records the rest in its
+    // diagnostics log. Every check here reads its info lines from stdout:
+    // the version, "[update] ... downloaded", "auto-update disabled".
+    env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1', AGNT_CONSOLE_PASSTHROUGH: 'all' },
     stdio: ['ignore', fd, fd],
     detached: true,
   });
