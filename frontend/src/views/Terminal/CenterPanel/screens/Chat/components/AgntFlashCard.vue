@@ -3,7 +3,7 @@
     <div class="afc-head">
       <h3>{{ title }}</h3>
       <p class="afc-sub">Your chat and everything Annie built are saved. Pick how she keeps going and your last message is sent again.</p>
-      <template v-if="account">
+      <template v-if="account && account.includedCredits > 0">
         <div class="afc-meter" aria-hidden="true"><i :style="{ width: `${Math.round(share * 100)}%` }"></i></div>
         <div class="afc-meter-label">
           <span>{{ formatCredits(account.usedCredits) }} / {{ formatCredits(account.includedCredits) }} {{ account.trial ? 'trial credits used' : 'credits used' }}</span>
@@ -74,7 +74,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { PLANS } from '@/components/UpgradeModal.vue';
 import ProviderSetup from './ProviderSetup.vue';
-import { TOP_UP_OPTIONS, fetchFlashAccount, startFlashTopUp, formatCredits, usedShare, hasMoreToSpend } from '@/services/agntFlash.js';
+import { TOP_UP_OPTIONS, fetchFlashAccount, startFlashTopUp, formatCredits, usedShare, hasMoreToSpend, noticeTitle } from '@/services/agntFlash.js';
 
 // $0.40 per million credits (models.agnt.gg policy credits-v2): one cent buys 25k credits.
 const CREDITS_PER_CENT = 25_000;
@@ -109,9 +109,7 @@ export default {
     });
     const currentPlan = computed(() => PLANS.find((p) => p.id === selectedPlan.value) || PLANS[0]);
     const share = computed(() => usedShare(account.value));
-    const title = computed(() =>
-      props.code === 'trial_credit_exhausted' ? 'Your free AGNT Flash credits are used up' : "You're out of AGNT Flash credits",
-    );
+    const title = computed(() => noticeTitle(props.code));
     const resetLabel = computed(() =>
       account.value?.resetAt ? `Resets ${new Date(account.value.resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '',
     );

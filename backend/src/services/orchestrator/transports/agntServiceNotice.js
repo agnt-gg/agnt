@@ -21,6 +21,8 @@
 // Account states the person resolves by upgrading, funding or switching provider.
 export const AGNT_NOTICE_CODES = Object.freeze(new Set([
   'trial_credit_exhausted',
+  // One free trial per computer, and this computer's went to another account.
+  'trial_used_on_device',
   'spending_not_authorized',
   'insufficient_credit',
   'budget_exceeded',

@@ -27,6 +27,17 @@ export function parseAgntNotice(content) {
   return match ? { code: match[1], text: content.slice(0, match.index) } : null;
 }
 
+/**
+ * The keep-going card's heading for a notice code. Each one states what actually
+ * happened: an account whose computer gave its one trial to another account never
+ * had trial credits, so it is not told they are used up.
+ */
+export function noticeTitle(code) {
+  if (code === 'trial_used_on_device') return 'This computer already used its free AGNT Flash trial';
+  if (code === 'trial_credit_exhausted') return 'Your free AGNT Flash credits are used up';
+  return "You're out of AGNT Flash credits";
+}
+
 /** The message text without its notice tag, for display. */
 export function stripAgntNotice(content) {
   return typeof content === 'string' ? content.replace(NOTICE, '') : content;

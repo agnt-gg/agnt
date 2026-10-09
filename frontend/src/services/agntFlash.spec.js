@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAgntNotice, stripAgntNotice, formatCredits, usedShare, hasMoreToSpend } from './agntFlash.js';
+import { parseAgntNotice, stripAgntNotice, noticeTitle, formatCredits, usedShare, hasMoreToSpend } from './agntFlash.js';
 
 const SENTENCE = 'Your free AGNT Flash trial credits are used up. Upgrade at [agnt.gg/pricing](https://agnt.gg/pricing).';
 
@@ -18,6 +18,13 @@ describe('AGNT Flash notices in chat', () => {
   it('strips the tag for display and leaves other messages untouched', () => {
     expect(stripAgntNotice(`${SENTENCE}\n\n<!-- agnt-notice:insufficient_credit -->`)).toBe(SENTENCE);
     expect(stripAgntNotice('plain <!-- a comment --> text')).toBe('plain <!-- a comment --> text');
+  });
+
+  it('titles each notice with what actually happened', () => {
+    expect(noticeTitle('trial_used_on_device')).toBe('This computer already used its free AGNT Flash trial');
+    expect(noticeTitle('trial_used_on_device')).not.toMatch(/used up/); // that account never had trial credits
+    expect(noticeTitle('trial_credit_exhausted')).toBe('Your free AGNT Flash credits are used up');
+    expect(noticeTitle('insufficient_credit')).toBe("You're out of AGNT Flash credits");
   });
 });
 

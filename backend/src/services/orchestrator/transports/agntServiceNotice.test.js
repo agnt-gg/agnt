@@ -49,7 +49,7 @@ describe('AGNT Flash refusals in chat', () => {
       const notice = agntServiceNotice(gatewayError(402, code, `State ${code}.`), 'agnt');
       expect(notice).toBe(`State ${code}.\n\n${agntNoticeMarker(code)}`);
     }
-    expect([...AGNT_NOTICE_CODES].sort()).toEqual(['budget_exceeded', 'insufficient_credit', 'spending_not_authorized', 'trial_credit_exhausted']);
+    expect([...AGNT_NOTICE_CODES].sort()).toEqual(['budget_exceeded', 'insufficient_credit', 'spending_not_authorized', 'trial_credit_exhausted', 'trial_used_on_device']);
   });
 
   it('labels other gateway failures as AGNT Flash, without the status or key advice', () => {
