@@ -26,9 +26,9 @@ const AUTO = fs.readFileSync(path.join(__dirname, '../AutonomousMessageService.j
 
 describe('every LLM stream in a turn goes through one failover call site', () => {
   it('streamAcrossChain is the single wrapper over runWithFallback + runTierStream', () => {
-    expect(ORCH).toMatch(/const streamAcrossChain = async \(messages, tools, onChunk\) => \{/);
+    expect(ORCH).toMatch(/const streamAcrossChain = async \(preparedMessages, tools, onChunk\) => \{/);
     expect(ORCH).toMatch(/return await runWithFallback\(\{/);
-    expect(ORCH).toMatch(/runOne:\s*\(tier\)\s*=>\s*runTierStream\(tier, messages, tools, onChunk\)/);
+    expect(ORCH).toMatch(/runOne:\s*\(tier\)\s*=>\s*runTierStream\(tier, preparedMessages, tools, onChunk\)/);
   });
 
   it('there is exactly ONE chain-execution call site in the orchestrator', () => {

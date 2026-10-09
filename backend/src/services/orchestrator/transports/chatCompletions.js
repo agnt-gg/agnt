@@ -61,6 +61,8 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 import { BaseAdapter } from './BaseAdapter.js';
+import { isLocalProvider, localContextError } from '../../localModels/inference.js';
+import { createLocalThinkingParser } from './localThinking.js';
 import { agntServiceNotice } from './agntServiceNotice.js';
 import {
   findLastInjectableUserIndex,
@@ -234,6 +236,12 @@ class OpenAiLikeAdapter extends BaseAdapter {
     return false;
   }
 
+  async _preflightLocal(request) {
+    if (!isLocalProvider(this.provider)) return;
+    const { localInference } = await import('../../localModels/index.js');
+    await localInference.preflight(this.model, request, this.provider);
+  }
+
   async call(messages, tools, context = {}) {
     let lastError;
     let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutboundAsOpenAI(messages, 'openai-like'), context.computerImages, 'openai', ProviderRegistry.supportsVision(context.provider || this.provider || 'openai', this.model));
@@ -257,12 +265,18 @@ class OpenAiLikeAdapter extends BaseAdapter {
         }
         const affinity = this._cacheAffinity();
         if (affinity?.body) Object.assign(requestParams, affinity.body);
+        await this._preflightLocal(requestParams);
         const response = await this.client.chat.completions.create(
           requestParams,
           affinity?.headers ? { headers: affinity.headers } : undefined,
         );
 
         const message = response.choices[0].message;
+        if (isLocalProvider(this.provider) && typeof message?.content === 'string') {
+          const parsed = createLocalThinkingParser().push(message.content, true);
+          message.content = parsed.content;
+          if (parsed.reasoning) message.reasoning_content = (message.reasoning_content || '') + parsed.reasoning;
+        }
 
         // Log successful retry if this wasn't the first attempt
         if (attempt > 0) {
@@ -295,6 +309,13 @@ class OpenAiLikeAdapter extends BaseAdapter {
         };
       } catch (error) {
         lastError = error;
+        if (isLocalProvider(this.provider)) {
+          if (error.code === 'LOCAL_CONTEXT_LIMIT') throw error;
+          if (this.isTokenLimitError(error) || /n_keep|context.*(overflow|length|size)|tokens.*keep/i.test(error.message || '')) {
+            throw localContextError(`The local server rejected the request: ${error.message}`);
+          }
+          throw error;
+        }
 
         // Handle token limit errors with automatic context reduction
         if (this.isTokenLimitError(error)) {
@@ -451,6 +472,17 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedContent = '';
       let accumulatedReasoningContent = '';
       let accumulatedToolCalls = [];
+      const localThinking = isLocalProvider(this.provider) ? createLocalThinkingParser() : null;
+      const emitLocalText = ({ content, reasoning }) => {
+        if (reasoning) {
+          accumulatedReasoningContent += reasoning;
+          onChunk?.({ type: 'reasoning', delta: reasoning, accumulated: accumulatedReasoningContent });
+        }
+        if (content) {
+          accumulatedContent += content;
+          onChunk?.({ type: 'content', delta: content, accumulated: accumulatedContent });
+        }
+      };
       // Indexes already announced as tool_call_complete (kept OFF the tool
       // call objects — those go back to the provider verbatim).
       const completeAnnounced = new Set();
@@ -507,6 +539,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           max_tokens: requestParams.max_tokens || 'not set',
           requestBodySizeKB: Math.round(requestBodySize / 1024),
         });
+        await this._preflightLocal(requestParams);
         const stream = await this.client.chat.completions.create(
           requestParams,
           affinity?.headers ? { headers: affinity.headers } : undefined,
@@ -556,7 +589,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
             }
 
             // Handle content streaming
-            if (delta.content) {
+            if (delta.content && localThinking) {
+              emitLocalText(localThinking.push(delta.content));
+            } else if (delta.content) {
               accumulatedContent += delta.content;
               if (onChunk) {
                 onChunk({
@@ -788,9 +823,11 @@ Please carefully check the tool schema and ensure all parameters match the expec
             }
           }
 
+          if (localThinking) emitLocalText(localThinking.push('', true));
+
           // Fallback: if reasoning model returned reasoning_content but no content,
           // use the reasoning content as the response (e.g., Z.AI GLM-5 thinking mode)
-          if (!accumulatedContent && accumulatedReasoningContent && accumulatedToolCalls.length === 0) {
+          if (!localThinking && !accumulatedContent && accumulatedReasoningContent && accumulatedToolCalls.length === 0) {
             console.warn(
               `[Stream Fallback] No content received but reasoning_content available (${accumulatedReasoningContent.length} chars). Using as response content.`,
             );
@@ -824,7 +861,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           if (errorMessage.includes('context') && errorMessage.includes('overflow')) {
             console.error('LM Studio context overflow detected!');
             throw new Error(
-              `Your local model's context window is too small for this request. Please load a model with at least 8K context in LM Studio. Current error: ${errorMessage}`,
+              `The server's loaded context window is too small for this request. Increase the loaded context or reduce active tools and history. Current error: ${errorMessage}`,
             );
           }
 
@@ -832,7 +869,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           if (errorMessage.includes('keep') && errorMessage.includes('tokens')) {
             console.error('LM Studio token limit error detected!');
             throw new Error(
-              `Your local model's context window is too small. The request requires more tokens than your model supports. Please load a model with a larger context window (8K+ recommended) in LM Studio.`,
+              `The server's loaded context window is too small for the prompt and response. Increase the loaded context or reduce active tools and history. Current error: ${errorMessage}`,
             );
           }
 
@@ -971,6 +1008,13 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
         };
       } catch (error) {
         lastError = error;
+        if (isLocalProvider(this.provider)) {
+          if (error.code === 'LOCAL_CONTEXT_LIMIT') throw error;
+          if (this.isTokenLimitError(error) || /n_keep|context.*(overflow|length|size)|tokens.*keep/i.test(error.message || '')) {
+            throw localContextError(`The local server rejected the request: ${error.message}`);
+          }
+          throw error;
+        }
 
         // Handle token limit errors with automatic context reduction
         if (this.isTokenLimitError(error)) {

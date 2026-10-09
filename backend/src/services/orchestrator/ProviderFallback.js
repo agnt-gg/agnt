@@ -34,6 +34,7 @@
 
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
+import { isLocalProvider } from '../localModels/inference.js';
 
 /** Hard ceiling on fallback tiers (excludes the primary). */
 export const MAX_FALLBACKS = 3;
@@ -245,7 +246,7 @@ export function buildProviderChain({ provider, model, fallbackEnabled, fallbackP
   const chain = [{ provider, model: model || null, tier: 0, primary: true }];
   const seen = new Set([`${primaryCanonical}::${model || ''}`]);
 
-  if (!fallbackEnabled) return chain;
+  if (!fallbackEnabled || isLocalProvider(provider)) return chain;
 
   const customIdSet = new Set(
     (customProviderIds ? Array.from(customProviderIds) : [])
@@ -449,6 +450,9 @@ export async function runWithFallback({ chain, runOne, shouldStop, onFallback, v
   if (!Array.isArray(chain) || chain.length === 0) {
     throw new Error('runWithFallback: empty provider chain');
   }
+  // Local is an execution boundary, not a cheaper first try at a cloud call.
+  // Also guard composed/dynamic chains which bypass buildProviderChain.
+  if (isLocalProvider(chain[0].provider)) chain = chain.slice(0, 1);
 
   const attempts = [];
   let lastResult = null;

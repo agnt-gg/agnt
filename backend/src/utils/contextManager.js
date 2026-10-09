@@ -219,9 +219,10 @@ function getTokenLimit(model, provider) {
  * Resolve the full context budget for a model in one place so callers see
  * a consistent (contextWindow, outputBuffer, availableTokens) triple.
  */
-function getContextBudget(model, provider) {
-  let contextWindow = DEFAULT_TOKEN_LIMIT;
-  if (provider && model) {
+function getContextBudget(model, provider, options = {}) {
+  const hasLoadedWindow = Number.isSafeInteger(options.contextWindow) && options.contextWindow > 0;
+  let contextWindow = hasLoadedWindow ? options.contextWindow : DEFAULT_TOKEN_LIMIT;
+  if (!hasLoadedWindow && provider && model) {
     const meta = getModelMetadata(provider, model);
     if (meta?.contextWindow) {
       contextWindow = meta.contextWindow;
@@ -233,7 +234,8 @@ function getContextBudget(model, provider) {
       }
     }
   }
-  const outputBuffer = getResponseBuffer(model, provider, contextWindow);
+  const outputBuffer = Number.isSafeInteger(options.outputBuffer) && options.outputBuffer > 0
+    ? options.outputBuffer : getResponseBuffer(model, provider, contextWindow);
   const margin = getProviderSafetyMargin(model, provider);
   const availableTokens = Math.floor((contextWindow - outputBuffer) * margin);
   return { contextWindow, outputBuffer, availableTokens };
@@ -497,7 +499,7 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
  * Manage context size to fit within token limits
  */
 function manageContext(messages, model, tools = [], provider = null, options = {}) {
-  const { contextWindow, outputBuffer, availableTokens: tokenLimit } = getContextBudget(model, provider);
+  const { contextWindow, outputBuffer, availableTokens: tokenLimit } = getContextBudget(model, provider, options);
 
   // Ground-truth calibration. The chars-ratio estimator structurally
   // undercounts dense content (unicode-heavy transcripts, escaped code,
@@ -508,7 +510,8 @@ function manageContext(messages, model, tools = [], provider = null, options = {
   // updateEstimateCalibration); dividing the budget by it moves the
   // compression trigger to where the PROVIDER's count hits the wall.
   // Clamped >= 1: a generous estimator is safe, only tighten when it lies low.
-  const calibration = Math.min(3, Math.max(1, Number(options.calibration) || 1));
+  const measuredCalibration = Math.max(1, Number.isFinite(options.calibration) ? options.calibration : 1);
+  const calibration = options.contextWindow ? measuredCalibration : Math.min(3, measuredCalibration);
   const calibratedLimit = Math.floor(tokenLimit / calibration);
 
   // Estimate tokens for tools using the dense-JSON ratio (see

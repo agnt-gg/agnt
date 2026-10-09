@@ -32,6 +32,7 @@ import { recordLlmCall } from './execution/LedgerRecorder.js';
 import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
 import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
+import { isLocalProvider, getLocalToolBudget, assertLocalInstructionsPreserved } from './localModels/inference.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { createCacheRoundTracker, buildCacheTelemetry } from './orchestrator/cacheRoundTracker.js';
@@ -1207,6 +1208,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   // benchmark or a game brain silently served by a different model is
   // measuring the wrong thing.
   if (runtime.model.fallback === 'none') providerChain = providerChain.slice(0, 1);
+  if (isLocalProvider(normalizedProvider)) providerChain = providerChain.slice(0, 1);
 
   // Validate message input (different formats for different handlers)
   let messageInput = preparedHistory || originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
@@ -1697,6 +1699,7 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     let client = null;
     let adapter = null;
     let primaryTierInitError = null;
+    let localContextBudget = null;
     try {
       client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
       adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
@@ -1792,7 +1795,8 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
       messages.splice(0, messages.length, ...reasserted);
       conversationContext._evictedUnits = result.evictedUnits || 0; // re-manage from the advanced watermark
       return manageContext(messages, model, finalToolSchemas, normalizedProvider, {
-        calibration: conversationContext._estimateCalibration || 1,
+        ...localContextBudget,
+        calibration: Math.max(localContextBudget?.calibration || 1, conversationContext._estimateCalibration || 1),
         evictedUnits: conversationContext._evictedUnits || 0,
       });
     };
@@ -2088,6 +2092,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
       conversationContext._deferredToolCatalog = stripProviderIncompatibleTools(conversationContext._deferredToolCatalog, normalizedProvider);
     }
 
+    if (isLocalProvider(normalizedProvider)) {
+      const { localInference } = await import('./localModels/index.js');
+      localContextBudget = await localInference.measure(model, messages, finalToolSchemas, normalizedProvider);
+      conversationContext._estimateCalibration = localContextBudget.calibration;
+      const mandatory = messages.filter((entry) => entry.role === 'system' || entry.role === 'developer');
+      const latestUser = messages.findLast((entry) => entry.role === 'user');
+      if (latestUser) mandatory.push(latestUser);
+      // Never make a tiny window appear to work by truncating instructions or
+      // the user's current request. The transport performs the final check.
+      await localInference.preflight(model, { model, messages: mandatory }, normalizedProvider);
+    }
+
     // Cap the tool surface to what this model can actually afford, leaving a
     // guaranteed reserve for the conversation itself.
     //
@@ -2111,11 +2127,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       conversationContext._deferredToolCatalog = null;
     }
     {
-      const { availableTokens } = getContextBudget(model, normalizedProvider);
+      const { availableTokens } = getContextBudget(model, normalizedProvider, localContextBudget || {});
       // The system prompt is not conversation and not tools — it ships on every
       // request and must be reserved before the tool surface is sized.
       const systemPromptTokens = estimateTokens(systemPrompt || '');
-      const toolBudget = computeToolBudget(availableTokens, { reservedTokens: systemPromptTokens });
+      const toolBudget = localContextBudget
+        ? getLocalToolBudget(model, localContextBudget, messages)
+        : computeToolBudget(availableTokens, { reservedTokens: systemPromptTokens });
       // Chat Completions rejects >128 functions outright; the Responses API and
       // the native-schema providers (Anthropic, Gemini) do not.
       const usesResponsesApi = normalizedProvider === 'openai-codex'
@@ -2126,6 +2144,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         pinnedNames: conversationContext._pinnedToolNames || null,
         loadedToolNames: conversationContext._loadedToolNames || null,
         maxToolCount,
+        hardTokenLimit: !!localContextBudget,
       });
       if (capResult.capped) {
         console.warn(
@@ -2195,7 +2214,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Apply context management
     const evictedBefore = conversationContext._evictedUnits || 0;
     const contextResult = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
-      calibration: conversationContext._estimateCalibration || 1,
+      ...localContextBudget,
+      calibration: Math.max(localContextBudget?.calibration || 1, conversationContext._estimateCalibration || 1),
       evictedUnits: conversationContext._evictedUnits || 0,
     }), evictedBefore);
     conversationContext._evictedUnits = contextResult.evictedUnits || 0;
@@ -3253,7 +3273,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
      * on the stack means a rejection from deep inside a tier still reports
      * through here rather than losing the async boundary.
      */
-    const streamAcrossChain = async (messages, tools, onChunk) => {
+    const streamAcrossChain = async (preparedMessages, tools, onChunk) => {
+      if (localContextBudget) assertLocalInstructionsPreserved(messages, preparedMessages);
       return await runWithFallback({
         chain: providerChain,
         // The user's Stop is not a provider failure. Every stream in the turn
@@ -3263,7 +3284,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // this user right now (providerHealth), so the NEXT routed choice
         // avoids a provider that just failed instead of rediscovering it.
         health: providerHealth.forUser(userId),
-        runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
+        runOne: (tier) => runTierStream(tier, preparedMessages, tools, onChunk),
         onFallback: onProviderFallback,
       });
     };
@@ -3358,13 +3379,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
         `[OrchestratorService] LLM adapter recovered from error ` +
         `(provider=${normalizedProvider} model=${model} chatType=${chatType}): ${recoveredError}`
       );
-      if (runtime.model.fallback === 'none') {
+      if (runtime.model.fallback === 'none' || isLocalProvider(normalizedProvider)) {
         // No failover was allowed, so this IS the outcome. Report it as an
         // error the caller can branch on, not as prose in the answer stream.
         streamErrorForLogging = { message: recoveredError || 'Provider request failed', details: String(recoveredError || '') };
         sendEvent('error', { error: recoveredError || 'Provider request failed', provider: normalizedProvider, model, recoverable: false });
       }
-      const extracted = runtime.model.fallback === 'none' ? '' : extractDisplayText(responseMessage?.content);
+      const extracted = runtime.model.fallback === 'none' || isLocalProvider(normalizedProvider) ? '' : extractDisplayText(responseMessage?.content);
       const scrubbed = scrubEmptyPlaceholder(extracted);
       if (scrubbed) {
         sendEvent('content_delta', {
@@ -3690,6 +3711,22 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
 
+      if (localContextBudget) {
+        // Discovery can append an entire category mid-turn, and the user may
+        // reload the model with a smaller window. Re-budget both before reuse.
+        const { localInference } = await import('./localModels/index.js');
+        localContextBudget = await localInference.measure(model, messages, finalToolSchemas, normalizedProvider);
+        const capped = capToolsToBudget(finalToolSchemas, {
+          budgetTokens: getLocalToolBudget(model, localContextBudget, messages),
+          hardTokenLimit: true,
+          pinnedNames: conversationContext._pinnedToolNames,
+          loadedToolNames: conversationContext._loadedToolNames,
+        });
+        finalToolSchemas = capped.schemas;
+        conversationContext.finalToolSchemas = finalToolSchemas;
+        conversationContext._pinnedToolNames = capped.pinnedNames;
+      }
+
       // Retroactively compact bloated tool messages from earlier rounds
       // before re-counting tokens. (See universal-chat entry point for
       // the longer rationale.) Within a tool loop this is the layer that
@@ -3720,7 +3757,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // it also replays encrypted reasoning blobs every turn that count
       // against the window. Never revert reductions for Codex.
       let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
-        calibration: conversationContext._estimateCalibration || 1,
+        ...localContextBudget,
+        calibration: Math.max(localContextBudget?.calibration || 1, conversationContext._estimateCalibration || 1),
         evictedUnits: conversationContext._evictedUnits || 0,
       });
       loopContextResult = manageKeepingTurnContext(loopContextResult, conversationContext._evictedUnits || 0);
@@ -3734,7 +3772,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // not a minor truncation — reverting it mid-turn would flip the prefix
       // between the evicted view (turn start) and the full view (tool rounds),
       // breaking the cache twice per round AND risking the provider wall.
-      const canRevert = normalizedProvider !== 'openai-codex'
+      const canRevert = normalizedProvider !== 'openai-codex' && !localContextBudget
         && originalUtilization < cacheGate
         && loopContextResult.wasManaged
         && !(loopContextResult.evictedUnits > 0);
@@ -3895,7 +3933,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
           messages = nudgeCompacted.messages;
         }
         const nudgeContext = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
-          calibration: conversationContext._estimateCalibration || 1,
+          ...localContextBudget,
+          calibration: Math.max(localContextBudget?.calibration || 1, conversationContext._estimateCalibration || 1),
           evictedUnits: conversationContext._evictedUnits || 0,
         }), conversationContext._evictedUnits || 0);
         conversationContext._evictedUnits = nudgeContext.evictedUnits || 0;
@@ -4030,7 +4069,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
           messages = followUpCompacted.messages;
         }
         const followUpContext = manageKeepingTurnContext(manageContext(messages, model, finalToolSchemas, normalizedProvider, {
-          calibration: conversationContext._estimateCalibration || 1,
+          ...localContextBudget,
+          calibration: Math.max(localContextBudget?.calibration || 1, conversationContext._estimateCalibration || 1),
           evictedUnits: conversationContext._evictedUnits || 0,
         }), conversationContext._evictedUnits || 0);
         conversationContext._evictedUnits = followUpContext.evictedUnits || 0;

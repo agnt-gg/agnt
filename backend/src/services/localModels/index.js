@@ -26,8 +26,11 @@ function userDataPath() {
 
 const hosted = () => !!hostedInstanceSlug();
 
+import { createLocalInference } from './inference.js';
+
 export const managedRuntime = createManagedRuntime({ rootDir: path.join(userDataPath(), 'local-models'), hosted });
 export const localRouter = createLocalRouter({ managed: managedRuntime });
+export const localInference = createLocalInference({ resolve: (options) => localRouter.resolve(options) });
 export const lmStudio = createLocalModelRuntime({ hosted });
 
 /** Options for an OpenAI client that reaches whichever local server has the requested model. */

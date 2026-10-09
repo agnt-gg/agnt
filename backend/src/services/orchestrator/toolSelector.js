@@ -725,7 +725,7 @@ export function getToolCountLimit(provider, { usesResponsesApi = false } = {}) {
  * @param {Set<string>|null} opts.loadedToolNames  Names loaded via discover_tools.
  * @returns {{ schemas: Array, capped: boolean, toolTokens: number, pinnedNames: string[]|null, hiddenCount: number }}
  */
-export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, loadedToolNames = null, maxToolCount = null } = {}) {
+export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, loadedToolNames = null, maxToolCount = null, hardTokenLimit = false } = {}) {
   const all = Array.isArray(schemas) ? schemas : [];
   const fullTokens = estimateToolTokens(all);
   const countLimit = Number.isFinite(maxToolCount) && maxToolCount > 0 ? maxToolCount : Infinity;
@@ -763,7 +763,7 @@ export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, lo
     // is not.
     if (chosen.length >= countLimit) return false;
     const cost = estimateToolTokens([schema]);
-    if (!force && tokensFit === false && used + cost > budgetTokens) return false;
+    if ((hardTokenLimit || !force) && tokensFit === false && used + cost > budgetTokens) return false;
     chosen.push(schema);
     taken.add(name);
     used += cost;
@@ -824,6 +824,14 @@ export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, lo
     }
   }
   const pinnedCap = Number.isFinite(countLimit) ? Math.max(0, countLimit - reserve) : Infinity;
+
+  // A loaded local window is a hard limit: even defaults and pins must fit.
+  // Keep discovery and newly requested tools ahead of the old pin, otherwise
+  // a small window makes discover_tools unable to load anything new.
+  if (hardTokenLimit) {
+    tryAdd('discover_tools');
+    for (const name of loadedToolNames || []) tryAdd(name);
+  }
 
   // Rule 2: replay the pinned order first so the prefix is byte-stable.
   if (Array.isArray(pinnedNames)) {
