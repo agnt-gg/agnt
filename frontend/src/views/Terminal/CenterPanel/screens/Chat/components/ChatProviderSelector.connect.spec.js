@@ -80,6 +80,13 @@ function mountPicker({ props = {}, modalOpen = false, routingModeByConv = {} } =
 
 const providerSelect = (wrapper) => wrapper.findAllComponents({ name: 'CustomSelect' })[0];
 
+// The click listener is attached by a 0 ms timer at mount. flushPromises uses
+// setImmediate in Node, which can run first; a timer queued now runs after it.
+const listening = async () => {
+  await flushPromises();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
 beforeEach(() => {
   connection.connected = new Set(['openai']);
   connection.toggle = vi.fn(async (id) => { connection.connected.add(id); });
@@ -131,11 +138,11 @@ describe('ChatProviderSelector — connect from the picker', () => {
     wrapper.unmount();
   });
 
-  // The document listeners are attached at the END of an async onMounted, so
+  // The click listener is attached one task after mount (see the next test), so
   // each test waits for it; otherwise "did not close" passes vacuously.
   it('a click inside the sign-in modal does not close the picker; a click elsewhere still does', async () => {
     const { wrapper } = mountPicker();
-    await flushPromises();
+    await listening();
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     const confirmButton = document.createElement('button');
@@ -158,6 +165,43 @@ describe('ChatProviderSelector — connect from the picker', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(wrapper.emitted('close')).toBeUndefined();
     wrapper.unmount();
+  });
+
+  // 2026-10-09: the header's model picker closed 2 ms after opening. The click
+  // that opened it was still bubbling when it mounted, and reached the
+  // picker's own "click outside" listener on document.
+  it('the click that opened the picker, still bubbling when it mounts, does not close it', async () => {
+    const { wrapper } = mountPicker();
+    await Promise.resolve(); // the opening click's microtask checkpoint, as in a browser
+    document.body.click(); // ...then it reaches document, in the same task
+    expect(wrapper.emitted('close')).toBeUndefined();
+
+    await listening(); // a later click is a real click outside
+    document.body.click();
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('Escape closes the picker at once, before its mount work (local-server probe) has finished', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {}))); // a probe that never answers
+    const { wrapper } = mountPicker();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('a picker closed before its mount work finishes leaves no listener behind', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    const added = vi.spyOn(document, 'addEventListener');
+    const removed = vi.spyOn(document, 'removeEventListener');
+    const { wrapper } = mountPicker();
+    wrapper.unmount();
+    await flushPromises();
+    const live = (type) => added.mock.calls.filter(([t]) => t === type).length - removed.mock.calls.filter(([t]) => t === type).length;
+    expect(live('click')).toBeLessThanOrEqual(0);
+    expect(live('keydown')).toBeLessThanOrEqual(0);
+    added.mockRestore();
+    removed.mockRestore();
   });
 
   it('Escape with no modal open still closes the picker', async () => {

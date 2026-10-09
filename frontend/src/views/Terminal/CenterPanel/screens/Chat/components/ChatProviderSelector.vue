@@ -622,9 +622,29 @@ export default {
 
     let localServerCheckInterval = null;
 
+    let unmounted = false;
+    let clickListenerTimer = null;
+
     onMounted(async () => {
+      // Listening from mount, not after the awaits below (it used to be after):
+      // Escape must work as soon as the picker is on screen, and a picker closed
+      // before those awaits finish must not leave its listeners behind.
+      document.addEventListener('keydown', handleEscape);
+      // Outside clicks count from the next task. The click that opened this
+      // picker is still bubbling when it mounts (Vue renders it in the
+      // microtask after the button's handler, before the event reaches
+      // document), so a listener added now took that click for one outside the
+      // picker and closed it at once: measured, added at 71 ms and removed at
+      // 73 ms. The model picker "would not open" whenever the awaits below
+      // finished fast enough to add the listener inside that window.
+      clickListenerTimer = setTimeout(() => {
+        clickListenerTimer = null;
+        if (!unmounted) document.addEventListener('click', handleClickOutside);
+      }, 0);
+
       // Check local server status
       await checkLocalServer();
+      if (unmounted) return;
 
       // Ensure models are loaded for the current provider
       if (selectedProvider.value && filteredModels.value.length === 0) {
@@ -647,12 +667,10 @@ export default {
         }
       }
 
+      if (unmounted) return;
+
       // Initialize CustomSelect components
       updateCustomSelects();
-
-      // Add event listeners
-      document.addEventListener('click', handleClickOutside);
-      document.addEventListener('keydown', handleEscape);
 
       // Poll for local server status (check every 60 seconds)
       localServerCheckInterval = setInterval(() => {
@@ -661,6 +679,8 @@ export default {
     });
 
     onUnmounted(() => {
+      unmounted = true;
+      clearTimeout(clickListenerTimer);
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
       if (localServerCheckInterval) {
