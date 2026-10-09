@@ -53,6 +53,17 @@ describe('Focused layout', () => {
     expect(sw).toMatch(/width:\s*38px/);
     expect(sw).toMatch(/margin-left:\s*auto/);
   });
+  it('regression: on a phone the keyboard never pushes the suggestions over the logo and tagline', () => {
+    // Measured in Chrome at 390px wide: suggestions over the hero from 520px tall
+    // (keyboard up), under the header from 400px. The hero box measures itself
+    // and clips; the logo, then the hero, then the suggestions give way.
+    expect(css).toMatch(/\.chat-screen-wrapper\.focused-home \.main-panel \{\s*container:\s*ui-focused-home-panel\s*\/\s*size;/);
+    expect(css).toMatch(/\.chat-screen-wrapper\.focused-home \.conversation-canvas-wrapper \{\s*container:\s*ui-focused-home-hero\s*\/\s*size;[^}]*overflow:\s*hidden;/);
+    expect(css).toMatch(/@container ui-focused-home-hero \(max-height: \d+px\) \{\s*\.ui-focused \.focused-home-logo \{\s*display: none;/);
+    expect(css).toMatch(/@container ui-focused-home-hero \(max-height: \d+px\) \{\s*\.ui-focused \.focused-home-hero \{\s*display: none;/);
+    expect(css).toMatch(/@container ui-focused-home-panel \(max-height: \d+px\) \{[^}]*\.focused-starters[^}]*\{\s*display: none;/);
+  });
+
   it('regression: a full-width row is border-box, so a <div> row (Scheduled) never overflows its list', () => {
     const row = rule('.ui-focused .focused-row');
     expect(row).toMatch(/width:\s*100%/);

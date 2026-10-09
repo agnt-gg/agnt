@@ -50,9 +50,14 @@ describe('Focused shell drift guard', () => {
     const keyframes = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(keyframes.filter((k) => !k.startsWith('ui-focused-'))).toEqual([]);
     css = css.replace(/@keyframes\s+ui-focused-[\w-]+\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
-    // An @media line is a condition, not a selector. Drop only the header, so
-    // every rule INSIDE it is still held to the same scoping check.
-    css = css.replace(/@media[^{]*\{/g, '');
+    // Container names are global too: prefixed like keyframes.
+    // A declaration (after { or ;), never a selector like .x-container:has(...).
+    const containers = [...css.matchAll(/[{;]\s*container(?:-name)?\s*:\s*([\w-]+)/g), ...css.matchAll(/@container\s+([\w-]+)/g)].map((m) => m[1]);
+    expect(containers.length).toBeGreaterThan(0);
+    expect(containers.filter((c) => !c.startsWith('ui-focused-'))).toEqual([]);
+    // An @media or @container line is a condition, not a selector. Drop only
+    // the header, so every rule INSIDE it is still held to the same check.
+    css = css.replace(/@(?:media|container)[^{]*\{/g, '');
     const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim())).filter(Boolean);
     expect(selectors.length).toBeGreaterThan(40);
     const unscoped = selectors.filter((s) => !s.startsWith('.ui-focused'));

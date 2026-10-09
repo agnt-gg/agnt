@@ -2334,6 +2334,39 @@
 .ui-focused.is-compact .chat-screen-wrapper.focused-home .mobile-conversation-heading {
   display: none;
 }
+/* The keyboard takes ~300px of a phone (utils/appHeight.js shrinks the app to
+   what is left), and the hero was laid out in whatever remained: on a 390x844
+   phone the suggestions slid over the logo and tagline at 520px and under the
+   header at 400px. Each part now gives way in order of what matters least: the
+   logo, then the heading, then (when even they cannot fit) the suggestions, so
+   the composer is never crowded. Each query measures its own box, so this
+   holds at any height; the hero's box also clips, so a threshold that is a
+   few pixels off can never paint over the suggestions. Measured sizes on that
+   phone: hero 144px with logo, 83px without; suggestions 245px; composer 113px. */
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .main-panel {
+  container: ui-focused-home-panel / size;
+}
+.ui-focused.is-compact .chat-screen-wrapper.focused-home .conversation-canvas-wrapper {
+  container: ui-focused-home-hero / size;
+  min-height: 0;
+  overflow: hidden;
+}
+@container ui-focused-home-hero (max-height: 150px) {
+  .ui-focused .focused-home-logo {
+    display: none;
+  }
+}
+@container ui-focused-home-hero (max-height: 90px) {
+  .ui-focused .focused-home-hero {
+    display: none;
+  }
+}
+@container ui-focused-home-panel (max-height: 370px) {
+  .ui-focused .chat-screen-wrapper.focused-home .focused-starters,
+  .ui-focused .chat-screen-wrapper.focused-home .focused-home-hero {
+    display: none;
+  }
+}
 
 /* Compact Studio uses a padded full-width container. Focused keeps one
    identical transcript/composer column at every presentation width. */
