@@ -11,6 +11,17 @@ import { isToolToken, verifyToolToken, toolRequestPermitted, TOOL_SCOPE_DENIED }
 
 dotenv.config();
 
+/**
+ * Users whose local row is known to exist in this process. content_outputs,
+ * conversation_roles and other tables reference users(id), so a write made
+ * before the row exists fails its foreign key. Only the remote-auth branch used
+ * to create the row; a locally verified token never did, and a new account's
+ * first page load raced whichever request happened to create it. Measured on a
+ * fresh account: the first GET /content-outputs/main-chat failed with
+ * SQLITE_CONSTRAINT (FOREIGN KEY) and the Main chat was missing until a reload.
+ */
+const localUserRowEnsured = new Set();
+
 class Middleware {
   constructor() {
     // Determine cookie security based on environment
@@ -95,12 +106,14 @@ class Middleware {
     // Normalize decoded object to always have 'id' field
     decoded.id = userId;
 
-    return new Promise((resolve, reject) => {
+    // Resolves true once the row exists, false on a database error (never
+    // rejects: auth is not blocked on it).
+    return new Promise((resolve) => {
       // Check if user exists
       db.get('SELECT id, email FROM users WHERE id = ?', [decoded.id], (err, existingUser) => {
         if (err) {
           console.error('Error checking user existence:', err);
-          return resolve(); // Don't block auth on DB error
+          return resolve(false); // Don't block auth on DB error
         }
 
         if (existingUser) {
@@ -113,11 +126,11 @@ class Middleware {
                 if (updateErr) {
                   console.error('Error updating user email:', updateErr);
                 }
-                resolve();
+                resolve(true);
               }
             );
           } else {
-            resolve();
+            resolve(true);
           }
         } else {
           // User doesn't exist - create new record
@@ -129,11 +142,13 @@ class Middleware {
             [decoded.id, decoded.email || null, decoded.name || null],
             (insertErr) => {
               if (insertErr) {
+                // Another request created it a moment ago: the row exists.
+                if (/UNIQUE|PRIMARY KEY/i.test(insertErr.message)) return resolve(true);
                 console.error('Error creating user record:', insertErr);
-              } else {
-                console.log('✅ Created local user record for:', decoded.email);
+                return resolve(false);
               }
-              resolve();
+              console.log('✅ Created local user record for:', decoded.email);
+              resolve(true);
             }
           );
         }
@@ -245,6 +260,12 @@ class Middleware {
       rememberSessionToken(token, userId);
 
       // console.log('Authenticated user:', req.user);
+
+      // Once per user per process (see localUserRowEnsured). A failed attempt
+      // is not remembered, so the next request tries again.
+      if (userId && !localUserRowEnsured.has(userId)) {
+        if (await this.syncRemoteUserToLocal({ ...decoded, id: userId })) localUserRowEnsured.add(userId);
+      }
 
       next();
     } catch (err) {

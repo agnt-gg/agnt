@@ -246,3 +246,27 @@ describe('issuer delegation is INERT for every existing install', () => {
     expect(req.user.auth_type).toBe('issuer-verified');
   });
 });
+
+// 2026-10-09: a new account's first GET /content-outputs/main-chat failed its
+// foreign key (SQLITE_CONSTRAINT) because nothing had created the user's local
+// row yet; only the remote-auth branch ever did. The Main chat was missing until
+// a reload.
+describe('a signed-in user has a local row before any handler runs', () => {
+  it('creates the users row for a never-seen user, once', async () => {
+    const id = `first-sign-in-${Date.now()}`;
+    const { default: db } = await import('../models/database/index.js');
+    const row = () => new Promise((resolve, reject) => db.get('SELECT id, email FROM users WHERE id = ?', [id], (e, r) => (e ? reject(e) : resolve(r))));
+    expect(await row()).toBeUndefined();
+
+    const token = jwt.sign({ id, email: `${id}@test.local` }, SECRET);
+    const first = await run(authenticateToken, { authorization: `Bearer ${token}` });
+    expect(first.next).toHaveBeenCalled();
+    expect(await row()).toMatchObject({ id, email: `${id}@test.local` });
+
+    const select = vi.spyOn(db, 'get');
+    const second = await run(authenticateToken, { authorization: `Bearer ${token}` });
+    expect(second.next).toHaveBeenCalled();
+    expect(select.mock.calls.filter(([sql]) => /FROM users WHERE id/.test(sql))).toHaveLength(0);
+    select.mockRestore();
+  });
+});
