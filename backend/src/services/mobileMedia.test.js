@@ -52,6 +52,7 @@ describe('findOutboundFiles', () => {
     await fs.mkdir(path.join(dir, '.ssh'));
     await fs.writeFile(path.join(dir, '.ssh', 'id.txt'), 'secret');
     await fs.writeFile(path.join(dir, 'empty.txt'), '');
+    await fs.writeFile(path.join(dir, 'tug-of-war.html'), '<!doctype html><title>game</title>');
   });
   afterAll(() => fs.rm(dir, { recursive: true, force: true }));
   const link = (name) => pathToFileURL(path.join(dir, name)).href;
@@ -69,6 +70,11 @@ Also ${link('tool.exe')} ${pathToFileURL(path.join(dir, '.ssh', 'id.txt')).href}
       ['report final.pdf', 'application/pdf'],
     ]);
     expect(files[1].token).toBe(link('chart.png'));
+  });
+
+  it('sends an HTML page Annie made, so a game or report opens on the phone', async () => {
+    const files = await findOutboundFiles(`Play it here: ${link('tug-of-war.html')}`);
+    expect(files.map((f) => [f.name, f.mime])).toEqual([['tug-of-war.html', 'text/html']]);
   });
 
   it('sends at most four', async () => {
@@ -93,5 +99,7 @@ describe('sendMedia', () => {
 it('maps common extensions and refuses unknown ones', () => {
   expect(mimeForName('Photo.JPG')).toBe('image/jpeg');
   expect(mimeForName('deck.pptx')).toMatch(/presentationml/);
+  expect(mimeForName('Game.HTML')).toBe('text/html');
+  expect(mimeForName('page.htm')).toBe('text/html');
   expect(mimeForName('run.exe')).toBeNull();
 });

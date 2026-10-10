@@ -26,6 +26,9 @@ export const MAX_OUTBOUND = 4;
 const MIME_BY_EXT = Object.freeze({
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
   pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+  // A page Annie made (a game, a report) opens in the phone's browser. The media
+  // store serves HTML in a CSP sandbox, so it can never act as an agnt.gg page.
+  html: 'text/html', htm: 'text/html',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
