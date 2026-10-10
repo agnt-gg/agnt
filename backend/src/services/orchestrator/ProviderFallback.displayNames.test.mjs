@@ -313,32 +313,18 @@ describe('buildProviderChain — a real four-tier configuration', () => {
     expect(chain[1].model).toBe('cursor-grok-4.6-medium-fast');
     expect(chain[3].model).toBe('deepseek-v4-flash-0731');
 
-    // grok-build's model is NOT pinned to a literal. Its display name already
-    // equals its registry key, so it reaches resolveTierModel's pre-existing
-    // snap-to-first-static-model branch, and the static list moves: it held
-    // ['grok-4.5','grok-4.6'] when this test was written and holds ['grok-4.5']
-    // now, which would rot a hardcoded string on the next catalogue edit.
-    const grokStatic = ProviderRegistry.getTextModels('grok-build') || [];
-    expect(chain[2].model).toBe(
-      grokStatic.includes('grok-4.6') ? 'grok-4.6' : grokStatic[0]
-    );
+    // grok-build is a CLI-login provider, so the model the user configured is
+    // kept verbatim rather than snapped to the (stale) static list. Before
+    // 2026-10-06 this snapped grok-4.7 -> grok-4.5 in production.
+    expect(chain[2].model).toBe('grok-4.6');
   });
 
-  it('trusts a configured model only where the static list cannot vouch for it', () => {
-    // An asymmetry worth stating out loud, because it looks arbitrary until you
-    // see which way each branch fails.
-    //
-    // "Cursor" does not lowercase to its registry key, so getTextModels returns
-    // [] for it and resolveTierModel takes its trust-the-caller branch: the
-    // user's model survives verbatim. "Grok-Build" DOES lowercase to its key,
-    // finds a non-empty static list, and snaps an unrecognised model to the
-    // first entry.
-    //
-    // That snapping is pre-existing behaviour on the primary path and is left
-    // exactly as it was — this fix deliberately does not widen its blast radius
-    // by feeding the canonical key into the model lookup as well. Doing so
-    // would silently rewrite a live, UI-chosen Cursor model to a stale
-    // hardcoded one.
+  it('trusts a configured model for CLI-login providers regardless of the static list', () => {
+    // CLI-login providers (Cursor, Grok-Build, Claude-Code, Codex, ...) fetch
+    // their real catalogue live, so the static list cannot vouch AGAINST a
+    // configured model. Both spellings must keep the user's choice: "Cursor"
+    // (which does not lowercase to its key) and "Grok-Build" (which does, and
+    // used to be snapped to the first static entry).
     const cursorStatic = ProviderRegistry.getTextModels('Cursor') || [];
     expect(cursorStatic).toEqual([]);
 
@@ -353,6 +339,29 @@ describe('buildProviderChain — a real four-tier configuration', () => {
       provider: 'cursor-cli',
       model: 'a-model-no-static-list-knows',
     });
+
+    const grokStatic = ProviderRegistry.getTextModels('grok-build') || [];
+    expect(grokStatic).not.toContain('grok-4.7'); // premise: static list is stale
+    const grokChain = PF.buildProviderChain({
+      provider: 'claude-code',
+      model: 'claude-opus-5-5',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: 'Grok-Build', model: 'grok-4.7' }],
+    });
+    expect(grokChain[1]).toMatchObject({ provider: 'grok-build', model: 'grok-4.7' });
+  });
+
+  it('still snaps an unknown model for an API-key provider with a static list', () => {
+    // The CLI exemption must not leak to API providers, whose static list IS
+    // the authority for what the endpoint accepts.
+    const grokaiStatic = ProviderRegistry.getTextModels('grokai') || [];
+    expect(grokaiStatic.length).toBeGreaterThan(0);
+    expect(PF.resolveTierModel('grokai', 'definitely-not-a-model')).toBe(grokaiStatic[0]);
+  });
+
+  it('still defaults an UNSET model for a CLI-login provider', () => {
+    const grokStatic = ProviderRegistry.getTextModels('grok-build') || [];
+    expect(PF.resolveTierModel('Grok-Build', null)).toBe(grokStatic[0]);
   });
 
   it('every built-in tier it produces is resolvable by the executor', () => {
