@@ -51,7 +51,9 @@ function defaultEngines() {
       const { resetSearchProfile } = await import('./localSearch.js');
       return resetSearchProfile();
     },
-    cloud: ({ query, count }) => callService('search', '/search', { method: 'POST', idempotent: true, body: { query, results: count } }),
+    // search.agnt.gg reads the count from `num` (alias `numResults`) and ignores unknown fields,
+    // so any other name silently falls back to its default of 5.
+    cloud: ({ query, count }) => callService('search', '/search', { method: 'POST', idempotent: true, body: { query, num: count } }),
     allowed: () => serviceAllowed('search'),
     unavailableReason: localSearchUnavailableReason,
   };
