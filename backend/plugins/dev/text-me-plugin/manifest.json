@@ -1,0 +1,46 @@
+{
+  "name": "text-me-plugin",
+  "version": "1.0.0",
+  "description": "Text yourself from a workflow: sends a message to the phone linked in Settings → Text Annie (mobile.agnt.gg). Each text counts against your monthly allowance.",
+  "author": "AGNT",
+  "icon": "message",
+  "tools": [
+    {
+      "type": "text-me",
+      "entryPoint": "./text-me.js",
+      "schema": {
+        "title": "Text Me",
+        "category": "action",
+        "type": "text-me",
+        "icon": "message",
+        "description": "Sends a text message to your linked phone (Text Annie). Only works for the signed-in account owner. Reports queue acceptance, not delivery.",
+        "parameters": {
+          "message": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The text to send: plain words, no markdown (1-1600 characters).",
+            "required": true
+          }
+        },
+        "outputs": {
+          "sent": {
+            "type": "boolean",
+            "description": "True when the text gateway accepted the message into its send queue."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Gateway message id, or null if not sent."
+          },
+          "error": {
+            "type": "string",
+            "description": "Why nothing was sent, or null."
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": ["env-access", "dynamic-import", "network"],
+    "domains": ["mobile.agnt.gg"]
+  }
+}
