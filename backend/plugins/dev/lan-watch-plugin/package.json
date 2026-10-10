@@ -1,0 +1,6 @@
+{
+  "name": "lan-watch-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "lan-watch.js"
+}

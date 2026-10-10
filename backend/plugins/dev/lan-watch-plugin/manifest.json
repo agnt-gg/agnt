@@ -1,0 +1,53 @@
+{
+  "name": "lan-watch-plugin",
+  "version": "1.0.0",
+  "description": "Watches your local network: logs every device joining and leaving (by MAC) and flags unknown devices. Pair with Text Me to get texted.",
+  "author": "AGNT",
+  "icon": "wifi",
+  "tools": [
+    {
+      "type": "lan-watch",
+      "entryPoint": "./lan-watch.js",
+      "schema": {
+        "title": "LAN Watch",
+        "category": "action",
+        "type": "lan-watch",
+        "icon": "wifi",
+        "description": "Scans this computer's local network, records join/leave events with timestamps, and sets alert=true when an unknown device appears or returns. Run it on a timer.",
+        "parameters": {
+          "knownDevices": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "MAC addresses of devices you trust (comma or newline separated). The router and this computer are always trusted.",
+            "required": false
+          },
+          "leftAfterMinutes": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Minutes a device must be absent before it counts as having left (1-1440).",
+            "default": 10
+          },
+          "timeZone": {
+            "type": "string",
+            "inputType": "text",
+            "description": "IANA time zone for alert times, e.g. America/New_York. Defaults to this computer's.",
+            "required": false
+          }
+        },
+        "outputs": {
+          "alert": { "type": "boolean", "description": "True when an unknown device appeared or came back this scan." },
+          "message": { "type": "string", "description": "A ready-to-send alert text, empty when alert is false." },
+          "onlineCount": { "type": "number", "description": "Devices seen this scan." },
+          "unknownOnline": { "type": "array", "description": "Unknown devices currently online, with when they arrived." },
+          "events": { "type": "array", "description": "Join/leave events recorded this scan." },
+          "logPath": { "type": "string", "description": "Path of the event log (JSON lines)." },
+          "error": { "type": "string", "description": "Why the scan failed, or null." }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": ["spawn-process", "filesystem", "env-access", "network"],
+    "domains": []
+  }
+}
