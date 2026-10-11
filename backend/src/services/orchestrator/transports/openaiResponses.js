@@ -1,5 +1,6 @@
 import { getResponsePolicy } from '../../ai/connectionRuntime.js';
 import { appendComputerImages } from '../../computerUse/observationImages.js';
+import { ResponsesToolCallAssembler } from './responsesToolCallAssembler.js';
 /**
  * The OpenAI Responses transport — openai (gpt-5.x / o-series) and openai-codex.
  *
@@ -781,7 +782,8 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
-      let accumulatedToolCalls = [];
+      const toolCallAssembler = new ResponsesToolCallAssembler('responses-tool');
+      const accumulatedToolCalls = toolCallAssembler.toolCalls;
       let streamUsage = null;
       let replayableOutputItems = undefined;
       const reasoningState = this._createReasoningSummaryState();
@@ -854,29 +856,13 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           }
 
           // Handle different event types from Responses API
-          if (event.type === 'response.output_item.added') {
-            // New output item started
-            const item = event.item;
-            if (item.type === 'function_call') {
-              const newToolCall = {
-                id: item.call_id || `responses-tool-${Date.now()}-${accumulatedToolCalls.length}`,
-                type: 'function',
-                function: {
-                  name: item.name || '',
-                  arguments: '',
-                },
-              };
-              accumulatedToolCalls.push(newToolCall);
-              // Announce immediately so the UI shows a pending pill before
-              // arg deltas start arriving — otherwise the pill only appears
-              // once the first arg token streams in.
-              if (onChunk && newToolCall.function.name) {
-                onChunk({
-                  type: 'tool_call_delta',
-                  index: accumulatedToolCalls.length - 1,
-                  toolCall: newToolCall,
-                });
-              }
+          if (event.type === 'response.output_item.added' || event.type === 'response.output_item.done') {
+            const index = toolCallAssembler.onOutputItem(event);
+            // Announce immediately so the UI shows a pending pill before
+            // arg deltas start arriving — otherwise the pill only appears
+            // once the first arg token streams in.
+            if (index !== -1 && onChunk && accumulatedToolCalls[index].function.name) {
+              onChunk({ type: 'tool_call_delta', index, toolCall: accumulatedToolCalls[index] });
             }
           } else if (event.type === 'response.output_text.delta') {
             // Text content delta
@@ -890,38 +876,21 @@ class OpenAIResponsesAdapter extends BaseAdapter {
                 accumulated: accumulatedContent,
               });
             }
-          } else if (event.type === 'response.function_call_arguments.delta') {
-            // Function call arguments delta
-            const delta = event.delta || '';
-            const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
-            if (lastToolCall) {
-              lastToolCall.function.arguments += delta;
-
-              if (onChunk) {
-                onChunk({
-                  type: 'tool_call_delta',
-                  index: accumulatedToolCalls.length - 1,
-                  toolCall: lastToolCall,
-                });
-              }
-            }
-          } else if (event.type === 'response.function_call_arguments.done') {
-            // Function call complete
-            const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
-            if (lastToolCall && onChunk) {
-              onChunk({
-                type: 'tool_call_delta',
-                index: accumulatedToolCalls.length - 1,
-                toolCall: lastToolCall,
-              });
+          } else if (
+            event.type === 'response.function_call_arguments.delta' ||
+            event.type === 'response.function_call_arguments.done'
+          ) {
+            const index = event.type === 'response.function_call_arguments.delta'
+              ? toolCallAssembler.onArgumentsDelta(event)
+              : toolCallAssembler.onArgumentsDone(event);
+            if (index !== -1 && onChunk) {
+              onChunk({ type: 'tool_call_delta', index, toolCall: accumulatedToolCalls[index] });
             }
           } else if (event.type === 'response.completed') {
-            // Response complete - extract any remaining data
+            // The final output is authoritative for every call, not only for
+            // calls the stream never announced (agnt-gg/agnt#163).
             if (event.response && event.response.output) {
-              const finalToolCalls = this._extractToolCalls(event.response.output);
-              if (finalToolCalls.length > accumulatedToolCalls.length) {
-                accumulatedToolCalls = finalToolCalls;
-              }
+              toolCallAssembler.onCompletedOutput(event.response.output);
               replayableOutputItems = this._extractReplayableOutputItems(event.response.output);
             }
             // Capture usage from completed response
@@ -1414,7 +1383,8 @@ class ConnectionResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async _consumeStream(stream, onChunk = null, abortSignal = null) {
     let accumulatedContent = '';
-    let accumulatedToolCalls = [];
+    const toolCallAssembler = new ResponsesToolCallAssembler('codex-tool');
+    const accumulatedToolCalls = toolCallAssembler.toolCalls;
     let responseId = null;
     let streamUsage = null;
     let replayableOutputItems = undefined;
@@ -1432,45 +1402,30 @@ class ConnectionResponsesAdapter extends OpenAIResponsesAdapter {
         continue;
       }
 
-      if (event.type === 'response.output_item.added') {
-        const item = event.item;
-        if (item.type === 'function_call') {
-          accumulatedToolCalls.push({
-            id: item.call_id || `codex-tool-${Date.now()}-${accumulatedToolCalls.length}`,
-            type: 'function',
-            function: {
-              name: item.name || '',
-              arguments: '',
-            },
-          });
-        }
+      if (event.type === 'response.output_item.added' || event.type === 'response.output_item.done') {
+        toolCallAssembler.onOutputItem(event);
       } else if (event.type === 'response.output_text.delta') {
         const delta = event.delta || '';
         accumulatedContent += delta;
         if (onChunk) {
           onChunk({ type: 'content', delta, accumulated: accumulatedContent });
         }
-      } else if (event.type === 'response.function_call_arguments.delta') {
-        const delta = event.delta || '';
-        const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
-        if (lastToolCall) {
-          lastToolCall.function.arguments += delta;
-          if (onChunk) {
-            onChunk({ type: 'tool_call_delta', index: accumulatedToolCalls.length - 1, toolCall: lastToolCall });
-          }
-        }
-      } else if (event.type === 'response.function_call_arguments.done') {
-        const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
-        if (lastToolCall && onChunk) {
-          onChunk({ type: 'tool_call_delta', index: accumulatedToolCalls.length - 1, toolCall: lastToolCall });
+      } else if (
+        event.type === 'response.function_call_arguments.delta' ||
+        event.type === 'response.function_call_arguments.done'
+      ) {
+        const index = event.type === 'response.function_call_arguments.delta'
+          ? toolCallAssembler.onArgumentsDelta(event)
+          : toolCallAssembler.onArgumentsDone(event);
+        if (index !== -1 && onChunk) {
+          onChunk({ type: 'tool_call_delta', index, toolCall: accumulatedToolCalls[index] });
         }
       } else if (event.type === 'response.completed') {
         responseId = event.response?.id || null;
+        // The final output is authoritative for every call, not only for
+        // calls the stream never announced (agnt-gg/agnt#163).
         if (event.response && event.response.output) {
-          const finalToolCalls = this._extractToolCalls(event.response.output);
-          if (finalToolCalls.length > accumulatedToolCalls.length) {
-            accumulatedToolCalls = finalToolCalls;
-          }
+          toolCallAssembler.onCompletedOutput(event.response.output);
           replayableOutputItems = this._extractReplayableOutputItems(event.response.output);
         }
         // Extract usage from completed response
