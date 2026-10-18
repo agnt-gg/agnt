@@ -56,6 +56,17 @@ import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIde
 import { resumeInflightRuns as defaultResumeInflightRuns } from '@/services/runResume.js';
 import { startPreferenceSync, stopPreferenceSync } from '@/services/userPreferences.js';
 
+/**
+ * Report this install and claim it for the account that just signed in
+ * (services/journeyBoot.js). Loaded lazily and only in the desktop app: a
+ * browser or hosted instance has no install to report, and the session start
+ * should not pull the HTTP client into its import graph for nothing.
+ */
+const defaultJourneySync = (args) =>
+  globalThis.window?.electron
+    ? import('@/services/journeyBoot.js').then((m) => m.runJourneySync(args))
+    : Promise.resolve({ skipped: true });
+
 /** Refresh the signed license once an hour while a session is live. */
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
 
@@ -105,7 +116,7 @@ export function startSession(store, opts = {}) {
   return inFlight;
 }
 
-async function runStartSession(store, { reason = 'unknown', resumeInflightRuns = defaultResumeInflightRuns } = {}) {
+async function runStartSession(store, { reason = 'unknown', resumeInflightRuns = defaultResumeInflightRuns, journeySync = defaultJourneySync } = {}) {
   console.log(`[session] starting (${reason})`);
 
   // Hand the token to the local backend's session store before anything reads
@@ -176,6 +187,14 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
         console.warn('[session] validateLicense failed:', err?.message);
       });
     }
+
+    // Every sign-in path arrives here, so every one joins this install (and a
+    // browser sign-in's history) to the account. Consent is checked inside.
+    Promise.resolve()
+      .then(() => journeySync({ token: store.state.userAuth?.token || localStorage.getItem('token') }))
+      .catch((err) => {
+        console.warn('[session] journey sync deferred:', err?.message);
+      });
 
     // Custom instructions and provider preferences.
     Promise.resolve(store.dispatch('aiProvider/loadUserSettings')).catch((err) => {

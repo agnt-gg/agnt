@@ -26,6 +26,16 @@
 
 import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
+import { journeyTrackingAllowed, rememberSignInNonce } from '@/store/user/journeySync.js';
+
+/**
+ * The production sign-in, entered through agnt.gg so the browser that already
+ * carries this person's website history is joined to the account it signs in
+ * (agnt.gg/journey-routes.js). agnt.gg validates the loopback redirect and
+ * forwards to exactly the Google URL below; nothing else about sign-in changes.
+ */
+const SITE_URL = 'https://agnt.gg';
+const PRODUCTION_API = 'https://api.agnt.gg';
 
 /** How often to ask whether the browser has answered. */
 const POLL_INTERVAL_MS = 1200;
@@ -68,6 +78,10 @@ export function startDesktopSignIn({
   remoteUrl = API_CONFIG?.REMOTE_URL,
   pollIntervalMs = POLL_INTERVAL_MS,
   timeoutMs = POLL_TIMEOUT_MS,
+  storage = globalThis.localStorage,
+  // Only against production, and only with consent: a development API must not
+  // be bypassed by a bridge that forwards to the production one.
+  bridge = remoteUrl === PRODUCTION_API && journeyTrackingAllowed({ storage, navigator: globalThis.navigator, win }),
 } = {}) {
   let cancelled = false;
 
@@ -83,8 +97,11 @@ export function startDesktopSignIn({
     //    at it, which is the entire point of a loopback redirect.
     const redirectUrl = `${baseUrl}/auth/desktop/handoff/${nonce}`;
 
-    const authUrl =
-      `${remoteUrl}/users/auth/google` + `?redirectUrl=${encodeURIComponent(redirectUrl)}`;
+    const authUrl = bridge
+      ? `${SITE_URL}/api/journey/desktop-signin?nonce=${encodeURIComponent(nonce)}&redirect=${encodeURIComponent(redirectUrl)}`
+      : `${remoteUrl}/users/auth/google` + `?redirectUrl=${encodeURIComponent(redirectUrl)}`;
+    // Redeemed by the next signed-in journey sync (store/user/journeySync.js).
+    if (bridge) rememberSignInNonce(storage, nonce);
 
     // 3. The user's real browser, not a window we built.
     win.electron.openExternalUrl(authUrl);

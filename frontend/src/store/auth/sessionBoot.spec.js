@@ -1,3 +1,5 @@
+// @vitest-environment node
+// (It reads source files with node:fs/node:url, which jsdom resolution externalises to stubs.)
 /**
  * The session lifecycle: what loads when one starts, what stops when one ends.
  *
@@ -136,6 +138,20 @@ describe('startSession — one definition of "what being signed in loads"', () =
     await settle();
 
     expect(resumeInflightRuns).toHaveBeenCalledWith(store);
+  });
+
+  it('joins this install to the account on every session start, and a failure stays contained', async () => {
+    const store = makeStore({ token: 'session.token.value' });
+    const journeySync = vi.fn().mockResolvedValue({ claim: 'sent' });
+    await startSession(store, { reason: 'test', resumeInflightRuns: vi.fn().mockResolvedValue(), journeySync });
+    await settle();
+    expect(journeySync).toHaveBeenCalledWith({ token: 'session.token.value' });
+
+    __resetSessionScopeForTests();
+    const failing = vi.fn(() => { throw new Error('offline'); });
+    await expect(startSession(makeStore(), { reason: 'test', resumeInflightRuns: vi.fn().mockResolvedValue(), journeySync: failing })).resolves.toBeUndefined();
+    await settle();
+    expect(failing).toHaveBeenCalled();
   });
 
   it('hands the token to the local backend first', async () => {

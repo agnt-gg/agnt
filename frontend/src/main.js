@@ -198,12 +198,24 @@ if (import.meta.env.DEV) {
 // was ever boot-specific; it was SESSION work that happened to be written in
 // the one place a session can begin without a user action, which is why the
 // four places a user can actually sign in never ran it.
+/** Desktop only; consent is checked inside (store/user/journeySync.js). Never throws. */
+const reportAnonymousInstall = () => {
+  if (!window.electron) return;
+  idle(() => {
+    import('@/services/journeyBoot.js')
+      .then((m) => m.runJourneySync())
+      .catch((error) => console.warn('[boot] install report deferred:', error?.message));
+  });
+};
+
 const initializeApp = async () => {
   const token = localStorage.getItem('token');
 
   if (!token) {
     console.log('No token found, skipping authenticated init');
     store.commit('userAuth/SET_SESSION_STATE', 'invalid');
+    // Most people who install never sign in; report the install so that drop-off is visible.
+    reportAnonymousInstall();
     // Defer license validation off first-paint. Anonymous/free tier doesn't
     // need it before the shell renders.
     idle(() => {
@@ -223,6 +235,7 @@ const initializeApp = async () => {
   const sessionState = await store.dispatch('userAuth/verifySession');
   if (sessionState !== 'valid') {
     console.warn(`[boot] session is ${sessionState} — not loading user data.`);
+    reportAnonymousInstall();
     // A license is not user data and the login screen still needs plan copy.
     idle(() => {
       store.dispatch('userAuth/validateLicense').catch(() => {

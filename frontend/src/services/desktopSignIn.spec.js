@@ -35,8 +35,14 @@ function harness({ claims = [] } = {}) {
   return { win, http, opened };
 }
 
+// The direct Google URL is still the path for opted-out users and non-production APIs.
 const run = (h, over = {}) =>
-  startDesktopSignIn({ win: h.win, http: h.http, pollIntervalMs: 1, timeoutMs: 500, ...over });
+  startDesktopSignIn({ win: h.win, http: h.http, pollIntervalMs: 1, timeoutMs: 500, bridge: false, ...over });
+
+function memoryStorage(initial = {}) {
+  const map = new Map(Object.entries(initial));
+  return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)), removeItem: (k) => map.delete(k), map };
+}
 
 beforeEach(() => vi.restoreAllMocks());
 
@@ -93,6 +99,40 @@ describe('the URL handed to the system browser', () => {
     const raw = h.opened[0].split('redirectUrl=')[1];
     expect(raw).not.toContain('://');
     expect(decodeURIComponent(raw)).toContain('://');
+  });
+});
+
+describe('the agnt.gg sign-in bridge', () => {
+  it('enters through agnt.gg with the nonce and the same loopback redirect, and remembers the nonce', async () => {
+    const h = harness({ claims: [{ status: 200, data: { token: TOKEN } }] });
+    const storage = memoryStorage();
+    await run(h, { bridge: true, storage }).promise;
+
+    const url = new URL(h.opened[0]);
+    expect(url.origin + url.pathname).toBe('https://agnt.gg/api/journey/desktop-signin');
+    expect(url.searchParams.get('nonce')).toBe(NONCE);
+    expect(url.searchParams.get('redirect')).toBe(`http://localhost:3333/api/auth/desktop/handoff/${NONCE}`);
+    expect(JSON.parse(storage.getItem('agnt_journey_signin_nonce')).nonce).toBe(NONCE);
+  });
+
+  it('is the default against production, with consent', async () => {
+    const h = harness({ claims: [{ status: 200, data: { token: TOKEN } }] });
+    await startDesktopSignIn({ win: h.win, http: h.http, pollIntervalMs: 1, timeoutMs: 500, storage: memoryStorage() }).promise;
+    expect(new URL(h.opened[0]).hostname).toBe('agnt.gg');
+  });
+
+  it('is not used when the person has opted out, and nothing is remembered', async () => {
+    const h = harness({ claims: [{ status: 200, data: { token: TOKEN } }] });
+    const storage = memoryStorage({ agnt_analytics_opt_out: '1' });
+    await startDesktopSignIn({ win: h.win, http: h.http, pollIntervalMs: 1, timeoutMs: 500, storage }).promise;
+    expect(new URL(h.opened[0]).hostname).toBe('api.agnt.gg');
+    expect(storage.getItem('agnt_journey_signin_nonce')).toBeNull();
+  });
+
+  it('is not used against a development API', async () => {
+    const h = harness({ claims: [{ status: 200, data: { token: TOKEN } }] });
+    await startDesktopSignIn({ win: h.win, http: h.http, pollIntervalMs: 1, timeoutMs: 500, storage: memoryStorage(), remoteUrl: 'http://localhost:4000' }).promise;
+    expect(new URL(h.opened[0]).origin).toBe('http://localhost:4000');
   });
 });
 
