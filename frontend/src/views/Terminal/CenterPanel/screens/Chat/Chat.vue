@@ -338,7 +338,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import MessageItem from './components/MessageItem.vue';
 import { openLegacyOutputSlot } from './legacyOutputSlot.js';
 import { createNewSessionLanding } from './newSessionLanding.js';
-import { isUnstartedConversation } from './chatHome.js';
+import { isUnstartedConversation, withoutWelcome } from './chatHome.js';
 import { chatHasModel } from './chatProvider.js';
 import { buildProviderGreeting, greetingNeedsReplacing } from './providerGreeting.js';
 import ProcessingState from './components/ProcessingState.vue';
@@ -515,13 +515,17 @@ export default {
     const visibleWindow = ref(MESSAGE_WINDOW_INITIAL);
     const suppressMessageTransition = ref(false);
 
+    // In AGNT One the home's welcome already greeted; the greeting bubble is
+    // not drawn again above the first message (chatHome.withoutWelcome).
+    const renderedMessages = computed(() => (uiPresentation === 'one' ? withoutWelcome(displayMessages.value) : displayMessages.value));
+
     const windowedMessages = computed(() => {
-      const msgs = displayMessages.value;
+      const msgs = renderedMessages.value;
       if (msgs.length <= visibleWindow.value) return msgs;
       return msgs.slice(msgs.length - visibleWindow.value);
     });
 
-    const hiddenMessageCount = computed(() => Math.max(0, displayMessages.value.length - visibleWindow.value));
+    const hiddenMessageCount = computed(() => Math.max(0, renderedMessages.value.length - visibleWindow.value));
 
     const resetMessageWindow = () => {
       visibleWindow.value = MESSAGE_WINDOW_INITIAL;

@@ -38,12 +38,13 @@ import FocusedPage from './FocusedPage.vue';
 import FocusedRoutine from './FocusedRoutine.vue';
 import { FOCUSED_PAGES, scheduleRows } from './focusedModel.js';
 import { formatNext } from './focusedTime.js';
+import { canScheduleGoals } from '@/services/scheduledGoalsPlan.js';
 
 defineProps({ item: { type: String, default: null }, isNew: { type: Boolean, default: false } });
 const store = useStore();
 const nav = inject('focusedNav');
 const page = FOCUSED_PAGES.scheduled;
-const paid = computed(() => ['personal', 'always_on', 'business', 'enterprise'].includes(String(store.getters['userAuth/planType'] || '').toLowerCase()));
+const paid = computed(() => canScheduleGoals(store.getters['userAuth/planType']));
 const query = ref('');
 const loading = ref(false);
 

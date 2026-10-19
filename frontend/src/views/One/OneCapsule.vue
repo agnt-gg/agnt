@@ -63,12 +63,16 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import { readFacts } from '@/composables/useJourney.js';
 import { HYDRATION, hydrate } from '@/services/accountInventory.js';
+import { canScheduleGoals } from '@/services/scheduledGoalsPlan.js';
 import { isAhaRequest, loadOneFlags, oneSummary, ringOffset, saveOneFlags } from './oneModel.js';
 
 const emit = defineEmits(['ask', 'open-models']);
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
 // Only what the seven goals and the rail read; the rest loads with its page.
-const NEEDED = new Set(['workflows/allWorkflows', 'schedules/allSchedules', 'agents/allAgents', 'tools/customTools', 'skills/allSkills', 'contentOutputs/outputs']);
+const NEEDED = new Set(['workflows/allWorkflows', 'agents/allAgents', 'tools/customTools', 'skills/allSkills', 'contentOutputs/outputs']);
+// Schedules are a paid feature: the endpoint answers 403 to any other plan,
+// so they load only once the plan is known to include them.
+const SCHEDULES = 'schedules/allSchedules';
 
 const store = useStore();
 const open = ref(false);
@@ -99,6 +103,13 @@ watch(lastUserText, (text) => {
   if (!apps.value.map((app) => String(app).toLowerCase()).includes('google')) return;
   setFlags({ aha: true });
 });
+
+// The plan can arrive after mount (the subscription loads in the background).
+watch(
+  () => canScheduleGoals(store.getters['userAuth/planType']),
+  (can) => { if (can) hydrate(store, HYDRATION.filter(([getter]) => getter === SCHEDULES)); },
+  { immediate: true },
+);
 
 function run(step) {
   open.value = false;

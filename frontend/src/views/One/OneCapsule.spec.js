@@ -32,11 +32,23 @@ describe('OneCapsule', () => {
     w.unmount();
   });
 
+  const hydrated = () => hydrate.mock.calls.flatMap((call) => call[1].map(([getter]) => getter)).sort();
+
   it('loads only what it reads, and the connected apps', () => {
     const w = mountCapsule();
     expect(dispatch).toHaveBeenCalledWith('appAuth/fetchConnectedApps');
-    const getterNames = hydrate.mock.calls[0][1].map(([getter]) => getter).sort();
-    expect(getterNames).toEqual(['agents/allAgents', 'contentOutputs/outputs', 'schedules/allSchedules', 'skills/allSkills', 'tools/customTools', 'workflows/allWorkflows']);
+    expect(hydrated()).toEqual(['agents/allAgents', 'contentOutputs/outputs', 'skills/allSkills', 'tools/customTools', 'workflows/allWorkflows']);
+    w.unmount();
+  });
+
+  // Found on a fresh free account: every load logged a 403 from /api/schedules,
+  // which only paid plans may read (planEntitlements.requireScheduledGoals).
+  it('asks for schedules only once the plan includes them, even when the plan arrives late', async () => {
+    const w = mountCapsule();
+    expect(hydrated()).not.toContain('schedules/allSchedules');
+    getters['userAuth/planType'] = 'personal';
+    await nextTick();
+    expect(hydrated()).toContain('schedules/allSchedules');
     w.unmount();
   });
 

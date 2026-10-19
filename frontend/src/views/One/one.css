@@ -9,9 +9,12 @@
  * differently it says so with `.ui-one.ui-focused`, one class more than the
  * rule it replaces, so the result never depends on stylesheet order.
  *
- * Surfaces: the rail sits on the canvas (--color-background); the main panel
- * is the raised surface (--color-dark-navy: white in light themes), so it
- * reads as a sheet with one rounded corner beside the rail.
+ * Surfaces: rail and main panel share the canvas (--color-background); the
+ * panel is a sheet set 8px down beside the rail, drawn by its hairline and
+ * one rounded corner. A white panel was tried: the Chat screen paints the
+ * canvas colour under it, which left a visible seam below the top bar
+ * (measured on a fresh account). In light themes elevation is carried by the
+ * border, not lightness (_light.css).
  */
 
 /* ── Frame ────────────────────────────────────────────────────────────────── */
@@ -21,13 +24,25 @@
 }
 
 .ui-one .one-main {
-  background: var(--color-dark-navy);
+  margin-top: 8px;
+  background: var(--color-background);
   border-top: 1px solid var(--terminal-border-color);
   border-left: 1px solid var(--terminal-border-color);
   border-top-left-radius: 16px;
   overflow: hidden;
 }
+/* The 8px band above the sheet still drags the frameless window. */
+.ui-one.has-window-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  -webkit-app-region: drag;
+}
 .ui-one.is-compact .one-main {
+  margin-top: 0;
   border: 0;
   border-radius: 0;
 }
@@ -529,6 +544,17 @@
 }
 .ui-one.ui-focused .chat-screen-wrapper .input-line .chat-provider-button {
   border-radius: 999px;
+}
+/* The model name in the interface's own type, not the code font. */
+.ui-one.ui-focused .chat-screen-wrapper .chat-provider-button .chat-provider-model {
+  font-family: inherit;
+  letter-spacing: normal;
+}
+
+/* The transcript fades under the top bar instead of cutting lines in half. */
+.ui-one.ui-focused .chat-screen-wrapper:not(.focused-home) .conversation-canvas {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
 }
 
 /* ── Turns ────────────────────────────────────────────────────────────────── */
