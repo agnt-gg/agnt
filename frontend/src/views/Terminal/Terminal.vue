@@ -4,9 +4,9 @@
     <!-- The update banner is mounted once, in App.vue, so it also shows on the
          sign-in page. -->
 
-    <!-- The frame: Studio's canvas (rail, toolbar, panels) or Focused's
-         (one input, recents, library). Same screens, same stores, same slot —
-         the mode decides only what is around them. See services/uiMode.js. -->
+    <!-- The frame: AGNT One (views/One/OneShell.vue), the app's only one.
+         Every screen renders in its slot; a screen One has a page for is
+         that page, anything else renders in full with a way back. -->
     <!-- The auth boundary owns the whole shell, not just the center screen. -->
     <component v-if="!isAuthenticated" :is="signInComponent" @screen-change="changeScreen" />
     <component
@@ -38,12 +38,6 @@
       @screen-change="changeScreen"
       @exit="changeScreen('SettingsScreen')"
     />
-
-    <!-- Studio users hear about Focused once (composables/useUiModeDefault.js). -->
-    <TryFocusedNote v-if="isAuthenticated && showTryFocused && !shouldShowOnboarding" @dismiss="dismissTryFocused" />
-
-    <!-- Onboarding Modal -->
-    <OnboardingModal v-if="isAuthenticated && shouldShowOnboarding" :show="shouldShowOnboarding" @complete="handleOnboardingComplete" @skip="handleOnboardingSkip" />
   </TerminalLayout>
 </template>
 
@@ -54,14 +48,9 @@ import { useStore } from 'vuex';
 
 // Layout and common
 import TerminalLayout from '@/views/_components/layout/TerminalLayout.vue';
-import OnboardingModal from '@/components/OnboardingModal.vue';
 
-// Canvas system (provides navigation sidebar + toolbar)
-import CanvasScreen from '@/canvas/CanvasScreen.vue';
-import FocusedShell from '@/views/Focused/FocusedShell.vue';
-import TryFocusedNote from '@/views/Focused/TryFocusedNote.vue';
-import { isUiModeToggleKey } from '@/services/uiMode.js';
-import { useUiModeDefault } from '@/composables/useUiModeDefault.js';
+// The frame: rail, one top bar, the chat.
+import OneShell from '@/views/One/OneShell.vue';
 import { screenRoute, normalizeScreen, isNavigation } from './screenRoute.js';
 import { focusedLocation } from '@/views/Focused/focusedRoutes.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
@@ -127,9 +116,6 @@ export default {
   name: 'Terminal',
   components: {
     TerminalLayout,
-    CanvasScreen,
-    OnboardingModal,
-    TryFocusedNote,
   },
   setup() {
     const route = useRoute();
@@ -140,19 +126,23 @@ export default {
     const signInComponent = screenComponents.SettingsScreen;
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
-    // markRaw: component definitions must not be made reactive.
-    const frames = { focused: markRaw(FocusedShell), studio: markRaw(CanvasScreen) };
-    const frameComponent = computed(() => frames[store.getters['theme/uiMode']] || frames.studio);
+    // markRaw: component definitions must not be made reactive. One entry:
+    // the map stays so a frame's contract (fullscreenHost.contract.spec.js)
+    // is checked the same way for whatever frame is listed here.
+    const frames = { one: markRaw(OneShell) };
+    const frameComponent = frames.one;
 
-    const { showTryFocused, dismissTryFocused } = useUiModeDefault(store);
-
-    const onModeKey = (e) => {
-      if (!isAuthenticated.value || !isUiModeToggleKey(e)) return;
-      e.preventDefault();
-      store.dispatch('theme/toggleUiMode');
-    };
-    window.addEventListener('keydown', onModeKey);
-    onBeforeUnmount(() => window.removeEventListener('keydown', onModeKey));
+    // AGNT One has no onboarding pages: a signed-in account lands in the chat,
+    // already on AGNT Flash (aiProvider.applyIncludedModelDefault picks it when
+    // the server has no default). Marking the old flag done keeps every gate
+    // that still reads it (dashboard prefetch, the journey) open.
+    watch(
+      shouldShowOnboarding,
+      (show) => {
+        if (show) store.commit('userAuth/COMPLETE_ONBOARDING');
+      },
+      { immediate: true },
+    );
 
     const getDefaultScreen = () => 'ChatScreen';
 
@@ -167,14 +157,11 @@ export default {
     // Placeholder shown while a screen chunk is still loading
     const ScreenPlaceholder = { template: '<div style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>' };
 
-    // In Focused, a route Focused has its own page for (focusedRoutes.js)
-    // mounts Chat underneath instead of the Studio screen: the page covers it,
-    // the conversation keeps streaming, and Studio's screen never loads just
-    // to be hidden. In Studio this is always the active screen.
-    const mountedScreen = computed(() => {
-      if (store.getters['theme/uiMode'] !== 'focused') return activeScreen.value;
-      return focusedLocation(activeScreen.value, route.query) ? 'ChatScreen' : activeScreen.value;
-    });
+    // A route One has its own page for (focusedRoutes.js) mounts Chat
+    // underneath instead of the full screen: the page covers it, the
+    // conversation keeps streaming, and the full screen never loads just to
+    // be hidden.
+    const mountedScreen = computed(() => (focusedLocation(activeScreen.value, route.query) ? 'ChatScreen' : activeScreen.value));
 
     const isScreenReady = computed(() => !!screenComponents[mountedScreen.value]);
 
@@ -195,16 +182,6 @@ export default {
       if (isNavigation(target, route.path)) {
         router.push(Object.keys(target.query).length ? target : target.path);
       }
-    };
-
-    const handleOnboardingComplete = (selectedScreen) => {
-      store.commit('userAuth/COMPLETE_ONBOARDING');
-      changeScreen(selectedScreen);
-    };
-
-    const handleOnboardingSkip = () => {
-      store.commit('userAuth/COMPLETE_ONBOARDING');
-      changeScreen('ChatScreen');
     };
 
     // Prime the store with dashboard-heavy data while the app is calm —
@@ -285,15 +262,10 @@ export default {
       signInComponent,
       mountedScreen,
       frameComponent,
-      showTryFocused,
-      dismissTryFocused,
       activeScreen,
       activeScreenComponent,
       isScreenReady,
       changeScreen,
-      shouldShowOnboarding,
-      handleOnboardingComplete,
-      handleOnboardingSkip,
     };
   },
 };

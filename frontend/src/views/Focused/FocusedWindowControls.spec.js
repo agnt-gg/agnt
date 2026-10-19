@@ -17,10 +17,11 @@ vi.mock('@/composables/useElectron', async () => {
 import FocusedWindowControls from './FocusedWindowControls.vue';
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BAR = readFileSync(join(DIR, 'FocusedWindowControls.vue'), 'utf8');
-const SHELL = readFileSync(join(DIR, 'FocusedShell.vue'), 'utf8');
-const CSS = readFileSync(join(DIR, 'focused.css'), 'utf8');
+// The frame these controls sit in: AGNT One's top bar.
+const SHELL = readFileSync(join(DIR, '../One/OneShell.vue'), 'utf8');
+const CSS = readFileSync(join(DIR, '../One/one.css'), 'utf8');
 
-describe('Focused top bar: window drag + window buttons', () => {
+describe('AGNT One top bar: window drag + window buttons', () => {
   afterEach(() => { delete window.electron; vi.clearAllMocks(); });
 
   it('desktop: minimize, maximize and close each do their job', async () => {
@@ -68,18 +69,20 @@ describe('Focused top bar: window drag + window buttons', () => {
 
   // Reported 2026-10-07: "now it's not draggable", and two bars (drag strip
   // + title bar) where there should be one.
-  it('one bar: title, sidebar controls and window buttons share the drag area', () => {
+  it('one bar: title, capsule and window buttons share the drag area, always rendered', () => {
     expect(SHELL).not.toMatch(/FocusedWindowBar/);
-    expect(SHELL).toMatch(/<header v-if="isElectron \|\| [^"]*" class="focused-topbar"[^>]*'is-window-bar': isElectron/);
-    const header = SHELL.slice(SHELL.indexOf('class="focused-topbar"'), SHELL.indexOf('</header>'));
-    for (const piece of ['aria-label="Open sidebar"', 'aria-label="New chat"', 'focused-chat-title', '<FocusedWindowControls />']) expect(header).toContain(piece);
+    expect(SHELL).toMatch(/<header class="one-topbar" :class="\{ 'is-window-bar': isElectron \}"/);
+    const header = SHELL.slice(SHELL.indexOf('class="one-topbar"'), SHELL.indexOf('</header>'));
+    for (const piece of ['one-title', '<OneCapsule', '<FocusedWindowControls />']) expect(header).toContain(piece);
   });
 
-  it('the bar drags like Studio\'s toolbar (positioned, own stacking order); its buttons do not', () => {
-    expect(CSS).toMatch(/\.focused-topbar\.is-window-bar\.is-window-bar \{[^}]*position: relative;[^}]*z-index: 50;[^}]*-webkit-app-region: drag;/);
-    expect(CSS).toMatch(/\.is-window-bar \.focused-icon-btn \{\s*-webkit-app-region: no-drag;/);
+  it('the bar drags like Studio\'s toolbar did (positioned, own stacking order); what you press in it does not', () => {
+    expect(CSS).toMatch(/\.ui-one \.one-topbar \{[^}]*position: relative;[^}]*z-index: 50;/);
+    expect(CSS).toMatch(/\.one-topbar\.is-window-bar \{\s*-webkit-app-region: drag;/);
+    expect(CSS).toMatch(/\.one-topbar\.is-window-bar button,\s*\.ui-one \.one-topbar\.is-window-bar \.one-capsule-anchor \{\s*-webkit-app-region: no-drag;/);
     expect(BAR).toMatch(/\.focused-window-controls \{[^}]*-webkit-app-region: no-drag;/);
-    expect(CSS).toMatch(/\.has-window-bar \.focused-side-head \{[^}]*-webkit-app-region: drag;/);
-    expect(CSS).toMatch(/\.focused-side-head input \{\s*-webkit-app-region: no-drag;/);
+    // The rail drags too; its buttons do not.
+    expect(CSS).toMatch(/\.has-window-bar \.one-rail \{\s*-webkit-app-region: drag;/);
+    expect(CSS).toMatch(/\.has-window-bar \.one-rail-btn \{\s*-webkit-app-region: no-drag;/);
   });
 });

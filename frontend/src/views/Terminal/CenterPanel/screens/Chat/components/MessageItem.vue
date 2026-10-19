@@ -731,9 +731,9 @@ export default {
     // calls render there as a Browser widget; standalone chat has no canvas
     // and owns the inline live card instead.
     const insideWidgetCanvas = inject('isInsideWidgetCanvas', false);
-    // Focused folds each tool-step group behind one summary line; Studio
-    // (no provider) shows every row, as before.
-    const foldSteps = inject('uiPresentation', 'studio') === 'focused';
+    // AGNT One folds each tool-step group behind one summary line; outside its
+    // frame (no provider) every row shows, as before.
+    const foldSteps = inject('uiPresentation', 'studio') === 'one';
     const openStepGroups = ref(new Set());
     const stepsOpen = (partIdx) => openStepGroups.value.has(partIdx);
     const toggleSteps = (partIdx) => {

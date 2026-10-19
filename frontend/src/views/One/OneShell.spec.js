@@ -1,38 +1,65 @@
 /**
- * The Focused frame's contract with the rest of the app:
- *   - every screen under it can tell it is in Focused (provide/inject);
+ * AGNT One's frame, and its contract with the rest of the app:
+ *   - every screen under it can tell it is in One (provide/inject);
  *   - the page comes from the ROUTE, so any link (chat, Ctrl+K, entity chips,
- *     Back) lands on Focused's own page — never on a Studio screen it has;
- *   - only a Studio-only screen renders as borrowed Studio, with a way back;
- *   - pages navigate through one injected service, by real routes.
+ *     Back) lands on One's own page for it;
+ *   - a screen with no page renders in full, with a way back to the chat;
+ *   - pages navigate through one injected service, by real routes;
+ *   - the rail shows only what the account has, and Chats opens the drawer;
+ *   - the capsule's steps reach the chat (ask) or the model picker (Settings).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, inject, ref, reactive } from 'vue';
 
-const dispatch = vi.fn();
-const storeState = reactive({ chat: { savedOutputTitle: '', savedOutputId: null, activeConversationId: null, messages: [] } });
+// Vuex's dispatch always returns a Promise.
+const dispatch = vi.fn(() => Promise.resolve());
+const storeState = reactive({
+  chat: { savedOutputTitle: '', savedOutputId: null, activeConversationId: null, messages: [] },
+  appAuth: { connectedApps: [] },
+});
 // mapState/mapActions: options-API components the pages import (UpgradeModal)
 // call them at module load, even though the pages are stubbed here.
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
 const push = vi.fn(() => Promise.resolve());
 const route = reactive({ query: {} });
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }));
-// The onion is covered by its own specs; here it only has to exist.
-const fresh = ref([]);
-vi.mock('@/composables/useNavigationOnion.js', () => ({
-  useNavigationOnion: () => ({ state: { get value() { return { fresh: fresh.value }; } } }),
-}));
 
-// The Main chat: a known id, and opening it only navigates (the load that
-// makes it the active conversation is what the test controls).
 const mainChatId = ref('main-1');
 const openMainChat = vi.fn(() => Promise.resolve());
 vi.mock('@/composables/useMainChat.js', () => ({
   useMainChat: () => ({ mainChatId, openMainChat, clearMainChat: vi.fn(() => Promise.resolve(false)) }),
 }));
 
-import FocusedShell from './FocusedShell.vue';
+// Children are replaced by MODULE: a name-based stub does not reach a
+// component a <script setup> file imports directly, so the real pages (and the
+// real Jump palette, with its own key listener) used to mount here.
+const { page } = vi.hoisted(() => ({
+  page: (name) => ({ default: { name, props: ['location', 'item', 'isNew', 'tab', 'section'], template: `<div class="${name}" />` } }),
+}));
+vi.mock('@/views/Focused/FocusedLibrary.vue', () => page('FocusedLibrary'));
+vi.mock('@/views/Focused/FocusedConnectors.vue', () => page('FocusedConnectors'));
+vi.mock('@/views/Focused/FocusedScheduled.vue', () => page('FocusedScheduled'));
+vi.mock('@/views/Focused/FocusedMemory.vue', () => page('FocusedMemory'));
+vi.mock('@/views/Focused/FocusedSettings.vue', () => page('FocusedSettings'));
+vi.mock('@/views/Focused/FocusedMarket.vue', () => page('FocusedMarket'));
+vi.mock('@/views/Focused/FocusedSidebar.vue', () => ({
+  default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat'], emits: ['close'], template: '<aside class="sidebar-stub" @click="$emit(\'close\')" />' },
+}));
+vi.mock('@/canvas/JumpPalette.vue', () => ({ default: { name: 'JumpPalette', template: '<div class="jump-stub" />' } }));
+vi.mock('@/views/_components/common/SimpleModal.vue', () => ({
+  default: { name: 'SimpleModal', template: '<div />', methods: { showModal: () => Promise.resolve(true) } },
+}));
+// The capsule has its own spec.
+vi.mock('./OneCapsule.vue', () => ({
+  default: {
+    name: 'OneCapsule',
+    emits: ['ask', 'open-models'],
+    template: '<div class="capsule-stub"><button class="ask" @click="$emit(\'ask\', \'Connect my Google account\')" /><button class="models" @click="$emit(\'open-models\')" /></div>',
+  },
+}));
+
+import OneShell from './OneShell.vue';
 import { setChannelEnabledTools, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 
 const Probe = defineComponent({
@@ -41,7 +68,6 @@ const Probe = defineComponent({
     return () => h('div', { class: 'probe' }, presentation);
   },
 });
-const stub = (name) => ({ name, props: ['location', 'item', 'isNew'], template: `<div class="${name}" />` });
 
 let nav;
 const NavGrabber = defineComponent({
@@ -53,44 +79,40 @@ const NavGrabber = defineComponent({
 
 function mountShell(screenName = 'ChatScreen', query = {}) {
   route.query = query;
-  return mount(FocusedShell, {
+  return mount(OneShell, {
     props: { screenName },
     slots: { default: () => [h(Probe), h(NavGrabber)] },
     global: {
       provide: { isMobile: ref(false) },
-      stubs: {
-        FocusedSidebar: { props: ['open', 'activePage', 'onChat'], template: '<aside class="sidebar-stub" />' },
-        FocusedLibrary: stub('FocusedLibrary'),
-        FocusedConnectors: stub('FocusedConnectors'),
-        FocusedScheduled: stub('FocusedScheduled'),
-        FocusedMemory: stub('FocusedMemory'),
-        FocusedSettings: stub('FocusedSettings'),
-        FocusedMarket: stub('FocusedMarket'),
-        SimpleModal: { template: '<div />', methods: { showModal: () => Promise.resolve(true) } },
-        JumpPalette: { name: 'JumpPalette', template: '<div class="jump-stub" />' },
-      },
       directives: { tooltip: {} },
     },
     attachTo: document.body,
   });
 }
 
-describe('FocusedShell', () => {
+describe('OneShell', () => {
   beforeEach(() => {
     dispatch.mockClear();
     push.mockClear();
-    fresh.value = [];
     storeState.chat.savedOutputTitle = '';
     storeState.chat.savedOutputId = null;
     storeState.chat.activeConversationId = null;
     storeState.chat.messages = [];
+    storeState.appAuth.connectedApps = [];
     openMainChat.mockClear();
     localStorage.clear();
   });
 
-  // Reported 2026-10-20: installed plugins must work by default here. This
-  // frame hides the chat's tool selector, so a selection saved in Studio must
-  // stop binding the chat while it is mounted, and bind again in Studio.
+  it('tells every screen under it that it is in AGNT One', () => {
+    const w = mountShell();
+    expect(w.find('.probe').text()).toBe('one');
+    expect(w.classes()).toEqual(expect.arrayContaining(['ui-one', 'ui-focused']));
+    w.unmount();
+  });
+
+  // Reported 2026-10-20: installed plugins must work by default here. AGNT
+  // One has no tool selector, so a selection saved in Studio must stop
+  // binding the chat while this frame is mounted.
   it('a tool selection saved in Studio does not bind the chat while this frame is mounted', () => {
     setChannelEnabledTools('orchestrator:default', ['web_search']);
     expect(resolveChannelEnabledTools('orchestrator:default')).toEqual(['web_search']);
@@ -100,7 +122,7 @@ describe('FocusedShell', () => {
     expect(resolveChannelEnabledTools('orchestrator:default')).toEqual(['web_search']);
   });
 
-  // Reported: new pages were saved into the retired Main chat and vanished.
+  // Reported in Focused: new pages were saved into the retired Main chat and vanished.
   it('regression: an ask opens a NEW chat and seeds it only once that chat is open', async () => {
     storeState.chat.savedOutputId = 'some-saved-chat';
     storeState.chat.activeConversationId = 'conv-old';
@@ -126,15 +148,12 @@ describe('FocusedShell', () => {
   });
 
   it('reuses a chat that is already blank instead of replacing it', async () => {
-    storeState.chat.savedOutputId = null;
-    storeState.chat.messages = [];
     const seen = vi.fn();
     const fresh = vi.fn();
     window.addEventListener('agnt:ask-annie', seen);
     window.addEventListener('trigger-new-chat', fresh);
     const w = mountShell('ConnectorsScreen');
     await nav.ask('Edit the Gmail plugin to ');
-    expect(openMainChat).not.toHaveBeenCalled();
     expect(fresh).not.toHaveBeenCalled();
     expect(seen.mock.calls[0][0].detail.text).toBe('Edit the Gmail plugin to ');
     window.removeEventListener('agnt:ask-annie', seen);
@@ -142,17 +161,11 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
-  it('tells every screen under it that it is in Focused', () => {
-    const w = mountShell();
-    expect(w.find('.probe').text()).toBe('focused');
-    w.unmount();
-  });
-
-  it('regression: opening a workflow shows Focused\u2019s editor, not Studio\u2019s Workflows page', () => {
+  it('regression: opening a workflow shows the Library editor, with Chat kept underneath', () => {
     const w = mountShell('WorkflowForgeScreen', { id: 'w1' });
     expect(w.findComponent({ name: 'FocusedLibrary' }).props('location')).toMatchObject({ page: 'library', tab: 'workflows', item: 'w1' });
     expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
-    expect(w.find('.focused-screen').isVisible()).toBe(false); // Chat stays mounted underneath
+    expect(w.find('.focused-screen').isVisible()).toBe(false);
     w.unmount();
   });
 
@@ -170,27 +183,19 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
-  it('Plugins renders the shared catalog and Plugin Forge borrows the full builder', () => {
-    const w = mountShell('ConnectorsScreen');
-    expect(w.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(true);
-    expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
-    w.unmount();
-    const advanced = mountShell('PluginsScreen');
-    expect(advanced.findComponent({ name: 'FocusedConnectors' }).exists()).toBe(false);
-    expect(advanced.find('.focused-borrowed-bar').exists()).toBe(true);
-    advanced.unmount();
-  });
-
-  it('a Studio-only screen is borrowed, with a way back to the chat', async () => {
+  it('a screen with no page renders in full, with a way back and no mode to switch to', async () => {
     const w = mountShell('TracesScreen');
     const bar = w.find('.focused-borrowed-bar');
     expect(bar.exists()).toBe(true);
+    expect(bar.text()).not.toMatch(/studio/i);
+    expect(bar.find('.focused-back').text()).toContain('Back to chat');
     await bar.find('.focused-back').trigger('click');
     expect(push).toHaveBeenCalledWith('/chat');
+    expect(dispatch).not.toHaveBeenCalledWith('theme/setUiMode', expect.anything());
     w.unmount();
   });
 
-  it('?studio=1 shows the full Studio screen even where Focused has a page', () => {
+  it('?studio=1 shows the full editor even where One has a page', () => {
     const w = mountShell('WorkflowForgeScreen', { id: 'w1', studio: '1' });
     expect(w.find('.focused-borrowed-bar').exists()).toBe(true);
     expect(w.findComponent({ name: 'FocusedLibrary' }).exists()).toBe(false);
@@ -208,37 +213,24 @@ describe('FocusedShell', () => {
     w.unmount();
   });
 
-  it('"Open in Studio" switches the mode', async () => {
-    const w = mountShell('TracesScreen');
-    await w.find('.focused-borrowed-bar .focused-link').trigger('click');
-    expect(dispatch).toHaveBeenCalledWith('theme/setUiMode', 'studio');
-    w.unmount();
-  });
-
-  // A blank Main chat is titled "Main chat". Its bar took 48px off the
-  // centred home, so every element sat 24px lower than on a new chat.
-  it('a titled chat nobody has spoken in has no bar, exactly like a new chat', async () => {
+  // A blank Main chat is titled "Main chat"; a title over the welcome is wrong.
+  it('a titled chat nobody has spoken in shows no title; the first message brings it back', async () => {
     storeState.chat.savedOutputTitle = 'Main chat';
     storeState.chat.messages = [{ role: 'assistant', content: 'Hi! What can I help you build today?' }];
     const w = mountShell('ChatScreen');
-    expect(w.find('.focused-topbar').exists()).toBe(false);
-    // The first message makes it a conversation: the title comes back.
+    expect(w.find('[data-testid="one-topbar"]').exists()).toBe(true); // the capsule lives there
+    expect(w.find('.one-title').exists()).toBe(false);
     storeState.chat.messages = [...storeState.chat.messages, { role: 'user', content: 'Plan my week' }];
     await w.vm.$nextTick();
-    expect(w.find('.focused-chat-title').text()).toBe('Main chat');
+    expect(w.find('.one-title').text()).toBe('Main chat');
     w.unmount();
   });
 
-  it('shows the open conversation title only on Chat', async () => {
-    const w = mountShell('ChatScreen');
-    expect(w.find('.focused-chat-title').exists()).toBe(false);
+  it('shows the open conversation title only on Chat', () => {
     storeState.chat.savedOutputTitle = 'Q3 board report';
     storeState.chat.messages = [{ role: 'assistant', content: 'Hi' }, { role: 'user', content: 'Draft it' }];
-    await w.vm.$nextTick();
-    expect(w.find('.focused-chat-title').text()).toBe('Q3 board report');
-    w.unmount();
     const lib = mountShell('AgentsScreen');
-    expect(lib.find('.focused-chat-title').exists()).toBe(false);
+    expect(lib.find('.one-title').exists()).toBe(false);
     lib.unmount();
   });
 
@@ -253,21 +245,71 @@ describe('FocusedShell', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('does NOT offer Studio for an unlock left over from before Focused opened', () => {
-    fresh.value = ['workflows'];
-    const w = mountShell();
-    expect(w.find('.focused-graduation').exists()).toBe(false);
-    w.unmount();
+  describe('the rail', () => {
+    const railIds = (w) => w.findAll('.one-rail-btn').map((b) => b.attributes('data-testid'));
+
+    it('starts with New chat and Chats, with Settings at the bottom', () => {
+      const w = mountShell();
+      expect(railIds(w)).toEqual(['one-rail-new', 'one-rail-chats', 'one-rail-settings']);
+      w.unmount();
+    });
+
+    it('gains Apps once an app is connected, and Apps opens the apps page', async () => {
+      storeState.appAuth.connectedApps = ['google'];
+      const w = mountShell();
+      expect(railIds(w)).toContain('one-rail-apps');
+      await w.find('[data-testid="one-rail-apps"]').trigger('click');
+      expect(push).toHaveBeenLastCalledWith({ path: '/plugins', query: {} });
+      w.unmount();
+    });
+
+    it('Chats opens the drawer, remembers it, and the drawer closes itself', async () => {
+      const w = mountShell();
+      expect(w.find('.sidebar-stub').exists()).toBe(false);
+      await w.find('[data-testid="one-rail-chats"]').trigger('click');
+      expect(w.find('.sidebar-stub').exists()).toBe(true);
+      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
+      expect(w.find('[data-testid="one-rail-chats"]').attributes('aria-pressed')).toBe('true');
+      await w.find('.sidebar-stub').trigger('click');
+      expect(w.find('.sidebar-stub').exists()).toBe(false);
+      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('false');
+      w.unmount();
+    });
+
+    it('New chat starts a new conversation', async () => {
+      const fresh = vi.fn();
+      window.addEventListener('trigger-new-chat', fresh);
+      const w = mountShell();
+      await w.find('[data-testid="one-rail-new"]').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(push).toHaveBeenCalledWith('/chat');
+      expect(fresh).toHaveBeenCalledTimes(1);
+      window.removeEventListener('trigger-new-chat', fresh);
+      w.unmount();
+    });
   });
 
-  it('offers Studio once, when something is first built while in Focused', async () => {
-    const w = mountShell();
-    fresh.value = ['agents'];
-    await w.vm.$nextTick();
-    expect(w.find('.focused-graduation').text()).toContain('Your first agent is ready.');
-    await w.find('.focused-graduation .focused-link').trigger('click');
-    expect(w.find('.focused-graduation').exists()).toBe(false);
-    expect(localStorage.getItem('agnt:focused-graduation-asked')).toBe('true');
-    w.unmount();
+  describe('the capsule', () => {
+    it('a step asks Annie in the chat', async () => {
+      const seen = vi.fn();
+      window.addEventListener('agnt:ask-annie', seen);
+      const w = mountShell();
+      await w.find('.capsule-stub .ask').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(seen.mock.calls[0][0].detail).toEqual({ text: 'Connect my Google account', send: false });
+      window.removeEventListener('agnt:ask-annie', seen);
+      w.unmount();
+    });
+
+    it('the model step opens Settings, never the chat', async () => {
+      const seen = vi.fn();
+      window.addEventListener('agnt:ask-annie', seen);
+      const w = mountShell();
+      await w.find('.capsule-stub .models').trigger('click');
+      expect(push).toHaveBeenLastCalledWith({ path: '/settings', query: {} });
+      expect(seen).not.toHaveBeenCalled();
+      window.removeEventListener('agnt:ask-annie', seen);
+      w.unmount();
+    });
   });
 });

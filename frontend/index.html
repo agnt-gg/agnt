@@ -73,7 +73,25 @@
       });
     </script>
   </head>
-  <body class="dark">
+  <body>
+    <!-- Pre-paint: the saved theme's face before Vue boots, so the light-first
+         app never flashes dark (and a dark theme never flashes light). The
+         same rule as isDarkFace in src/store/app/theme.js, which then applies
+         the theme in full. -->
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('currentTheme') || 'light';
+          var face = localStorage.getItem('themeFace') || 'auto';
+          var dark = theme === 'everforest'
+            ? face === 'dark' || (face === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            : theme !== 'light' && theme !== 'rose';
+          if (dark) document.body.classList.add('dark');
+        } catch (e) {
+          /* storage blocked: the theme store applies the theme on boot */
+        }
+      })();
+    </script>
     <!-- LIBRARIES -->
     <div id="app"></div>
     <script id="Showdown-script" src="/js/libs/showdown.js"></script>

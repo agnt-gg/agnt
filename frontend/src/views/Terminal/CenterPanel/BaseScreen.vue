@@ -113,7 +113,7 @@
 
           <!-- Input line with textarea and buttons on same row -->
           <div class="terminal-line input-line" data-tour-id="chat.composer" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
-            <span v-if="showPrompt && !isFocusedFrame" class="prompt">> </span>
+            <span v-if="showPrompt && !isOneFrame" class="prompt">> </span>
             <div class="input-highlight-container">
               <div class="input-backdrop" ref="inputBackdropRef">
                 <div class="input-highlights" v-html="inputHighlightsHtml"></div>
@@ -122,7 +122,7 @@
                 ref="textareaRef"
                 class="chat-input-textarea"
                 v-model="currentUserInput"
-                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : isFocusedFrame ? 'Ask anything' : 'Type a message or command...'"
+                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : isOneFrame ? 'Ask Annie anything' : 'Type a message or command...'"
                 rows="1"
                 :disabled="isInputDisabled"
                 @input="handleTextareaInput"
@@ -416,16 +416,16 @@ export default {
 
     // --- Mobile & Panel State ---
     const isMobile = inject('isMobile', ref(false));
-    // Which shell frames this screen (views/Focused provides 'focused'; Studio
-    // provides nothing). On Chat in Focused:
-    //   left  — always hidden: Focused's sidebar already IS the chat list.
+    // Which shell frames this screen (AGNT One's OneShell provides 'one'; a
+    // screen mounted outside it gets 'studio'). On Chat in One:
+    //   left  — always hidden: One's Chats drawer already IS the chat list.
     //   right — hidden until something is opened from the thread (a file
-    //           card, an agent, a run). Then it is Focused's preview pane;
+    //           card, an agent, a run). Then it is the preview pane;
     //           hiding it there would make those cards do nothing.
-    // Every other screen keeps its panels: in Focused it is borrowed Studio.
+    // Every other screen keeps its panels: it renders in full, with a way back.
     const uiPresentation = inject('uiPresentation', 'studio');
-    const isFocusedFrame = uiPresentation === 'focused';
-    const focusedChat = computed(() => isFocusedFrame && props.screenId === 'ChatScreen');
+    const isOneFrame = uiPresentation === 'one';
+    const focusedChat = computed(() => isOneFrame && props.screenId === 'ChatScreen');
     const leftHidden = computed(() => props.hidePanels || focusedChat.value);
     const rightHidden = computed(() => props.hidePanels || (focusedChat.value && !artifactTarget.value));
     const panelsHidden = computed(() => leftHidden.value && rightHidden.value);
@@ -1739,7 +1739,7 @@ export default {
     });
 
     return {
-      isFocusedFrame,
+      isOneFrame,
       panelsHidden,
       leftHidden,
       rightHidden,

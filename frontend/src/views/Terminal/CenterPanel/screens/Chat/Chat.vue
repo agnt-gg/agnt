@@ -137,14 +137,10 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
-              <!-- Focused's start screen. Shown instead of the greeting until
-                   the first message; the input below is the real composer,
-                   centred by CSS (views/Focused/focused.css), never a copy. -->
-              <div v-if="showFocusedHome" class="focused-home-hero">
-                <img class="focused-home-logo" src="/images/agnt-logo-mark.svg" alt="" />
-                <h1>What would you like to <em>do</em>?</h1>
-                <p>Save money, make money, or get time back.</p>
-              </div>
+              <!-- AGNT One's start screen: Annie's welcome. Shown instead of the
+                   greeting until the first message; the input below is the real
+                   composer, centred by CSS (views/Focused/focused.css), never a copy. -->
+              <OneWelcome v-if="showFocusedHome" />
               <div v-if="isMobile" class="mobile-conversation-heading"><strong>{{ $store.state.chat.savedOutputTitle || 'New conversation' }}</strong><small>{{ $store.state.chat.savedOutputTitle ? 'Saved' : 'New chat' }}</small></div>
               <!-- Group-chat roster: who's in this room (Annie is implicit) -->
               <div v-if="chatParticipants.length > 0" class="chat-roster">
@@ -301,8 +297,8 @@
           <ChatScrollControls :target-getter="getConversationEl" @scroll-to-bottom="followFromScrollControl" />
         </div>
 
-        <!-- Focused's start screen: the AGNT One rotating ideas, under the
-             composer (ordered by views/Focused/focused.css). A card sends. -->
+        <!-- AGNT One's start screen: rotating ideas under the composer
+             (ordered by views/Focused/focused.css). A chip sends. -->
         <FocusedStarters v-if="showFocusedHome && hasConnectedAIProvider" @pick="handleUserInputSubmit" />
 
         <!-- AGNT Flash credits left, and a heads-up at 80% used -->
@@ -353,6 +349,7 @@ import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
 import AgntFlashMeter from './components/AgntFlashMeter.vue';
 import FocusedStarters from '@/views/Focused/FocusedStarters.vue';
+import OneWelcome from '@/views/One/OneWelcome.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
@@ -396,6 +393,7 @@ export default {
     QuickActions,
     AgntFlashMeter,
     FocusedStarters,
+    OneWelcome,
     ChatActions,
     ContextMonitor,
     CompactionCard,
@@ -419,7 +417,8 @@ export default {
     const setContextHost = element => { contextHost.value = element; };
     const conversationSpace = ref(null);
     const isMobile = inject('isMobile', ref(false));
-    // 'focused' inside views/Focused's frame; Studio provides nothing.
+    // 'one' inside AGNT One's frame (views/One/OneShell.vue), the app's only
+    // frame; a screen mounted outside it (a test, a pop-out) gets 'studio'.
     const uiPresentation = inject('uiPresentation', 'studio');
 
     // App Version (dynamic)
@@ -458,9 +457,9 @@ export default {
     // Someone has spoken: the chat has content (both modes).
     const conversationStarted = computed(() => !isUnstartedConversation(store.state.chat.messages));
 
-    // The rule is shared with FocusedShell, which hides the title bar on it.
+    // The rule is shared with OneShell, which hides the title on it.
     const showFocusedHome = computed(() => {
-      if (uiPresentation !== 'focused' || bulkLoading.value) return false;
+      if (uiPresentation !== 'one' || bulkLoading.value) return false;
       return isUnstartedConversation(store.state.chat.messages);
     });
 

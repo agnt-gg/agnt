@@ -145,7 +145,8 @@ export default {
   namespaced: true,
   state: {
     // New unified theme system
-    currentTheme: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') : 'dark', // Default theme is dark
+    // AGNT One is designed light-first: light until someone picks a theme.
+    currentTheme: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') : 'light',
 
     // Keep greyscale as separate overlay
     isGreyscaleMode: localStorage.getItem('greyscaleMode') !== null ? localStorage.getItem('greyscaleMode') === 'true' : false,
@@ -212,7 +213,7 @@ export default {
     themeFace: readStoredFace(),
 
     // Legacy support - computed from currentTheme
-    isDarkMode: localStorage.getItem('currentTheme') !== null ? !['light', 'rose'].includes(localStorage.getItem('currentTheme')) : true,
+    isDarkMode: localStorage.getItem('currentTheme') !== null ? !['light', 'rose'].includes(localStorage.getItem('currentTheme')) : false,
   },
   mutations: {
     // New unified theme mutation

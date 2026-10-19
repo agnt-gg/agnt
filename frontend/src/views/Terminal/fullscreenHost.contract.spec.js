@@ -8,8 +8,9 @@
  * bar and sidebar with no way out.
  *
  * Only Studio (CanvasScreen) had a host; the Focused frame was added without
- * one, so fullscreen in Focused chat covered the entire app. A frame added to
- * Terminal's `frames` map must declare its host, or this fails.
+ * one, so fullscreen in Focused chat covered the entire app. AGNT One is now
+ * the only frame; any frame in Terminal's `frames` map must declare its host,
+ * or this fails.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -41,7 +42,7 @@ describe('app frames and fullscreen', () => {
   const frames = frameComponents();
 
   it('finds every frame Terminal can mount', () => {
-    expect(frames.map((f) => f.name).sort()).toEqual(['CanvasScreen', 'FocusedShell']);
+    expect(frames.map((f) => f.name).sort()).toEqual(['OneShell']);
   });
 
   it.each(frames)('$name wraps its screen slot in a [data-fullscreen-host]', ({ file }) => {
@@ -50,7 +51,7 @@ describe('app frames and fullscreen', () => {
     expect(template(file)).toMatch(/<div\b[^>]*\bdata-fullscreen-host\b[^>]*>\s*<slot\s*\/>/);
   });
 
-  it('the Focused host is a containing block for an absolutely positioned card', () => {
+  it('the host (styled by focused.css, which One loads) is a containing block for an absolutely positioned card', () => {
     const css = fs.readFileSync(path.join(srcRoot, 'views/Focused/focused.css'), 'utf8');
     const rule = css.match(/\.ui-focused \.focused-screen\s*\{([^}]*)\}/);
     expect(rule?.[1]).toMatch(/position:\s*relative/);

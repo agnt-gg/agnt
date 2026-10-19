@@ -1,6 +1,7 @@
 <template>
   <!-- Minimize / maximize / close for the frameless window. They sit at the end
-       of Focused's one top bar (FocusedShell), which is also the drag area.
+       of AGNT One's one top bar (views/One/OneShell.vue), which is also the
+       drag area.
        Desktop app only: in a browser the browser owns its window. -->
   <div v-if="isElectron" class="focused-window-controls" :class="{ mac: isMac }" data-testid="focused-window-controls">
     <!-- Classes are this component's own: a bare "close" is caught by the

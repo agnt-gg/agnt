@@ -6,8 +6,8 @@
        Found in the update rehearsal (a fresh install opens on the sign-in page). -->
   <UpdateNotification />
   <AIGuidedTourHost v-if="isAuthenticated" />
-  <!-- Getting-started checklist and page missions (composables/useJourney.js). -->
-  <JourneyHost v-if="isAuthenticated" />
+  <!-- Getting started lives in AGNT One's top bar (views/One/OneCapsule.vue),
+       not in coach marks over the page. -->
   <!-- One share sheet and one receive card for the whole app; see composables/useShare.js. -->
   <ShareSheet v-if="isAuthenticated" />
   <ReceiveShareDialog v-if="isAuthenticated" />
@@ -19,7 +19,6 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { useRealtimeSync } from '@/composables/useRealtimeSync';
 import AIGuidedTourHost from '@/views/_components/utility/AIGuidedTourHost.vue';
-import JourneyHost from '@/views/_components/utility/JourneyHost.vue';
 import UpdateNotification from '@/views/_components/common/UpdateNotification.vue';
 import ShareSheet from '@/views/_components/share/ShareSheet.vue';
 import ReceiveShareDialog from '@/views/_components/share/ReceiveShareDialog.vue';

@@ -146,10 +146,6 @@
           <i class="fas fa-cog" aria-hidden="true"></i>Settings
         </button>
         <div class="focused-menu-sep"></div>
-        <button type="button" role="menuitem" class="focused-menu-item" data-testid="switch-to-studio" @click="switchToStudio">
-          <i class="fas fa-th-large" aria-hidden="true"></i>Switch to Studio<kbd>Ctrl Shift S</kbd>
-        </button>
-        <div class="focused-menu-sep"></div>
         <button type="button" role="menuitem" class="focused-menu-item" data-testid="focused-logout" @click="logOut">
           <i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out
         </button>
@@ -234,9 +230,6 @@ const planLabel = computed(() => {
 
 function openJump() {
   store.dispatch('shell/openJump');
-}
-function switchToStudio() {
-  store.dispatch('theme/setUiMode', 'studio');
 }
 // The same sign-out Studio's Settings uses (LoginSection.logout).
 async function logOut() {

@@ -1,6 +1,5 @@
 <template>
   <div class="navigation-settings">
-    <UiModeSetting />
     <section class="nav-card">
       <div class="card-heading">
         <div>
@@ -70,7 +69,6 @@
 import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import UiModeSetting from '@/views/Focused/UiModeSetting.vue';
 import {
   addNavigationGroup,
   customNavigationPages,
@@ -95,7 +93,7 @@ function rowNote(item) {
 
 export default {
   name: 'NavigationSettings',
-  components: { CustomSelect, UiModeSetting },
+  components: { CustomSelect },
   setup() {
     const store = useStore();
     const revision = ref(0);

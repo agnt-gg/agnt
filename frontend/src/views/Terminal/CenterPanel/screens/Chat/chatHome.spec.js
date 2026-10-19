@@ -23,9 +23,9 @@ describe('a conversation at its start screen', () => {
 
   // The home and the title bar must answer the same question, or a blank but
   // titled chat (Main chat) renders its home under a bar, shifted down.
-  it('is the one rule Chat and the Focused shell both use', () => {
+  it('is the one rule Chat and the AGNT One shell both use', () => {
     const chat = readFileSync(join(DIR, 'Chat.vue'), 'utf8');
-    const shell = readFileSync(join(DIR, '../../../../Focused/FocusedShell.vue'), 'utf8');
+    const shell = readFileSync(join(DIR, '../../../../One/OneShell.vue'), 'utf8');
     expect(chat).toMatch(/isUnstartedConversation\(store\.state\.chat\.messages\)/);
     expect(shell).toMatch(/isUnstartedConversation\(store\.state\.chat\?\.messages\)/);
   });

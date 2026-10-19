@@ -1,0 +1,590 @@
+/* AGNT One.
+ *
+ * Every rule here is scoped under .ui-one. Colours come only from the theme
+ * tokens (styles/themes/_semantic.css and the base palette), so every theme
+ * renders without a per-theme block; light is the default theme.
+ *
+ * One's root also carries .ui-focused, whose stylesheet fits the shared Chat
+ * screen and the pages into a minimal frame. Where One draws something
+ * differently it says so with `.ui-one.ui-focused`, one class more than the
+ * rule it replaces, so the result never depends on stylesheet order.
+ *
+ * Surfaces: the rail sits on the canvas (--color-background); the main panel
+ * is the raised surface (--color-dark-navy: white in light themes), so it
+ * reads as a sheet with one rounded corner beside the rail.
+ */
+
+/* ── Frame ────────────────────────────────────────────────────────────────── */
+
+.ui-one.ui-focused.ui-focused {
+  background: var(--color-background);
+}
+
+.ui-one .one-main {
+  background: var(--color-dark-navy);
+  border-top: 1px solid var(--terminal-border-color);
+  border-left: 1px solid var(--terminal-border-color);
+  border-top-left-radius: 16px;
+  overflow: hidden;
+}
+.ui-one.is-compact .one-main {
+  border: 0;
+  border-radius: 0;
+}
+
+/* ── Rail ─────────────────────────────────────────────────────────────────── */
+
+.ui-one .one-rail {
+  width: 60px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0 14px;
+  box-sizing: border-box;
+}
+/* Desktop: the frameless window drags by its rail as well as its top bar. */
+.ui-one.has-window-bar .one-rail {
+  -webkit-app-region: drag;
+}
+.ui-one.has-window-bar .one-rail-btn {
+  -webkit-app-region: no-drag;
+}
+.ui-one .one-rail-mark {
+  width: 21px;
+  height: auto;
+  margin: 2px 0 14px;
+}
+.ui-one .one-rail-btn {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.ui-one .one-rail-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.ui-one .one-rail-btn.is-active {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+.ui-one .one-rail-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.ui-one .one-rail-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ui-one .one-rail-fill {
+  flex: 1;
+}
+
+/* ── Chats drawer (the shared chat navigator) ─────────────────────────────── */
+
+.ui-one .one-drawer {
+  border-left: 1px solid var(--terminal-border-color);
+}
+/* The rail already carries the mark; the drawer is titled by what it holds. */
+.ui-one .one-drawer .focused-logo,
+.ui-one .one-drawer .focused-wordmark {
+  display: none;
+}
+.ui-one .one-drawer .focused-side-head::before {
+  content: 'Chats';
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-left: 4px;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+
+/* A <header>: _dark.css paints a bare `body.dark header`. Declared explicitly
+   so the theme's element rule cannot draw a stray panel here. */
+.ui-one .one-topbar {
+  position: relative;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 12px 0 14px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+}
+/* Desktop: the bar drags the frameless window; everything you can press in it
+   does not. */
+.ui-one .one-topbar.is-window-bar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.ui-one .one-topbar.is-window-bar button,
+.ui-one .one-topbar.is-window-bar .one-capsule-anchor {
+  -webkit-app-region: no-drag;
+}
+.ui-one .one-topbar-fill {
+  flex: 1;
+}
+.ui-one .one-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 46%;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.ui-one .one-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ui-one .one-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* ── Getting-started capsule ──────────────────────────────────────────────── */
+
+.ui-one .one-capsule-anchor {
+  position: relative;
+}
+.ui-one .one-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px 0 7px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 999px;
+  background: var(--color-dark-navy);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ui-one .one-capsule:hover {
+  background: var(--surface-hover);
+}
+.ui-one .one-capsule:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.ui-one .one-capsule.is-set {
+  border-color: transparent;
+  background: rgba(var(--pink-rgb), 0.09);
+}
+.ui-one .one-capsule-of {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.ui-one .one-ring {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+.ui-one .one-ring circle {
+  fill: none;
+  stroke-width: 2.6;
+}
+.ui-one .one-ring-track {
+  stroke: var(--terminal-border-color);
+}
+.ui-one .one-ring-value {
+  stroke: var(--color-pink);
+  stroke-dasharray: 50.27;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.ui-one .one-ring-lg {
+  width: 34px;
+  height: 34px;
+}
+.ui-one .one-ring-lg circle {
+  stroke-width: 2.4;
+}
+.ui-one .one-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-pink);
+  /* The measured ink for the brand fill (_semantic.css, onFillContrast.spec). */
+  color: var(--on-fill-brand);
+}
+.ui-one .one-check svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ui-one .one-check-ink {
+  width: 18px;
+  height: 18px;
+  background: var(--text-primary);
+  color: var(--color-dark-navy);
+}
+
+.ui-one .one-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: 344px;
+  overflow: hidden;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 18px;
+  background: var(--color-dark-navy);
+  box-shadow: var(--shadow-lg), 0 30px 80px -30px rgba(0, 0, 0, 0.35);
+  animation: ui-one-pop-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes ui-one-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.ui-one .one-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 13px;
+}
+.ui-one .one-pop-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ui-one .one-pop-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.ui-one .one-step {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 16px 9px;
+  border: 0;
+  border-top: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-one .one-step:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.ui-one .one-step:disabled {
+  cursor: default;
+}
+.ui-one .one-step:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.ui-one .one-step.is-current {
+  background: rgba(var(--pink-rgb), 0.06);
+}
+.ui-one .one-step-dot {
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+}
+.ui-one .one-step.is-current .one-step-dot {
+  border-color: var(--color-pink);
+  background: var(--color-pink);
+  box-shadow: inset 0 0 0 3.5px var(--color-dark-navy);
+}
+.ui-one .one-step-body {
+  min-width: 0;
+}
+.ui-one .one-step-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+.ui-one .one-step.is-done .one-step-title {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.ui-one .one-step-optional {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  vertical-align: 1px;
+}
+.ui-one .one-step-hint {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+}
+.ui-one .one-step-ask {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-pink);
+}
+.ui-one .one-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px 9px 16px;
+  border-top: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ui-one .one-pop-hide {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ui-one .one-pop-hide:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* ── Welcome: the empty chat ──────────────────────────────────────────────── */
+
+.ui-one .one-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 16px 32px;
+}
+.ui-one .one-welcome-mark {
+  width: auto;
+  height: 30px;
+  margin-bottom: 20px;
+}
+.ui-one .one-welcome-title {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+.ui-one .one-welcome-lead {
+  max-width: 460px;
+  margin: 12px 0 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.ui-one .one-welcome-sub {
+  margin: 10px 0 0;
+  font-size: 16px;
+  color: var(--text-tertiary);
+}
+.ui-one .one-lowdown {
+  width: min(440px, 100%);
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--terminal-border-color);
+  text-align: left;
+}
+.ui-one .one-lowdown li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 0 10px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.ui-one .one-lowdown b {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ui-one .one-lowdown-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+.ui-one .one-lowdown-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ui-one .one-welcome-fine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  font-size: 13.5px;
+  color: var(--text-tertiary);
+}
+.ui-one .one-welcome-fine svg {
+  width: 13px;
+  height: 13px;
+  fill: var(--color-pink);
+}
+
+/* ── Composer ─────────────────────────────────────────────────────────────── */
+
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line {
+  padding: 11px 11px 11px 13px;
+  border-color: var(--terminal-border-color);
+  border-radius: 22px;
+  background: var(--color-dark-navy);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 30px -16px rgba(0, 0, 0, 0.22);
+}
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line:focus-within {
+  border-color: rgba(var(--pink-rgb), 0.45);
+  box-shadow: 0 0 0 4px rgba(var(--pink-rgb), 0.09), 0 10px 30px -16px rgba(0, 0, 0, 0.22);
+}
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-attach-button,
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-voice-button {
+  border-radius: 50%;
+}
+/* Send: an ink circle with an up arrow; quiet until there is something to send. */
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button {
+  border-radius: 50%;
+  background: var(--text-primary);
+  color: var(--color-dark-navy);
+}
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:hover:not(:disabled) {
+  background: var(--text-primary);
+  opacity: 0.85;
+}
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-send-button:disabled {
+  background: var(--surface-active);
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+/* Stop, while a reply streams: the brand pink, so it is never mistaken for send. */
+.ui-one.ui-focused:not(.is-compact) .chat-screen-wrapper .input-line .chat-stop-button {
+  border-radius: 50%;
+  background: var(--color-pink);
+  color: var(--on-fill-brand);
+}
+.ui-one.ui-focused .chat-screen-wrapper .input-line .chat-provider-button {
+  border-radius: 999px;
+}
+
+/* ── Turns ────────────────────────────────────────────────────────────────── */
+
+/* The user speaks in a soft bubble with ink text (not Focused's inverse ink
+   bubble); Annie speaks in plain text beside it. */
+.ui-one.ui-focused .chat-screen-wrapper .message-wrapper.user .message-card {
+  padding: 10px 16px;
+  border-radius: 20px 20px 6px 20px;
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+/* Tool steps, folded: one quiet pill per group. */
+.ui-one.ui-focused .steps-summary {
+  padding: 5px 12px 5px 9px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 999px;
+  background: var(--color-background);
+}
+.ui-one.ui-focused .steps-summary-spin {
+  border-top-color: var(--color-pink);
+}
+
+/* ── Ideas under the composer: chips, not cards ───────────────────────────── */
+
+.ui-one.ui-focused .focused-starters-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.ui-one.ui-focused .focused-starter {
+  height: 34px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  border-color: var(--terminal-border-color);
+  background: var(--color-dark-navy);
+}
+.ui-one.ui-focused .focused-starter:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+.ui-one.ui-focused .focused-starter-body {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+/* The lane is carried by its icon alone; its label stays in the tooltip. */
+.ui-one.ui-focused .focused-starter-tag {
+  gap: 0;
+  font-size: 0;
+}
+.ui-one.ui-focused .focused-starter-tag svg {
+  width: 15px;
+  height: 15px;
+  color: var(--text-tertiary);
+}

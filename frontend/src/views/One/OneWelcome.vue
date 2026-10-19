@@ -1,0 +1,51 @@
+<template>
+  <div class="one-welcome" data-testid="one-welcome">
+    <!-- The empty chat. Before the account's first chat it is Annie's whole
+         tour: four lines. After that it is a greeting. The composer below it
+         is the real one (BaseScreen), centred by focused.css, never a copy. -->
+    <img class="one-welcome-mark" src="/images/agnt-logo-mark.svg" alt="" />
+    <template v-if="firstRun">
+      <h1 class="one-welcome-title">Hi, I'm Annie.</h1>
+      <p class="one-welcome-lead">Tell me what you want done. I'll plan it, connect what I need, and do it.</p>
+      <ul class="one-lowdown" data-testid="one-lowdown">
+        <li v-for="line in LOWDOWN" :key="line.verb">
+          <span class="one-lowdown-icon">
+            <!-- eslint-disable-next-line vue/no-v-html -- static icons below, never user data -->
+            <svg viewBox="0 0 24 24" aria-hidden="true" v-html="line.icon"></svg>
+          </span>
+          <span><b>{{ line.verb }}</b> {{ line.text }}</span>
+        </li>
+      </ul>
+      <p v-if="onFlash" class="one-welcome-fine" data-testid="one-on-flash">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg>
+        You're on AGNT Flash, free to start. Nothing to set up.
+      </p>
+    </template>
+    <template v-else>
+      <h1 class="one-welcome-title">{{ greeting }}</h1>
+      <p class="one-welcome-sub">What should we get done?</p>
+    </template>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue';
+import { useStore } from 'vuex';
+import { readFacts } from '@/composables/useJourney.js';
+import { RAIL_ICONS, greetingFor } from './oneModel.js';
+
+const LOWDOWN = Object.freeze([
+  { verb: 'Ask', text: 'in plain words. I work out the steps.', icon: RAIL_ICONS.chats },
+  { verb: 'Connect', text: "as you go. When I need an app, I'll ask once.", icon: RAIL_ICONS.apps },
+  { verb: 'Keep', text: 'what works. Anything good can run on its own.', icon: RAIL_ICONS.routines },
+]);
+const BOLT = 'M13.4 2.2L4.6 13.1c-.4.5 0 1.2.6 1.2h5.6l-1.3 7c-.1.7.8 1.1 1.2.5l8.7-10.9c.4-.5 0-1.2-.6-1.2h-5.6l1.3-7c.2-.7-.7-1.1-1.1-.5z';
+
+const store = useStore();
+// The account's very first chat, not this conversation's: a returning person
+// opening a new chat is greeted, not toured.
+const firstRun = computed(() => readFacts(store).chats === 0);
+// The provider list holds display names ('AGNT'); same rule as Chat.vue.
+const onFlash = computed(() => String(store.state.aiProvider?.selectedProvider || '').toLowerCase() === 'agnt');
+const greeting = computed(() => greetingFor(store.getters['userAuth/userPseudonym']));
+</script>

@@ -12,8 +12,8 @@
  * dashboard…) returns null and renders as borrowed Studio. `?studio=1` asks
  * for that explicitly ("Open the full editor").
  *
- * Pure: route in, location out. Terminal uses it to skip mounting a Studio
- * screen Focused is about to cover; FocusedShell uses it to pick the page.
+ * Pure: route in, location out. Terminal uses it to skip mounting a full
+ * screen a page is about to cover; AGNT One's OneShell uses it to pick the page.
  */
 
 /** Library tabs, in order, with the screen that is each tab's route. */

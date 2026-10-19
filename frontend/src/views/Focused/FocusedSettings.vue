@@ -13,8 +13,6 @@
     </header>
 
     <UpgradePrompt title="Unlock more with AGNT Pro" description="Automate recurring goals and get the paid services included with your plan." />
-    <UiModeSetting />
-
     <section class="focused-edit-block">
       <div class="focused-edit-block-head"><h3>Appearance</h3></div>
       <div class="focused-edit-card">
@@ -130,7 +128,6 @@ import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import UiModeSetting from './UiModeSetting.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import UsageManager from '@/views/Terminal/CenterPanel/screens/Settings/components/UsageManager/UsageManager.vue';

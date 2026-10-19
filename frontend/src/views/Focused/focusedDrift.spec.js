@@ -32,7 +32,7 @@ const BANNED = [
 describe('Focused shell drift guard', () => {
   it('scans the real files (anti-vacuity)', () => {
     const names = SOURCES.map((s) => s.file);
-    expect(names).toEqual(expect.arrayContaining(['FocusedShell.vue', 'FocusedSidebar.vue', 'focusedModel.js', 'focused.css']));
+    expect(names).toEqual(expect.arrayContaining(['FocusedSidebar.vue', 'FocusedConnectors.vue', 'focusedModel.js', 'focused.css']));
   });
 
   it.each(BANNED)('no file %s', (pattern, why) => {
