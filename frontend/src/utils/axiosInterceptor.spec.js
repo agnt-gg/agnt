@@ -32,12 +32,13 @@ function ensureLocalStorage() {
 }
 ensureLocalStorage();
 
-const handlers = { onError: null };
+const handlers = { onOk: null, onError: null };
 vi.mock('axios', () => ({
   default: {
     interceptors: {
       response: {
-        use: (_ok, onError) => {
+        use: (onOk, onError) => {
+          handlers.onOk = onOk;
           handlers.onError = onError;
         },
       },
@@ -45,7 +46,7 @@ vi.mock('axios', () => ({
   },
 }));
 
-const { initializeAxiosInterceptor } = await import('./axiosInterceptor.js');
+const { initializeAxiosInterceptor, RENEWED_TOKEN_HEADER } = await import('./axiosInterceptor.js');
 const { API_CONFIG } = await import('@/tt.config.js');
 const { SESSION } = await import('@/store/auth/userAuth.js');
 
@@ -75,6 +76,49 @@ function sessionRejection(url = `${API_CONFIG.BASE_URL}/agents/`, reason = 'inva
 async function fire(error) {
   await expect(handlers.onError(error)).rejects.toBe(error);
 }
+
+describe('adopting a session the backend renewed', () => {
+  // The backend renews the session before day 30 (services/auth/sessionRenewal
+  // .js) and offers the window the new token in a response header. Without
+  // adopting it the window would be logged out on day 30 and, after a restart,
+  // would have nothing valid to give the backend back.
+  let store;
+
+  beforeEach(() => {
+    store = makeStore();
+    initializeAxiosInterceptor(store, makeRouter());
+  });
+
+  const response = (url, headers) => ({ config: { url }, headers, status: 200, data: {} });
+
+  it('hands a renewed token from our backend to the store, and passes the response through', () => {
+    const res = response(`${API_CONFIG.BASE_URL}/agents/`, { [RENEWED_TOKEN_HEADER]: 'renewed.jwt.token' });
+    expect(handlers.onOk(res)).toBe(res);
+    expect(store.commit).toHaveBeenCalledWith('userAuth/ADOPT_RENEWED_TOKEN', 'renewed.jwt.token');
+  });
+
+  it('reads AxiosHeaders case-insensitively', () => {
+    const headers = { get: (name) => (name.toLowerCase() === 'x-agnt-session-token' ? 'renewed.jwt.token' : undefined) };
+    handlers.onOk(response('/api/agents/', headers));
+    expect(store.commit).toHaveBeenCalledWith('userAuth/ADOPT_RENEWED_TOKEN', 'renewed.jwt.token');
+  });
+
+  it('never takes a token from any other origin', () => {
+    handlers.onOk(response('https://evil.example/agents/', { [RENEWED_TOKEN_HEADER]: 'attacker.jwt.token' }));
+    handlers.onOk(response('https://api.agnt.gg/users/profile', { [RENEWED_TOKEN_HEADER]: 'x.y.z' }));
+    expect(store.commit).not.toHaveBeenCalled();
+  });
+
+  it('does nothing on an ordinary response', () => {
+    handlers.onOk(response(`${API_CONFIG.BASE_URL}/agents/`, {}));
+    handlers.onOk(response(`${API_CONFIG.BASE_URL}/agents/`, undefined));
+    expect(store.commit).not.toHaveBeenCalled();
+  });
+
+  it('pins the header name the backend sets (X-AGNT-Session-Token, lower-cased by axios)', () => {
+    expect(RENEWED_TOKEN_HEADER).toBe('x-agnt-session-token');
+  });
+});
 
 describe('mid-session session rejection', () => {
   let store;

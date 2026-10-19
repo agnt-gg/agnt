@@ -11,14 +11,8 @@
  * the server re-derives identity from the token on every request.
  */
 
-/**
- * Best-effort user from a JWT payload (no signature check — token already held
- * locally after login/pairing). Used when remote /users/auth/status is unreachable
- * or does not recognize the token (common for device-paired local sessions on /m).
- * @param {string|null|undefined} token
- * @returns {{ id: string, email: string|null, name: string, authMethod: string }|null}
- */
-export function userFromJwt(token) {
+/** The decoded payload, or null for anything that is not a readable JWT. */
+function payloadOf(token) {
   if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
   try {
     // JWT segments are base64url and often unpadded; atob (Safari/iOS) is strict.
@@ -30,6 +24,35 @@ export function userFromJwt(token) {
         ? new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
         : Buffer.from(b64, 'base64').toString('utf8');
     const payload = JSON.parse(json);
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When the token expires, in epoch ms, or null when it carries no readable
+ * `exp`. Used only to prefer the longer-lived of two tokens for the SAME
+ * account (userAuth/ADOPT_RENEWED_TOKEN); never to authorize anything.
+ * @param {string|null|undefined} token
+ * @returns {number|null}
+ */
+export function expiryMsFromJwt(token) {
+  const exp = payloadOf(token)?.exp;
+  return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : null;
+}
+
+/**
+ * Best-effort user from a JWT payload (no signature check — token already held
+ * locally after login/pairing). Used when remote /users/auth/status is unreachable
+ * or does not recognize the token (common for device-paired local sessions on /m).
+ * @param {string|null|undefined} token
+ * @returns {{ id: string, email: string|null, name: string, authMethod: string }|null}
+ */
+export function userFromJwt(token) {
+  const payload = payloadOf(token);
+  if (!payload) return null;
+  try {
     // A token past its own expiry is not a session. AGNT session tokens are
     // minted by the remote auth server and carry `exp` (payload shape:
     // id, userId, email, auth_type, iat, exp — 30-day lifetime), and an
@@ -50,4 +73,4 @@ export function userFromJwt(token) {
   }
 }
 
-export default { userFromJwt };
+export default { userFromJwt, expiryMsFromJwt };

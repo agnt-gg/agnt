@@ -43,6 +43,23 @@ function isOurSessionRejection(error) {
   return res.data?.reason === 'invalid';
 }
 
+/** Header our backend sets when it holds a renewed token for this session. */
+export const RENEWED_TOKEN_HEADER = 'x-agnt-session-token';
+
+/**
+ * Hand a renewed session token from OUR backend to the store, which keeps it
+ * only if it is the same account and lives longer (ADOPT_RENEWED_TOKEN).
+ * Same-origin check as isOurSessionRejection: nobody else may set our token.
+ */
+function adoptRenewedSession(response) {
+  const headers = response?.headers;
+  const renewed = typeof headers?.get === 'function' ? headers.get(RENEWED_TOKEN_HEADER) : headers?.[RENEWED_TOKEN_HEADER];
+  if (!store || typeof renewed !== 'string' || !renewed) return;
+  const url = response.config?.url || '';
+  if (!(url.startsWith(API_CONFIG.BASE_URL) || url.startsWith('/api/'))) return;
+  store.commit('userAuth/ADOPT_RENEWED_TOKEN', renewed);
+}
+
 /**
  * Initialize the axios interceptor with the Vuex store
  * @param {Object} vuexStore - The Vuex store instance
@@ -59,7 +76,10 @@ export function initializeAxiosInterceptor(vuexStore, routerInstance = null) {
   // being spent by the AGNT Flash gateway's own account checks, not by
   // anything the person did, and nothing on screen let them act on it.
   axios.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      adoptRenewedSession(response);
+      return response;
+    },
     (error) => {
       // A dead session, discovered by a request that is not the auth probe.
       //

@@ -5,6 +5,7 @@ import db from "../models/database/index.js";
 import { resolveSecret } from "../utils/secretResolver.js";
 import { trustedScopeRequest } from '../services/authorization/ScopeRequestContext.js';
 import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
+import { offerRenewedToken } from "../services/auth/renewedTokenHeader.js";
 import { isApiKey } from "../services/auth/apiKey.js";
 import { isPermittedUser, NOT_A_MEMBER } from "../services/auth/tenantOwnership.js";
 import { isToolToken, verifyToolToken, toolRequestPermitted, TOOL_SCOPE_DENIED } from '../services/security/toolRunAuthority.js';
@@ -223,6 +224,7 @@ class Middleware {
           // means — but the remote API verifies it itself, so it is exactly the
           // right credential to forward there.
           rememberSessionToken(token, userId);
+          offerRenewedToken(res, token, userId);
 
           // Auth successful - don't log email for privacy
           return next();
@@ -258,6 +260,9 @@ class Middleware {
       // must call it anonymously, which is the reason those remote endpoints
       // cannot yet require authentication. See services/auth/sessionTokenCache.js.
       rememberSessionToken(token, userId);
+      // A window still on the token it signed in with learns of the renewal
+      // here, so it never reaches day 30. See services/auth/sessionRenewal.js.
+      offerRenewedToken(res, token, userId);
 
       // console.log('Authenticated user:', req.user);
 
@@ -323,6 +328,7 @@ class Middleware {
           // plugins run with no request in scope and still need a credential to
           // present to api.agnt.gg. See services/auth/sessionTokenCache.js.
           rememberSessionToken(token, userId);
+          offerRenewedToken(res, token, userId);
           return next();
         }
       }

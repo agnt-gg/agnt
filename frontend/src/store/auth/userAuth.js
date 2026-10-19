@@ -8,7 +8,7 @@ import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIdentity.js';
 // `export { userFromJwt } from './jwt.js'` below re-exports the binding but does
 // NOT introduce it into this module's scope, and it is called internally.
-import { userFromJwt } from './jwt.js';
+import { userFromJwt, expiryMsFromJwt } from './jwt.js';
 
 // All fetch* actions in this module are wrapped with `withFreshness` so the
 // second call within the per-action TTL is a no-op. Pass `{ forceRefresh: true }`
@@ -332,6 +332,30 @@ export default {
       if (token) {
         syncTokenWithBackend(token);
       }
+    },
+    /**
+     * Take the renewed session token the backend offers (X-AGNT-Session-Token,
+     * see utils/axiosInterceptor.js and backend services/auth/sessionRenewal.js).
+     *
+     * Without this the window keeps the token it signed in with, which dies on
+     * day 30 even though the backend renewed the session: the window is logged
+     * out, and after a restart it has nothing valid to hand back.
+     *
+     * Deliberately NOT SET_TOKEN: this is the same session continuing, so it
+     * must not mark the session unverified or bump its generation. And it only
+     * ever moves to a longer-lived token for the account already signed in.
+     */
+    ADOPT_RENEWED_TOKEN(state, token) {
+      if (typeof token !== 'string' || !token || !state.token || token === state.token) return;
+      const current = userFromJwt(state.token);
+      const renewed = userFromJwt(token);
+      if (!current?.id || !renewed?.id || String(current.id) !== String(renewed.id)) return;
+      const currentExpiry = expiryMsFromJwt(state.token);
+      const renewedExpiry = expiryMsFromJwt(token);
+      if (currentExpiry === null || renewedExpiry === null || renewedExpiry <= currentExpiry) return;
+      state.token = token;
+      localStorage.setItem('token', token);
+      setMediaCookie(token);
     },
     CLEAR_TOKEN(state) {
       state.sessionGeneration = (state.sessionGeneration || 0) + 1;

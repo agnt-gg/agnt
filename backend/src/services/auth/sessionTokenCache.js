@@ -140,8 +140,8 @@ export function subscribe(listener) {
  * The `exp` claim in epoch ms, or null when there is no readable one.
  *
  * This DECODES; it does not verify — which is safe HERE and nowhere else. The
- * only caller is rememberSessionToken, whose stated contract is that the caller
- * has ALREADY verified the signature. Read `exp` off an unverified token and it
+ * callers are rememberSessionToken and newerSessionTokenFor, whose stated
+ * contract is that the caller has ALREADY verified the signature. Read `exp` off an unverified token and it
  * becomes attacker-controlled: a forged far-future expiry would be a way to pin
  * this slot to a credential of the attacker's choosing.
  *
@@ -409,6 +409,31 @@ export function getAllSessionEntries() {
   const active = live.findIndex((e) => e.userId === activeUserId);
   if (active >= 0) live.push(live.splice(active, 1)[0]);
   return live.map(({ token, userId }) => ({ token, userId }));
+}
+
+/**
+ * The token held for `userId` when it OUTLIVES `presented`, else null.
+ *
+ * Background renewal (services/auth/sessionRenewal.js) replaces the held token
+ * before it expires, but the window still holds the one it signed in with. Left
+ * alone, that one dies on day 30: the window is logged out, and after a restart
+ * it has nothing valid to present. This is how the window learns of the renewal.
+ *
+ * Keyed by the account's OWN entry, deliberately not credentialUserId(): a team
+ * member's window must never be handed the workspace owner's credential.
+ * `presented` must already be verified by the caller (it decodes `exp`).
+ *
+ * @param {string} userId
+ * @param {string} presented
+ * @returns {string|null}
+ */
+export function newerSessionTokenFor(userId, presented) {
+  if (!userId || typeof presented !== 'string' || presented.length === 0) return null;
+  const entry = liveEntry(String(userId));
+  if (!entry || entry.token === presented || isApiKey(entry.token)) return null;
+  const presentedExpiry = tokenExpiryMs(presented);
+  if (entry.expiresAt === null || presentedExpiry === null) return null;
+  return entry.expiresAt > presentedExpiry ? entry.token : null;
 }
 
 /**

@@ -965,6 +965,14 @@ function startServer() {
         startMobileReceiver({ port: config.port });
       });
 
+      // Session renewal: trade every held sign-in for a fresh one before its
+      // 30-day expiry, so automations never stop on day 30. Hourly, and no
+      // network at all until a token is within a week of expiring.
+      afterBoot('session renewal', async () => {
+        const { startSessionRenewal } = await import('./src/services/auth/sessionRenewal.js');
+        startSessionRenewal();
+      });
+
       // Worker chats the last run left running or unreported are reported to
       // the chat that started them (and texted, when a phone is linked).
       afterBoot('sub-chat report recovery', async () => {
