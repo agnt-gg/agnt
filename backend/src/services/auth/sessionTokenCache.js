@@ -97,13 +97,25 @@ const MAX_ACCOUNTS = 8;
 /** @type {Set<(entry: {token: string, userId: string}) => void>} */
 const subscribers = new Set();
 
-/**
- * Tokens are 30-day, but a cached one should not outlive the user's presence by
- * much: if the app has sat unused for a day, the next poll can wait for the UI
- * to prove someone is there. Long enough to cover an idle overnight, short
- * enough that a stale token is not used indefinitely.
+/*
+ * THERE IS NO IDLE EXPIRY, AND THERE MUST NOT BE ONE.
+ *
+ * This cache feeds automations, and automations run when nobody is at the
+ * keyboard — that is the product. It used to drop any entry not seen for 36h,
+ * on the theory that background work "can wait for the UI to prove someone is
+ * there". In production (2026-10-12) that theory took down every credentialed
+ * workflow, email poll and webhook for seven days: the workflow process ages
+ * its copy from when the token ARRIVED, the token never changed, the app never
+ * restarted, and at hour 36 it threw away a valid 30-day credential. The parent
+ * would have done the same after any unattended day and a half.
+ *
+ * It bought no security either: the same token sits in the window's storage
+ * and is accepted by api.agnt.gg until its own `exp` regardless.
+ *
+ * So the token's own expiry is the only clock here. Ending a credential early
+ * is the issuer's job (it can refuse to honour or renew one); signing the
+ * WINDOW out ends the window's session, not the user's automations.
  */
-const MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
 /**
  * Observe tokens as they arrive, so another module can forward them somewhere
@@ -356,13 +368,12 @@ function liveEntry(userId) {
   const entry = entries.get(userId);
   if (!entry) return null;
 
-  // The token's OWN expiry, not merely how long since we last saw it. `seenAt`
-  // is refreshed by every authenticated request, so a token that expires while
-  // the user is actively clicking would otherwise be handed to background
-  // callers indefinitely — the MAX_AGE window below can only ever help once the
-  // user STOPS using the app, which is the opposite of when this bites.
+  // The token's OWN expiry is the only reason to drop it — never how long it
+  // has been since anyone used the app (see "NO IDLE EXPIRY" above). An expired
+  // credential is worthless to the issuer, so handing it out would only turn a
+  // clear "no session" into a confusing 401.
   const expired = entry.expiresAt !== null && Date.now() >= entry.expiresAt;
-  if (expired || Date.now() - entry.seenAt > MAX_AGE_MS) {
+  if (expired) {
     entries.delete(userId);
     return null;
   }

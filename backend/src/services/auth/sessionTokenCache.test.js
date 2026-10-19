@@ -149,21 +149,35 @@ describe('switching accounts on one install', () => {
   });
 });
 
-describe('staleness', () => {
-  it('stops offering a token that is too old', () => {
-    vi.useFakeTimers();
-    rememberSessionToken('tok-abc', 'user-1');
-    expect(getSessionToken()).toBe('tok-abc');
+describe('automations run unattended', () => {
+  // This block used to be called "staleness" and asserted that a token nobody
+  // had used for 37h is dropped. That spec WAS the 2026-10-12 outage: every
+  // workflow, email poll and webhook lost its credential at hour 36 while the
+  // token had weeks left. Idleness is not a reason to stop an automation.
+  const DAY = 24 * 60 * 60 * 1000;
 
-    vi.advanceTimersByTime(37 * 60 * 60 * 1000);
-    expect(getSessionToken()).toBeNull();
+  it('keeps the credential through weeks with no requests at all', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-10T14:10:40Z'));
+    const token = jwtExpiring('2026-11-09T14:10:40Z');
+    rememberSessionToken(token, 'user-1');
+
+    vi.advanceTimersByTime(29 * DAY);
+    expect(getSessionToken('user-1')).toBe(token);
+    expect(getSessionToken()).toBe(token);
+    expect(authHeader('user-1')).toEqual({ Authorization: `Bearer ${token}` });
   });
 
-  it('still offers it well inside the window', () => {
+  it('drops it at the token\'s own expiry, and only then', () => {
     vi.useFakeTimers();
-    rememberSessionToken('tok-abc', 'user-1');
-    vi.advanceTimersByTime(12 * 60 * 60 * 1000);
-    expect(getSessionToken()).toBe('tok-abc');
+    vi.setSystemTime(new Date('2026-10-10T14:10:40Z'));
+    const token = jwtExpiring('2026-11-09T14:10:40Z');
+    rememberSessionToken(token, 'user-1');
+
+    vi.setSystemTime(new Date('2026-11-09T14:10:39Z'));
+    expect(getSessionToken('user-1')).toBe(token);
+    vi.setSystemTime(new Date('2026-11-09T14:10:40Z'));
+    expect(getSessionToken('user-1')).toBeNull();
   });
 });
 

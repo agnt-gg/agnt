@@ -235,6 +235,90 @@ describe('the bridge forwards it', () => {
   });
 });
 
+describe('automations keep their credential across the fork, unattended', () => {
+  // THE 36-HOUR CLIFF (2026-10-12, production): the workflow process received
+  // the token once, at launch, and dropped it 36h later under an idle-expiry
+  // rule — while the token had weeks left and the main process still held it.
+  // Every workflow credential lookup went anonymous, api.agnt.gg answered 401,
+  // every plugin reported "Not connected to <provider>", for seven days.
+  //
+  // The fork tests above cannot see this: it needs two caches on one clock.
+  // So this wires TWO module instances (parent, child) through the real bridge
+  // and the exact call WorkflowProcess.js makes on SESSION_TOKEN.
+  const HOUR = 60 * 60 * 1000;
+  const LAUNCH = new Date('2026-10-10T14:10:40Z');
+  const jwtExpiring = (iso) => {
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ id: 'user-1', exp: Math.floor(Date.parse(iso) / 1000) })}.sig`;
+  };
+  let parent;
+  let child;
+  let sent;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(LAUNCH);
+    vi.resetModules();
+    parent = await import('./sessionTokenCache.js');
+    parent.__resetSessionTokenCacheForTests();
+    const bridge = (await import('../../workflow/WorkflowProcessBridge.js')).default;
+    vi.resetModules();
+    child = await import('./sessionTokenCache.js');
+    expect(child, 'sanity: two separate caches, as across a fork').not.toBe(parent);
+
+    sent = [];
+    bridge.workflowProcess = {
+      connected: true,
+      send(message) {
+        sent.push(message);
+        // WorkflowProcess.js: `rememberSessionToken(data?.token, data?.userId)`
+        if (message.type === 'SESSION_TOKEN') child.rememberSessionToken(message.data?.token, message.data?.userId);
+      },
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('THE OUTAGE: nobody touches the app for 29 days and every hour still has a credential', () => {
+    const token = jwtExpiring('2026-11-09T14:10:40Z');
+    parent.rememberSessionToken(token, 'user-1'); // the one request at launch
+
+    for (let hour = 1; hour <= 29 * 24; hour += 1) {
+      vi.advanceTimersByTime(HOUR);
+      // Failed at hour 37 before the fix, in the process that runs workflows.
+      expect(child.getSessionToken('user-1'), `workflow process lost it at hour ${hour}`).toBe(token);
+      expect(parent.getSessionToken('user-1'), `main process lost it at hour ${hour}`).toBe(token);
+    }
+  });
+
+  it('an active user is no different: an unchanged token stays put for days', () => {
+    const token = jwtExpiring('2026-11-09T14:10:40Z');
+    for (let hour = 0; hour <= 72; hour += 1) {
+      parent.rememberSessionToken(token, 'user-1');
+      expect(child.getSessionToken('user-1'), `lost at hour ${hour}`).toBe(token);
+      vi.advanceTimersByTime(HOUR);
+    }
+  });
+
+  it('the token\'s own expiry is the only clock, in both processes', () => {
+    parent.rememberSessionToken(jwtExpiring('2026-11-09T14:10:40Z'), 'user-1');
+    vi.setSystemTime(new Date('2026-11-09T14:10:40Z'));
+    expect(child.getSessionToken('user-1')).toBeNull();
+    expect(parent.getSessionToken('user-1')).toBeNull();
+  });
+
+  it('costs one IPC message per token, not one per request', () => {
+    parent.rememberSessionToken('tok-1', 'user-1');
+    for (let i = 0; i < 500; i += 1) {
+      vi.advanceTimersByTime(1000);
+      parent.rememberSessionToken('tok-1', 'user-1');
+    }
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe('the child handler is wired to the real dispatcher', () => {
   // The fork tests above prove the MECHANISM. This proves the production
   // handler uses it — WorkflowProcess.js boots a database and a plugin system,
