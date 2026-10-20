@@ -4,6 +4,7 @@ import { skillCatalogGist } from '../../utils/skillCatalogGist.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
+import { getPluginToolIndex, pluginToolsByCategory, choosePluginResidency } from './pluginToolIndex.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
 import {
   buildGateInputs,
@@ -842,11 +843,34 @@ async function getUnifiedToolSchemas(context) {
   ]);
   const leanResident = leanSurface ? new Set(DEFERRED_MODE_RESIDENT_TOOLS) : null;
 
+  // INSTALLED PLUGINS ARE RESIDENT BY DEFAULT. Installing a plugin is the
+  // user saying "I want to use this", and AGNT One has no tool selector to say
+  // it twice: a plugin behind discover_tools was one the model routinely
+  // concluded was not installed (reported 2026-10-20, Atlas Cloud). Each
+  // plugin becomes a `plugin:<name>` group, so it persists in
+  // _loadedToolGroups and the surface only grows within a conversation. Which
+  // plugins, when they do not all fit, is choosePluginResidency
+  // (pluginToolIndex.js): named in the message, then newest, then the budget.
+  // Deferred conversations skip this the way they skip keyword groups: every
+  // permitted plugin tool is already in their deferred catalog.
+  const pluginIndex = deferredMode ? [] : await getPluginToolIndex(context.userId);
+  const pluginTools = pluginToolsByCategory(pluginIndex);
+  if (pluginIndex.length > 0) {
+    const resident = choosePluginResidency({
+      index: pluginIndex,
+      schemasByName: new Map(namedSchemas.map((s) => [s.function.name, s])),
+      message: latestUserMessage,
+      sticky: previousGroups,
+      permitted: (name) => !ceiling || ceiling.has(name),
+    });
+    for (const plugin of resident) allGroups.add(plugin.category);
+  }
+
   const groupToolNames = new Set();
   // First group to contribute a tool is the one credited in the manifest.
   const groupOfTool = new Map();
   for (const group of allGroups) {
-    const tools = getToolsForCategories(allSchemas, [group]);
+    const tools = getToolsForCategories(allSchemas, [group], { pluginTools });
     for (const t of tools) {
       const n = t.function?.name;
       if (!n) continue;

@@ -101,6 +101,7 @@ import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 import { useMainChat } from '@/composables/useMainChat.js';
 import { isUnstartedConversation } from '@/views/Terminal/CenterPanel/screens/Chat/chatHome.js';
 import { graduationUnlock, GRADUATION_COPY, GRADUATION_ASKED_KEY, readFlag, writeFlag } from '@/services/uiModeDefault.js';
+import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 const { isElectron } = useElectron();
 
 const props = defineProps({
@@ -317,10 +318,14 @@ function onKeydown(e) {
     store.dispatch('shell/toggleJump');
   }
 }
+// This frame hides the chat's tool selector (focused.css), so a selection
+// saved in Studio must not bind the chat here (chatChannelConfig.js).
+setMainChatToolSelectorShown(false);
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   clearTimeout(toastTimer);
+  setMainChatToolSelectorShown(true);
 });
 
 defineExpose({ openPage, newChat, ask, go });

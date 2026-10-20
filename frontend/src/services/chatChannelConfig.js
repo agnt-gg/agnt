@@ -319,6 +319,17 @@ export function resolveChannelRouting(channelKey, aiProviderState) {
   };
 }
 
+// Is the main chat's tool selector on screen? Studio shows it; a frame that
+// hides it (Focused, AGNT One) turns this off while it is mounted. A selection
+// saved where the selector WAS visible must not keep binding a chat that can
+// neither show it nor change it: it would cap that chat invisibly, for good,
+// and keep out every plugin installed after it was saved (reported
+// 2026-10-20: installed plugins must work by default in AGNT One).
+let mainChatToolSelectorShown = true;
+export function setMainChatToolSelectorShown(shown) {
+  mainChatToolSelectorShown = shown !== false;
+}
+
 /**
  * Resolve the enabled-tool list for a channel. Specialty tools (the locked
  * page-specific set) are ALWAYS unioned in — they can't be turned off, so
@@ -332,6 +343,12 @@ export function resolveChannelRouting(channelKey, aiProviderState) {
  */
 export function resolveChannelEnabledTools(channelKey) {
   const specialty = getSpecialtyToolNames(channelKey) || [];
+
+  // No visible selector: no saved selection either (see
+  // setMainChatToolSelectorShown). The backend's default applies, and a saved
+  // agent's own assignedTools stand. Sidebar chats keep their selector and
+  // their locked page set, so they are unaffected.
+  if (!mainChatToolSelectorShown && specialty.length === 0) return undefined;
 
   const cfg = getChannelConfig(channelKey);
 

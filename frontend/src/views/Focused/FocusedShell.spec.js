@@ -33,6 +33,7 @@ vi.mock('@/composables/useMainChat.js', () => ({
 }));
 
 import FocusedShell from './FocusedShell.vue';
+import { setChannelEnabledTools, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 
 const Probe = defineComponent({
   setup() {
@@ -85,6 +86,18 @@ describe('FocusedShell', () => {
     storeState.chat.messages = [];
     openMainChat.mockClear();
     localStorage.clear();
+  });
+
+  // Reported 2026-10-20: installed plugins must work by default here. This
+  // frame hides the chat's tool selector, so a selection saved in Studio must
+  // stop binding the chat while it is mounted, and bind again in Studio.
+  it('a tool selection saved in Studio does not bind the chat while this frame is mounted', () => {
+    setChannelEnabledTools('orchestrator:default', ['web_search']);
+    expect(resolveChannelEnabledTools('orchestrator:default')).toEqual(['web_search']);
+    const w = mountShell('ChatScreen');
+    expect(resolveChannelEnabledTools('orchestrator:default')).toBeUndefined();
+    w.unmount();
+    expect(resolveChannelEnabledTools('orchestrator:default')).toEqual(['web_search']);
   });
 
   // Reported: new pages were saved into the retired Main chat and vanished.

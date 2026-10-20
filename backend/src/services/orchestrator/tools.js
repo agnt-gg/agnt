@@ -1659,7 +1659,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'array',
               items: { type: 'string' },
               description:
-                'Categories to load (for "load" operation). Use group names (e.g. "core", "shell", "media") or "installed" to load all installed registry/plugin tools.',
+                'Categories to load (for "load" operation). Use group names (e.g. "core", "shell", "media"), "plugin:<name>" for one installed plugin (browse lists them under "plugins"), or "installed" to load every installed registry/plugin tool.',
             },
           },
           required: ['operation'],
@@ -1674,7 +1674,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       } = await import('./toolSelector.js');
       const { getGuidanceCategory, getGuidanceForTools } = await import('./system-prompts/promptElements.js');
       const { getAvailableToolSchemas } = await import('./tools.js');
+      const { getPluginToolIndex, isPluginCategory } = await import('./pluginToolIndex.js');
       const { operation, categories } = args;
+      // THIS user's tools. Plugins and Tool Forge tools belong to an account,
+      // and the registry omits them for a caller that names no user: without
+      // this, discovery reported every installed plugin as missing while the
+      // chat surface itself listed them (reported 2026-10-20, Atlas Cloud).
+      const userId = context?.userId || null;
 
       // The CEILING is what the user has permitted on this channel; it is the
       // outer bound on everything discover_tools may reveal or load. Prefer the
@@ -1709,9 +1715,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
         let allSchemas = [];
         try {
-          allSchemas = await getAvailableToolSchemas();
+          allSchemas = await getAvailableToolSchemas({ userId });
         } catch (e) {
           // Non-fatal — static groups above are still useful.
+          console.warn('[discover_tools] browse could not read the tool registry:', e.message);
         }
         const allNames = allSchemas.map((s) => s.function?.name).filter(Boolean);
 
@@ -1749,15 +1756,36 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           groupResults.push({
             name: 'installed',
             ...summarize(installedTools),
-            description: 'Installed registry and plugin tools (not loaded by default)',
+            description: 'Every installed registry and plugin tool not in another category (large; prefer one plugin)',
             status: loadedGroups.has('installed') ? 'active' : 'available',
+          });
+        }
+
+        // Each installed plugin by name, so the model finds "Atlas Cloud"
+        // without loading every plugin. One line per plugin, not a category
+        // per plugin: an account can have a hundred.
+        const liveNames = new Set(allNames);
+        const plugins = (await getPluginToolIndex(userId))
+          .map((plugin) => ({
+            category: plugin.category,
+            title: plugin.displayName,
+            tools: plugin.toolNames.filter((name) => liveNames.has(name) && permitted(name)),
+            status: loadedGroups.has(plugin.category) ? 'active' : 'available',
+          }))
+          .filter((plugin) => plugin.tools.length > 0);
+        if (plugins.length > 0) {
+          groupResults.push({
+            name: 'plugins',
+            tool_count: plugins.reduce((sum, plugin) => sum + plugin.tools.length, 0),
+            description: 'Plugins you installed. Active ones are already loaded; load another with categories=["plugin:<name>"].',
+            plugins,
           });
         }
 
         return JSON.stringify({
           success: true,
           categories: groupResults,
-          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Use "installed" to load all registry/plugin tools. Categories listing "truncated": true have more tools than shown — loading the category loads all of them. Tools become usable immediately in your next response.',
+          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. For one installed plugin use its "plugin:<name>" category from "plugins". Categories listing "truncated": true have more tools than shown — loading the category loads all of them. Tools become usable immediately in your next response.',
         });
       }
 
@@ -1770,11 +1798,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           });
         }
 
-        const invalid = categories.filter((c) => !validCategories.includes(c));
+        // A plugin category is valid only for a plugin THIS account installed.
+        const pluginIndex = categories.some(isPluginCategory) ? await getPluginToolIndex(userId) : [];
+        const ownedPluginTools = new Map(pluginIndex.map((plugin) => [plugin.category, plugin.toolNames]));
+        const invalid = categories.filter((c) => !validCategories.includes(c) && !ownedPluginTools.has(c));
         if (invalid.length > 0) {
           return JSON.stringify({
             success: false,
-            error: `Invalid categories: ${invalid.join(', ')}. Valid: ${validCategories.join(', ')}.`,
+            error: `Invalid categories: ${invalid.join(', ')}. Valid: ${validCategories.join(', ')}, or "plugin:<name>" for a plugin listed under "plugins" in browse.`,
           });
         }
 
@@ -1803,13 +1834,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           .some((c) => c === 'installed' || DYNAMIC_GROUP_MATCHERS[c]);
         let liveSchemas = [];
         if (needsRegistry) {
-          try { liveSchemas = await getAvailableToolSchemas(); } catch { liveSchemas = []; }
+          try {
+            liveSchemas = await getAvailableToolSchemas({ userId });
+          } catch (e) {
+            console.warn('[discover_tools] load could not read the tool registry:', e.message);
+            liveSchemas = [];
+          }
         }
         const liveNames = liveSchemas.map((s) => s.function?.name).filter(Boolean);
 
         for (const cat of context._requestedToolCategories) {
           if (cat === 'installed') {
             loadedTools.push(...getInstalledToolNames(liveSchemas));
+          } else if (ownedPluginTools.has(cat)) {
+            loadedTools.push(...ownedPluginTools.get(cat));
           } else if (DYNAMIC_GROUP_MATCHERS[cat]) {
             loadedTools.push(...liveNames.filter(DYNAMIC_GROUP_MATCHERS[cat]));
           } else {

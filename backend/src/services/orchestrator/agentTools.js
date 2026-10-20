@@ -41,7 +41,9 @@ export const AGENT_TOOLS = {
         try {
           // Get available tools
           const { getAvailableToolSchemas } = await import('./tools.js');
-          const toolSchemas = await getAvailableToolSchemas();
+          // The user's own plugins and Tool Forge tools are offered to the new
+          // agent too; a userId-less read omits both.
+          const toolSchemas = await getAvailableToolSchemas({ userId: userId || null });
           availableToolsList = toolSchemas.map((schema) => ({
             id: schema.function.name,
             name: schema.function.name,

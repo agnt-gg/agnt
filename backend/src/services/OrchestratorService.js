@@ -3652,8 +3652,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       if (conversationContext._requestedToolCategories && conversationContext._requestedToolCategories.size > 0) {
         try {
           const { getToolsForCategories } = await import('./orchestrator/toolSelector.js');
-          const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas();
-          let newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories);
+          const { getPluginToolIndex, pluginToolsByCategory } = await import('./orchestrator/pluginToolIndex.js');
+          // This user's registry: plugins and Tool Forge tools are per
+          // account, and a userId-less read returns none of them, so a
+          // discovered plugin would load as nothing.
+          const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas({ userId: conversationContext.userId || null });
+          const pluginTools = pluginToolsByCategory(await getPluginToolIndex(conversationContext.userId));
+          let newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories, { pluginTools });
           // A discover_tools load must never step over the channel's ceiling.
           // The ceiling is what the user permitted (see chatConfigs
           // resolveToolCeiling / restricted saved agents); without this filter
@@ -4596,7 +4601,7 @@ async function getAvailableTools(req, res) {
     const toolRegistry = (await import('./orchestrator/toolRegistry.js')).default;
     await toolRegistry.ensureInitialized();
 
-    const allSchemas = await getAvailableToolSchemas();
+    const allSchemas = await getAvailableToolSchemas({ userId: req.user?.userId || req.user?.id || null });
 
     // Build schema lookup map
     const schemaMap = new Map();

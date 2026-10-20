@@ -167,7 +167,8 @@ describe('OrchestratorService honours the ceiling on dynamic loads (source contr
   );
 
   it('filters discover_tools results by _toolCeiling before they are appended', () => {
-    const loadIdx = src.indexOf('getToolsForCategories(allSchemas, conversationContext._requestedToolCategories)');
+    // The call, whatever options follow the categories (plugin membership).
+    const loadIdx = src.search(/getToolsForCategories\(allSchemas, conversationContext\._requestedToolCategories[,)]/);
     const pushIdx = src.indexOf('finalToolSchemas.push(schema)', loadIdx);
     const filterIdx = src.indexOf('toolCeiling.has(s.function?.name)', loadIdx);
     expect(loadIdx).toBeGreaterThan(-1);

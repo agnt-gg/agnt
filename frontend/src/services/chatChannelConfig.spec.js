@@ -9,12 +9,52 @@ import {
   setChannelEnabledTools,
   resolveChannelEnabledTools,
   getChannelConfig,
+  setMainChatToolSelectorShown,
 } from './chatChannelConfig.js';
 
 const KEY = 'orchestrator:default';
 
 beforeEach(() => {
   localStorage.clear();
+  setMainChatToolSelectorShown(true);
+});
+
+// Reported 2026-10-20: AGNT One has no tool selector, so installed plugins
+// must work by default. A selection saved in Studio would otherwise cap the
+// chat invisibly and keep every later plugin out, with no way to change it.
+describe('a frame without the main chat\u2019s tool selector', () => {
+  it('ignores a saved selection on the main chat', () => {
+    setChannelEnabledTools(KEY, ['web_search']);
+    setMainChatToolSelectorShown(false);
+    expect(resolveChannelEnabledTools(KEY)).toBeUndefined();
+  });
+
+  it('ignores the legacy global list too', () => {
+    localStorage.setItem('agnt_enabled_tools', JSON.stringify(['a']));
+    setMainChatToolSelectorShown(false);
+    expect(resolveChannelEnabledTools(KEY)).toBeUndefined();
+  });
+
+  it('leaves a saved agent\u2019s chat to the agent\u2019s own tools', () => {
+    setChannelEnabledTools('agent:abc', ['web_search']);
+    setMainChatToolSelectorShown(false);
+    expect(resolveChannelEnabledTools('agent:abc')).toBeUndefined();
+  });
+
+  it('keeps a sidebar chat\u2019s locked page tools and its own visible selection', () => {
+    setChannelEnabledTools('widget:abc', ['recall']);
+    setMainChatToolSelectorShown(false);
+    const res = resolveChannelEnabledTools('widget:abc');
+    expect(res).toContain('edit_widget_code');
+    expect(res).toContain('recall');
+  });
+
+  it('honours the saved selection again once the selector is back (Studio)', () => {
+    setChannelEnabledTools(KEY, ['web_search']);
+    setMainChatToolSelectorShown(false);
+    setMainChatToolSelectorShown(true);
+    expect(resolveChannelEnabledTools(KEY)).toEqual(['web_search']);
+  });
 });
 
 describe('AUTO_ENABLED_TOOLS sentinel', () => {

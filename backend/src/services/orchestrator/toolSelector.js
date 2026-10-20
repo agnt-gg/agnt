@@ -562,20 +562,26 @@ export function selectTools(allSchemas, userMessage) {
  * Supports TOOL_GROUP names and the special "installed" category which
  * returns all non-default, non-grouped tools (registry + plugin tools).
  *
+ * One installed plugin is the category `plugin:<package name>`. Its members
+ * are not knowable from a schema alone, so the caller passes them in
+ * (`pluginTools`, from pluginToolIndex.js); without it a plugin category
+ * matches nothing.
+ *
  * @param {Array} allSchemas - All available tool schemas
  * @param {Iterable<string>} categories - Category names to load
+ * @param {{ pluginTools?: Map<string, Set<string>> }} [options]
  * @returns {Array} Matching tool schemas
  */
-export function getToolsForCategories(allSchemas, categories) {
+export function getToolsForCategories(allSchemas, categories, { pluginTools } = {}) {
   const catSet = new Set(categories);
 
   // If "installed" is requested, return all non-default tools not in any group
   const includeInstalled = catSet.has('installed');
 
-  // Collect tool names from named groups
+  // Collect tool names from named groups and requested plugins
   const targetNames = new Set();
   for (const cat of catSet) {
-    const tools = TOOL_GROUPS[cat];
+    const tools = TOOL_GROUPS[cat] || pluginTools?.get(cat);
     if (tools) {
       for (const name of tools) {
         targetNames.add(name);

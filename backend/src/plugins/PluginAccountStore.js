@@ -74,6 +74,8 @@ export class PluginAccountStore {
   }
   async owners(pluginName) { await this.ready(); return (await this.all('SELECT user_id FROM plugin_account_installs WHERE plugin_name=?', [pluginName])).map(r => r.user_id); }
   async names(userId) { await this.ready(); if (!userId) return []; return (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [userId])).map(r => r.plugin_name); }
+  /** This account's installs with when each happened, newest first (the chat makes recent installs resident first). */
+  async installs(userId) { await this.ready(); if (!userId) return []; return this.all('SELECT plugin_name, installed_at FROM plugin_account_installs WHERE user_id=? ORDER BY installed_at DESC, plugin_name', [userId]); }
   async has(pluginName, userId) { return !!userId && (await this.owners(pluginName)).includes(userId); }
   async assert(pluginName, userId) { if (!(await this.has(pluginName, userId))) { const error = new Error('Plugin is not installed for this account'); error.status = 404; throw error; } }
   async add(pluginName, userId) { await this.ready(); if (!userId) throw new Error('Plugin install requires an account'); await this.run('INSERT OR IGNORE INTO plugin_account_installs(plugin_name,user_id) VALUES(?,?)', [pluginName,userId]); }
