@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import { hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
 import path from 'path';
-import PathManager from '../../utils/PathManager.js';
 import {
   findMatches,
   describeMiss,
@@ -16,9 +15,9 @@ import {
 import { observe, checkStale, getObservation, hashContent } from './fileObservations.js';
 import { grepFiles, globFiles, looksBinary, DEFAULTS as SEARCH_DEFAULTS } from './fileSearch.js';
 import { prepareWrite, dominantEol } from '../../utils/lineEndings.js';
-
-const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
-const SETTINGS_FILE = PathManager.getPath('code-settings.json');
+// The single implementation (utils/workspaceRoot.js says why). This file
+// used to carry its own copy, which never created the folder.
+import { getWorkspaceRoot, ensureWorkspaceRoot } from '../../utils/workspaceRoot.js';
 
 /**
  * Hard ceiling on the text a single read returns.
@@ -37,26 +36,16 @@ export const MAX_READ_CHARS = 80_000;
 const MAX_DIFF_BLOCK_CHARS = 600;
 
 /**
- * Get the current workspace root path (exported for system prompt)
+ * The workspace root, created if it is missing.
+ *
+ * The code and shell tools run IN this folder. A new install has none yet,
+ * and spawn reports a missing working directory as the command being missing:
+ * the first execute_javascript_code on a new install failed with "spawn node
+ * ENOENT" (reported 2026-10-20, AGNT One). ensureWorkspaceRoot keeps its one
+ * exception: a root inside the install directory is never re-created.
  */
 export async function getWorkspaceRootPath() {
-  return await getWorkspaceRoot();
-}
-
-/**
- * Get the current workspace root from settings
- */
-async function getWorkspaceRoot() {
-  try {
-    const raw = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    const settings = JSON.parse(raw);
-    if (settings.workspaceRoot) {
-      return path.resolve(settings.workspaceRoot);
-    }
-  } catch {
-    // Settings file doesn't exist or is invalid — use default
-  }
-  return DEFAULT_WORKSPACE_ROOT;
+  return ensureWorkspaceRoot();
 }
 
 /**
