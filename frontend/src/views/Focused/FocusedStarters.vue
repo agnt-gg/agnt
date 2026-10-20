@@ -112,6 +112,11 @@ defineExpose({ tick, moreIdeas });
 }
 .focused-starter {
   display: flex;
+  /* Stated, never inherited: Electron 33's Chromium (the engine the app ships)
+     gives every <button> a built-in align-items: flex-start, newer Chromium
+     does not. Left unset, the content sat at the top in the app and centred
+     in a browser. flexAlignment.spec.js holds this. */
+  align-items: stretch;
   min-width: 0;
   padding: 10px 14px;
   text-align: left;

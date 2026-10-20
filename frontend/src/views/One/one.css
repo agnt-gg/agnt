@@ -585,9 +585,15 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 8px;
 }
+/* align-items is stated on every flex rule in this file: Electron 33's
+   Chromium gives <button> a built-in align-items: flex-start, so an unset
+   value pinned the pill's label to its top edge in the app while a browser
+   centred it (reported on the home screen). flexAlignment.spec.js. */
 .ui-one.ui-focused .focused-starter {
+  align-items: center;
   height: 34px;
   padding: 0 14px 0 11px;
   border-radius: 999px;
