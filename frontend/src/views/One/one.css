@@ -579,6 +579,80 @@
   border-top-color: var(--color-pink);
 }
 
+/* ── Buttons: one language on every page ─────────────────────────────────────── */
+
+/* A page's lead action is an ink pill, like the composer's send button; a
+   secondary action is an outlined pill. Pink stays the brand accent (the
+   mark, the capsule, focus), not "press me". The pages came with two other
+   leads: Focused's pale-green tint, which read as a status bar or a filled
+   input, and the Plugins page's pink fill. One page now looks like the next. */
+.ui-one.ui-focused .focused-primary,
+.ui-one .apps-studio .ap-btn.primary {
+  /* The fill is the shape; a text-coloured border would be a light-grey
+     outline in dark themes (themeSurfaces.spec). Transparent keeps the box. */
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--text-primary);
+  color: var(--color-dark-navy);
+  font-weight: 600;
+}
+.ui-one.ui-focused .focused-primary {
+  min-height: 34px;
+  padding: 0 16px;
+}
+.ui-one.ui-focused .focused-primary:hover:not(:disabled),
+.ui-one .apps-studio .ap-btn.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--text-primary);
+  filter: none;
+  opacity: 0.86;
+}
+.ui-one.ui-focused .focused-btn,
+.ui-one .apps-studio .ap-btn {
+  border-radius: 999px;
+}
+/* With a plugin's detail open, the detail leads: the list's own buttons step
+   back to outlined, or two ink pills (the list's "Connect Google" and the
+   detail's "Try it in chat") competed side by side. */
+.ui-one .apps-studio .ap-layout.has-detail .ap-main .ap-btn.primary,
+.ui-one .apps-studio .ap-layout.has-detail .ap-main .ap-btn.primary:hover:not(:disabled) {
+  border-color: var(--terminal-border-color);
+  background: var(--color-dark-navy);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+/* A button keeps its own width. In a labelled row the value after the label
+   takes the rest of the line (focused.css), and a column row stretches its
+   children: both drew "Connect Google" and "Add all 7" as full-width bars. */
+.ui-one.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + .focused-primary,
+.ui-one.ui-focused .focused-edit-row:not(.column) > .focused-edit-label + .focused-btn {
+  flex: 0 0 auto;
+}
+.ui-one.ui-focused .focused-edit-row.column > .focused-primary,
+.ui-one.ui-focused .focused-edit-row.column > .focused-btn {
+  align-self: flex-start;
+}
+
+/* ── Pages ────────────────────────────────────────────────────────────────── */
+
+/* A page's quiet way out to Annie, under everything the page itself does. */
+.ui-one .focused-page-aside {
+  margin: 20px 0 0;
+}
+/* An empty list says what goes here and offers the one way to start it. */
+.ui-one .one-empty-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.ui-one .one-empty-cta p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 /* ── Ideas under the composer: chips, not cards ───────────────────────────── */
 
 .ui-one.ui-focused .focused-starters-grid {

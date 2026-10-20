@@ -3,7 +3,51 @@ import {
   humanize, toolOperations, isTrigger, pluginInventory, compositionOf, isPack, hasTriggers,
   declaredAccess, capabilityLabel, trustTier, integrityLabel, reviewNotices, pluginToolIds, agentAccess,
   matchesQuery, cardNeedsYou, installedSections, accountRows, connectionKind, builtByMe, priceLabel, signInReadiness,
+  pluginNextStep,
 } from './pluginDirectory.js';
+
+// Reported 2026-10: an installed plugin's detail led with "Open in the Forge"
+// while the sign-in it needed sat below the fold. The lead action is the next
+// thing the person must do; the Forge is only for plugins they built.
+describe('pluginNextStep', () => {
+  const google = (status, extra = {}) => ({ providerId: 'google', name: 'Google', known: true, status, ...extra });
+  const openai = (status) => ({ providerId: 'openai', name: 'OpenAI', known: true, status });
+  const installed = { name: 'gmail-plugin', installed: true };
+  const step = (plugin, opts) => pluginNextStep(plugin, { modelProviderIds: ['openai'], ...opts });
+
+  it('a plugin you do not have leads with Install', () => {
+    expect(step({ name: 'x', installed: false }, { connections: [google('connect')] })).toEqual({ kind: 'install' });
+    expect(step(null)).toEqual({ kind: 'install' });
+  });
+
+  it('an installed plugin that needs its sign-in leads with Connect, never with building', () => {
+    expect(step(installed, { connections: [google('connect')] })).toEqual({ kind: 'connect', connection: google('connect') });
+  });
+
+  it('a broken sign-in comes before a missing one, and both before an update', () => {
+    const notion = { providerId: 'notion', name: 'Notion', known: true, status: 'connect' };
+    expect(step(installed, { connections: [notion, google('reconnect')], notice: { added: ['network'] } }).kind).toBe('reconnect');
+    expect(step(installed, { connections: [notion], notice: { added: ['network'] } }).kind).toBe('connect');
+  });
+
+  it('a missing model key sends you to Settings, after any app sign-in', () => {
+    expect(step(installed, { connections: [openai('connect')] })).toEqual({ kind: 'ai-models', connection: openai('connect') });
+    expect(step(installed, { connections: [openai('connect'), google('connect')] }).kind).toBe('connect');
+  });
+
+  it('a sign-in AGNT does not know cannot be the lead action', () => {
+    expect(step(installed, { connections: [google('connect', { known: false })] }).kind).toBe('try');
+  });
+
+  it('a pending update leads once every sign-in is fine', () => {
+    expect(step(installed, { connections: [google('connected')], notice: { added: ['network'] } }).kind).toBe('review-update');
+  });
+
+  it('a ready plugin leads with trying it, in chat', () => {
+    expect(step(installed, { connections: [google('connected')] })).toEqual({ kind: 'try' });
+    expect(step(installed, {})).toEqual({ kind: 'try' });
+  });
+});
 
 // Shapes copied from backend/plugins/dev manifests and the /plugins/installed route.
 const gmail = {

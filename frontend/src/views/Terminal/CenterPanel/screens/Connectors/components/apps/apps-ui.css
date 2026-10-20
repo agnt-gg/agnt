@@ -153,6 +153,8 @@
 .apps-studio .ap-identity h2 { font-size: var(--font-size-xxl); font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
 .apps-studio .ap-identity .ap-sub { margin-top: 2px; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .apps-studio .ap-detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-sm); margin-top: var(--spacing-md); }
+/* The one line under the lead action that says why it is the next step. */
+.apps-studio .ap-detail-head .ap-next-line { margin: var(--spacing-sm) 0 0; }
 .apps-studio .ap-detail-body { padding: 0 var(--spacing-lg) var(--spacing-lg); }
 .apps-studio .ap-detail-section { padding: var(--spacing-md) 0; border-bottom: 1px solid var(--ap-border); }
 .apps-studio .ap-detail-section:last-child { border-bottom: 0; }

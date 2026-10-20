@@ -127,7 +127,8 @@
       <button type="button" role="menuitem" class="focused-menu-item danger" @click="deleteChat"><i class="fas fa-trash" aria-hidden="true"></i>Delete</button>
     </div>
 
-    <UpgradePrompt compact title="Get more from AGNT" description="Scheduled goals and paid services. Put your agents to work for you." />
+    <!-- No upgrade card: in AGNT One this is the Chats drawer, and an offer
+         was its only filled button. Upgrading lives in Settings > Billing. -->
     <div class="focused-menu-anchor focused-account-anchor">
       <!-- A nav row like every other: a Font Awesome icon and one label. -->
       <button
@@ -155,7 +156,6 @@
 </template>
 
 <script setup>
-import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, nextTick, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';

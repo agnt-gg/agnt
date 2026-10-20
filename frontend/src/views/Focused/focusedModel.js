@@ -42,9 +42,11 @@ export const FOCUSED_PAGES = Object.freeze({
     sub: 'Browse and install plugins. See their agents, tools, workflows, widgets and skills, and connect the accounts they need.',
     icon: 'fas fa-cube',
   },
+  // "Routines": the name the rail, the capsule and the chat use. The page id
+  // and routes stay 'scheduled' / schedules for saved links.
   scheduled: {
-    title: 'Scheduled',
-    sub: 'Things AGNT does for you on a schedule.',
+    title: 'Routines',
+    sub: 'Things Annie does for you on a schedule, without being asked.',
     icon: 'fas fa-redo',
   },
   memory: {

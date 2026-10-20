@@ -20,11 +20,22 @@
         <span v-if="tier" class="ap-badge" :class="tier.id" v-tooltip="tier.detail">{{ tier.label }}</span>
         <span v-if="pack" class="ap-badge pack">Capability pack</span>
         <span class="ap-grow"></span>
-        <button v-if="plugin.installed" type="button" class="ap-btn small" data-action="open-forge" @click="emit('open-app')">Open in the Forge</button>
-        <button v-else type="button" class="ap-btn primary" data-action="install" :disabled="installBusy" @click="emit('install')">
+        <!-- The Forge is where you build your OWN plugin; it is never the way
+             into one you installed. -->
+        <button v-if="plugin.installed && builtByMe" type="button" class="ap-btn small" data-action="edit-in-forge" @click="emit('open-app')">Edit in the Forge</button>
+        <!-- The lead action: the next thing to do (services/pluginDirectory pluginNextStep). -->
+        <button v-if="next.kind === 'install'" type="button" class="ap-btn primary" data-action="install" :disabled="installBusy" @click="emit('install')">
           {{ installing ? 'Checking…' : price ? `Get · ${price}` : `Install ${plugin.displayName}` }}
         </button>
+        <button v-else-if="next.kind === 'connect' || next.kind === 'reconnect'" type="button" class="ap-btn primary" data-action="next-connect" @click="emit(next.kind, next.connection)">
+          {{ next.kind === 'reconnect' ? 'Reconnect' : 'Connect' }} {{ next.connection.name }}
+        </button>
+        <button v-else-if="next.kind === 'ai-models'" type="button" class="ap-btn primary" data-action="next-ai-models" @click="emit('open-ai-models')">Add your {{ next.connection.name }} key</button>
+        <button v-else-if="next.kind === 'review-update'" type="button" class="ap-btn primary" data-action="next-review" :disabled="!!busy" @click="emit('review-update')">Review update</button>
+        <button v-else-if="next.kind === 'try'" type="button" class="ap-btn primary" data-action="try" @click="emit('try')">Try it in chat</button>
       </div>
+      <!-- Why the lead action is what it is, in one line, right under it. -->
+      <p v-if="nextLine" class="ap-hint ap-next-line" data-testid="next-line">{{ nextLine }}</p>
     </header>
 
     <div class="ap-detail-body">
@@ -76,13 +87,17 @@
 
       <section class="ap-detail-section" data-section="sign-in">
         <h3>Sign-in</h3>
-        <p v-if="!connections.length" class="ap-hint">No sign-in needed. It works as soon as it’s installed.</p>
+        <!-- A Market listing often does not declare its sign-in; only the
+             installed package does. Say only what is known. -->
+        <p v-if="!connections.length && plugin.installed" class="ap-hint">No sign-in needed. It works now.</p>
+        <p v-else-if="!connections.length" class="ap-hint">If it needs a sign-in, you’ll connect it right after installing.</p>
         <div v-for="connection in connections" :key="connection.providerId" class="ap-account" :class="{ attention: plugin.installed && connection.status !== 'connected' }" :data-provider="connection.providerId">
           <span class="ap-logo small"><SvgIcon :name="connection.icon" /></span>
           <div><strong>{{ connection.name }}</strong><small>{{ connectionLine(connection) }}</small></div>
           <span v-if="connection.status === 'connected'" class="ap-connected"><AppsIcon name="check" /><span class="ap-sr-only">Connected</span></span>
           <button v-else-if="isModelKey(connection)" type="button" class="ap-btn small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
-          <button v-else type="button" class="ap-btn small" :class="{ primary: plugin.installed }" data-action="connect" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">
+          <!-- Secondary: the header's lead action already asks for the next sign-in. -->
+          <button v-else type="button" class="ap-btn small" data-action="connect" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">
             {{ !connection.known ? 'Unavailable' : connection.status === 'reconnect' ? 'Reconnect' : 'Connect' }}
           </button>
         </div>
@@ -151,7 +166,7 @@ import { computed, ref } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';
 import {
-  pluginInventory, declaredAccess, capabilityLabel, CAPABILITIES, trustTier, integrityLabel, isPack, priceLabel,
+  pluginInventory, declaredAccess, capabilityLabel, CAPABILITIES, trustTier, integrityLabel, isPack, priceLabel, pluginNextStep,
 } from '@/services/pluginDirectory.js';
 
 const OPS_SHOWN = 12;
@@ -170,8 +185,10 @@ const props = defineProps({
   installBusy: Boolean,
   busy: { type: String, default: null },
   installedWidgetIds: { type: Set, default: () => new Set() },
+  /** This person built it (Built by me): the only plugins the Forge edits. */
+  builtByMe: Boolean,
 });
-const emit = defineEmits(['install', 'connect', 'reconnect', 'open-app', 'open-widget', 'retry-assets', 'review-update', 'keep-version', 'set-policy', 'uninstall', 'open-account', 'open-ai-models']);
+const emit = defineEmits(['install', 'connect', 'reconnect', 'open-app', 'open-widget', 'retry-assets', 'review-update', 'keep-version', 'set-policy', 'uninstall', 'open-account', 'open-ai-models', 'try']);
 const heading = ref(null);
 defineExpose({ focus: () => heading.value?.focus({ preventScroll: true }) });
 
@@ -185,6 +202,15 @@ const pack = computed(() => isPack(props.plugin));
 const price = computed(() => priceLabel(props.plugin));
 const pinned = computed(() => props.plugin.updatePolicy === 'pinned');
 const groupCard = computed(() => (props.card?.kind === 'account' && props.card.apps?.length > 1 ? props.card : null));
+const next = computed(() => pluginNextStep(props.plugin, { connections: props.connections, notice: props.notice, modelProviderIds: props.modelProviderIds }));
+const nextLine = computed(() => {
+  const step = next.value;
+  if (step.kind === 'connect') return `Connect ${step.connection.name} so ${props.plugin.displayName} can work. AGNT asks before it sends or changes anything.`;
+  if (step.kind === 'reconnect') return `The ${step.connection.name} sign-in stopped working, so ${props.plugin.displayName} can’t run.`;
+  if (step.kind === 'ai-models') return `${props.plugin.displayName} uses your ${step.connection.name} key, the same one your AI models use.`;
+  if (step.kind === 'try') return `Ready. Ask Annie to use ${props.plugin.displayName} for you.`;
+  return '';
+});
 
 const subline = computed(() => {
   const parts = [];

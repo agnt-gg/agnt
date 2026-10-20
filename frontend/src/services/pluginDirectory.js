@@ -273,6 +273,37 @@ export function builtByMe({ installed = [], builtNames = [], published = [] } = 
     .map((row) => ({ row, listing: listings.find((item) => item.asset_id === row.name) || null }));
 }
 
+/**
+ * The one action a plugin's detail leads with: the next thing this person has
+ * to do before the plugin does anything for them.
+ *
+ *   not installed            install
+ *   a sign-in stopped        reconnect   (the plugin is broken right now)
+ *   a sign-in is missing     connect     (it cannot run until then)
+ *   a model key is missing   ai-models   (model keys live in Settings)
+ *   an update asks access    review-update
+ *   otherwise                try         (ask Annie to use it)
+ *
+ * Building is not a next step: the Forge is where you make your OWN plugin, so
+ * "Edit in the Forge" is offered beside this, and only on a plugin you built.
+ * A sign-in the catalogue does not know (`known: false`) cannot be started
+ * from here, so it never becomes the lead action.
+ */
+export function pluginNextStep(plugin, { connections = [], notice = null, modelProviderIds = [] } = {}) {
+  if (!plugin?.installed) return { kind: 'install' };
+  const models = new Set(list(modelProviderIds).map(lower));
+  const usable = list(connections).filter((connection) => connection.known !== false);
+  const isModel = (connection) => models.has(lower(connection.providerId));
+  const broken = usable.find((connection) => connection.status === 'reconnect' && !isModel(connection));
+  if (broken) return { kind: 'reconnect', connection: broken };
+  const missing = usable.find((connection) => connection.status === 'connect' && !isModel(connection));
+  if (missing) return { kind: 'connect', connection: missing };
+  const modelKey = usable.find((connection) => connection.status !== 'connected' && isModel(connection));
+  if (modelKey) return { kind: 'ai-models', connection: modelKey };
+  if (notice) return { kind: 'review-update' };
+  return { kind: 'try' };
+}
+
 export function priceLabel(plugin) {
   const amount = Number(plugin?.price);
   return Number.isFinite(amount) && amount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount) : '';

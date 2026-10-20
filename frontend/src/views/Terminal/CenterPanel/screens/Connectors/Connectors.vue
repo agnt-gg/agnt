@@ -34,6 +34,7 @@
           @open-integrations="openInnerSection('integrations')"
           @open-section="openInnerSection"
           @open-ai-models="openAiModels"
+          @try-plugin="tryPluginInChat"
         />
       </div>
 
@@ -1615,6 +1616,16 @@ export default {
       emit('screen-change', 'SettingsScreen', { section: 'providers' });
     }
 
+    // A ready plugin's lead action: the chat, with the request started. The
+    // frame's ask (OneShell) opens a chat and seeds it once that chat is the
+    // active one; outside a frame there is no chat to seed, so just go there.
+    const frameNav = inject('focusedNav', null);
+    function tryPluginInChat(plugin) {
+      const text = `Use ${plugin.displayName} to `;
+      if (frameNav?.ask) frameNav.ask(text);
+      else emit('screen-change', 'ChatScreen');
+    }
+
     function showSection(next) {
       if (props.embedded) { activeSection.value = 'integrations'; return; }
       if (next === 'providers') {
@@ -2329,6 +2340,7 @@ export default {
       reconnectAppCard,
       disconnectAppCard,
       openAiModels,
+      tryPluginInChat,
       openInnerSection,
       emit,
       isLoadingProviders,

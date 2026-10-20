@@ -19,7 +19,7 @@ function mountLibrary(tab, items) {
   const getters = Object.fromEntries(LIBRARY_TABS.filter(t => t.getter).map(t => [t.getter, () => t.id === tab ? items : []]));
   const store = createStore({ getters });
   const dispatch = vi.spyOn(store, 'dispatch').mockResolvedValue();
-  const nav = { go: vi.fn(), openScreen: vi.fn() };
+  const nav = { go: vi.fn(), openScreen: vi.fn(), ask: vi.fn() };
   const wrapper = mount(FocusedLibrary, {
     props: { location: { tab } },
     global: {
@@ -40,7 +40,8 @@ describe('Library Market shelf placement', () => {
     expect(list.text()).toContain('My own work');
     expect(list.element.compareDocumentPosition(shelf.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(wrapper.findAllComponents(MarketplaceShelf)).toHaveLength(1);
-    expect(shelf.props()).toMatchObject({ assetType: LIBRARY_TABS.find(t => t.id === tab).noun, dismissible: false, fallbackToAll: true });
+    // A tab's picks are its own kind only (agents on the Widgets tab read as a mistake).
+    expect(shelf.props()).toMatchObject({ assetType: LIBRARY_TABS.find(t => t.id === tab).noun, dismissible: false, fallbackToAll: false });
     shelf.vm.$emit('browse', 'fixture-listing');
     expect(nav.openScreen).toHaveBeenCalledWith('MarketplaceScreen', { listing: 'fixture-listing' });
     shelf.vm.$emit('installed');
@@ -64,6 +65,23 @@ describe('Library Market shelf placement', () => {
     expect(empty.exists()).toBe(true);
     expect(empty.element.compareDocumentPosition(wrapper.findComponent(MarketplaceShelf).element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     wrapper.unmount();
+  });
+
+  it.each([['agents', 'Make me an agent that '], ['workflows', 'Make me a workflow that '], ['skills', 'Make me a skill that ']])(
+    'an empty %s tab says what goes there and starts it by asking Annie',
+    async (tab, prompt) => {
+      const { wrapper, nav } = mountLibrary(tab, []);
+      await flushPromises();
+      const empty = wrapper.find('[data-testid="library-empty"]');
+      expect(empty.find('p').text().length).toBeGreaterThan(20);
+      await empty.find('[data-action="ask-make"]').trigger('click');
+      expect(nav.ask).toHaveBeenCalledWith(prompt);
+      wrapper.unmount();
+    },
+  );
+
+  it('offers no upgrade among your own work', () => {
+    expect(templateOf('FocusedLibrary.vue')).not.toContain('<UpgradePrompt');
   });
 
   it('does not change the separate Files page layout', () => {

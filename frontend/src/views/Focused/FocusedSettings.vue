@@ -12,7 +12,8 @@
       </div>
     </header>
 
-    <UpgradePrompt title="Unlock more with AGNT Pro" description="Automate recurring goals and get the paid services included with your plan." />
+    <!-- No banner above the settings: the plan's own row (Billing) offers the
+         upgrade, next to what it changes. -->
     <section class="focused-edit-block">
       <div class="focused-edit-block-head"><h3>Appearance</h3></div>
       <div class="focused-edit-card">
@@ -124,7 +125,6 @@
 <script setup>
 defineProps({ section: { type: String, default: null } });
 import MembersSettings from '@/views/Terminal/CenterPanel/screens/Settings/components/MembersSettings.vue';
-import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';

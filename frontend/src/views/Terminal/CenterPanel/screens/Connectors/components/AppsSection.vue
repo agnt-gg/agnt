@@ -20,8 +20,10 @@
         <p>A plugin can add tools, triggers, agents, workflows, skills and widgets. Sign in to a service once, and every plugin that uses it is ready.</p>
       </div>
       <div ref="buildMenuRoot" class="ap-head-actions">
-        <button type="button" class="ap-btn primary" data-action="build" aria-haspopup="menu" :aria-expanded="String(buildMenuOpen)" @click="buildMenuOpen = !buildMenuOpen">
-          <AppsIcon name="plus" /> Build a plugin
+        <!-- Secondary on purpose: this page is for adding and connecting
+             plugins. Building your own (the Forge) is for builders. -->
+        <button type="button" class="ap-btn" data-action="build" aria-haspopup="menu" :aria-expanded="String(buildMenuOpen)" @click="buildMenuOpen = !buildMenuOpen">
+          <AppsIcon name="plus" /> Build your own
         </button>
         <div v-if="buildMenuOpen" class="ap-menu" role="menu" @keydown.esc="buildMenuOpen = false">
           <button type="button" role="menuitem" data-forge="builder" @click="openForge('builder')">
@@ -134,7 +136,9 @@
               <div class="ap-row-side">
                 <span class="ap-price">{{ priceLabel(row) || 'Free' }}</span>
                 <span v-if="row.installed" class="ap-installed"><AppsIcon name="check" />Installed</span>
-                <button v-else type="button" class="ap-btn small" :class="{ primary: !priceLabel(row) }" data-action="install" :disabled="!!installing" @click="install(row)">
+                <!-- Quiet in the list: every row offering a pink Install left
+                     the page with no lead action. The detail's Install leads. -->
+                <button v-else type="button" class="ap-btn small" data-action="install" :disabled="!!installing" @click="install(row)">
                   {{ installing === row.name ? 'Checking…' : priceLabel(row) ? `Get · ${priceLabel(row)}` : 'Install' }}
                 </button>
               </div>
@@ -151,7 +155,7 @@
               <button v-for="option in ACCOUNT_FILTERS" :key="option.id" type="button" class="ap-chip" :data-filter="option.id" :aria-pressed="String(filters.accounts === option.id)" @click="filters.accounts = option.id">{{ option.label }}</button>
             </div>
             <span class="ap-grow"></span>
-            <button type="button" class="ap-btn small" data-action="check-health" :disabled="checkingHealth" @click="checkHealth"><AppsIcon name="refresh" />{{ checkingHealth ? 'Checking…' : 'Check status' }}</button>
+            <button v-if="accounts.length" type="button" class="ap-btn small" data-action="check-health" :disabled="checkingHealth" @click="checkHealth"><AppsIcon name="refresh" />{{ checkingHealth ? 'Checking…' : 'Check status' }}</button>
           </div>
           <template v-for="section in accountsView" :key="section.id">
             <h3 class="ap-group-label" :data-section="section.id">{{ section.label }} <span>{{ section.rows.length }}</span></h3>
@@ -183,7 +187,7 @@
           </template>
           <p v-if="!accountsView.length" class="ap-empty">{{ queries.accounts || filters.accounts !== 'all' ? 'No sign-in or key matches.' : 'Nothing connected yet. Connect a service below, or install a plugin and connect what it needs.' }}</p>
 
-          <div class="ap-section-title"><h2>Connect another service</h2><span>{{ discover.length }} services AGNT can sign in to</span></div>
+          <div class="ap-section-title"><h2>{{ accountRows(yourCards).length ? 'Connect another service' : 'Connect a service' }}</h2><span>{{ discover.length }} services AGNT can sign in to</span></div>
           <div v-if="discover.length" class="ap-list">
             <div v-for="service in shownDiscover" :key="service.id" class="ap-row" :data-service="service.providerId">
               <span class="ap-logo"><SvgIcon :name="service.icon || 'connect'" /></span>
@@ -253,7 +257,9 @@
           :connections="connections" :card="selectedCard" :notice="selectedNotice" :agents="selectedAgents"
           :model-provider-ids="modelProviderIds" :installing="installing === selected.name" :install-busy="!!installing"
           :busy="busy && busy.name === selected.name ? busy.action : null" :installed-widget-ids="installedWidgetIds"
+          :built-by-me="mine.some((entry) => entry.row.name === selected.name)"
           @install="install(selected)" @connect="(c) => emit('connect', c)" @reconnect="(c) => emit('reconnect', c)"
+          @try="emit('try-plugin', { name: selected.name, displayName: selected.displayName })"
           @open-app="emit('open-app', selected.name)" @open-widget="(id) => emit('open-widget', id)" @retry-assets="loadAssets(selected)"
           @review-update="reviewUpdate(selected)" @keep-version="keepVersion(selected)" @set-policy="(policy) => setPolicy(selected, policy)"
           @uninstall="uninstall(selected)" @open-account="openAccount" @open-ai-models="emit('open-ai-models')"
@@ -298,7 +304,7 @@ import { AI_PROVIDERS_WITH_API, providerLabel } from '@/store/app/aiProvider.js'
 const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean });
 const emit = defineEmits([
   'connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'open-vault', 'open-plugins',
-  'select-app', 'close-app', 'open-market', 'open-integrations', 'open-ai-models', 'open-section',
+  'select-app', 'close-app', 'open-market', 'open-integrations', 'open-ai-models', 'open-section', 'try-plugin',
 ]);
 
 const INSTALLED_FILTERS = [
@@ -589,6 +595,15 @@ function installSummary(app) {
   }
   return lines.join('<br><br>');
 }
+// What the person does next, said with the news. The installed package (not
+// the listing) declares its sign-ins, so this reads the row after the reload.
+function installedNotice(name, displayName) {
+  const row = rowsByName.value.get(name);
+  const missing = pluginConnections(row, store.state.appAuth?.allProviders, connectedApps.value, store.state.appAuth?.connectionHealth?.providers)
+    .filter((connection) => connection.status !== 'connected' && connection.known && !modelProviderIds.includes(connection.providerId));
+  if (!missing.length) return `${displayName} installed. It’s ready to use.`;
+  return `${displayName} installed. Connect ${missing.map((connection) => connection.name).join(' and ')} to start using it.`;
+}
 async function install(app) {
   if (!app || installing.value || app.installed) return;
   installing.value = app.name;
@@ -620,8 +635,8 @@ async function install(app) {
     const confirmed = await modal.value.showModal({ title: report ? `Install ${app.displayName}?` : `Switch on ${app.displayName}?`, message, confirmText: report ? 'Install plugin' : 'Switch on', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-primary' });
     if (!confirmed || !alive) return;
     await store.dispatch('marketplace/installPlugin', { pluginName: app.name });
-    notice.value = `${app.displayName} installed.`;
     await reload();
+    notice.value = installedNotice(app.name, app.displayName);
   } catch (failure) {
     // "Ask the owner" is an answer, not a failure to retry: no Retry link.
     if (failure.code === 'admin_install_required') notice.value = failure.message;

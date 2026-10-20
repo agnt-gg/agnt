@@ -20,28 +20,12 @@
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.status === 'ready' }">{{ STATUS_WORD[card.status] }}</span>
         </div>
-        <button type="button" class="focused-btn" @click="nav.ask(editAsk('connection', card.name))">
-          <i class="fas fa-comment-dots" aria-hidden="true"></i>Ask about this connection
-        </button>
       </header>
 
       <p v-if="card.description" class="focused-instructions">{{ card.description }}</p>
 
-      <!-- What's inside: every app this card turns on, and what each ships. -->
-      <section v-if="card.apps.length" class="focused-edit-block">
-        <div class="focused-edit-block-head"><h3>What’s inside</h3></div>
-        <div class="focused-edit-card">
-          <ul class="focused-app-inside">
-            <li v-for="app in card.apps" :key="app.name">
-              <strong>{{ app.displayName }}</strong>
-              <small>{{ contents(app) }}</small>
-              <button v-for="w in app.widgets" :key="w.id" type="button" class="focused-btn" @click="nav.go({ page: 'library', tab: 'widgets', item: w.id })">
-                <i class="fas fa-shapes" aria-hidden="true"></i>Open {{ w.name }}
-              </button>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <!-- Order: the sign-in (the next step) first, then what it turns on,
+           then what else it could turn on. -->
 
       <!-- A plugin that bills through a model key: the key is shared with the models. -->
       <section v-if="card.usesModelKey" class="focused-edit-block">
@@ -113,13 +97,30 @@
         </div>
       </section>
 
+      <!-- What's inside: every app this card turns on, and what each ships. -->
+      <section v-if="card.apps.length" class="focused-edit-block">
+        <div class="focused-edit-block-head"><h3>What’s inside</h3></div>
+        <div class="focused-edit-card">
+          <ul class="focused-app-inside">
+            <li v-for="app in card.apps" :key="app.name">
+              <strong>{{ app.displayName }}</strong>
+              <small>{{ contents(app) }}</small>
+              <button v-for="w in app.widgets" :key="w.id" type="button" class="focused-btn" @click="nav.go({ page: 'library', tab: 'widgets', item: w.id })">
+                <i class="fas fa-shapes" aria-hidden="true"></i>Open {{ w.name }}
+              </button>
+            </li>
+          </ul>
+        </div>
+      </section>
+
       <!-- What else this sign-in can turn on. Offered, never installed silently:
            a marketplace tag is a hint, not a declaration. -->
       <section v-if="card.suggested.length" class="focused-edit-block">
         <div class="focused-edit-card">
           <div class="focused-edit-row column">
             <span class="focused-edit-hint">Also works with your {{ card.name }} account: {{ card.suggested.map((s) => s.displayName).join(', ') }}.</span>
-            <button type="button" class="focused-primary" :disabled="busy" @click="addSuggested">
+            <!-- Secondary until connected: the sign-in is the next step, not more plugins. -->
+            <button type="button" :class="card.status === 'ready' ? 'focused-primary' : 'focused-btn'" :disabled="busy" @click="addSuggested">
               {{ busy ? 'Adding…' : `Add ${card.suggested.length === 1 ? 'it' : `all ${card.suggested.length}`}` }}
             </button>
           </div>
@@ -127,6 +128,12 @@
       </section>
 
       <p v-if="error" class="focused-save-text error">{{ error }}</p>
+
+      <p class="focused-page-aside">
+        <button type="button" class="focused-link" data-action="ask-about" @click="nav.ask(editAsk('connection', card.name))">
+          <i class="fas fa-comment-dots" aria-hidden="true"></i> Ask Annie about {{ card.name }}
+        </button>
+      </p>
     </template>
   </section>
 </template>

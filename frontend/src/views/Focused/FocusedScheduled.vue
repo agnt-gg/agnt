@@ -1,10 +1,15 @@
 <template>
-  <section v-if="!paid" class="focused-page" aria-label="Scheduled goals"><h1>Scheduled goals</h1><UpgradePrompt title="Let your goals run on a schedule" description="Scheduled goals are included with paid plans. Upgrade to run recurring work automatically." /></section>
+  <!-- Free plan: the same header as every page, then what a routine is and
+       the one way to get it (the backend refuses schedules on this plan). -->
+  <section v-if="!paid" class="focused-page" :aria-label="page.title">
+    <header class="focused-page-head"><div><h1>{{ page.title }}</h1><p>{{ page.sub }}</p></div></header>
+    <UpgradePrompt title="Let Annie work on a schedule" description="Routines are included with paid plans. Ask once, like “every weekday at 7, brief me on my day”, and it runs on its own." />
+  </section>
   <FocusedRoutine v-else-if="item || isNew" :key="item || 'new'" :schedule-id="item" />
-  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New routine" v-model:query="query" search-placeholder="Search scheduled tasks" @action="nav.go({ page: 'scheduled', isNew: true })">
+  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New routine" v-model:query="query" search-placeholder="Search routines" @action="nav.go({ page: 'scheduled', isNew: true })">
     <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
     <p v-else-if="!rows.length" class="focused-empty">
-      {{ query ? `Nothing scheduled matches “${query}”.` : 'When you ask AGNT to do something regularly, it shows up here.' }}
+      {{ query ? `No routine matches “${query}”.` : 'When you ask Annie to do something regularly, it shows up here.' }}
     </p>
     <ul v-else class="focused-list">
       <li v-for="r in rows" :key="r.id">

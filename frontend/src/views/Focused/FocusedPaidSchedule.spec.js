@@ -12,7 +12,8 @@ function setup(plan, props={}) {
 describe('Paid scheduling and upgrade entry',()=>{
  it.each([{}, {item:'existing'}, {isNew:true}])('free accounts see Upgrade, never schedule controls, even on deep links %j',async props=>{
   const{wrapper,dispatch}=setup('free',props);await flushPromises();
-  expect(wrapper.text()).toContain('Scheduled goals are included with paid plans');
+  expect(wrapper.text()).toContain('Routines are included with paid plans');
+  expect(wrapper.find('h1').text()).toBe('Routines');
   expect(wrapper.findComponent({name:'FocusedRoutine'}).exists()).toBe(false);
   expect(dispatch.mock.calls.some(([name])=>name.startsWith('schedules/'))).toBe(false);
   await wrapper.find('.upgrade-offer-button').trigger('click');

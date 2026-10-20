@@ -31,6 +31,7 @@
       @open-integrations="showIntegrations = true"
       @add-account="showIntegrations = true"
       @open-section="(section) => nav.studio('ConnectorsScreen', { section })"
+      @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
     />
   </section>
 </template>

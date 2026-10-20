@@ -74,7 +74,7 @@ async function nameAndSave(w, name) {
 describe('Library New', () => {
   it.each(['agents', 'workflows', 'tools', 'skills', 'widgets'])('New on %s opens the blank editor, not the chat', async (tab) => {
     const w = mount(FocusedLibrary, { props: { location: { page: 'library', tab, item: null } }, global: { ...global, stubs: { ...global.stubs, FocusedAgentEditor: true, FocusedAssetEditor: true } } });
-    await w.find('.focused-page-head .focused-primary').trigger('click');
+    await w.find('.focused-page-head [data-action="page-action"]').trigger('click');
     expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab, isNew: true });
     expect(nav.ask).not.toHaveBeenCalled();
     w.unmount();
@@ -249,7 +249,7 @@ describe('New file', () => {
     nav.prompt.mockResolvedValueOnce('plan.md');
     const w = mountFiles();
     await flushPromises();
-    await w.find('.focused-page-head .focused-primary').trigger('click');
+    await w.find('.focused-page-head [data-action="page-action"]').trigger('click');
     await flushPromises();
     expect(nav.prompt).toHaveBeenCalledWith(expect.objectContaining({ title: 'New file', message: 'In reports' }));
     expect(files.saveFile).toHaveBeenCalledWith('reports/plan.md', '');
@@ -262,7 +262,7 @@ describe('New file', () => {
     nav.prompt.mockResolvedValueOnce('a.md');
     const w = mountFiles();
     await flushPromises();
-    await w.find('.focused-page-head .focused-primary').trigger('click');
+    await w.find('.focused-page-head [data-action="page-action"]').trigger('click');
     await flushPromises();
     expect(files.saveFile).not.toHaveBeenCalled();
     expect(nav.toast).toHaveBeenCalledWith('“a.md” already exists here.');
@@ -273,7 +273,7 @@ describe('New file', () => {
     nav.prompt.mockResolvedValueOnce(null);
     const w = mountFiles();
     await flushPromises();
-    await w.find('.focused-page-head .focused-primary').trigger('click');
+    await w.find('.focused-page-head [data-action="page-action"]').trigger('click');
     await flushPromises();
     expect(files.saveFile).not.toHaveBeenCalled();
     expect(nav.go).not.toHaveBeenCalled();

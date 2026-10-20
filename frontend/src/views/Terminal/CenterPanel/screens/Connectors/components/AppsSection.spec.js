@@ -189,8 +189,25 @@ describe('Plugin detail and install', () => {
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('full access'), confirmText: 'Install plugin' }));
     expect(confirm.mock.calls[0][0].message).toContain('It adds 1 tool, 1 agent, 1 workflow, 1 skill, 1 widget.');
     expect(dispatch.mock.calls.filter(([a]) => a === 'marketplace/installPlugin')).toEqual([['marketplace/installPlugin', { pluginName: 'research' }]]);
-    expect(wrapper.text()).toContain('Research installed.');
-    expect(detail().find('[data-action="open-forge"]').exists()).toBe(true);
+    // What to do next, said with the news, and the detail leads with it.
+    expect(wrapper.text()).toContain('Research installed. Connect Google to start using it.');
+    expect(detail().find('.ap-detail-actions .ap-btn.primary').text()).toBe('Connect Google');
+    expect(detail().find('[data-action="edit-in-forge"]').exists()).toBe(false);
+  });
+  it('a listing that does not say what it signs in with makes no promise either way', async () => {
+    const undeclared = { name: 'mystery', displayName: 'Mystery', category: 'utility', version: '1.0.0', tools: [tool('mystery-api')] };
+    setup({ available: [undeclared] }); await openListing('mystery');
+    const signIn = detail().find('[data-section="sign-in"]').text();
+    expect(signIn).not.toContain('No sign-in needed');
+    expect(signIn).toContain('you’ll connect it right after installing');
+  });
+  it('Build your own is offered, but never as the page’s lead action', async () => {
+    setup(); await flushPromises();
+    const build = wrapper.find('[data-action="build"]');
+    expect(build.text()).toContain('Build your own');
+    expect(build.classes()).not.toContain('primary');
+    await tab('browse').trigger('click');
+    expect(wrapper.findAll('[data-listing] [data-action="install"].primary')).toHaveLength(0);
   });
   it('admits only one install while an inspection is pending', async () => {
     let resolveInspection;

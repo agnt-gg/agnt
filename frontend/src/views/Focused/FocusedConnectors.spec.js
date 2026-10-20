@@ -167,14 +167,49 @@ describe('Focused shared Plugins page', () => {
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'settings' });
     expect(nav.studio).not.toHaveBeenCalled();
   });
-  it('installed widgets open in Focused Library; the Forge explicitly uses Studio', async () => {
+  it('installed widgets open in the Library', async () => {
     getters['apps/installed'] = [pack]; getters['widgetDefinitions/allDefinitions'] = [{ id: 'w1' }];
     apiFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true, assets: [{ asset_type: 'widget', asset_slug: 'board', local_id: 'w1' }] }) });
     mountPage('app:research'); await flushPromises();
     await detail().find('[data-group="widgets"] [data-action="open-widget"]').trigger('click');
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'library', tab: 'widgets', item: 'w1' });
-    await detail().find('[data-action="open-forge"]').trigger('click');
-    expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen', { select: { kind: 'plugin', id: 'research' } });
+  });
+  // Reported: an installed plugin's detail led with "Open in the Forge". The
+  // Forge is where you build your OWN plugin, so it is offered only on those.
+  it('the Forge is offered only on a plugin you built', async () => {
+    getters['apps/installed'] = [pack];
+    mountPage('app:research'); await flushPromises();
+    expect(detail().find('[data-action="edit-in-forge"]').exists()).toBe(false);
+    expect(detail().text()).not.toMatch(/Forge/);
+    wrapper.unmount();
+    state.pluginBuilder = { builtPluginNames: ['research'] };
+    try {
+      mountPage('app:research'); await flushPromises();
+      await detail().find('[data-action="edit-in-forge"]').trigger('click');
+      expect(nav.studio).toHaveBeenLastCalledWith('PluginsScreen', { select: { kind: 'plugin', id: 'research' } });
+    } finally {
+      delete state.pluginBuilder;
+    }
+  });
+  it('right after installing, the detail leads with connecting what it needs', async () => {
+    mountPage(); await openListing('gmail-plugin');
+    expect(detail().find('[data-section="sign-in"]').text()).not.toContain('No sign-in needed');
+    await detail().find('[data-action="install"]').trigger('click'); await flushPromises();
+    const lead = detail().find('.ap-detail-actions .ap-btn.primary');
+    expect(lead.attributes('data-action')).toBe('next-connect');
+    expect(lead.text()).toBe('Connect Google');
+    expect(wrapper.text()).toContain('Gmail installed. Connect Google to start using it.');
+    await lead.trigger('click'); await flushPromises();
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(true);
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
+  });
+  it('a ready plugin leads with trying it, which asks Annie', async () => {
+    getters['apps/installed'] = [gmail]; getters['appAuth/connectedApps'] = ['google'];
+    mountPage('app:gmail-plugin'); await flushPromises();
+    const lead = detail().find('.ap-detail-actions .ap-btn.primary');
+    expect(lead.attributes('data-action')).toBe('try');
+    await lead.trigger('click');
+    expect(nav.ask).toHaveBeenLastCalledWith('Use Gmail to ');
   });
   it('Build opens the Forge in Studio on the chosen view', async () => {
     mountPage(); await flushPromises();
