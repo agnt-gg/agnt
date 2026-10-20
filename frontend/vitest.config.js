@@ -1,3 +1,5 @@
+// FIRST: test mode regardless of the launching shell. See the file for why.
+import '../tests/setup/forceTestMode.mjs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
