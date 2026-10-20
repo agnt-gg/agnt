@@ -39,7 +39,7 @@ describe('AGNT One drift guard', () => {
     expect(BANNED.some(([p]) => p.test("await fetch('/api/x')"))).toBe(true);
   });
 
-  it('every CSS rule is scoped under .ui-one, and keyframes are namespaced', () => {
+  it('every CSS rule is scoped under .ui-one (or body.custom-bg .ui-one), and keyframes are namespaced', () => {
     let css = SOURCES.find((s) => s.file === 'one.css').text.replace(/\/\*[\s\S]*?\*\//g, '');
     const keyframes = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
     expect(keyframes.length).toBeGreaterThan(0);
@@ -48,7 +48,10 @@ describe('AGNT One drift guard', () => {
     css = css.replace(/@(?:media|container)[^{]*\{/g, '');
     const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim())).filter(Boolean);
     expect(selectors.length).toBeGreaterThan(40);
-    expect(selectors.filter((s) => !s.startsWith('.ui-one'))).toEqual([]);
+    // The custom background is announced on <body> (theme.js), so its rules
+    // start there; they still only reach inside One.
+    const scoped = (s) => s.startsWith('.ui-one') || /^body\.custom-bg \.ui-one(?![\w-])/.test(s);
+    expect(selectors.filter((s) => !scoped(s))).toEqual([]);
   });
 
   it('one.css draws over focused.css: loaded after it, by the frame itself', () => {
