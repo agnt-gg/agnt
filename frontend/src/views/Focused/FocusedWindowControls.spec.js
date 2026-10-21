@@ -88,11 +88,30 @@ describe('AGNT One top bar: window drag + window buttons', () => {
     expect(CSS).toMatch(/\.has-window-bar \.one-rail-btn \{\s*-webkit-app-region: no-drag;/);
   });
 
-  // Reported 2026-10-21: the 8px gutters beside the sheet did not drag, so the
-  // top edge had dead spots. The band runs the whole top-bar row on desktop.
-  it('the top edge drags end to end: the band covers the gutters beside the sheet', () => {
-    expect(CSS).toMatch(/\.ui-one\.has-window-bar::before \{[^}]*left: 0;[^}]*right: 0;[^}]*-webkit-app-region: drag;/);
-    expect(CSS).toMatch(/\.ui-one\.has-window-bar:not\(\.is-compact\)::before \{\s*height: 57px;/);
+  // Reported 2026-10-21: the 8px gutters beside the floating sheet did not
+  // drag. Gutters exist only with a custom background; flush, the strip stays
+  // 8px, or it would cover the first 9px of every page under the 48px bar.
+  it('the top edge drags end to end: the band covers the gutters where there are any', () => {
+    expect(CSS).toMatch(/\.ui-one\.has-window-bar::before \{[^}]*left: 0;[^}]*right: 0;[^}]*height: 8px;[^}]*-webkit-app-region: drag;/);
+    expect(CSS).toMatch(/body\.custom-bg \.ui-one\.has-window-bar:not\(\.is-compact\)::before \{\s*height: 57px;/);
+    expect(CSS).not.toMatch(/^\.ui-one\.has-window-bar:not\(\.is-compact\)::before/m);
+  });
+
+  // Reported 2026-10-21: "a weird border and margin": the panel was a sheet
+  // set 8px down with a top-left rounded corner, read as pushed off the page.
+  it('the panel is flush: no gap above it, no rounded corner, one divider on its left', () => {
+    const rule = CSS.match(/\n\.ui-one \.one-main \{([^}]*)\}/)[1];
+    expect(rule).not.toMatch(/margin|radius|border-top/);
+    expect(rule).toMatch(/border-left: 1px solid var\(--terminal-border-color\);/);
+    // The open drawer's own right edge is the divider: never two lines side by side.
+    expect(CSS).toMatch(/\.ui-one \.one-drawer \+ \.one-main \{\s*border-left: 0;/);
+    const SHELL_TEMPLATE = SHELL.slice(SHELL.indexOf('<FocusedSidebar'), SHELL.indexOf('<main class="focused-main one-main"'));
+    // Adjacent on desktop: between the drawer and the panel there is only the
+    // phone's scrim, rendered only when isMobile.
+    const between = SHELL_TEMPLATE.replace(/<!--[\s\S]*?-->/g, '').slice(SHELL_TEMPLATE.replace(/<!--[\s\S]*?-->/g, '').indexOf('/>') + 2);
+    const tags = between.match(/<[a-zA-Z][^>]*>/g) || [];
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toMatch(/^<button v-if="isMobile && drawerOpen"[^>]*class="focused-scrim"/);
   });
 
   // Reported 2026-10-21: "min max close from all screens". The Workflow Forge

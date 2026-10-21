@@ -9,12 +9,13 @@
  * differently it says so with `.ui-one.ui-focused`, one class more than the
  * rule it replaces, so the result never depends on stylesheet order.
  *
- * Surfaces: rail and main panel share the canvas (--color-background); the
- * panel is a sheet set 8px down beside the rail, drawn by its hairline and
- * one rounded corner. A white panel was tried: the Chat screen paints the
- * canvas colour under it, which left a visible seam below the top bar
- * (measured on a fresh account). In light themes elevation is carried by the
- * border, not lightness (_light.css).
+ * Surfaces: rail and main panel share the canvas (--color-background) and sit
+ * flush, edge to edge, divided by one vertical hairline. The panel used to be
+ * a "sheet" set 8px down with a top-left rounded corner; it read as a card
+ * pushed off the right and bottom of the window (reported 2026-10-21), so
+ * only the custom-background mode below floats it, with an even gutter on
+ * every side as Studio does. A white panel was tried: the Chat screen paints
+ * the canvas colour under it, which left a visible seam below the top bar.
  *
  * With a custom background, the one exception to `.ui-one`-first selectors:
  * `body.custom-bg .ui-one …`, the class theme.js sets for it (see Custom
@@ -27,21 +28,25 @@
   background: var(--color-background);
 }
 
+/* Flush: no gap above, no rounded corner. The hairline on its left divides
+   it from the rail. With the Chats drawer open, the drawer's own right edge
+   (.focused-sidebar, focused.css) is that divider, so the panel drops its own:
+   both drawn made a 2px line (measured 2026-10-21). The custom-background
+   sheet keeps its full border; its rule is more specific than this one. */
 .ui-one .one-main {
-  margin-top: 8px;
   background: var(--color-background);
-  border-top: 1px solid var(--terminal-border-color);
   border-left: 1px solid var(--terminal-border-color);
-  border-top-left-radius: 16px;
   overflow: hidden;
 }
-/* The band above the sheet drags the frameless window, full width. On the
-   desktop layout it runs down the whole top-bar row (8px gap + 1px border +
-   48px bar = 57px), so the 8px gutters beside the sheet drag as well: the
-   top edge is one drag strip end to end, as Studio's toolbar was. Drag
-   regions add up regardless of stacking, so only what is marked no-drag
-   (every button in the rail, the top bar and the drawer head) stays
-   pressable inside it. Compact puts the bar at the very top: 8px there. */
+.ui-one .one-drawer + .one-main {
+  border-left: 0;
+}
+/* A full-width strip along the top edge that drags the frameless window. The
+   rail, the drawer head and the top bar drag too, so flush the whole top edge
+   drags; this keeps the first 8px dragging wherever something else lands
+   there. Drag regions add up regardless of stacking, so only what is marked
+   no-drag (every button in the rail, the top bar and the drawer head) stays
+   pressable inside it. */
 .ui-one.has-window-bar::before {
   content: '';
   position: absolute;
@@ -51,13 +56,8 @@
   height: 8px;
   -webkit-app-region: drag;
 }
-.ui-one.has-window-bar:not(.is-compact)::before {
-  height: 57px;
-}
 .ui-one.is-compact .one-main {
-  margin-top: 0;
   border: 0;
-  border-radius: 0;
 }
 
 /* ── Custom background ─────────────────────────────────────────────────────── */
@@ -114,6 +114,13 @@ body.custom-bg .ui-one:not(.is-compact) .one-main {
   margin: 8px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 16px;
+}
+/* Floating, the sheet leaves 8px gutters beside its top bar. The drag strip
+   covers that whole row (8px gutter + 1px border + 48px bar = 57px), so the
+   top edge still drags end to end. Only here: flush, a 57px strip would sit
+   over the first 9px of every page below the 48px bar. */
+body.custom-bg .ui-one.has-window-bar:not(.is-compact)::before {
+  height: 57px;
 }
 /* Overlays stay solid (Studio keeps popovers opaque for the same reason,
    Workspace.vue): see-through over moving content is unreadable. On a phone
