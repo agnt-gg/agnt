@@ -10,12 +10,15 @@
          them. Comments stay INSIDE the root: one before it makes a fragment. -->
     <OneRail v-if="!isMobile" :items="railItems" :settings-active="page === 'settings'" @select="selectRail" />
 
-    <!-- Chats: the full chat navigator (Main chat, search, recents, right-click
-         actions, account) as a drawer behind the rail's Chats icon. -->
+    <!-- Chats: your chats only (Main chat, search, recents, right-click
+         actions, account), as a drawer behind the rail's Chats icon. The rail
+         is the one navigation; page links appear in the drawer only on a
+         phone, where there is no rail. -->
     <FocusedSidebar
       v-if="drawerOpen"
       class="one-drawer"
       :open="true"
+      :navigation="isMobile"
       :active-page="page"
       :on-chat="!page && screenName === 'ChatScreen'"
       @close="setDrawer(false)"
@@ -85,7 +88,6 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import { useElectron } from '@/composables/useElectron';
 import { useMainChat } from '@/composables/useMainChat.js';
-import { readFacts } from '@/composables/useJourney.js';
 import { isUnstartedConversation } from '@/views/Terminal/CenterPanel/screens/Chat/chatHome.js';
 import FocusedSidebar from '@/views/Focused/FocusedSidebar.vue';
 import FocusedWindowControls from '@/views/Focused/FocusedWindowControls.vue';
@@ -163,7 +165,6 @@ const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat
 
 const railItems = computed(() =>
   buildRailItems({
-    facts: readFacts(store),
     activePage: page.value,
     drawerOpen: drawerOpen.value,
     onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),

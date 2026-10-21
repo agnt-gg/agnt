@@ -111,20 +111,21 @@ describe('first-run flags', () => {
 describe('the rail', () => {
   const ids = (items) => items.map((i) => i.id);
 
-  it('starts with only New chat and Chats', () => {
-    expect(ids(railItems())).toEqual(['new', 'chats']);
+  // Reported 2026-10-21: the rail grew with the account, so the Chats drawer
+  // carried the same links again, two navigations side by side. The rail is
+  // the one navigation: every place, always, for every account.
+  it('lists every place, always, whatever the account holds', () => {
+    const every = ['new', 'chats', 'apps', 'routines', 'library', 'market', 'memory'];
+    expect(ids(railItems())).toEqual(every);
+    expect(ids(railItems({ facts: { apps: 3, workflows: 2 } }))).toEqual(every);
+    expect(railItems().every((i) => i.icon && i.label)).toBe(true);
   });
 
-  it('gains an icon once there is something behind it', () => {
-    expect(ids(railItems({ facts: { apps: 1 } }))).toEqual(['new', 'chats', 'apps']);
-    expect(ids(railItems({ facts: { schedules: 1 } }))).toEqual(['new', 'chats', 'routines']);
-    expect(ids(railItems({ facts: { skills: 2, apps: 1, workflows: 1 } }))).toEqual(['new', 'chats', 'apps', 'routines', 'library']);
-  });
-
-  it('shows an icon while its page is open, even before there is anything in it', () => {
-    const items = railItems({ activePage: 'connectors' });
-    expect(ids(items)).toEqual(['new', 'chats', 'apps']);
-    expect(items.find((i) => i.id === 'apps').active).toBe(true);
+  it('marks the page that is open, including Market and Memory', () => {
+    const active = (activePage) => railItems({ activePage }).filter((i) => i.active).map((i) => i.id);
+    expect(active('connectors')).toEqual(['apps']);
+    expect(active('market')).toEqual(['market']);
+    expect(active('memory')).toEqual(['memory']);
   });
 
   it('marks one icon active: the drawer wins, then the page, then a blank chat', () => {

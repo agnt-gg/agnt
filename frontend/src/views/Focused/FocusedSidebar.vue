@@ -7,7 +7,8 @@
       <button type="button" class="focused-icon-btn" aria-label="Search chats" v-tooltip="'Search chats'" @click="toggleSearch">
         <i class="fas fa-search" aria-hidden="true"></i>
       </button>
-      <button type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
+      <!-- Beside a rail, New chat is the rail's first icon; one is enough. -->
+      <button v-if="navigation" type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i>
       </button>
       <button type="button" class="focused-icon-btn" aria-label="Close sidebar" v-tooltip="'Close sidebar'" @click="$emit('close')">
@@ -39,6 +40,9 @@
         </button>
       </div>
 
+      <!-- Page links only where nothing else navigates (a phone). Beside AGNT
+           One's rail they were a second navigation repeating the first. -->
+      <template v-if="navigation">
       <button
         v-for="item in pageItems"
         :key="item.id"
@@ -77,6 +81,7 @@
           </button>
         </div>
       </div>
+      </template>
     </nav>
 
     <div v-if="searchOpen" class="focused-search">
@@ -165,6 +170,8 @@ import { renameConversation, setConversationRead, setConversationArchived, delet
 
 defineProps({
   open: { type: Boolean, default: true },
+  /** Show the page links (Routines, Library, Apps, Market, More). Off where a rail already navigates. */
+  navigation: { type: Boolean, default: true },
   activePage: { type: String, default: null },
   onChat: { type: Boolean, default: false },
 });

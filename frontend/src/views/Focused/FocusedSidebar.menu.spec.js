@@ -36,9 +36,9 @@ vi.mock('@/composables/useMainChat.js', () => ({
 import FocusedSidebar from './FocusedSidebar.vue';
 
 const nav = { prompt: vi.fn(), confirm: vi.fn(), toast: vi.fn() };
-function mountSidebar() {
+function mountSidebar(extra = {}) {
   return mount(FocusedSidebar, {
-    props: { open: true, onChat: true },
+    props: { open: true, onChat: true, ...extra },
     attachTo: document.body,
     global: { provide: { focusedNav: nav }, directives: { tooltip: {} } },
   });
@@ -52,6 +52,28 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.chat.savedOutputId = null;
   route.query = {};
+});
+
+// Reported 2026-10-21: beside AGNT One's rail, the drawer repeated the rail's
+// links (two navigations). Without navigation it is your chats, nothing else.
+describe('navigation: false (beside a rail)', () => {
+  it('drops the page links, More and its own New chat (the rail has one); keeps Main chat, recents, search and the profile', () => {
+    const pageRows = (w) => w.findAll('.focused-nav > .focused-nav-row').map((b) => b.text());
+    const full = mountSidebar();
+    expect(pageRows(full)).toEqual(expect.arrayContaining(['Library', 'Market']));
+    expect(full.find('[aria-expanded].focused-nav-row').exists()).toBe(true);
+    full.unmount();
+
+    const w = mountSidebar({ navigation: false });
+    expect(pageRows(w)).toEqual([]);
+    expect(w.text()).not.toMatch(/Routines|Library|Market|More/);
+    expect(w.find('[data-testid="focused-main-chat"]').exists()).toBe(true);
+    expect(w.findAll('.focused-recent')).toHaveLength(2);
+    expect(w.find('[data-testid="focused-new-chat"]').exists()).toBe(false);
+    expect(w.find('[aria-label="Search chats"]').exists()).toBe(true);
+    expect(w.find('.focused-account').exists()).toBe(true);
+    w.unmount();
+  });
 });
 
 describe('the profile row', () => {

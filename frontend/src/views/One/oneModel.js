@@ -138,30 +138,36 @@ export const RAIL_ICONS = Object.freeze({
   apps: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>',
   routines: '<path d="M17 2.5l3 3-3 3M4 11.5v-2a4 4 0 0 1 4-4h12M7 21.5l-3-3 3-3M20 12.5v2a4 4 0 0 1-4 4H4"/>',
   library: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H9v16H5.5A1.5 1.5 0 0 1 4 18.5zM9 4h4v16H9zM14.5 5.2l3.4-.9 2.6 15.4-3.4.9z"/>',
+  market: '<path d="M4 9.5 5.5 4h13L20 9.5zM4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M5.5 12.5V20h13v-7.5M10 20v-4.5h4V20"/>',
+  // A brain (Lucide's, ISC): what Annie remembers.
+  memory: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
 });
 
 /** Which rail icon a page belongs to (its active state). */
-const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', settings: 'settings' });
+const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'market', memory: 'memory', settings: 'settings' });
 /** The page each rail icon opens; `chats` toggles the drawer instead. */
-export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', settings: 'settings' });
+export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', market: 'market', memory: 'memory', settings: 'settings' });
 
 /**
- * The rail grows with the account: an icon appears once there is something
- * behind it, and while its page is open (a link can land there first).
- * New chat and Chats are always there; Settings is pinned to the bottom.
+ * The rail is AGNT One's only navigation, so it always lists every place.
+ * It used to grow with the account (Apps, Routines, Library appeared once
+ * there was something behind them), which forced the Chats drawer to carry
+ * the same links again: two navigations side by side (reported 2026-10-21).
+ * The drawer now holds chats only. Settings is pinned to the bottom.
  */
-export function railItems({ facts = {}, activePage = null, drawerOpen = false, onBlankChat = false } = {}) {
-  const has = (...keys) => keys.reduce((sum, key) => sum + count(facts[key]), 0) > 0;
+export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false } = {}) {
   const active = drawerOpen ? 'chats' : RAIL_OF_PAGE[activePage] || (onBlankChat && !activePage ? 'new' : null);
   const items = [
-    { id: 'new', label: 'New chat', show: true },
-    { id: 'chats', label: 'Chats', show: true },
-    { id: 'apps', label: 'Apps', show: has('apps') || active === 'apps' },
-    { id: 'routines', label: 'Routines', show: has('workflows', 'schedules') || active === 'routines' },
-    { id: 'library', label: 'Library', show: has('agents', 'tools', 'skills', 'widgets') || active === 'library' },
+    { id: 'new', label: 'New chat' },
+    { id: 'chats', label: 'Chats' },
+    { id: 'apps', label: 'Apps' },
+    { id: 'routines', label: 'Routines' },
+    { id: 'library', label: 'Library' },
+    { id: 'market', label: 'Market' },
+    { id: 'memory', label: 'Memory' },
   ];
-  return items.filter((item) => item.show).map(({ id, label }) => ({ id, label, icon: RAIL_ICONS[id], active: active === id }));
+  return items.map(({ id, label }) => ({ id, label, icon: RAIL_ICONS[id], active: active === id }));
 }
 
 // ── The greeting ───────────────────────────────────────────────────────────

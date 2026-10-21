@@ -44,7 +44,7 @@ vi.mock('@/views/Focused/FocusedMemory.vue', () => page('FocusedMemory'));
 vi.mock('@/views/Focused/FocusedSettings.vue', () => page('FocusedSettings'));
 vi.mock('@/views/Focused/FocusedMarket.vue', () => page('FocusedMarket'));
 vi.mock('@/views/Focused/FocusedSidebar.vue', () => ({
-  default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat'], emits: ['close'], template: '<aside class="sidebar-stub" @click="$emit(\'close\')" />' },
+  default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat', 'navigation'], emits: ['close'], template: '<aside class="sidebar-stub" :data-navigation="String(navigation)" @click="$emit(\'close\')" />' },
 }));
 vi.mock('@/canvas/JumpPalette.vue', () => ({ default: { name: 'JumpPalette', template: '<div class="jump-stub" />' } }));
 vi.mock('@/views/_components/common/SimpleModal.vue', () => ({
@@ -248,18 +248,28 @@ describe('OneShell', () => {
   describe('the rail', () => {
     const railIds = (w) => w.findAll('.one-rail-btn').map((b) => b.attributes('data-testid'));
 
-    it('starts with New chat and Chats, with Settings at the bottom', () => {
+    it('is the one navigation: every place on a new account, Settings at the bottom', () => {
       const w = mountShell();
-      expect(railIds(w)).toEqual(['one-rail-new', 'one-rail-chats', 'one-rail-settings']);
+      expect(railIds(w)).toEqual([
+        'one-rail-new', 'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-memory', 'one-rail-settings',
+      ]);
       w.unmount();
     });
 
-    it('gains Apps once an app is connected, and Apps opens the apps page', async () => {
-      storeState.appAuth.connectedApps = ['google'];
+    it('Apps opens the apps page, Market the market', async () => {
       const w = mountShell();
-      expect(railIds(w)).toContain('one-rail-apps');
       await w.find('[data-testid="one-rail-apps"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/plugins', query: {} });
+      await w.find('[data-testid="one-rail-market"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/marketplace');
+      w.unmount();
+    });
+
+    // Reported 2026-10-21: the drawer repeated the rail's links.
+    it('the Chats drawer beside the rail carries chats only, no page links', async () => {
+      const w = mountShell();
+      await w.find('[data-testid="one-rail-chats"]').trigger('click');
+      expect(w.find('.sidebar-stub').attributes('data-navigation')).toBe('false');
       w.unmount();
     });
 
