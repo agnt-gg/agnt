@@ -65,8 +65,9 @@
     <div v-else class="forge-body">
       <section class="forge-pane">
         <nav class="pane-tabs">
-          <button v-for="tab in paneTabs" :key="tab.key" class="pane-tab" :class="{ active: paneTab === tab.key }" @click="paneTab = tab.key">
+          <button v-for="tab in paneTabs" :key="tab.key" class="pane-tab" :class="{ active: paneTab === tab.key }" :data-tab="tab.key" @click="paneTab = tab.key">
             {{ tab.label }}
+            <i v-if="tab.key === 'signin' && signInNeedsAttention" class="fas fa-circle tab-dot" aria-label="needs attention"></i>
           </button>
         </nav>
 
@@ -106,6 +107,11 @@
             <i class="fas fa-shield-alt"></i>
             <span>Asks for: {{ capabilities.join(', ') }}</span>
           </div>
+        </div>
+
+        <!-- SIGN-IN: what it connects to, and whether everyone who installs it can. -->
+        <div v-else-if="paneTab === 'signin'" class="pane-body">
+          <PluginSignInPanel :manifest="manifest" :install-state="installState" :disabled="chatBusy" @save="saveSignIns" @connect="connectSignIn" />
         </div>
 
         <!-- TEST -->
@@ -205,6 +211,8 @@ import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PluginDraftForm from './PluginDraftForm.vue';
+import PluginSignInPanel from './PluginSignInPanel.vue';
+import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import { blankDraft } from './pluginDraftEditing.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { apiFetch } from '@/utils/apiFetch.js';
@@ -248,7 +256,7 @@ function formatOutput(value) {
 
 export default {
   name: 'PluginBuilder',
-  components: { BaseButton, BaseSelect, SvgIcon, SimpleModal, PluginDraftForm },
+  components: { BaseButton, BaseSelect, SvgIcon, SimpleModal, PluginDraftForm, PluginSignInPanel },
   props: {
     // Names of installed plugins, owned by the parent's list.
     installedNames: { type: Array, default: () => [] },
@@ -323,9 +331,38 @@ export default {
 
     const paneTabs = [
       { key: 'overview', label: 'Overview' },
+      { key: 'signin', label: 'Sign-in' },
       { key: 'test', label: 'Test' },
       { key: 'code', label: 'Code' },
     ];
+
+    // ── sign-ins ─────────────────────────────────────────────────────────────
+    // A tool names a sign-in that is neither bundled nor known to be shared:
+    // worth a dot on the tab. (The panel decides with the live shared list.)
+    const nav = inject('focusedNav', null);
+    const signInNeedsAttention = computed(() => {
+      const bundledIds = new Set((Array.isArray(manifest.value.auth) ? manifest.value.auth : []).map((e) => String(e.id).toLowerCase()));
+      const connected = new Set(((store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []).map((id) => String(id).toLowerCase()));
+      return tools.value.some((tool) => {
+        const id = String(tool.schema?.authProvider || tool.authProvider || '').toLowerCase();
+        return id && !bundledIds.has(id) && !connected.has(id);
+      });
+    });
+    function saveSignIns(next) {
+      if (chatBusy.value) return;
+      store.commit('pluginBuilder/APPLY_FILE', { file: 'manifest.json', content: JSON.stringify(next, null, 2) });
+    }
+    /** Connecting happens on the account's own page, as from the Plugins page. */
+    function connectSignIn(id) {
+      if (!id) return;
+      if (AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase())) {
+        if (nav) nav.go({ page: 'settings' });
+        else emit('show-alert', 'Model keys', 'Model keys are set in Settings.');
+        return;
+      }
+      if (nav) nav.go({ page: 'connectors', item: id });
+      else emit('show-alert', 'Connect', `Open Plugins → Accounts & keys and connect "${id}".`);
+    }
 
     // ── editing by hand ─────────────────────────────────────────────────────────
     // The form writes the same draft the chat does, file by file, through
@@ -517,6 +554,9 @@ export default {
     }
 
     return {
+      signInNeedsAttention,
+      saveSignIns,
+      connectSignIn,
       editing,
       editKey,
       startEditing,
@@ -731,6 +771,13 @@ export default {
 
 .pane-tab:hover {
   color: var(--text-primary);
+}
+
+.tab-dot {
+  font-size: 6px;
+  vertical-align: middle;
+  margin-left: 4px;
+  color: var(--color-red, #d33);
 }
 
 .pane-tab.active {

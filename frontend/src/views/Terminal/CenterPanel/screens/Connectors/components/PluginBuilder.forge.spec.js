@@ -135,7 +135,7 @@ describe('once a draft exists', () => {
 
     expect(wrapper.find('.forge-pane').exists()).toBe(true);
     expect(wrapper.find('.forge-chat').exists()).toBe(false);
-    expect(wrapper.findAll('.pane-tab').map((t) => t.text())).toEqual(['Overview', 'Test', 'Code']);
+    expect(wrapper.findAll('.pane-tab').map((t) => t.text())).toEqual(['Overview', 'Sign-in', 'Test', 'Code']);
   });
 
   it('nothing installs or resets underneath a running chat turn', () => {

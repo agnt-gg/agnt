@@ -154,3 +154,122 @@ export function blankDraft(displayName = 'My plugin') {
 
 /** The code file a tool runs, from its entryPoint ("./x.js" -> "x.js"). */
 export const toolFile = (tool) => String(tool?.entryPoint || '').replace(/^\.\//, '');
+
+// ── Sign-ins ──────────────────────────────────────────────────────────────────────
+// The Forge's Sign-in tab. A sign-in a tool names must be connectable by
+// anyone who installs the plugin: bundled in manifest.auth, or shared by AGNT.
+// The authoritative check is backend/plugins/lib/validate-core.js
+// checkPluginSignIns, run at build, install and publish; this mirrors its
+// classification so the tab can show it while you edit.
+
+export const SIGN_IN_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+const lower = (value) => String(value || '').trim().toLowerCase();
+const https = (value) => {
+  try {
+    return new URL(String(value)).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+/** The sign-in each tool names, lowercased (or '' for none). */
+export function toolSignIn(tool) {
+  return lower(tool?.schema?.authProvider || tool?.authProvider);
+}
+
+/**
+ * One row per sign-in the plugin uses or bundles.
+ * source: 'plugin' (bundled) | 'shared' (AGNT) | 'unresolved' (only its author could connect it)
+ */
+export function signInRows(manifest = {}, { shared = [], connectedIds = [] } = {}) {
+  const sharedById = new Map(shared.map((provider) => [lower(provider.id), provider]));
+  const declared = new Map((Array.isArray(manifest.auth) ? manifest.auth : []).map((entry) => [lower(entry.id), entry]));
+  const connected = new Set(connectedIds.map(lower));
+  const ids = [...new Set([...declared.keys(), ...(manifest.tools || []).map(toolSignIn).filter(Boolean)])];
+  return ids.map((id) => {
+    const usedBy = (manifest.tools || []).filter((tool) => toolSignIn(tool) === id).map((tool) => tool.schema?.title || tool.type);
+    const source = sharedById.has(id) ? 'shared' : declared.has(id) ? 'plugin' : 'unresolved';
+    const entry = declared.get(id) || sharedById.get(id) || {};
+    return {
+      id,
+      name: entry.name || id,
+      source,
+      kind: (entry.type || entry.connection_type) === 'oauth2' || (entry.type || entry.connection_type) === 'oauth' ? 'oauth' : 'apikey',
+      connected: connected.has(id),
+      usedBy,
+      // A bundled entry named after a shared sign-in is refused at publish.
+      redefinesShared: sharedById.has(id) && declared.has(id),
+    };
+  });
+}
+
+/** Point a tool at a sign-in (or none). authRequired follows the sign-in's kind. */
+export function setToolSignIn(manifest, toolType, signInId, kind = 'apikey') {
+  return {
+    ...manifest,
+    tools: (manifest.tools || []).map((tool) => {
+      if (tool.type !== toolType) return tool;
+      const schema = { ...(tool.schema || {}) };
+      delete schema.authProvider;
+      delete schema.authRequired;
+      const next = { ...tool, schema };
+      delete next.authProvider;
+      delete next.authRequired;
+      if (signInId) {
+        schema.authProvider = signInId;
+        schema.authRequired = kind === 'oauth' ? 'oauth' : 'apiKey';
+      }
+      return next;
+    }),
+  };
+}
+
+/** A new bundled sign-in entry, as the form edits it. */
+export function blankSignIn(kind = 'apikey', name = '') {
+  return kind === 'oauth'
+    ? { id: slugify(name, ''), name, type: 'oauth2', authorizationUrl: '', tokenUrl: '', scopes: '', clientId: '', instructions: '', helpUrl: '' }
+    : { id: slugify(name, ''), name, type: 'apikey', keyLabel: 'API key', instructions: '', helpUrl: '' };
+}
+
+/** Form row -> manifest.auth entry (blanks dropped, scopes split). Never carries a secret: the form has no field for one. */
+export function signInEntry(row) {
+  const entry = { id: lower(row.id), name: String(row.name || '').trim() || lower(row.id), type: row.type === 'oauth2' ? 'oauth2' : 'apikey' };
+  const put = (key, value) => {
+    const text = String(value ?? '').trim();
+    if (text) entry[key] = text;
+  };
+  put('icon', row.icon);
+  put('instructions', row.instructions);
+  put('helpUrl', row.helpUrl);
+  if (entry.type === 'apikey') {
+    put('keyLabel', row.keyLabel);
+  } else {
+    put('authorizationUrl', row.authorizationUrl);
+    put('tokenUrl', row.tokenUrl);
+    put('clientId', row.clientId);
+    const scopes = (Array.isArray(row.scopes) ? row.scopes : String(row.scopes || '').split(/[\s,]+/)).map((s) => s.trim()).filter(Boolean);
+    if (scopes.length) entry.scopes = scopes;
+  }
+  return entry;
+}
+
+/** manifest.auth entry -> form row. */
+export function signInRow(entry = {}) {
+  return { ...blankSignIn(entry.type === 'oauth2' ? 'oauth' : 'apikey', entry.name || ''), ...entry, scopes: Array.isArray(entry.scopes) ? entry.scopes.join(', ') : entry.scopes || '' };
+}
+
+/** What is wrong with a bundled sign-in, in words; [] when it is fine. */
+export function signInProblems(row, { sharedIds = [], otherIds = [] } = {}) {
+  const problems = [];
+  const id = lower(row.id);
+  if (!SIGN_IN_ID.test(id)) problems.push('The id uses lowercase letters, numbers, - and _ only.');
+  if (sharedIds.map(lower).includes(id)) problems.push(`"${id}" is already a sign-in AGNT shares. Pick it for your tools instead of bundling your own.`);
+  if (otherIds.map(lower).includes(id)) problems.push(`Another bundled sign-in is already "${id}".`);
+  if (row.helpUrl && !https(row.helpUrl)) problems.push('The help link must start with https://.');
+  if (row.type === 'oauth2') {
+    if (!https(row.authorizationUrl)) problems.push('The authorization URL must start with https://.');
+    if (!https(row.tokenUrl)) problems.push('The token URL must start with https://.');
+  }
+  return problems;
+}
