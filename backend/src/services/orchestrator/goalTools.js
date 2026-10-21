@@ -426,7 +426,7 @@ async function handleCreateGoal(args, authToken, context) {
   const { text, priority = 'medium', provider, model } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/create`, {
       method: 'POST',
       headers: {
@@ -476,7 +476,7 @@ async function handleListGoals(args, authToken, context) {
   const { status = 'all', limit = 50 } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals`, {
       headers: {
         Authorization: authToken,
@@ -528,7 +528,7 @@ async function handleGetGoalDetails(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}`, {
       headers: {
         Authorization: authToken,
@@ -565,7 +565,7 @@ async function handleExecuteGoal(args, authToken, context) {
   const { goal_id, provider, model } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/execute`, {
       method: 'POST',
       headers: {
@@ -606,7 +606,7 @@ async function handlePauseGoal(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/pause`, {
       method: 'POST',
       headers: {
@@ -637,7 +637,7 @@ async function handleResumeGoal(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/resume`, {
       method: 'POST',
       headers: {
@@ -668,7 +668,7 @@ async function handleDeleteGoal(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}`, {
       method: 'DELETE',
       headers: {
@@ -698,7 +698,7 @@ async function handleGetGoalStatus(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/status`, {
       headers: {
         Authorization: authToken,
@@ -756,7 +756,7 @@ async function handleFetchGoalTasks(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}`, {
       headers: {
         Authorization: authToken,
@@ -795,7 +795,7 @@ async function handleEvaluateGoal(args, authToken, context) {
   const { goal_id, evaluation_type = 'automatic' } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/evaluate`, {
       method: 'POST',
       headers: {
@@ -837,7 +837,7 @@ async function handleGetEvaluationReport(args, authToken, context) {
   const { goal_id } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/evaluation`, {
       headers: {
         Authorization: authToken,
@@ -875,7 +875,7 @@ async function handleSaveAsGoldenStandard(args, authToken, context) {
   const { goal_id, category } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/golden-standard`, {
       method: 'POST',
       headers: {
@@ -914,7 +914,7 @@ async function handleCreateAndRunGoal(args, authToken, context) {
   const { text, max_iterations = 20, priority = 'high', provider, model } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
 
     // Step 1: Create the goal
     const createResponse = await fetch(`${API_BASE_URL}/api/goals/create`, {
@@ -977,7 +977,7 @@ async function handleExecuteGoalAutonomous(args, authToken, context) {
   const { goal_id, max_iterations = 20, provider, model } = args;
 
   try {
-    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3333}`;
     const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/execute-autonomous`, {
       method: 'POST',
       headers: {

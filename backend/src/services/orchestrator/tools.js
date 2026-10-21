@@ -2604,7 +2604,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       }
 
       try {
-        const toolDefinitionUrl = `http://localhost:3333/api/custom-tools/${tool_id}`;
+        const toolDefinitionUrl = `http://localhost:${process.env.PORT || 3333}/api/custom-tools/${tool_id}`;
         const fetchOptions = {};
         if (authToken) {
           fetchOptions.headers = { Authorization: authToken };

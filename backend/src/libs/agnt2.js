@@ -22,7 +22,9 @@ function normalizeProviderKeys(data) {
 class AGNT {
   constructor(
     apiKey,
-    baseURL = 'http://localhost:3333/api',
+    // THIS backend: AGNT One runs on its own port (PORT=3398), and a fixed
+    // 3333 sent its agnt_* tools to the other AGNT on this machine.
+    baseURL = `http://localhost:${process.env.PORT || 3333}/api`,
     // No vendor default: null lets the server use the account's own default.
     provider = null,
     model = null,
