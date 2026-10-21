@@ -22,11 +22,21 @@
  * A one-line fix to that rule would not stop the next one. This does: it fails
  * the build for ANY unscoped rule that hides a bare element selector.
  *
+ * PAGE-WIDE IS STILL APP-WIDE (2026-10-21)
+ * ─────────────────────────
+ * The fix above qualified the rule as `body[data-page='terminal-workflow-forge']
+ * header`, and this guard allowed it. That still hides every <header> while the
+ * page is open, the app's own frame included: AGNT One's top bar is a <header>,
+ * so on the Workflow Forge the window had no minimize/maximize/close and no
+ * drag bar. A qualifier made only of the document (body, html, :root, with any
+ * attributes or classes) names a PAGE, not an owner, so it is flagged too.
+ *
  * What is deliberately still allowed:
  *   - scoped / module blocks (they cannot leak by construction)
- *   - unscoped rules whose selector is qualified by a class, id, or attribute
- *     (e.g. `body[data-page='x'] header`, `.foo img`) — that is the correct
- *     way to write an intentional global
+ *   - unscoped rules whose target or an ancestor is a component's own class,
+ *     id, or attribute (e.g. `.foo img`, `.content p:empty`)
+ *   - pseudo-elements (`body::-webkit-scrollbar`): they style a scrollbar,
+ *     they do not remove an element
  *   - unscoped element rules that do not HIDE (typography, resets, iframe
  *     bodies); those are visible in review and rarely catastrophic
  */
@@ -79,6 +89,24 @@ const isBareElementSelector = (selector) =>
 
 const HIDES = /(^|[;{\s])(display\s*:\s*none|visibility\s*:\s*hidden)/i;
 
+/** A compound that names the document: body / html / :root, with any attributes, classes or pseudo-classes. */
+const isDocumentCompound = (compound) => /^(body|html|:root)(?![\w-])/.test(compound);
+
+/**
+ * `body[data-page='x'] header`: a bare element whose only qualifiers are the
+ * document itself. It reaches that element everywhere on the page.
+ */
+const isPageWideElementSelector = (selector) =>
+  selector
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some((part) => {
+      const compounds = part.split(/\s*[\s>+~]\s*/).filter(Boolean);
+      const tail = compounds.pop() || '';
+      return compounds.length > 0 && /^[a-zA-Z][\w-]*$/.test(tail) && compounds.every(isDocumentCompound);
+    });
+
 function findLeaks(file) {
   const source = fs.readFileSync(file, 'utf8');
   const leaks = [];
@@ -88,14 +116,17 @@ function findLeaks(file) {
     const attrs = block[1] || '';
     if (/\bscoped\b|\bmodule\b/.test(attrs)) continue;
 
-    const css = block[2];
+    // Comments go first, from the whole block: one that quotes a rule (the
+    // WorkflowDesigner comment quoted `header { display: none }`) has braces
+    // that split the parse, and the real rule after it was never examined.
+    const css = block[2].replace(/\/\*[\s\S]*?\*\//g, '');
     // Rule-level scan. At-rules (@media/@keyframes) nest braces, so skip any
     // selector that is actually an at-rule preamble.
     const rules = css.matchAll(/([^{}]+)\{([^{}]*)\}/g);
     for (const rule of rules) {
       const selector = rule[1].replace(/\/\*[\s\S]*?\*\//g, '').trim();
       if (!selector || selector.startsWith('@') || selector.startsWith('%')) continue;
-      if (!isBareElementSelector(selector)) continue;
+      if (!isBareElementSelector(selector) && !isPageWideElementSelector(selector)) continue;
       if (!HIDES.test(rule[2])) continue;
       leaks.push({ file: path.relative(SRC, file), selector, declarations: rule[2].trim().slice(0, 80) });
     }
@@ -151,11 +182,41 @@ describe('global style leaks', () => {
     }
   });
 
+  it('sees a rule that follows a comment quoting a rule', () => {
+    const { file: tmp, cleanup } = tmpFixture(
+      '__leak_probe_comment__.vue',
+      '<template><div/></template>\n<style>\n/* was `header { display: none }` */\nheader { display: none; }\n</style>\n',
+    );
+    try {
+      expect(findLeaks(tmp).map((l) => l.selector)).toEqual(['header']);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('detects a page-wide rule: a bare element qualified only by the document', () => {
+    const { file: tmp, cleanup } = tmpFixture(
+      '__leak_probe_page__.vue',
+      '<template><div/></template>\n' +
+        "<style>\nbody[data-page='terminal-workflow-forge'] header { display: none !important; }\nbody.dark > nav { visibility: hidden; }\nhtml:not(.x) aside { display:none }\n</style>\n",
+    );
+    try {
+      expect(findLeaks(tmp).map((l) => l.selector)).toEqual([
+        "body[data-page='terminal-workflow-forge'] header",
+        'body.dark > nav',
+        'html:not(.x) aside',
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+
   it('does not flag correctly-qualified or scoped rules', () => {
     const { file: tmp, cleanup } = tmpFixture(
       '__leak_probe_ok__.vue',
       '<template><div/></template>\n' +
-        "<style>\nbody[data-page='terminal-workflow-forge'] header { display: none !important; }\n.thing img { display: none; }\n</style>\n" +
+        "<style>\nbody[data-page='terminal-workflow-forge'] .forge-header { display: none !important; }\n.thing img { display: none; }\n" +
+        "body[data-page='docs'] .content p:empty { display: none; }\nbody::-webkit-scrollbar { display: none; }\n</style>\n" +
         '<style scoped>\nheader { display: none; }\n</style>\n',
     );
     try {

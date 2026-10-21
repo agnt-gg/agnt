@@ -35,7 +35,13 @@
   border-top-left-radius: 16px;
   overflow: hidden;
 }
-/* The 8px band above the sheet still drags the frameless window. */
+/* The band above the sheet drags the frameless window, full width. On the
+   desktop layout it runs down the whole top-bar row (8px gap + 1px border +
+   48px bar = 57px), so the 8px gutters beside the sheet drag as well: the
+   top edge is one drag strip end to end, as Studio's toolbar was. Drag
+   regions add up regardless of stacking, so only what is marked no-drag
+   (every button in the rail, the top bar and the drawer head) stays
+   pressable inside it. Compact puts the bar at the very top: 8px there. */
 .ui-one.has-window-bar::before {
   content: '';
   position: absolute;
@@ -44,6 +50,9 @@
   right: 0;
   height: 8px;
   -webkit-app-region: drag;
+}
+.ui-one.has-window-bar:not(.is-compact)::before {
+  height: 57px;
 }
 .ui-one.is-compact .one-main {
   margin-top: 0;

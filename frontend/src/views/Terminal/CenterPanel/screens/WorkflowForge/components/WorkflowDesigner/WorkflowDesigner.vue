@@ -3021,22 +3021,14 @@ body.dark button#workflow-magic-button {
 </style>
 
 <style>
-/* Page-scoped, like every other rule in this GLOBAL (unscoped) block.
+/* Page-scoped: every rule in this GLOBAL (unscoped) block starts with
+ * body[data-page='terminal-workflow-forge'].
  *
- * This was previously a bare `header { display: none !important }`. Being
- * unscoped AND !important, it hid EVERY <header> element in the entire
- * application from the moment this chunk loaded — not just on this page, and
- * not just in this component. It silently blanked the Workspaces pane headers
- * (title, maximise, close) the instant a workflow surface was opened, which is
- * exactly the kind of defect that is invisible in review and impossible to
- * attribute from the symptom.
- *
- * The body[data-page=...] prefix restores the original intent — hide the shell
- * header while the Workflow Forge page is open — with no reach beyond it. */
-body[data-page='terminal-workflow-forge'] header {
-  display: none !important;
-}
-
+ * There is no rule hiding the shell's <header> here any more. The header it
+ * was written for no longer exists, and a page-wide `header` rule hid the
+ * app frame's own top bar on this page: in AGNT One the Workflow Forge had no
+ * minimize/maximize/close and nothing to drag the window by (2026-10-21).
+ * styles/globalStyleLeaks.spec.js now refuses that pattern. */
 body[data-page='terminal-workflow-forge'].cyberpunk {
   height: 100vh;
   width: 100vw;

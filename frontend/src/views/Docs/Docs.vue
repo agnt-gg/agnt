@@ -1,7 +1,17 @@
 <template>
   <main-area>
     <LoadingOverlay v-if="isLoading" />
-    <div class="docs-container" :class="{ 'docs-navigation-open': mobileContentsOpen }">
+    <!-- Docs renders outside the app frame, so in the desktop app it carries
+         the window's own bar: the strip drags the frameless window, with a
+         way back and minimize/maximize/close, as on every other screen. -->
+    <div v-if="isElectron" class="docs-window-bar" data-testid="docs-window-bar">
+      <button type="button" class="docs-back" @click="backToApp">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to AGNT
+      </button>
+      <span class="docs-window-title">Docs</span>
+      <FocusedWindowControls />
+    </div>
+    <div class="docs-container" :class="{ 'docs-navigation-open': mobileContentsOpen, 'below-window-bar': isElectron }">
       <button class="docs-mobile-toggle" type="button" :aria-expanded="mobileContentsOpen" @click="mobileContentsOpen = !mobileContentsOpen">{{ mobileContentsOpen ? 'Back to article' : 'Documentation contents' }}</button>
       <div class="sidebar">
         <div v-for="(docsList, type) in docsLists" :key="type" class="sidebar-section">
@@ -31,6 +41,8 @@ let _showdown = null;
 let _hljs = null;
 import { addCopyEventListenerToPreButtons } from '../_components/base/response.js';
 import LoadingOverlay from '@/views/_components/utility/LoadingOverlay.vue';
+import FocusedWindowControls from '@/views/Focused/FocusedWindowControls.vue';
+import { useElectron } from '@/composables/useElectron';
 
 // Dynamically import all markdown files from the docs directory
 const markdownFiles = {
@@ -76,6 +88,7 @@ export default {
   name: 'DocsView',
   components: {
     LoadingOverlay,
+    FocusedWindowControls,
   },
   setup() {
     const route = useRoute();
@@ -292,7 +305,12 @@ export default {
         }
       }
     );
+    const { isElectron } = useElectron();
+    const backToApp = () => router.push('/chat').catch(() => {});
+
     return {
+      isElectron,
+      backToApp,
       mobileContentsOpen,
       docsLists,
       renderedContent,
@@ -306,6 +324,57 @@ export default {
 </script>
 
 <style>
+/* The desktop window bar (see the template). Fixed above the layout, which
+   starts below it. Mirrors Studio's toolbar: the whole strip drags. */
+body[data-page='docs'] .docs-window-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  box-sizing: border-box;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--terminal-border-color);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+body[data-page='docs'] .docs-window-bar button {
+  -webkit-app-region: no-drag;
+}
+body[data-page='docs'] .docs-back {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+body[data-page='docs'] .docs-back:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+body[data-page='docs'] .docs-window-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+body[data-page='docs'] .docs-container.below-window-bar {
+  top: 40px;
+  height: calc(100% - 40px);
+}
+body[data-page='docs'] .docs-container.below-window-bar .sidebar {
+  top: 40px;
+  height: calc(100% - 40px);
+}
+
 body[data-page='docs'] .docs-container {
   position: absolute;
   top: 0;

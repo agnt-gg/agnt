@@ -20,6 +20,8 @@ const BAR = readFileSync(join(DIR, 'FocusedWindowControls.vue'), 'utf8');
 // The frame these controls sit in: AGNT One's top bar.
 const SHELL = readFileSync(join(DIR, '../One/OneShell.vue'), 'utf8');
 const CSS = readFileSync(join(DIR, '../One/one.css'), 'utf8');
+// Docs renders outside the frame (its own route), so it carries its own bar.
+const DOCS = readFileSync(join(DIR, '../Docs/Docs.vue'), 'utf8');
 
 describe('AGNT One top bar: window drag + window buttons', () => {
   afterEach(() => { delete window.electron; vi.clearAllMocks(); });
@@ -84,5 +86,27 @@ describe('AGNT One top bar: window drag + window buttons', () => {
     // The rail drags too; its buttons do not.
     expect(CSS).toMatch(/\.has-window-bar \.one-rail \{\s*-webkit-app-region: drag;/);
     expect(CSS).toMatch(/\.has-window-bar \.one-rail-btn \{\s*-webkit-app-region: no-drag;/);
+  });
+
+  // Reported 2026-10-21: the 8px gutters beside the sheet did not drag, so the
+  // top edge had dead spots. The band runs the whole top-bar row on desktop.
+  it('the top edge drags end to end: the band covers the gutters beside the sheet', () => {
+    expect(CSS).toMatch(/\.ui-one\.has-window-bar::before \{[^}]*left: 0;[^}]*right: 0;[^}]*-webkit-app-region: drag;/);
+    expect(CSS).toMatch(/\.ui-one\.has-window-bar:not\(\.is-compact\)::before \{\s*height: 57px;/);
+  });
+
+  // Reported 2026-10-21: "min max close from all screens". The Workflow Forge
+  // hid the top bar (a page rule hiding every <header>, now refused by
+  // styles/globalStyleLeaks.spec.js), and Docs, outside the frame, had no
+  // bar at all: no drag, no buttons, no way back.
+  it('Docs, outside the frame, has the same bar: drag strip, a way back, the window buttons', () => {
+    const bar = DOCS.slice(DOCS.indexOf('class="docs-window-bar"'), DOCS.indexOf('<div class="docs-container"'));
+    expect(DOCS).toMatch(/<div v-if="isElectron" class="docs-window-bar"/);
+    expect(bar).toContain('<FocusedWindowControls />');
+    expect(bar).toMatch(/@click="backToApp"/);
+    expect(DOCS).toMatch(/\.docs-window-bar \{[^}]*-webkit-app-region: drag;/);
+    expect(DOCS).toMatch(/\.docs-window-bar button \{\s*-webkit-app-region: no-drag;/);
+    // The layout starts below the bar instead of under it.
+    expect(DOCS).toMatch(/\.docs-container\.below-window-bar \{[^}]*top: 40px;/);
   });
 });
