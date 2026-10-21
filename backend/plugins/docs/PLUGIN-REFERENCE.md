@@ -269,23 +269,32 @@ boundary if you can return a structured error instead.
 Declare in the tool `schema`:
 
 ```json
-"authRequired": "apiKey",   // or "oauth2"
+"authRequired": "apiKey",   // or "oauth"
 "authProvider": "discord"
 ```
 
-AGNT resolves a valid, **per-user** credential via AuthManager and hands it to
-your `execute()`. Rules:
+AGNT resolves a valid, **per-user** credential and hands it to your `execute()`
+as `params.__auth.token` (a trigger that runs for hours asks
+`engine.getAuth('<id>')` for a fresh one). Rules:
 
 - ❌ Never hardcode keys. ❌ Never read the server's ambient env for secrets.
+- ❌ Never ask for a key as a tool parameter.
 - ✅ The token is scoped to the workflow's user — correct on shared/multi-user
   instances.
 
-Users connect providers in **Settings → Connections**. For OAuth providers,
-AuthManager handles refresh; your tool always receives a valid access token.
+Users connect sign-ins in **Settings → Connections**. For OAuth, AGNT handles
+refresh; your tool always receives a valid access token.
 
-### Declaring a provider AGNT does not ship
+**Every `authProvider` must be connectable by anyone who installs the plugin.**
+It is either a **shared AGNT sign-in** (list: `GET https://api.agnt.gg/auth/providers`
+with no Authorization header, which answers with exactly the shared ones) or
+**declared in the plugin's own `auth` array** below. A sign-in created on the
+AGNT server for a plugin is private to the account that made it; the
+marketplace refuses a plugin that depends on one.
 
-A plugin for a service AGNT has no provider for declares one in a top-level
+### Declaring a sign-in AGNT does not share
+
+A plugin for a service with no shared sign-in declares one in a top-level
 `auth` array, and its tools reference it by `authProvider`:
 
 ```json
@@ -304,10 +313,27 @@ The declaration appears in Connections while the plugin is installed and
 disappears with it. Credentials are stored encrypted in this install; OAuth uses
 the authorization-code flow with PKCE against a loopback redirect
 (`/api/providers/<id>/auth/plugin-oauth/callback`) and refreshes tokens before
-they expire. Omit `clientId` and the user supplies their own OAuth app. Built-in
-provider ids cannot be redefined, and a provider the remote catalogue defines
-keeps its remote flow. Invalid declarations are logged at load and skipped; the
-tools still load. Full field rules: `skills/agnt-plugin-builder/references/manifest-schema.md`.
+they expire. Omit `clientId` and the user supplies their own OAuth app; a
+`clientId` you ship must be a public client. Built-in provider ids cannot be
+redefined. Invalid declarations are logged at load and skipped; the tools still
+load. Full field rules: `skills/agnt-plugin-builder/references/manifest-schema.md`.
+
+### The publish rule
+
+One check (`lib/validate-core.js` `checkPluginSignIns`) runs at build, in the
+Plugin Forge's install, in the publish buttons, in the bundled-catalogue audit,
+and on the marketplace server at publish:
+
+| Problem | Build / install | Marketplace / catalogue |
+| --- | --- | --- |
+| An `auth` entry carrying a credential (`clientSecret`, `apiKey`, `token`, `password`, also inside `authorizationParams`) | refused | refused |
+| A malformed or duplicate `auth` entry | refused | refused |
+| A tool's `authProvider` is neither declared here nor shared | warns "Can't be published" | refused |
+| An `auth` id that is a shared sign-in's id | warns "Can't be published" | refused |
+
+`POST /api/plugins/install-file/check-auth` reports each sign-in as `plugin`,
+`shared`, `unresolved` or `unknown`, plus `publishable` (`true`, `false`, or
+`null` when the shared list could not be read).
 
 ---
 

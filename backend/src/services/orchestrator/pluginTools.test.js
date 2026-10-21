@@ -13,6 +13,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const generatePlugin = vi.fn();
+import { __resetSharedSignInCache } from '../../../plugins/lib/shared-sign-ins.js';
+
 vi.mock('../PluginGenerator.js', () => ({
   default: class {
     generatePlugin(...args) {
@@ -289,6 +291,25 @@ describe('install_plugin', () => {
   it('needs a user session', async () => {
     const result = await run('install_plugin', {}, ctx(draft()), null);
     expect(result.success).toBe(false);
+  });
+
+  // Reported 2026-10-21: Calendly was published needing a sign-in only its
+  // author's account had. The Forge now says so at install, while it is cheap.
+  it('reports each sign-in, and says what would stop it being published', async () => {
+    __resetSharedSignInCache();
+    const state = draft();
+    const needsCalendly = { ...MANIFEST, tools: [{ ...MANIFEST.tools[0], schema: { title: 'Search', authRequired: 'oauth', authProvider: 'calendly' } }] };
+    state.files['manifest.json'] = JSON.stringify(needsCalendly, null, 2);
+    routes['POST /plugins/build-generated'] = { status: 200, body: { success: true, installed: true } };
+    routes['GET https://api.agnt.gg/auth/providers'] = { status: 200, body: [{ id: 'google', is_global: '1' }, { id: 'notion', is_global: '1' }] };
+
+    const result = await run('install_plugin', {}, ctx(state));
+
+    expect(result.success).toBe(true);
+    expect(result.signIns).toEqual([{ id: 'calendly', source: 'unresolved' }]);
+    expect(result.message).toContain('Sign-ins: calendly (unresolved).');
+    expect(result.message).toMatch(/Fix before it can be published: .*"calendly" sign-in.*manifest\.auth/);
+    __resetSharedSignInCache();
   });
 });
 

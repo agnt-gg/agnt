@@ -311,6 +311,7 @@
 import { ref, onMounted, computed, watch, onUnmounted, inject } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
+import { assertSignInsPublishable } from '@/services/pluginPublishCheck.js';
 import { apiFetch } from '@/utils/apiFetch.js';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
@@ -581,6 +582,9 @@ export default {
           if (!packageData.success) {
             throw new Error(packageData.error || 'Failed to get plugin package');
           }
+          // A sign-in only its author could connect is refused by the
+          // marketplace; say so before uploading.
+          await assertSignInsPublishable({ baseUrl: API_CONFIG.BASE_URL, token, packageBase64: packageData.data });
 
           // Add plugin-specific data
           publishData.asset_data = {

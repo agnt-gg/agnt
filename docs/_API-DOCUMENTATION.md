@@ -6793,7 +6793,7 @@ Plugins are written in the Plugin Forge chat, not through dedicated generation e
 **POST** `/install-file/check-auth`
 
 - **Authentication**: Required
-- **Description**: Scans a bundle's `authProvider` declarations across its tools so the install UI can prompt the user to configure missing providers before completing extraction
+- **Description**: Scans a bundle's `authProvider` declarations across its tools, and says whether everyone who installs it could connect each one, by the same rule the marketplace applies at publish (`plugins/lib/validate-core.js` `checkPluginSignIns`). A sign-in is connectable when it is declared in the plugin's own `manifest.auth` or is a shared AGNT sign-in (`GET https://api.agnt.gg/auth/providers`, no Authorization header). The desktop publish buttons call this before uploading.
 - **Body**:
 
 ```json
@@ -6802,7 +6802,24 @@ Plugins are written in the Plugin Forge chat, not through dedicated generation e
 }
 ```
 
-- **Response**: Required/missing auth providers for the bundle
+- **Response**:
+
+```json
+{
+  "success": true,
+  "pluginName": "calendly-plugin",
+  "version": "1.1.0",
+  "requiredAuthProviders": ["calendly"],
+  "signIns": [{ "id": "calendly", "source": "shared" }],
+  "signInErrors": [],
+  "signInPublishErrors": [],
+  "signInWarnings": [],
+  "publishable": true,
+  "assetCounts": { "tools": 2, "agents": 0, "workflows": 0, "skills": 0, "widgets": 0 }
+}
+```
+
+`source` is `plugin` (bundled in `manifest.auth`), `shared`, `unresolved` (only its author could connect it) or `unknown` (the shared list could not be read). `signInErrors` block everywhere (a malformed `auth` entry, or one carrying a credential); `signInPublishErrors` block publishing (an unresolved sign-in, or an `auth` id that redefines a shared one). `publishable` is `false` when the marketplace would refuse it and `null` when it could not be told here.
 
 ### Inspect Plugin
 

@@ -104,7 +104,7 @@ Electron sets these environment variables for the backend process:
 | `UNPACKED_PATH`  | Path to unpacked native modules                           |
 | `NODE_ENV`       | `production` or `development`                             |
 
-**Important for plugins:** Use `APP_PATH` to access core app modules (like AuthManager) since plugins are in a separate directory.
+**Important for plugins:** Plugins run outside the app bundle. They do not need app modules for credentials: a tool reads its sign-in from `params.__auth.token`, and a trigger asks `engine.getAuth('<id>')` (see Authentication).
 
 ### Technology Stack
 
@@ -219,8 +219,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Get app path for importing core modules (required for AuthManager access)
-// APP_PATH is set by Electron, fallback for dev mode
+// App path, only for plugins that read app files. Credentials never need it:
+// read params.__auth.token (see Authentication). APP_PATH is set by Electron.
 const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class MyCustomTool {
@@ -652,61 +652,24 @@ Multiple values:
 
 ---
 
-## Authentication
+## Authentication (sign-ins)
 
-### Understanding Plugin Paths
+A plugin is installed by people other than its author, so every sign-in it
+needs must be one they can connect too. The marketplace refuses a plugin
+otherwise.
 
-**Important:** Plugins run from the user data directory (`%APPDATA%/AGNT/plugins/installed/`), not from the app bundle. To access core app modules like AuthManager, you must use the `APP_PATH` environment variable.
+### 1. Use a shared AGNT sign-in when there is one
 
-### Setting Up Path Resolution
-
-Every plugin that needs authentication should include this boilerplate at the top:
-
-```javascript
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron main process, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
-```
-
-### API Key Authentication
-
-For services that use API keys:
-
-```json
-{
-  "authRequired": "apiKey",
-  "authProvider": "discord"
-}
-```
-
-Access in your tool:
+The shared sign-ins are the ones AGNT publishes for everyone. List them with
+**no** Authorization header (anonymously the endpoint answers with exactly the
+shared ones):
 
 ```javascript
-async execute(params, inputData, workflowEngine) {
-  // Import AuthManager using APP_PATH for correct resolution
-  const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-  const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-  const AuthManager = AuthManagerModule.default;
-
-  const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'discord');
-
-  if (!apiKey) {
-    throw new Error('No valid access token found. Please reconnect to Discord in Settings.');
-  }
-
-  // Use apiKey for API calls
-}
+const list = await (await fetch('https://api.agnt.gg/auth/providers')).json();
+const sharedIds = (Array.isArray(list) ? list : list.providers).map((p) => p.id);
 ```
 
-### OAuth Authentication
-
-For services that use OAuth:
+If the service is there, name it and declare nothing else:
 
 ```json
 {
@@ -715,46 +678,67 @@ For services that use OAuth:
 }
 ```
 
-Access in your tool:
+### 2. Otherwise, bundle the sign-in in the plugin
 
-```javascript
-async execute(params, inputData, workflowEngine) {
-  // Import AuthManager using APP_PATH for correct resolution
-  const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-  const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-  const AuthManager = AuthManagerModule.default;
+Declare it in a top-level `auth` array in `manifest.json`. It ships inside the
+package and gets a real Connect button under Settings → Connections for whoever
+installs the plugin:
 
-  const accessToken = await AuthManager.getValidAccessToken(
-    workflowEngine.userId,
-    'google'
-  );
-
-  if (!accessToken) {
-    throw new Error('No valid access token found. Please connect to Google in Settings.');
+```json
+"auth": [
+  {
+    "id": "pipedrive", "name": "Pipedrive", "icon": "pipedrive",
+    "type": "apikey", "keyLabel": "API token",
+    "instructions": "Pipedrive → Settings → Personal preferences → API",
+    "helpUrl": "https://pipedrive.readme.io/docs/how-to-find-the-api-token"
   }
+]
+```
 
-  // Use accessToken for API calls
+For OAuth use `"type": "oauth2"` with https `authorizationUrl` and `tokenUrl`,
+`scopes`, and optionally a **public** `clientId` (authorization code with PKCE;
+each user signs in themselves). The full field reference is in
+PLUGIN-REFERENCE.md §7. The tools then name it:
+
+```json
+{
+  "authRequired": "apiKey",
+  "authProvider": "pipedrive"
 }
 ```
 
-### Why `file://` Protocol?
+### 3. Read the credential from `params.__auth.token`
 
-The `file://` protocol with forward slashes is required for dynamic imports on Windows. The `.replace(/\\/g, '/')` converts Windows backslashes to forward slashes for URL compatibility.
+AGNT resolves the connected key or OAuth token (refreshing it when needed) and
+passes it to the tool in chat, workflow and trigger runs alike. The tool imports
+nothing from AGNT:
 
-### Supported Auth Providers
+```javascript
+async execute(params, inputData, workflowEngine) {
+  const token = params.__auth?.token;
+  if (!token) {
+    return { success: false, code: 'CONNECTION_REQUIRED', error: 'Connect Pipedrive in Settings → Connections, then run this again.' };
+  }
+  // Use token for API calls
+}
+```
 
-| Provider         | Type   | Description        |
-| ---------------- | ------ | ------------------ |
-| `openai`         | apiKey | OpenAI API         |
-| `anthropic`      | apiKey | Anthropic API      |
-| `google`         | oauth  | Google services    |
-| `github`         | oauth  | GitHub API         |
-| `slack`          | oauth  | Slack API          |
-| `discord`        | apiKey | Discord Bot Token  |
-| `twitter`        | oauth  | Twitter/X API      |
-| `stripe`         | apiKey | Stripe API         |
-| `notion`         | oauth  | Notion API         |
-| `openweathermap` | apiKey | OpenWeatherMap API |
+### What the marketplace refuses
+
+One rule (`plugins/lib/validate-core.js`, `checkPluginSignIns`) runs at build,
+in the Plugin Forge's install, in the publish buttons, and again on the server:
+
+| Problem | Build / install | Publish |
+| --- | --- | --- |
+| An `auth` entry carrying a credential (`clientSecret`, `apiKey`, `token`, `password`...) | refused | refused |
+| A malformed or duplicate `auth` entry | refused | refused |
+| A tool needs a sign-in that is neither in `manifest.auth` nor shared | warns "Can't be published" | refused |
+| An `auth` id that is a shared sign-in's id | warns "Can't be published" | refused |
+
+Never create a sign-in on the AGNT server for a plugin: a server sign-in is
+private to the account that made it, so the plugin works for its author and
+nobody else. Never ask for a key as a tool parameter, and never put a key or
+secret in plugin code.
 
 ---
 
@@ -1093,7 +1077,7 @@ async execute(params, inputData, workflowEngine) {
 - Declare every detected capability and manually review intended network domains.
 - Run `node cli/doctor.js <plugin-dir>` and resolve every undeclared capability before publishing.
 - Never hardcode API keys or secrets
-- Use the AuthManager for credentials
+- Read credentials from `params.__auth.token`; declare sign-ins in `manifest.auth` or use a shared one (see Authentication)
 - Validate and sanitize all inputs
 - Be careful with user-provided code execution
 
@@ -1131,15 +1115,16 @@ async execute(params, inputData, workflowEngine) {
 
 ### AuthManager Import Errors
 
-If you see `Cannot find module` or `ERR_MODULE_NOT_FOUND` for AuthManager:
+If you see `Cannot find module` or `ERR_MODULE_NOT_FOUND` for AuthManager, the
+tool is importing app code it does not need. Remove the import and read the
+credential from `params.__auth.token` (see Authentication). Older plugins that
+still import it must use `process.env.APP_PATH` with a `file://` URL.
 
-1. **Wrong path pattern** - Don't use relative paths like `../../../src/services/auth/AuthManager.js`
-2. **Missing APP_PATH** - Ensure you're using `process.env.APP_PATH` with a fallback
-3. **Windows path issues** - Use `file://` protocol and replace backslashes:
-   ```javascript
-   const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-   await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-   ```
+### "Can't be published" / sign-in `unresolved`
+
+A tool names a sign-in that only its author could connect. Declare it in
+`manifest.auth`, or switch to the shared sign-in's id. Do not create a sign-in
+on the AGNT server for it.
 
 ### Path Resolution Issues
 
@@ -1152,7 +1137,6 @@ If you see `Cannot find module` or `ERR_MODULE_NOT_FOUND` for AuthManager:
 ```javascript
 console.log('[Plugin] APP_PATH:', APP_PATH);
 console.log('[Plugin] __dirname:', __dirname);
-console.log('[Plugin] Resolved auth path:', authManagerPath);
 ```
 
 ### Common Errors
@@ -1163,7 +1147,8 @@ console.log('[Plugin] Resolved auth path:', authManagerPath);
 | `Invalid schema`    | Schema validation failed | Check required schema fields             |
 | `Module not found`  | Missing dependency       | Add to dependencies in manifest          |
 | `Permission denied` | Auth issue               | Check authRequired/authProvider          |
-| `ERR_MODULE_NOT_FOUND` | Wrong AuthManager path | Use APP_PATH + file:// protocol (see above) |
+| `ERR_MODULE_NOT_FOUND` | Tool imports AuthManager | Read `params.__auth.token` instead (see above) |
+| `CONNECTION_REQUIRED` | Sign-in not connected | Connect it in Settings → Connections |
 | `ENOENT` for plugin | Plugin not in user data  | Install via UI or copy to correct directory |
 
 ---
@@ -1242,14 +1227,10 @@ class NotionAPI {
     console.log('[NotionPlugin] Executing Notion API with params:', JSON.stringify(params, null, 2));
 
     try {
-      // Import AuthManager using APP_PATH for correct resolution
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const accessToken = await AuthManager.getValidAccessToken(workflowEngine.userId, 'notion');
+      // The connected Notion token (shared sign-in "notion"), resolved by AGNT.
+      const accessToken = params.__auth?.token;
       if (!accessToken) {
-        throw new Error('No valid access token found. Please connect to Notion in Settings.');
+        return { success: false, code: 'CONNECTION_REQUIRED', error: 'Connect Notion in Settings → Connections, then run this again.' };
       }
 
       const notion = new Client({ auth: accessToken });
@@ -1362,12 +1343,9 @@ class DiscordReceiver extends EventEmitter {
     }
 
     try {
-      // Import AuthManager using APP_PATH for correct resolution
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const accessToken = await AuthManager.getValidAccessToken(engine.userId, 'discord');
+      // Triggers run for a long time: ask the engine, which returns a fresh
+      // token for the workflow's owner (shared sign-in "discord").
+      const accessToken = await engine.getAuth('discord');
       if (!accessToken) {
         throw new Error('No valid Discord access token found. Please reconnect to Discord.');
       }
@@ -1527,13 +1505,10 @@ class GoogleSheetsNewRow extends EventEmitter {
    */
   async getGoogleAuth() {
     try {
-      // Import AuthManager using APP_PATH for correct resolution
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const userId = this.workflowEngine.userId;
-      const accessToken = await AuthManager.getValidAccessToken(userId, 'google');
+      // Called on every poll: engine.getAuth returns a fresh token each time
+      // (shared sign-in "google"), so a long-running trigger never holds an
+      // expired one.
+      const accessToken = await this.workflowEngine.getAuth('google');
 
       if (!accessToken) {
         throw new Error('No valid access token found. User needs to authenticate with Google.');

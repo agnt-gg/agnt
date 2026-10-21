@@ -18,9 +18,11 @@
 
 ## Credentials
 
-Connect in **Settings → Integrations** (`authProvider: <provider>`). The token
-is supplied per-run via AuthManager, scoped to your user. The plugin never uses
-the server's ambient environment.
+Connect **<Service>** in **Settings → Connections** (`authProvider: <provider>`).
+The sign-in is <a shared AGNT sign-in | declared in this plugin's `manifest.auth`>,
+so anyone who installs the plugin can connect it. The key or token reaches the
+tool as `params.__auth.token`, scoped to the user. The plugin holds no secret and
+never uses the server's ambient environment.
 
 ## Build & publish
 

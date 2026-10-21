@@ -31,10 +31,33 @@ Each tool in the tools array must have:
   - type: Same as the tool type above
   - icon: Icon name for the tool
   - description: What the tool does
-  - authRequired: "apiKey" or "oauth" if authentication needed (optional)
-  - authProvider: Provider name for auth (optional, e.g., "notion", "openai")
+  - authRequired: "apiKey" or "oauth" if the tool needs a sign-in (set it together with authProvider)
+  - authProvider: the sign-in id the tool uses (see SIGN-INS)
   - parameters: Object defining input parameters
   - outputs: Object defining output fields
+
+SIGN-INS (the plugin must work for EVERYONE who installs it, not only its author):
+Every authProvider a tool names must be ONE of these, or the marketplace refuses the plugin:
+1. A shared AGNT sign-in. The live list: GET https://api.agnt.gg/auth/providers with NO
+   Authorization header (it answers with exactly the shared ones). If the service is there
+   ("google", "github", "slack", "notion", "stripe"...), use that id and declare nothing.
+2. Otherwise, declare the sign-in in manifest.json so it ships inside the plugin:
+   "auth": [{
+     "id": "pipedrive", "name": "Pipedrive", "icon": "pipedrive",
+     "type": "apikey", "keyLabel": "API token",
+     "instructions": "Pipedrive -> Settings -> Personal preferences -> API",
+     "helpUrl": "https://..."
+   }]
+   or, for OAuth (authorization code + PKCE; each user signs in themselves):
+   { "id": "ga4", "name": "Google Analytics", "type": "oauth2",
+     "authorizationUrl": "https://...", "tokenUrl": "https://...",
+     "scopes": ["..."], "clientId": "<a PUBLIC client id, or omit it and the user supplies one>" }
+   The id is lowercase [a-z0-9_-] and must NOT be a shared sign-in's id.
+Never: put a key, token, password or client secret anywhere in the plugin (manifest or code);
+ask for a key as a tool parameter; or create a sign-in on the AGNT server for a plugin
+(a server sign-in is private to its creator, so nobody else could connect it).
+In the Plugin Forge, install_plugin reports each sign-in as plugin, shared or unresolved.
+Unresolved means only its author could connect it: fix it before calling the plugin done.
 
 PARAMETER DEFINITION:
 Each parameter should have:
@@ -64,14 +87,16 @@ AVAILABLE CONTEXT IN execute():
 - workflowEngine.userId: Current user's ID
 - workflowEngine.workflowId: Current workflow's ID
 
-FOR AUTHENTICATED TOOLS:
-To get API keys, use:
+FOR TOOLS WITH A SIGN-IN (authRequired + authProvider in the schema):
+AGNT resolves the connected key or OAuth token and hands it to the tool as
+params.__auth.token, in chat, workflows and triggers alike. Read it there; import
+nothing from AGNT. When it is missing, say which sign-in to connect:
 \`\`\`javascript
-const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
-const AuthManager = AuthManagerModule.default;
-const apiKey = await AuthManager.getApiKey(workflowEngine.userId, 'provider-name');
-// or for OAuth:
-const accessToken = await AuthManager.getValidAccessToken(workflowEngine.userId, 'provider-name');
+const token = params.__auth?.token;
+if (!token) {
+  return { success: false, code: 'CONNECTION_REQUIRED', error: 'Connect Pipedrive in Settings -> Connections, then run this again.' };
+}
+const response = await fetch('https://api.pipedrive.com/v1/deals?api_token=' + encodeURIComponent(token));
 \`\`\`
 
 EXAMPLE TOOL STRUCTURE:

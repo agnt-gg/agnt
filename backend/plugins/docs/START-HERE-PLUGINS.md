@@ -189,16 +189,22 @@ manifest's required `permissions` block matches the code before uploading.
 ## Adding credentials (API keys, OAuth)
 
 If your tool needs a secret, **never hardcode it and never read the server's
-ambient environment.** Declare auth in the tool's `schema` and let AGNT's
-AuthManager supply a per-user token at run time:
+ambient environment.** The sign-in must work for everyone who installs the
+plugin, not only for you, or the marketplace refuses it:
 
-```json
-"authRequired": "apiKey",
-"authProvider": "openweather"
-```
+1. **A shared AGNT sign-in** (list them: `GET https://api.agnt.gg/auth/providers`
+   with no Authorization header). Name it in the tool's schema:
+   ```json
+   "authRequired": "apiKey",
+   "authProvider": "openweathermap"
+   ```
+2. **Otherwise, bundle it:** declare the sign-in in a top-level `auth` array in
+   `manifest.json` (an API key each user pastes, or OAuth with PKCE), and name
+   its id in `authProvider`. Never create a sign-in on the AGNT server for a
+   plugin: it would be private to your account.
 
-The resolved credential is delivered to your `execute()` scoped to the
-workflow's user. Full pattern, including OAuth providers and the minimal-env
+AGNT resolves the user's key or token and passes it to `execute()` as
+`params.__auth.token`. Full pattern, the `auth` fields, and the minimal-env
 rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#7-authentication).
 
 ---
@@ -207,7 +213,7 @@ rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-RE
 
 - 📖 **All parameter types, conditional fields, output shapes, icons** →
   [PLUGIN-REFERENCE.md](PLUGIN-REFERENCE.md)
-- 🔐 **Auth, AuthManager, spawning processes safely** →
+- 🔐 **Sign-ins, spawning processes safely** →
   [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#7-authentication)
 - 🧪 **A real, hardened example** — the Crabbox plugin shows credentials via
   AuthManager, a minimal-env spawn allowlist, input sanitization, and remote

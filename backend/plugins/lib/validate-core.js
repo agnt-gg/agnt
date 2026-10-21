@@ -571,8 +571,180 @@ export function compareVersions(a, b) {
   return { comparable: true, cmp: pre === 0 ? 0 : pre, reason: null };
 }
 
+// ---------------------------------------------------------------------------
+// Sign-ins — what a plugin needs to connect, and whether it can be published
+// ---------------------------------------------------------------------------
+
+const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const AUTH_TYPES = new Set(['apikey', 'oauth2']);
+
+function httpsUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function text(value, max) {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
+}
+
+/**
+ * Validate one `manifest.auth` declaration. Returns { provider } or { error }.
+ * Never throws: one bad declaration must not take the plugin's other
+ * providers down. The desktop runtime (src/plugins/pluginAuth.js) and every
+ * gate read declarations through this one function.
+ */
+export function normalizeAuthDeclaration(declaration, pluginName) {
+  if (!declaration || typeof declaration !== 'object') return { error: 'auth entry must be an object' };
+  const id = String(declaration.id || '').trim().toLowerCase();
+  if (!PROVIDER_ID.test(id)) return { error: `auth id "${declaration.id}" must match ${PROVIDER_ID}` };
+  const type = String(declaration.type || '').toLowerCase();
+  if (!AUTH_TYPES.has(type)) return { error: `auth "${id}": type must be "apikey" or "oauth2"` };
+
+  const provider = {
+    id,
+    name: text(declaration.name, 80) || id,
+    icon: text(declaration.icon, 80) || 'puzzle-piece',
+    type,
+    connectionType: type === 'oauth2' ? 'oauth' : 'apikey',
+    instructions: text(declaration.instructions, 2000),
+    helpUrl: declaration.helpUrl ? httpsUrl(declaration.helpUrl) || undefined : undefined,
+    keyLabel: text(declaration.keyLabel, 80) || (type === 'apikey' ? 'API key' : undefined),
+    plugin: pluginName,
+  };
+
+  if (type === 'oauth2') {
+    const authorizationUrl = httpsUrl(declaration.authorizationUrl);
+    const tokenUrl = httpsUrl(declaration.tokenUrl);
+    if (!authorizationUrl || !tokenUrl) return { error: `auth "${id}": oauth2 needs https authorizationUrl and tokenUrl` };
+    const scopes = Array.isArray(declaration.scopes) ? declaration.scopes.filter((s) => typeof s === 'string' && s.trim()) : [];
+    const params = declaration.authorizationParams && typeof declaration.authorizationParams === 'object' ? declaration.authorizationParams : {};
+    provider.oauth = {
+      authorizationUrl,
+      tokenUrl,
+      scopes,
+      scopeSeparator: typeof declaration.scopeSeparator === 'string' ? declaration.scopeSeparator : ' ',
+      pkce: declaration.pkce !== false,
+      clientId: text(declaration.clientId, 300),
+      // Only string pairs, and never the parameters the flow itself owns.
+      authorizationParams: Object.fromEntries(
+        Object.entries(params).filter(
+          ([key, value]) =>
+            typeof value === 'string' && !['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type', 'scope'].includes(key)
+        )
+      ),
+    };
+  }
+  return { provider };
+}
+
+/**
+ * A field that holds a credential. A bundled sign-in ships to everyone who
+ * installs the plugin, so it may say WHERE to sign in, never carry the key.
+ * `keyLabel` and `tokenUrl` are descriptions, not secrets, and do not match.
+ */
+const SECRET_FIELD = /(secret|passw(or)?d|api[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|bearer|^token$|^key$)/i;
+
+function secretFieldsIn(declaration) {
+  if (!declaration || typeof declaration !== 'object') return [];
+  const carries = (value) => (typeof value === 'string' && value.trim() !== '') || typeof value === 'number';
+  const found = Object.entries(declaration).filter(([key, value]) => SECRET_FIELD.test(key) && carries(value)).map(([key]) => key);
+  const params = declaration.authorizationParams && typeof declaration.authorizationParams === 'object' ? declaration.authorizationParams : {};
+  for (const [key, value] of Object.entries(params)) if (SECRET_FIELD.test(key) && carries(value)) found.push(`authorizationParams.${key}`);
+  return found;
+}
+
+/** The sign-ins a plugin's tools name (`authProvider`), lowercased, once each. */
+export function neededSignIns(manifest) {
+  const tools = Array.isArray(manifest?.tools) ? manifest.tools : [];
+  const ids = tools.map((tool) => String(tool?.schema?.authProvider || tool?.authProvider || '').trim().toLowerCase()).filter(Boolean);
+  return [...new Set(ids)];
+}
+
+/**
+ * Can every sign-in this plugin needs be connected by anyone who installs it?
+ *
+ * A sign-in resolves in one of two ways:
+ *   - 'plugin': declared in the plugin's own `manifest.auth`. It ships inside
+ *     the package: each user enters their own API key, or signs in through
+ *     OAuth with PKCE and a public client id. No shared secret.
+ *   - 'shared': a sign-in AGNT has published for everyone (api.agnt.gg,
+ *     global). Its app credentials stay on the server.
+ * Anything else is 'unresolved': it exists only on the author's account, so
+ * every other user would install a plugin that can never run (Calendly,
+ * 2026-10-21). With no shared list to compare against, ids are 'unknown'.
+ *
+ * Severity follows where the harm happens:
+ *   errors         block everywhere (build, install check, publish): a
+ *                  malformed declaration, a duplicate, a secret in one.
+ *   publishErrors  block publishing only: an unresolved sign-in, or a
+ *                  declaration that redefines a shared sign-in (a shared id
+ *                  has exactly one definition, the shared one).
+ * A local build or install keeps working (private plugins for one account
+ * are legitimate); the marketplace and the bundled catalogue refuse.
+ *
+ * @param {object} manifest
+ * @param {{ sharedIds?: Iterable<string>|null }} [options] shared sign-in ids, or null when unknown
+ * @returns {{ errors: string[], publishErrors: string[], warnings: string[], signIns: Array<{id: string, source: 'plugin'|'shared'|'unresolved'|'unknown'}> }}
+ */
+export function checkPluginSignIns(manifest, { sharedIds = null } = {}) {
+  const errors = [];
+  const publishErrors = [];
+  const warnings = [];
+  const shared = sharedIds ? new Set([...sharedIds].map((id) => String(id).trim().toLowerCase())) : null;
+  const declared = new Set();
+
+  if (manifest?.auth !== undefined && manifest?.auth !== null) {
+    if (!Array.isArray(manifest.auth)) {
+      errors.push('manifest.auth must be an array');
+    } else {
+      for (const declaration of manifest.auth) {
+        const { provider, error } = normalizeAuthDeclaration(declaration, manifest?.name);
+        const label = provider?.id || String(declaration?.id || '?');
+        const secrets = secretFieldsIn(declaration);
+        if (secrets.length) {
+          errors.push(`auth "${label}" carries a credential (${secrets.join(', ')}). A bundled sign-in ships to everyone who installs the plugin, so it must never hold one: each user enters their own key, and OAuth uses PKCE with a public client id.`);
+        }
+        if (error) {
+          errors.push(error);
+          continue;
+        }
+        if (declared.has(provider.id)) {
+          errors.push(`auth "${provider.id}" is declared twice`);
+          continue;
+        }
+        declared.add(provider.id);
+        if (shared?.has(provider.id)) {
+          publishErrors.push(`auth "${provider.id}" redefines the shared AGNT sign-in "${provider.id}". Remove it from manifest.auth: tools that name "${provider.id}" use the shared sign-in.`);
+        }
+      }
+    }
+  }
+
+  const signIns = neededSignIns(manifest).map((id) => ({
+    id,
+    source: shared?.has(id) ? 'shared' : declared.has(id) ? 'plugin' : shared ? 'unresolved' : 'unknown',
+  }));
+  for (const { id, source } of signIns) {
+    if (source === 'unresolved') {
+      publishErrors.push(`tools need the "${id}" sign-in, which is neither declared in manifest.auth nor a shared AGNT sign-in, so nobody else could connect it. Declare it in manifest.auth (an API key, or OAuth with PKCE) so it ships with the plugin.`);
+    }
+  }
+  const unknown = signIns.filter((entry) => entry.source === 'unknown').map((entry) => entry.id);
+  if (unknown.length) {
+    warnings.push(`could not check ${unknown.map((id) => `"${id}"`).join(', ')} against the shared AGNT sign-ins (list unavailable); the marketplace checks it again at publish`);
+  }
+  return { errors, publishErrors, warnings, signIns };
+}
+
 export default {
   validateManifestAssets,
+  normalizeAuthDeclaration,
+  neededSignIns,
+  checkPluginSignIns,
   computeIntegrity,
   integrityMatches,
   computeDirIntegrity,

@@ -27,6 +27,8 @@
  * `generate_plugin` exists only for a plugin that does not exist yet.
  */
 import { bumpVersion, determineVersionBump } from '../pluginContract.js';
+import { checkPluginSignIns } from '../../../plugins/lib/validate-core.js';
+import { fetchSharedSignInIds } from '../../../plugins/lib/shared-sign-ins.js';
 import { fuzzyFind } from './fuzzyFind.js';
 
 const MANIFEST = 'manifest.json';
@@ -404,14 +406,31 @@ async function installPlugin(authToken, context) {
   draft.installState = 'installed';
   draft.name = manifest.name;
   frontendEvents.push({ type: 'plugin-installed', data: { name: manifest.name, files: { ...draft.files } } });
+  const signIns = checkPluginSignIns(manifest, { sharedIds: await fetchSharedSignInIds() });
   return {
     success: true,
     name: manifest.name,
     version: manifest.version,
     tools: (manifest.tools || []).map((tool) => tool.type),
-    message: `Installed ${manifest.name} v${manifest.version}. Its tools are live; run test_plugin_tool on each before calling it done.`,
+    signIns: signIns.signIns,
+    message: `Installed ${manifest.name} v${manifest.version}. Its tools are live; run test_plugin_tool on each before calling it done.${signInNote(signIns)}`,
     frontendEvents,
   };
+}
+
+/**
+ * What the install says about sign-ins. A plugin someone else installs must
+ * be able to connect every sign-in it names, so anything that would stop it
+ * being published is reported here, while it is cheap to fix.
+ */
+function signInNote({ signIns, errors, publishErrors, warnings }) {
+  if (!signIns.length && !errors.length) return '';
+  const lines = [];
+  if (signIns.length) lines.push(`Sign-ins: ${signIns.map((entry) => `${entry.id} (${entry.source})`).join(', ')}.`);
+  const fixes = [...errors, ...publishErrors];
+  if (fixes.length) lines.push(`Fix before it can be published: ${fixes.join(' ')}`);
+  lines.push(...warnings);
+  return `\n${lines.join('\n')}`;
 }
 
 async function testPluginTool({ toolType, args = {} }, authToken, context) {

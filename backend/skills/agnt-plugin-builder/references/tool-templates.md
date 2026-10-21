@@ -41,23 +41,18 @@ export default new MyTool();
 
 ---
 
-## Template B — Action tool with OAuth (AuthManager pattern)
+## Template B — Action tool with OAuth
 
-Uses a built-in or registered OAuth provider. The AuthManager handles token refresh automatically.
+The sign-in is either a shared AGNT sign-in (use its id) or one this plugin
+declares in `manifest.auth` (`"type": "oauth2"`, see `manifest-schema.md`).
+Either way the tool schema sets `"authRequired": "oauth"` and
+`"authProvider": "my-provider"`, and AGNT hands the tool a fresh access token
+as `params.__auth.token` (refreshing it first when needed). The tool imports
+nothing from AGNT.
 
 ```javascript
 // my-oauth-tool.js
-import path from 'path';
-import { fileURLToPath } from 'url';
 import axios from 'axios';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// APP_PATH resolves to the AGNT installation root (4 levels up from plugin file)
-// In prod: <userdata>/AGNT/plugins/installed/<plugin-name>/<tool>.js
-// In dev:  <repo>/backend/plugins/dev/<plugin-name>/<tool>.js
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class MyOAuthTool {
   constructor() {
@@ -66,19 +61,12 @@ class MyOAuthTool {
 
   async execute(params, inputData, workflowEngine) {
     try {
-      // Dynamic import of AuthManager — works cross-platform thanks to normalize
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const authManagerUrl = 'file://' + authManagerPath.replace(/\\/g, '/');
-      const { default: AuthManager } = await import(authManagerUrl);
-
-      const userId = workflowEngine?.userId;
-      if (!userId) throw new Error('No user context — cannot fetch auth token');
-
-      const token = await AuthManager.getValidAccessToken(userId, 'my-provider');
+      const token = params.__auth?.token;
       if (!token) {
         return {
           success: false,
-          error: 'No valid access token. Please reconnect the my-provider account in Settings.'
+          code: 'CONNECTION_REQUIRED',
+          error: 'Connect My Provider in Settings → Connections, then run this again.'
         };
       }
 
@@ -99,25 +87,22 @@ export default new MyOAuthTool();
 ```
 
 Key notes:
-- `APP_PATH` uses the same "4 levels up" path that works in both dev and installed locations.
-- The `file://` URL + backslash-replace is mandatory on Windows — ESM dynamic imports reject Windows-style paths.
-- Always return a friendly error when the token is missing — the user needs to know to reconnect.
+- `params.__auth.token` is filled in for chat, workflow and trigger runs alike. Never read keys any other way.
+- Always return a friendly `CONNECTION_REQUIRED` error when the token is missing — the user needs to know what to connect.
 
 ---
 
 ## Template C — Action tool with API key
 
-For services where users supply a key once (stored via AGNT's auth system under a provider slug).
+For services where each user pastes their own key once. Declare the sign-in in
+`manifest.auth` (`"type": "apikey"`, with `keyLabel` and `instructions` saying
+where to find the key) unless it is already a shared AGNT sign-in. The schema
+sets `"authRequired": "apiKey"` and `"authProvider": "my-provider"`; the key
+arrives as `params.__auth.token`.
 
 ```javascript
 // my-apikey-tool.js
-import path from 'path';
-import { fileURLToPath } from 'url';
 import axios from 'axios';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class MyApiKeyTool {
   constructor() {
@@ -126,12 +111,13 @@ class MyApiKeyTool {
 
   async execute(params, inputData, workflowEngine) {
     try {
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const { default: AuthManager } = await import('file://' + authManagerPath.replace(/\\/g, '/'));
-
-      const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'my-provider');
+      const apiKey = params.__auth?.token;
       if (!apiKey) {
-        return { success: false, error: 'No API key stored for my-provider. Add one in Settings.' };
+        return {
+          success: false,
+          code: 'CONNECTION_REQUIRED',
+          error: 'Connect My Provider in Settings → Connections, then run this again.'
+        };
       }
 
       const response = await axios.post('https://api.example.com/endpoint', params.payload, {
@@ -149,7 +135,8 @@ class MyApiKeyTool {
 export default new MyApiKeyTool();
 ```
 
-Simpler alternative: skip AuthManager and just add a `password`-type parameter named `apiKey` to the manifest, then read `params.apiKey` directly. Good for prototyping.
+Never ask for the key as a tool parameter: it would be stored in every workflow
+and agent that uses the tool, and shown in their settings.
 
 ---
 
@@ -256,13 +243,7 @@ For wrapping a whole API in a single tool (à la `dropbox-api`, `github-api`). P
 
 ```javascript
 // my-api.js
-import path from 'path';
-import { fileURLToPath } from 'url';
 import axios from 'axios';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class MyApi {
   constructor() {
@@ -272,7 +253,10 @@ class MyApi {
 
   async execute(params, inputData, workflowEngine) {
     try {
-      const token = await this.#getToken(workflowEngine.userId);
+      const token = params.__auth?.token;
+      if (!token) {
+        return { success: false, code: 'CONNECTION_REQUIRED', error: 'Connect My Provider in Settings → Connections, then run this again.' };
+      }
       const client = axios.create({
         baseURL: this.baseUrl,
         headers: { Authorization: `Bearer ${token}` }
@@ -294,14 +278,6 @@ class MyApi {
         error: error.response?.data?.message || error.message
       };
     }
-  }
-
-  async #getToken(userId) {
-    const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-    const { default: AuthManager } = await import('file://' + authManagerPath.replace(/\\/g, '/'));
-    const token = await AuthManager.getValidAccessToken(userId, 'my-provider');
-    if (!token) throw new Error('No valid token. Please reconnect in Settings.');
-    return token;
   }
 
   async #list(client, { path }) {

@@ -35,7 +35,7 @@ IMPORTANT:
 - Generate realistic, functional tool schemas
 - Include appropriate error outputs (success, error fields)
 - Use conditional parameters when actions have different requirements
-- If the plugin needs external API access, include authRequired/authProvider
+- If the plugin needs a sign-in, set authRequired/authProvider on the tool and follow SIGN-INS: use a shared sign-in id, or declare the sign-in in the manifest's "auth" array so it ships with the plugin. Never a key parameter, never a secret in the plugin.
 
 OUTPUT ONLY VALID JSON - NO MARKDOWN CODE BLOCKS, NO EXPLANATION, JUST THE JSON OBJECT.`,
 

@@ -378,6 +378,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import PluginBuilder from './PluginBuilder.vue';
 import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { assertSignInsPublishable, publishFailureMessage } from '@/services/pluginPublishCheck.js';
 import { checkPluginVersionPublishable } from '@/utils/pluginVersion.js';
 import { apiFetch } from '@/utils/apiFetch.js';
 
@@ -1531,6 +1532,9 @@ export default {
         if (!packageData.success) {
           throw new Error(packageData.error || 'Failed to get plugin package');
         }
+        // A sign-in only its author could connect is refused by the
+        // marketplace; say so before uploading.
+        await assertSignInsPublishable({ baseUrl: API_CONFIG.BASE_URL, token, packageBase64: packageData.data });
 
         // UPDATE: an existing listing takes new bytes through the version
         // endpoint. /marketplace/publish is create-only and 409s here.
@@ -1545,7 +1549,7 @@ export default {
             }),
           });
           const updateResult = await updateResponse.json();
-          if (!updateResponse.ok) throw new Error(updateResult.error || 'Failed to publish update');
+          if (!updateResponse.ok) throw new Error(publishFailureMessage(updateResult, 'Failed to publish update'));
 
           triggerConfetti();
           emit(
@@ -1596,7 +1600,7 @@ export default {
 
         const result = await response.json();
         if (!response.ok) {
-          throw new Error(result.error || 'Failed to publish plugin');
+          throw new Error(publishFailureMessage(result, 'Failed to publish plugin'));
         }
 
         // Trigger confetti celebration!

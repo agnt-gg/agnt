@@ -42,7 +42,9 @@ import {
   normalizePermissions,
   computeIntegrity,
   verifyArchive,
+  checkPluginSignIns,
 } from '../lib/validate-core.js';
+import { fetchSharedSignInIds } from '../lib/shared-sign-ins.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -148,6 +150,20 @@ async function buildPlugin(arg) {
   for (const w of report.warnings) console.warn(`⚠️  ${w}`);
   if (!report.valid) {
     for (const e of report.errors) console.error(`❌ ${e}`);
+    process.exit(1);
+  }
+
+  // Sign-ins: a malformed or secret-carrying `auth` entry stops the build. A
+  // sign-in nobody else can connect builds (a private plugin is fine) but is
+  // announced: the marketplace and the bundled catalogue refuse it.
+  const signIns = checkPluginSignIns(manifest, { sharedIds: await fetchSharedSignInIds() });
+  if (signIns.signIns.length) {
+    console.log(`🔑 Sign-ins: ${signIns.signIns.map((entry) => `${entry.id} (${entry.source})`).join(', ')}`);
+  }
+  for (const w of signIns.warnings) console.warn(`⚠️  ${w}`);
+  for (const e of signIns.publishErrors) console.warn(`⚠️  Can't be published: ${e}`);
+  if (signIns.errors.length) {
+    for (const e of signIns.errors) console.error(`❌ ${e}`);
     process.exit(1);
   }
   for (const kind of ['agents', 'workflows', 'skills', 'widgets']) {

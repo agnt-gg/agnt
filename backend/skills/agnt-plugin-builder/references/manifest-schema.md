@@ -73,15 +73,22 @@ Each entry in the `tools` array:
 | `"apiKey"` | User must have stored an API key for `authProvider`. |
 | `"basic"` | HTTP basic auth via AuthManager (rare). |
 
-When set, `authProvider` **must** also be set to the provider slug.
+When set, `authProvider` **must** also be set to the provider slug, and the
+tool receives the connected key or token as `params.__auth.token`.
 
-**Built-in provider slugs:** `openai`, `anthropic`, `google`, `github`, `slack`, `discord`, `twitter`, `stripe`, `notion`, `openweathermap`, `dropbox`, `gmail` (for Google workspace), `spotify`, `elevenlabs`.
+**Which ids exist for everyone:** only the shared AGNT sign-ins. Read the live
+list with no Authorization header (anonymously it lists exactly the shared ones):
+`GET https://api.agnt.gg/auth/providers`. Do not rely on a remembered list; Google
+Workspace tools, for example, use `google`, not `gmail`.
 
-### Declaring a provider AGNT does not know — top-level `auth`
+### Declaring a sign-in AGNT does not share — top-level `auth`
 
-If the service is not a built-in provider, **declare it in the manifest** so it
-appears in Settings → Connections with a real Connect button. Do not ask for keys
-as node parameters.
+If the service is not a shared sign-in, **declare it in the manifest** so it ships
+with the plugin and appears in Settings → Connections with a real Connect button
+for whoever installs it. Do not ask for keys as node parameters, and do not create
+a sign-in on the AGNT server for the plugin: a server sign-in is private to the
+account that made it, so nobody else could connect it, and the marketplace
+refuses a plugin that needs one.
 
 ```json
 "auth": [
@@ -112,13 +119,23 @@ Then the tool sets `"authRequired": "apiKey"` (or `"oauth"`) and
 
 | Field | Rule |
 |---|---|
-| `id` | `^[a-z0-9][a-z0-9_-]{0,63}$`. What tools name in `authProvider`. A built-in provider id cannot be redefined; the remote catalogue wins on a clash. |
+| `id` | `^[a-z0-9][a-z0-9_-]{0,63}$`. What tools name in `authProvider`. Must not be a shared sign-in's id: the marketplace refuses a plugin that redefines one (use the shared sign-in instead). |
 | `type` | `apikey` or `oauth2`. |
 | `keyLabel`, `instructions`, `helpUrl` | Shown on Connect. Plain text (rendered escaped); `helpUrl` must be https. |
 | `authorizationUrl`, `tokenUrl` | oauth2 only, https only. Authorization code flow with PKCE (`"pkce": false` to disable), tokens stored locally and refreshed automatically. |
 | `scopes`, `scopeSeparator` | oauth2 only. Separator defaults to a space. |
 | `clientId` | Optional public client. Omit it and the user is asked for their own client ID/secret, with the redirect URI to register shown to them. Never put a client secret in a manifest. |
 | `authorizationParams` | Extra string query parameters. The flow's own (`client_id`, `redirect_uri`, `state`, `scope`, PKCE) cannot be overridden. |
+
+Checked at build, at install in the Plugin Forge, and again by the marketplace at
+publish (one rule, `plugins/lib/validate-core.js` `checkPluginSignIns`):
+- an `auth` entry that carries a credential (any field named like `clientSecret`,
+  `apiKey`, `token`, `password`, including inside `authorizationParams`) is refused
+  everywhere;
+- every `authProvider` a tool names must be declared here or be a shared sign-in,
+  and no `auth` id may be a shared sign-in's id. A local build still succeeds (a
+  private plugin is fine) and says "Can't be published"; the marketplace and the
+  bundled catalogue refuse it.
 
 ---
 
@@ -152,7 +169,7 @@ Parameters are an **object**, not an array — the key is the param name used in
 | `number` | Number input with min/max | Counts, amounts, limits |
 | `select` | Dropdown (requires `options`) | Choosing an action mode, enums |
 | `checkbox` | Checkbox list (requires `options`) | Multi-select flags |
-| `password` | Masked text input | API keys entered per-node |
+| `password` | Masked text input | A per-node value to hide on screen. Never a service's API key: that is a sign-in (see Authentication) |
 | `codearea` | Monaco editor with syntax highlighting | JSON payloads, code snippets |
 | `time` | Time picker | Schedule times |
 | `readonly` | Non-editable display (requires `value`) | Documentation/labels inside the form |

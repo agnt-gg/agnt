@@ -8,6 +8,8 @@
  * Official defaults are green by construction: any structural error, integrity
  * drift, missing structured permissions block, undeclared capability, missing
  * canonical source, source/artifact mismatch, or version mismatch is red.
+ * So is a sign-in nobody can connect: every sign-in a tool names must be
+ * declared in the plugin's manifest.auth or be a shared AGNT sign-in.
  *
  * Usage: node cli/audit-catalog.js
  */
@@ -23,13 +25,21 @@ import {
   normalizePermissions,
   scanCapabilities,
   validateManifestAssets,
+  checkPluginSignIns,
 } from '../lib/validate-core.js';
+import { fetchSharedSignInIds } from '../lib/shared-sign-ins.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGINS_DIR = path.join(__dirname, '..');
 const ARTIFACT_DIR = path.join(PLUGINS_DIR, 'marketplace-default');
 const DEV_DIR = path.join(PLUGINS_DIR, 'dev');
 const MARKETPLACE = JSON.parse(fs.readFileSync(path.join(PLUGINS_DIR, 'marketplace.json'), 'utf8'));
+// A release gate cannot pass on a guess: without the shared list it fails.
+const SHARED_SIGN_IN_IDS = await fetchSharedSignInIds();
+if (!SHARED_SIGN_IN_IDS) {
+  console.error('❌ Could not read the shared AGNT sign-ins (https://api.agnt.gg/auth/providers); the sign-in check cannot run.');
+  process.exit(1);
+}
 
 function hasStructuredPermissions(manifest) {
   return Boolean(
@@ -92,6 +102,8 @@ for (const file of artifactFiles) {
     if (!hasStructuredPermissions(shipped.manifest)) problems.push('shipped manifest lacks structured permissions.capabilities/domains arrays');
     if (shipped.scan.scanFailed) problems.push(`shipped capability scan failed: ${shipped.scan.error || 'unknown error'}`);
     if (shipped.diff.undeclared.length) problems.push(`shipped undeclared capabilities: ${shipped.diff.undeclared.join(', ')}`);
+    const signIns = checkPluginSignIns(shipped.manifest, { sharedIds: SHARED_SIGN_IN_IDS });
+    problems.push(...signIns.errors, ...signIns.publishErrors);
 
     if (!sourceDir) {
       problems.push(`canonical source missing for manifest name: ${manifestName}`);

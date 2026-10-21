@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { computeIntegrity, integrityMatches } from '../../plugins/lib/validate-core.js';
+import { computeIntegrity, integrityMatches, checkPluginSignIns } from '../../plugins/lib/validate-core.js';
+import { fetchSharedSignInIds } from '../../plugins/lib/shared-sign-ins.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { execSync } from 'child_process';
@@ -775,11 +776,26 @@ router.post('/install-file/check-auth', authenticateToken, accountPluginMutation
       for (const tool of manifest.tools || []) {
         if (tool?.schema?.authProvider) providers.add(tool.schema.authProvider);
       }
+      // Whether anyone who installs it could connect each sign-in, by the same
+      // rule the marketplace applies at publish (validate-core).
+      const signInCheck = checkPluginSignIns(manifest, { sharedIds: await fetchSharedSignInIds() });
+      const blocked = signInCheck.errors.length > 0 || signInCheck.publishErrors.length > 0;
+      const unknown = signInCheck.signIns.some((entry) => entry.source === 'unknown');
       res.json({
         success: true,
         pluginName: manifest.name,
         version: manifest.version,
         requiredAuthProviders: Array.from(providers),
+        // Per sign-in: 'plugin' (bundled in manifest.auth), 'shared' (published
+        // by AGNT), 'unresolved' (only its author could connect it) or
+        // 'unknown' (the shared list could not be read).
+        signIns: signInCheck.signIns,
+        signInErrors: signInCheck.errors,
+        signInPublishErrors: signInCheck.publishErrors,
+        signInWarnings: signInCheck.warnings,
+        // false: the marketplace will refuse it. null: could not tell here; the
+        // marketplace decides.
+        publishable: blocked ? false : unknown ? null : true,
         assetCounts: {
           tools: (manifest.tools || []).length,
           agents: (manifest.agents || []).length,

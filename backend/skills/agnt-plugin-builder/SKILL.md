@@ -293,17 +293,50 @@ If the plugin shows up but the tool doesn't fire when used, inspect the AGNT bac
 
 ---
 
-## Decision tree: which auth mode?
+## Sign-ins: the plugin must work for everyone who installs it
 
-| User situation | Manifest `authRequired` | Tool code |
+When you build a plugin that talks to a service needing a key or a login, **you**
+set up that sign-in, and it has to work for every user, not only for the account
+you built it on. The marketplace refuses a plugin otherwise.
+
+**Step 1. Is it a shared AGNT sign-in?** Read the live list. Ask it with **no**
+Authorization header: anonymously it answers with exactly the shared sign-ins
+(signed in, it would also list your private ones, which nobody else can use).
+
+```javascript
+const list = await (await fetch('https://api.agnt.gg/auth/providers')).json();
+const shared = new Set((Array.isArray(list) ? list : list.providers).map((p) => p.id));
+shared.has('notion'); // true -> use authProvider: "notion" and declare nothing
+```
+
+**Step 2. If not, bundle it in the plugin** with a top-level `auth` array in
+`manifest.json`. It ships inside the package and shows up under Connections with
+a real Connect button for whoever installs it:
+
+| Service signs in with | `auth` entry | What each user does |
 |---|---|---|
-| Public API or local-only logic | **omit** | No AuthManager import |
-| User supplies an API key for a custom service | `"apiKey"` + `authProvider: "<name>"` | `AuthManager.getValidAccessToken(userId, '<name>')` |
-| OAuth provider (Google, GitHub, Notion, Slack, etc.) | `"oauth"` + `authProvider: "<name>"` | Same pattern |
+| An API key | `{ "id", "name", "type": "apikey", "keyLabel", "instructions", "helpUrl" }` | Pastes their own key |
+| OAuth | `{ "id", "name", "type": "oauth2", "authorizationUrl", "tokenUrl", "scopes", "clientId"? }` | Signs in themselves (authorization code + PKCE). `clientId` only if it is a **public** client; omit it and each user supplies their own |
 
-Built-in providers already registered in AGNT: `openai`, `anthropic`, `google`, `github`, `slack`, `discord`, `twitter`, `stripe`, `notion`, `openweathermap`. For a brand-new API-key provider, either register the provider first or just add a `password` input parameter to the tool and read it from `params` directly — simplest route for one-off keys.
+Then every tool that needs it sets `"authRequired": "apiKey"` (or `"oauth"`) **and**
+`"authProvider": "<id>"` in its schema. Full field rules: `references/manifest-schema.md`.
 
-See `references/tool-templates.md` for the exact AuthManager dynamic-import snippet (it requires `file://` + backslash normalization on Windows).
+**Step 3. Read the credential from `params.__auth.token`.** AGNT resolves the
+connected key or token and passes it in for chat, workflows and triggers alike.
+Import nothing from AGNT; when it is missing, return
+`{ success: false, code: 'CONNECTION_REQUIRED', error: 'Connect <Service> in Settings → Connections, then run this again.' }`.
+Templates: `references/tool-templates.md` (B and C).
+
+**Never:**
+- put a key, token, password or client secret anywhere in the plugin (the build refuses an `auth` entry that carries one);
+- ask for a key as a tool parameter;
+- create a sign-in on the AGNT server for a plugin (`create_provider`, `POST /auth/providers`). A server sign-in is private to the account that made it, so the plugin works for you and for nobody else. That is exactly how Calendly broke;
+- declare an `auth` id that is already a shared sign-in (the marketplace refuses it: use the shared one).
+
+**The build tells you.** `cli/build-plugin.js` prints each sign-in as `plugin`
+(bundled), `shared`, or `unresolved`, and warns "Can't be published" for an
+unresolved one. In the Plugin Forge, `install_plugin` reports the same. Fix every
+`unresolved` sign-in before calling the plugin done.
 
 ---
 
@@ -378,7 +411,8 @@ To remove a plugin: `DELETE /api/plugins/:name`, then `POST /api/plugins/reload`
 |---|---|
 | Using `require` | Use `import`; declare `"type": "module"` in package.json |
 | Exporting the class | `export default new ClassName()` — an instance |
-| Relative path to AuthManager | Use `APP_PATH` + `file://` + backslash normalization |
+| Importing AuthManager into a tool | Don't: read `params.__auth.token`, which AGNT fills in for every tool with `authRequired` + `authProvider` |
+| Sign-in shows `unresolved` / "Can't be published" | Declare it in `manifest.auth`, or use the shared sign-in's id. Never create a server sign-in for it |
 | Plugin folder outside `dev/` | Build script will fail — always create in `dev/` |
 | Bloated `.agnt` | Use `npm install --production` |
 | Tool `type` mismatch (manifest vs. `this.name`) | Keep them identical, kebab-case |
@@ -422,3 +456,4 @@ Before declaring a plugin done, confirm:
 3. ✅ A minimal test workflow or agent that uses the tool executes successfully end-to-end.
 4. ✅ Error paths return `{ error: "..." }` — no uncaught throws.
 5. ✅ If auth is required, a disconnected state produces a clear, actionable error message ("Reconnect in Settings").
+6. ✅ Every sign-in the build lists is `plugin` or `shared`, never `unresolved`.

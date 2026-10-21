@@ -1,4 +1,5 @@
 import { API_CONFIG } from '@/tt.config.js';
+import { publishFailureMessage } from '@/services/pluginPublishCheck.js';
 
 /**
  * Where each installable asset type is saved on the LOCAL backend once the
@@ -600,6 +601,9 @@ export default {
         });
 
         const data = await response.json();
+        // A refusal is an error, with its reasons. Returning it as data let a
+        // refused publish close the dialog as if it had worked.
+        if (!response.ok) throw new Error(publishFailureMessage(data, 'Publishing failed'));
 
         // Add the newly published item to local state
         if (data.item) {
