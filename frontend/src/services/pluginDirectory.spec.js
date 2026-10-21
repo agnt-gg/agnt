@@ -4,6 +4,7 @@ import {
   declaredAccess, capabilityLabel, trustTier, integrityLabel, reviewNotices, pluginToolIds, agentAccess,
   matchesQuery, cardNeedsYou, installedSections, accountRows, connectionKind, builtByMe, priceLabel, signInReadiness,
   pluginNextStep,
+  pluginReady,
 } from './pluginDirectory.js';
 
 // Reported 2026-10: an installed plugin's detail led with "Open in the Forge"
@@ -35,8 +36,32 @@ describe('pluginNextStep', () => {
     expect(step(installed, { connections: [openai('connect'), google('connect')] }).kind).toBe('connect');
   });
 
-  it('a sign-in AGNT does not know cannot be the lead action', () => {
-    expect(step(installed, { connections: [google('connect', { known: false })] }).kind).toBe('try');
+  // Reported 2026-10-21: Calendly, installed and NOT connected, led with "Try
+  // it in chat". Its sign-in was unknown to this account, and this test said
+  // an unknown sign-in should fall through to `try`.
+  it('THE REPORTED BUG: a plugin whose sign-in cannot be started here is blocked, not ready', () => {
+    const calendly = { providerId: 'calendly', name: 'Calendly', known: false, status: 'connect' };
+    expect(step(installed, { connections: [calendly] })).toEqual({ kind: 'unavailable', connection: calendly });
+    expect(pluginReady(installed, { connections: [calendly] })).toBe(false);
+  });
+
+  it('one it can connect is asked for first; an unknown one still blocks after it', () => {
+    const calendly = { providerId: 'calendly', name: 'Calendly', known: false, status: 'connect' };
+    expect(step(installed, { connections: [calendly, google('connect')] }).kind).toBe('connect');
+    expect(step(installed, { connections: [calendly, google('connected')] }).kind).toBe('unavailable');
+  });
+
+  it('never `try` while any app sign-in is not connected, known or not', () => {
+    for (const known of [true, false]) {
+      for (const status of ['connect', 'reconnect']) {
+        expect(step(installed, { connections: [google(status, { known })] }).kind).not.toBe('try');
+      }
+    }
+  });
+
+  it('an unknown sign-in that IS connected does not block', () => {
+    expect(step(installed, { connections: [google('connected', { known: false })] }).kind).toBe('try');
+    expect(pluginReady(installed, { connections: [google('connected', { known: false })] })).toBe(true);
   });
 
   it('a pending update leads once every sign-in is fine', () => {

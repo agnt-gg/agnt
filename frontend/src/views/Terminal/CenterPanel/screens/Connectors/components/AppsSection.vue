@@ -600,9 +600,12 @@ function installSummary(app) {
 function installedNotice(name, displayName) {
   const row = rowsByName.value.get(name);
   const missing = pluginConnections(row, store.state.appAuth?.allProviders, connectedApps.value, store.state.appAuth?.connectionHealth?.providers)
-    .filter((connection) => connection.status !== 'connected' && connection.known && !modelProviderIds.includes(connection.providerId));
+    .filter((connection) => connection.status !== 'connected' && !modelProviderIds.includes(connection.providerId));
   if (!missing.length) return `${displayName} installed. It’s ready to use.`;
-  return `${displayName} installed. Connect ${missing.map((connection) => connection.name).join(' and ')} to start using it.`;
+  // A sign-in this account cannot start is still missing: never "ready to use".
+  const names = missing.map((connection) => connection.name).join(' and ');
+  if (missing.every((connection) => connection.known)) return `${displayName} installed. Connect ${names} to start using it.`;
+  return `${displayName} installed, but it can’t run yet: it needs ${names}, which isn’t available to connect on your account.`;
 }
 async function install(app) {
   if (!app || installing.value || app.installed) return;

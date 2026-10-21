@@ -30,6 +30,8 @@
         <button v-else-if="next.kind === 'connect' || next.kind === 'reconnect'" type="button" class="ap-btn primary" data-action="next-connect" @click="emit(next.kind, next.connection)">
           {{ next.kind === 'reconnect' ? 'Reconnect' : 'Connect' }} {{ next.connection.name }}
         </button>
+        <!-- Its sign-in cannot be started from here: say so in the lead, never "Try it in chat". -->
+        <button v-else-if="next.kind === 'unavailable'" type="button" class="ap-btn primary" data-action="next-unavailable" disabled>Connect {{ next.connection.name }}</button>
         <button v-else-if="next.kind === 'ai-models'" type="button" class="ap-btn primary" data-action="next-ai-models" @click="emit('open-ai-models')">Add your {{ next.connection.name }} key</button>
         <button v-else-if="next.kind === 'review-update'" type="button" class="ap-btn primary" data-action="next-review" :disabled="!!busy" @click="emit('review-update')">Review update</button>
         <button v-else-if="next.kind === 'try'" type="button" class="ap-btn primary" data-action="try" @click="emit('try')">Try it in chat</button>
@@ -39,6 +41,26 @@
     </header>
 
     <div class="ap-detail-body">
+      <!-- First, right under the lead: whether it can run. A sign-in it still
+           needs was three sections down, below "What's inside" (2026-10-21). -->
+      <section class="ap-detail-section" data-section="sign-in">
+        <h3>Sign-in</h3>
+        <!-- A Market listing often does not declare its sign-in; only the
+             installed package does. Say only what is known. -->
+        <p v-if="!connections.length && plugin.installed" class="ap-hint">No sign-in needed. It works now.</p>
+        <p v-else-if="!connections.length" class="ap-hint">If it needs a sign-in, you’ll connect it right after installing.</p>
+        <div v-for="connection in connections" :key="connection.providerId" class="ap-account" :class="{ attention: plugin.installed && connection.status !== 'connected' }" :data-provider="connection.providerId">
+          <span class="ap-logo small"><SvgIcon :name="connection.icon" /></span>
+          <div><strong>{{ connection.name }}</strong><small>{{ connectionLine(connection) }}</small></div>
+          <span v-if="connection.status === 'connected'" class="ap-connected"><AppsIcon name="check" /><span class="ap-sr-only">Connected</span></span>
+          <button v-else-if="isModelKey(connection)" type="button" class="ap-btn small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
+          <!-- Secondary: the header's lead action already asks for the next sign-in. -->
+          <button v-else type="button" class="ap-btn small" data-action="connect" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">
+            {{ !connection.known ? 'Unavailable' : connection.status === 'reconnect' ? 'Reconnect' : 'Connect' }}
+          </button>
+        </div>
+      </section>
+
       <section v-if="notice" class="ap-detail-section">
         <div class="ap-review" role="status">
           <h3>An update asks for new access</h3>
@@ -85,27 +107,9 @@
         <p v-else-if="!assetsLoading" class="ap-hint">The publisher hasn’t listed what’s inside yet.</p>
       </section>
 
-      <section class="ap-detail-section" data-section="sign-in">
-        <h3>Sign-in</h3>
-        <!-- A Market listing often does not declare its sign-in; only the
-             installed package does. Say only what is known. -->
-        <p v-if="!connections.length && plugin.installed" class="ap-hint">No sign-in needed. It works now.</p>
-        <p v-else-if="!connections.length" class="ap-hint">If it needs a sign-in, you’ll connect it right after installing.</p>
-        <div v-for="connection in connections" :key="connection.providerId" class="ap-account" :class="{ attention: plugin.installed && connection.status !== 'connected' }" :data-provider="connection.providerId">
-          <span class="ap-logo small"><SvgIcon :name="connection.icon" /></span>
-          <div><strong>{{ connection.name }}</strong><small>{{ connectionLine(connection) }}</small></div>
-          <span v-if="connection.status === 'connected'" class="ap-connected"><AppsIcon name="check" /><span class="ap-sr-only">Connected</span></span>
-          <button v-else-if="isModelKey(connection)" type="button" class="ap-btn small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
-          <!-- Secondary: the header's lead action already asks for the next sign-in. -->
-          <button v-else type="button" class="ap-btn small" data-action="connect" :disabled="!connection.known" @click="emit(connection.status === 'reconnect' ? 'reconnect' : 'connect', connection)">
-            {{ !connection.known ? 'Unavailable' : connection.status === 'reconnect' ? 'Reconnect' : 'Connect' }}
-          </button>
-        </div>
-      </section>
-
       <section v-if="plugin.installed && hasTools" class="ap-detail-section" data-section="agents">
         <h3>Agents</h3>
-        <p class="ap-hint">Chat can use its tools now. {{ openLine }}</p>
+        <p class="ap-hint">{{ ready ? 'Chat can use its tools now.' : 'Chat can use its tools once its sign-in is connected.' }} {{ openLine }}</p>
         <div v-if="agents.restricted.length" class="ap-pills">
           <span v-for="agent in agents.restricted" :key="agent.id" class="ap-pill"><AppsIcon name="agent" />{{ agent.name }}</span>
         </div>
@@ -203,10 +207,12 @@ const price = computed(() => priceLabel(props.plugin));
 const pinned = computed(() => props.plugin.updatePolicy === 'pinned');
 const groupCard = computed(() => (props.card?.kind === 'account' && props.card.apps?.length > 1 ? props.card : null));
 const next = computed(() => pluginNextStep(props.plugin, { connections: props.connections, notice: props.notice, modelProviderIds: props.modelProviderIds }));
+const ready = computed(() => next.value.kind === 'try' || next.value.kind === 'review-update');
 const nextLine = computed(() => {
   const step = next.value;
   if (step.kind === 'connect') return `Connect ${step.connection.name} so ${props.plugin.displayName} can work. AGNT asks before it sends or changes anything.`;
   if (step.kind === 'reconnect') return `The ${step.connection.name} sign-in stopped working, so ${props.plugin.displayName} can’t run.`;
+  if (step.kind === 'unavailable') return `${props.plugin.displayName} can’t run yet: it needs a ${step.connection.name} sign-in, and ${step.connection.name} isn’t available to connect on your account.`;
   if (step.kind === 'ai-models') return `${props.plugin.displayName} uses your ${step.connection.name} key, the same one your AI models use.`;
   if (step.kind === 'try') return `Ready. Ask Annie to use ${props.plugin.displayName} for you.`;
   return '';
@@ -244,6 +250,7 @@ function itemLine(group, item) {
 function connectionLine(connection) {
   if (isModelKey(connection)) return 'Billed through an AI model key in Settings › AI Models';
   if (connection.status === 'reconnect') return 'Sign-in stopped working. Reconnect to keep it running.';
+  if (connection.status === 'connect' && !connection.known) return props.plugin.installed ? 'Not available to connect on your account, so its tools can’t run.' : 'Not available to connect on your account.';
   if (connection.status === 'connect') return props.plugin.installed ? 'Its tools can’t run until you connect.' : 'You’ll connect after installing.';
   const others = props.card && props.card.providerId === connection.providerId
     ? props.card.apps.filter((app) => app.name !== props.plugin.name).map((app) => app.displayName)
