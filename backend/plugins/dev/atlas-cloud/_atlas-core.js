@@ -1,8 +1,40 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 export const BASE_V1 = 'https://api.atlascloud.ai/v1';
 export const BASE_API_V1 = 'https://api.atlascloud.ai/api/v1';
+
+// The legacy guess: the default Electron profile. Right for the installed app
+// with its default profile only; kept for AGNT builds that publish nothing.
+function legacyRootDir() {
+  const home = os.homedir();
+  if (process.platform === 'win32') return path.join(home, 'AppData', 'Roaming', 'AGNT');
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'AGNT');
+  return path.join(home, '.config', 'AGNT');
+}
+
+/**
+ * AGNT's folders, as the running AGNT resolved them. AGNT publishes
+ * AGNT_ROOT_DIR / AGNT_DATA_DIR; older builds only set USER_DATA_PATH under
+ * Electron. Images saved anywhere else are never served by /api/images, and
+ * showed broken in the chat under AGNT One's separate profile.
+ */
+export function agntRootDir() {
+  return process.env.AGNT_ROOT_DIR || process.env.USER_DATA_PATH || legacyRootDir();
+}
+export function agntDataDir() {
+  if (process.env.AGNT_DATA_DIR) return process.env.AGNT_DATA_DIR;
+  if (process.env.USER_DATA_PATH) return path.join(process.env.USER_DATA_PATH, 'Data');
+  return path.join(legacyRootDir(), 'Data');
+}
+
+/** The chat model ids this key can use (OpenAI-compatible GET /v1/models), sorted. */
+export async function listChatModels(apiKey) {
+  const data = await atlasFetch(`${BASE_V1}/models`, { apiKey, method: 'GET' });
+  const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+  return list.map((m) => (typeof m === 'string' ? m : m?.id)).filter(Boolean).sort();
+}
 
 export function requireApiKey(params) {
   const apiKey = params?.__auth?.token;
@@ -31,7 +63,11 @@ export async function atlasFetch(url, { apiKey, method = 'POST', body, headers =
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
   if (!res.ok) {
     const msg = json?.error?.message || json?.message || text || `HTTP ${res.status}`;
-    throw new Error(`Atlas ${method} ${url} → HTTP ${res.status}: ${msg}`);
+    const error = new Error(`Atlas ${method} ${url} → HTTP ${res.status}: ${msg}`);
+    // Callers branch on these (an unknown model is 400 {"msg":"not found"}).
+    error.status = res.status;
+    error.upstreamMessage = json?.msg || json?.error?.message || json?.message || '';
+    throw error;
   }
   return json;
 }

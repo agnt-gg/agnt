@@ -1,14 +1,11 @@
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { execFileSync } from 'child_process';
-import { requireApiKey, BASE_API_V1, parseExtra, atlasFetch, pollPrediction, uploadMedia, firstOutputUrl, downloadTo } from './_atlas-core.js';
+import { requireApiKey, BASE_API_V1, parseExtra, atlasFetch, pollPrediction, uploadMedia, firstOutputUrl, downloadTo, agntRootDir } from './_atlas-core.js';
 
+// AGNT's default workspace (<root>/projects), where the chat can show files.
 function defaultProjectsDir() {
-  const home = os.homedir();
-  if (process.platform === 'win32') return path.join(home, 'AppData', 'Roaming', 'AGNT', 'projects');
-  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'AGNT', 'projects');
-  return path.join(home, '.config', 'AGNT', 'projects');
+  return path.join(agntRootDir(), 'projects');
 }
 
 function isWanImageToVideoModel(model) {

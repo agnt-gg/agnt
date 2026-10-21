@@ -1,6 +1,6 @@
 {
   "name": "atlas-cloud",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat using AGNT built-in API key auth injection. Strips unsupported extras for gpt-image-2-developer models to avoid Apimart unmarshal 500s while keeping prompt at top level.",
   "author": "AGNT",
   "icon": "atlas-cloud",
@@ -13,14 +13,14 @@
         "category": "action",
         "type": "atlas-image",
         "icon": "atlas-cloud",
-        "description": "Generate or edit an image on Atlas Cloud. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7 and more.",
+        "description": "Generate or edit an image on Atlas Cloud. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7 and more. Returns imageRef: put it in your reply as <img src=\"{{IMAGE_REF:...}}\"> to show the image in the chat.",
         "authRequired": "apiKey",
         "authProvider": "atlas-cloud",
         "parameters": {
           "model": {
             "type": "string",
             "inputType": "text",
-            "description": "Atlas model ID",
+            "description": "Atlas image model id, vendor/name. Leave unset for the default; other ids are listed at atlascloud.ai/models.",
             "required": true,
             "default": "bytedance/seedream-v5.0-lite"
           },
@@ -133,7 +133,7 @@
         "category": "action",
         "type": "atlas-video",
         "icon": "atlas-cloud",
-        "description": "Generate video on Atlas Cloud. Supports Wan/Seedance/etc. Returns videoUrl and can extract/upload the final frame for clip chaining. Fixes checkbox boolean handling for audio.",
+        "description": "Generate video on Atlas Cloud. Supports Wan/Seedance/etc. Returns videoUrl and savedPath, and can extract/upload the final frame for clip chaining. To show the video in the chat, put <video src=\"file:///<savedPath>\" controls></video> in your reply.",
         "authRequired": "apiKey",
         "authProvider": "atlas-cloud",
         "parameters": {
@@ -379,14 +379,15 @@
         "category": "action",
         "type": "atlas-chat",
         "icon": "atlas-cloud",
-        "description": "OpenAI-compatible chat completions on Atlas Cloud.",
+        "description": "OpenAI-compatible chat completions on Atlas Cloud. An unknown model id returns availableModels, the ids this account can use.",
         "authRequired": "apiKey",
         "authProvider": "atlas-cloud",
         "parameters": {
           "model": {
             "type": "string",
             "inputType": "text",
-            "default": "deepseek-v3",
+            "default": "zai-org/glm-5.3-flash",
+            "description": "Atlas chat model id, vendor/name, e.g. zai-org/glm-5.3-flash (default, fast), qwen/qwen3.6-plus, moonshotai/kimi-k2.6, deepseek-ai/deepseek-v4.1-flash.",
             "required": true
           },
           "systemPrompt": {
@@ -407,12 +408,19 @@
           "maxTokens": {
             "type": "number",
             "inputType": "number",
-            "default": 2048
+            "required": false,
+            "description": "Optional cap on output tokens. Usually leave unset: reasoning models spend tokens thinking before they answer, and a small cap leaves the answer empty."
           }
         },
         "outputs": {
           "content": {
             "type": "string"
+          },
+          "finishReason": {
+            "type": "string"
+          },
+          "availableModels": {
+            "type": "array"
           },
           "raw": {
             "type": "object"

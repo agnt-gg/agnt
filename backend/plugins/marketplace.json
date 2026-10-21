@@ -1329,12 +1329,12 @@
       "name": "atlas-cloud",
       "displayName": "Atlas Cloud",
       "icon": "atlas-cloud",
-      "version": "1.1.7",
+      "version": "1.1.8",
       "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7, and OpenAI-compatible chat completions.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/atlas-cloud.agnt",
-      "size": 7593,
+      "size": 9097,
       "tags": [
         "ai",
         "image",
@@ -1375,7 +1375,7 @@
           }
         }
       ],
-      "integrity": "sha256-pLX5fzACewcHaI4a+qX7csZzmZ6yLemfVtLlxfE/NWQ=",
+      "integrity": "sha256-enxZy1+exh5SrX8NlWcMgXfRSDXzcp9ONyeLi8FYFpM=",
       "trustTier": "official",
       "declaredPermissions": [
         "env-access",

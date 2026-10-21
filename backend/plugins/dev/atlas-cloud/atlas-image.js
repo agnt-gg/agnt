@@ -1,13 +1,10 @@
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
-import { requireApiKey, BASE_API_V1, parseExtra, atlasFetch, pollPrediction, firstOutputUrl, allOutputUrls, downloadTo } from './_atlas-core.js';
+import { requireApiKey, BASE_API_V1, parseExtra, atlasFetch, pollPrediction, firstOutputUrl, allOutputUrls, downloadTo, agntDataDir } from './_atlas-core.js';
 
+// The folder AGNT's /api/images serves {{IMAGE_REF:id}} from.
 function agntImagesDir() {
-  const home = os.homedir();
-  if (process.platform === 'win32') return path.join(home, 'AppData', 'Roaming', 'AGNT', 'Data', 'images');
-  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'AGNT', 'Data', 'images');
-  return path.join(home, '.config', 'AGNT', 'Data', 'images');
+  return path.join(agntDataDir(), 'images');
 }
 
 class AtlasImageTool {
