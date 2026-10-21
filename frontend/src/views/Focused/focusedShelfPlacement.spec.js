@@ -84,9 +84,17 @@ describe('Library Market shelf placement', () => {
     expect(templateOf('FocusedLibrary.vue')).not.toContain('<UpgradePrompt');
   });
 
-  it('does not change the separate Files page layout', () => {
+  // Reported 2026-10-21: on Files the list sat under the Market; every other
+  // Library tab puts the Market last. Files follows them now.
+  it('the Files page puts the Market last too: after the list, the empty and loading states, and the count', () => {
     const t = templateOf('FocusedFiles.vue');
-    expect(t.indexOf('<MarketplaceShelf')).toBeLessThan(t.indexOf('class="focused-list"'));
+    const folder = t.slice(t.indexOf('<FocusedPage'));
+    const shelf = folder.indexOf('<MarketplaceShelf');
+    for (const before of ['class="focused-list"', 'This folder is empty', 'class="focused-foot-note"']) {
+      expect(folder.indexOf(before), before).toBeGreaterThan(-1);
+      expect(folder.indexOf(before), before).toBeLessThan(shelf);
+    }
+    expect(folder.slice(shelf, folder.indexOf('/>', shelf))).toContain(':dismissible="false"');
     expect(t.match(/<MarketplaceShelf/g)).toHaveLength(1);
   });
 
