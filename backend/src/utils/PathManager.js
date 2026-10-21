@@ -101,6 +101,16 @@ class PathManager {
 
     // Source root (read-only assets — backend code, bundled prompts, etc.).
     this.backendRoot = path.resolve(__dirname, '../../');
+
+    // Published for plugins. A plugin module runs in this process but cannot
+    // import this file, so it guessed: Atlas Cloud hard-coded
+    // %APPDATA%/AGNT/Data/images, right only for the default Electron profile.
+    // Under any other profile, AGNT_HOME, npm start or Docker its images were
+    // saved where /api/images never looks, and showed broken in the chat
+    // (reported 2026-10-20, AGNT One). These are the folders this cascade
+    // resolved, after any fallback: images go in AGNT_DATA_DIR/images.
+    process.env.AGNT_ROOT_DIR = this.rootDir;
+    process.env.AGNT_DATA_DIR = this.dataDir;
   }
 
   /**
