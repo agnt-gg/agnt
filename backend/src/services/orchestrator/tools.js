@@ -56,7 +56,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
-import { coerceArgumentTypes } from '../../utils/argumentCoercion.js';
+import { coerceArgumentTypes, applyDeclaredDefaults } from '../../utils/argumentCoercion.js';
 import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
 import { serviceFailure } from '../agntServices.js';
@@ -5149,7 +5149,9 @@ async function executeToolInner(toolName, args, authToken, context) {
         });
       }
 
-      const params = { ...coercedArgs };
+      // The defaults the manifest declares, as a workflow node would carry
+      // them: the schema told the model it may leave these out.
+      const params = { ...applyDeclaredDefaults(coercedArgs, registryTool.openApiSchema) };
 
       // Get userId from context first (passed from agnt-agent.js), fallback to decoding authToken
       // Supports multiple JWT field names: id, userId, user_id, sub

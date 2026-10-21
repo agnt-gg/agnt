@@ -106,4 +106,38 @@ function coerceValue(value, expectedType) {
   return undefined;
 }
 
+/**
+ * Fill in every parameter the schema gives a `default` and the call left out.
+ *
+ * A parameter with a declared default is dropped from `required` when a
+ * manifest becomes a tool schema (toolRegistry), so the model is told it may
+ * leave it out. The workflow designer then fills the default into the node
+ * (WorkflowDesigner getDefaultValueForParameter), so a workflow always sends
+ * it; the chat sent nothing, and a plugin that reads the value got undefined
+ * (reported 2026-10-20: atlas_chat "Parameter \"model\" is required", though
+ * its schema declares a default model). Same rule as the designer: an absent
+ * or null value takes the default; anything else the caller sent wins.
+ *
+ * Pure: returns args by reference when nothing was filled, else a copy.
+ *
+ * @param {object} args   Arguments as the caller sent them (after coercion).
+ * @param {object} schema { function: { parameters: { properties } } }
+ * @returns {object}
+ */
+export function applyDeclaredDefaults(args, schema) {
+  const properties = schema?.function?.parameters?.properties;
+  if (!properties) return args;
+  const base = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  let out = null;
+  for (const [name, property] of Object.entries(properties)) {
+    if (!property || !Object.prototype.hasOwnProperty.call(property, 'default')) continue;
+    if (base[name] !== undefined && base[name] !== null) continue;
+    out = out || { ...base };
+    // A copy, so a tool that mutates an object/array default cannot change
+    // the schema every later call reads.
+    out[name] = typeof property.default === 'object' && property.default !== null ? structuredClone(property.default) : property.default;
+  }
+  return out || args;
+}
+
 export default coerceArgumentTypes;
