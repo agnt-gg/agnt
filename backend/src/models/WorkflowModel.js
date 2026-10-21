@@ -1,4 +1,5 @@
 import db from './database/index.js';
+import { normalizeWorkflowJson } from '../workflow/normalizeWorkflowShape.js';
 
 class WorkflowModel {
   /**
@@ -25,7 +26,10 @@ class WorkflowModel {
     }
   }
 
+  // Every write stores the one shape the canvas and the engine read, whichever
+  // caller wrote it (normalizeWorkflowShape.js says why).
   static async createOrUpdate(id, workflowData, userId, isShareable) {
+    workflowData = normalizeWorkflowJson(workflowData);
     try {
       if (!userId) throw Object.assign(new Error('Workflow owner required'), {status:401});
       const existingRow = await this.findOne(id);
@@ -75,6 +79,7 @@ class WorkflowModel {
     }
   }
   static update(id, workflowData, userId) {
+    workflowData = normalizeWorkflowJson(workflowData);
     const { name, description, category, nodeSummary } = this._extractSummaryFields(workflowData);
     return new Promise((resolve, reject) => {
       db.run(
@@ -103,6 +108,7 @@ class WorkflowModel {
     });
   }
   static create(id, workflowData, userId) {
+    workflowData = normalizeWorkflowJson(workflowData);
     return new Promise((resolve, reject) => {
       db.run('INSERT INTO workflows (id, workflow_data, user_id) VALUES (?, ?, ?)', [id, workflowData, userId], function (err) {
         if (err) reject(err);

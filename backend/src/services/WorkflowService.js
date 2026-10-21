@@ -7,6 +7,7 @@ import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSyn
 import PluginManager from '../plugins/PluginManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import { validateWorkflowShape } from '../workflow/validateWorkflowShape.js';
+import { normalizeWorkflowShape } from '../workflow/normalizeWorkflowShape.js';
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -32,14 +33,17 @@ class WorkflowService {
 
   async saveWorkflow(req, res) {
     try {
-      const { workflow } = req.body || {};
+      const { workflow: sent } = req.body || {};
       const userId = req.user.userId;
 
-      if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+      if (!sent || typeof sent !== 'object' || Array.isArray(sent)) {
         return res.status(400).json({
           error: 'Request body must be { workflow: { ... } } with a workflow object.',
         });
       }
+      // Into the shape the canvas and engine read BEFORE checking it: a
+      // React-Flow-style workflow (position/data) is converted, not refused.
+      const { workflow } = normalizeWorkflowShape(sent);
 
       // Refuse a workflow the engine could never run. Without this the row is
       // stored happily and the mismatch only surfaces at activation, as a
@@ -132,7 +136,18 @@ class WorkflowService {
   }
   async updateWorkflow(req, res) {
     try {
-      const workflowData = JSON.stringify(req.body.workflow);
+      // Same contract as save. Without it a body missing `workflow` reached
+      // SQLite as NULL and came back as a 500 ("NOT NULL constraint failed").
+      const sent = req.body?.workflow;
+      if (!sent || typeof sent !== 'object' || Array.isArray(sent)) {
+        return res.status(400).json({ error: 'Request body must be { workflow: { ... } } with a workflow object.' });
+      }
+      const { workflow } = normalizeWorkflowShape(sent);
+      const shape = validateWorkflowShape(workflow);
+      if (!shape.valid) {
+        return res.status(400).json({ error: 'Workflow does not match the shape the workflow engine executes.', details: shape.errors });
+      }
+      const workflowData = JSON.stringify(workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
 
       // PRD-057: mark plugin-installed workflows as user-modified on UI updates

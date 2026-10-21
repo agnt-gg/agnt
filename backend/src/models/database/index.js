@@ -11,6 +11,7 @@ import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 import { installConnectionGate, withTransaction } from './connectionGate.js';
 import { acquireDataDirOwnership, DEFAULT_OWNER_WAIT_MS } from './dataDirOwnership.js';
+import { normalizeWorkflowJson } from '../../workflow/normalizeWorkflowShape.js';
 
 // Canonical data dir comes from PathManager (see PRD-060). PathManager itself
 // already creates the directory and falls back to a temp dir on failure.
@@ -2385,6 +2386,7 @@ function runMigrations() {
           // (handles both fresh migrations and DBs where columns existed but were never populated)
           if (i === summaryColumns.length - 1) {
             backfillWorkflowSummaryColumns();
+            repairStoredWorkflowShapes();
 
             // PRD-057: Origin-tracking on existing ecosystem tables (2026-05-06)
             // The `installed_plugin_assets` table itself is created in
@@ -2445,6 +2447,31 @@ function backfillWorkflowSummaryColumns() {
     });
 
     console.log('✓ Workflow summary columns backfilled');
+  });
+}
+
+/**
+ * Rewrite workflows stored in the React-Flow shape (position/data) into the
+ * one the canvas and engine read. Every write now normalizes
+ * (WorkflowModel), so this only finds rows saved before that; a canonical row
+ * never carries "position", so the LIKE keeps the scan to candidates and a
+ * second boot finds nothing to do. Never throws: a row it cannot read is
+ * left as it was, and logged.
+ */
+export function repairStoredWorkflowShapes(database = db) {
+  database.all(`SELECT id, workflow_data FROM workflows WHERE deleted_at IS NULL AND workflow_data LIKE '%"position"%'`, (err, rows) => {
+    if (err) {
+      console.error('[workflows] Could not scan for React-Flow-shaped workflows:', err.message);
+      return;
+    }
+    for (const row of rows || []) {
+      const fixed = normalizeWorkflowJson(row.workflow_data);
+      if (fixed === row.workflow_data) continue;
+      database.run('UPDATE workflows SET workflow_data = ? WHERE id = ?', [fixed, row.id], (updateErr) => {
+        if (updateErr) console.error(`[workflows] Could not repair the shape of workflow ${row.id}:`, updateErr.message);
+        else console.log(`[workflows] Repaired workflow ${row.id}: nodes moved to the shape the canvas reads`);
+      });
+    }
   });
 }
 
