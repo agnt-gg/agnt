@@ -14,6 +14,18 @@ LocalModelRoutes.get('/status', authenticateToken, async (_req, res) => {
   noStore(res).json(await localModelsStatus());
 });
 
+/**
+ * Make a local model ready for a chat turn before switching to it: an LM
+ * Studio model loaded with too little context is reloaded with enough.
+ * Body: { model? }. 200 { model, contextLength, reloaded } or 422 { error, detail }.
+ */
+LocalModelRoutes.post('/prepare', authenticateToken, async (req, res) => {
+  const model = req.body?.model;
+  if (model !== undefined && typeof model !== 'string') return noStore(res).status(400).json({ error: 'invalid_model' });
+  const prepared = await lmStudio.prepare(model || undefined);
+  noStore(res).status(prepared.error ? 422 : 200).json(prepared);
+});
+
 /** Start an installed-but-stopped LM Studio. */
 LocalModelRoutes.post('/start', authenticateToken, async (_req, res) => {
   const started = await lmStudio.start();

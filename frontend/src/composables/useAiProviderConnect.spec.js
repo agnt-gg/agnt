@@ -183,27 +183,81 @@ describe('useAiProviderConnect — run a model on this machine', () => {
     window.electron = { openExternalUrl: vi.fn() };
   });
 
-  it('LM Studio running with a model: uses it at once', async () => {
-    global.fetch.mockResolvedValue(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+  /** fetch by route: { 'GET status': body | (() => body), 'POST prepare': ... }; a body with `status` >= 400 is an error reply. */
+  const serve = (routes) => {
+    global.fetch.mockImplementation(async (url, init) => {
+      const key = `${init?.method || 'GET'} ${String(url).replace('http://local.test/api/local-models/', '')}`;
+      const route = routes[key];
+      const body = typeof route === 'function' ? route() : route;
+      if (body === undefined) throw new Error(`unexpected ${key}`);
+      const status = body.httpStatus || 200;
+      return { ok: status < 400, status, json: async () => body };
+    });
+  };
+  const READY = { model: 'qwen3-8b', contextLength: 32768, reloaded: true };
+
+  // Reported 2026-10-21: with LM Studio running, the click switched to
+  // qwen3.5-4b loaded with 4096 tokens of context, and the first message
+  // failed (a turn needs about 23K). The model is made ready first, and the
+  // switch goes to that exact model.
+  it('LM Studio running with a model: makes it ready, then switches to that model', async () => {
+    serve({ 'GET status': { running: true, models: ['qwen3-8b'], installed: true }, 'POST prepare': READY });
     const store = fakeStore();
     const { connect, onSelected, modal } = setup({ store });
     await connect(LOCAL);
-    expect(calls()).toEqual(['GET http://local.test/api/local-models/status']);
+    expect(calls()).toEqual(['GET http://local.test/api/local-models/status', 'POST http://local.test/api/local-models/prepare']);
+    expect(modal.shown.map((o) => o.title)).toEqual(['Getting the local model ready']);
+    expect(modal.confirm).toHaveBeenCalled(); // closed by itself
     expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', { provider: 'Local', source: 'test' });
+    expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setModel', { model: 'qwen3-8b', source: 'test' });
     expect(onSelected).toHaveBeenCalledOnce();
-    expect(modal.showModal).not.toHaveBeenCalled();
   });
 
-  it('installed but stopped: starts LM Studio, then uses it', async () => {
-    global.fetch
-      .mockResolvedValueOnce(reply({ running: false, models: [], installed: true, canStart: true }))
-      .mockResolvedValueOnce(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+  it('a model LM Studio cannot load: says why, and keeps the current AI', async () => {
+    serve({
+      'GET status': { running: true, models: ['qwen3.5-9b'], installed: true },
+      'POST prepare': { httpStatus: 422, error: 'load_failed', model: 'qwen3.5-9b', contextLength: 32768, detail: 'out of memory' },
+    });
+    const modal = fakeModal();
+    const store = fakeStore();
+    const { connect, onSelected } = setup({ store, modal });
+    const done = connect(LOCAL);
+    await vi.waitFor(() => expect(modal.shown.length).toBe(2));
+    expect(modal.shown[1].title).toBe('The local model is not ready');
+    expect(modal.shown[1].message).toContain('could not load qwen3.5-9b with 32768 tokens of context (out of memory)');
+    expect(modal.shown[1].message).toContain('still using your current AI');
+    modal.confirm();
+    await done;
+    expect(onSelected).not.toHaveBeenCalled();
+    expect(store.dispatch).not.toHaveBeenCalledWith('aiProvider/setProvider', expect.anything());
+  });
+
+  it('a dialog left open by an earlier attempt is closed, not stacked under the new one', async () => {
+    serve({ 'GET status': { running: true, models: ['qwen3-8b'], installed: true }, 'POST prepare': READY });
+    const modal = fakeModal();
+    modal.isOpen = true; // e.g. the first click's "Starting LM Studio"
+    const { connect, onSelected } = setup({ store: fakeStore(), modal });
+    await connect(LOCAL);
+    expect(modal.confirm).toHaveBeenCalled();
+    expect(modal.isOpen).toBe(false);
+    expect(onSelected).toHaveBeenCalledOnce();
+  });
+
+  it('installed but stopped: starts LM Studio, makes the model ready, then uses it', async () => {
+    serve({
+      'GET status': { running: false, models: [], installed: true, canStart: true },
+      'POST start': { running: true, models: ['qwen3-8b'], installed: true },
+      'POST prepare': READY,
+    });
     const store = fakeStore();
     const { connect, onSelected, modal } = setup({ store });
     await connect(LOCAL);
-    expect(calls()).toEqual(['GET http://local.test/api/local-models/status', 'POST http://local.test/api/local-models/start']);
-    expect(modal.shown[0].title).toBe('Starting LM Studio');
-    expect(modal.confirm).toHaveBeenCalled();
+    expect(calls()).toEqual([
+      'GET http://local.test/api/local-models/status',
+      'POST http://local.test/api/local-models/start',
+      'POST http://local.test/api/local-models/prepare',
+    ]);
+    expect(modal.shown.map((o) => o.title)).toEqual(['Starting LM Studio', 'Getting the local model ready']);
     expect(onSelected).toHaveBeenCalledOnce();
   });
 
@@ -239,7 +293,8 @@ describe('useAiProviderConnect — run a model on this machine', () => {
       global.fetch
         .mockResolvedValueOnce(reply({ running: false, models: [], installed: false, downloadUrl: 'https://lmstudio.ai/download' }))
         .mockResolvedValueOnce(reply({ running: false, models: [], installed: false }))
-        .mockResolvedValueOnce(reply({ running: true, models: ['qwen3-8b'], installed: true }));
+        .mockResolvedValueOnce(reply({ running: true, models: ['qwen3-8b'], installed: true }))
+        .mockResolvedValueOnce(reply({ model: 'qwen3-8b', contextLength: 32768, reloaded: true }));
       const modal = fakeModal();
       const { connect, onSelected } = setup({ store: fakeStore(), modal });
       const done = connect(LOCAL);
@@ -264,14 +319,18 @@ describe('useAiProviderConnect — run a model on this machine', () => {
     expect(onSelected).not.toHaveBeenCalled();
   });
 
-  it('Ollama (or any local server) already serving: used at once', async () => {
-    global.fetch.mockResolvedValue(reply({ ready: true, running: true, models: ['qwen3:8b'], installed: false, server: { id: 'ollama' } }));
+  it('Ollama (or any local server) already serving: nothing to prepare, used at once', async () => {
+    serve({
+      'GET status': { ready: true, running: true, models: ['qwen3:8b'], installed: false, server: { id: 'ollama' } },
+      'POST prepare': { model: null, skipped: true },
+    });
     const store = fakeStore();
     const { connect, onSelected, modal } = setup({ store });
     await connect(LOCAL);
     expect(store.dispatch).toHaveBeenCalledWith('aiProvider/fetchLocalModels', { forceRefresh: true });
+    expect(store.dispatch).not.toHaveBeenCalledWith('aiProvider/setModel', expect.anything());
     expect(onSelected).toHaveBeenCalledOnce();
-    expect(modal.showModal).not.toHaveBeenCalled();
+    expect(modal.shown.map((o) => o.title)).toEqual(['Getting the local model ready']);
   });
 });
 

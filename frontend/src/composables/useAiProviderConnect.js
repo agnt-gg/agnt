@@ -22,7 +22,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { PROVIDER_FETCH_ACTIONS, providerStoreName, resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
-import { getLocalStatus, startLmStudio, setupLocalModel, cancelLocalSetup } from '@/services/localModelsService.js';
+import { getLocalStatus, startLmStudio, setupLocalModel, cancelLocalSetup, prepareLocalModel } from '@/services/localModelsService.js';
 
 /** How long a browser sign-in may take before AGNT stops waiting for it. */
 export const SIGN_IN_WAIT_MS = 2 * 60 * 1000;
@@ -93,7 +93,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return (await finished).result; // "Hide": keep waiting without the dialog
   };
 
-  const selectProvider = async (provider, click) => {
+  const selectProvider = async (provider, click, model = null) => {
     if (userMovedOn(click)) {
       console.info(`[AI connect] ${provider.id} is ready; not switching to it, another AI was chosen while it connected.`);
       return;
@@ -112,6 +112,10 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       } catch (error) {
         console.error(`Failed to fetch models for ${storeName}:`, error);
       }
+    }
+    // The model that was made ready, not whichever the list happens to start with.
+    if (model && store.state.aiProvider?.selectedModel !== model) {
+      await store.dispatch('aiProvider/setModel', { model, source });
     }
     onSelected(provider);
   };
@@ -283,9 +287,42 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
   //      download page.
   const hasModels = (status) => (status?.models?.length || 0) > 0;
 
-  const useLocalModels = async (provider, click) => {
+  /**
+   * Switch to a local model only once it can run a chat turn. LM Studio loads
+   * a model with 4096 tokens of context by default and one AGNT turn needs
+   * about 23K, so switching straight away made the very first message fail
+   * (2026-10-21). The backend reloads it with enough room first.
+   */
+  const useLocalModels = async (provider, click, { managed = false } = {}) => {
+    // AGNT's own runner sizes its context itself, and LM Studio being open too
+    // must not swap its model for one of LM Studio's.
+    if (managed) {
+      await store.dispatch('aiProvider/fetchLocalModels', { forceRefresh: true }).catch(() => {});
+      return selectProvider(provider, click);
+    }
+    // A dialog left open by an earlier attempt (e.g. a slow start) is over.
+    if (modalRef.value?.isOpen) modalRef.value.confirm();
+    const prepared = await waitWithDialog(
+      { title: 'Getting the local model ready', message: '<p>Loading it with enough room for a conversation…</p><p>This closes by itself when it is ready.</p>' },
+      prepareLocalModel().catch((error) => ({ error: 'unreachable', detail: error.message })),
+    );
+    if (prepared === null) return; // Cancel
+    if (prepared.error) {
+      await showError('The local model is not ready', localPrepareMessage(prepared));
+      return;
+    }
     await store.dispatch('aiProvider/fetchLocalModels', { forceRefresh: true }).catch(() => {});
-    await selectProvider(provider, click);
+    await selectProvider(provider, click, prepared.model || null);
+  };
+
+  const localPrepareMessage = ({ error, model, contextLength, detail }) => {
+    const name = escapeHtml(model || 'the model');
+    if (error === 'load_failed') {
+      return `LM Studio could not load ${name} with ${escapeHtml(contextLength)} tokens of context${detail ? ` (${escapeHtml(detail)})` : ''}. Try a smaller model in LM Studio, or close other apps using the GPU, then try again. AGNT is still using your current AI.`;
+    }
+    if (error === 'no_chat_model') return 'LM Studio has no chat model yet. Download one in LM Studio (Qwen 3.5 4B is a good start), then try again.';
+    if (error === 'not_installed') return 'LM Studio\'s command-line tool was not found, so AGNT cannot load the model. Load it in LM Studio with a context length of 32768 or more, then try again.';
+    return `AGNT could not get the local model ready${detail ? `: ${escapeHtml(detail)}` : ''}. AGNT is still using your current AI.`;
   };
 
   const startLmStudioWithDialog = () =>
@@ -408,7 +445,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
       return;
     }
     const job = final?.managed?.job;
-    if (job?.phase === 'ready' && hasModels(final)) return useLocalModels(provider, click);
+    if (job?.phase === 'ready' && hasModels(final)) return useLocalModels(provider, click, { managed: true });
     if (job?.phase === 'cancelled') return;
     await showError('Local model setup failed', job?.error || 'The local model could not be set up.');
   };

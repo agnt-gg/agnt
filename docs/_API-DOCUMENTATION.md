@@ -2302,6 +2302,15 @@ Behind "Run a model on this machine". The Local provider is whichever local serv
 
 `ready` means a Local model can be used now (AGNT's own model counts once downloaded: it starts on the first request).
 
+### Prepare a Local Model
+
+**POST** `/prepare`
+
+- **Authentication**: Required
+- **Description**: Makes a local model able to run a chat turn before the app switches to it. LM Studio loads models with its own default context (4096 tokens), and one AGNT turn needs about 23K, so an LM Studio chat model loaded too small (or not loaded) is reloaded with 32768 tokens of context, or its own maximum when smaller, under the same id (`lms unload` / `lms load --context-length`), then verified. Embedding models are never chosen. Servers without LM Studio's native API (Ollama, llama-server, AGNT's own runtime) size their own context: `{ "skipped": true }`.
+- **Body**: `{ "model": "qwen3.5-4b" }` (optional; defaults to the loaded chat model, else the first chat model)
+- **Response**: `200 { "model": "qwen3.5-4b", "contextLength": 32768, "reloaded": true }`, or `422 { "error": "load_failed" | "no_chat_model" | "model_not_found" | "not_installed", "model", "contextLength", "detail" }`
+
 ### Start LM Studio
 
 **POST** `/start`

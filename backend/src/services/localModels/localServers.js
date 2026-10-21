@@ -64,7 +64,12 @@ export function createLocalRouter({ managed, fetchImpl = (...args) => fetch(...a
       const response = await fetchImpl(`${server.baseURL}/models`, { signal: AbortSignal.timeout(probeTimeoutMs), cache: 'no-store' });
       if (!response.ok) return { ...server, running: false, models: [] };
       const body = await response.json();
-      const models = (body?.data || []).map((entry) => entry?.id).filter((id) => typeof id === 'string');
+      // Embedding models (LM Studio's text-embedding-*, Ollama's *-embed-*)
+      // cannot chat; offered in the picker they fail every turn. The
+      // OpenAI-style list carries no type, so they are known by name.
+      const models = (body?.data || [])
+        .map((entry) => entry?.id)
+        .filter((id) => typeof id === 'string' && !/embed/i.test(id));
       return { ...server, running: true, models };
     } catch {
       return { ...server, running: false, models: [] };

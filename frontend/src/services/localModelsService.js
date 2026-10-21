@@ -24,7 +24,7 @@ async function request(method, path, body) {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(data.message || data.error || `HTTP ${response.status}`), { code: data.error, status: response.status });
+  if (!response.ok) throw Object.assign(new Error(data.message || data.error || `HTTP ${response.status}`), { code: data.error, status: response.status, data });
   return data;
 }
 
@@ -62,6 +62,17 @@ const invalidate = (result) => {
 
 /** Start an installed LM Studio. Resolves to the new status (with `error` on failure). */
 export const startLmStudio = () => request('POST', 'start').then(invalidate);
+
+/**
+ * Make a local model able to run a chat turn before switching to it (LM
+ * Studio loads models with too little context by default). Resolves to
+ * { model, contextLength } or { error, detail, model }; throws only when the
+ * backend could not be asked.
+ */
+export const prepareLocalModel = (model) =>
+  request('POST', 'prepare', model ? { model } : {})
+    .catch((error) => (error.data?.error ? error.data : Promise.reject(error)))
+    .then(invalidate);
 
 /** Begin AGNT's one-click setup (download + start). `modelId` defaults to the recommended model. */
 export const setupLocalModel = (modelId) => request('POST', 'managed/setup', modelId ? { modelId } : {}).then(invalidate);

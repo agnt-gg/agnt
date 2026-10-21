@@ -37,6 +37,15 @@ describe('known servers', () => {
   });
 });
 
+// Reported 2026-10-21: LM Studio's text-embedding-nomic-embed-text-v1.5 was
+// offered as a chat model; picked, every turn fails.
+describe('listModelIds: chat models only', () => {
+  it('leaves out embedding models from LM Studio and Ollama', async () => {
+    const r = router(machine({ [LMSTUDIO]: ['qwen3.5-4b', 'text-embedding-nomic-embed-text-v1.5'], [OLLAMA]: ['qwen3:8b', 'nomic-embed-text'] }));
+    expect(await r.listModelIds()).toEqual(['qwen3.5-4b', 'qwen3:8b']);
+  });
+});
+
 describe('resolve: which server a request goes to', () => {
   it('REGRESSION (triage/local-ollama): Ollama alone is found; Local is no longer LM-Studio-only', async () => {
     expect(await router(machine({ [OLLAMA]: ['qwen3:8b'] })).resolve()).toBe(OLLAMA);
