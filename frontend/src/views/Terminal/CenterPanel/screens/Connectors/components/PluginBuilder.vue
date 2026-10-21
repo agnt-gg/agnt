@@ -52,6 +52,10 @@
         it shows up here as soon as it exists.
       </p>
       <BaseButton v-if="mobileView" class="btn-compact" variant="primary" @click="openChat">Open chat</BaseButton>
+      <!-- Or by hand: a blank plugin with one tool, opened in the Edit form. -->
+      <BaseButton class="btn-compact" variant="secondary" :disabled="chatBusy" data-testid="forge-start-blank" @click="startBlank">
+        <i class="fas fa-pencil-alt"></i> Start from scratch
+      </BaseButton>
       <p class="meta">
         Bundling agents, workflows or tools you already have?
         <button class="text-link" @click="$emit('open-pack')">Make a pack instead</button>
@@ -66,14 +70,21 @@
           </button>
         </nav>
 
-        <!-- OVERVIEW -->
-        <div v-if="paneTab === 'overview'" class="pane-body">
+        <!-- OVERVIEW: read it, or edit it by hand (PluginDraftForm). -->
+        <div v-if="paneTab === 'overview' && editing" class="pane-body">
+          <PluginDraftForm :key="editKey" :manifest="manifest" :disabled="chatBusy" @save="saveDraftEdit" @cancel="editing = false" />
+        </div>
+        <div v-else-if="paneTab === 'overview'" class="pane-body">
           <div class="overview-head">
             <span class="overview-icon"><SvgIcon :name="manifest.icon || 'custom'" /></span>
             <div>
               <h3 class="overview-name">{{ displayName }}</h3>
               <span class="meta">v{{ manifest.version || '0.0.0' }} · {{ toolCountLabel }}</span>
             </div>
+            <span class="bar-spacer"></span>
+            <BaseButton class="btn-compact" variant="secondary" :disabled="chatBusy" data-testid="forge-edit" @click="startEditing">
+              <i class="fas fa-pencil-alt"></i> Edit
+            </BaseButton>
           </div>
           <p v-if="manifest.description" class="overview-description">{{ manifest.description }}</p>
 
@@ -193,6 +204,8 @@ import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import PluginDraftForm from './PluginDraftForm.vue';
+import { blankDraft } from './pluginDraftEditing.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { apiFetch } from '@/utils/apiFetch.js';
 import { PLUGIN_FORGE_CHANNEL_KEY } from '@/store/features/pluginBuilder.js';
@@ -235,7 +248,7 @@ function formatOutput(value) {
 
 export default {
   name: 'PluginBuilder',
-  components: { BaseButton, BaseSelect, SvgIcon, SimpleModal },
+  components: { BaseButton, BaseSelect, SvgIcon, SimpleModal, PluginDraftForm },
   props: {
     // Names of installed plugins, owned by the parent's list.
     installedNames: { type: Array, default: () => [] },
@@ -314,7 +327,34 @@ export default {
       { key: 'code', label: 'Code' },
     ];
 
-    // ── chat ──────────────────────────────────────────────────────────────
+    // ── editing by hand ─────────────────────────────────────────────────────────
+    // The form writes the same draft the chat does, file by file, through
+    // APPLY_FILE / REMOVE_FILE: the Code tab, the chat and Install all see it.
+    const editing = ref(false);
+    const editKey = ref(0);
+    function startEditing() {
+      editKey.value += 1; // a fresh copy of what the draft holds now
+      editing.value = true;
+    }
+    function saveDraftEdit({ manifest: next, addFiles = {}, removeFiles = [] }) {
+      if (chatBusy.value) return;
+      for (const [file, content] of Object.entries(addFiles)) store.commit('pluginBuilder/APPLY_FILE', { file, content });
+      for (const file of removeFiles) store.commit('pluginBuilder/REMOVE_FILE', file);
+      store.commit('pluginBuilder/APPLY_FILE', { file: 'manifest.json', content: JSON.stringify(next, null, 2) });
+      editing.value = false;
+    }
+    function startBlank() {
+      if (chatBusy.value) return;
+      const { manifest: blank, files, packageJson } = blankDraft('My plugin');
+      store.commit('pluginBuilder/SET_GENERATED_MANIFEST', blank);
+      store.commit('pluginBuilder/SET_ALL_GENERATED_CODE', files);
+      store.commit('pluginBuilder/SET_GENERATED_PACKAGE_JSON', packageJson);
+      store.commit('pluginBuilder/SET_INSTALLED_HASH', null);
+      paneTab.value = 'overview';
+      startEditing();
+    }
+
+    // ── chat ──────────────────────────────────────────────────────────────────
     function openChat() {
       openForgeChat();
     }
@@ -331,6 +371,7 @@ export default {
         if (tool) openTest(tool);
       } else if (eventType === 'plugin-files-replaced') {
         paneTab.value = 'overview';
+        editing.value = false; // the form's copy is of the plugin that was replaced
       }
     }
     onMounted(() => window.addEventListener('chat-sse-event', onChatEvent));
@@ -476,6 +517,11 @@ export default {
     }
 
     return {
+      editing,
+      editKey,
+      startEditing,
+      saveDraftEdit,
+      startBlank,
       mobileView,
       modalRef,
       paneTab,
