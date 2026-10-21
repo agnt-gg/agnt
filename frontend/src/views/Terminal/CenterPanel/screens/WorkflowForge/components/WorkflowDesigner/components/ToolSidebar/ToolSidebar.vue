@@ -1,7 +1,8 @@
 <template>
   <div id="sidebar-wrapper" :class="{ closed: compact ? !mobileOpen : isClosed }">
     <SimpleModal ref="simpleModal" />
-    <div id="sidebar" class="no-select" :class="{ closed: compact ? !mobileOpen : isClosed }">
+    <!-- data-canvas-overlay: the canvas centres a workflow clear of this panel (Canvas.coveredLeft). -->
+    <div id="sidebar" class="no-select" data-canvas-overlay="left" :class="{ closed: compact ? !mobileOpen : isClosed }">
       <button class="close-sidebar-button" @click="toggleSidebar" type="button">&lsaquo;</button>
       <div class="inner-sidebar">
         <input v-model="searchQuery" type="text" placeholder="Search tools..." class="search-input" />

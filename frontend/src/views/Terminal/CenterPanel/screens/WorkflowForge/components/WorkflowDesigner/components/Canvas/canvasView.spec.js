@@ -107,6 +107,49 @@ describe('centeredView', () => {
     expect(centeredView(wide, { width: 390, height: 580 }, { fit: true, readableZoom: 0.6 }).zoom).toBeLessThan(0.6);
   });
 
+  // Reported 2026-10-21 (AGNT One full editor): the tool palette floats over
+  // the canvas's left side, and centring on the whole canvas put half the
+  // workflow underneath it, where a click lands on the palette instead.
+  describe('with a panel over the left edge (coveredLeft)', () => {
+    const twoNodes = [
+      { x: 0, y: 0, width: 288, height: 48 },
+      { x: 600, y: 0, width: 288, height: 48 },
+    ];
+
+    it('centres the graph in the part that is still visible', () => {
+      const view = centeredView(twoNodes, viewport, { zoom: 0.5, coveredLeft: 300 });
+      const mid = onScreen(444, 500, view.offsetX, view.zoom);
+      expect(mid).toBeCloseTo(300 + (1000 - 300) / 2);
+    });
+
+    it('every node clears the panel', () => {
+      for (const zoom of [1, 0.6, 0.35]) {
+        const view = centeredView(twoNodes, viewport, { zoom, coveredLeft: 300 });
+        expect(onScreen(0, 500, view.offsetX, view.zoom)).toBeGreaterThanOrEqual(300);
+        expect(onScreen(888, 500, view.offsetX, view.zoom)).toBeLessThanOrEqual(1000);
+      }
+    });
+
+    it('fits to the visible width, not the whole canvas', () => {
+      // 2200 wide: fits above minZoom (0.2) in both the full and the visible width.
+      const wide = [{ x: 0, y: 0, width: 200, height: 50 }, { x: 2000, y: 0, width: 200, height: 50 }];
+      expect(centeredView(wide, viewport, { fit: true, coveredLeft: 300 }).zoom).toBeCloseTo((700 - 96) / 2200);
+      expect(centeredView(wide, viewport, { fit: true }).zoom).toBeCloseTo((1000 - 96) / 2200);
+    });
+
+    it('on a narrow screen, the start of the flow lands just right of the panel', () => {
+      const phone = { width: 390, height: 580 };
+      const view = centeredView([{ x: 100, y: 200, width: 200, height: 50 }, { x: 2000, y: 600, width: 200, height: 50 }], phone, { zoom: 1, readableZoom: 0.6, coveredLeft: 48 });
+      expect(onScreen(100, 195, view.offsetX, view.zoom)).toBeCloseTo(48 + 24);
+    });
+
+    it('ignores a panel that would leave no room to show anything', () => {
+      const without = centeredView(twoNodes, viewport, { zoom: 0.5 });
+      expect(centeredView(twoNodes, viewport, { zoom: 0.5, coveredLeft: 900 })).toEqual(without);
+      expect(centeredView(twoNodes, viewport, { zoom: 0.5, coveredLeft: -50 })).toEqual(without);
+    });
+  });
+
   it('declines when there is nothing to centre or nowhere to centre it', () => {
     expect(centeredView([], viewport)).toBeNull();
     expect(centeredView([{ x: 0, y: 0, width: 1, height: 1 }], { width: 0, height: 0 })).toBeNull();

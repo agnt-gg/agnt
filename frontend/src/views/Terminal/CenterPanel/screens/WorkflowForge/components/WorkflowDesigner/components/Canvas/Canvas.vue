@@ -210,7 +210,7 @@ export default {
       });
       // On a phone a whole-graph fit is unreadable; open at a legible zoom instead.
       const narrow = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 800px)').matches;
-      const view = centeredView(boxes, host, { zoom, fit, minZoom: this.minZoomLevel, readableZoom: narrow ? 0.6 : 0 });
+      const view = centeredView(boxes, host, { zoom, fit, minZoom: this.minZoomLevel, readableZoom: narrow ? 0.6 : 0, coveredLeft: this.coveredLeft(host) });
       if (!view) {
         if (boxes.length && !(host?.width > 0)) this.deferCentering({ zoom, fit });
         return false;
@@ -221,6 +221,18 @@ export default {
       this.$emit('update:zoomLevel', view.zoom);
       this.updateCanvasTransform();
       return true;
+    },
+    /**
+     * How much of the canvas's left edge the tool palette covers right now
+     * (open, collapsed or hidden). The palette marks itself
+     * data-canvas-overlay="left"; it floats over the canvas rather than beside
+     * it, so centring must leave that strip clear.
+     */
+    coveredLeft(host) {
+      const panel = this.$el?.closest?.('.node-based-tool')?.querySelector?.('[data-canvas-overlay="left"]');
+      const rect = panel?.getBoundingClientRect?.();
+      if (!host || !rect || !(rect.width > 0) || rect.left >= host.left + host.width / 2) return 0;
+      return Math.max(0, rect.right - host.left);
     },
     deferCentering(request) {
       if (typeof ResizeObserver === 'undefined') return;

@@ -57,8 +57,17 @@ export function gridLayout({ width, height, offsetX = 0, offsetY = 0, zoom = 1, 
   };
 }
 
-export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom = 0.2, maxZoom = 1, padding = 48, readableZoom = 0 } = {}) {
+/**
+ * `coveredLeft`: px of the viewport's left edge hidden by a panel floating
+ * over it (the Forge's tool palette). The graph is fitted and centred in the
+ * rest, so no node opens underneath where a click reaches the panel instead
+ * (reported 2026-10-21, AGNT One's narrow full editor). Ignored when it would
+ * leave too little room to show anything.
+ */
+export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom = 0.2, maxZoom = 1, padding = 48, readableZoom = 0, coveredLeft = 0 } = {}) {
   if (!boxes?.length || !(viewport?.width > 0) || !(viewport?.height > 0)) return null;
+  const covered = Number.isFinite(coveredLeft) && coveredLeft > 0 && viewport.width - coveredLeft >= 2 * padding + 160 ? coveredLeft : 0;
+  const visibleWidth = viewport.width - covered;
   const minX = Math.min(...boxes.map((b) => b.x));
   const minY = Math.min(...boxes.map((b) => b.y));
   const maxX = Math.max(...boxes.map((b) => b.x + b.width));
@@ -66,26 +75,28 @@ export function centeredView(boxes, viewport, { zoom = 1, fit = false, minZoom =
   const graphWidth = Math.max(1, maxX - minX);
   const graphHeight = Math.max(1, maxY - minY);
 
-  const zoomToFit = Math.min((viewport.width - 2 * padding) / graphWidth, (viewport.height - 2 * padding) / graphHeight);
+  const zoomToFit = Math.min((visibleWidth - 2 * padding) / graphWidth, (viewport.height - 2 * padding) / graphHeight);
   // A saved zoom is kept unless the graph would not fit at it; fit mode always fills.
   const wanted = fit ? zoomToFit : Math.min(zoom, zoomToFit);
   const clamped = Math.max(minZoom, Math.min(maxZoom, wanted));
 
+  // The transform origin stays the viewport's centre; only the target moves.
   const centreX = viewport.width / 2;
   const centreY = viewport.height / 2;
+  const targetX = covered + visibleWidth / 2;
   if (!fit && readableZoom > 0 && clamped < readableZoom) {
     // Screen position of canvas point p is c + o + z·(p − c); put (minX, minY) at the padding.
     const readable = Math.min(maxZoom, readableZoom);
     const inset = Math.min(padding, 24);
     return {
       zoom: readable,
-      offsetX: inset - centreX - readable * (minX - centreX),
+      offsetX: covered + inset - centreX - readable * (minX - centreX),
       offsetY: inset - centreY - readable * (minY - centreY),
     };
   }
   return {
     zoom: clamped,
-    offsetX: clamped * (centreX - (minX + maxX) / 2),
+    offsetX: targetX - centreX + clamped * (centreX - (minX + maxX) / 2),
     offsetY: clamped * (centreY - (minY + maxY) / 2),
   };
 }
