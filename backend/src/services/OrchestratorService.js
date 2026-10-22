@@ -3653,10 +3653,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         try {
           const { getToolsForCategories } = await import('./orchestrator/toolSelector.js');
           const { getPluginToolIndex, pluginToolsByCategory } = await import('./orchestrator/pluginToolIndex.js');
-          // This user's registry: plugins and Tool Forge tools are per
-          // account, and a userId-less read returns none of them, so a
-          // discovered plugin would load as nothing.
-          const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas({ userId: conversationContext.userId || null });
+          // The same registry the turn's own surface uses (chatConfigs
+          // turnToolRegistry): this user's tools, their async-tools setting,
+          // and no Main-chat-only tools outside the Main chat.
+          const allSchemas = await (await import('./orchestrator/chatConfigs.js')).turnToolRegistry(conversationContext);
           const pluginTools = pluginToolsByCategory(await getPluginToolIndex(conversationContext.userId));
           let newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories, { pluginTools });
           // A discover_tools load must never step over the channel's ceiling.

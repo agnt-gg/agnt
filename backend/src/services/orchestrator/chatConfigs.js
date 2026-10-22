@@ -712,13 +712,25 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   });
 }
 
+/**
+ * The registry a chat turn draws tools from: this user's tools, shaped by their
+ * async-tools setting, without Main-chat-only tools (start_chat belongs to the
+ * Main chat alone, conversationRole.js) outside the Main chat.
+ *
+ * The turn's own surface and discover_tools' mid-turn loads both read it here.
+ * They used to build it separately, and the mid-turn copy passed neither the
+ * setting (so a discovered tool carried async parameters with it off) nor the
+ * Main-chat filter.
+ */
+export async function turnToolRegistry(context) {
+  const asyncEnabled = await loadAsyncToolsEnabled(context);
+  return withoutMainChatOnlyTools(await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null }), context);
+}
+
 async function getUnifiedToolSchemas(context) {
   // Set only on the auto path below; every other surface loads tools as before.
   context._deferredToolCatalog = null;
-  const asyncEnabled = await loadAsyncToolsEnabled(context);
-  // start_chat belongs to the Main chat alone (conversationRole.js). Removed at
-  // the registry, so no surface, ceiling or deferred catalog can offer it.
-  const allSchemas = await withoutMainChatOnlyTools(await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null }), context);
+  const allSchemas = await turnToolRegistry(context);
 
   if (context.agentId && context.agentId !== 'agent-chat') {
     return getSavedAgentToolSchemas(context, allSchemas);
