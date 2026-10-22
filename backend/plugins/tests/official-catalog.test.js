@@ -26,9 +26,21 @@ function runNode(script, args = []) {
   });
 }
 
+// The catalogue as shipped: every artifact in marketplace-default/. Counted, not
+// hardcoded: a fixed number went stale (39) the moment a plugin was added, and
+// these node:test files run outside vitest, so nothing noticed.
+const shippedArtifacts = fs.readdirSync(path.join(pluginsDir, 'marketplace-default')).filter((f) => f.endsWith('.agnt')).length;
+
+test('every shipped artifact is listed in the catalogue, and nothing else is', () => {
+  const catalogue = JSON.parse(fs.readFileSync(path.join(pluginsDir, 'marketplace.json'), 'utf8'));
+  const entries = Array.isArray(catalogue) ? catalogue : (catalogue.plugins || catalogue.items || []);
+  assert.ok(shippedArtifacts > 0);
+  assert.equal(entries.length, shippedArtifacts);
+});
+
 test('official catalog is fully disclosed and source/artifact/metadata aligned', () => {
   const output = runNode('cli/audit-catalog.js');
-  assert.match(output, /Official catalog audit: .*39 .*0/);
+  assert.match(output, new RegExp(`Official catalog audit: .*${shippedArtifacts} .*0`));
   assert.match(output, /All official artifacts are structurally valid, fully disclosed, reproducible, and metadata-aligned/);
 });
 
@@ -57,8 +69,8 @@ test('official build fails closed when structured permissions are absent', () =>
   assert.deepEqual(restored.permissions.domains, []);
 });
 
-test('integrity stamper verifies all 39 shipped artifacts', () => {
+test('integrity stamper verifies every shipped artifact', () => {
   const output = runNode('cli/stamp-integrity.js', ['--check']);
-  assert.match(output, /39 unchanged\/ok/);
+  assert.match(output, new RegExp(`${shippedArtifacts} unchanged/ok`));
   assert.match(output, /0 mismatched/);
 });
