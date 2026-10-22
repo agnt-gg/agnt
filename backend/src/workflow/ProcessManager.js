@@ -7,6 +7,8 @@ import TriggerWakeModel from '../models/TriggerWakeModel.js';
 import EmailReceiver from '../tools/triggers/EmailReceiver.js';
 import WebhookReceiver from '../tools/triggers/WebhookReceiver.js';
 import { admitWorkflow } from './workflowAdmission.js';
+import { isAutonomous } from '../services/auth/planLimits.js';
+import { credentialUserId } from '../services/auth/tenantOwnership.js';
 
 class ProcessManager extends EventEmitter {
   constructor(numWorkers = 8, webhookPort = 3001) {
@@ -39,8 +41,8 @@ class ProcessManager extends EventEmitter {
       };
     }
 
-    // Paid triggers need a verified paid licence (workflowAdmission.js).
-    const admission = await admitWorkflow(workflow, userId);
+    // Plan: paid triggers, timer interval, how many may run (workflowAdmission.js).
+    const admission = await admitWorkflow(workflow, userId, { liveAutonomous: this.liveAutonomousCount(userId, workflowId) });
     if (!admission.ok) {
       console.log(`Workflow ${workflowId} not started: ${admission.error}`);
       return { error: admission.error, code: admission.code, triggers: admission.triggers, workflowId };
@@ -69,6 +71,24 @@ class ProcessManager extends EventEmitter {
       return { error: 'Failed to enqueue workflow', code: 'ENQUEUE_FAILED', workflowId: workflowId };
     }
   }
+  /**
+   * How many automatic workflows this owner already has live or queued, not
+   * counting `exceptId`. Owners are compared as the account that holds the
+   * plan (a team workspace counts against its instance owner).
+   */
+  liveAutonomousCount(userId, exceptId) {
+    const owner = credentialUserId(userId);
+    const ids = new Set();
+    for (const [id, engine] of this.activeWorkflows) {
+      if (id !== exceptId && credentialUserId(engine?.userId) === owner && isAutonomous(engine?.workflow)) ids.add(id);
+    }
+    for (const job of this.queue) {
+      const id = job?.workflow?.id;
+      if (id && id !== exceptId && credentialUserId(job.userId) === owner && isAutonomous(job.workflow)) ids.add(id);
+    }
+    return ids.size;
+  }
+
   async deactivateWorkflow(workflowId, userId) {
     console.log(`Attempting to stop workflow ${workflowId}`);
 
@@ -193,7 +213,7 @@ class ProcessManager extends EventEmitter {
 
           // Restoring is starting: the same admission as switching it on.
           // A workflow that may not run is switched off, not left "listening".
-          const admission = await admitWorkflow(workflow, workflowData.user_id, { restore: true });
+          const admission = await admitWorkflow(workflow, workflowData.user_id, { restore: true, liveAutonomous: this.liveAutonomousCount(workflowData.user_id, workflow.id) });
           if (admission.pending) console.log(`Workflow ${workflow.id} restored pending a licence check at login`);
           if (!admission.ok) {
             console.log(`Workflow ${workflow.id} not restored: ${admission.error}`);

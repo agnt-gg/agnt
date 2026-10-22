@@ -10,7 +10,7 @@ import { validateWorkflowShape } from '../workflow/validateWorkflowShape.js';
 import { normalizeWorkflowShape } from '../workflow/normalizeWorkflowShape.js';
 import { verifiedPlan } from './auth/licence.js';
 import { credentialUserId } from './auth/tenantOwnership.js';
-import { paidTriggersIn } from '../workflow/workflowAdmission.js';
+import { isAutonomous } from './auth/planLimits.js';
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -434,7 +434,7 @@ class WorkflowService {
       const workflowData = JSON.parse(workflow.workflow_data);
       // Paid triggers: refresh the owner's signed licence now, so the workflow
       // process (which verifies it offline) judges today's plan.
-      if (paidTriggersIn(workflowData).length) {
+      if (isAutonomous(workflowData)) {
         const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers?.authorization || ''))?.[1];
         await verifiedPlan(credentialUserId(req.user.userId), bearer ? { token: bearer } : {});
       }
@@ -449,8 +449,16 @@ class WorkflowService {
         // current state, but nothing is broken. Anything else is a real failure.
         // PLAN_REQUIRED: 403 with requiredFeature, the shape the frontend turns
         // into an upgrade prompt (never 401, which would log the user out).
-        if (result.code === 'PLAN_REQUIRED') {
-          return res.status(403).json({ error: 'Upgrade required', message: result.error, code: result.code, requiredFeature: 'paidTriggers', triggers: result.triggers, workflowId: result.workflowId });
+        if (result.code === 'PLAN_REQUIRED' || result.code === 'PLAN_LIMIT') {
+          return res.status(403).json({
+            error: 'Upgrade required',
+            message: result.error,
+            code: result.code,
+            requiredFeature: result.code === 'PLAN_REQUIRED' ? 'paidTriggers' : 'automation',
+            limit: result.limit,
+            triggers: result.triggers,
+            workflowId: result.workflowId,
+          });
         }
         const status = result.code === 'ALREADY_ACTIVE' ? 409 : 500;
         return res.status(status).json({

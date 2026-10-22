@@ -3,8 +3,12 @@
 // poll. Runs also recorded 'completed' when the goal reported its own failure.
 // Real (per-run temporary) database: covers the run-row SQL and the
 // duration_ms migration, with a controllable fake executor as the target.
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
+
+// Schedules are a paid feature (SchedulerService refuses them without a paid
+// plan); these tests are about firing, so the owner has a paid licence.
+vi.mock('../auth/licence.js', async (original) => ({ ...(await original()), verifiedPlan: async () => 'personal' }));
 import db, { dbReady } from '../../models/database/index.js';
 import ScheduleModel from '../../models/ScheduleModel.js';
 import SchedulerService from './SchedulerService.js';

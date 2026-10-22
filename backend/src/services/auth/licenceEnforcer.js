@@ -12,6 +12,9 @@ import { subscribe } from './sessionTokenCache.js';
 import { fetchLicence } from './licence.js';
 import { isEnforcing } from './planEntitlements.js';
 import { paidTriggersIn } from '../../workflow/workflowAdmission.js';
+import { FREE_LIMITS, isAutonomous, timerSchedulesIn, timerTooFastForFree } from './planLimits.js';
+import { graceActive } from './planGrace.js';
+import { credentialUserId } from './tenantOwnership.js';
 
 /**
  * Switch off this account's live workflows that use paid triggers.
@@ -40,12 +43,52 @@ export async function stopPaidTriggerWorkflows(userId, { listActive, deactivate 
   return stopped;
 }
 
+/**
+ * After the grace period: switch off this free account's automatic workflows
+ * that break a limit (a timer faster than the free plan allows), then any
+ * beyond the allowed number, keeping the most recently changed ones.
+ */
+export async function enforceFreeLimits(userId, { listActive, deactivate, inGrace = graceActive }) {
+  const owner = credentialUserId(userId);
+  const live = (await listActive())
+    .filter((row) => credentialUserId(row.user_id) === owner)
+    .map((row) => {
+      try {
+        return { row, workflow: JSON.parse(row.workflow_data) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry) => entry && isAutonomous(entry.workflow));
+  const overLimit = live.length > FREE_LIMITS.autonomousRoutines || live.some((e) => timerSchedulesIn(e.workflow).some(timerTooFastForFree));
+  if (!overLimit || inGrace(owner)) return [];
+  const newestFirst = [...live].sort((a, b) => String(b.row.updated_at || '').localeCompare(String(a.row.updated_at || '')));
+  const stopped = [];
+  let kept = 0;
+  for (const { row, workflow } of newestFirst) {
+    const reason = timerSchedulesIn(workflow).some(timerTooFastForFree) ? 'timer faster than daily' : kept >= FREE_LIMITS.autonomousRoutines ? 'over the free limit' : null;
+    if (!reason) {
+      kept += 1;
+      continue;
+    }
+    try {
+      await deactivate(row.id, row.user_id);
+      stopped.push({ id: row.id, reason });
+      console.log(`[licence] switched off workflow ${row.id}: ${reason}`);
+    } catch (error) {
+      console.error(`[licence] could not switch off workflow ${row.id}:`, error.message);
+    }
+  }
+  return stopped;
+}
+
 /** Check one account now: fetch its licence, and act if it is free. */
 export async function enforceForAccount(userId, deps) {
   if (!userId || !isEnforcing()) return null;
   const verdict = await fetchLicence(userId);
   if (!verdict?.valid || verdict.paid) return verdict;
   await stopPaidTriggerWorkflows(userId, deps);
+  await enforceFreeLimits(userId, deps);
   return verdict;
 }
 

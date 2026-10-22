@@ -176,8 +176,11 @@ class SchedulerService {
       ? await this._userResolver(schedule)
       : schedule.user_id;
 
-    if (schedule.target_type === 'goal' && !(await canRunScheduledGoals(userId))) {
-      await ScheduleModel.updateAfterRun(schedule.id, { lastRun: schedule.last_run, nextRun, status: 'upgrade_required', error: 'Scheduled goals require a paid plan.' });
+    // Schedules are a paid feature, whatever they run: a schedule made on a
+    // paid plan stops firing when the plan lapses (it used to keep firing
+    // unless it ran a goal).
+    if (!(await canRunScheduledGoals(userId))) {
+      await ScheduleModel.updateAfterRun(schedule.id, { lastRun: schedule.last_run, nextRun, status: 'upgrade_required', error: 'Schedules require a paid plan.' });
       return { fired: false, reason: 'upgrade_required' };
     }
 

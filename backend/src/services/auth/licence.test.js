@@ -88,13 +88,14 @@ describe('workflow admission: paid triggers', () => {
   it('the webhook and email triggers are the paid ones, read from the library flag', () => {
     expect([...PAID_TRIGGERS].sort()).toEqual(['receive-email', 'webhook-listener']);
     expect(paidTriggersIn(webhookFlow)).toEqual(['webhook-listener']);
-    expect(paidTriggersIn({ nodes: [{ type: 'trigger-timer' }] })).toEqual([]);
+    expect(paidTriggersIn({ nodes: [{ type: 'trigger-timer', parameters: { schedule: 'Daily' } }] })).toEqual([]);
   });
   it('switching on: refused without a paid plan, allowed with one', async () => {
     const refused = await admitWorkflow(webhookFlow, 'u1', { hasPaidPlan: async () => false });
     expect(refused).toMatchObject({ ok: false, code: 'PLAN_REQUIRED', triggers: ['webhook-listener'] });
     expect(await admitWorkflow(webhookFlow, 'u1', { hasPaidPlan: async () => true })).toEqual({ ok: true });
-    expect(await admitWorkflow({ nodes: [{ type: 'trigger-timer' }] }, 'u1', { hasPaidPlan: async () => false })).toEqual({ ok: true });
+    // A daily timer is within the free limits (planLimits.test.js covers the limits).
+    expect(await admitWorkflow({ nodes: [{ type: 'trigger-timer', parameters: { schedule: 'Daily' } }] }, 'u1', { hasPaidPlan: async () => false, hasLicence: () => true, inGrace: () => false })).toEqual({ ok: true });
   });
   it('restore: a known free licence stops it; no licence yet restores it pending (checked at login)', async () => {
     expect(await admitWorkflow(webhookFlow, 'u1', { restore: true, hasPaidPlan: async () => false, hasLicence: () => true })).toMatchObject({ ok: false });

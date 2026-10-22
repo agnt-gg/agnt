@@ -189,6 +189,10 @@ router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => 
     await AuthManager._saveApiKey(userId, providerId, apiKey);
     return res.json({ success: true, message: `${providerId} API key saved locally`, providerId });
   } catch (error) {
+    // The free plan's connection limit: an upgrade prompt, not a failure.
+    if (error.code === 'PLAN_LIMIT') {
+      return res.status(403).json({ success: false, error: 'Upgrade required', message: error.message, code: error.code, requiredFeature: 'connections', limit: error.limit });
+    }
     console.error(`[ProviderAuth] Failed to save API key for ${req.providerId}:`, error.message);
     return res.status(500).json({ success: false, error: error.message || 'Failed to save API key' });
   }

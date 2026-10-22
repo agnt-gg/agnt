@@ -681,6 +681,8 @@ class AuthManager {
     if (!userId) throw new Error('userId is required');
     if (!providerId) throw new Error('providerId is required');
     if (!apiKey || typeof apiKey !== 'string') throw new Error('apiKey must be a non-empty string');
+    // The free plan's connection limit (a new account only; never a replacement).
+    await (await import('./connectionLimit.js')).assertCanConnect(userId, providerId);
 
     const encrypted = encrypt(apiKey.trim());
     return new Promise((resolve, reject) => {
@@ -730,6 +732,8 @@ class AuthManager {
     });
   }
   async _saveTokens(userId, providerId, tokens) {
+    // The free plan's connection limit (a new account only; a refresh passes).
+    await (await import('./connectionLimit.js')).assertCanConnect(userId, providerId);
     console.log('Saving tokens:', {
       userId,
       providerId,

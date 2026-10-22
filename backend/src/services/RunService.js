@@ -9,6 +9,9 @@ import { serializeParticipants } from '../utils/transcriptParticipants.js';
 import { contentHashOf } from '../utils/contentHash.js';
 import { missingReportTurns } from '../utils/reportTurns.js';
 import { closeConversationLane } from './browserLanes.js';
+import { canRunScheduledGoals, isEnforcing } from './auth/planEntitlements.js';
+import { credentialUserId } from './auth/tenantOwnership.js';
+import { freeHistorySince } from './auth/planLimits.js';
 
 /**
  * A chat is gone: close the browser tab it was driving.
@@ -566,7 +569,16 @@ class RunService {
   async getExecutions(req, res) {
     try {
       const { startDate, endDate } = req.query;
-      const dateRange = startDate && endDate ? { startDate, endDate } : {};
+      let dateRange = startDate && endDate ? { startDate, endDate } : {};
+      // The free plan shows FREE_LIMITS.historyDays of runs. Older runs are
+      // kept (nothing is deleted); they show again on a paid plan.
+      if (isEnforcing() && !(await canRunScheduledGoals(credentialUserId(req.user.userId)))) {
+        const since = freeHistorySince();
+        dateRange = {
+          startDate: dateRange.startDate && dateRange.startDate > since ? dateRange.startDate : since,
+          endDate: dateRange.endDate || new Date().toISOString(),
+        };
+      }
       const executions = await ExecutionModel.getExecutions(req.user.userId, dateRange);
       res.json(executions);
     } catch (error) {
