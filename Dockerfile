@@ -1,8 +1,9 @@
 # Multi-stage build for AGNT - AI Agent Framework (FULL VERSION)
-# Using Node 20 LTS with Chromium for complete features
+# Using Node 22 LTS with Chromium for complete features. The server image runs
+# Node 22 (20 is end-of-life); the desktop app's Node comes from Electron.
 # ~1.5GB image size - includes Puppeteer browser automation
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -59,7 +60,7 @@ COPY LICENSE.md /app/LICENSE.md
 RUN npm run build
 
 # Stage 2: Build backend dependencies
-FROM node:20-alpine AS backend-builder
+FROM node:22-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -109,7 +110,7 @@ COPY scripts/patch-onnxruntime.js ./scripts/
 RUN node scripts/patch-onnxruntime.js || echo "ONNX patch failed, continuing anyway"
 
 # Stage 3: Final runtime image
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
