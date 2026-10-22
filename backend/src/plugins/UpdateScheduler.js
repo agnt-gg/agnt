@@ -40,6 +40,22 @@ import path from 'path';
 
 const DEFAULT_SETTINGS = { autoCheck: true, intervalHours: 6 };
 
+/**
+ * True for a settings file that only records the RETIRED default.
+ *
+ * Before 2026-08-18 the default was { autoCheck: false, intervalHours: 24 },
+ * and the old settings route wrote it to disk on a machine that never chose
+ * anything. When the default became "on", that file kept such machines off:
+ * no plugin on the developer's desktop updated for two months. A file holding
+ * exactly that pair is the old default, not a choice, and reads as no file:
+ * the same call the retired 'notify' policy got. `{ autoCheck: false }` on its
+ * own, or with any other interval, is still honoured as the escape hatch.
+ */
+function isRetiredDefault(parsed) {
+  const keys = Object.keys(parsed || {});
+  return keys.length === 2 && parsed.autoCheck === false && parsed.intervalHours === 24;
+}
+
 class UpdateScheduler {
   constructor(installer) {
     this.installer = installer;
@@ -53,6 +69,7 @@ class UpdateScheduler {
   async getSettings() {
     try {
       const parsed = JSON.parse(await fs.readFile(this.settingsPath, 'utf-8'));
+      if (isRetiredDefault(parsed)) return { ...DEFAULT_SETTINGS };
       return { ...DEFAULT_SETTINGS, ...parsed };
     } catch {
       return { ...DEFAULT_SETTINGS };

@@ -22,7 +22,18 @@ export async function pluginAccountBoundary(req, res, next) {
       const name = decodeURIComponent(match[1]);
       await PluginAccounts.assert(name, userId);
       if (req.method !== 'GET' && req.method !== 'DELETE' && (await PluginAccounts.owners(name)).some(owner => owner !== userId)) {
-        return res.status(409).json({ success: false, error: 'This package is also in use by another account. Its shared code cannot be changed here.' });
+        // A shared package still takes a catalogue update on exactly the terms
+        // the background updater applies to every account (UpdateScheduler):
+        // integrity-checked, never pinned, and granting nothing new. Approving
+        // new permissions is a decision for each account, so it stays refused.
+        if (ownedPath && req.path.startsWith('/update/')) {
+          if (req.body?.acceptedPermissions === true) {
+            return res.status(409).json({ success: false, error: 'This update asks for new permissions, and other accounts on this computer use this plugin. It can only be approved where every account agrees, so it was not applied.' });
+          }
+          req.sharedPackageUpdate = true;
+        } else {
+          return res.status(409).json({ success: false, error: 'This package is also in use by another account. Its shared code cannot be changed here.' });
+        }
       }
     }
     if (req.method === 'POST' && ['/install-file','/install-github','/bundle-from-assets','/build-generated'].includes(req.path)) {

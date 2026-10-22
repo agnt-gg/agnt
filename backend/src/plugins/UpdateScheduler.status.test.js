@@ -93,6 +93,22 @@ describe('the scheduler runs by default', () => {
     await expect(scheduler.start()).resolves.toBe(false);
   });
 
+  // Found 2026-10-22 on the developer's desktop: update-settings.json held
+  // exactly the pre-2026-08-18 default, so nothing had updated for two months.
+  it('a file holding only the retired default (off, 24h) reads as the default and runs', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await fs.writeFile(scheduler.settingsPath, JSON.stringify({ autoCheck: false, intervalHours: 24 }));
+    await expect(scheduler.getSettings()).resolves.toEqual({ autoCheck: true, intervalHours: 6 });
+    await expect(scheduler.start()).resolves.toBe(true);
+    scheduler.stop();
+  });
+
+  it('autoCheck:false with any other interval is still a deliberate opt-out', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await fs.writeFile(scheduler.settingsPath, JSON.stringify({ autoCheck: false, intervalHours: 12 }));
+    await expect(scheduler.start()).resolves.toBe(false);
+  });
+
   it('never holds the process open', async () => {
     // Now that this starts on every boot, a timer that keeps the event loop
     // alive would hang every short-lived process that touches the installer.

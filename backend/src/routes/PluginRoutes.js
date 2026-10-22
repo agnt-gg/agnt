@@ -973,6 +973,16 @@ router.post('/update/:name', requireAuthHeader, accountPluginMutation(async (req
     const { name } = req.params;
     const { acceptedPermissions = false } = req.body || {};
 
+    // Shared with other accounts (pluginAccountBoundary): the background
+    // updater's terms, so a pin set for this package is absolute here too.
+    if (req.sharedPackageUpdate) {
+      const fsp = await import('fs/promises');
+      const registry = JSON.parse(await fsp.readFile(PluginInstaller.registryPath, 'utf-8'));
+      if ((registry.plugins || []).find((p) => p.name === name)?.updatePolicy === 'pinned') {
+        return res.status(409).json({ success: false, error: 'This plugin is pinned, and other accounts on this computer use it, so it was not updated.' });
+      }
+    }
+
     console.log(`[PluginRoutes] Updating plugin: ${name}`);
     const result = await PluginInstaller.updatePlugin(name, {
       acceptedPermissions,
