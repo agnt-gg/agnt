@@ -11,7 +11,7 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 
 # Install frontend dependencies (including devDependencies for build)
-RUN npm install
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
@@ -85,7 +85,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Install ALL dependencies including optionalDependencies (puppeteer-extra, etc.)
 # Ignore postinstall scripts (electron-builder not needed in Docker)
-RUN npm install --production --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 # Rebuild native bindings for the Docker environment
 RUN npm rebuild sqlite3 sharp

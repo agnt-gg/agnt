@@ -55,9 +55,9 @@ frontend/.cache/
 *.sqlite
 *.sqlite3
 
-# Package manager lock files (copied separately)
-package-lock.json
-frontend/package-lock.json
+# Lock files are NOT ignored: the image installs with `npm ci` from them.
+# Without them every build resolved the tree afresh, so builds were not
+# reproducible and npm's peer resolver could crash on a new upstream release.
 
 # Electron builder cache
 .electron-builder-cache/
