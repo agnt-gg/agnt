@@ -6,6 +6,7 @@ import WorkflowModel from '../models/WorkflowModel.js';
 import TriggerWakeModel from '../models/TriggerWakeModel.js';
 import EmailReceiver from '../tools/triggers/EmailReceiver.js';
 import WebhookReceiver from '../tools/triggers/WebhookReceiver.js';
+import { admitWorkflow } from './workflowAdmission.js';
 
 class ProcessManager extends EventEmitter {
   constructor(numWorkers = 8, webhookPort = 3001) {
@@ -36,6 +37,13 @@ class ProcessManager extends EventEmitter {
         code: 'ALREADY_ACTIVE',
         workflowId: workflowId,
       };
+    }
+
+    // Paid triggers need a verified paid licence (workflowAdmission.js).
+    const admission = await admitWorkflow(workflow, userId);
+    if (!admission.ok) {
+      console.log(`Workflow ${workflowId} not started: ${admission.error}`);
+      return { error: admission.error, code: admission.code, triggers: admission.triggers, workflowId };
     }
 
     // Check concurrent workflow limit
@@ -182,6 +190,16 @@ class ProcessManager extends EventEmitter {
         for (const workflowData of activeWorkflows) {
           const workflow = JSON.parse(workflowData.workflow_data);
           workflow.id = workflowData.id;
+
+          // Restoring is starting: the same admission as switching it on.
+          // A workflow that may not run is switched off, not left "listening".
+          const admission = await admitWorkflow(workflow, workflowData.user_id, { restore: true });
+          if (admission.pending) console.log(`Workflow ${workflow.id} restored pending a licence check at login`);
+          if (!admission.ok) {
+            console.log(`Workflow ${workflow.id} not restored: ${admission.error}`);
+            await this._updateWorkflowStatus(workflow.id, 'stopped').catch((error) => console.error(`Could not stop ${workflow.id}:`, error.message));
+            continue;
+          }
 
           // Queue the workflow for restart instead of immediately activating.
           // 'restore', not 'user': the workflow was already on, so triggers

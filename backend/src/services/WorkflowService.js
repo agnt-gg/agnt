@@ -8,6 +8,9 @@ import PluginManager from '../plugins/PluginManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import { validateWorkflowShape } from '../workflow/validateWorkflowShape.js';
 import { normalizeWorkflowShape } from '../workflow/normalizeWorkflowShape.js';
+import { verifiedPlan } from './auth/licence.js';
+import { credentialUserId } from './auth/tenantOwnership.js';
+import { paidTriggersIn } from '../workflow/workflowAdmission.js';
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -428,7 +431,14 @@ class WorkflowService {
       if (!workflow) {
         return res.status(404).json({ error: 'Workflow not found' });
       }
-      const result = await WorkflowProcessBridge.activateWorkflow(JSON.parse(workflow.workflow_data), req.user.userId);
+      const workflowData = JSON.parse(workflow.workflow_data);
+      // Paid triggers: refresh the owner's signed licence now, so the workflow
+      // process (which verifies it offline) judges today's plan.
+      if (paidTriggersIn(workflowData).length) {
+        const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers?.authorization || ''))?.[1];
+        await verifiedPlan(credentialUserId(req.user.userId), bearer ? { token: bearer } : {});
+      }
+      const result = await WorkflowProcessBridge.activateWorkflow(workflowData, req.user.userId);
 
       // ProcessManager reports two refusals by RESOLVING with an error-shaped
       // payload rather than throwing: the workflow is already active, or the
@@ -437,6 +447,11 @@ class WorkflowService {
       if (result && result.error) {
         // 409 for "already running": the request could not be carried out in the
         // current state, but nothing is broken. Anything else is a real failure.
+        // PLAN_REQUIRED: 403 with requiredFeature, the shape the frontend turns
+        // into an upgrade prompt (never 401, which would log the user out).
+        if (result.code === 'PLAN_REQUIRED') {
+          return res.status(403).json({ error: 'Upgrade required', message: result.error, code: result.code, requiredFeature: 'paidTriggers', triggers: result.triggers, workflowId: result.workflowId });
+        }
         const status = result.code === 'ALREADY_ACTIVE' ? 409 : 500;
         return res.status(status).json({
           error: 'Failed to start workflow',

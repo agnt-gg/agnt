@@ -1,4 +1,11 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+
+// Pairing is a paid feature, enforced (planEntitlements). These tests are
+// about pairing itself, so they run as a paying account; the last describe
+// proves a free one is refused.
+let licencePlan = 'personal';
+vi.mock('../services/auth/licence.js', async (original) => ({ ...(await original()), verifiedPlan: async () => licencePlan }));
+
 import express from 'express';
 import http from 'http';
 import jwt from 'jsonwebtoken';
@@ -42,6 +49,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  licencePlan = 'personal';
   _resetPairing();
   _resetRateLimits();
 });
@@ -410,5 +418,22 @@ describe('pairing — the origin in the QR', () => {
     expect(Array.isArray(body.origins)).toBe(true);
     expect(body.urls.every((u) => !u.includes('127.0.0.1') && !u.includes('localhost'))).toBe(true);
     expect(String(port)).toBeTruthy();
+  });
+});
+
+// Reported 2026-10-21: plan gates were off on every install, so free accounts paired phones.
+describe('pairing is a paid feature, enforced', () => {
+  it('a free account is refused with 403 and requiredFeature, and gets no code', async () => {
+    licencePlan = 'free';
+    const res = await call('POST', '/api/pairing/code', { auth: token() });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.requiredFeature).toBe('remoteAccess');
+    expect(body.code).toBeUndefined();
+  });
+
+  it('no verified licence at all is refused too', async () => {
+    licencePlan = null;
+    expect((await call('POST', '/api/pairing/code', { auth: token() })).status).toBe(403);
   });
 });

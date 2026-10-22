@@ -1,219 +1,101 @@
-import axios from 'axios';
-import fs from 'fs';
-import pathManager from '../../utils/PathManager.js';
-import { getSessionToken, getSessionUserId } from './sessionTokenCache.js';
+import { getSessionUserId } from './sessionTokenCache.js';
 import { credentialUserId } from './tenantOwnership.js';
+import { verifiedPlan, PAID_PLANS } from './licence.js';
 
 /**
- * What this install's user is entitled to.
+ * What this install's user is entitled to, from a VERIFIED licence.
  *
- * ---------------------------------------------------------------------------
- * WHY THIS EXISTS
- * ---------------------------------------------------------------------------
- * Until now this backend had NO notion of a plan. Grep it: nothing reads
- * plan_type, nothing imports a license. Plan data lived only in the frontend's
- * Vuex store, which is why paid features here were enforced by hiding a button
- * — a control that survives exactly as long as nobody opens devtools.
+ * Until 2026-10-21 this module asked GET /license/status (an unsigned answer),
+ * treated every unknown as entitled, and enforced nothing unless an operator
+ * had created a `.enforce-plan-gates` file, which no install had. The
+ * frontend's own licence check never ran either (it called a preload bridge
+ * that does not exist and returned true). Net effect: nothing on the desktop
+ * enforced a plan.
  *
- * `/api/pairing/*` is the case that forced the issue. Phone pairing is a paid
- * capability, it is implemented entirely locally, and the cloud never sees the
- * request. So the check has to happen here, which means here has to know.
- *
- * ---------------------------------------------------------------------------
- * IT FAILS OPEN, ON PURPOSE
- * ---------------------------------------------------------------------------
- * Pairing a phone to your own desktop over your own LAN is a LOCAL operation.
- * Making it depend on a reachable cloud is a real cost, and the failure it
- * introduces is worse than the one it prevents:
- *
- *   fail closed -> api.agnt.gg has a bad hour, and a Personal Pro customer
- *                  cannot pair with the machine sitting in front of them.
- *   fail open   -> a free user pairs a phone during that same hour.
- *
- * The second is a rounding error against the first. Every unknown answer —
- * no token yet, network down, 500, malformed body — resolves to ENTITLED.
- * The only thing that denies is a successful lookup that says `free`.
- *
- * This mirrors `gatedFeature` on the API, which also calls next() when the
- * plan lookup throws. Same principle: a billing check must never become an
- * availability risk.
- *
- * ---------------------------------------------------------------------------
- * STAGED, LIKE EVERYTHING ELSE IN THIS MIGRATION
- * ---------------------------------------------------------------------------
- * Off unless ENFORCE_PLAN_GATES=true or a `.enforce-plan-gates` file exists in
- * the data directory — deliberately the same name and the same semantics as the
- * server-side sentinel, so one mental model covers both halves and an operator
- * flipping "plan gates" does not have to remember that local is different.
+ * Now:
+ *   - The plan is what a licence signed by api.agnt.gg says (licence.js),
+ *     verified here with the public key, bound to the user, unexpired. The
+ *     signed licence is cached, so a paying customer offline keeps their plan
+ *     until it expires.
+ *   - Unknown is NOT paid. A paid capability needs proof.
+ *   - Enforcement is ON. ENFORCE_PLAN_GATES=false turns it off for tests and
+ *     development only; a missing setting means on.
  */
 
-/** Mirrors PLAN_DETAILS in the API's config/plans.js. Free is the only denier.
- *
- * *** EVERY PAID TIER MUST BE LISTED HERE. *** This set is the difference
- * between a paying customer and a denied one: a plan that exists in the API
- * but is missing from this line is treated exactly like `free`, so the moment
- * gates move from shadow to enforce, those customers lose the features they
- * are paying for. `always_on` was added with the 2026-08 pricing; anything
- * added to PLAN_DETAILS after this comment belongs here on the same day. */
-const PAID_PLANS = new Set(['personal', 'always_on', 'business', 'enterprise']);
-
-/**
- * Features this module can answer for. Kept explicit rather than mirroring the
- * whole server table: a typo'd feature name should be a loud failure at review
- * time, not a silent `undefined` that quietly denies a paying customer.
- */
+/** Features this module answers for. A typo should fail loudly in review, not deny or grant silently. */
 const KNOWN_FEATURES = new Set([
   'remoteAccess', 'webhooks', 'emailServer', 'apiAccess', 'cloudSync',
-  // Hosted services, included with Pro. Mirror `services` in the API's PLAN_DETAILS.
+  // Hosted services, included with every paid plan (`services` in the API's PLAN_DETAILS).
   'models', 'search', 'sandbox', 'mail', 'hostedWebhooks', 'mobile',
 ]);
 
-/**
- * A plan does not change between two requests seconds apart, and the pairing
- * panel polls /status on an interval. Long enough to be cheap, short enough
- * that an upgrade is honoured within a minute.
- */
-const PLAN_CACHE_MS = 60_000;
-
-/** Never let a slow cloud hold up a local request. Timeout => entitled. */
-const LOOKUP_TIMEOUT_MS = 4000;
-
-let cached = null; // { account, planType, at }
-let inFlight = null; // { account, promise }
-
-function sentinelPath() {
-  try {
-    return pathManager.getDataPath('.enforce-plan-gates');
-  } catch {
-    return null;
-  }
+/** Are plan gates enforced? Yes, unless explicitly switched off. */
+export function isEnforcing() {
+  const flag = String(process.env.ENFORCE_PLAN_GATES ?? '').trim().toLowerCase();
+  return !(flag === 'false' || flag === '0' || flag === 'off');
 }
 
-/** Are plan gates being enforced on this install right now? */
-export function isEnforcing() {
-  const flag = process.env.ENFORCE_PLAN_GATES;
-  if (flag === 'true' || flag === '1') return true;
-  if (flag === 'false' || flag === '0') return false;
+/**
+ * The plan a verified licence proves for this account, or null when none does.
+ * null is "not proven", and callers deny paid capabilities on it.
+ */
+export async function getPlanType({ userId, network = true, token } = {}) {
+  const account = userId || getSessionUserId();
+  if (!account) return null;
+  return verifiedPlan(account, token ? { network, token } : { network });
+}
 
-  const file = sentinelPath();
-  if (!file) return false;
-  try {
-    return fs.existsSync(file);
-  } catch {
-    // An unreadable sentinel is not permission to start refusing people.
+/** The bearer token a request carries, if any. */
+function bearerOf(req) {
+  const header = req?.headers?.authorization || req?.headers?.Authorization || '';
+  return /^Bearer\s+(.+)$/i.exec(String(header))?.[1]?.trim() || undefined;
+}
+
+/** Is the current account entitled to a paid feature? Only with a verified paid licence. */
+export async function hasFeature(feature, { userId, token } = {}) {
+  if (!KNOWN_FEATURES.has(feature)) {
+    console.warn(`[planEntitlements] unknown feature '${feature}' — denying`);
     return false;
   }
-}
-
-/**
- * The user's plan type, or null when it cannot be determined.
- *
- * null is meaningfully different from 'free': it means "do not know", and every
- * caller treats it as entitled. Only a definite 'free' denies.
- */
-export async function getPlanType({ force = false, userId } = {}) {
-  // A plan belongs to an account, and the install can switch accounts. Every
-  // cached answer and in-flight lookup is for the account active right now, so
-  // one account's plan is never reported for another.
-  const account = userId || getSessionUserId();
-  const fresh = cached && cached.account === account && Date.now() - cached.at < PLAN_CACHE_MS;
-  if (!force && fresh) return cached.planType;
-
-  // Collapse concurrent callers onto one request. The pairing panel can fire
-  // /status and /code within the same tick.
-  if (inFlight && inFlight.account === account) return inFlight.promise;
-
-  const remoteUrl = process.env.REMOTE_URL;
-  const token = getSessionToken(account ?? undefined);
-  if (!remoteUrl || !token) return null;
-
-  const lookup = (async () => {
-    try {
-      const response = await axios.get(`${remoteUrl}/license/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: LOOKUP_TIMEOUT_MS,
-      });
-
-      // `authenticated: false` means the cloud did not recognise our token. That
-      // is a "do not know", not a "free" — refusing a paying customer because
-      // their token happened to be stale would be the exact failure this module
-      // is written to avoid.
-      if (response.data?.authenticated === false) return null;
-
-      const planType = response.data?.planType;
-      if (typeof planType !== 'string' || !planType) return null;
-
-      cached = { account, planType, at: Date.now() };
-      return planType;
-    } catch (error) {
-      console.warn('[planEntitlements] plan lookup failed, treating as entitled:', error.message);
-      return null;
-    } finally {
-      if (inFlight?.promise === lookup) inFlight = null;
-    }
-  })();
-
-  inFlight = { account, promise: lookup };
-  return lookup;
-}
-
-/**
- * Is this install entitled to `feature`?
- *
- * Returns true whenever the answer is unknown. See the fail-open note above.
- */
-export async function hasFeature(feature) {
-  if (!KNOWN_FEATURES.has(feature)) {
-    console.warn(`[planEntitlements] unknown feature '${feature}' — allowing`);
-    return true;
-  }
-  const planType = await getPlanType();
-  if (planType === null) return true;
-  return PAID_PLANS.has(planType);
+  if (!isEnforcing()) return true;
+  return PAID_PLANS.has(await getPlanType({ userId, token }));
 }
 
 /**
  * Express guard for a paid LOCAL capability.
  *
- * 403 with `requiredFeature`, never 401. The frontend classifies that shape as
- * `plan_denied` and shows an upgrade prompt; a 401 would be read as "session
- * dead", log the user out, and return them to the same 403 after they log back
- * in — an unbreakable loop. See frontend/src/store/auth/userAuth.js.
+ * 403 with `requiredFeature`, never 401: the frontend shows an upgrade prompt
+ * for that shape, while a 401 would log the user out into the same 403
+ * forever (frontend/src/store/auth/userAuth.js).
  */
 export function requirePaidFeature(feature) {
   return async function requirePaidFeatureMiddleware(req, res, next) {
-    let entitled = true;
+    let entitled = false;
     try {
-      entitled = await hasFeature(feature);
+      entitled = await hasFeature(feature, { userId: req.user?.userId || req.user?.id, token: bearerOf(req) });
     } catch (error) {
-      console.warn(`[planEntitlements] ${feature} check threw, allowing:`, error.message);
-      return next();
+      console.warn(`[planEntitlements] ${feature} check failed, denying:`, error.message);
     }
-
-    if (entitled || !isEnforcing()) return next();
-
+    if (entitled) return next();
     return res.status(403).json({
       success: false,
       error: 'Feature not available',
-      message: 'This feature is not available on your current plan',
+      message: 'This feature needs a paid AGNT plan.',
       requiredFeature: feature,
     });
   };
 }
 
-/** Test seam. */
-export function __resetPlanEntitlementsForTests() {
-  cached = null;
-  inFlight = null;
-}
+/** Test seam (kept for callers; the cache now lives in licence.js on disk). */
+export function __resetPlanEntitlementsForTests() {}
 
-/** Scheduling spends resources without a request present: require a known paid plan
+/** Scheduling spends resources without a request present: require a proven paid plan
  * for the schedule OWNER, never whichever account authenticated most recently. */
-export async function canRunScheduledGoals(userId) {
+export async function canRunScheduledGoals(userId, { network = true } = {}) {
   if (!userId) return false;
+  if (!isEnforcing()) return true;
   // A team workspace has no plan of its own; it schedules on the instance owner's.
-  const plan = await getPlanType({ userId: credentialUserId(userId) });
-  return PAID_PLANS.has(plan);
+  return PAID_PLANS.has(await getPlanType({ userId: credentialUserId(userId), network }));
 }
 export async function requireScheduledGoals(req, res, next) {
   // Downgraded accounts must still be able to stop or remove existing jobs.

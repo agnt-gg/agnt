@@ -23,7 +23,12 @@
  * made the build green. Both behaviours are pinned here instead, keyed on the
  * thing that actually distinguishes them.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+
+// Pairing is paid and enforced; these tests are about reachability, so they
+// run as a paying account (the refusal is tested in PairingRoutes.test.js).
+vi.mock('../services/auth/licence.js', async (original) => ({ ...(await original()), verifiedPlan: async () => 'personal' }));
+
 import express from 'express';
 import http from 'http';
 import jwt from 'jsonwebtoken';

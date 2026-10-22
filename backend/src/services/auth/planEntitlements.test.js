@@ -1,253 +1,138 @@
 /**
- * Plan entitlements in the LOCAL backend.
+ * Plan gates on the desktop backend (rewritten 2026-10-21).
  *
- * WHAT MAKES THIS DIFFERENT FROM THE SERVER-SIDE GATE
- * ---------------------------------------------------
- * The API's `gatedFeature` guards a request that already reached the cloud, so
- * asking the database about a plan costs nothing extra. This module guards a
- * purely LOCAL operation — pairing a phone with the desktop in front of you —
- * and answering it requires a network round trip that the operation itself does
- * not need.
- *
- * That asymmetry is the whole design, and it is what these tests are about:
- *
- *   - every unknown answer must resolve to ENTITLED, because a billing check
- *     must never become an availability failure for someone who paid;
- *   - only a definite `free` may deny;
- *   - and none of it may refuse anyone until the gate is switched on.
- *
- * The tests below are weighted accordingly: one case for the denial, and eight
- * for the ways it must NOT deny.
+ * The previous suite pinned the opposite of what is right: "IT FAILS OPEN —
+ * every unknown resolves to entitled" and "ships OFF when neither the env var
+ * nor the sentinel is present". With those rules no install enforced a plan.
+ * The plan now comes from a licence verified here (licence.js, tested in
+ * licence.test.js); these tests pin how the gates use it.
  */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-vi.mock('axios', () => ({ default: { get: vi.fn() } }));
-
-const tokenState = { token: 'tok-1', userId: 'user-1' };
-vi.mock('./sessionTokenCache.js', () => ({
-  getSessionToken: () => tokenState.token,
-  getSessionUserId: () => (tokenState.token ? tokenState.userId : null),
+let plan = null;
+vi.mock('./licence.js', () => ({
+  PAID_PLANS: new Set(['personal', 'always_on', 'business', 'enterprise']),
+  verifiedPlan: vi.fn(async () => plan),
 }));
+vi.mock('./sessionTokenCache.js', () => ({ getSessionUserId: () => 'u1' }));
 
-vi.mock('../../utils/PathManager.js', () => ({
-  default: { getDataPath: (...parts) => ['/tmp/agnt-test', ...parts].join('/') },
-}));
+const { isEnforcing, getPlanType, hasFeature, requirePaidFeature, canRunScheduledGoals, requireScheduledGoals } = await import('./planEntitlements.js');
+const { verifiedPlan } = await import('./licence.js');
 
-const axios = (await import('axios')).default;
-const mod = await import('./planEntitlements.js');
-const { getPlanType, hasFeature, requirePaidFeature, isEnforcing, __resetPlanEntitlementsForTests } = mod;
-
-const okPlan = (planType) => ({ data: { planType, planStatus: 'active', authenticated: true } });
+const res = () => {
+  const r = { statusCode: 200, body: null };
+  r.status = (code) => ((r.statusCode = code), r);
+  r.json = (body) => ((r.body = body), r);
+  return r;
+};
+async function guard(feature, req = { user: { userId: 'u1' } }) {
+  const r = res();
+  const next = vi.fn();
+  await requirePaidFeature(feature)(req, r, next);
+  return { next, r };
+}
 
 beforeEach(() => {
-  __resetPlanEntitlementsForTests();
-  vi.clearAllMocks();
-  tokenState.token = 'tok-1';
-  tokenState.userId = 'user-1';
-  process.env.REMOTE_URL = 'https://api.test';
-  process.env.ENFORCE_PLAN_GATES = 'true'; // most tests want the gate live
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
+  plan = null;
+  verifiedPlan.mockClear();
   delete process.env.ENFORCE_PLAN_GATES;
 });
 
-/** Minimal express double. */
-function invoke(middleware, req = {}) {
-  return new Promise((resolve) => {
-    let nexted = false;
-    const res = {
-      statusCode: 200,
-      body: undefined,
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(payload) {
-        this.body = payload;
-        resolve({ nexted, statusCode: this.statusCode, body: payload });
-        return this;
-      },
-    };
-    middleware(req, res, () => {
-      nexted = true;
-      resolve({ nexted: true, statusCode: null, body: null });
-    });
+describe('enforcement', () => {
+  it('is ON when nothing is configured (it used to ship off)', () => {
+    expect(isEnforcing()).toBe(true);
   });
-}
-
-describe('plan lookup', () => {
-  it('reads the plan type from the cloud', async () => {
-    axios.get.mockResolvedValue(okPlan('personal'));
-    expect(await getPlanType()).toBe('personal');
-    expect(axios.get.mock.calls[0][0]).toBe('https://api.test/license/status');
-    expect(axios.get.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
-  });
-
-  it('switching account never reuses the other account\'s cached plan', async () => {
-    axios.get.mockResolvedValueOnce(okPlan('personal')).mockResolvedValueOnce(okPlan('free'));
-    expect(await getPlanType()).toBe('personal');
-
-    tokenState.token = 'tok-2';
-    tokenState.userId = 'user-2';
-    expect(await getPlanType()).toBe('free');
-    expect(axios.get).toHaveBeenCalledTimes(2);
-    expect(axios.get.mock.calls[1][1].headers.Authorization).toBe('Bearer tok-2');
-  });
-
-  it('caches, so a polling panel does not hammer the cloud', async () => {
-    axios.get.mockResolvedValue(okPlan('personal'));
-    await getPlanType();
-    await getPlanType();
-    await getPlanType();
-    expect(axios.get).toHaveBeenCalledTimes(1);
-  });
-
-  it('collapses concurrent lookups into one request', async () => {
-    axios.get.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(okPlan('business')), 10))
-    );
-    const [a, b, c] = await Promise.all([getPlanType(), getPlanType(), getPlanType()]);
-    expect([a, b, c]).toEqual(['business', 'business', 'business']);
-    expect(axios.get).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('THE DENIAL — the one case that refuses', () => {
-  it('a definite free plan is refused', async () => {
-    axios.get.mockResolvedValue(okPlan('free'));
-    expect(await hasFeature('remoteAccess')).toBe(false);
-
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.nexted).toBe(false);
-    expect(result.statusCode).toBe(403);
-    expect(result.body.requiredFeature).toBe('remoteAccess');
-  });
-
-  it('refuses with 403 and NEVER 401', async () => {
-    // A 401 here would be read by the client as "session dead", log the user
-    // out, and return them to the same refusal after logging back in.
-    axios.get.mockResolvedValue(okPlan('free'));
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.statusCode).toBe(403);
-    expect(result.statusCode).not.toBe(401);
-  });
-});
-
-describe('IT FAILS OPEN — every unknown resolves to entitled', () => {
-  const expectAllowed = async () => {
-    expect(await hasFeature('remoteAccess')).toBe(true);
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.nexted).toBe(true);
-  };
-
-  it('when the cloud is unreachable', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    axios.get.mockRejectedValue(new Error('ECONNREFUSED'));
-    await expectAllowed();
-  });
-
-  it('when the cloud returns a 500', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = new Error('boom');
-    error.response = { status: 500 };
-    axios.get.mockRejectedValue(error);
-    await expectAllowed();
-  });
-
-  it('when the request times out', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = new Error('timeout of 4000ms exceeded');
-    error.code = 'ECONNABORTED';
-    axios.get.mockRejectedValue(error);
-    await expectAllowed();
-  });
-
-  it('when no session token has been seen yet', async () => {
-    tokenState.token = null;
-    await expectAllowed();
-    expect(axios.get, 'called the cloud with no credential').not.toHaveBeenCalled();
-  });
-
-  it('when the cloud says our token is not recognised', async () => {
-    // authenticated:false is "do not know", not "free". Treating a stale token
-    // as a downgrade would refuse a paying customer.
-    axios.get.mockResolvedValue({ data: { planType: 'free', authenticated: false } });
-    await expectAllowed();
-  });
-
-  it('when the body is malformed', async () => {
-    axios.get.mockResolvedValue({ data: { nonsense: true } });
-    await expectAllowed();
-  });
-
-  it('when REMOTE_URL is not configured', async () => {
-    delete process.env.REMOTE_URL;
-    await expectAllowed();
-  });
-
-  it('when the feature name is unknown', async () => {
-    // A typo must not silently deny a paying customer.
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    axios.get.mockResolvedValue(okPlan('free'));
-    expect(await hasFeature('remoteAcess')).toBe(true);
-  });
-});
-
-describe('every paid plan is entitled', () => {
-  for (const plan of ['personal', 'business', 'enterprise']) {
-    it(`${plan} passes`, async () => {
-      __resetPlanEntitlementsForTests();
-      axios.get.mockResolvedValue(okPlan(plan));
-      expect(await hasFeature('remoteAccess')).toBe(true);
-    });
-  }
-});
-
-describe('staging', () => {
-  it('SHADOW refuses nobody, even a free plan', async () => {
-    process.env.ENFORCE_PLAN_GATES = 'false';
-    axios.get.mockResolvedValue(okPlan('free'));
-
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.nexted).toBe(true);
-    // The entitlement answer is still correct — only the refusal is withheld.
-    expect(await hasFeature('remoteAccess')).toBe(false);
-  });
-
-  it('ships OFF when neither the env var nor the sentinel is present', () => {
-    delete process.env.ENFORCE_PLAN_GATES;
-    // PathManager is mocked to a directory that does not exist, so existsSync
-    // is false — which is the shipped default: no sentinel, no enforcement.
-    expect(isEnforcing()).toBe(false);
-  });
-
-  it('the env var pins enforcement in both directions', () => {
+  it('only an explicit false/0/off turns it off (tests, development)', () => {
+    for (const v of ['false', '0', 'off', 'FALSE']) {
+      process.env.ENFORCE_PLAN_GATES = v;
+      expect(isEnforcing(), v).toBe(false);
+    }
     process.env.ENFORCE_PLAN_GATES = 'true';
     expect(isEnforcing()).toBe(true);
-    process.env.ENFORCE_PLAN_GATES = 'false';
-    expect(isEnforcing()).toBe(false);
-  });
-
-  it('anti-vacuity: the harness can actually observe a refusal', async () => {
-    // If invoke() always reported nexted, every fail-open test above would pass
-    // against a module that refuses everyone.
-    axios.get.mockResolvedValue(okPlan('free'));
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.nexted).toBe(false);
-    expect(result.statusCode).toBe(403);
   });
 });
 
-describe('the guard cannot break the request path', () => {
-  it('a throwing entitlement check still calls next()', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    axios.get.mockImplementation(() => {
-      throw new Error('synchronous explosion');
-    });
-    const result = await invoke(requirePaidFeature('remoteAccess'));
-    expect(result.nexted).toBe(true);
+describe('the plan comes from the verified licence, for the right account', () => {
+  it('asks for the given account, or the session account', async () => {
+    plan = 'personal';
+    expect(await getPlanType({ userId: 'u2' })).toBe('personal');
+    expect(verifiedPlan).toHaveBeenLastCalledWith('u2', { network: true });
+    await getPlanType();
+    expect(verifiedPlan).toHaveBeenLastCalledWith('u1', { network: true });
+  });
+});
+
+describe('paid features need proof', () => {
+  it('every paid plan is entitled', async () => {
+    for (const p of ['personal', 'always_on', 'business', 'enterprise']) {
+      plan = p;
+      expect(await hasFeature('remoteAccess'), p).toBe(true);
+    }
+  });
+  it('free is refused, and so is UNKNOWN (no verified licence)', async () => {
+    plan = 'free';
+    expect(await hasFeature('remoteAccess')).toBe(false);
+    plan = null;
+    expect(await hasFeature('remoteAccess')).toBe(false);
+  });
+  it('an unknown feature name is refused, not granted', async () => {
+    plan = 'business';
+    expect(await hasFeature('notARealFeature')).toBe(false);
+  });
+});
+
+describe('the HTTP guard', () => {
+  it('refuses with 403 and requiredFeature, never 401 (a 401 logs the user out into a loop)', async () => {
+    plan = 'free';
+    const { next, r } = await guard('remoteAccess');
+    expect(next).not.toHaveBeenCalled();
+    expect(r.statusCode).toBe(403);
+    expect(r.body).toMatchObject({ requiredFeature: 'remoteAccess' });
+  });
+  it('lets a paid plan through, checking the requester (not whoever logged in last)', async () => {
+    plan = 'personal';
+    const { next } = await guard('remoteAccess', { user: { userId: 'u9' } });
+    expect(next).toHaveBeenCalledOnce();
+    expect(verifiedPlan).toHaveBeenLastCalledWith('u9', { network: true });
+  });
+  // Found in the end-to-end check, 2026-10-21: a paying account whose FIRST
+  // request was pairing was refused, because the licence fetch only looked in
+  // the session cache (filled by a different guard). The request's own token
+  // is used now.
+  it("fetches the licence with the request's own bearer token", async () => {
+    plan = 'enterprise';
+    const { next } = await guard('remoteAccess', { user: { userId: 'u9' }, headers: { authorization: 'Bearer own-token' } });
+    expect(next).toHaveBeenCalledOnce();
+    expect(verifiedPlan).toHaveBeenLastCalledWith('u9', { network: true, token: 'own-token' });
+  });
+
+  it('a failing check denies; it never lets the request through', async () => {
+    verifiedPlan.mockRejectedValueOnce(new Error('disk on fire'));
+    const { next, r } = await guard('remoteAccess');
+    expect(next).not.toHaveBeenCalled();
+    expect(r.statusCode).toBe(403);
+  });
+});
+
+describe('scheduled goals', () => {
+  it('need a proven paid plan for the owner', async () => {
+    plan = null;
+    expect(await canRunScheduledGoals('u1')).toBe(false);
+    plan = 'always_on';
+    expect(await canRunScheduledGoals('u1')).toBe(true);
+    expect(await canRunScheduledGoals(null)).toBe(false);
+  });
+  it('a downgraded account can still switch off and delete its schedules', async () => {
+    plan = 'free';
+    for (const req of [{ method: 'DELETE', body: {} }, { method: 'PATCH', body: { enabled: false } }]) {
+      const next = vi.fn();
+      await requireScheduledGoals({ ...req, user: { userId: 'u1' } }, res(), next);
+      expect(next).toHaveBeenCalledOnce();
+    }
+    const r = res();
+    const next = vi.fn();
+    await requireScheduledGoals({ method: 'POST', body: {}, user: { userId: 'u1' } }, r, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(r.statusCode).toBe(403);
   });
 });

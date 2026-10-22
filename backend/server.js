@@ -121,6 +121,8 @@ import { isDataDirOwner } from './src/models/database/dataDirOwnership.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import { prewarmCodexModels } from './src/routes/ModelRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
+import WorkflowModel from './src/models/WorkflowModel.js';
+import { startLicenceEnforcer } from './src/services/auth/licenceEnforcer.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware, authenticateToken } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
@@ -692,6 +694,12 @@ async function deferredInit() {
 
 /** Fork the workflow process and re-arm the workflows that were active. Never throws. */
 async function startWorkflowProcess() {
+  // Each account's signed licence is fetched when its session arrives; a free
+  // licence switches off its workflows with paid triggers (licenceEnforcer.js).
+  startLicenceEnforcer({
+    listActive: () => WorkflowModel.findByStatusBatch(['listening', 'running', 'queued'], 10000, 0),
+    deactivate: (id, userId) => WorkflowProcessBridge.deactivateWorkflow(id, userId),
+  });
   console.log('Spawning workflow process...');
   try {
     await WorkflowProcessBridge.spawn();
