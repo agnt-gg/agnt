@@ -33,6 +33,7 @@
       <span class="ap-status" :class="statusView.tone">{{ statusView.label }}</span>
       <button v-if="card.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', card)">Reconnect {{ card.name }}</button>
       <button v-else-if="card.status === 'connect' && card.usesModelKey" type="button" class="ap-btn primary small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
+      <button v-else-if="card.status === 'connect' && card.connectable === false" type="button" class="ap-btn small" data-action="connect-unavailable" disabled v-tooltip="'Not available to connect on your account'">Can’t connect yet</button>
       <button v-else-if="card.status === 'connect'" type="button" class="ap-btn primary small" data-action="connect" @click="emit('connect', card)">Connect {{ card.name }}</button>
       <button v-else-if="reviewName" type="button" class="ap-btn small" data-action="review" @click="emit('open-plugin', reviewName)">Review update</button>
     </div>

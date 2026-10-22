@@ -63,6 +63,17 @@ describe('buildAppCards', () => {
     expect(findAppCard({ yours }, 'quickbooks').status).toBe(APP_STATUS.RECONNECT);
   });
 
+  // Reported 2026-10-21: Calendly's sign-in was not in this account's
+  // catalogue, yet its row offered "Connect Calendly", which led nowhere.
+  it('a sign-in missing from this account\'s catalogue is not connectable', () => {
+    const calendly = { name: 'calendly-plugin', displayName: 'Calendly', tools: [tool('calendly-api', 'calendly')] };
+    const { yours } = build({ installed: [...INSTALLED, calendly] });
+    expect(findAppCard({ yours }, 'calendly')).toMatchObject({ status: APP_STATUS.CONNECT, connectable: false });
+    expect(findAppCard({ yours }, 'shopify')).toMatchObject({ status: APP_STATUS.CONNECT, connectable: true });
+    expect(findAppCard({ yours }, 'app:figma-bridge').connectable).toBe(true);
+    expect(findAppCard({ yours }, 'app:seedance-plugin').connectable).toBe(true);
+  });
+
   it('things that need you come first, then alphabetical', () => {
     const order = build().yours.map((c) => c.id);
     expect(order.slice(0, 2)).toEqual(['quickbooks', 'shopify']);

@@ -211,6 +211,9 @@ export function buildAppCards({ installed, catalogue, connectedApps, health, ava
       description: card.description || (apps.length === 1 ? apps[0].description : ''),
       apps,
       status: statusFor(card.providerId, connected, unhealthy),
+      // Its sign-in exists in this account's catalogue, so "Connect" can start.
+      // Otherwise a Connect button leads nowhere (Calendly, 2026-10-21).
+      connectable: !card.providerId || !!card.usesModelKey || catalogueById.has(card.providerId),
       counts: {
         tools: apps.reduce((n, a) => n + a.tools, 0),
         widgets: apps.reduce((n, a) => n + a.widgets.length, 0),
