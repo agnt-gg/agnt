@@ -31,16 +31,30 @@ function dockerfileInstructions(text) {
 
 const instructions = dockerfileInstructions(dockerfile);
 
+/**
+ * The final (runtime) stage: everything from the last FROM line on. Located by
+ * position, not by base-image text, so a Node version bump cannot silently turn
+ * these checks into checks of nothing (a missed literal made lastIndexOf -1).
+ */
+function runtimeStage() {
+  const starts = [...instructions.matchAll(/^FROM\s/gm)].map((m) => m.index);
+  expect(starts.length).toBeGreaterThan(1);
+  const stage = instructions.slice(starts.at(-1));
+  expect(stage).not.toMatch(/^FROM\s+\S+\s+AS\s/i);
+  return stage;
+}
+
 describe('the application tree is not writable by the app user', () => {
   it('copies every runtime application file with root ownership', () => {
-    const runtime = instructions.slice(instructions.lastIndexOf('FROM node:20-alpine'));
+    const runtime = runtimeStage();
     const copies = runtime.split('\n').filter(line => line.startsWith('COPY '));
     expect(copies.length).toBeGreaterThan(0);
     for (const copy of copies) expect(copy).toContain('--chown=root:root');
   });
 
   it('never gives the application directory to node or rewrites the entire tree', () => {
-    const runtime = instructions.slice(instructions.lastIndexOf('FROM node:20-alpine'));
+    const runtime = runtimeStage();
+    expect(runtime).toMatch(/^COPY\s/m);
     // Application directories inherit root ownership; only explicit data paths
     // are writable. Avoid a second dependency-tree copy-up in a RUN layer.
     expect(runtime).not.toMatch(/chown\s+-R\s+\S+\s+\/app\s*(?:\\|\n|$)/);
