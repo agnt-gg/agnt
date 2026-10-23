@@ -35,6 +35,19 @@ describe('Studio package catalog', () => {
     expect(studioCatalog(null, [null, {}, { name: 'pack', author: { name: 'Publisher' }, tools: 'bad' }])).toHaveLength(1);
     expect(studioCatalog([], [{ name: 'pack', author: { name: 'Publisher' } }])[0].authorName).toBe('Publisher');
   });
+
+  // Reported 2026-10-21: official plugins read "by AGNT", "by AGNT Team" and
+  // "by AGNT User" (the Forge's default author) side by side.
+  it('every official plugin is published by AGNT, whatever its manifest says', () => {
+    const rows = studioCatalog([], [
+      { name: 'a', trustTier: 'official', author: 'AGNT Team' },
+      { name: 'b', trustTier: 'Official', author: 'AGNT User' },
+      { name: 'c', trustTier: 'official', author: { name: 'someone' } },
+      { name: 'd', trustTier: 'official' },
+      { name: 'e', trustTier: 'community', author: 'rimusz' },
+    ]);
+    expect(rows.map((r) => [r.name, r.authorName])).toEqual([['a', 'AGNT'], ['b', 'AGNT'], ['c', 'AGNT'], ['d', 'AGNT'], ['e', 'rimusz']]);
+  });
 });
 
 describe('Install disclosure', () => {

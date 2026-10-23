@@ -11,6 +11,20 @@ export const ASSET_GROUPS = Object.freeze([
 ]);
 export const titleFromSlug = (value) => text(value).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+/**
+ * Who published a plugin, as people should read it.
+ *
+ * Official is set by the server only when an AGNT admin publishes
+ * (MarketplaceController / PluginVersionController), so an official plugin's
+ * publisher IS AGNT. Its manifest `author` is free text, often the Plugin
+ * Forge default "AGNT User", so official plugins read as "AGNT", "AGNT Team"
+ * and "AGNT User" side by side (reported 2026-10-21).
+ */
+export function publisherName(row = {}) {
+  if (String(row.trustTier || '').toLowerCase() === 'official') return 'AGNT';
+  return text(row.author) || text(row.author?.name);
+}
+
 /** Studio lists packages, not credentials. Focused keeps its existing account-grouped cards. */
 export function studioCatalog(installed = [], available = []) {
   const packages = new Map();
@@ -25,7 +39,7 @@ export function studioCatalog(installed = [], available = []) {
       displayName: appDisplayName(row),
       description: text(row.description),
       category: titleFromSlug(row.category) || 'Other',
-      authorName: text(row.author) || text(row.author?.name),
+      authorName: publisherName(row),
       isPack: groups.some((group) => group.key !== 'tools' && group.items.length),
       groups,
     };
