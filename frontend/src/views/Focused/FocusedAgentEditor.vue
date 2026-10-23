@@ -91,7 +91,7 @@
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row column">
-          <ListWithSearch v-model="skills" :items="allSkills" label-key="name" id-key="id" item-noun="skills" placeholder="Search skills…" />
+          <ListWithSearch v-model="skills" :items="allSkills" label-key="displayName" id-key="id" item-noun="skills" placeholder="Search skills…" />
         </div>
       </div>
     </section>
@@ -108,6 +108,7 @@ import { ref, reactive, computed, inject, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import FocusedForgeChat from './FocusedForgeChat.vue';
+import { skillDisplayName } from '@/utils/skillDisplayName.js';
 import { agentDraftValues, agentDraftTools } from './focusedForgeDraft.js';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
@@ -182,7 +183,7 @@ async function onProvider(provider) {
 
 // Tools and skills, from the shared stores.
 const allTools = computed(() => store.getters['tools/allTools'] || []);
-const allSkills = computed(() => store.getters['skills/allSkills'] || []);
+const allSkills = computed(() => (store.getters['skills/allSkills'] || []).map((s) => ({ ...s, displayName: skillDisplayName(s.name) })));
 
 const avatarInput = ref(null);
 async function onAvatar(event) {
