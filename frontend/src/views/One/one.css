@@ -246,20 +246,6 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
 .ui-one .one-topbar-fill {
   flex: 1;
 }
-.ui-one .one-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 46%;
-  margin: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  pointer-events: none;
-}
 .ui-one .one-icon-btn {
   width: 32px;
   height: 32px;

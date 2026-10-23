@@ -34,12 +34,10 @@ describe('a conversation at its start screen', () => {
     expect(withoutWelcome(undefined)).toEqual([]);
   });
 
-  // The home and the title bar must answer the same question, or a blank but
-  // titled chat (Main chat) renders its home under a bar, shifted down.
-  it('is the one rule Chat and the AGNT One shell both use', () => {
+  // Chat decides its home with this rule. (The AGNT One shell used it too, for
+  // a title bar; that title was removed on 2026-10-21.)
+  it('is the rule Chat uses for its start screen', () => {
     const chat = readFileSync(join(DIR, 'Chat.vue'), 'utf8');
-    const shell = readFileSync(join(DIR, '../../../../One/OneShell.vue'), 'utf8');
     expect(chat).toMatch(/isUnstartedConversation\(store\.state\.chat\.messages\)/);
-    expect(shell).toMatch(/isUnstartedConversation\(store\.state\.chat\?\.messages\)/);
   });
 });

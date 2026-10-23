@@ -43,7 +43,6 @@
             <i class="fas fa-edit" aria-hidden="true"></i>
           </button>
         </template>
-        <h1 v-if="chatTitle" class="one-title">{{ chatTitle }}</h1>
         <span class="one-topbar-fill"></span>
         <OneCapsule @ask="ask" @open-models="openModels" />
         <FocusedWindowControls />
@@ -88,7 +87,6 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import { useElectron } from '@/composables/useElectron';
 import { useMainChat } from '@/composables/useMainChat.js';
-import { isUnstartedConversation } from '@/views/Terminal/CenterPanel/screens/Chat/chatHome.js';
 import FocusedSidebar from '@/views/Focused/FocusedSidebar.vue';
 import FocusedWindowControls from '@/views/Focused/FocusedWindowControls.vue';
 import FocusedLibrary from '@/views/Focused/FocusedLibrary.vue';
@@ -153,14 +151,8 @@ const location = computed(() => focusedLocation(props.screenName, route.query));
 const page = computed(() => location.value?.page || null);
 const borrowed = computed(() => !page.value && props.screenName !== 'ChatScreen');
 const borrowedTitle = computed(() => screenTitle(props.screenName));
-// Empty while the chat is still at its home (nobody has spoken yet): the same
-// rule Chat.vue uses to show the home, so a blank but titled chat ("Main
-// chat") never gets a title over its welcome.
-const chatTitle = computed(() => {
-  if (page.value || props.screenName !== 'ChatScreen') return '';
-  if (isUnstartedConversation(store.state.chat?.messages)) return '';
-  return String(store.state.chat?.savedOutputTitle || '').trim();
-});
+// No conversation title in the top bar (removed 2026-10-21): the Chats
+// drawer already names the open chat.
 const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat?.messages || []).some((m) => m?.role === 'user');
 
 // The Chats drawer belongs to the chat: on a desktop it shows there only, and

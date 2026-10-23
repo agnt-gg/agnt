@@ -75,7 +75,9 @@ describe('AGNT One top bar: window drag + window buttons', () => {
     expect(SHELL).not.toMatch(/FocusedWindowBar/);
     expect(SHELL).toMatch(/<header class="one-topbar" :class="\{ 'is-window-bar': isElectron \}"/);
     const header = SHELL.slice(SHELL.indexOf('class="one-topbar"'), SHELL.indexOf('</header>'));
-    for (const piece of ['one-title', '<OneCapsule', '<FocusedWindowControls />']) expect(header).toContain(piece);
+    for (const piece of ['<OneCapsule', '<FocusedWindowControls />']) expect(header).toContain(piece);
+    // No conversation title in the bar (removed 2026-10-21).
+    expect(header).not.toContain('one-title');
   });
 
   it('the bar drags like Studio\'s toolbar did (positioned, own stacking order); what you press in it does not', () => {

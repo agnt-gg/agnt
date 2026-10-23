@@ -213,25 +213,15 @@ describe('OneShell', () => {
     w.unmount();
   });
 
-  // A blank Main chat is titled "Main chat"; a title over the welcome is wrong.
-  it('a titled chat nobody has spoken in shows no title; the first message brings it back', async () => {
-    storeState.chat.savedOutputTitle = 'Main chat';
-    storeState.chat.messages = [{ role: 'assistant', content: 'Hi! What can I help you build today?' }];
+  // Removed 2026-10-21: the top bar shows no conversation title, ever.
+  it('the top bar shows no conversation title, in a running chat or anywhere else', async () => {
+    storeState.chat.savedOutputTitle = 'Q3 board report';
+    storeState.chat.messages = [{ role: 'assistant', content: 'Hi' }, { role: 'user', content: 'Draft it' }];
     const w = mountShell('ChatScreen');
     expect(w.find('[data-testid="one-topbar"]').exists()).toBe(true); // the capsule lives there
     expect(w.find('.one-title').exists()).toBe(false);
-    storeState.chat.messages = [...storeState.chat.messages, { role: 'user', content: 'Plan my week' }];
-    await w.vm.$nextTick();
-    expect(w.find('.one-title').text()).toBe('Main chat');
+    expect(w.find('[data-testid="one-topbar"]').text()).not.toContain('Q3 board report');
     w.unmount();
-  });
-
-  it('shows the open conversation title only on Chat', () => {
-    storeState.chat.savedOutputTitle = 'Q3 board report';
-    storeState.chat.messages = [{ role: 'assistant', content: 'Hi' }, { role: 'user', content: 'Draft it' }];
-    const lib = mountShell('AgentsScreen');
-    expect(lib.find('.one-title').exists()).toBe(false);
-    lib.unmount();
   });
 
   it('mounts the Jump palette and opens it with Ctrl+K; stops listening once unmounted', () => {
