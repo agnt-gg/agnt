@@ -41,6 +41,21 @@ const build = (extra = {}, query = '') =>
   );
 
 describe('buildAppCards', () => {
+  // Reported 2026-10-21: connected AI providers were missing from Accounts & keys.
+  it('lists connected AI model providers apart from app sign-ins; AGNT and local are not accounts', () => {
+    const cards = build({ connectedApps: [...CONNECTED, 'claude-code', 'agnt', 'local'] });
+    expect(cards.models.map((c) => [c.providerId, c.name, c.connectionType, c.status, c.aiModel])).toEqual([
+      ['claude-code', 'Claude Code', 'cli', 'ready', true],
+      ['openai', 'OpenAI', 'apikey', 'ready', true],
+      ['openrouter', 'OpenRouter', 'apikey', 'ready', true],
+    ]);
+    // Still not app sign-ins, and an unconnected model is not listed.
+    expect(cards.yours.some((c) => c.providerId === 'claude-code' && c.kind === 'account')).toBe(false);
+    expect(cards.models.some((c) => c.providerId === 'anthropic')).toBe(false);
+    expect(build({}, 'claude').models.map((c) => c.providerId)).toEqual([]);
+    expect(build({ connectedApps: ['openai'] }, 'openai').models.map((c) => c.providerId)).toEqual(['openai']);
+  });
+
   it('folds every plugin that shares a sign-in into ONE card named after the service', () => {
     const google = findAppCard(build(), 'google');
     expect(google.kind).toBe('account');
@@ -121,8 +136,8 @@ describe('buildAppCards', () => {
   });
 
   it('tolerates empty and malformed input', () => {
-    expect(buildAppCards()).toEqual({ yours: [], discover: [] });
-    expect(buildAppCards({ installed: [null, { tools: 'x' }], catalogue: 'nope', connectedApps: null })).toEqual({ yours: [], discover: [] });
+    expect(buildAppCards()).toEqual({ yours: [], discover: [], models: [] });
+    expect(buildAppCards({ installed: [null, { tools: 'x' }], catalogue: 'nope', connectedApps: null })).toEqual({ yours: [], discover: [], models: [] });
   });
 
   it('a catalogue-less one-plugin sign-in reads as the plugin, not as a raw id', () => {

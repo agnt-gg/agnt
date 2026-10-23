@@ -160,10 +160,11 @@
                 <span class="ap-logo"><SvgIcon :name="account.icon || 'connect'" /></span>
                 <div class="ap-row-body">
                   <div class="ap-row-title">
-                    <button type="button" class="ap-row-open" @click="openAccount(account.id)">{{ account.name }}</button>
+                    <button type="button" class="ap-row-open" @click="account.aiModel ? emit('open-ai-models') : openAccount(account.id)">{{ account.name }}</button>
                     <span class="ap-badge connection">{{ account.kind }}</span>
                   </div>
-                  <div v-if="account.apps.length" class="ap-plugin-strip">
+                  <p v-if="account.aiModel" class="ap-row-desc">AI model · used by Annie, agents and workflows</p>
+                  <div v-else-if="account.apps.length" class="ap-plugin-strip">
                     <button v-for="app in account.apps" :key="app.name" type="button" class="ap-plugin-chip" :data-plugin="app.name" @click="openPlugin(app.name)">
                       <span class="ap-logo"><SvgIcon :name="app.icon || account.icon || 'puzzle-piece'" /></span>{{ app.displayName }}
                     </button>
@@ -172,7 +173,9 @@
                 </div>
                 <div class="ap-row-side">
                   <span class="ap-status" :class="accountTone(account.status)">{{ accountStatus(account.status) }}</span>
-                  <button v-if="account.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', account.card)">Reconnect</button>
+                  <!-- AI models are connected and managed in Settings' AI models. -->
+                  <button v-if="account.aiModel" type="button" class="ap-btn small" data-action="manage-ai" @click="emit('open-ai-models')">Manage</button>
+                  <button v-else-if="account.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', account.card)">Reconnect</button>
                   <button v-else-if="account.status === 'connect'" type="button" class="ap-btn primary small" data-action="connect" @click="emit('connect', account.card)">Connect</button>
                 </div>
               </div>
@@ -288,7 +291,7 @@ import {
   connectionKind, builtByMe, priceLabel, signInReadiness, agentAccess, hasTriggers, isPack, capabilityLabel,
 } from '@/services/pluginDirectory.js';
 import { inspectPlugin, fetchPluginAssets, fetchUpdateStatus, requestUpdate, setUpdatePolicy, uninstallPlugin } from '@/services/pluginLifecycle.js';
-import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, providerLabel } from '@/store/app/aiProvider.js';
 
 // selectedPlugin: undefined keeps the selection local; a host that routes it passes a name or null.
 // vaultActive: the host's route says the Accounts & keys tab is open (Studio ?section=oauth, Focused tab=vault).
@@ -387,9 +390,19 @@ function readyWith(row) {
 const accounts = computed(() => accountRows(yourCards.value).filter((account) =>
   (filters.accounts === 'all' || account.connectionType === filters.accounts)
   && matchesQuery({ name: account.name, description: account.apps.map((app) => app.displayName).join(' ') }, queries.accounts)));
+// Connected AI models (appCards `models`), named as the rest of the app names them.
+const aiAccounts = computed(() => accountRows(cards.value.models || [])
+  // providerLabel answers the raw id when it has no label; then the catalogue name wins.
+  .map((account) => {
+    const label = providerLabel(account.id);
+    return { ...account, name: label && label !== account.id ? label : account.name, aiModel: true };
+  })
+  .filter((account) => (filters.accounts === 'all' || account.connectionType === filters.accounts)
+    && matchesQuery({ name: `${account.name} ${account.id}`, description: '' }, queries.accounts)));
 const accountsView = computed(() => [
   { id: 'needs-you', label: 'Needs you', rows: accounts.value.filter((a) => a.status !== 'ready') },
   { id: 'connected', label: 'Connected', rows: accounts.value.filter((a) => a.status === 'ready') },
+  { id: 'ai-models', label: 'AI models', rows: aiAccounts.value },
 ].filter((section) => section.rows.length));
 const discover = computed(() => cards.value.discover.filter((service) =>
   (filters.accounts === 'all' || String(service.connectionType).toLowerCase() === filters.accounts)
@@ -414,7 +427,7 @@ const forgeDraft = computed(() => {
 const tabs = computed(() => [
   { id: 'installed', label: TAB_LABELS.installed, count: installedRows.value.length },
   { id: 'browse', label: TAB_LABELS.browse, count: marketRows.value.length },
-  { id: 'accounts', label: TAB_LABELS.accounts, count: accountRows(yourCards.value).length },
+  { id: 'accounts', label: TAB_LABELS.accounts, count: accountRows(yourCards.value).length + (cards.value.models?.length || 0) },
   { id: 'mine', label: TAB_LABELS.mine, count: mine.value.length + (forgeDraft.value ? 1 : 0) },
 ]);
 const tabLabel = computed(() => TAB_LABELS[tab.value]);

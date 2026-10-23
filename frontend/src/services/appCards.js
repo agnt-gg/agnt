@@ -238,9 +238,18 @@ export function buildAppCards({ installed, catalogue, connectedApps, health, ava
   const byAttentionThenName = (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
+  // Connected AI model providers (ChatGPT, Claude Code, an OpenAI key...): they
+  // are connected accounts too, and were missing from Accounts & keys
+  // (2026-10-21). Listed apart from app sign-ins; connected and managed in
+  // Settings' AI models. AGNT itself and local models are not accounts.
+  const models = [...connected]
+    .filter((id) => modelIds.has(id) && !ALWAYS_MODEL_IDS.includes(id))
+    .map((id) => finish({ ...accountCard(id), aiModel: true, apps: [] }));
+
   return {
     yours: yours.filter(visible).sort(byAttentionThenName),
     discover: discover.filter(visible).sort(byName),
+    models: models.filter(visible).sort(byAttentionThenName),
   };
 }
 
