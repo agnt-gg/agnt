@@ -1,7 +1,7 @@
 <template>
   <div
     class="ui-one ui-focused"
-    :class="{ 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron, 'is-drawer-open': drawerOpen }"
+    :class="{ 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron, 'is-drawer-open': drawerShown }"
   >
     <!-- AGNT One: the app's only frame. A rail, one top bar, and the chat.
          `.ui-focused` on the root is deliberate: focused.css holds the measured
@@ -15,7 +15,7 @@
          is the one navigation; page links appear in the drawer only on a
          phone, where there is no rail. -->
     <FocusedSidebar
-      v-if="drawerOpen"
+      v-if="drawerShown"
       class="one-drawer"
       :open="true"
       :navigation="isMobile"
@@ -28,7 +28,7 @@
       @open-main="openMain"
       @clear-main="clearMain"
     />
-    <button v-if="isMobile && drawerOpen" type="button" class="focused-scrim" aria-label="Close chats" @click="setDrawer(false)"></button>
+    <button v-if="isMobile && drawerShown" type="button" class="focused-scrim" aria-label="Close chats" @click="setDrawer(false)"></button>
 
     <main class="focused-main one-main">
       <!-- ONE top bar: the conversation's title, the getting-started capsule
@@ -163,10 +163,17 @@ const chatTitle = computed(() => {
 });
 const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat?.messages || []).some((m) => m?.role === 'user');
 
+// The Chats drawer belongs to the chat: on a desktop it shows there only, and
+// the other pages get their full width (2026-10-21). drawerOpen is the
+// remembered choice, so coming back to the chat brings it back as it was. On a
+// phone the drawer is the navigation, an overlay that closes on every move.
+const onChatPage = computed(() => !page.value && props.screenName === 'ChatScreen');
+const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChatPage.value));
+
 const railItems = computed(() =>
   buildRailItems({
     activePage: page.value,
-    drawerOpen: drawerOpen.value,
+    drawerOpen: drawerShown.value,
     onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),
   }),
 );
@@ -190,7 +197,16 @@ function openPage(id) {
 }
 function selectRail(id) {
   if (id === 'new') { newChat(); return; }
-  if (id === 'chats') { setDrawer(!drawerOpen.value); return; }
+  if (id === 'chats') {
+    // From another page, Chats goes back to your chat with its list open.
+    if (!isMobile.value && !onChatPage.value) {
+      setDrawer(true);
+      backToChat();
+      return;
+    }
+    setDrawer(!drawerShown.value);
+    return;
+  }
   if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);
 }
 // The model is chosen in Settings, never through the chat (a key must not

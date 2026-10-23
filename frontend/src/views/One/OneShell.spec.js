@@ -286,6 +286,29 @@ describe('OneShell', () => {
       w.unmount();
     });
 
+    // Requested 2026-10-21: the drawer is the chat's; other pages get their width.
+    it('the drawer shows on the chat only, and comes back with it', async () => {
+      localStorage.setItem('agnt:one-drawer-open', 'true');
+      const chat = mountShell('ChatScreen');
+      expect(chat.find('.sidebar-stub').exists()).toBe(true);
+      chat.unmount();
+      const apps = mountShell('ConnectorsScreen');
+      expect(apps.find('.sidebar-stub').exists()).toBe(false);
+      expect(apps.find('.ui-one').classes()).not.toContain('is-drawer-open');
+      // Still remembered: nothing was switched off, it is just not shown here.
+      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
+      apps.unmount();
+    });
+
+    it('Chats from another page goes back to the chat with its list open', async () => {
+      localStorage.setItem('agnt:one-drawer-open', 'false');
+      const w = mountShell('ConnectorsScreen');
+      await w.find('[data-testid="one-rail-chats"]').trigger('click');
+      expect(push).toHaveBeenLastCalledWith('/chat');
+      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
+      w.unmount();
+    });
+
     it('New chat starts a new conversation', async () => {
       const fresh = vi.fn();
       window.addEventListener('trigger-new-chat', fresh);

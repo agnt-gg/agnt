@@ -111,7 +111,7 @@ describe('AGNT One top bar: window drag + window buttons', () => {
     const between = SHELL_TEMPLATE.replace(/<!--[\s\S]*?-->/g, '').slice(SHELL_TEMPLATE.replace(/<!--[\s\S]*?-->/g, '').indexOf('/>') + 2);
     const tags = between.match(/<[a-zA-Z][^>]*>/g) || [];
     expect(tags).toHaveLength(1);
-    expect(tags[0]).toMatch(/^<button v-if="isMobile && drawerOpen"[^>]*class="focused-scrim"/);
+    expect(tags[0]).toMatch(/^<button v-if="isMobile && drawerShown"[^>]*class="focused-scrim"/);
   });
 
   // Reported 2026-10-21: "min max close from all screens". The Workflow Forge
