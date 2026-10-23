@@ -115,7 +115,8 @@ describe('the rail', () => {
   // carried the same links again, two navigations side by side. The rail is
   // the one navigation: every place, always, for every account.
   it('lists every place, always, whatever the account holds', () => {
-    const every = ['new', 'chats', 'apps', 'routines', 'library', 'market', 'memory'];
+    // New chat is in the Chats drawer's header, not on the rail (2026-10-21).
+    const every = ['chats', 'apps', 'routines', 'library', 'market', 'memory'];
     expect(ids(railItems())).toEqual(every);
     expect(ids(railItems({ facts: { apps: 3, workflows: 2 } }))).toEqual(every);
     expect(railItems().every((i) => i.icon && i.label)).toBe(true);
@@ -140,7 +141,7 @@ describe('the rail', () => {
     expect(chats({ drawerOpen: true, activePage: 'connectors' })).toMatchObject({ active: false, open: true });
     expect(chats({ drawerOpen: false })).toMatchObject({ active: false, open: false });
     expect(active({ activePage: 'scheduled' })).toEqual(['routines']);
-    expect(active({ onBlankChat: true })).toEqual(['new']);
+    expect(active({ onBlankChat: true })).toEqual(['chats']);
     expect(active({})).toEqual([]);
   });
 });

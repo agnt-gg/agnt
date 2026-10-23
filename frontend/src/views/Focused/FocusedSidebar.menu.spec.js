@@ -57,7 +57,7 @@ beforeEach(() => {
 // Reported 2026-10-21: beside AGNT One's rail, the drawer repeated the rail's
 // links (two navigations). Without navigation it is your chats, nothing else.
 describe('navigation: false (beside a rail)', () => {
-  it('drops the page links, More and its own New chat (the rail has one); keeps Main chat, recents, search and the profile', () => {
+  it('drops the page links and More; keeps New chat, Main chat, recents, search and the profile', () => {
     const pageRows = (w) => w.findAll('.focused-nav > .focused-nav-row').map((b) => b.text());
     const full = mountSidebar();
     expect(pageRows(full)).toEqual(expect.arrayContaining(['Library', 'Market']));
@@ -69,7 +69,9 @@ describe('navigation: false (beside a rail)', () => {
     expect(w.text()).not.toMatch(/Routines|Library|Market|More/);
     expect(w.find('[data-testid="focused-main-chat"]').exists()).toBe(true);
     expect(w.findAll('.focused-recent')).toHaveLength(2);
-    expect(w.find('[data-testid="focused-new-chat"]').exists()).toBe(false);
+    // New chat is here, between search and close (it left the rail, 2026-10-21).
+    const head = w.findAll('.focused-icon-btn').map((b) => b.attributes('aria-label'));
+    expect(head.slice(head.indexOf('Search chats'), head.indexOf('Search chats') + 3)).toEqual(['Search chats', 'New chat', 'Close sidebar']);
     expect(w.find('[aria-label="Search chats"]').exists()).toBe(true);
     expect(w.find('.focused-account').exists()).toBe(true);
     w.unmount();

@@ -7,8 +7,9 @@
       <button type="button" class="focused-icon-btn" aria-label="Search chats" v-tooltip="'Search chats'" @click="toggleSearch">
         <i class="fas fa-search" aria-hidden="true"></i>
       </button>
-      <!-- Beside a rail, New chat is the rail's first icon; one is enough. -->
-      <button v-if="navigation" type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
+      <!-- New chat lives here, between search and close, on every screen size
+           (it left AGNT One's rail, 2026-10-21). -->
+      <button type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i>
       </button>
       <button type="button" class="focused-icon-btn" aria-label="Close sidebar" v-tooltip="'Close sidebar'" @click="$emit('close')">

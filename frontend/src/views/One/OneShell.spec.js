@@ -44,7 +44,7 @@ vi.mock('@/views/Focused/FocusedMemory.vue', () => page('FocusedMemory'));
 vi.mock('@/views/Focused/FocusedSettings.vue', () => page('FocusedSettings'));
 vi.mock('@/views/Focused/FocusedMarket.vue', () => page('FocusedMarket'));
 vi.mock('@/views/Focused/FocusedSidebar.vue', () => ({
-  default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat', 'navigation'], emits: ['close'], template: '<aside class="sidebar-stub" :data-navigation="String(navigation)" @click="$emit(\'close\')" />' },
+  default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat', 'navigation'], emits: ['close', 'new-chat'], template: '<aside class="sidebar-stub" :data-navigation="String(navigation)" @click="$emit(\'close\')"><button class="stub-new-chat" @click.stop="$emit(\'new-chat\')" /></aside>' },
 }));
 vi.mock('@/canvas/JumpPalette.vue', () => ({ default: { name: 'JumpPalette', template: '<div class="jump-stub" />' } }));
 vi.mock('@/views/_components/common/SimpleModal.vue', () => ({
@@ -251,7 +251,7 @@ describe('OneShell', () => {
     it('is the one navigation: every place on a new account, Settings at the bottom', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-new', 'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-memory', 'one-rail-settings',
+        'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-memory', 'one-rail-settings',
       ]);
       w.unmount();
     });
@@ -309,11 +309,14 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('New chat starts a new conversation', async () => {
+    // New chat moved from the rail into the Chats drawer's header (2026-10-21).
+    it('New chat in the Chats drawer starts a new conversation; the rail has none', async () => {
       const fresh = vi.fn();
       window.addEventListener('trigger-new-chat', fresh);
+      localStorage.setItem('agnt:one-drawer-open', 'true');
       const w = mountShell();
-      await w.find('[data-testid="one-rail-new"]').trigger('click');
+      expect(w.find('[data-testid="one-rail-new"]').exists()).toBe(false);
+      await w.find('.stub-new-chat').trigger('click');
       await new Promise((r) => setTimeout(r, 0));
       expect(push).toHaveBeenCalledWith('/chat');
       expect(fresh).toHaveBeenCalledTimes(1);

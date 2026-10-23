@@ -162,10 +162,11 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
   // win, so with it left open every page lit up Chats (reported 2026-10-21).
   // Chats is highlighted only on a chat with the drawer open; otherwise an
   // open drawer is shown as `open` on the Chats icon.
+  // New chat is in the Chats drawer's header, not on the rail (2026-10-21), so
+  // a blank chat highlights Chats like any other chat.
   const page = RAIL_OF_PAGE[activePage];
-  const active = page || (drawerOpen ? 'chats' : onBlankChat && !activePage ? 'new' : null);
+  const active = page || (drawerOpen || (onBlankChat && !activePage) ? 'chats' : null);
   const items = [
-    { id: 'new', label: 'New chat' },
     { id: 'chats', label: 'Chats' },
     { id: 'apps', label: 'Apps' },
     { id: 'routines', label: 'Routines' },

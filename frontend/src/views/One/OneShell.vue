@@ -196,7 +196,6 @@ function openPage(id) {
   else if (['connectors', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
 }
 function selectRail(id) {
-  if (id === 'new') { newChat(); return; }
   if (id === 'chats') {
     // From another page, Chats goes back to your chat with its list open.
     if (!isMobile.value && !onChatPage.value) {
