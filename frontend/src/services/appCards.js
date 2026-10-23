@@ -255,10 +255,17 @@ export function buildAppCards({ installed, catalogue, connectedApps, health, ava
     .filter((id) => modelIds.has(id) && !ALWAYS_MODEL_IDS.includes(id))
     .map((id) => finish({ ...accountCard(id), aiModel: true, apps: [] }));
 
+  // AI providers not connected yet: offered with every other service
+  // (2026-10-23: "it's a third party app we connect like all others").
+  const modelsToConnect = [...modelIds]
+    .filter((id) => !connected.has(id) && !ALWAYS_MODEL_IDS.includes(id))
+    .map((id) => finish({ ...accountCard(id), aiModel: true, apps: [] }));
+
   return {
     yours: yours.filter(visible).sort(byAttentionThenName),
     discover: discover.filter(visible).sort(byName),
     models: models.filter(visible).sort(byAttentionThenName),
+    modelsToConnect: modelsToConnect.filter(visible).sort(byName),
   };
 }
 

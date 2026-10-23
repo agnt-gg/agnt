@@ -63,6 +63,7 @@
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />
       <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
+      <FocusedActivity v-else-if="page === 'activity'" />
 
       <!-- The screen Terminal mounted. On a page that is Chat, kept alive
            underneath (v-show) so a reply keeps streaming.
@@ -95,6 +96,7 @@ import FocusedScheduled from '@/views/Focused/FocusedScheduled.vue';
 import FocusedMemory from '@/views/Focused/FocusedMemory.vue';
 import FocusedSettings from '@/views/Focused/FocusedSettings.vue';
 import FocusedMarket from '@/views/Focused/FocusedMarket.vue';
+import FocusedActivity from '@/views/Focused/FocusedActivity.vue';
 import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
@@ -148,6 +150,17 @@ function closeDrawerOnPhone() {
 
 // ── Where we are: read from the route, never kept here ─────────────────────
 const location = computed(() => focusedLocation(props.screenName, route.query));
+// A workflow opens on its canvas (focusedRoutes routeFor); an old link to it
+// in the Library (?select=workflow:ID) goes there too.
+watch(
+  location,
+  (loc) => {
+    if (loc?.page !== 'library' || loc.tab !== 'workflows' || !(loc.item || loc.isNew)) return;
+    const target = screenRoute('WorkflowForgeScreen', { workflowId: loc.item || null });
+    if (target) router.replace({ path: target.path, query: target.query }).catch(() => {});
+  },
+  { immediate: true },
+);
 const page = computed(() => location.value?.page || null);
 const borrowed = computed(() => !page.value && props.screenName !== 'ChatScreen');
 const borrowedTitle = computed(() => screenTitle(props.screenName));
@@ -182,10 +195,9 @@ function go(loc) {
   pushScreen(screen, opts);
 }
 function openPage(id) {
-  if (id === 'market') { pushScreen('MarketplaceScreen'); return; }
   if (id === 'library') go({ page: 'library', tab: 'agents' });
   else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
-  else if (['connectors', 'scheduled', 'memory', 'settings'].includes(id)) go({ page: id });
+  else if (['connectors', 'scheduled', 'memory', 'activity', 'settings'].includes(id)) go({ page: id });
 }
 function selectRail(id) {
   if (id === 'chats') {
@@ -306,6 +318,7 @@ provide('focusedNav', {
   go,
   ask,
   chat: backToChat,
+  openConversation,
   studio: (screen, opts = {}) => pushScreen(screen, { ...opts, studio: true }),
   confirm,
   prompt,

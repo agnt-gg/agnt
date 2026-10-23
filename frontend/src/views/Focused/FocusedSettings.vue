@@ -15,7 +15,7 @@
     <!-- No banner above the settings: the plan's own row (Billing) offers the
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
-    <ConnectYourAi @api-key="nav.studio('SettingsScreen', { section: 'providers' })" />
+    <ConnectYourAi @api-key="nav.go({ page: 'connectors', tab: 'vault' })" />
     <section class="focused-edit-block">
       <div class="focused-edit-block-head"><h3>Appearance</h3></div>
       <div class="focused-edit-card">

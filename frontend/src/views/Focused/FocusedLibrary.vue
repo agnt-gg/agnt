@@ -57,7 +57,26 @@
     <!-- Owned work first; discovery remains available after the list and its count. -->
     <!-- Picks of this tab's own kind only: agents offered on the Widgets tab
          read as a mistake. A kind with no picks shows none. -->
-    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
+    <!-- The Market for this kind lives here (there is no Market page,
+         2026-10-23). "Browse all" opens more picks in place. -->
+    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" :max-items="marketExpanded ? 60 : 6" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
+
+    <!-- What you shared to the Market, with how many people got it. -->
+    <section v-if="shared.length" class="focused-shared" data-testid="library-shared">
+      <h3 class="focused-shared-title">Shared by you</h3>
+      <ul class="focused-list">
+        <li v-for="item in shared" :key="item.id" class="focused-row static" :data-listing="item.id">
+          <span class="focused-row-icon" aria-hidden="true"><i class="fas fa-store"></i></span>
+          <span class="focused-row-text">
+            <strong>{{ item.title }}</strong>
+            <small>{{ installsLabel(item) }}{{ item.live ? '' : ' · Not shared now' }}</small>
+          </span>
+          <button type="button" class="focused-btn" :data-action="item.live ? 'unshare' : 'reshare'" :disabled="sharing === item.id" @click="toggleShared(item)">
+            {{ item.live ? 'Stop sharing' : 'Share again' }}
+          </button>
+        </li>
+      </ul>
+    </section>
   </FocusedPage>
 </template>
 
@@ -104,7 +123,33 @@ const EMPTY_LINE = Object.freeze({
 });
 const article = (noun) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
 
-function browseMarket(listing) { nav.openScreen('MarketplaceScreen', { listing }); }
+// A pick opens its listing; "Browse all" shows more picks right here.
+const marketExpanded = ref(false);
+function browseMarket(listing) {
+  if (listing) nav.go({ page: 'market', item: listing.asset_id || listing.id });
+  else marketExpanded.value = !marketExpanded.value;
+}
+
+// Your Market listings of this kind.
+const shared = computed(() =>
+  (store.state.marketplace?.myPublishedItems || [])
+    .filter((i) => i && i.asset_type === tab.value.noun)
+    .map((i) => ({ id: i.id, title: i.title || 'Untitled', installs: Number(i.installs ?? i.downloads) || 0, live: !/unpublished|draft|removed|archived/i.test(String(i.status || 'published')) })),
+);
+const installsLabel = (item) => `${item.installs.toLocaleString()} ${item.installs === 1 ? 'person has' : 'people have'} it`;
+const sharing = ref(null);
+async function toggleShared(item) {
+  sharing.value = item.id;
+  try {
+    await store.dispatch(item.live ? 'marketplace/unpublishMarketplaceItem' : 'marketplace/republishMarketplaceItem', item.id);
+    await store.dispatch('marketplace/fetchMyPublishedItems', { force: true });
+    nav.toast(item.live ? 'Not shared any more.' : 'Shared again.');
+  } catch (e) {
+    nav.toast('That didn’t work. ' + (e?.message || ''));
+  } finally {
+    sharing.value = null;
+  }
+}
 
 function selectTab(id) {
   query.value = '';
@@ -127,9 +172,13 @@ async function ensureLoaded(t) {
     loading.value = false;
   }
 }
-onMounted(() => tabs.forEach((t) => ensureLoaded(t)));
+onMounted(() => {
+  tabs.forEach((t) => ensureLoaded(t));
+  store.dispatch('marketplace/fetchMyPublishedItems').catch(() => {});
+});
 watch(tab, (t) => {
   query.value = '';
+  marketExpanded.value = false;
   ensureLoaded(t);
 });
 

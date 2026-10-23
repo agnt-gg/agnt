@@ -50,9 +50,14 @@ export const FOCUSED_PAGES = Object.freeze({
     icon: 'fas fa-redo',
   },
   memory: {
-    title: 'Memory',
+    title: 'Memories',
     sub: 'What AGNT remembers about you and how you like things done.',
     icon: 'fas fa-brain',
+  },
+  activity: {
+    title: 'Activity',
+    sub: 'Everything Annie, your agents and your workflows have done.',
+    icon: 'fas fa-wave-square',
   },
   settings: {
     title: 'Settings',

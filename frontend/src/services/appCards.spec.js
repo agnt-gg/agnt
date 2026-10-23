@@ -146,8 +146,8 @@ describe('buildAppCards', () => {
   });
 
   it('tolerates empty and malformed input', () => {
-    expect(buildAppCards()).toEqual({ yours: [], discover: [], models: [] });
-    expect(buildAppCards({ installed: [null, { tools: 'x' }], catalogue: 'nope', connectedApps: null })).toEqual({ yours: [], discover: [], models: [] });
+    expect(buildAppCards()).toEqual({ yours: [], discover: [], models: [], modelsToConnect: [] });
+    expect(buildAppCards({ installed: [null, { tools: 'x' }], catalogue: 'nope', connectedApps: null })).toEqual({ yours: [], discover: [], models: [], modelsToConnect: [] });
   });
 
   it('a catalogue-less one-plugin sign-in reads as the plugin, not as a raw id', () => {

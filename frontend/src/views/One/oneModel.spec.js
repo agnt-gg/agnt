@@ -121,17 +121,21 @@ describe('the rail', () => {
   // the one navigation: every place, always, for every account.
   it('lists every place, always, whatever the account holds', () => {
     // New chat is in the Chats drawer's header, not on the rail (2026-10-21).
-    const every = ['chats', 'apps', 'routines', 'library', 'market', 'memory'];
+    // 2026-10-23: no Market (its listings are Library and Apps sections); Activity and Memories under More.
+    const every = ['chats', 'apps', 'routines', 'library', 'more'];
     expect(ids(railItems())).toEqual(every);
     expect(ids(railItems({ facts: { apps: 3, workflows: 2 } }))).toEqual(every);
     expect(railItems().every((i) => i.icon && i.label)).toBe(true);
   });
 
-  it('marks the page that is open, including Market and Memory', () => {
+  it('marks the page that is open; Activity and Memories light More and their own entry', () => {
     const active = (activePage) => railItems({ activePage }).filter((i) => i.active).map((i) => i.id);
     expect(active('connectors')).toEqual(['apps']);
-    expect(active('market')).toEqual(['market']);
-    expect(active('memory')).toEqual(['memory']);
+    expect(active('market')).toEqual(['library']);
+    expect(active('memory')).toEqual(['more']);
+    expect(active('activity')).toEqual(['more']);
+    const more = railItems({ activePage: 'activity' }).find((i) => i.id === 'more');
+    expect(more.menu.map((m) => [m.id, m.label, m.active])).toEqual([['activity', 'Activity', true], ['memory', 'Memories', false]]);
   });
 
   // Reported 2026-10-21: with the Chats drawer left open, every page lit up
@@ -139,7 +143,7 @@ describe('the rail', () => {
   it('marks one icon active: the page, then an open drawer, then a blank chat', () => {
     const active = (opts) => railItems(opts).filter((i) => i.active).map((i) => i.id);
     expect(active({ drawerOpen: true, activePage: 'connectors' })).toEqual(['apps']);
-    expect(active({ drawerOpen: true, activePage: 'market' })).toEqual(['market']);
+    expect(active({ drawerOpen: true, activePage: 'memory' })).toEqual(['more']);
     expect(active({ drawerOpen: true })).toEqual(['chats']);
     expect(active({ drawerOpen: true, onBlankChat: true })).toEqual(['chats']);
     const chats = (opts) => railItems(opts).find((i) => i.id === 'chats');

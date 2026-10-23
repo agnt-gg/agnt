@@ -197,6 +197,45 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
 .ui-one .one-rail-fill {
   flex: 1;
 }
+/* More: its menu opens beside the rail. */
+.ui-one .one-rail-slot {
+  position: relative;
+}
+.ui-one .one-rail-menu {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  z-index: 60;
+  min-width: 168px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  background: var(--color-popup);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  -webkit-app-region: no-drag;
+}
+.ui-one .one-rail-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.ui-one .one-rail-menu-item:hover,
+.ui-one .one-rail-menu-item.is-active {
+  background: var(--surface-hover);
+}
 
 /* ── Chats drawer (the shared chat navigator) ─────────────────────────────── */
 

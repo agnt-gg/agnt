@@ -42,8 +42,14 @@ describe('Library Market shelf placement', () => {
     expect(wrapper.findAllComponents(MarketplaceShelf)).toHaveLength(1);
     // A tab's picks are its own kind only (agents on the Widgets tab read as a mistake).
     expect(shelf.props()).toMatchObject({ assetType: LIBRARY_TABS.find(t => t.id === tab).noun, dismissible: false, fallbackToAll: false });
-    shelf.vm.$emit('browse', 'fixture-listing');
-    expect(nav.openScreen).toHaveBeenCalledWith('MarketplaceScreen', { listing: 'fixture-listing' });
+    // A pick opens its listing; "Browse all" shows more picks here (no Market page, 2026-10-23).
+    shelf.vm.$emit('browse', { id: 'row-1', asset_id: 'fixture-listing' });
+    expect(nav.go).toHaveBeenCalledWith({ page: 'market', item: 'fixture-listing' });
+    expect(shelf.props('maxItems')).toBe(6);
+    shelf.vm.$emit('browse');
+    await flushPromises();
+    expect(wrapper.findComponent(MarketplaceShelf).props('maxItems')).toBe(60);
+    expect(nav.openScreen).not.toHaveBeenCalled();
     shelf.vm.$emit('installed');
     expect(dispatch).toHaveBeenCalledWith(LIBRARY_TABS.find(t => t.id === tab).fetch);
     wrapper.unmount();

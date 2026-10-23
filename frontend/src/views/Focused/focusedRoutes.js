@@ -42,6 +42,7 @@ export const PAGE_SCREENS = Object.freeze({
   memory: 'MemoryScreen',
   settings: 'SettingsScreen',
   market: 'MarketplaceScreen',
+  activity: 'TracesScreen',
 });
 
 const str = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? String(v[0] ?? '') : '');
@@ -78,9 +79,9 @@ export function focusedLocation(screen, query = {}) {
     case 'WorkflowsScreen':
       return item('workflows', 'workflow');
     case 'WorkflowForgeScreen':
-      // An existing workflow opens in Focused, and so does a new one (a bare
-      // forge is "New workflow"). "Open the full editor" sends ?studio=1.
-      return str(query.id) ? library('workflows', str(query.id)) : library('workflows', null, { isNew: true });
+      // Workflows are built on the canvas, with Annie's chat on its left
+      // (2026-10-23): the Forge itself, in both shells.
+      return null;
     case 'ToolsScreen':
       return item('tools', 'tool');
     case 'ToolForgeScreen':
@@ -117,8 +118,15 @@ export function focusedLocation(screen, query = {}) {
       return { page: 'memory', item: selected(query, 'memory'), isNew };
     case 'SettingsScreen':
       return { page: 'settings', ...(str(query.section) === 'members' ? { section: 'members' } : {}) };
-    case 'MarketplaceScreen':
-      return { page: 'market', item: str(query.item) || selected(query, 'marketplace') || null };
+    case 'MarketplaceScreen': {
+      // No Market page of its own (2026-10-23): listings are sections of the
+      // Library and Apps pages. A link to one listing still opens it.
+      const listing = str(query.item) || selected(query, 'marketplace') || null;
+      return listing ? { page: 'market', item: listing } : library('agents');
+    }
+    case 'TracesScreen':
+      // One run's full trace stays Studio's; the list of runs is Activity.
+      return str(query.executionId) || selected(query, 'trace') || selected(query, 'execution') ? null : { page: 'activity' };
     default:
       return null;
   }
@@ -132,6 +140,8 @@ export function focusedLocation(screen, query = {}) {
 export function routeFor(loc) {
   if (!loc) return ['ChatScreen', {}];
   if (loc.page === 'library') {
+    // A workflow opens on the canvas (see WorkflowForgeScreen above).
+    if (loc.tab === 'workflows' && (loc.item || loc.isNew)) return ['WorkflowForgeScreen', { workflowId: loc.item || null }];
     const screen = LIBRARY_TAB_SCREENS[loc.tab] || LIBRARY_TAB_SCREENS.agents;
     if (loc.item) return [screen, { select: { kind: LIBRARY_ITEM_KIND[loc.tab] || 'agent', id: loc.item } }];
     if (loc.isNew && loc.tab !== 'files') return [screen, { newGoal: true }]; // changeScreen's `new=1`
@@ -157,7 +167,8 @@ export function routeFor(loc) {
     return [PAGE_SCREENS.memory, opts];
   }
   if (loc.page === 'settings') return [PAGE_SCREENS.settings, loc.section === 'members' ? { section: 'members' } : {}];
-  if (loc.page === 'market') return [PAGE_SCREENS.market, loc.item ? { select: { kind: 'marketplace', id: loc.item } } : {}];
+  if (loc.page === 'market') return loc.item ? [PAGE_SCREENS.market, { select: { kind: 'marketplace', id: loc.item } }] : [LIBRARY_TAB_SCREENS.agents, {}];
+  if (loc.page === 'activity') return [PAGE_SCREENS.activity, {}];
   return ['ChatScreen', {}];
 }
 

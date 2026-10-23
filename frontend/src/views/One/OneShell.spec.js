@@ -22,8 +22,9 @@ const storeState = reactive({
 // call them at module load, even though the pages are stubbed here.
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
 const push = vi.fn(() => Promise.resolve());
+const replace = vi.fn(() => Promise.resolve());
 const route = reactive({ query: {} });
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }));
+vi.mock('vue-router', () => ({ useRouter: () => ({ push, replace }), useRoute: () => route }));
 
 const mainChatId = ref('main-1');
 const openMainChat = vi.fn(() => Promise.resolve());
@@ -161,12 +162,14 @@ describe('OneShell', () => {
     w.unmount();
   });
 
-  it('regression: opening a workflow shows the Library editor, with Chat kept underneath', () => {
-    const w = mountShell('WorkflowForgeScreen', { id: 'w1' });
-    expect(w.findComponent({ name: 'FocusedLibrary' }).props('location')).toMatchObject({ page: 'library', tab: 'workflows', item: 'w1' });
-    expect(w.find('.focused-borrowed-bar').exists()).toBe(false);
-    expect(w.find('.focused-screen').isVisible()).toBe(false);
-    w.unmount();
+  // 2026-10-23: workflows are built on the canvas, with Annie's chat beside it.
+  it('a workflow opens on its canvas; an old Library link to one goes there too', () => {
+    const forge = mountShell('WorkflowForgeScreen', { id: 'w1' });
+    expect(forge.findComponent({ name: 'FocusedLibrary' }).exists()).toBe(false);
+    forge.unmount();
+    const old = mountShell('WorkflowsScreen', { select: 'workflow:w1' });
+    expect(replace).toHaveBeenLastCalledWith({ path: '/workflow-forge', query: { id: 'w1' } });
+    old.unmount();
   });
 
   it.each([
@@ -176,6 +179,8 @@ describe('OneShell', () => {
     ['MemoryScreen', {}, 'FocusedMemory'],
     ['SettingsScreen', {}, 'FocusedSettings'],
     ['MarketplaceScreen', { item: 'asset-1' }, 'FocusedMarket'],
+    ['MarketplaceScreen', {}, 'FocusedLibrary'],
+    ['TracesScreen', {}, 'FocusedActivity'],
   ])('%s %j renders %s', (screen, query, page) => {
     const w = mountShell(screen, query);
     expect(w.findComponent({ name: page }).exists()).toBe(true);
@@ -184,7 +189,7 @@ describe('OneShell', () => {
   });
 
   it('a screen with no page renders in full, with a way back and no mode to switch to', async () => {
-    const w = mountShell('TracesScreen');
+    const w = mountShell('DashboardScreen');
     const bar = w.find('.focused-borrowed-bar');
     expect(bar.exists()).toBe(true);
     expect(bar.text()).not.toMatch(/studio/i);
@@ -205,7 +210,9 @@ describe('OneShell', () => {
   it('pages navigate by real routes through the injected service', () => {
     const w = mountShell();
     nav.go({ page: 'library', tab: 'workflows', item: 'w 2' });
-    expect(push).toHaveBeenLastCalledWith({ path: '/workflows', query: { select: 'workflow:w 2' } });
+    expect(push).toHaveBeenLastCalledWith({ path: '/workflow-forge', query: { id: 'w 2' } });
+    nav.go({ page: 'library', tab: 'agents', item: 'a 2' });
+    expect(push).toHaveBeenLastCalledWith({ path: '/agents', query: { select: 'agent:a 2' } });
     nav.go({ page: 'scheduled', isNew: true });
     expect(push).toHaveBeenLastCalledWith({ path: '/goals', query: { section: 'schedules', new: '1' } });
     nav.studio('WorkflowForgeScreen', { workflowId: 'w3' });
@@ -241,17 +248,24 @@ describe('OneShell', () => {
     it('is the one navigation: every place on a new account, Settings at the bottom', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-memory', 'one-rail-settings',
+        'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-more', 'one-rail-settings',
       ]);
       w.unmount();
     });
 
-    it('Apps opens the apps page, Market the market', async () => {
+    it('Apps opens the apps page; More holds Activity and Memories', async () => {
       const w = mountShell();
       await w.find('[data-testid="one-rail-apps"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/plugins', query: {} });
-      await w.find('[data-testid="one-rail-market"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/marketplace');
+      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories']);
+      await w.find('[data-testid="one-rail-activity"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
+      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-memory"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/memory');
       w.unmount();
     });
 

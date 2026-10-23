@@ -2281,6 +2281,19 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+/* Library: what you shared to the Market. */
+.ui-focused .focused-shared {
+  margin-top: 28px;
+}
+.ui-focused .focused-shared-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.ui-focused .focused-row.static {
+  cursor: default;
+}
 .ui-focused .focused-foot-note {
   margin: 10px 4px 0;
   font-size: 12px;

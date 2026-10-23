@@ -168,10 +168,11 @@
                 <span class="ap-logo"><SvgIcon :name="account.icon || 'connect'" /></span>
                 <div class="ap-row-body">
                   <div class="ap-row-title">
-                    <button type="button" class="ap-row-open" @click="account.aiModel ? emit('open-ai-models') : openAccount(account.id)">{{ account.name }}</button>
+                    <strong v-if="account.aiModel">{{ account.name }}</strong>
+                    <button v-else type="button" class="ap-row-open" @click="openAccount(account.id)">{{ account.name }}</button>
                     <span class="ap-badge connection">{{ account.kind }}</span>
                   </div>
-                  <p v-if="account.aiModel" class="ap-row-desc">AI model · used by Annie, agents and workflows</p>
+                  <p v-if="account.aiModel" class="ap-row-desc">Powers Annie and your agents</p>
                   <div v-else-if="account.apps.length" class="ap-plugin-strip">
                     <button v-for="app in account.apps" :key="app.name" type="button" class="ap-plugin-chip" :data-plugin="app.name" @click="openPlugin(app.name)">
                       <span class="ap-logo"><SvgIcon :name="app.icon || account.icon || 'puzzle-piece'" /></span>{{ app.displayName }}
@@ -181,8 +182,7 @@
                 </div>
                 <div class="ap-row-side">
                   <span class="ap-status" :class="accountTone(account.status)">{{ accountStatus(account.status) }}</span>
-                  <!-- AI models are connected and managed in Settings' AI models. -->
-                  <button v-if="account.aiModel" type="button" class="ap-btn small" data-action="manage-ai" @click="emit('open-ai-models')">Manage</button>
+                  <button v-if="account.aiModel" type="button" class="ap-btn small" data-action="disconnect-ai" :disabled="togglingAi === account.id" @click="toggleAi(account.id)">{{ account.status === 'reconnect' ? 'Reconnect' : 'Disconnect' }}</button>
                   <button v-else-if="account.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', account.card)">Reconnect</button>
                   <button v-else-if="account.status === 'connect'" type="button" class="ap-btn primary small" data-action="connect" @click="emit('connect', account.card)">Connect</button>
                 </div>
@@ -190,6 +190,23 @@
             </div>
           </template>
           <p v-if="!accountsView.length" class="ap-empty">{{ queries.accounts || filters.accounts !== 'all' ? 'No sign-in or key matches.' : 'Nothing connected yet. Connect a service below, or install a plugin and connect what it needs.' }}</p>
+
+          <template v-if="aiToConnect.length">
+            <div class="ap-section-title" data-section="connect-ai"><h2>Connect your AI</h2></div>
+            <div class="ap-list">
+              <div v-for="service in shownAi" :key="service.id" class="ap-row" :data-service="service.providerId">
+                <span class="ap-logo"><SvgIcon :name="service.icon || 'connect'" /></span>
+                <div class="ap-row-body">
+                  <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge connection">{{ connectionKind(service.connectionType) }}</span></div>
+                  <p class="ap-row-desc">Powers Annie and your agents</p>
+                </div>
+                <div class="ap-row-side">
+                  <button type="button" class="ap-btn small" data-action="connect-ai" :disabled="togglingAi === service.providerId" @click="toggleAi(service.providerId)">{{ togglingAi === service.providerId ? 'Connecting…' : 'Connect' }}</button>
+                </div>
+              </div>
+            </div>
+            <button v-if="aiToConnect.length > shownAi.length" type="button" class="ap-btn quiet small" data-action="show-all-ai" @click="showAllAi = true">Show all {{ aiToConnect.length }}</button>
+          </template>
 
           <div class="ap-section-title"><h2>{{ accountRows(yourCards).length ? 'Connect another service' : 'Connect a service' }}</h2><span>{{ discover.length }} services AGNT can sign in to</span></div>
           <div v-if="discover.length" class="ap-list">
@@ -204,7 +221,6 @@
           </div>
           <button v-if="discover.length > shownDiscover.length" type="button" class="ap-btn quiet small" data-action="show-all-services" @click="showAllServices = true">Show all {{ discover.length }}</button>
           <p class="ap-footnote">
-            AI model keys live in <button type="button" class="ap-link" data-action="ai-models" @click="emit('open-ai-models')">Settings › AI Models</button>
             <button type="button" class="ap-link" data-action="integrations" @click="emit('open-integrations')">Edit integrations</button>
             <button type="button" class="ap-link" data-action="add-integration" @click="emit('add-account')">Add a custom integration</button>
           </p>
@@ -302,6 +318,7 @@ import {
 } from '@/services/pluginDirectory.js';
 import { inspectPlugin, fetchPluginAssets, fetchUpdateStatus, requestUpdate, setUpdatePolicy, uninstallPlugin } from '@/services/pluginLifecycle.js';
 import { AI_PROVIDERS_WITH_API, providerLabel } from '@/store/app/aiProvider.js';
+import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 // selectedPlugin: undefined keeps the selection local; a host that routes it passes a name or null.
 // vaultActive: the host's route says the Accounts & keys tab is open (Studio ?section=oauth, Focused tab=vault).
@@ -403,22 +420,46 @@ const accounts = computed(() => accountRows(yourCards.value).filter((account) =>
   (filters.accounts === 'all' || account.connectionType === filters.accounts)
   && matchesQuery({ name: account.name, description: account.apps.map((app) => app.displayName).join(' ') }, queries.accounts)));
 // Connected AI models (appCards `models`), named as the rest of the app names them.
+// providerLabel answers the raw id when it has no label; then the catalogue name wins.
+const aiName = (id, fallback) => {
+  const label = providerLabel(id);
+  return label && label !== id ? label : fallback;
+};
 const aiAccounts = computed(() => accountRows(cards.value.models || [])
-  // providerLabel answers the raw id when it has no label; then the catalogue name wins.
-  .map((account) => {
-    const label = providerLabel(account.id);
-    return { ...account, name: label && label !== account.id ? label : account.name, aiModel: true };
-  })
+  .map((account) => ({ ...account, name: aiName(account.id, account.name), aiModel: true }))
   .filter((account) => (filters.accounts === 'all' || account.connectionType === filters.accounts)
     && matchesQuery({ name: `${account.name} ${account.id}`, description: '' }, queries.accounts)));
 const accountsView = computed(() => [
   { id: 'needs-you', label: 'Needs you', rows: accounts.value.filter((a) => a.status !== 'ready') },
-  { id: 'connected', label: 'Connected', rows: accounts.value.filter((a) => a.status === 'ready') },
-  { id: 'ai-models', label: 'AI models', rows: aiAccounts.value },
+  // AI providers are connected services like any other (2026-10-23).
+  { id: 'connected', label: 'Connected', rows: [...aiAccounts.value, ...accounts.value.filter((a) => a.status === 'ready')] },
 ].filter((section) => section.rows.length));
+// AI providers to connect: their own short group above the services, the
+// plans people already pay for first (2026-10-23).
+const AI_FIRST = ['openai-codex', 'claude-code', 'gemini-cli', 'openai', 'anthropic', 'gemini', 'openrouter', 'grokai'];
+const AI_SHOWN = 6;
+const showAllAi = ref(false);
+const aiRank = (id) => (AI_FIRST.indexOf(id) === -1 ? AI_FIRST.length : AI_FIRST.indexOf(id));
+const aiToConnect = computed(() => (cards.value.modelsToConnect || [])
+  .map((card) => ({ ...card, name: aiName(card.providerId, card.name) }))
+  .filter((card) => (filters.accounts === 'all' || String(card.connectionType).toLowerCase() === filters.accounts) && matchesQuery({ name: card.name, description: card.providerId }, queries.accounts))
+  .sort((a, b) => aiRank(a.providerId) - aiRank(b.providerId) || a.name.localeCompare(b.name)));
+const shownAi = computed(() => (showAllAi.value || queries.accounts ? aiToConnect.value : aiToConnect.value.slice(0, AI_SHOWN)));
 const discover = computed(() => cards.value.discover.filter((service) =>
   (filters.accounts === 'all' || String(service.connectionType).toLowerCase() === filters.accounts)
-  && matchesQuery({ name: service.name, description: `${service.providerId} ${service.suggested.map((s) => s.displayName).join(' ')}` }, queries.accounts)));
+  && matchesQuery({ name: service.name, description: `${service.providerId} ${(service.suggested || []).map((s) => s.displayName).join(' ')}` }, queries.accounts)));
+// AI providers connect and disconnect right here (sign-in or key prompt).
+const { handleProviderToggle } = useProviderConnection(modal);
+const togglingAi = ref(null);
+async function toggleAi(providerId) {
+  togglingAi.value = providerId;
+  try {
+    await handleProviderToggle(providerId);
+    await Promise.all([store.dispatch('appAuth/fetchConnectedApps'), store.dispatch('appAuth/checkConnectionHealth')]).catch(() => {});
+  } finally {
+    togglingAi.value = null;
+  }
+}
 const shownDiscover = computed(() => (showAllServices.value || queries.accounts ? discover.value : discover.value.slice(0, DISCOVER_SHOWN)));
 const accountStatus = (status) => (status === 'reconnect' ? 'Sign-in stopped working' : status === 'connect' ? 'Not connected' : 'Connected');
 const accountTone = (status) => (status === 'reconnect' ? 'bad' : status === 'connect' ? 'warn' : 'ok');

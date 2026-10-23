@@ -142,7 +142,8 @@ describe('a plugin listing', () => {
     expect(detail.attributes('data-detail-only')).toBe('true');
     expect(w.find('.focused-market-detail').exists()).toBe(false);
     await detail.trigger('click');
-    expect(nav.go).toHaveBeenCalledWith({ page: 'market' });
+    // Back returns to where the listing's section lives (no Market page, 2026-10-23).
+    expect(nav.go).toHaveBeenCalledWith({ page: 'connectors' });
     w.unmount();
   });
   it('a plugin the catalog does not have keeps the Market view; an agent gets its own listing page', async () => {
@@ -173,7 +174,7 @@ describe('an agent, workflow, tool or skill listing', () => {
     expect(page.find('[data-section="instructions"] pre').text()).toBe('You code.');
     expect(page.text()).toContain('by AGNT');
     await page.find('[data-action="back"]').trigger('click');
-    expect(nav.go).toHaveBeenCalledWith({ page: 'market' });
+    expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab: 'agents' });
     w.unmount();
   });
 });

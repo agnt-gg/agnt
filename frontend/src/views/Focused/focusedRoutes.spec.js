@@ -17,8 +17,11 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via(screen, { select: { kind, id: 'x1' } })).toMatchObject({ page: 'library', tab, item: 'x1' });
   });
 
-  it('regression: a workflow opened from anywhere stays in Focused (it used to open Studio\'s page)', () => {
-    expect(via('WorkflowForgeScreen', { workflowId: 'w9' })).toMatchObject({ page: 'library', tab: 'workflows', item: 'w9' });
+  // 2026-10-23: a workflow is built on the canvas (the Forge, with Annie's chat on its left).
+  it('a workflow opens on the canvas; a tool opens in Focused', () => {
+    expect(via('WorkflowForgeScreen', { workflowId: 'w9' })).toBeNull();
+    expect(routeFor({ page: 'library', tab: 'workflows', item: 'w9' })).toEqual(['WorkflowForgeScreen', { workflowId: 'w9' }]);
+    expect(routeFor({ page: 'library', tab: 'workflows', item: null, isNew: true })).toEqual(['WorkflowForgeScreen', { workflowId: null }]);
     expect(via('ToolForgeScreen', { toolId: 't9' })).toMatchObject({ page: 'library', tab: 'tools', item: 't9' });
   });
 
@@ -32,7 +35,7 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
   });
 
   it('a bare forge is "New workflow" / "New tool", in Focused', () => {
-    expect(via('WorkflowForgeScreen', { workflowId: null })).toEqual({ page: 'library', tab: 'workflows', item: null, isNew: true });
+    expect(via('WorkflowForgeScreen', { workflowId: null })).toBeNull();
     expect(via('ToolForgeScreen', {})).toEqual({ page: 'library', tab: 'tools', item: null, isNew: true });
     // "Open the full editor" still reaches Studio's canvas.
     expect(focusedLocation('WorkflowForgeScreen', { studio: '1' })).toBeNull();
@@ -66,8 +69,9 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     expect(via('PluginsScreen', { select: { kind: 'plugin', id: 'figma-bridge' } })).toBeNull();
   });
 
-  it('Market has its own Focused storefront, including item deep links', () => {
-    expect(focusedLocation('MarketplaceScreen')).toEqual({ page: 'market', item: null });
+  // 2026-10-23: no Market page; its listings are sections of Library and Apps.
+  it('Market: a listing opens; the bare Market lands on the Library', () => {
+    expect(focusedLocation('MarketplaceScreen')).toEqual({ page: 'library', tab: 'agents', item: null });
     expect(focusedLocation('MarketplaceScreen', { item: 'asset-1' })).toEqual({ page: 'market', item: 'asset-1' });
     expect(focusedLocation('MarketplaceScreen', { studio: '1' })).toBeNull();
   });
@@ -82,9 +86,14 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
   });
 
   it('Chat and Studio-only screens are not Focused pages', () => {
-    for (const s of ['ChatScreen', 'GoalsScreen', 'TracesScreen', 'DashboardScreen', 'WorkspaceScreen']) {
+    for (const s of ['ChatScreen', 'GoalsScreen', 'DashboardScreen', 'WorkspaceScreen']) {
       expect(focusedLocation(s, {}), s).toBeNull();
     }
+  });
+
+  it('Traces is Activity; one run\'s full trace stays Studio\'s', () => {
+    expect(focusedLocation('TracesScreen', {})).toEqual({ page: 'activity' });
+    expect(focusedLocation('TracesScreen', { executionId: 'x1' })).toBeNull();
   });
 });
 
@@ -92,7 +101,6 @@ describe('routeFor is the inverse of focusedLocation', () => {
   const locations = [
     { page: 'library', tab: 'agents', item: null },
     { page: 'library', tab: 'agents', item: 'a1' },
-    { page: 'library', tab: 'workflows', item: 'w 1' },
     { page: 'library', tab: 'tools', item: 't1' },
     { page: 'library', tab: 'skills', item: 'fs-x' },
     { page: 'library', tab: 'widgets', item: null },
@@ -102,14 +110,13 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'connectors', item: 'app:figma-bridge' },
     { page: 'connectors', item: null },
     { page: 'library', tab: 'agents', item: null, isNew: true },
-    { page: 'library', tab: 'workflows', item: null, isNew: true },
     { page: 'library', tab: 'widgets', item: null, isNew: true },
     { page: 'scheduled', item: 's1', isNew: false },
     { page: 'scheduled', item: null, isNew: true },
     { page: 'memory', item: 'm1', isNew: false },
     { page: 'memory', item: null, isNew: true },
     { page: 'settings' },
-    { page: 'market', item: null },
+    { page: 'activity' },
     { page: 'market', item: 'asset-1' },
   ];
   it.each(locations.map((l) => [JSON.stringify(l), l]))('%s', (_, loc) => {

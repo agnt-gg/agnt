@@ -371,14 +371,14 @@ describe('Accounts & keys', () => {
     await wrapper.setProps({ vaultActive: false });
     expect(tab('installed').attributes('aria-selected')).toBe('true');
   });
-  it('the provider editor, custom integrations and AI model keys are one click away', async () => {
+  it('the provider editor and custom integrations are one click away', async () => {
     setup({ props: { vaultActive: true } }); await flushPromises();
     await wrapper.find('[data-action="integrations"]').trigger('click');
     await wrapper.find('[data-action="add-integration"]').trigger('click');
-    await wrapper.find('[data-action="ai-models"]').trigger('click');
     expect(wrapper.emitted('open-integrations')).toHaveLength(1);
     expect(wrapper.emitted('add-account')).toHaveLength(1);
-    expect(wrapper.emitted('open-ai-models')).toHaveLength(1);
+    // AI providers are connected here, not in Settings (2026-10-23).
+    expect(wrapper.find('[data-action="ai-models"]').exists()).toBe(false);
   });
   it('a sign-in’s detail lists its plugins, offers ones it could turn on, and signs out through the host', async () => {
     const docs = { name: 'google-docs-plugin', displayName: 'Google Docs', category: 'productivity', tools: [tool('google-docs-api', { authProvider: 'google' })] };

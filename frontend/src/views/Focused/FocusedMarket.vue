@@ -12,9 +12,9 @@
     <template v-if="item && pluginName">
       <AppsSection
         detail-only
-        back-label="Browse Market"
+        back-label="Back"
         :selected-plugin="pluginName"
-        @close-app="nav.go({ page: 'market' })"
+        @close-app="backFromListing()"
         @connect="connect"
         @reconnect="connect"
         @disconnect="connect"
@@ -23,7 +23,6 @@
         @open-ai-models="nav.go({ page: 'settings' })"
         @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
       />
-      <button type="button" class="focused-link focused-market-more" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </template>
 
     <!-- An agent, workflow, tool or skill: what it contains and does, in the
@@ -34,13 +33,12 @@
         :installed="isInstalled(selectedItem)"
         :installing="String(installingId) === String(selectedItem.id)"
         @install="install(selectedItem)"
-        @back="nav.go({ page: 'market' })"
+        @back="backFromListing()"
       />
-      <button type="button" class="focused-link focused-market-more" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </template>
 
     <template v-else-if="item">
-      <button type="button" class="focused-back" @click="nav.go({ page: 'market' })"><i class="fas fa-arrow-left" aria-hidden="true"></i> Browse Market</button>
+      <button type="button" class="focused-back" @click="backFromListing()"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back</button>
       <article v-if="selectedItem" class="focused-market-detail">
         <div class="focused-market-detail-art" :style="artStyle(selectedItem)">
           <img v-if="imageFor(selectedItem)" :src="imageFor(selectedItem)" alt="" @error="hideImage(selectedItem)" />
@@ -61,7 +59,7 @@
           <button type="button" class="focused-link" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
         </div>
       </article>
-      <div v-else-if="status === 'ready'" class="focused-empty" role="status">This item is no longer available. <button type="button" class="focused-link" @click="nav.go({ page: 'market' })">Browse Market</button></div>
+      <div v-else-if="status === 'ready'" class="focused-empty" role="status">This item is no longer available. <button type="button" class="focused-link" @click="backFromListing()">Back</button></div>
     </template>
 
     <template v-else>
@@ -136,6 +134,13 @@ const visibleItems = computed(() => items.value.filter(listing => (type.value ==
 // `item` is a link key: asset id (shelves, agnt:// links) or listing id.
 const selectedItem = computed(() => items.value.find(listing => matchesMarketplaceKey(listing, props.item)));
 const spotlight = computed(() => visibleItems.value[0]);
+// Back from a listing: to the page its section lives on (no Market page, 2026-10-23).
+const LISTING_HOME = { agent: 'agents', workflow: 'workflows', tool: 'tools', skill: 'skills', widget: 'widgets' };
+function backFromListing() {
+  const type = selectedItem.value?.asset_type;
+  if (type === 'plugin') nav.go({ page: 'connectors' });
+  else nav.go({ page: 'library', tab: LISTING_HOME[type] || 'agents' });
+}
 // A plugin listing's asset_id is the plugin's name in the catalog. Shown as the
 // Plugins page's detail when the catalog has it; otherwise the listing view.
 const catalogNames = computed(() => new Set([...(store.getters['apps/available'] || []), ...(store.getters['apps/installed'] || [])].map((p) => p?.name).filter(Boolean)));

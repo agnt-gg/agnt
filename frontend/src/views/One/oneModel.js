@@ -148,13 +148,22 @@ export const RAIL_ICONS = Object.freeze({
   // A brain, as Memory is drawn elsewhere (fa-brain): a scalloped outline
   // with folds, so it does not read as a round globe at rail size.
   memory: '<path d="M12 4.5c-1-1.2-3.2-1.3-4.3 0-1.6-.2-3 1.1-2.9 2.8-1.6.6-2.4 2.4-1.7 4-1.1 1-1.2 2.9-.1 4 .1 1.7 1.6 3 3.3 2.8.9 1.2 2.7 1.4 3.7.4zM12 4.5c1-1.2 3.2-1.3 4.3 0 1.6-.2 3 1.1 2.9 2.8 1.6.6 2.4 2.4 1.7 4 1.1 1 1.2 2.9.1 4-.1 1.7-1.6 3-3.3 2.8-.9 1.2-2.7 1.4-3.7.4M8.5 9.3c1 0 1.8.8 1.8 1.7M15.5 9.3c-1 0-1.8.8-1.8 1.7M8 14.2c.8.6 1.8.6 2.5 0M16 14.2c-.8.6-1.8.6-2.5 0"/>',
+  more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
 });
 
 /** Which rail icon a page belongs to (its active state). */
-const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'market', memory: 'memory', settings: 'settings' });
-/** The page each rail icon opens; `chats` toggles the drawer instead. */
-export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', market: 'market', memory: 'memory', settings: 'settings' });
+// Activity and Memories live under More (2026-10-23); a Market listing opened
+// from a Library or Apps section belongs to the Library.
+const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'library', activity: 'more', memory: 'more', settings: 'settings' });
+/** The page each rail icon (or More entry) opens; `chats` toggles the drawer, `more` opens its menu. */
+export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', activity: 'activity', memory: 'memory', settings: 'settings' });
+/** What More holds, in order. */
+export const MORE_ITEMS = Object.freeze([
+  { id: 'activity', label: 'Activity' },
+  { id: 'memory', label: 'Memories' },
+]);
 
 /**
  * The rail is AGNT One's only navigation, so it always lists every place.
@@ -177,10 +186,16 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     { id: 'apps', label: 'Apps' },
     { id: 'routines', label: 'Routines' },
     { id: 'library', label: 'Library' },
-    { id: 'market', label: 'Market' },
-    { id: 'memory', label: 'Memory' },
+    { id: 'more', label: 'More' },
   ];
-  return items.map(({ id, label }) => ({ id, label, icon: RAIL_ICONS[id], active: active === id, ...(id === 'chats' ? { open: drawerOpen } : {}) }));
+  return items.map(({ id, label }) => ({
+    id,
+    label,
+    icon: RAIL_ICONS[id],
+    active: active === id,
+    ...(id === 'chats' ? { open: drawerOpen } : {}),
+    ...(id === 'more' ? { menu: MORE_ITEMS.map((m) => ({ ...m, icon: RAIL_ICONS[m.id], active: activePage === m.id })) } : {}),
+  }));
 }
 
 // ── The greeting ───────────────────────────────────────────────────────────

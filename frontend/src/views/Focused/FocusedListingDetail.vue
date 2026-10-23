@@ -6,7 +6,7 @@
   <div class="apps-studio detail-only focused-listing-detail">
     <div class="ap-layout has-detail">
       <aside class="ap-detail" aria-label="Details">
-        <button type="button" class="ap-btn quiet small ap-back" data-action="back" @click="emit('back')"><AppsIcon name="back" /> Browse Market</button>
+        <button type="button" class="ap-btn quiet small ap-back" data-action="back" @click="emit('back')"><AppsIcon name="back" /> Back</button>
         <article class="ap-plugin-detail" :data-listing="listing.id">
           <header class="ap-detail-head">
             <div class="ap-identity">
