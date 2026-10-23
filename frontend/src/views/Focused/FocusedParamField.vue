@@ -1,7 +1,8 @@
 <template>
   <!-- A <label> forwards clicks to the first button inside it, which would
-       toggle a dropdown twice: a dropdown row is a plain block. -->
-  <component :is="choices ? 'div' : 'label'" class="focused-param-row">
+       toggle a dropdown twice: a dropdown row, or one with the field picker,
+       is a plain block. -->
+  <component :is="choices || canInsert ? 'div' : 'label'" class="focused-param-row">
     <span class="focused-param-label">{{ humanKey(name) }}</span>
     <CustomSelect
       v-if="choices"
@@ -39,21 +40,67 @@
       spellcheck="false"
       @input="onJson"
     ></textarea>
-    <textarea
-      v-else-if="kind === 'textarea'"
-      class="focused-input"
-      :value="modelValue ?? ''"
-      :readonly="readOnly"
-      :rows="Math.min(8, Math.max(2, String(modelValue ?? '').split('\n').length))"
-      @input="emit('update:modelValue', $event.target.value)"
-    ></textarea>
-    <input
-      v-else
-      class="focused-input"
-      :value="modelValue ?? ''"
-      :readonly="readOnly"
-      @input="emit('update:modelValue', $event.target.value)"
-    />
+    <!-- Text settings: click in and the earlier steps' fields are offered. -->
+    <div v-else class="focused-param-text">
+      <div class="focused-param-text-row">
+        <textarea
+          v-if="kind === 'textarea'"
+          ref="field"
+          class="focused-input"
+          :value="modelValue ?? ''"
+          :readonly="readOnly"
+          :rows="Math.min(8, Math.max(2, String(modelValue ?? '').split('\n').length))"
+          :aria-label="humanKey(name)"
+          @input="emit('update:modelValue', $event.target.value)"
+          @focus="openPicker"
+          @blur="closeSoon"
+          @keydown.esc="pickerOpen = false"
+        ></textarea>
+        <input
+          v-else
+          ref="field"
+          class="focused-input"
+          :value="modelValue ?? ''"
+          :readonly="readOnly"
+          :aria-label="humanKey(name)"
+          @input="emit('update:modelValue', $event.target.value)"
+          @focus="openPicker"
+          @blur="closeSoon"
+          @keydown.esc="pickerOpen = false"
+        />
+        <button
+          v-if="canInsert"
+          type="button"
+          class="focused-icon-btn focused-insert-btn"
+          :aria-label="'Insert a field from an earlier step into ' + humanKey(name)"
+          :aria-expanded="pickerOpen ? 'true' : 'false'"
+          v-tooltip="'Use a field from an earlier step'"
+          data-action="insert-field"
+          @mousedown.prevent
+          @click="togglePicker"
+        >{ }</button>
+      </div>
+      <div v-if="pickerOpen && canInsert" class="focused-field-picker" role="listbox" :aria-label="'Fields for ' + humanKey(name)" data-testid="field-picker" @mousedown.prevent>
+        <div v-for="step in stepsWithFields" :key="step.id" class="focused-field-group">
+          <div class="focused-field-group-head"><span class="focused-step-num">{{ step.number }}</span>{{ step.name }}</div>
+          <button
+            v-for="f in step.fields"
+            :key="f.key"
+            type="button"
+            role="option"
+            class="focused-field-option"
+            :data-token="f.token"
+            v-tooltip="f.description ? f.description + ' · ' + f.token : f.token"
+            @click="insert(f.token)"
+          >
+            <span class="focused-field-key">{{ humanKey(f.key) }}</span>
+            <span v-if="f.sample" class="focused-field-sample">{{ f.sample }}</span>
+            <span v-else-if="f.type" class="focused-field-type">{{ f.type }}</span>
+          </button>
+        </div>
+        <p v-if="!stepsWithFields.length" class="focused-edit-hint">The earlier steps have no fields to use.</p>
+      </div>
+    </div>
   </component>
 </template>
 
@@ -62,15 +109,19 @@
 // a boolean is a switch, a number a number field, an object JSON that only
 // saves once it parses, and text a field or a box when it is long.
 // A setting with a list of choices (a step's `<key>_options`) is a dropdown.
-import { ref, computed } from 'vue';
+// A text setting offers the earlier steps' fields (previousStepFields) and
+// inserts {{step.field}} at the cursor.
+import { ref, computed, nextTick } from 'vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import { humanKey, paramKind } from './focusedEditors.js';
+import { humanKey, paramKind, insertAt } from './focusedEditors.js';
 
 const props = defineProps({
   name: { type: String, required: true },
   modelValue: { type: null, default: '' },
   readOnly: { type: Boolean, default: false },
   options: { type: Array, default: null },
+  /** previousStepFields(): earlier steps and their output fields. */
+  insertables: { type: Array, default: () => [] },
 });
 // The current value stays choosable even when the list no longer has it.
 const choices = computed(() => {
@@ -99,6 +150,36 @@ function onJson(e) {
     jsonError.value = false;
   } catch {
     jsonError.value = true; // kept on screen, not saved, until it parses
+  }
+}
+
+// ── Field picker ────────────────────────────────────────────────────────────
+const field = ref(null);
+const pickerOpen = ref(false);
+const stepsWithFields = computed(() => (props.insertables || []).filter((s) => s.fields?.length));
+const canInsert = computed(() => !props.readOnly && !choices.value && (kind === 'text' || kind === 'textarea') && (props.insertables || []).length > 0);
+
+function openPicker() {
+  if (canInsert.value) pickerOpen.value = true;
+}
+function togglePicker() {
+  pickerOpen.value = !pickerOpen.value;
+  if (pickerOpen.value) field.value?.focus();
+}
+// Clicks inside the picker keep focus (mousedown.prevent), so a blur means
+// the user went elsewhere.
+function closeSoon() {
+  pickerOpen.value = false;
+}
+async function insert(token) {
+  const el = field.value;
+  const { text, caret } = insertAt(props.modelValue ?? '', token, el?.selectionStart, el?.selectionEnd);
+  emit('update:modelValue', text);
+  await nextTick();
+  if (el) {
+    el.value = text;
+    el.focus();
+    el.setSelectionRange(caret, caret);
   }
 }
 </script>

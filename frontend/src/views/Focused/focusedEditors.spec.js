@@ -8,6 +8,9 @@ import {
   toolValues,
   toolPayload,
   toolRunOutcome,
+  previousStepFields,
+  insertAt,
+  stepRefName,
   validateToolInputs,
   cleanInputKey,
   renameInPrompt,
@@ -398,5 +401,54 @@ describe('workflow steps added in Focused', () => {
 
   it("a select's choices list is not shown as a setting of its own", () => {
     expect(visibleStepParams({ schedule: 'Hourly', schedule_options: ['Hourly'], extra_options: 'kept' })).toEqual(['schedule', 'extra_options']);
+  });
+});
+
+// The field picker (2026-10-21): click into a step's setting and the earlier
+// steps' fields are offered; picking one inserts {{step.field}} (the Zapier pattern).
+describe('field picker', () => {
+  const graph = {
+    nodes: [
+      { id: 't', text: 'Every Morning', type: 'trigger-timer', category: 'trigger', outputs: { firedAt: { type: 'string', description: 'When it fired' } }, output: { firedAt: '2026-10-21T09:00:00Z' } },
+      { id: 'a', text: 'Get Weather', type: 'weather-now' },
+      { id: 'b', text: 'Send Email', type: 'send-email', outputs: { messageId: { type: 'string' } } },
+    ],
+    edges: [{ start: { id: 't' }, end: { id: 'a' } }, { start: { id: 'a' }, end: { id: 'b' } }],
+  };
+  const library = { actions: [{ type: 'weather-now', outputs: { summary: { type: 'string' }, tempC: { type: 'number' } } }] };
+  // The engine's lookup (WorkflowEngine._initializeNodeNameMapping + ParameterResolver).
+  const resolvesTo = (token, nodes) => {
+    const prefix = token.slice(2, -2).split('.')[0];
+    const byName = new Map(nodes.map((n) => [n.text.toLowerCase().replace(/\s+/g, ''), n.id]));
+    return byName.get(prefix.toLowerCase()) ?? (nodes.some((n) => n.id === prefix) ? prefix : undefined);
+  };
+
+  it('offers only the steps before this one, in run order, with their fields', () => {
+    const steps = previousStepFields(graph, 'b', library);
+    expect(steps.map((s) => [s.number, s.name])).toEqual([[1, 'Every Morning'], [2, 'Get Weather']]);
+    expect(steps[0].fields).toEqual([{ key: 'firedAt', token: '{{everyMorning.firedAt}}', type: 'string', description: 'When it fired', sample: '2026-10-21T09:00:00Z' }]);
+    // A step whose node stores no outputs uses the step library's.
+    expect(steps[1].fields.map((f) => f.token)).toEqual(['{{getWeather.summary}}', '{{getWeather.tempC}}']);
+    expect(previousStepFields(graph, 't', library)).toEqual([]);
+  });
+
+  it('every inserted reference resolves to the right step, by the engine\'s own rule', () => {
+    for (const step of previousStepFields(graph, 'b', library)) {
+      for (const f of step.fields) expect(resolvesTo(f.token, graph.nodes), f.token).toBe(step.id);
+    }
+  });
+
+  it('a name the engine could not match (dots, braces, a duplicate) uses the step id instead', () => {
+    const tricky = { nodes: [{ id: 'x1', text: 'v1.2 fetch', type: 'a', outputs: { r: {} } }, { id: 'x2', text: 'Same', type: 'a', outputs: { r: {} } }, { id: 'x3', text: 'Same', type: 'a', outputs: { r: {} } }, { id: 'end', text: 'End', type: 'a' }], edges: [] };
+    const tokens = previousStepFields(tricky, 'end').flatMap((s) => s.fields.map((f) => f.token));
+    expect(tokens).toEqual(['{{x1.r}}', '{{x2.r}}', '{{x3.r}}']);
+    for (const t of tokens) expect(resolvesTo(t, tricky.nodes)).toBe(t.slice(2).split('.')[0]);
+  });
+
+  it('inserts at the cursor or over the selection, and at the end when there is none', () => {
+    expect(insertAt('Hello !', '{{a.b}}', 6)).toEqual({ text: 'Hello {{a.b}}!', caret: 13 });
+    expect(insertAt('Hello WORLD', '{{a.b}}', 6, 11)).toEqual({ text: 'Hello {{a.b}}', caret: 13 });
+    expect(insertAt('Hi', '{{a.b}}')).toEqual({ text: 'Hi{{a.b}}', caret: 9 });
+    expect(stepRefName('Send   Email now')).toBe('sendEmailNow');
   });
 });

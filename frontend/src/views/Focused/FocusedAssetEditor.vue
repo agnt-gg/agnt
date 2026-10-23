@@ -100,6 +100,7 @@
               :read-only="readOnly"
               :options="Array.isArray(node(id).parameters[k + '_options']) ? node(id).parameters[k + '_options'] : null"
               :model-value="node(id).parameters[k]"
+              :insertables="earlierFields(id)"
               @update:model-value="node(id).parameters[k] = $event"
             />
           </div>
@@ -291,6 +292,7 @@ import {
   workflowValues,
   workflowStepOrder,
   workflowPayload,
+  previousStepFields,
   isRunningStatus,
   stepLibraryGroups,
   addWorkflowStep,
@@ -375,7 +377,11 @@ const VALUES = { workflows: workflowValues, tools: toolValues, skills: skillValu
 function apply(record) {
   raw.value = record;
   v.value = VALUES[props.kind](record);
-  if (props.kind === 'workflows') stepOrder.value = workflowStepOrder(record);
+  if (props.kind === 'workflows') {
+    stepOrder.value = workflowStepOrder(record);
+    // Output definitions for the field picker, for steps whose node has none stored.
+    store.dispatch('tools/fetchWorkflowTools').catch((e) => console.warn('[Focused] could not load step outputs:', e?.message || e));
+  }
   baseline.value = JSON.stringify(v.value);
 }
 async function load() {
@@ -389,6 +395,12 @@ async function load() {
 onMounted(load);
 
 const node = (id) => v.value.nodes.find((n) => n.id === id);
+
+// The field picker: each step's settings can use the fields of the steps
+// before it. Built from the graph as it would be saved, so renamed and newly
+// added steps are offered under their current names.
+const pickerGraph = computed(() => (props.kind === 'workflows' && loaded.value ? workflowPayload(raw.value, v.value) : null));
+const earlierFields = (id) => (pickerGraph.value ? previousStepFields(pickerGraph.value, id, store.getters['tools/workflowTools']) : []);
 const stepType = (id) => {
   const r = [...(raw.value.nodes || []), ...(v.value.added || [])].find((n) => n.id === id) || {};
   return humanKey(String(r.type || '').replace(/-/g, '_'));

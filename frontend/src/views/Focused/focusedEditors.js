@@ -102,6 +102,74 @@ export function workflowStepOrder(raw = {}) {
   return order;
 }
 
+/** "Send Email" -> "sendEmail": how Workflow Forge writes a step in {{step.field}}. */
+export function stepRefName(text) {
+  return String(text || '')
+    .replace(/(?:^\w|[A-Z]|\b\w)/g, (word, index) => (index === 0 ? word.toLowerCase() : word.toUpperCase()))
+    .replace(/\s+/g, '');
+}
+
+/** A short, one-line preview of a last-run value. */
+function samplePreview(value) {
+  if (value === undefined || value === null || value === '') return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > 80 ? text.slice(0, 77) + '…' : text;
+}
+
+/**
+ * The fields of the steps that run BEFORE `stepId`, for the field picker:
+ * click into a setting, pick an earlier step's output, and {{step.field}} is
+ * inserted (the Zapier pattern).
+ *
+ * The engine finds a step by its name lowercased without spaces, falling back
+ * to its id (ParameterResolver). The camelCase name satisfies the first; when
+ * a name could not resolve (a `.` `{` `}` in it, or two steps sharing it) the
+ * id is used instead, so every inserted reference resolves.
+ *
+ * @param {object} graph  the workflow as it will be saved (workflowPayload)
+ * @param {string} stepId
+ * @param {Array|object} library  tools/workflowTools ({ triggers: [...], actions: [...] } or a flat
+ *   list): outputs for steps whose stored node has none
+ * @returns {Array<{ id: string, number: number, name: string, fields: Array<{ key: string, token: string, type: string, description: string, sample: string }> }>}
+ */
+export function previousStepFields(graph = {}, stepId, library = []) {
+  const order = workflowStepOrder(graph);
+  const position = order.indexOf(stepId);
+  if (position <= 0) return [];
+  const nodes = new Map((graph.nodes || []).map((n) => [n.id, n]));
+  const entries = Array.isArray(library) ? library : Object.values(library || {}).filter(Array.isArray).flat();
+  const byType = new Map(entries.map((entry) => [entry?.type, entry]));
+  const nameCounts = new Map();
+  for (const n of graph.nodes || []) {
+    const key = String(n.text || '').toLowerCase().replace(/\s+/g, '');
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+  return order.slice(0, position).map((id, index) => {
+    const n = nodes.get(id) || {};
+    const lookup = String(n.text || '').toLowerCase().replace(/\s+/g, '');
+    const safeName = lookup && !/[.{}]/.test(lookup) && nameCounts.get(lookup) === 1;
+    const ref = safeName ? stepRefName(n.text) : id;
+    const outputs = (n.outputs && typeof n.outputs === 'object' && Object.keys(n.outputs).length ? n.outputs : byType.get(n.type)?.outputs) || {};
+    const lastRun = n.output && typeof n.output === 'object' ? n.output : {};
+    const fields = Object.entries(outputs).map(([key, o]) => ({
+      key,
+      token: `{{${ref}.${key}}}`,
+      type: (o && o.type) || '',
+      description: (o && o.description) || '',
+      sample: samplePreview(lastRun[key]),
+    }));
+    return { id, number: index + 1, name: n.text || humanKey(String(n.type || 'step')), fields };
+  });
+}
+
+/** Insert `token` into `text` at [start, end) (the selection), returning the new text and caret. */
+export function insertAt(text, token, start, end = start) {
+  const value = String(text ?? '');
+  const from = Number.isInteger(start) ? Math.max(0, Math.min(start, value.length)) : value.length;
+  const to = Number.isInteger(end) ? Math.max(from, Math.min(end, value.length)) : from;
+  return { text: value.slice(0, from) + token + value.slice(to), caret: from + token.length };
+}
+
 /**
  * The workflow workflows/updateWorkflow saves: the fresh stored graph with
  * the names, the description, each step's name/settings, and the steps added
