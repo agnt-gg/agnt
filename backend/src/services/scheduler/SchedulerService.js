@@ -33,8 +33,9 @@ function runOutcome(result) {
 
 function defaultGoalExecutor(targetId, userId, schedule) {
   // Dynamic import so we don't form a hard load-time cycle with TaskOrchestrator.
+  // runScheduledGoal: every run does the whole job again (see there).
   return import('../goal/TaskOrchestrator.js').then(({ default: TaskOrchestrator }) =>
-    TaskOrchestrator.executeGoalAutonomous(targetId, userId, {})
+    TaskOrchestrator.runScheduledGoal(targetId, userId, {})
   );
 }
 
@@ -218,6 +219,11 @@ class SchedulerService {
         runTargetId = result.goalId || result.id || null;
       }
       outcome = runOutcome(result);
+      // Its target is gone (a deleted goal): stop firing it every day.
+      if (result?.disableSchedule) {
+        console.warn(`[Scheduler] Target of schedule ${schedule.id} is gone; disabling it`);
+        await ScheduleModel.setEnabled(schedule.id, false).catch((err) => console.error('[Scheduler] Could not disable schedule:', err.message));
+      }
     } catch (err) {
       outcome = { status: 'failed', error: err && err.message ? err.message : String(err) };
     }

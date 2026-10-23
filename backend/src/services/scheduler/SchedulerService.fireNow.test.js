@@ -112,3 +112,40 @@ describe('restart', () => {
     expect(await runRow(runId)).toMatchObject({ status: 'interrupted' });
   });
 });
+
+// 2026-10-21: a deleted goal's schedule kept firing (and failing) every week.
+describe('a target that is gone', () => {
+  it('Given the executor says the target is gone Then the run fails and the schedule is switched off', async () => {
+    const schedule = await newSchedule();
+    const { runId } = await SchedulerService.fireNow(schedule.id);
+    finishRun.resolve({ goalId: 'goal-fixture', status: 'error', reason: 'goal_missing', error: 'The goal this routine runs no longer exists.', disableSchedule: true });
+    await settle();
+    expect(await runRow(runId)).toMatchObject({ status: 'failed', error: 'The goal this routine runs no longer exists.' });
+    expect((await ScheduleModel.findOne(schedule.id)).enabled).toBeFalsy();
+  });
+});
+
+// Every run of a routine starts from pending tasks, keeping what each task is.
+describe('TaskModel.resetForNewRun', () => {
+  it('Given finished tasks Then they are pending again with no output, error or times, and only that goal is touched', async () => {
+    const { default: TaskModel } = await import('../../models/TaskModel.js');
+    const { default: GoalModel } = await import('../../models/GoalModel.js');
+    const goalId = await GoalModel.create('Daily digest', 'Email me the news', user, 'low', {});
+    const other = await GoalModel.create('Other', 'x', user, 'low', {});
+    const done = await TaskModel.create(goalId, 'Research', 'Find the news', ['web_search'], [], 1);
+    const failed = await TaskModel.create(goalId, 'Send', 'Email it', [], [], 2);
+    const untouched = await TaskModel.create(other, 'Keep', 'x');
+    await TaskModel.updateStatus(done, 'completed', 100, null, null, null, { content: 'old news' });
+    await TaskModel.updateStatus(failed, 'failed', 40, null, null, null, null, 'smtp down');
+    await TaskModel.updateStatus(untouched, 'completed', 100);
+    expect(await TaskModel.resetForNewRun(goalId)).toBe(2);
+    const rows = await TaskModel.findByGoalId(goalId);
+    expect(rows.map((t) => [t.title, t.status, t.progress, t.output, t.error, t.started_at, t.completed_at, t.order_index])).toEqual([
+      ['Research', 'pending', 0, null, null, null, null, 1],
+      ['Send', 'pending', 0, null, null, null, null, 2],
+    ]);
+    const tools = rows[0].required_tools;
+    expect(typeof tools === 'string' ? JSON.parse(tools) : tools).toEqual(['web_search']);
+    expect((await TaskModel.findByGoalId(other))[0].status).toBe('completed');
+  });
+});

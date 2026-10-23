@@ -286,6 +286,14 @@ class GoalService {
       if (result === 0) {
         return res.status(404).json({ error: 'Goal not found' });
       }
+      // Its routines go with it: a deleted goal's schedule kept firing every
+      // day and failing (2026-10-21).
+      try {
+        const { default: ScheduleModel } = await import('../models/ScheduleModel.js');
+        for (const schedule of await ScheduleModel.findByTarget('goal', id, userId)) await ScheduleModel.delete(schedule.id, userId);
+      } catch (error) {
+        console.error(`Goal ${id} deleted, but its schedules could not be removed:`, error.message);
+      }
       res.json({ message: `Goal ${id} deleted successfully.` });
     } catch (error) {
       console.error('Error deleting goal:', error);

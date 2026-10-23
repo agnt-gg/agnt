@@ -144,6 +144,27 @@ class TaskModel {
   }
 
   /**
+   * Ready every task of a goal for a NEW run of it (a scheduled routine):
+   * back to pending with no progress, output, error or timestamps, keeping
+   * what each task is (title, description, tools, order, agent, workflow).
+   * A routine used to keep its first run's completed tasks, so every later
+   * run skipped them and re-graded day one's output (2026-10-21).
+   * @returns {Promise<number>} tasks reset
+   */
+  static resetForNewRun(goalId) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE tasks SET status = 'pending', progress = 0, output = NULL, error = NULL, started_at = NULL, completed_at = NULL, updated_at = ? WHERE goal_id = ?`,
+        [new Date().toISOString(), goalId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  /**
    * Restore tasks to a previously captured snapshot (revert-to-iteration).
    * Only touches tasks present in the snapshot; matches on task id AND goal id
    * so a stale snapshot can never write into another goal's tasks. Output is

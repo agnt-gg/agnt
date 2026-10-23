@@ -1064,13 +1064,46 @@ The goal you delegated did not fully pass. Let the user know:
    * Execute a goal autonomously with iterative feedback loop.
    * Evaluate → Re-plan failed tasks → Re-execute → Repeat until pass or max iterations.
    */
-  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null } = {}) {
+  /**
+   * One scheduled run of a goal (a routine): the whole job, done again.
+   *
+   * Every run starts fresh: tasks reset (resetForNewRun) and the loop from
+   * iteration 1. Before this, a routine kept its first run's completed tasks,
+   * so later runs skipped them and re-graded day one's output; and a run that
+   * ended "stopped" was RESUMED by the next day's run (2026-10-21).
+   *
+   * A run in which no task ran did no work and is reported as an error, never
+   * completed. A goal that is gone (deleted, or not this user's) asks the
+   * scheduler to switch its schedule off (`disableSchedule`).
+   */
+  static async runScheduledGoal(goalId, userId, options = {}) {
+    const goal = await GoalModel.findOne(goalId);
+    if (!goal || goal.deleted_at || goal.user_id !== userId) {
+      return { goalId, status: 'error', reason: 'goal_missing', error: 'The goal this routine runs no longer exists.', disableSchedule: true };
+    }
+    if (this.runningGoals.has(goalId)) {
+      return { goalId, status: 'error', reason: 'already_running', error: 'The goal was still running from before; this run was skipped.' };
+    }
+    const startedAt = new Date().toISOString();
+    await TaskModel.resetForNewRun(goalId);
+    const result = await this.executeGoalAutonomous(goalId, userId, { ...options, freshRun: true });
+    if (result?.status === 'stopped') return result;
+    const tasks = await TaskModel.findByGoalId(goalId);
+    const worked = tasks.some((task) => task.started_at && task.started_at >= startedAt);
+    if (!worked) {
+      return { ...(result || {}), goalId, status: 'error', reason: 'no_tasks_ran', error: `No task ran in this run${result?.reason ? ` (${result.reason})` : ''}.` };
+    }
+    return result;
+  }
+
+  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null, freshRun = false } = {}) {
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
 
       // Must run before updateLoopStatus below overwrites the previous run's
       // loop state — that state is what tells us whether to resume or start fresh.
-      const resume = await this._resolveResumeState(goalId, maxIterations);
+      // A fresh run (runScheduledGoal) never resumes an earlier run.
+      const resume = freshRun ? await this._freshRunState(goalId) : await this._resolveResumeState(goalId, maxIterations);
 
       await GoalModel.updateMaxIterations(goalId, maxIterations);
       await GoalModel.updateLoopStatus(goalId, 'starting');
@@ -1613,6 +1646,20 @@ Rules:
    * clearing best-tracking, because the monotone-improvement guarantee is
    * per-run: yesterday's outputs are stale context for today's scheduled run.
    */
+  /** Iteration 1, no best-tracking carried over from an earlier run. */
+  static async _freshRunState(goalId) {
+    try {
+      const worldState = await GoalModel.getWorldState(goalId);
+      if (worldState?.best) {
+        delete worldState.best;
+        await GoalModel.updateWorldState(goalId, worldState);
+      }
+    } catch (error) {
+      console.error(`[AGI Loop] Could not clear best-tracking for a fresh run of ${goalId}:`, error.message);
+    }
+    return { startIteration: 1, bestScore: 0, bestIteration: 0, bestTaskSnapshot: null };
+  }
+
   static async _resolveResumeState(goalId, maxIterations) {
     const fresh = { startIteration: 1, bestScore: 0, bestIteration: 0, bestTaskSnapshot: null };
     try {
