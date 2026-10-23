@@ -145,6 +145,10 @@
 
 /* ── Detail panel ────────────────────────────────────────── */
 .apps-studio .ap-detail { border: 1px solid var(--ap-border); border-radius: var(--border-radius-lg); background: var(--ap-surface); }
+/* detailOnly (the Market's plugin page): the detail is the page, full width, with its Back. */
+.apps-studio.detail-only .ap-layout.has-detail { grid-template-columns: minmax(0, 1fr); }
+.apps-studio.detail-only .ap-detail { position: static; max-height: none; overflow: visible; }
+.apps-studio.detail-only .ap-back { display: inline-flex; }
 .apps-studio .ap-detail-head { padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md); border-bottom: 1px solid var(--ap-border); }
 .apps-studio .ap-crumb { margin-bottom: var(--spacing-sm); display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); }
 .apps-studio .ap-crumb .apps-ui-icon { width: 15px; height: 15px; }

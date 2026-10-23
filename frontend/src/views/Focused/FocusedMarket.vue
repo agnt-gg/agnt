@@ -6,7 +6,27 @@
       <button type="button" class="focused-link" @click="nav.studio('MarketplaceScreen')">Publish & manage <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </header>
 
-    <template v-if="item">
+    <!-- A plugin listing: the Plugins page's own detail (what's inside, the
+         access it declares, trust, package), so the Market shows exactly what
+         a plugin does before you get it (2026-10-21). -->
+    <template v-if="item && pluginName">
+      <AppsSection
+        detail-only
+        back-label="Browse Market"
+        :selected-plugin="pluginName"
+        @close-app="nav.go({ page: 'market' })"
+        @connect="connect"
+        @reconnect="connect"
+        @disconnect="connect"
+        @open-widget="(id) => nav.go({ page: 'library', tab: 'widgets', item: id })"
+        @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
+        @open-ai-models="nav.go({ page: 'settings' })"
+        @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
+      />
+      <button type="button" class="focused-link focused-market-more" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+    </template>
+
+    <template v-else-if="item">
       <button type="button" class="focused-back" @click="nav.go({ page: 'market' })"><i class="fas fa-arrow-left" aria-hidden="true"></i> Browse Market</button>
       <article v-if="selectedItem" class="focused-market-detail">
         <div class="focused-market-detail-art" :style="artStyle(selectedItem)">
@@ -80,6 +100,8 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, iconStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
+import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
+import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
 const props = defineProps({ item: { type: String, default: null } });
 const nav = inject('focusedNav');
@@ -99,6 +121,17 @@ const visibleItems = computed(() => items.value.filter(listing => (type.value ==
 // `item` is a link key: asset id (shelves, agnt:// links) or listing id.
 const selectedItem = computed(() => items.value.find(listing => matchesMarketplaceKey(listing, props.item)));
 const spotlight = computed(() => visibleItems.value[0]);
+// A plugin listing's asset_id is the plugin's name in the catalog. Shown as the
+// Plugins page's detail when the catalog has it; otherwise the listing view.
+const catalogNames = computed(() => new Set([...(store.getters['apps/available'] || []), ...(store.getters['apps/installed'] || [])].map((p) => p?.name).filter(Boolean)));
+const pluginName = computed(() => (selectedItem.value?.asset_type === 'plugin' && catalogNames.value.has(selectedItem.value.asset_id) ? selectedItem.value.asset_id : null));
+// As the Plugins page does: sign-in on the account's page, model keys in Settings.
+function connect(connection) {
+  const id = connection?.providerId;
+  if (!id) return;
+  if (AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase())) nav.go({ page: 'settings' });
+  else nav.go({ page: 'connectors', item: id });
+}
 const busy = computed(() => installingId.value !== null);
 const isInstalled = listing => installedHere.value.has(String(listing.id)) || (store.state.marketplace?.myInstalls || []).some(owned => String(owned.marketplace_item_id || owned.id) === String(listing.id));
 const price = listing => Number(listing.price) > 0 ? `$${Number(listing.price).toFixed(2)}` : 'Get';
@@ -126,5 +159,10 @@ async function install(listing) {
     installingId.value = null;
   }
 }
-onMounted(() => { load(); store.dispatch('marketplace/fetchMyInstalls'); });
+onMounted(() => {
+  load();
+  store.dispatch('marketplace/fetchMyInstalls');
+  // The plugin catalog, to show a plugin listing as the Plugins page does.
+  Promise.all([store.dispatch('apps/fetchAvailable'), store.dispatch('apps/fetchInstalled')]).catch((e) => console.warn('[FocusedMarket] plugin catalog:', e?.message || e));
+});
 </script>

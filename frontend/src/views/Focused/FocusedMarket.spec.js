@@ -8,6 +8,8 @@ const state = reactive({ marketplace: { myInstalls: [] } });
 const getters = reactive({ 'marketplace/shelfStatus': 'ready', 'marketplace/shelfItems': [] });
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, state, getters }) }));
 vi.mock('@/composables/useMarketplaceInstall', () => ({ useMarketplaceInstall: () => ({ handleInstall }) }));
+// The Plugins page's detail, stubbed: these tests are about which view the Market picks.
+vi.mock('@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue', () => ({ default: { name: 'AppsSection', props: { selectedPlugin: String, detailOnly: Boolean, backLabel: String }, emits: ['close-app'], template: '<div class="apps-stub" :data-plugin="selectedPlugin" :data-detail-only="String(detailOnly)" @click="$emit(\'close-app\')" />' } }));
 import FocusedMarket from './FocusedMarket.vue';
 
 const nav = { go: vi.fn(), studio: vi.fn(), toast: vi.fn() };
@@ -22,6 +24,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   getters['marketplace/shelfStatus'] = 'ready';
   getters['marketplace/shelfItems'] = listings;
+  getters['apps/available'] = [];
+  getters['apps/installed'] = [];
   state.marketplace.myInstalls = [];
   handleInstall.mockResolvedValue({ success: true });
 });
@@ -123,5 +127,39 @@ describe('Focused Market', () => {
     await w.find('.focused-market-card-open').trigger('click');
     expect(nav.go).toHaveBeenCalledWith({ page: 'market', item: 'agnt-usecase-triage' });
     w.unmount();
+  });
+});
+
+// Requested 2026-10-21: a plugin in the Market shows what it is and does, in the
+// Plugins page's own format (what's inside, access it declares, trust, package).
+describe('a plugin listing', () => {
+  const plugin = { id: 'p1', asset_type: 'plugin', asset_id: 'atlas-cloud', title: 'Atlas Cloud', price: '0.00', downloads: 9 };
+  it('shows the Plugins page detail for that plugin, and Back returns to the Market', async () => {
+    getters['marketplace/shelfItems'] = [...listings, plugin];
+    getters['apps/available'] = [{ name: 'atlas-cloud' }];
+    const w = mountMarket('p1');
+    await flushPromises();
+    expect(dispatch).toHaveBeenCalledWith('apps/fetchAvailable');
+    const detail = w.find('.apps-stub');
+    expect(detail.attributes('data-plugin')).toBe('atlas-cloud');
+    expect(detail.attributes('data-detail-only')).toBe('true');
+    expect(w.find('.focused-market-detail').exists()).toBe(false);
+    await detail.trigger('click');
+    expect(nav.go).toHaveBeenCalledWith({ page: 'market' });
+    w.unmount();
+  });
+  it('a plugin the catalog does not have, and any other asset, keep the Market view', async () => {
+    getters['marketplace/shelfItems'] = [...listings, plugin];
+    const missing = mountMarket('p1');
+    await flushPromises();
+    expect(missing.find('.apps-stub').exists()).toBe(false);
+    expect(missing.find('.focused-market-detail').exists()).toBe(true);
+    missing.unmount();
+    getters['apps/available'] = [{ name: 'atlas-cloud' }];
+    const agent = mountMarket('a1');
+    await flushPromises();
+    expect(agent.find('.apps-stub').exists()).toBe(false);
+    expect(agent.find('.focused-market-detail').exists()).toBe(true);
+    agent.unmount();
   });
 });

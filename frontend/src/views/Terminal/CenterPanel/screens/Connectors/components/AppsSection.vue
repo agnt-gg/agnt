@@ -12,8 +12,11 @@
      this component only emits connect / reconnect / disconnect with the card
      or connection, and the host decides how. -->
 <template>
-  <div ref="root" class="apps-studio">
+  <div ref="root" class="apps-studio" :class="{ 'detail-only': detailOnly }">
     <SimpleModal ref="modal" />
+    <!-- detailOnly: one plugin's page and nothing around it (the Market shows
+         a plugin listing this way, 2026-10-21). -->
+    <template v-if="!detailOnly">
     <header class="ap-head">
       <div class="ap-head-copy">
         <h1>Plugins</h1>
@@ -44,13 +47,14 @@
         <span v-if="entry.id === 'installed' && needsYouCount" class="ap-count warn" data-testid="needs-you-count" v-tooltip="`${needsYouCount} need you`">{{ needsYouCount }}</span>
       </button>
     </nav>
+    </template>
 
     <p v-if="error" class="ap-notice error" role="alert">{{ error }} <button type="button" class="ap-link" @click="reload">Retry</button></p>
     <p v-if="notice" class="ap-notice" role="status">{{ notice }}</p>
 
     <div class="ap-layout" :class="{ 'has-detail': hasDetail }">
       <!-- plugins.catalog: the "Give Annie hands" mission (services/journey/missions.js) points here. -->
-      <section class="ap-main" data-tour-id="plugins.catalog" :aria-label="tabLabel">
+      <section v-if="!detailOnly" class="ap-main" data-tour-id="plugins.catalog" :aria-label="tabLabel">
         <!-- ── Installed ─────────────────────────────────────── -->
         <template v-if="tab === 'installed'">
           <div class="ap-toolbar">
@@ -250,7 +254,7 @@
       </section>
 
       <aside v-if="hasDetail" class="ap-detail" aria-label="Details">
-        <button type="button" class="ap-btn quiet small ap-back" data-action="back" @click="closeDetail"><AppsIcon name="back" /> {{ tabLabel }}</button>
+        <button type="button" class="ap-btn quiet small ap-back" data-action="back" @click="closeDetail"><AppsIcon name="back" /> {{ backLabel || tabLabel }}</button>
         <PluginDetail
           v-if="selected" ref="detailView" :key="selected.name"
           :plugin="selected" :assets="assets" :assets-loading="assetsLoading" :assets-error="assetsError"
@@ -301,7 +305,9 @@ import { AI_PROVIDERS_WITH_API, providerLabel } from '@/store/app/aiProvider.js'
 
 // selectedPlugin: undefined keeps the selection local; a host that routes it passes a name or null.
 // vaultActive: the host's route says the Accounts & keys tab is open (Studio ?section=oauth, Focused tab=vault).
-const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean });
+// detailOnly: show only the selected plugin's page (no header, tabs or list); Back emits close-app.
+// backLabel: the Back button's words in that mode (e.g. "Browse Market").
+const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean, detailOnly: Boolean, backLabel: { type: String, default: '' } });
 const emit = defineEmits([
   'connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'open-vault', 'open-plugins',
   'select-app', 'close-app', 'open-market', 'open-integrations', 'open-ai-models', 'open-section', 'try-plugin',
