@@ -959,9 +959,19 @@
    so Clear/Save is redundant here; the inspector toggle only means something
    while a preview is open (BaseScreen shows the right panel then). */
 .ui-focused .chat-screen-wrapper .chat-actions-bar,
-.ui-focused .chat-screen-wrapper .suggestions-bar,
 .ui-focused .chat-screen-wrapper:not(.artifact-active) .inspector-toggle {
   display: none;
+}
+
+/* Follow-up suggestions under the conversation. Hidden only on the empty
+   start screen, where the rotating starters (FocusedStarters) take their
+   place; they were hidden everywhere, so a running chat had none (2026-10-21). */
+.ui-focused .chat-screen-wrapper.focused-home .suggestions-bar {
+  display: none;
+}
+.ui-focused .chat-screen-wrapper .suggestions-bar {
+  border-top: none;
+  padding: 4px 8px 6px;
 }
 
 /* Scroll arrows: neutral, like every other Focused control (Studio's are green). */
