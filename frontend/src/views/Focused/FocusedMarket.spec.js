@@ -55,11 +55,11 @@ describe('Focused Market', () => {
 
   it('normalizes prices, installs through the shared flow, and marks success only after it returns', async () => {
     const w = mountMarket('w1');
-    expect(w.find('.focused-market-get').text()).toBe('$12.50');
-    await w.find('.focused-market-get').trigger('click');
+    expect(w.find('[data-action="install"]').text()).toBe('Get · $12.50');
+    await w.find('[data-action="install"]').trigger('click');
     await flushPromises();
     expect(handleInstall).toHaveBeenCalledWith(expect.objectContaining({ id: 'w1', price: 12.5 }));
-    expect(w.find('.focused-market-get').text()).toBe('Installed');
+    expect(w.find('[data-action="install"]').text()).toBe('Installed');
     expect(nav.toast).toHaveBeenCalledWith('Weekly report installed');
     w.unmount();
   });
@@ -68,22 +68,22 @@ describe('Focused Market', () => {
     let finish;
     handleInstall.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     const w = mountMarket('a1');
-    await w.find('.focused-market-get').trigger('click');
-    expect(w.find('.focused-market-get').attributes('disabled')).toBeDefined();
+    await w.find('[data-action="install"]').trigger('click');
+    expect(w.find('[data-action="install"]').attributes('disabled')).toBeDefined();
     expect(handleInstall).toHaveBeenCalledTimes(1);
     finish({ success: true });
     await flushPromises();
-    expect(w.find('.focused-market-get').attributes('disabled')).toBeDefined();
+    expect(w.find('[data-action="install"]').attributes('disabled')).toBeDefined();
     w.unmount();
   });
 
   it('cancelled/failed installs never claim success', async () => {
     handleInstall.mockResolvedValue({ success: false, error: 'Could not save locally' });
     const w = mountMarket('a1');
-    await w.find('.focused-market-get').trigger('click');
+    await w.find('[data-action="install"]').trigger('click');
     await flushPromises();
     expect(w.find('[role="alert"]').text()).toContain('Could not save locally');
-    expect(w.find('.focused-market-get').text()).toBe('Get');
+    expect(w.find('[data-action="install"]').text()).toBe('Get agent');
     expect(nav.toast).not.toHaveBeenCalled();
     w.unmount();
   });
@@ -99,14 +99,11 @@ describe('Focused Market', () => {
     w.unmount();
   });
 
-  it('recovers broken preview art and reads installed state', async () => {
-    getters['marketplace/shelfItems'] = [{ ...listings[0], preview_image: 'bad.png' }];
+  it('reads installed state on the listing page', async () => {
     state.marketplace.myInstalls = [{ marketplace_item_id: 'a1' }];
     const w = mountMarket('a1');
-    expect(w.find('.focused-market-get').text()).toBe('Installed');
-    await w.find('.focused-market-detail-art img').trigger('error');
-    expect(w.find('.focused-market-detail-art img').exists()).toBe(false);
-    expect(w.find('.focused-market-detail-art i').exists()).toBe(true);
+    expect(w.find('[data-action="install"]').text()).toBe('Installed');
+    expect(w.find('[data-action="install"]').attributes('disabled')).toBeDefined();
     w.unmount();
   });
 
@@ -116,7 +113,7 @@ describe('Focused Market', () => {
     getters['marketplace/shelfItems'] = [{ id: 'row-9', asset_id: 'agnt-usecase-triage', title: 'Inbox triage', asset_type: 'agent', price: '0.00', downloads: 3 }];
     for (const key of ['agnt-usecase-triage', 'row-9']) {
       const w = mountMarket(key);
-      expect(w.find('.focused-market-detail').text(), key).toContain('Inbox triage');
+      expect(w.find('.focused-listing-detail').text(), key).toContain('Inbox triage');
       w.unmount();
     }
   });
@@ -148,7 +145,7 @@ describe('a plugin listing', () => {
     expect(nav.go).toHaveBeenCalledWith({ page: 'market' });
     w.unmount();
   });
-  it('a plugin the catalog does not have, and any other asset, keep the Market view', async () => {
+  it('a plugin the catalog does not have keeps the Market view; an agent gets its own listing page', async () => {
     getters['marketplace/shelfItems'] = [...listings, plugin];
     const missing = mountMarket('p1');
     await flushPromises();
@@ -159,7 +156,24 @@ describe('a plugin listing', () => {
     const agent = mountMarket('a1');
     await flushPromises();
     expect(agent.find('.apps-stub').exists()).toBe(false);
-    expect(agent.find('.focused-market-detail').exists()).toBe(true);
+    expect(agent.find('.focused-listing-detail').exists()).toBe(true);
     agent.unmount();
+  });
+});
+
+// Requested 2026-10-21: agents, workflows, tools and skills show what they
+// contain and do, in the Plugins page's layout (FocusedListingDetail).
+describe('an agent, workflow, tool or skill listing', () => {
+  it('shows what it contains and the access it uses, and Back returns to the Market', async () => {
+    getters['marketplace/shelfItems'] = [{ id: 'k1', asset_type: 'agent', title: 'Koder Kai', price: '0.00', trust_tier: 'official', publisher_pseudonym: 'someone', metadata: JSON.stringify({ assignedTools: ['execute_shell_command', 'web_search'], systemPrompt: 'You code.' }) }];
+    const w = mountMarket('k1');
+    const page = w.find('.focused-listing-detail');
+    expect(page.find('[data-group="tools"]').text()).toContain('Execute shell command');
+    expect(page.findAll('[data-access]').map((a) => a.attributes('data-access'))).toEqual(['programs', 'internet']);
+    expect(page.find('[data-section="instructions"] pre').text()).toBe('You code.');
+    expect(page.text()).toContain('by AGNT');
+    await page.find('[data-action="back"]').trigger('click');
+    expect(nav.go).toHaveBeenCalledWith({ page: 'market' });
+    w.unmount();
   });
 });

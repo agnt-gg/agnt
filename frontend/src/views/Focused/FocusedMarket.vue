@@ -26,6 +26,19 @@
       <button type="button" class="focused-link focused-market-more" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </template>
 
+    <!-- An agent, workflow, tool or skill: what it contains and does, in the
+         same layout (FocusedListingDetail), 2026-10-21. -->
+    <template v-else-if="item && selectedItem && listingDetail(selectedItem)">
+      <FocusedListingDetail
+        :listing="selectedItem"
+        :installed="isInstalled(selectedItem)"
+        :installing="String(installingId) === String(selectedItem.id)"
+        @install="install(selectedItem)"
+        @back="nav.go({ page: 'market' })"
+      />
+      <button type="button" class="focused-link focused-market-more" @click="nav.studio('MarketplaceScreen', { listing: selectedItem })">Reviews & more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+    </template>
+
     <template v-else-if="item">
       <button type="button" class="focused-back" @click="nav.go({ page: 'market' })"><i class="fas fa-arrow-left" aria-hidden="true"></i> Browse Market</button>
       <article v-if="selectedItem" class="focused-market-detail">
@@ -101,6 +114,8 @@ import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, iconStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
+import FocusedListingDetail from './FocusedListingDetail.vue';
+import { listingDetail } from '@/services/marketplaceListingDetail.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 
 const props = defineProps({ item: { type: String, default: null } });

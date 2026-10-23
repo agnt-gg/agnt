@@ -963,6 +963,45 @@
   display: none;
 }
 
+/* A Market listing's detail (FocusedListingDetail): the Plugins page layout,
+   plus long text (instructions, code), numbered steps and step settings. */
+.ui-focused .focused-listing-detail .focused-listing-text {
+  white-space: pre-wrap;
+}
+.ui-focused .focused-listing-detail .focused-listing-long pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 420px;
+  overflow: auto;
+  border-top: 1px solid var(--terminal-border-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+.ui-focused .focused-listing-detail .focused-listing-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.ui-focused .focused-listing-detail .focused-listing-settings {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.ui-focused .focused-listing-detail .focused-listing-settings dd {
+  overflow-wrap: anywhere;
+}
+
 /* Follow-up suggestions under the conversation. Hidden only on the empty
    start screen, where the rotating starters (FocusedStarters) take their
    place; they were hidden everywhere, so a running chat had none (2026-10-21). */
