@@ -186,7 +186,11 @@ export function workflowPayload(fresh, values) {
   const storedIds = new Set(stored.map((n) => n.id));
   const nodes = [...stored.filter((n) => !removed.has(n.id)), ...added.filter((n) => !storedIds.has(n.id))].map(edit);
   let edges = fresh.edges;
-  if (removed.size || newEdges.length) {
+  // A whole graph from Annie (forgeDraft) brings its own wiring.
+  if (Array.isArray(values.edges)) {
+    const ids = new Set(nodes.map((n) => n.id));
+    edges = values.edges.filter((e) => edgeEnds(e).every((id) => ids.has(id)));
+  } else if (removed.size || newEdges.length) {
     const ids = new Set(nodes.map((n) => n.id));
     const live = (e) => edgeEnds(e).every((id) => ids.has(id));
     const storedEdgeIds = new Set((fresh.edges || []).map((e) => e.id).filter(Boolean));

@@ -1,7 +1,7 @@
 <template>
   <!-- Chat with Annie on the left, the agent on the right, like the Plugin Forge (2026-10-23). -->
   <div v-if="(agent || isNew) && loaded" class="focused-forge">
-  <FocusedForgeChat kind="agents" :item-id="agentId" :record="forgeRecord" @changed="reloadAfterAnnie" />
+  <FocusedForgeChat kind="agents" :item-id="agentId" :record="forgeRecord" @changed="reloadAfterAnnie" @draft="applyDraft" />
   <FocusedEditor
     kind-label="Agents"
     back-label="Agents"
@@ -108,6 +108,7 @@ import { ref, reactive, computed, inject, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import FocusedForgeChat from './FocusedForgeChat.vue';
+import { agentDraftValues, agentDraftTools } from './focusedForgeDraft.js';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ListWithSearch from '@/views/Terminal/_components/ListWithSearch.vue';
@@ -231,7 +232,17 @@ const forgeRecord = computed(() => ({
   assignedTools: [...tools.chosen],
   assignedSkills: [...skills.value],
 }));
-/** Annie finished a tool call: open an agent she created, or show her change (the agent watch reloads it). */
+/** Annie generated or changed the agent (agent-updated): fill it in as unsaved edits. */
+function applyDraft({ eventType, data }) {
+  if (eventType !== 'agent-updated' || !data?.updatedAgent || !loaded.value) return;
+  Object.assign(v, agentDraftValues(data.updatedAgent, { ...v }));
+  const chosen = agentDraftTools(data.updatedAgent);
+  if (chosen) {
+    tools.open = false;
+    tools.chosen = chosen;
+  }
+}
+/** Annie finished a tool call: open an agent she created, or show what she saved. */
 async function reloadAfterAnnie({ createdId } = {}) {
   if (isNew.value) {
     if (!createdId) return;
@@ -239,13 +250,12 @@ async function reloadAfterAnnie({ createdId } = {}) {
     nav.go({ page: 'library', tab: 'agents', item: createdId });
     return;
   }
-  if (dirty.value) {
-    nav.toast('Annie made changes. Save or discard yours to see them.');
-    return;
-  }
+  const wasDirty = dirty.value;
   await store.dispatch('agents/fetchAgents', { force: true }).catch((e) => {
     error.value = 'Couldn’t show Annie’s changes. ' + (e?.message || e);
   });
+  // Unsaved edits stay; if what she saved (modify_agent) is what is shown, it is saved.
+  if (wasDirty && agent.value && JSON.stringify(agentValues(agent.value)) === JSON.stringify({ ...v })) load(agent.value);
 }
 function discard() {
   load(agent.value || {});

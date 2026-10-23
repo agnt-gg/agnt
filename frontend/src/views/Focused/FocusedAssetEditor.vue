@@ -7,7 +7,7 @@
   <!-- Chat with Annie on the left, the item on the right: every editor works
        like the Plugin Forge (2026-10-23). -->
   <div v-else class="focused-forge">
-  <FocusedForgeChat v-if="!readOnly" :kind="kind" :item-id="itemId" :record="forgeRecord" @changed="reloadAfterAnnie" />
+  <FocusedForgeChat v-if="!readOnly" :kind="kind" :item-id="itemId" :record="forgeRecord" @changed="reloadAfterAnnie" @draft="applyDraft" />
   <FocusedEditor
     :kind-label="tab.label"
     :back-label="tab.label"
@@ -288,6 +288,7 @@ import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import FocusedParamField from './FocusedParamField.vue';
 import FocusedForgeChat from './FocusedForgeChat.vue';
+import { applyFieldDraft, workflowDraftValues, isDraftForWorkflow } from './focusedForgeDraft.js';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
@@ -399,6 +400,26 @@ const forgeRecord = computed(() => {
  * Annie finished a tool call. A new item she created opens; an open one
  * reloads to show her change, unless it has unsaved edits of its own.
  */
+/** Annie generated something: fill it in as unsaved edits (Save keeps it). */
+function applyDraft({ eventType, data }) {
+  if (!loaded.value || readOnly.value) return;
+  if (props.kind === 'workflows') {
+    if (eventType !== 'workflow-updated' || !isDraftForWorkflow(data, props.itemId)) return;
+    v.value = workflowDraftValues(raw.value, data, v.value);
+    refreshStepOrder();
+    return;
+  }
+  // A widget Annie already saved: open it if new, otherwise just show it.
+  if (props.kind === 'widgets' && eventType === 'widget-autosaved' && data?.id) {
+    if (isNew.value) {
+      baseline.value = JSON.stringify(v.value);
+      nav.go({ page: 'library', tab: 'widgets', item: String(data.id) });
+    }
+    return;
+  }
+  const next = applyFieldDraft(props.kind, v.value, eventType, data);
+  if (next) v.value = next;
+}
 async function reloadAfterAnnie({ createdId } = {}) {
   if (isNew.value) {
     if (!createdId) return;
@@ -407,7 +428,16 @@ async function reloadAfterAnnie({ createdId } = {}) {
     return;
   }
   if (dirty.value) {
-    nav.toast('Annie made changes. Save or discard yours to see them.');
+    // Unsaved edits (hers or yours) stay on screen. If what she saved is
+    // exactly what is shown, there is nothing left to save.
+    try {
+      if (props.kind === 'widgets') await store.dispatch('widgetDefinitions/fetchDefinitions');
+      if (props.kind === 'skills') await store.dispatch('skills/fetchSkills');
+      const fresh = await fetchRaw();
+      if (JSON.stringify(VALUES[props.kind](fresh)) === JSON.stringify(v.value)) apply(fresh);
+    } catch {
+      /* keep what is on screen */
+    }
     return;
   }
   try {
