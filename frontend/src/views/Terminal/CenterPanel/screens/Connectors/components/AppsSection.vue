@@ -161,7 +161,7 @@
                 <div class="ap-row-body">
                   <div class="ap-row-title">
                     <button type="button" class="ap-row-open" @click="openAccount(account.id)">{{ account.name }}</button>
-                    <span class="ap-badge">{{ account.kind }}</span>
+                    <span class="ap-badge connection">{{ account.kind }}</span>
                   </div>
                   <div v-if="account.apps.length" class="ap-plugin-strip">
                     <button v-for="app in account.apps" :key="app.name" type="button" class="ap-plugin-chip" :data-plugin="app.name" @click="openPlugin(app.name)">
@@ -185,7 +185,7 @@
             <div v-for="service in shownDiscover" :key="service.id" class="ap-row" :data-service="service.providerId">
               <span class="ap-logo"><SvgIcon :name="service.icon || 'connect'" /></span>
               <div class="ap-row-body">
-                <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge">{{ connectionKind(service.connectionType) }}</span></div>
+                <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge connection">{{ connectionKind(service.connectionType) }}</span></div>
                 <p v-if="service.suggested.length" class="ap-row-desc">Plugins for it: {{ service.suggested.map((s) => s.displayName).join(', ') }}</p>
               </div>
               <div class="ap-row-side"><button type="button" class="ap-btn small" data-action="connect" @click="emit('connect', service)">Connect</button></div>

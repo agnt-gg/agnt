@@ -58,9 +58,12 @@
 .apps-studio .ap-chip:hover { background: var(--surface-hover); }
 .apps-studio .ap-chip[aria-pressed='true'] { background: var(--surface-active); border-color: var(--border-strong); color: var(--text-primary); }
 .apps-studio .ap-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: var(--font-size-xs); font-weight: 600; white-space: nowrap; background: var(--surface-active); color: var(--text-secondary); }
-.apps-studio .ap-badge.official { background: rgba(var(--primary-rgb), 0.12); color: var(--text-primary); }
-.apps-studio .ap-badge.community { background: rgba(var(--green-rgb), 0.14); color: var(--ap-ok); }
-.apps-studio .ap-badge.unverified { background: rgba(var(--yellow-rgb), 0.18); color: var(--ap-warn); }
+/* Trust: Official green, Community yellow, Unverified red (each tier its own colour). */
+.apps-studio .ap-badge.official { background: rgba(var(--green-rgb), 0.14); color: var(--ap-ok); }
+.apps-studio .ap-badge.community { background: rgba(var(--yellow-rgb), 0.18); color: var(--ap-warn); }
+.apps-studio .ap-badge.unverified { background: rgba(var(--red-rgb), 0.14); color: var(--ap-bad); }
+/* How a service connects (Sign-in, API key): green. */
+.apps-studio .ap-badge.connection { background: rgba(var(--green-rgb), 0.14); color: var(--ap-ok); }
 .apps-studio .ap-badge.pack { background: rgba(var(--violet-rgb), 0.14); color: var(--text-primary); }
 .apps-studio .ap-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); font-weight: 600; white-space: nowrap; color: var(--text-tertiary); }
 .apps-studio .ap-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }

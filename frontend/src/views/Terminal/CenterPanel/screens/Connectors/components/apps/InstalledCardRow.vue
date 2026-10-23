@@ -11,7 +11,7 @@
         <button type="button" class="ap-row-open" @click="openSelf">{{ solo ? solo.displayName : card.name }}</button>
         <span v-if="solo && soloIsPack" class="ap-badge pack">Capability pack</span>
         <span v-if="soloTier" class="ap-badge" :class="soloTier.id" v-tooltip="soloTier.detail">{{ soloTier.label }}</span>
-        <span v-if="!card.apps.length" class="ap-badge">{{ kind }}</span>
+        <span v-if="!card.apps.length" class="ap-badge connection">{{ kind }}</span>
       </div>
       <p v-if="solo && solo.description" class="ap-row-desc">{{ solo.description }}</p>
       <p v-else-if="!card.apps.length" class="ap-row-desc">No plugin uses it. Agents can still reach it through Custom API.</p>
