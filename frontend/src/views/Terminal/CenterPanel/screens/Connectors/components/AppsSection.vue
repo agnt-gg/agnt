@@ -159,7 +159,7 @@
               <button v-for="option in ACCOUNT_FILTERS" :key="option.id" type="button" class="ap-chip" :data-filter="option.id" :aria-pressed="String(filters.accounts === option.id)" @click="filters.accounts = option.id">{{ option.label }}</button>
             </div>
             <span class="ap-grow"></span>
-            <button v-if="accounts.length" type="button" class="ap-btn small" data-action="check-health" :disabled="checkingHealth" @click="checkHealth"><AppsIcon name="refresh" />{{ checkingHealth ? 'Checking…' : 'Check status' }}</button>
+            <button v-if="accounts.length || aiAccounts.length" type="button" class="ap-btn small" data-action="check-health" :disabled="checkingHealth" @click="checkHealth"><AppsIcon name="refresh" />{{ checkingHealth ? 'Checking…' : 'Check status' }}</button>
           </div>
           <template v-for="section in accountsView" :key="section.id">
             <h3 class="ap-group-label" :data-section="section.id">{{ section.label }} <span>{{ section.rows.length }}</span></h3>
