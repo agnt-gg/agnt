@@ -182,14 +182,33 @@ export function toolSignIn(tool) {
  * One row per sign-in the plugin uses or bundles.
  * source: 'plugin' (bundled) | 'shared' (AGNT) | 'unresolved' (only its author could connect it)
  */
-export function signInRows(manifest = {}, { shared = [], connectedIds = [] } = {}) {
+/** An AGNT provider entry for an AI model (categories include "ai"), not an app. */
+export function isAiProvider(provider) {
+  let list = provider?.categories;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = list.split(',');
+    }
+  }
+  return Array.isArray(list) && list.some((entry) => lower(entry) === 'ai');
+}
+
+/**
+ * source 'ai': a tool names an AI model (Claude Code, Codex, OpenAI...) as its
+ * sign-in. Subscriptions have no token to give a tool, so it can never run that
+ * way; the tool should use the account's AI (workflowEngine.ai). 2026-10-21.
+ */
+export function signInRows(manifest = {}, { shared = [], connectedIds = [], aiIds = [] } = {}) {
+  const aiSet = new Set(aiIds.map(lower));
   const sharedById = new Map(shared.map((provider) => [lower(provider.id), provider]));
   const declared = new Map((Array.isArray(manifest.auth) ? manifest.auth : []).map((entry) => [lower(entry.id), entry]));
   const connected = new Set(connectedIds.map(lower));
   const ids = [...new Set([...declared.keys(), ...(manifest.tools || []).map(toolSignIn).filter(Boolean)])];
   return ids.map((id) => {
     const usedBy = (manifest.tools || []).filter((tool) => toolSignIn(tool) === id).map((tool) => tool.schema?.title || tool.type);
-    const source = sharedById.has(id) ? 'shared' : declared.has(id) ? 'plugin' : 'unresolved';
+    const source = aiSet.has(id) ? 'ai' : sharedById.has(id) ? 'shared' : declared.has(id) ? 'plugin' : 'unresolved';
     const entry = declared.get(id) || sharedById.get(id) || {};
     return {
       id,

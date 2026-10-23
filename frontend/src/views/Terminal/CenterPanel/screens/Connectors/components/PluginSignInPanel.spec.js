@@ -91,6 +91,20 @@ describe('PluginSignInPanel', () => {
     expect(w.find('[data-signin="calendly"]').text()).toContain('Only on your account');
   });
 
+  // Reported 2026-10-21: picking Claude Code / Codex as a tool's sign-in made the
+  // tool fail CONNECTION_REQUIRED forever; subscriptions hold no token for a tool.
+  it('AI models are not offered as sign-ins; a tool that names one gets a one-click fix', async () => {
+    const AI = [...SHARED, { id: 'claude-code', name: 'Claude Code', categories: '["AI","Development"]' }, { id: 'openai', name: 'OpenAI', categories: ['ai'] }];
+    const w = mountPanel({ tools: [tool('blog', 'claude-code'), tool('other')] }, { sharedSignIns: AI });
+    await flushPromises();
+    expect(w.findAll('[data-tool="other"] option').map((o) => o.text())).toEqual(['No sign-in', 'Google', 'Notion']);
+    expect(w.find('[data-signin="claude-code"]').text()).toContain('An AI model, not a sign-in');
+    await w.find('[data-action="use-my-ai-claude-code"]').trigger('click');
+    const saved = w.emitted('save')[0][0];
+    expect(saved.tools[0].schema.authProvider).toBeUndefined();
+    expect(saved.tools[0].schema.authRequired).toBeUndefined();
+  });
+
   it('a bundled sign-in can only be connected once the plugin is installed', async () => {
     const w = mountPanel({ auth: [{ id: 'pipedrive', name: 'Pipedrive', type: 'apikey' }], tools: [tool('a', 'pipedrive')] }, { installState: 'draft' });
     await flushPromises();

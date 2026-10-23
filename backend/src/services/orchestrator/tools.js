@@ -49,6 +49,7 @@ import jwt from 'jsonwebtoken';
  */
 const IMAGE_GEN_PROVIDER_KEYS = getImageGenProviders().map((p) => p.provider);
 import ParameterResolver from '../../workflow/ParameterResolver.js';
+import { createPluginAi } from '../ai/pluginAi.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
 import { saveBase64Image } from '../ImageStorage.js';
@@ -5179,6 +5180,8 @@ async function executeToolInner(toolName, args, authToken, context) {
 
       // Attach ParameterResolver to mockWorkflowEngine
       mockWorkflowEngine.parameterResolver = new ParameterResolver(mockWorkflowEngine);
+      // The account's AI, as plugin tools get it inside workflows (WorkflowEngine.ai).
+      mockWorkflowEngine.ai = createPluginAi(() => userId, mockWorkflowEngine);
 
       if (registryTool.authConfig.authRequired) {
         if (!userId) {
@@ -5190,6 +5193,18 @@ async function executeToolInner(toolName, args, authToken, context) {
 
         const accessToken = await AuthManager.getValidAccessToken(userId, registryTool.authConfig.authProvider);
         if (!accessToken) {
+          // An AI model named as a sign-in (claude-code, openai-codex, ...):
+          // subscriptions hold no token to hand a tool, and "not connected"
+          // was false. The tool should use the account's AI (reported 2026-10-21).
+          const { getAllProviderKeys } = await import('../ai/providerConfigs.js');
+          const named = String(registryTool.authConfig.authProvider || '').toLowerCase();
+          if (getAllProviderKeys().some((key) => String(key).toLowerCase() === named)) {
+            return JSON.stringify({
+              success: false,
+              code: 'AI_NOT_A_SIGN_IN',
+              error: `'${registryTool.authConfig.authProvider}' is an AI model, not a sign-in a tool can use. In the Plugin Forge set this tool's sign-in to "No sign-in" and have its code call workflowEngine.ai.generate(...), which uses your selected AI.`,
+            });
+          }
           return JSON.stringify({
             success: false,
             // Same code plugins return themselves, so callers can offer Connect.

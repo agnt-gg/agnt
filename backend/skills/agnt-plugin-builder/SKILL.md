@@ -412,6 +412,7 @@ To remove a plugin: `DELETE /api/plugins/:name`, then `POST /api/plugins/reload`
 | Using `require` | Use `import`; declare `"type": "module"` in package.json |
 | Exporting the class | `export default new ClassName()` — an instance |
 | Importing AuthManager into a tool | Don't: read `params.__auth.token`, which AGNT fills in for every tool with `authRequired` + `authProvider` |
+| A tool that writes, summarises or classifies calls OpenAI/Anthropic itself, or names an AI model (`claude-code`, `openai-codex`, `openai`...) as its `authProvider` | Give it no sign-in and call `await workflowEngine.ai.generate({ prompt, system, maxTokens })`, which runs on the user's selected AI. AI models are not sign-ins: a subscription has no token for a tool |
 | Sign-in shows `unresolved` / "Can't be published" | Declare it in `manifest.auth`, or use the shared sign-in's id. Never create a server sign-in for it |
 | Plugin folder outside `dev/` | Build script will fail — always create in `dev/` |
 | Bloated `.agnt` | Use `npm install --production` |

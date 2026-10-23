@@ -9,6 +9,7 @@ import ParameterResolver from './ParameterResolver.js';
 import Counter from '../tools/library/utilities/counter.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import AuthManager from '../services/auth/AuthManager.js';
+import { createPluginAi } from '../services/ai/pluginAi.js';
 import runWorkflowAction from '../tools/library/controls/run-workflow.js';
 import { assertWorkflowShape } from './validateWorkflowShape.js';
 import { hostedWorkflowRunRefusal } from '../services/auth/tenantOwnership.js';
@@ -82,6 +83,11 @@ class WorkflowEngine extends EventEmitter {
   // PUBLIC METHODS
   async getAuth(providerId) {
     return AuthManager.getValidAccessToken(this.userId, providerId);
+  }
+
+  /** The account's AI, for plugin tools and nodes (services/ai/pluginAi.js). */
+  get ai() {
+    return (this._ai ||= createPluginAi(() => this.userId, this));
   }
 
   async setupWorkflowListeners() {

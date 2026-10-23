@@ -99,6 +99,22 @@ if (!token) {
 const response = await fetch('https://api.pipedrive.com/v1/deals?api_token=' + encodeURIComponent(token));
 \`\`\`
 
+FOR TOOLS THAT NEED AN AI (writing, summarising, classifying, extracting):
+use the user's selected AI. Call workflowEngine.ai.generate; give the tool NO
+sign-in, and never call OpenAI, Anthropic or any model API directly. AI models
+(Claude Code, Codex, OpenAI, Anthropic...) are not sign-ins: subscriptions have
+no token a tool could use, and the user picked their model once for all of AGNT.
+\`\`\`javascript
+const { text } = await workflowEngine.ai.generate({
+  system: 'You write clear blog posts. Reply with JSON only: {"title":"...","markdown":"..."}',
+  prompt: 'Topic: ' + params.topic,
+  maxTokens: 4000,
+});
+const post = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+\`\`\`
+It throws with the model's own error when it fails; catch it and return
+{ success: false, error }.
+
 EXAMPLE TOOL STRUCTURE:
 \`\`\`javascript
 class MyTool {

@@ -20,14 +20,16 @@
         <div class="signin-row-text">
           <strong>{{ row.name }}</strong>
           <small>
-            {{ SOURCE_LABEL[row.source] }} · {{ row.kind === 'oauth' ? 'OAuth sign-in' : 'API key' }}
+            {{ SOURCE_LABEL[row.source] }}<template v-if="row.source !== 'ai'"> · {{ row.kind === 'oauth' ? 'OAuth sign-in' : 'API key' }}</template>
             <template v-if="row.usedBy.length"> · used by {{ row.usedBy.join(', ') }}</template>
             <template v-else> · no tool uses it yet</template>
           </small>
           <small v-if="row.source === 'unresolved'" class="bad warn"><i class="fas fa-exclamation-triangle"></i> <strong>Can't be published:</strong> only you could connect this. Add it to the plugin, or pick one of AGNT's built-in sign-ins for its tools.</small>
+          <small v-if="row.source === 'ai'" class="bad warn"><i class="fas fa-exclamation-triangle"></i> <strong>This tool can't run like this:</strong> an AI model isn't a sign-in a tool can use. Tools use your selected AI through <code>workflowEngine.ai.generate(...)</code> with no sign-in.</small>
           <small v-if="row.redefinesShared" class="bad">"{{ row.id }}" is already built into AGNT. Remove the plugin's copy and use AGNT's.</small>
         </div>
-        <span v-if="row.connected" class="signin-ok"><i class="fas fa-check"></i> Connected</span>
+        <button v-if="row.source === 'ai'" type="button" class="signin-btn primary" :disabled="disabled" :data-action="`use-my-ai-${row.id}`" @click="useMyAi(row)">Use my selected AI</button>
+        <span v-else-if="row.connected" class="signin-ok"><i class="fas fa-check"></i> Connected</span>
         <button v-else-if="row.source === 'unresolved'" type="button" class="signin-btn primary" :disabled="disabled" @click="bundle(row)">Bundle it</button>
         <button v-else-if="row.source === 'plugin' && installState !== 'installed'" type="button" class="signin-btn" disabled v-tooltip="'Install the plugin, then connect it'">Install to connect</button>
         <button v-else type="button" class="signin-btn primary" :data-action="`connect-${row.id}`" @click="$emit('connect', row.id)">Connect</button>
@@ -92,6 +94,7 @@ import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import {
   slugify,
   toolSignIn,
+  isAiProvider,
   signInRows,
   setToolSignIn,
   blankSignIn,
@@ -102,7 +105,7 @@ import {
 
 // What a person needs to know: where the sign-in comes from. ("Shared" read
 // as "shared with me" and said nothing; reported 2026-10-21.)
-const SOURCE_LABEL = { plugin: 'Comes with this plugin', shared: 'Built into AGNT', unresolved: 'Only on your account' };
+const SOURCE_LABEL = { plugin: 'Comes with this plugin', shared: 'Built into AGNT', unresolved: 'Only on your account', ai: 'An AI model, not a sign-in' };
 const KIND_OPTIONS = [{ value: 'apikey', label: 'API key' }, { value: 'oauth2', label: 'OAuth' }];
 let keySeed = 0;
 
@@ -143,9 +146,13 @@ export default {
 
     const connectedIds = computed(() => (store?.getters?.['appAuth/connectedApps'] ?? store?.state?.appAuth?.connectedApps) || []);
     const bundled = computed(() => (Array.isArray(props.manifest.auth) ? props.manifest.auth : []));
-    const sharedSorted = computed(() => [...(shared.value || [])].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id))));
+    // AI models are not sign-ins (2026-10-21): kept out of the tool picker.
+    const aiIds = computed(() => (shared.value || []).filter(isAiProvider).map((p) => String(p.id).toLowerCase()));
+    const sharedSorted = computed(() =>
+      [...(shared.value || [])].filter((p) => !isAiProvider(p)).sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id))),
+    );
     const sharedIds = computed(() => (shared.value || []).map((p) => String(p.id).toLowerCase()));
-    const rows = computed(() => signInRows(props.manifest, { shared: shared.value || [], connectedIds: connectedIds.value }));
+    const rows = computed(() => signInRows(props.manifest, { shared: shared.value || [], connectedIds: connectedIds.value, aiIds: aiIds.value }));
     const orphan = (tool) => {
       const id = toolSignIn(tool);
       return id && !bundled.value.some((e) => String(e.id).toLowerCase() === id) && !sharedIds.value.includes(id);
@@ -174,8 +181,16 @@ export default {
       // plugin's own, and one only this account has, say so.
       for (const entry of bundled.value) options.push({ value: String(entry.id).toLowerCase(), label: `${entry.name || entry.id} (this plugin)` });
       for (const provider of sharedSorted.value) options.push({ value: String(provider.id).toLowerCase(), label: provider.name || provider.id });
-      if (orphan(tool)) options.push({ value: toolSignIn(tool), label: `${toolSignIn(tool)} (only on your account)` });
+      if (aiIds.value.includes(toolSignIn(tool))) options.push({ value: toolSignIn(tool), label: `${toolSignIn(tool)} (an AI model, not a sign-in)` });
+      else if (orphan(tool)) options.push({ value: toolSignIn(tool), label: `${toolSignIn(tool)} (only on your account)` });
       return options;
+    }
+
+    /** Every tool that names this AI model as its sign-in goes to No sign-in. */
+    function useMyAi(row) {
+      let next = props.manifest;
+      for (const tool of next.tools || []) if (toolSignIn(tool) === row.id) next = setToolSignIn(next, tool.type, null);
+      emit('save', next);
     }
 
     function pick(tool, id) {
@@ -215,7 +230,7 @@ export default {
       emit('save', next);
     }
 
-    return { SOURCE_LABEL, KIND_OPTIONS, optionsFor, shared, sharedError, sharedSorted, bundled, rows, editRows, toolSignIn, orphan, pick, addEntry, bundle, saveEntry, removeEntry, problemsFor, slug: (name) => slugify(name, '') };
+    return { SOURCE_LABEL, KIND_OPTIONS, optionsFor, useMyAi, shared, sharedError, sharedSorted, bundled, rows, editRows, toolSignIn, orphan, pick, addEntry, bundle, saveEntry, removeEntry, problemsFor, slug: (name) => slugify(name, '') };
   },
 };
 </script>
