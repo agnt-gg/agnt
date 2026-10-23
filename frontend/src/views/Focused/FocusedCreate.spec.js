@@ -56,7 +56,8 @@ const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(() => Pr
 const global = {
   provide: { focusedNav: nav },
   directives: { tooltip: {} },
-  stubs: { CustomSelect: true, CustomWidgetRenderer: true, FocusedParamField: true, MarketplaceShelf: true, PdfFrame: true },
+  // FocusedForgeChat: Annie's chat beside each editor (focusedForgeChat.spec.js); these tests are about the forms.
+  stubs: { CustomSelect: true, CustomWidgetRenderer: true, FocusedParamField: true, MarketplaceShelf: true, PdfFrame: true, FocusedForgeChat: true },
 };
 
 beforeEach(() => {

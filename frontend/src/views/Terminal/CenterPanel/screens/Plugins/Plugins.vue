@@ -82,7 +82,10 @@ provide('openForgeChat', () => baseScreenRef.value?.openMobilePanel('left'));
 // The right panel is ConnectorsPanel in both states: a selected plugin shows
 // its detail; nothing selected shows the plugins summary (context: 'plugins').
 // News & updates moved to Settings › About.
-const activeRightPanel = computed(() => 'ConnectorsPanel');
+// AGNT One (focusedNav is provided only there) has no right panel here: the
+// Forge is chat on the left, the plugin on the right (2026-10-23).
+const inAgntOne = !!inject('focusedNav', null);
+const activeRightPanel = computed(() => (inAgntOne ? false : 'ConnectorsPanel'));
 
 async function showAlert(title, message) {
   await modalRef.value?.showModal({ title, message, confirmText: 'OK', showCancel: false });

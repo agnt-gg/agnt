@@ -1,13 +1,14 @@
 <template>
+  <!-- Chat with Annie on the left, the agent on the right, like the Plugin Forge (2026-10-23). -->
+  <div v-if="(agent || isNew) && loaded" class="focused-forge">
+  <FocusedForgeChat kind="agents" :item-id="agentId" :record="forgeRecord" @changed="reloadAfterAnnie" />
   <FocusedEditor
-    v-if="(agent || isNew) && loaded"
     kind-label="Agents"
     back-label="Agents"
     v-model:name="v.name"
     v-model:description="v.description"
     name-placeholder="Agent name"
     description-placeholder="What this agent does"
-    :chat-ask="isNew ? '' : editAsk('agent', v.name || agent.name)"
     :delete-label="isNew ? '' : 'Delete agent'"
     :meta="lastUsed"
     :dirty="dirty"
@@ -95,6 +96,7 @@
       </div>
     </section>
   </FocusedEditor>
+  </div>
   <section v-else class="focused-page">
     <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Agents</button>
     <p class="focused-empty">{{ agent || loadingAgents ? 'Loading…' : 'This agent no longer exists.' }}</p>
@@ -105,13 +107,13 @@
 import { ref, reactive, computed, inject, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
+import FocusedForgeChat from './FocusedForgeChat.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ListWithSearch from '@/views/Terminal/_components/ListWithSearch.vue';
 import FocusedGlyph from './FocusedGlyph.vue';
 import { agentValues, agentPayload, ago } from './focusedEditors.js';
 import { readAvatarFile } from '@/utils/avatarImage.js';
-import { editAsk } from './focusedModel.js';
 import { waitUntil } from './focusedTime.js';
 
 // No agentId = a new agent: a blank form, created on Save.
@@ -220,6 +222,30 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+// What the chat beside the editor sees: the agent as it would be saved.
+const forgeRecord = computed(() => ({
+  ...(agent.value || {}),
+  ...v,
+  toolAccessMode: tools.open ? 'open' : 'restricted',
+  assignedTools: [...tools.chosen],
+  assignedSkills: [...skills.value],
+}));
+/** Annie finished a tool call: open an agent she created, or show her change (the agent watch reloads it). */
+async function reloadAfterAnnie({ createdId } = {}) {
+  if (isNew.value) {
+    if (!createdId) return;
+    baseline.value = snapshot();
+    nav.go({ page: 'library', tab: 'agents', item: createdId });
+    return;
+  }
+  if (dirty.value) {
+    nav.toast('Annie made changes. Save or discard yours to see them.');
+    return;
+  }
+  await store.dispatch('agents/fetchAgents', { force: true }).catch((e) => {
+    error.value = 'Couldn’t show Annie’s changes. ' + (e?.message || e);
+  });
 }
 function discard() {
   load(agent.value || {});

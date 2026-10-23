@@ -1487,6 +1487,41 @@
 .ui-focused .focused-editor {
   padding-bottom: 96px; /* room for the save bar */
 }
+
+/* An editor with Annie's chat on its left, like the Plugin Forge. */
+.ui-focused .focused-forge {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+}
+.ui-focused .focused-forge > .focused-editor {
+  flex: 1;
+  min-width: 0;
+}
+.ui-focused .focused-forge-chat {
+  flex: 0 0 clamp(300px, 32%, 420px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--terminal-border-color);
+  overflow: hidden;
+}
+.ui-focused .focused-forge-chat > * {
+  flex: 1;
+  min-height: 0;
+}
+/* Phones: one column, so the editor comes first and the chat below it. */
+.ui-focused.is-compact .focused-forge {
+  flex-direction: column-reverse;
+  overflow-y: auto;
+}
+.ui-focused.is-compact .focused-forge-chat {
+  flex: 0 0 auto;
+  height: 70vh;
+  border-right: 0;
+  border-top: 1px solid var(--terminal-border-color);
+}
 .ui-focused .focused-page-back {
   display: inline-flex;
   align-items: center;

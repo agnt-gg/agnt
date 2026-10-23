@@ -4,8 +4,11 @@
     <p class="focused-empty">{{ loadError || 'Loading…' }}</p>
   </section>
 
+  <!-- Chat with Annie on the left, the item on the right: every editor works
+       like the Plugin Forge (2026-10-23). -->
+  <div v-else class="focused-forge">
+  <FocusedForgeChat v-if="!readOnly" :kind="kind" :item-id="itemId" :record="forgeRecord" @changed="reloadAfterAnnie" />
   <FocusedEditor
-    v-else
     :kind-label="tab.label"
     :back-label="tab.label"
     :icon="tab.icon"
@@ -15,7 +18,7 @@
     :note="note"
     :meta="edited"
     :name-placeholder="isNew ? `Name your ${tab.noun}` : 'Name'"
-    :chat-ask="readOnly || isNew ? '' : editAsk(tab.noun, v.name)"
+    :chat-ask="readOnly && !isNew ? editAsk(tab.noun, v.name) : ''"
     :delete-label="deleteLabel"
     :dirty="dirty"
     :saving="saving"
@@ -276,6 +279,7 @@
       </section>
     </template>
   </FocusedEditor>
+  </div>
 </template>
 
 <script setup>
@@ -283,6 +287,7 @@ import { ref, reactive, computed, inject, onMounted, watch, nextTick } from 'vue
 import { useStore } from 'vuex';
 import FocusedEditor from './FocusedEditor.vue';
 import FocusedParamField from './FocusedParamField.vue';
+import FocusedForgeChat from './FocusedForgeChat.vue';
 import AutoTextarea from './AutoTextarea.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
@@ -383,6 +388,35 @@ function apply(record) {
     store.dispatch('tools/fetchWorkflowTools').catch((e) => console.warn('[Focused] could not load step outputs:', e?.message || e));
   }
   baseline.value = JSON.stringify(v.value);
+}
+// What the chat beside the editor sees: the item as it would be saved.
+const forgeRecord = computed(() => {
+  if (!loaded.value) return {};
+  if (props.kind === 'workflows') return pickerGraph.value || {};
+  return { ...raw.value, ...v.value };
+});
+/**
+ * Annie finished a tool call. A new item she created opens; an open one
+ * reloads to show her change, unless it has unsaved edits of its own.
+ */
+async function reloadAfterAnnie({ createdId } = {}) {
+  if (isNew.value) {
+    if (!createdId) return;
+    baseline.value = JSON.stringify(v.value); // nothing to lose: leave without asking
+    nav.go({ page: 'library', tab: props.kind, item: createdId });
+    return;
+  }
+  if (dirty.value) {
+    nav.toast('Annie made changes. Save or discard yours to see them.');
+    return;
+  }
+  try {
+    if (props.kind === 'widgets') await store.dispatch('widgetDefinitions/fetchDefinitions');
+    if (props.kind === 'skills') await store.dispatch('skills/fetchSkills');
+    apply(await fetchRaw());
+  } catch (e) {
+    error.value = 'Couldn’t show Annie’s changes. ' + (e?.message || e);
+  }
 }
 async function load() {
   try {
