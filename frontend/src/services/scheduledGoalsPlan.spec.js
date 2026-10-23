@@ -12,8 +12,10 @@ describe('plans that include scheduled goals', () => {
     expect(['free', 'community', '', null, undefined, 'trial'].some(canScheduleGoals)).toBe(false);
   });
 
-  it('match the plans the backend lets through (planEntitlements)', () => {
-    const backend = readFileSync(join(ROOT, 'backend/src/services/auth/planEntitlements.js'), 'utf8');
+  // The backend's paid plans live with the licence verifier since 2026-10-21.
+  it('match the plans the backend lets through (licence.js PAID_PLANS)', () => {
+    const backend = readFileSync(join(ROOT, 'backend/src/services/auth/licence.js'), 'utf8');
+    expect(backend).toContain('export const PAID_PLANS');
     for (const plan of SCHEDULED_GOAL_PLANS) expect(backend, plan).toContain(`'${plan}'`);
   });
 });
