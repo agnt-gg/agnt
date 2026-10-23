@@ -38,7 +38,7 @@ describe('rules', () => {
   });
 
   it('refuses a shared id, a duplicate, a bad id and non-https URLs, in words', () => {
-    expect(signInProblems({ id: 'google', type: 'apikey' }, { sharedIds: ['google'] })[0]).toContain('already a sign-in AGNT shares');
+    expect(signInProblems({ id: 'google', type: 'apikey' }, { sharedIds: ['google'] })[0]).toContain('already built into AGNT');
     expect(signInProblems({ id: 'x', type: 'apikey' }, { otherIds: ['x'] })[0]).toContain('already "x"');
     expect(signInProblems({ id: 'Bad Id', type: 'apikey' })[0]).toContain('lowercase');
     expect(signInProblems({ id: 'o', type: 'oauth2', authorizationUrl: 'http://a', tokenUrl: 'https://t' })).toEqual(['The authorization URL must start with https://.']);
@@ -78,6 +78,17 @@ describe('PluginSignInPanel', () => {
     const g = mountPanel({ tools: [tool('a', 'google')] });
     await flushPromises();
     expect(g.find('[data-signin="google"]').text()).toContain('Connected');
+  });
+
+  // Reported 2026-10-21: every AGNT sign-in read "(shared)", which explained nothing.
+  it('labels say where a sign-in comes from; AGNT\'s own carry no suffix', async () => {
+    const w = mountPanel({ auth: [{ id: 'pipedrive', name: 'Pipedrive', type: 'apikey' }], tools: [tool('a', 'calendly')] });
+    await flushPromises();
+    const labels = w.findAll('[data-tool="a"] option').map((o) => o.text());
+    expect(labels).toEqual(['No sign-in', 'Pipedrive (this plugin)', 'Google', 'Notion', 'calendly (only on your account)']);
+    expect(w.text()).not.toMatch(/shared/i);
+    expect(w.find('[data-signin="pipedrive"]').text()).toContain('Comes with this plugin');
+    expect(w.find('[data-signin="calendly"]').text()).toContain('Only on your account');
   });
 
   it('a bundled sign-in can only be connected once the plugin is installed', async () => {

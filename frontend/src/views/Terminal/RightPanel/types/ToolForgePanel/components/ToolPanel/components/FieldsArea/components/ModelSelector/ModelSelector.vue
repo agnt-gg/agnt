@@ -2,6 +2,7 @@
   <SharedModelSelector
     :provider="provider"
     :model="model"
+    allow-default
     @update:provider="$emit('update:provider', $event)"
     @update:model="$emit('update:model', $event)"
   />

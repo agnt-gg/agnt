@@ -264,7 +264,7 @@ export function signInProblems(row, { sharedIds = [], otherIds = [] } = {}) {
   const problems = [];
   const id = lower(row.id);
   if (!SIGN_IN_ID.test(id)) problems.push('The id uses lowercase letters, numbers, - and _ only.');
-  if (sharedIds.map(lower).includes(id)) problems.push(`"${id}" is already a sign-in AGNT shares. Pick it for your tools instead of bundling your own.`);
+  if (sharedIds.map(lower).includes(id)) problems.push(`"${id}" is already built into AGNT. Pick it for your tools instead of adding your own.`);
   if (otherIds.map(lower).includes(id)) problems.push(`Another bundled sign-in is already "${id}".`);
   if (row.helpUrl && !https(row.helpUrl)) problems.push('The help link must start with https://.');
   if (row.type === 'oauth2') {

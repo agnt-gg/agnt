@@ -24,8 +24,8 @@
             <template v-if="row.usedBy.length"> · used by {{ row.usedBy.join(', ') }}</template>
             <template v-else> · no tool uses it yet</template>
           </small>
-          <small v-if="row.source === 'unresolved'" class="bad warn"><i class="fas fa-exclamation-triangle"></i> <strong>Can't be published:</strong> only you could connect this. Bundle it in the plugin, or pick a shared sign-in for its tools.</small>
-          <small v-if="row.redefinesShared" class="bad">AGNT already shares "{{ row.id }}". Remove the bundled copy and use the shared one.</small>
+          <small v-if="row.source === 'unresolved'" class="bad warn"><i class="fas fa-exclamation-triangle"></i> <strong>Can't be published:</strong> only you could connect this. Add it to the plugin, or pick one of AGNT's built-in sign-ins for its tools.</small>
+          <small v-if="row.redefinesShared" class="bad">"{{ row.id }}" is already built into AGNT. Remove the plugin's copy and use AGNT's.</small>
         </div>
         <span v-if="row.connected" class="signin-ok"><i class="fas fa-check"></i> Connected</span>
         <button v-else-if="row.source === 'unresolved'" type="button" class="signin-btn primary" :disabled="disabled" @click="bundle(row)">Bundle it</button>
@@ -46,12 +46,12 @@
           @update:model-value="(id) => pick(tool, id)"
         />
       </div>
-      <p v-if="sharedError" class="signin-note bad">Could not load AGNT's shared sign-ins: {{ sharedError }}</p>
+      <p v-if="sharedError" class="signin-note bad">Could not load AGNT's built-in sign-ins: {{ sharedError }}</p>
     </section>
 
     <section class="signin-section">
       <h4>Bundled in this plugin</h4>
-      <p class="signin-note">When AGNT doesn't share a sign-in, the plugin carries it. Each person who installs the plugin connects their own account: they paste their own key, or sign in with OAuth. Never put a key or client secret here.</p>
+      <p class="signin-note">When AGNT doesn't have a sign-in built in, the plugin brings its own. Each person who installs the plugin connects their own account: they paste their own key, or sign in with OAuth. Never put a key or client secret here.</p>
       <div v-for="(row, index) in editRows" :key="row.key" class="signin-entry" :data-entry="row.id || 'new'">
         <div class="signin-grid">
           <label class="signin-field"><span>Name</span><input v-model="row.name" class="signin-input" :disabled="disabled" @input="row.idTouched || (row.id = slug(row.name))" /></label>
@@ -100,7 +100,9 @@ import {
   signInProblems,
 } from './pluginDraftEditing.js';
 
-const SOURCE_LABEL = { plugin: 'Bundled in this plugin', shared: 'Shared by AGNT', unresolved: 'Not available to others' };
+// What a person needs to know: where the sign-in comes from. ("Shared" read
+// as "shared with me" and said nothing; reported 2026-10-21.)
+const SOURCE_LABEL = { plugin: 'Comes with this plugin', shared: 'Built into AGNT', unresolved: 'Only on your account' };
 const KIND_OPTIONS = [{ value: 'apikey', label: 'API key' }, { value: 'oauth2', label: 'OAuth' }];
 let keySeed = 0;
 
@@ -168,9 +170,11 @@ export default {
     /** No sign-in, then the plugin's own, then AGNT's shared ones; a private one stays visible so it can be replaced. */
     function optionsFor(tool) {
       const options = [{ value: '', label: 'No sign-in' }];
-      for (const entry of bundled.value) options.push({ value: String(entry.id).toLowerCase(), label: `${entry.name || entry.id} (bundled)` });
-      for (const provider of sharedSorted.value) options.push({ value: String(provider.id).toLowerCase(), label: `${provider.name || provider.id} (shared)` });
-      if (orphan(tool)) options.push({ value: toolSignIn(tool), label: `${toolSignIn(tool)} (not available to others)` });
+      // AGNT's own sign-ins are the normal case and carry no suffix; the
+      // plugin's own, and one only this account has, say so.
+      for (const entry of bundled.value) options.push({ value: String(entry.id).toLowerCase(), label: `${entry.name || entry.id} (this plugin)` });
+      for (const provider of sharedSorted.value) options.push({ value: String(provider.id).toLowerCase(), label: provider.name || provider.id });
+      if (orphan(tool)) options.push({ value: toolSignIn(tool), label: `${toolSignIn(tool)} (only on your account)` });
       return options;
     }
 

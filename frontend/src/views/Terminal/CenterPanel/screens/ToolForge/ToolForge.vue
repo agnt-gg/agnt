@@ -121,15 +121,9 @@ export default {
       terminalLines.value.push(`Executing tool: ${currentTool.value.name}`);
 
       try {
-        // A tool with no provider runs on the user's selected provider and
-        // model, never one of this screen's choosing.
-        if (!currentTool.value.provider) {
-          currentTool.value.provider = store.state.aiProvider.selectedProvider || null;
-          currentTool.value.model = currentTool.value.model || store.state.aiProvider.selectedModel || null;
-        }
-        if (!currentTool.value.model && currentTool.value.provider === store.state.aiProvider.selectedProvider) {
-          currentTool.value.model = store.state.aiProvider.selectedModel || null;
-        }
+        // A tool with no provider (Default AI) is tested on the user's selected
+        // AI: executeToolTemplate fills that in for the run only. The tool
+        // itself is not changed, or saving after a test would pin it.
 
         // Clear the hidden response area first
         const responseArea = document.getElementById('response-area');

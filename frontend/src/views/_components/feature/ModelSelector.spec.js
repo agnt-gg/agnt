@@ -26,6 +26,7 @@ const createMockStore = ({
   providers = ['openai', 'anthropic'],
   connectedApps = ['openai', 'anthropic'],
   selectedProvider = 'openai',
+  selectedModel = 'gpt-4',
   allModels = { openai: ['gpt-4', 'gpt-3.5-turbo'], anthropic: ['claude-3'] },
   setProvider = vi.fn(),
 } = {}) => {
@@ -44,6 +45,7 @@ const createMockStore = ({
         state: {
           providers,
           selectedProvider,
+          selectedModel,
           allModels,
         },
         getters: {
@@ -178,6 +180,49 @@ describe('ModelSelector', () => {
 
       expect(wrapper.props('provider')).toBe('');
       expect(wrapper.props('model')).toBe('');
+    });
+  });
+
+  // Reported 2026-10-21: AI tools could only be pinned to one connection; the
+  // app-wide selected model was not an option, and every tool was saved with
+  // the model selected the day it was made.
+  describe('Default AI (allowDefault, the Tool Forge)', () => {
+    it('an empty provider stays empty and shows as Default AI with the selected model', async () => {
+      const { wrapper } = mountBound({ allowDefault: true }, { selectedProvider: 'anthropic', selectedModel: 'claude-3' });
+      await flushPromises();
+
+      expect(wrapper.props('provider')).toBe('');
+      expect(wrapper.props('model')).toBe('');
+      expect(selects(wrapper)[0].props('options')[0]).toEqual({ label: 'Default AI', value: '__default_ai__' });
+      expect(selects(wrapper)[0].props('modelValue')).toBe('__default_ai__');
+      expect(selects(wrapper)[1].props('options')).toEqual([{ label: 'anthropic · claude-3', value: '__default_ai__' }]);
+    });
+
+    it('picking Default AI clears a pinned provider and model', async () => {
+      const { wrapper } = mountBound({ allowDefault: true, provider: 'openai', model: 'gpt-4' });
+      await flushPromises();
+
+      selects(wrapper)[0].vm.$emit('option-selected', { label: 'Default AI', value: '__default_ai__' });
+      await flushPromises();
+
+      expect(wrapper.props('provider')).toBe('');
+      expect(wrapper.props('model')).toBe('');
+    });
+
+    it('a specific provider can still be picked from Default AI', async () => {
+      const { wrapper } = mountBound({ allowDefault: true });
+      await flushPromises();
+
+      selects(wrapper)[0].vm.$emit('option-selected', { label: 'anthropic', value: 'anthropic' });
+      await flushPromises();
+
+      expect(wrapper.props('provider')).toBe('anthropic');
+      expect(wrapper.props('model')).toBe('claude-3');
+    });
+
+    it('without allowDefault nothing changes: no Default AI option', () => {
+      const wrapper = createWrapper({ provider: 'openai', model: 'gpt-4' });
+      expect(selects(wrapper)[0].props('options').map((o) => o.value)).not.toContain('__default_ai__');
     });
   });
 

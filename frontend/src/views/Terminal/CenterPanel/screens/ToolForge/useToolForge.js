@@ -12,9 +12,10 @@ import { API_CONFIG } from '../../../../../../user.config.js';
 import store from '@/store/state';
 
 /**
- * The user's own selected provider/model. Tools that name neither run on it.
- * This used to be the first entry of a static provider list, which made every
- * new tool an Anthropic tool with no model.
+ * The user's own selected provider/model, used only to RUN a test from this
+ * screen. A tool that names no provider is saved that way ("Default AI") and
+ * the backend runs it on whatever the user has selected at the time; saving or
+ * loading must never fill it in, or the tool is pinned to today's model.
  */
 function selectedAi() {
   const ai = store.state.aiProvider || {};
@@ -66,8 +67,9 @@ export default function useToolForge() {
         ? customFields
         : {
             instructions: toolForgeData.promptTemplate || '',
-            provider: toolForgeData.provider || selectedAi().provider,
-            model: toolForgeData.model || (toolForgeData.provider ? '' : selectedAi().model),
+            // Empty provider and model = Default AI (resolved when the tool runs).
+            provider: toolForgeData.provider || '',
+            model: toolForgeData.provider ? toolForgeData.model || '' : '',
             ...customFields,
           },
       outputs:
@@ -95,8 +97,6 @@ export default function useToolForge() {
   // Map the existing custom tool format to the new tool forge format
   const mapCustomToolToToolForge = (customTool) => {
     const fields = [];
-
-    const { provider: defaultProvider, model: defaultModel } = selectedAi();
 
     const base = customTool.base || 'AI';
     const isCodeTool = base === 'CODE_JS' || base === 'CODE_PYTHON';
@@ -126,8 +126,9 @@ export default function useToolForge() {
       config: customTool.config || null,
       customOutputs: customTool.outputs || {},
       promptTemplate: !isCodeTool ? customTool.parameters?.instructions || '' : '',
-      provider: !isCodeTool ? customTool.parameters?.provider || defaultProvider : defaultProvider,
-      model: !isCodeTool ? customTool.parameters?.model || defaultModel : defaultModel,
+      // Kept as stored: empty means Default AI.
+      provider: !isCodeTool ? customTool.parameters?.provider || '' : '',
+      model: !isCodeTool && customTool.parameters?.provider ? customTool.parameters?.model || '' : '',
       fields: fields,
       isValid: true,
       isSaved: true,

@@ -4,7 +4,7 @@
       <p class="label">Provider:</p>
       <CustomSelect
         :options="providerOptions"
-        :model-value="provider"
+        :model-value="shownProvider"
         placeholder="Select Provider"
         @option-selected="updateSelectorProvider"
         @connect-option="connectFromPicker"
@@ -12,7 +12,7 @@
     </div>
     <div class="select-wrapper">
       <p class="label">Model:</p>
-      <CustomSelect :options="modelOptions" :model-value="model" placeholder="Select Model" @option-selected="updateSelectorModel" />
+      <CustomSelect :options="modelOptions" :model-value="shownModel" placeholder="Select Model" @option-selected="updateSelectorModel" />
     </div>
     <SimpleModal ref="simpleModal" />
   </div>
@@ -25,6 +25,14 @@ import { useStore } from 'vuex';
 import { computed, ref, watch } from 'vue';
 import { PROVIDER_DISPLAY_NAMES, providerNeedsConnecting } from '@/store/app/aiProvider.js';
 import { useProviderPickerConnect } from '@/composables/useProviderPickerConnect.js';
+
+/**
+ * The "Default AI" choice (allowDefault): stored as an EMPTY provider and model,
+ * which the backend runs on the account's selected AI at call time
+ * (CustomToolExecutor -> resolveAccountAi). So the tool follows whatever the
+ * user selects later, instead of the model selected the day it was made.
+ */
+export const DEFAULT_AI = '__default_ai__';
 
 export default {
   components: {
@@ -39,6 +47,11 @@ export default {
     model: {
       type: String,
       default: '',
+    },
+    /** Offer "Default AI" (empty provider = the user's selected AI, resolved when it runs). */
+    allowDefault: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['update:provider', 'update:model'],
@@ -55,16 +68,29 @@ export default {
         .map((entry) => (typeof entry === 'string' ? entry : entry?.id || entry?.name))
         .filter(Boolean);
 
+    const followsDefault = computed(() => props.allowDefault && !props.provider);
+    const globalAiLabel = computed(() => {
+      const { selectedProvider, selectedModel } = store.state.aiProvider || {};
+      if (!selectedProvider) return 'Your selected model';
+      const name = PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider;
+      return selectedModel ? `${name} · ${selectedModel}` : name;
+    });
+    const shownProvider = computed(() => (followsDefault.value ? DEFAULT_AI : props.provider));
+    const shownModel = computed(() => (followsDefault.value ? DEFAULT_AI : props.model));
+
     const providerOptions = computed(() => {
       const list = props.provider && !providers.value.includes(props.provider) ? [props.provider, ...providers.value] : providers.value;
-      return list.map((p) => ({
+      const options = list.map((p) => ({
         label: PROVIDER_DISPLAY_NAMES[p] || p,
         value: p,
         connect: providerNeedsConnecting(p, connectedProviders.value),
       }));
+      return props.allowDefault ? [{ label: 'Default AI', value: DEFAULT_AI }, ...options] : options;
     });
 
     const modelOptions = computed(() => {
+      // Following the default: the model is whatever is selected app-wide, shown, not chosen here.
+      if (followsDefault.value) return [{ label: globalAiLabel.value, value: DEFAULT_AI }];
       const ids = modelIdsFor(props.provider);
       const list = props.model && !ids.includes(props.model) ? [props.model, ...ids] : ids;
       return list.map((m) => ({ label: m, value: m }));
@@ -89,6 +115,8 @@ export default {
     const syncToProvider = async (provider) => {
       const sync = ++latestSync;
       if (!provider) {
+        // Empty is a real choice here ("Default AI"), never a gap to fill.
+        if (props.allowDefault) return;
         if (!connectedProviders.value.length) await store.dispatch('appAuth/fetchConnectedApps');
         if (sync !== latestSync) return;
         const fallback = defaultProvider();
@@ -104,13 +132,21 @@ export default {
     watch(() => props.provider, syncToProvider, { immediate: true });
 
     const updateSelectorProvider = (option) => {
-      const provider = option?.value;
+      const picked = option?.value;
+      if (picked === DEFAULT_AI) {
+        if (followsDefault.value) return;
+        emit('update:model', '');
+        emit('update:provider', '');
+        return;
+      }
+      const provider = picked;
       if (!provider || provider === props.provider) return;
       emit('update:model', '');
       emit('update:provider', provider);
     };
 
     const updateSelectorModel = (option) => {
+      if (option?.value === DEFAULT_AI) return;
       if (option?.value && option.value !== props.model) emit('update:model', option.value);
     };
 
@@ -122,6 +158,8 @@ export default {
     });
 
     return {
+      shownProvider,
+      shownModel,
       providerOptions,
       modelOptions,
       updateSelectorProvider,
