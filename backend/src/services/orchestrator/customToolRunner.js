@@ -69,8 +69,36 @@ function toExecutableNode(tool, args) {
     type: tool.type || null,
     base,
     code,
-    parameters: { ...(args || {}) },
+    parameters: mergedParameters(tool.parameters, args),
   };
+}
+
+/**
+ * The tool's own settings with this call's arguments on top.
+ *
+ * This used to be the arguments ONLY, so a run outside a workflow (an agent,
+ * chat, the editor's Test) dropped the tool's prompt (`instructions`), its
+ * provider and model, and every input's default: an AI tool answered without
+ * its prompt (reported 2026-10-21). An input definition ({ type, label, value })
+ * becomes its value: the argument, else its default, else ''.
+ */
+export function mergedParameters(stored, args = {}) {
+  let defs = stored;
+  if (typeof defs === 'string') {
+    try {
+      defs = JSON.parse(defs);
+    } catch {
+      defs = {};
+    }
+  }
+  const merged = {};
+  for (const [key, def] of Object.entries(defs && typeof defs === 'object' && !Array.isArray(defs) ? defs : {})) {
+    if (args && Object.prototype.hasOwnProperty.call(args, key) && args[key] !== undefined) merged[key] = args[key];
+    else if (def && typeof def === 'object' && !Array.isArray(def)) merged[key] = def.value ?? def.default ?? '';
+    else merged[key] = def ?? '';
+  }
+  for (const [key, value] of Object.entries(args || {})) if (!(key in merged)) merged[key] = value;
+  return merged;
 }
 
 /**

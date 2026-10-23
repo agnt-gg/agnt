@@ -3,6 +3,33 @@ import ExecuteJavaScript from '../tools/library/utilities/execute-javascript.js'
 import ExecutePython from '../tools/library/utilities/execute-python.js';
 import { resolveAccountAi } from '../services/ai/accountAi.js';
 
+/** Names a tool's prompt cannot take as inputs: they configure the run. */
+const META_KEYS = new Set(['instructions', 'provider', 'model', 'maxTokens', 'temperature']);
+
+/** {{name}} -> the input's value, for the tool's own inputs only (others are left for the resolver). */
+export function fillInputPlaceholders(template, inputs) {
+  const byLower = new Map(Object.keys(inputs || {}).filter((k) => !META_KEYS.has(k)).map((k) => [k.toLowerCase(), k]));
+  return template.replace(/{{\s*([^{}.]+?)\s*}}/g, (match, name) => {
+    const key = byLower.get(name.toLowerCase());
+    if (!key) return match;
+    const value = inputs[key];
+    if (value === undefined || value === null) return '';
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+  });
+}
+
+/**
+ * An AI tool's answer in the shape every custom tool declares: success,
+ * result, error (plus generatedText and tokenCount, which older AI tools
+ * declare and workflows may reference). It used to be the raw model result,
+ * so the declared success and result never existed.
+ */
+export function aiToolOutputs(raw = {}) {
+  const error = raw?.error ? String(raw.error) : null;
+  const text = raw?.generatedText ?? '';
+  return { success: !error, result: error ? null : text, error, generatedText: text, tokenCount: raw?.tokenCount ?? 0 };
+}
+
 class CustomToolExecutor {
   constructor(workflowEngine) {
     this.workflowEngine = workflowEngine;
@@ -32,6 +59,8 @@ class CustomToolExecutor {
     let imageData = null;
 
     for (const [key, value] of Object.entries(parameters)) {
+      // The prompt is filled in after the inputs are known (below).
+      if (key === 'instructions') continue;
       //   console.log(`Key: ${key}`);
       //   console.log(`Value:`, value);
       //   console.log(`Type:`, value.type);
@@ -55,6 +84,15 @@ class CustomToolExecutor {
         resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value);
       }
     }
+
+    // The prompt: {{input}} placeholders take the input's value first (the
+    // Tool Forge says "use them as {{Name}}"); what is left ({{step.field}} in a
+    // workflow) goes to the resolver. Resolving first turned {{topic}} into the
+    // text "undefined", as no step is called topic.
+    const rawInstructions = parameters.instructions && typeof parameters.instructions === 'object' ? parameters.instructions.value : parameters.instructions;
+    resolvedParams.instructions = await this.workflowEngine.parameterResolver.resolveTemplate(
+      fillInputPlaceholders(String(rawInstructions ?? ''), resolvedParams)
+    );
 
     console.log('Resolved params:', resolvedParams); // For debugging
 
@@ -110,10 +148,10 @@ class CustomToolExecutor {
         this.workflowEngine
       );
 
-      return result;
+      return aiToolOutputs(result);
     } catch (error) {
       console.error('Error executing AI tool:', error);
-      return { error: error.message };
+      return aiToolOutputs({ error: error.message });
     }
   }
 
