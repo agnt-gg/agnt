@@ -140,7 +140,7 @@ describe('Gmail List Emails Page', () => {
   it('is exposed by both Gmail schemas with cursor and payload controls', () => {
     for (const parameters of [manifest.tools[0].schema.parameters, BuiltInGmailAPI.constructor.schema.parameters]) {
       expect(parameters.operation.options).toContain('List Emails Page');
-      expect(parameters.pageToken.conditional.value).toBe('List Emails Page');
+      expect(parameters.pageToken.conditional.value).toContain('List Emails Page');
       expect(parameters.format.options).toEqual(['ids', 'metadata', 'full']);
       expect(parameters.maxResults.conditional.value).toContain('List Emails Page');
     }

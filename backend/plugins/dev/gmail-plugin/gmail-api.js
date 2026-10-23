@@ -1,12 +1,28 @@
 import { google } from 'googleapis';
 import { Buffer } from 'buffer';
-
+import {
+  addressesOf,
+  buildMimeMessage,
+  parseAttachments,
+  splitAddressList,
+  toRaw,
+  unfoldHeader,
+} from './gmail-mime.js';
 
 /**
  * Gmail API Plugin Tool
  *
- * Send, reply, read, organize, and manage attachments in Gmail.
+ * Send, reply, draft, read, organize, and manage attachments in Gmail.
+ *
+ * Draft operations never send: they only call users.drafts.*, so a run limited
+ * to them cannot deliver mail. Sending a draft is deliberately not offered here.
  */
+
+const REPLY_HEADERS = ['Subject', 'From', 'Reply-To', 'To', 'Cc', 'Message-ID', 'References'];
+
+const headerReader = (headers = []) => (name) =>
+  headers.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value || '';
+
 class GmailAPI {
   constructor() {
     this.name = 'gmail-api';
@@ -24,35 +40,7 @@ class GmailAPI {
       auth.setCredentials({ access_token: accessToken });
 
       const gmail = google.gmail({ version: 'v1', auth });
-
-      let result;
-      const operation = params.operation ? params.operation.trim() : '';
-
-      switch (operation) {
-        case 'Send Email':
-          result = await this.sendEmail(gmail, params);
-          break;
-        case 'Reply to Email':
-          result = await this.replyToEmail(gmail, params);
-          break;
-        case 'Search and Read Emails':
-          result = await this.searchAndReadEmails(gmail, params);
-          break;
-        case 'List Emails Page':
-          result = await this.listEmailsPage(gmail, params);
-          break;
-        case 'Read Email':
-          result = await this.readEmail(gmail, params);
-          break;
-        case 'Modify Email':
-          result = await this.modifyEmail(gmail, params);
-          break;
-        case 'Get Attachments':
-          result = await this.getAttachments(gmail, params);
-          break;
-        default:
-          throw new Error(`Unsupported Gmail operation: '${params.operation}'`);
-      }
+      const result = await this.runOperation(gmail, params);
 
       return {
         success: true,
@@ -72,133 +60,261 @@ class GmailAPI {
     }
   }
 
-  async sendEmail(gmail, { to, subject, body, attachments }) {
+  async runOperation(gmail, params) {
+    const operation = params.operation ? params.operation.trim() : '';
+    switch (operation) {
+      case 'Send Email':
+        return this.sendEmail(gmail, params);
+      case 'Reply to Email':
+        return this.replyToEmail(gmail, params);
+      case 'Create Draft':
+        return this.createDraft(gmail, params);
+      case 'Create Reply Draft':
+        return this.createReplyDraft(gmail, params);
+      case 'Update Draft':
+        return this.updateDraft(gmail, params);
+      case 'List Drafts':
+        return this.listDrafts(gmail, params);
+      case 'Get Draft':
+        return this.getDraft(gmail, params);
+      case 'Delete Draft':
+        return this.deleteDraft(gmail, params);
+      case 'Search and Read Emails':
+        return this.searchAndReadEmails(gmail, params);
+      case 'List Emails Page':
+        return this.listEmailsPage(gmail, params);
+      case 'Read Email':
+        return this.readEmail(gmail, params);
+      case 'Modify Email':
+        return this.modifyEmail(gmail, params);
+      case 'Get Attachments':
+        return this.getAttachments(gmail, params);
+      default:
+        throw new Error(`Unsupported Gmail operation: '${params.operation}'`);
+    }
+  }
+
+  async sendEmail(gmail, { to, cc, bcc, subject, body, attachments }) {
     if (!to || !subject || !body) {
       throw new Error("'to', 'subject', and 'body' parameters are required for Send Email operation.");
     }
-    const boundary = '----=' + new Date().getTime();
-    let emailLines = [];
-
-    emailLines.push(`To: ${to}`);
-    emailLines.push(`Subject: ${subject}`);
-    emailLines.push('MIME-Version: 1.0');
-
-    const parsedAttachments = attachments
-      ? typeof attachments === 'string'
-        ? JSON.parse(attachments)
-        : attachments
-      : [];
-
-    if (parsedAttachments && parsedAttachments.length > 0) {
-      emailLines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
-      emailLines.push('');
-      emailLines.push(`--${boundary}`);
-    }
-
-    emailLines.push('Content-Type: text/html; charset=utf-8');
-    emailLines.push('');
-    emailLines.push(body);
-
-    if (parsedAttachments && parsedAttachments.length > 0) {
-      for (const attachment of parsedAttachments) {
-        emailLines.push('');
-        emailLines.push(`--${boundary}`);
-        emailLines.push(`Content-Type: ${attachment.mimetype}`);
-        emailLines.push('Content-Transfer-Encoding: base64');
-        emailLines.push(`Content-Disposition: attachment; filename="${attachment.filename}"`);
-        emailLines.push('');
-        emailLines.push(attachment.content);
-      }
-      emailLines.push('');
-      emailLines.push(`--${boundary}--`);
-    }
-
-    const email = emailLines.join('\n');
-    const base64EncodedEmail = Buffer.from(email).toString('base64url');
-
-    const res = await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: {
-        raw: base64EncodedEmail,
-      },
-    });
+    const raw = toRaw(buildMimeMessage({ to, cc, bcc, subject, body, attachments }));
+    const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
     return res.data;
   }
 
-  async replyToEmail(gmail, { messageId, body, attachments }) {
-    if (!messageId || !body) {
-      throw new Error("'messageId' and 'body' are required for Reply operation.");
-    }
-
-    const originalMessageRes = await gmail.users.messages.get({
-      userId: 'me',
-      id: messageId,
-      format: 'metadata',
-      metadataHeaders: ['Subject', 'From', 'To', 'Message-ID', 'References'],
-    });
-    const originalMessage = originalMessageRes.data;
-    const headers = originalMessage.payload.headers;
-
-    const getHeader = (name) =>
-      headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
-
-    const subject = getHeader('subject');
-    const from = getHeader('from');
-    const messageIdHeader = getHeader('message-id');
-    const references = getHeader('references');
-
-    const replySubject = subject.toLowerCase().startsWith('re:') ? subject : `Re: ${subject}`;
-
-    const boundary = '----=' + new Date().getTime();
-    let emailLines = [];
-
-    emailLines.push(`To: ${from}`);
-    emailLines.push(`Subject: ${replySubject}`);
-    emailLines.push(`In-Reply-To: ${messageIdHeader}`);
-    emailLines.push(`References: ${references ? references + ' ' : ''}${messageIdHeader}`);
-    emailLines.push('MIME-Version: 1.0');
-
-    const parsedAttachments = attachments
-      ? typeof attachments === 'string'
-        ? JSON.parse(attachments)
-        : attachments
-      : [];
-
-    if (parsedAttachments && parsedAttachments.length > 0) {
-      emailLines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
-      emailLines.push('');
-      emailLines.push(`--${boundary}`);
-    }
-
-    emailLines.push('Content-Type: text/html; charset=utf-8');
-    emailLines.push('');
-    emailLines.push(body);
-
-    if (parsedAttachments && parsedAttachments.length > 0) {
-      for (const attachment of parsedAttachments) {
-        emailLines.push('');
-        emailLines.push(`--${boundary}`);
-        emailLines.push(`Content-Type: ${attachment.mimetype}`);
-        emailLines.push('Content-Transfer-Encoding: base64');
-        emailLines.push(`Content-Disposition: attachment; filename="${attachment.filename}"`);
-        emailLines.push('');
-        emailLines.push(attachment.content);
-      }
-      emailLines.push('');
-      emailLines.push(`--${boundary}--`);
-    }
-
-    const email = emailLines.join('\n');
-    const base64EncodedEmail = Buffer.from(email).toString('base64url');
-
-    const res = await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: {
-        raw: base64EncodedEmail,
-        threadId: originalMessage.threadId,
-      },
-    });
+  async replyToEmail(gmail, params) {
+    const { raw, threadId } = await this.composeReply(gmail, params, 'Reply to Email');
+    const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw, threadId } });
     return res.data;
+  }
+
+  /**
+   * Build a threaded reply to messageId. Addressing follows Gmail's own rules:
+   * Reply-To wins over From; replying to a message I sent goes to its original
+   * recipients; reply-all adds the other To/Cc recipients minus me and the
+   * primary recipient.
+   */
+  async composeReply(gmail, { messageId, body, attachments, replyAll }, operationName) {
+    if (!messageId || !body) {
+      throw new Error(`'messageId' and 'body' are required for ${operationName}.`);
+    }
+
+    const [{ data: original }, { data: profile }] = await Promise.all([
+      gmail.users.messages.get({ userId: 'me', id: messageId, format: 'metadata', metadataHeaders: REPLY_HEADERS }),
+      gmail.users.getProfile({ userId: 'me' }),
+    ]);
+    const getHeader = headerReader(original.payload?.headers);
+    const myAddress = (profile.emailAddress || '').toLowerCase();
+
+    const sender = unfoldHeader(getHeader('Reply-To') || getHeader('From'));
+    const senderIsMe = addressesOf(sender).length > 0 && addressesOf(sender).every((email) => email === myAddress);
+    const to = senderIsMe ? unfoldHeader(getHeader('To')) : sender;
+
+    let cc = '';
+    if (replyAll === true || replyAll === 'true') {
+      const excluded = new Set([myAddress, ...addressesOf(to)]);
+      const kept = [];
+      for (const entry of [...splitAddressList(unfoldHeader(getHeader('To'))), ...splitAddressList(unfoldHeader(getHeader('Cc')))]) {
+        const [email] = addressesOf(entry);
+        if (!email || excluded.has(email)) continue;
+        excluded.add(email);
+        kept.push(entry);
+      }
+      cc = kept.join(', ');
+    }
+
+    const subject = unfoldHeader(getHeader('Subject'));
+    const messageIdHeader = unfoldHeader(getHeader('Message-ID'));
+    const references = [unfoldHeader(getHeader('References')), messageIdHeader].filter(Boolean).join(' ');
+
+    const raw = toRaw(
+      buildMimeMessage({
+        to,
+        cc,
+        subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`,
+        body,
+        inReplyTo: messageIdHeader,
+        references,
+        attachments,
+      })
+    );
+    return { raw, threadId: original.threadId };
+  }
+
+  draftSummary(draft) {
+    return {
+      draftId: draft.id,
+      messageId: draft.message?.id,
+      threadId: draft.message?.threadId,
+      sent: false,
+    };
+  }
+
+  async createDraft(gmail, { to, cc, bcc, subject, body, attachments }) {
+    if (!subject && !body) {
+      throw new Error("'subject' or 'body' is required for Create Draft.");
+    }
+    const raw = toRaw(buildMimeMessage({ to, cc, bcc, subject, body, attachments }));
+    const res = await gmail.users.drafts.create({ userId: 'me', requestBody: { message: { raw } } });
+    return this.draftSummary(res.data);
+  }
+
+  async createReplyDraft(gmail, params) {
+    const { raw, threadId } = await this.composeReply(gmail, params, 'Create Reply Draft');
+    const res = await gmail.users.drafts.create({ userId: 'me', requestBody: { message: { raw, threadId } } });
+    return this.draftSummary(res.data);
+  }
+
+  /**
+   * Replace a draft's content. Omitted fields keep the draft's current value,
+   * and threading headers are always preserved so a reply draft stays a reply.
+   */
+  async updateDraft(gmail, { draftId, to, cc, bcc, subject, body, attachments }) {
+    if (!draftId) throw new Error("'draftId' is required for Update Draft.");
+
+    const { data: existing } = await gmail.users.drafts.get({ userId: 'me', id: draftId, format: 'full' });
+    const payload = existing.message?.payload || {};
+    const getHeader = headerReader(payload.headers);
+
+    const hasNewAttachments = parseAttachments(attachments).length > 0;
+    if (!hasNewAttachments && this.collectParts(payload).some((part) => part.filename && part.body?.attachmentId)) {
+      // Rebuilding the message would silently drop them; make the caller decide.
+      throw new Error('This draft has attachments. Pass them again in \'attachments\' to update it, or edit it in Gmail.');
+    }
+
+    const keep = (value, headerName) => (value === undefined || value === null || value === '' ? unfoldHeader(getHeader(headerName)) : value);
+    const currentBody = this.extractBody(payload);
+    const raw = toRaw(
+      buildMimeMessage({
+        to: keep(to, 'To'),
+        cc: keep(cc, 'Cc'),
+        bcc: keep(bcc, 'Bcc'),
+        subject: keep(subject, 'Subject'),
+        body: body === undefined || body === null || body === '' ? currentBody.html || currentBody.text : body,
+        inReplyTo: getHeader('In-Reply-To'),
+        references: getHeader('References'),
+        attachments,
+      })
+    );
+
+    const res = await gmail.users.drafts.update({
+      userId: 'me',
+      id: draftId,
+      requestBody: { id: draftId, message: { raw, threadId: existing.message?.threadId } },
+    });
+    return this.draftSummary(res.data);
+  }
+
+  async listDrafts(gmail, { searchQuery, pageToken, maxResults = 10 }) {
+    const listRes = await gmail.users.drafts.list({
+      userId: 'me',
+      q: searchQuery || undefined,
+      maxResults: this.normalizeMaxResults(maxResults),
+      pageToken: pageToken || undefined,
+    });
+
+    const failedDraftIds = [];
+    const drafts = await this.mapWithConcurrency(listRes.data.drafts || [], 10, async (draft) => {
+      try {
+        const { data } = await gmail.users.drafts.get({
+          userId: 'me',
+          id: draft.id,
+          format: 'metadata',
+          metadataHeaders: ['To', 'Cc', 'Subject', 'Date', 'In-Reply-To'],
+        });
+        const getHeader = headerReader(data.message?.payload?.headers);
+        return {
+          ...this.draftSummary(data),
+          to: getHeader('To'),
+          cc: getHeader('Cc'),
+          subject: getHeader('Subject'),
+          date: getHeader('Date'),
+          isReply: Boolean(getHeader('In-Reply-To')),
+          snippet: data.message?.snippet || '',
+        };
+      } catch (error) {
+        failedDraftIds.push(draft.id);
+        console.error(`[GmailPlugin] Failed to read draft ${draft.id}:`, error?.message || 'Unknown Gmail error');
+        return null;
+      }
+    });
+
+    const result = {
+      drafts: drafts.filter(Boolean),
+      nextPageToken: listRes.data.nextPageToken || null,
+      resultSizeEstimate: listRes.data.resultSizeEstimate || 0,
+    };
+    if (failedDraftIds.length > 0) result.failedDraftIds = failedDraftIds;
+    return result;
+  }
+
+  async getDraft(gmail, { draftId }) {
+    if (!draftId) throw new Error("'draftId' is required for Get Draft.");
+    const { data } = await gmail.users.drafts.get({ userId: 'me', id: draftId, format: 'full' });
+    const payload = data.message?.payload || {};
+    const getHeader = headerReader(payload.headers);
+    const body = this.extractBody(payload);
+    return {
+      ...this.draftSummary(data),
+      to: getHeader('To'),
+      cc: getHeader('Cc'),
+      bcc: getHeader('Bcc'),
+      subject: getHeader('Subject'),
+      inReplyTo: getHeader('In-Reply-To'),
+      body: body.text || body.html,
+      bodyHtml: body.html,
+      attachments: this.collectParts(payload)
+        .filter((part) => part.filename && part.body?.attachmentId)
+        .map((part) => ({ filename: part.filename, mimetype: part.mimeType, size: part.body.size })),
+    };
+  }
+
+  async deleteDraft(gmail, { draftId }) {
+    if (!draftId) throw new Error("'draftId' is required for Delete Draft.");
+    await gmail.users.drafts.delete({ userId: 'me', id: draftId });
+    return { draftId, deleted: true };
+  }
+
+  /** Every MIME part of a payload, depth-first, including the root. */
+  collectParts(payload) {
+    const parts = [];
+    const visit = (part) => {
+      if (!part) return;
+      parts.push(part);
+      (part.parts || []).forEach(visit);
+    };
+    visit(payload);
+    return parts;
+  }
+
+  extractBody(payload) {
+    const decode = (part) => (part?.body?.data ? Buffer.from(part.body.data, 'base64url').toString('utf-8') : '');
+    const parts = this.collectParts(payload).filter((part) => !part.filename);
+    return {
+      text: decode(parts.find((part) => part.mimeType === 'text/plain')),
+      html: decode(parts.find((part) => part.mimeType === 'text/html')),
+    };
   }
 
   normalizeMaxResults(maxResults) {

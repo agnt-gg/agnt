@@ -1,7 +1,7 @@
 {
   "name": "gmail-plugin",
-  "version": "1.0.2",
-  "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments",
+  "version": "1.1.0",
+  "description": "Gmail integration plugin for AGNT - Send, reply, draft, read, organize, and manage attachments",
   "author": "AGNT",
   "icon": "gmail",
   "tools": [
@@ -13,7 +13,7 @@
         "category": "action",
         "type": "gmail-api",
         "icon": "gmail",
-        "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail.",
+        "description": "Send, reply, draft, read, organize, and manage attachments in Gmail. Draft operations only save drafts and never send.",
         "authRequired": "oauth",
         "authProvider": "google",
         "parameters": {
@@ -23,9 +23,15 @@
             "options": [
               "Search and Read Emails",
               "List Emails Page",
+              "Read Email",
               "Send Email",
               "Reply to Email",
-              "Read Email",
+              "Create Draft",
+              "Create Reply Draft",
+              "Update Draft",
+              "List Drafts",
+              "Get Draft",
+              "Delete Draft",
               "Modify Email",
               "Get Attachments"
             ],
@@ -36,25 +42,36 @@
           "searchQuery": {
             "type": "string",
             "inputType": "text",
-            "description": "Optional. Gmail search query (e.g., 'from:user is:unread'). If blank, fetches latest emails.",
+            "description": "Optional. Gmail search query (e.g., 'from:user is:unread', 'to:ada@example.com' for drafts). If blank, fetches latest.",
             "conditional": {
               "field": "operation",
-              "value": ["Search and Read Emails", "List Emails Page"]
+              "value": [
+                "Search and Read Emails",
+                "List Emails Page",
+                "List Drafts"
+              ]
             }
           },
           "pageToken": {
             "type": "string",
             "inputType": "text",
-            "description": "Optional. Continuation token returned by a previous List Emails Page call.",
+            "description": "Optional. Continuation token returned by a previous List Emails Page or List Drafts call.",
             "conditional": {
               "field": "operation",
-              "value": "List Emails Page"
+              "value": [
+                "List Emails Page",
+                "List Drafts"
+              ]
             }
           },
           "format": {
             "type": "string",
             "inputType": "select",
-            "options": ["ids", "metadata", "full"],
+            "options": [
+              "ids",
+              "metadata",
+              "full"
+            ],
             "description": "Page payload: IDs only, message metadata, or full bodies.",
             "default": "ids",
             "conditional": {
@@ -84,66 +101,137 @@
           "maxResults": {
             "type": "number",
             "inputType": "number",
-            "description": "Maximum number of emails to return.",
+            "description": "Maximum number of emails or drafts to return (1-500).",
             "default": 10,
             "conditional": {
               "field": "operation",
-              "value": ["Search and Read Emails", "List Emails Page"]
+              "value": [
+                "Search and Read Emails",
+                "List Emails Page",
+                "List Drafts"
+              ]
             }
           },
           "to": {
             "type": "string",
             "inputType": "text",
-            "description": "Recipient's email address. e.g. hello@example.com",
+            "description": "Recipient address(es), comma-separated. e.g. hello@example.com. Optional for drafts; Update Draft keeps the current value when blank.",
             "conditional": {
               "field": "operation",
-              "value": "Send Email"
+              "value": [
+                "Send Email",
+                "Create Draft",
+                "Update Draft"
+              ]
+            }
+          },
+          "cc": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional. Cc address(es), comma-separated.",
+            "conditional": {
+              "field": "operation",
+              "value": [
+                "Send Email",
+                "Create Draft",
+                "Update Draft"
+              ]
+            }
+          },
+          "bcc": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional. Bcc address(es), comma-separated.",
+            "conditional": {
+              "field": "operation",
+              "value": [
+                "Send Email",
+                "Create Draft",
+                "Update Draft"
+              ]
             }
           },
           "subject": {
             "type": "string",
             "inputType": "text",
-            "description": "Email subject.",
+            "description": "Email subject. Update Draft keeps the current subject when blank.",
             "conditional": {
               "field": "operation",
-              "value": "Send Email"
+              "value": [
+                "Send Email",
+                "Create Draft",
+                "Update Draft"
+              ]
             }
           },
           "body": {
             "type": "string",
             "inputType": "codearea",
-            "description": "Email body. Can be plain text or HTML.",
+            "description": "Email body. Plain text, or HTML when it contains tags. Update Draft keeps the current body when blank.",
             "conditional": {
               "field": "operation",
               "value": [
                 "Send Email",
-                "Reply to Email"
+                "Reply to Email",
+                "Create Draft",
+                "Create Reply Draft",
+                "Update Draft"
               ]
             }
           },
           "attachments": {
             "type": "string",
             "inputType": "codearea",
-            "description": "Optional. JSON array of attachment objects: [{ filename: 'file.txt', mimetype: 'text/plain', content: 'base64_string' }]",
+            "description": "Optional. JSON array of attachment objects: [{ filename: 'file.txt', mimetype: 'text/plain', content: 'base64_string' }]. Update Draft replaces existing attachments with these.",
             "conditional": {
               "field": "operation",
               "value": [
                 "Send Email",
-                "Reply to Email"
+                "Reply to Email",
+                "Create Draft",
+                "Create Reply Draft",
+                "Update Draft"
               ]
             }
           },
           "messageId": {
             "type": "string",
             "inputType": "text",
-            "description": "The ID of the email message to act on.",
+            "description": "The ID of the email message to act on (for replies: the message being replied to).",
             "conditional": {
               "field": "operation",
               "value": [
                 "Reply to Email",
+                "Create Reply Draft",
                 "Read Email",
                 "Modify Email",
                 "Get Attachments"
+              ]
+            }
+          },
+          "replyAll": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Also Cc everyone else on the original To and Cc lines (excluding you).",
+            "default": false,
+            "conditional": {
+              "field": "operation",
+              "value": [
+                "Reply to Email",
+                "Create Reply Draft"
+              ]
+            }
+          },
+          "draftId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the draft (returned by Create Draft, Create Reply Draft, or List Drafts).",
+            "conditional": {
+              "field": "operation",
+              "value": [
+                "Update Draft",
+                "Get Draft",
+                "Delete Draft"
               ]
             }
           },
@@ -173,7 +261,7 @@
           },
           "result": {
             "type": "object",
-            "description": "Result of the operation. Can be a list of emails, a single email object, attachment data, or API confirmation."
+            "description": "Result of the operation: emails, a single email, attachment data, draft info ({ draftId, messageId, threadId, sent: false }), or API confirmation."
           },
           "error": {
             "type": "string",

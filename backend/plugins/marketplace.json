@@ -586,12 +586,12 @@
       "name": "gmail-plugin",
       "displayName": "Gmail",
       "icon": "gmail",
-      "version": "1.0.2",
-      "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments.",
+      "version": "1.1.0",
+      "description": "Gmail integration plugin for AGNT - Send, reply, draft, read, organize, and manage attachments.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
-      "size": 12526577,
+      "size": 12526709,
       "tags": [
         "gmail",
         "email",
@@ -604,11 +604,11 @@
           "type": "gmail-api",
           "schema": {
             "title": "Gmail API",
-            "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail."
+            "description": "Send, reply, draft, read, organize, and manage attachments in Gmail. Draft operations only save drafts and never send."
           }
         }
       ],
-      "integrity": "sha256-IeqwOJbbcVNIjvLuyfgWbTVQcxHPV7e9F9StJPtXZPk=",
+      "integrity": "sha256-V5US+z6mAGkY3yEBx3pS8ufqr+KwVPOpTTyR2VFtA88=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
