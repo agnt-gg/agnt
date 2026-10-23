@@ -58,9 +58,13 @@ describe('OneCapsule', () => {
     await open(w);
     const steps = w.findAll('.one-step');
     expect(steps).toHaveLength(7);
-    expect(w.find('.one-step.is-current').attributes('data-testid')).toBe('one-step-google');
+    // Connect your AI comes first and is required (2026-10-21): next even after chatting on Flash.
+    expect(steps.map((s) => s.attributes('data-testid')).slice(2, 4)).toEqual(['one-step-brain', 'one-step-chat']);
+    expect(w.find('.one-step.is-current').attributes('data-testid')).toBe('one-step-brain');
+    expect(w.find('.one-step.is-current').text()).toContain('Connect your AI');
+    expect(w.find('.one-step.is-current .one-step-ask').text()).toBe('Connect');
     expect(w.find('[data-testid="one-step-chat"]').attributes('disabled')).toBeDefined();
-    expect(w.find('[data-testid="one-step-brain"]').text()).toContain('optional');
+    expect(w.find('[data-testid="one-step-brain"]').text()).not.toContain('optional');
     w.unmount();
   });
 
@@ -97,10 +101,10 @@ describe('OneCapsule', () => {
     w.unmount();
   });
 
-  it('says All set once every required step is done, the optional one aside', async () => {
+  it('says All set once every step is done, an AI of your own included', async () => {
     getters['contentOutputs/totalCount'] = 2;
     getters['workflows/allWorkflows'] = [{ id: 'w1' }];
-    state.appAuth.connectedApps = ['google'];
+    state.appAuth.connectedApps = ['google', 'openai-codex'];
     localStorage.setItem(flagsKey('maya@example.com'), JSON.stringify({ aha: true }));
     const w = mountCapsule();
     expect(w.find('[data-testid="one-capsule"]').text()).toBe('All set');

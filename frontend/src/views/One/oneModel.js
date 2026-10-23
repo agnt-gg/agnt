@@ -11,6 +11,7 @@
  * was sent, the capsule was hidden) are flags kept per account in
  * localStorage; see loadOneFlags.
  */
+import { CONNECT_AI_TITLE, CONNECT_AI_HINT } from '@/services/ownAi.js';
 
 // ── The first ten minutes ──────────────────────────────────────────────────
 
@@ -41,12 +42,17 @@ export function isAhaRequest(text) {
  * The seven goals, in order. `action` is what a tap does: put a sentence in
  * the composer (`ask`), or open the model picker (`models`; a key never goes
  * through the chat). The first two are done by the time anyone can see them.
+ *
+ * Connecting your own AI comes first and is required (2026-10-21): it was an
+ * optional step after the first chat, so the capsule offered it last and the
+ * first chats ran on AGNT Flash. It is done only when an AI is connected;
+ * starting on Flash ("for now") leaves it as the next step.
  */
 export const ONE_STEPS = Object.freeze([
   { id: 'get', title: 'Get AGNT' },
   { id: 'open', title: 'Open it' },
+  { id: 'brain', title: CONNECT_AI_TITLE, hint: CONNECT_AI_HINT, action: { kind: 'models' } },
   { id: 'chat', title: 'First chat', hint: 'Ask Annie anything', action: { kind: 'ask', text: FIRST_CHAT_PROMPT } },
-  { id: 'brain', title: 'A bigger brain', hint: 'Claude, ChatGPT or your own key', optional: true, action: { kind: 'models' } },
   { id: 'google', title: 'Connect Google', hint: 'Gmail, Calendar and Drive in one sign-in', action: { kind: 'ask', text: GOOGLE_PROMPT } },
   { id: 'aha', title: 'Prep me for tomorrow', hint: 'The one that saves an hour', action: { kind: 'ask', text: AHA_PROMPT } },
   { id: 'autopilot', title: 'Put it on autopilot', hint: 'Two apps, working together', action: { kind: 'ask', text: AUTOPILOT_PROMPT } },

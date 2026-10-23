@@ -48,10 +48,10 @@
           <span class="one-step-title">{{ step.title }}<span v-if="step.optional" class="one-step-optional">optional</span></span>
           <span v-if="step.hint && !step.done" class="one-step-hint">{{ step.hint }}</span>
         </span>
-        <span v-if="step.current" class="one-step-ask">Ask</span>
+        <span v-if="step.current" class="one-step-ask">{{ step.action?.kind === 'models' ? 'Connect' : 'Ask' }}</span>
       </button>
       <div class="one-pop-foot">
-        <span>Every step is a sentence to Annie</span>
+        <span>Every step is one click</span>
         <button type="button" class="one-pop-hide" data-testid="one-capsule-hide" @click="hide">Hide</button>
       </div>
     </div>

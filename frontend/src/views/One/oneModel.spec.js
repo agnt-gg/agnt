@@ -24,11 +24,14 @@ const memoryStorage = (initial = {}) => {
 
 describe('the first ten minutes', () => {
   it('has the seven goals, in order, and the first two are always done', () => {
-    expect(ONE_STEPS.map((s) => s.id)).toEqual(['get', 'open', 'chat', 'brain', 'google', 'aha', 'autopilot']);
+    // Connect your AI is the first real step (2026-10-21).
+    expect(ONE_STEPS.map((s) => s.id)).toEqual(['get', 'open', 'brain', 'chat', 'google', 'aha', 'autopilot']);
+    expect(ONE_STEPS.find((s) => s.id === 'brain')).toMatchObject({ title: 'Connect your AI' });
+    expect(ONE_STEPS.some((s) => s.optional)).toBe(false);
     const fresh = oneSummary();
     expect(fresh.done).toBe(2);
     expect(fresh.total).toBe(7);
-    expect(fresh.next.id).toBe('chat');
+    expect(fresh.next.id).toBe('brain');
     expect(fresh.complete).toBe(false);
   });
 
@@ -41,13 +44,15 @@ describe('the first ten minutes', () => {
     expect(s.next).toBe(null);
   });
 
-  it('never blocks on the optional bigger brain: it is next only when nothing required is left', () => {
-    const skipping = oneSummary({ facts: { chats: 3 } });
-    expect(skipping.next.id).toBe('google');
-    expect(skipping.steps.find((s) => s.id === 'brain')).toMatchObject({ optional: true, done: false, current: false });
+  // It used to be optional and offered last, so first chats ran on AGNT Flash.
+  it('Connect your AI stays next until an AI is connected, even after chatting on Flash', () => {
+    const onFlash = oneSummary({ facts: { chats: 3 } });
+    expect(onFlash.next.id).toBe('brain');
+    expect(onFlash.steps.find((s) => s.id === 'brain')).toMatchObject({ optional: false, done: false, current: true });
     const rest = oneSummary({ facts: { chats: 3, workflows: 2 }, apps: ['google'], flags: { aha: true } });
-    expect(rest.complete).toBe(true);
+    expect(rest.complete).toBe(false);
     expect(rest.next.id).toBe('brain');
+    expect(oneSummary({ facts: { chats: 3, workflows: 2, aiModels: 1 }, apps: ['google'], flags: { aha: true } }).complete).toBe(true);
   });
 
   it('treats garbage facts as zero rather than as progress', () => {
@@ -56,7 +61,7 @@ describe('the first ten minutes', () => {
   });
 
   it('marks exactly one step current', () => {
-    const s = oneSummary({ facts: { chats: 1 } });
+    const s = oneSummary({ facts: { chats: 1, aiModels: 1 } });
     expect(s.steps.filter((step) => step.current).map((step) => step.id)).toEqual(['google']);
   });
 
