@@ -7,6 +7,7 @@ import {
   workflowPayload,
   toolValues,
   toolPayload,
+  toolRunOutcome,
   validateToolInputs,
   cleanInputKey,
   renameInPrompt,
@@ -141,31 +142,48 @@ describe('tools', () => {
 
   // Reported 2026-10-21: the AGNT One tool editor had Inputs but no Outputs.
   describe('outputs', () => {
-    it('a tool with none shows the standard ones, so they can be edited', () => {
-      expect(toolValues({ base: 'AI', parameters: {} }).outputs.map((o) => o.key)).toEqual(['success', 'result', 'error']);
+    // success, result and error are always there (reported again 2026-10-21).
+    it('success, result and error are always listed first and fixed, even when a tool stored others only', () => {
+      const stored = { base: 'AI', parameters: {}, outputs: JSON.stringify({ summary: { type: 'string' } }) };
+      const rows = toolValues(stored).outputs;
+      expect(rows.map((o) => [o.key, !!o.standard])).toEqual([['success', true], ['result', true], ['error', true], ['summary', false]]);
+      expect(rows[0].type).toBe('boolean');
     });
 
-    it('adds, renames, retypes and removes outputs, keeping what the form does not show', () => {
+    it('adds, renames, retypes and removes custom outputs, keeping what the form does not show', () => {
       const stored = { id: 't', title: 'Summarise', base: 'AI', parameters: {}, outputs: JSON.stringify({ summary: { type: 'string', description: 'The summary', items: 'kept' }, old: { type: 'number' } }) };
       const v = toolValues(stored);
-      expect(v.outputs.map((o) => [o.key, o.type, o.description])).toEqual([['summary', 'string', 'The summary'], ['old', 'number', '']]);
-      v.outputs[0].key = 'gist';
-      v.outputs[0].type = 'object';
-      v.outputs.splice(1, 1);
+      const custom = v.outputs.filter((o) => !o.standard);
+      expect(custom.map((o) => [o.key, o.type, o.description])).toEqual([['summary', 'string', 'The summary'], ['old', 'number', '']]);
+      custom[0].key = 'gist';
+      custom[0].type = 'object';
+      v.outputs.splice(v.outputs.indexOf(custom[1]), 1);
       v.outputs.push({ key: 'wordCount', originalKey: '', type: 'number', description: ' How long it is ' });
-      expect(toolPayload(stored, v).outputs).toEqual({
-        gist: { type: 'object', description: 'The summary', items: 'kept' },
-        wordCount: { type: 'number', description: 'How long it is' },
-      });
+      const out = toolPayload(stored, v).outputs;
+      expect(Object.keys(out)).toEqual(['success', 'result', 'error', 'gist', 'wordCount']);
+      expect(out.gist).toEqual({ type: 'object', description: 'The summary', items: 'kept' });
+      expect(out.wordCount).toEqual({ type: 'number', description: 'How long it is' });
     });
 
-    it('removing every output saves the standard ones rather than none', () => {
+    it('the standard three are saved even if their rows are gone, with their own types', () => {
       const v = toolValues({ base: 'CODE_JS', parameters: {} });
       v.outputs = [];
-      expect(Object.keys(toolPayload({ parameters: {} }, v).outputs)).toEqual(['success', 'result', 'error']);
+      const out = toolPayload({ parameters: {} }, v).outputs;
+      expect(Object.keys(out)).toEqual(['success', 'result', 'error']);
+      expect(out.success.type).toBe('boolean');
     });
 
-    it('refuses a blank or duplicate output name', () => {
+    // Test runs in the AGNT One tool editor (2026-10-21). Bodies are the route's real answers.
+    it('a test run shows the tool\'s own outputs, and its own error when it fails', () => {
+      const worked = toolRunOutcome({ ok: true, status: 200, body: { success: true, result: { success: true, tool: 'id', result: { success: true, result: { success: true, result: 'HELLO!' }, error: null, outputs: { success: true, result: 'HELLO!' } } } } });
+      expect(worked).toMatchObject({ ok: true, error: '' });
+      expect(JSON.parse(worked.output)).toEqual({ success: true, result: 'HELLO!', error: null });
+      const failed = toolRunOutcome({ ok: false, status: 200, body: { success: false, tool: 'id', error: 'Tool execution failed', details: { success: false, tool: 'id', result: { success: false, result: null, error: 'Execution Error: boom from the tool', outputs: null } } } });
+      expect(failed).toMatchObject({ ok: false, error: 'Execution Error: boom from the tool' });
+      expect(toolRunOutcome({ ok: false, status: 500, body: {} }).error).toBe('HTTP 500');
+    });
+
+    it('refuses a blank, duplicate or standard name for a custom output', () => {
       const v = toolValues({ base: 'AI', parameters: {} });
       v.outputs.push({ key: '', type: 'string' });
       expect(() => toolPayload({ parameters: {} }, v)).toThrow('Every output needs a name.');

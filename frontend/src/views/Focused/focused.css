@@ -1962,6 +1962,35 @@
   align-items: center;
   margin-bottom: 8px;
 }
+/* Outputs: name | description | type | remove-or-lock. */
+.ui-focused .focused-input-row[data-testid='output-row'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 130px 32px;
+}
+.ui-focused .focused-input-row.standard .focused-input.mono { color: var(--text-secondary); }
+.ui-focused .focused-icon-btn.locked { display: inline-flex; justify-content: center; color: var(--text-tertiary); cursor: default; }
+
+/* Tool test run */
+.ui-focused .focused-test-result {
+  margin-top: 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ui-focused .focused-test-result.ok { border-color: rgba(var(--green-rgb), 0.5); }
+.ui-focused .focused-test-result.bad { border-color: rgba(var(--red-rgb), 0.5); }
+.ui-focused .focused-test-head { padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--terminal-border-color); }
+.ui-focused .focused-test-result.ok .focused-test-head { color: var(--text-green); }
+.ui-focused .focused-test-result pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 360px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
 .ui-focused .focused-req {
   display: inline-flex;
   align-items: center;

@@ -247,6 +247,21 @@ export default {
      * Refresh all tools - force refresh both regular tools and workflow tools
      * Call this after plugin install/uninstall to update all tool lists
      */
+    /**
+     * Run one tool now, the way agents do (POST /api/tools/:name/execute; a
+     * saved custom tool is found by id). For test runs from an editor.
+     * @returns {Promise<{ ok: boolean, status: number, body: object }>}
+     */
+    async executeTool(_context, { name, args = {} }) {
+      const { apiFetch } = await import('@/utils/apiFetch.js');
+      const response = await apiFetch(`${API_CONFIG.BASE_URL}/tools/${encodeURIComponent(name)}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({ args }),
+      });
+      const body = await response.json().catch(() => ({}));
+      return { ok: response.ok && body.success !== false, status: response.status, body };
+    },
+
     async refreshAllTools({ dispatch }) {
       console.log('[Tools Store] Refreshing all tools after plugin change...');
       await Promise.all([dispatch('fetchTools', { force: true }), dispatch('fetchWorkflowTools', { force: true })]);

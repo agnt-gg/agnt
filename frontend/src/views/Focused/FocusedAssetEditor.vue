@@ -172,14 +172,37 @@
           <span class="focused-flex"></span>
           <button v-if="!readOnly" type="button" class="focused-btn" data-action="add-output" @click="addOutput">Add output</button>
         </div>
-        <p v-if="!v.outputs.length" class="focused-empty">No outputs. Saving gives it the standard ones (success, result, error).</p>
-        <div v-for="(output, idx) in v.outputs" :key="'o' + idx" class="focused-input-row" data-testid="output-row">
-          <input v-model="output.key" class="focused-input mono" placeholder="Name" aria-label="Output name" :readonly="readOnly" @input="output.key = cleanInputKey(output.key)" />
+        <!-- success, result, error: every run reports them, so they are always listed and fixed. -->
+        <div v-for="(output, idx) in v.outputs" :key="'o' + idx" class="focused-input-row" :class="{ standard: output.standard }" data-testid="output-row">
+          <input v-model="output.key" class="focused-input mono" placeholder="Name" aria-label="Output name" :readonly="readOnly || output.standard" @input="output.key = cleanInputKey(output.key)" />
           <input v-model="output.description" class="focused-input" placeholder="What it holds" aria-label="Output description" :readonly="readOnly" />
-          <CustomSelect v-model="output.type" :options="outputTypeOptions(output.type)" :disabled="readOnly" />
-          <button v-if="!readOnly" type="button" class="focused-icon-btn" :aria-label="'Remove output ' + output.key" @click="v.outputs.splice(idx, 1)">
+          <CustomSelect v-model="output.type" :options="outputTypeOptions(output.type)" :disabled="readOnly || output.standard" />
+          <span v-if="output.standard" class="focused-icon-btn locked" v-tooltip="'Always included'" aria-label="Always included"><i class="fas fa-lock" aria-hidden="true"></i></span>
+          <button v-else-if="!readOnly" type="button" class="focused-icon-btn" :aria-label="'Remove output ' + output.key" @click="v.outputs.splice(idx, 1)">
             <i class="fas fa-times" aria-hidden="true"></i>
           </button>
+        </div>
+      </section>
+
+      <!-- Test: run the saved tool with these inputs, as agents and workflows would. -->
+      <section class="focused-edit-block" data-testid="tool-test">
+        <div class="focused-edit-block-head">
+          <h3>Test</h3>
+          <span class="focused-edit-hint">{{ isNew ? 'Save the tool to test it.' : dirty ? 'Runs after saving your changes.' : 'Runs the saved tool.' }}</span>
+          <span class="focused-flex"></span>
+          <button type="button" class="focused-btn primary" data-action="run-test" :disabled="isNew || testRun.running || saving || readOnly" @click="runTest">
+            {{ testRun.running ? 'Running…' : dirty ? 'Save & run' : 'Run' }}
+          </button>
+        </div>
+        <div v-for="input in v.inputs.filter((i) => i.key)" :key="'t' + input.key" class="focused-edit-row">
+          <span class="focused-edit-label">{{ input.label || input.key }}</span>
+          <label v-if="input.type === 'checkbox'" class="focused-req"><input v-model="testArgs[input.key]" type="checkbox" />Yes</label>
+          <AutoTextarea v-else-if="input.type === 'textarea'" v-model="testArgs[input.key]" class="focused-input" :aria-label="'Test value for ' + input.key" />
+          <input v-else v-model="testArgs[input.key]" class="focused-input" :type="input.type === 'number' ? 'number' : 'text'" :aria-label="'Test value for ' + input.key" />
+        </div>
+        <div v-if="testRun.output !== null || testRun.error" class="focused-test-result" :class="testRun.ok ? 'ok' : 'bad'" role="status" data-testid="test-result">
+          <div class="focused-test-head">{{ testRun.ok ? 'Worked' : 'Failed' }} · {{ testRun.ms }} ms</div>
+          <pre>{{ testRun.error || testRun.output }}</pre>
         </div>
       </section>
 
@@ -280,6 +303,7 @@ import {
   isPromptTool,
   INPUT_TYPES,
   OUTPUT_TYPES,
+  toolRunOutcome,
   cleanInputKey,
   renameInPrompt,
   isReadOnlySkill,
@@ -431,6 +455,44 @@ const modelOptions = computed(() => {
 });
 function addOutput() {
   v.value.outputs.push({ key: '', originalKey: '', type: 'string', description: '' });
+}
+
+// ── Test run (tools) ────────────────────────────────────────────────────────────
+// Runs the SAVED tool through the tools store (tools/executeTool), the path
+// agents use (customToolRunner). Unsaved edits are saved first, so what runs is
+// what is shown.
+const testArgs = reactive({});
+const testRun = reactive({ running: false, ok: false, ms: 0, output: null, error: '' });
+function testValue(input) {
+  const value = testArgs[input.key];
+  if (input.type === 'checkbox') return !!value;
+  if (input.type === 'number') return value === '' || value === undefined ? undefined : Number(value);
+  return value ?? '';
+}
+async function runTest() {
+  if (isNew.value || testRun.running) return;
+  if (dirty.value) {
+    await save();
+    if (error.value) return;
+  }
+  testRun.running = true;
+  testRun.error = '';
+  testRun.output = null;
+  const args = {};
+  for (const input of v.value.inputs) if (input.key) args[input.key] = testValue(input);
+  const started = performance.now();
+  try {
+    const outcome = toolRunOutcome(await store.dispatch('tools/executeTool', { name: props.itemId, args }));
+    testRun.ok = outcome.ok;
+    testRun.output = outcome.output;
+    testRun.error = outcome.error;
+  } catch (e) {
+    testRun.ok = false;
+    testRun.error = e?.message || String(e);
+  } finally {
+    testRun.ms = Math.round(performance.now() - started);
+    testRun.running = false;
+  }
 }
 const outputTypeOptions = (current) => {
   const opts = OUTPUT_TYPES.map(([value, label]) => ({ value, label }));

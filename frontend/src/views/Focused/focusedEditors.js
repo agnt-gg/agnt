@@ -327,16 +327,19 @@ export function toolValues(raw = {}) {
       ...(f && f.value !== undefined ? { value: f.value } : {}),
     }));
   // Outputs: what the tool returns, which workflows can wire into later steps.
-  // Missing means the defaults Tool Forge gives every tool, so they show and
-  // can be edited rather than appearing from nowhere on save.
+  // success, result and error are always there (every run reports them) and
+  // always listed first, locked; the tool's own outputs follow.
   const storedOutputs = toolParams(raw.outputs);
-  const outputSource = Object.keys(storedOutputs).length ? storedOutputs : defaultToolOutputs(toolBase(raw) === 'AI');
-  const outputs = Object.entries(outputSource).map(([key, o]) => ({
-    key,
-    originalKey: key,
-    type: (o && o.type) || 'any',
-    description: (o && o.description) || '',
-  }));
+  const standard = defaultToolOutputs(toolBase(raw) === 'AI');
+  const outputs = [
+    ...STANDARD_OUTPUTS.map((key) => {
+      const o = storedOutputs[key] || standard[key];
+      return { key, originalKey: key, type: standard[key].type, description: (o && o.description) || standard[key].description, standard: true };
+    }),
+    ...Object.entries(storedOutputs)
+      .filter(([key]) => !STANDARD_OUTPUTS.includes(key))
+      .map(([key, o]) => ({ key, originalKey: key, type: (o && o.type) || 'any', description: (o && o.description) || '' })),
+  ];
   return {
     name: raw.title || '',
     description: raw.description || '',
@@ -376,6 +379,28 @@ export function validateToolOutputs(outputs = []) {
   if (new Set(keys).size !== keys.length) throw new Error('Two outputs have the same name.');
   return null;
 }
+
+/**
+ * What a test run produced, from tools/executeTool's { ok, status, body }.
+ * The route wraps the runner's answer ({ success, tool, result }), and on
+ * failure puts it under `details` beside a generic "Tool execution failed".
+ * This digs out the tool's own outputs and its own error.
+ * @returns {{ ok: boolean, output: string, error: string }}
+ */
+export function toolRunOutcome({ ok = false, status = 0, body = {} } = {}) {
+  let result = body.result ?? body.details ?? body;
+  while (result && typeof result === 'object' && 'tool' in result && 'result' in result) result = result.result;
+  if (result && typeof result === 'object' && result.outputs && typeof result.outputs === 'object') result = { ...result.outputs, error: result.error ?? null };
+  const failed = !ok || (result && typeof result === 'object' && result.success === false);
+  return {
+    ok: !failed,
+    output: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+    error: failed ? String((result && typeof result === 'object' && result.error) || body.error || `HTTP ${status}`) : '',
+  };
+}
+
+/** Every tool reports these; they cannot be renamed, retyped or removed. */
+export const STANDARD_OUTPUTS = Object.freeze(['success', 'result', 'error']);
 
 /** Tool Forge's outputs for a tool that has none of its own. (A declaration: toolValues, above, uses it.) */
 function defaultToolOutputs(prompt) {
@@ -426,12 +451,17 @@ export function toolPayload(fresh, values) {
   };
 }
 
-/** Edited output rows -> the stored outputs, keeping anything a row does not show. None at all: the defaults. */
+/** Edited output rows -> the stored outputs, keeping anything a row does not show. The standard three are always saved. */
 function outputsPayload(storedOutputs, rows, prompt) {
-  if (!rows.length) return defaultToolOutputs(prompt);
   const stored = toolParams(storedOutputs);
+  const standard = defaultToolOutputs(prompt);
   const outputs = {};
-  for (const row of rows) {
+  for (const key of STANDARD_OUTPUTS) {
+    const row = rows.find((r) => r.key === key);
+    outputs[key] = { ...(stored[key] || {}), type: standard[key].type, description: String(row?.description || '').trim() || standard[key].description };
+  }
+  for (const row of rows.filter((r) => !r.standard)) {
+    if (STANDARD_OUTPUTS.includes(String(row.key).trim())) throw new Error(`"${String(row.key).trim()}" is a standard output; pick another name.`);
     const key = String(row.key).trim();
     const description = String(row.description || '').trim();
     outputs[key] = { ...(stored[row.originalKey || key] || {}), type: row.type || 'any', ...(description ? { description } : {}) };
