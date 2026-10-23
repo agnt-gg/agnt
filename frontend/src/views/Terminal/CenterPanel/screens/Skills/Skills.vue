@@ -288,6 +288,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ShareButton from '@/views/_components/share/ShareButton.vue';
+import { skillDisplayName } from '@/utils/skillDisplayName.js';
 
 const SKILL_ICONS = [
   'fas fa-puzzle-piece',
@@ -690,13 +691,8 @@ const importDiscoveredSkill = async (skill) => {
 };
 
 // Helpers
-const toTitleCase = (name) =>
-  !name
-    ? ''
-    : name
-        .split('-')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
+// Display only: "annie-universal-api-orchestrator" -> "Annie Universal API Orchestrator".
+const toTitleCase = skillDisplayName;
 const formatDelta = (d) => (d == null ? '\u2014' : (d >= 0 ? '+' : '') + d.toFixed(1));
 const formatPercent = (v) => (v == null ? '\u2014' : (v * 100).toFixed(0) + '%');
 const deltaClass = (d) => (d == null ? '' : d > 2 ? 'positive' : d < 0 ? 'negative' : 'neutral');

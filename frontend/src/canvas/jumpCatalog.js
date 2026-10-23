@@ -2,6 +2,7 @@ import {
   buildJumpIndex,
   matches
 } from './jumpIndex.js';
+import { skillDisplayName } from '@/utils/skillDisplayName.js';
 
 export const JUMP_CATEGORIES = [{
     id: 'conversation',
@@ -95,10 +96,11 @@ export function buildJumpCatalog(src) {
   });
   for (const item of src.skills || []) resources.push({
     id: `skill:${item.id}`,
-    label: item.name || item.title || 'Skill',
+    // Shown as people read it; the stored name stays searchable.
+    label: skillDisplayName(item.name || item.title) || 'Skill',
     icon: 'fas fa-graduation-cap',
     hint: 'skill',
-    searchText:item.description||'',
+    searchText: [item.name, item.description].filter(Boolean).join(' '),
     action: {
       type: 'screen',
       screen: 'SkillsScreen',
