@@ -176,6 +176,11 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
   background: var(--surface-active);
   color: var(--text-primary);
 }
+/* Chats with its drawer open while another page is highlighted: the icon is
+   lit, without the active background, so only the page reads as "here". */
+.ui-one .one-rail-btn.is-open {
+  color: var(--text-primary);
+}
 .ui-one .one-rail-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;

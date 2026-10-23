@@ -8,10 +8,11 @@
       :key="item.id"
       type="button"
       class="one-rail-btn"
-      :class="{ 'is-active': item.active }"
+      :class="{ 'is-active': item.active, 'is-open': item.open && !item.active }"
       :data-testid="`one-rail-${item.id}`"
       :aria-label="item.label"
       :aria-pressed="item.active ? 'true' : 'false'"
+      :aria-expanded="item.open === undefined ? undefined : item.open ? 'true' : 'false'"
       v-tooltip="item.label"
       @click="$emit('select', item.id)"
     >

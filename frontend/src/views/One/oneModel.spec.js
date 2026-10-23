@@ -128,9 +128,17 @@ describe('the rail', () => {
     expect(active('memory')).toEqual(['memory']);
   });
 
-  it('marks one icon active: the drawer wins, then the page, then a blank chat', () => {
+  // Reported 2026-10-21: with the Chats drawer left open, every page lit up
+  // Chats instead of itself. The page wins; an open drawer is shown as `open`.
+  it('marks one icon active: the page, then an open drawer, then a blank chat', () => {
     const active = (opts) => railItems(opts).filter((i) => i.active).map((i) => i.id);
-    expect(active({ drawerOpen: true, activePage: 'connectors' })).toEqual(['chats']);
+    expect(active({ drawerOpen: true, activePage: 'connectors' })).toEqual(['apps']);
+    expect(active({ drawerOpen: true, activePage: 'market' })).toEqual(['market']);
+    expect(active({ drawerOpen: true })).toEqual(['chats']);
+    expect(active({ drawerOpen: true, onBlankChat: true })).toEqual(['chats']);
+    const chats = (opts) => railItems(opts).find((i) => i.id === 'chats');
+    expect(chats({ drawerOpen: true, activePage: 'connectors' })).toMatchObject({ active: false, open: true });
+    expect(chats({ drawerOpen: false })).toMatchObject({ active: false, open: false });
     expect(active({ activePage: 'scheduled' })).toEqual(['routines']);
     expect(active({ onBlankChat: true })).toEqual(['new']);
     expect(active({})).toEqual([]);

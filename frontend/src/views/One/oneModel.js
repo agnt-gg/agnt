@@ -158,7 +158,12 @@ export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'schedule
  * The drawer now holds chats only. Settings is pinned to the bottom.
  */
 export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false } = {}) {
-  const active = drawerOpen ? 'chats' : RAIL_OF_PAGE[activePage] || (onBlankChat && !activePage ? 'new' : null);
+  // The page you are on is highlighted, open drawer or not. The drawer used to
+  // win, so with it left open every page lit up Chats (reported 2026-10-21).
+  // Chats is highlighted only on a chat with the drawer open; otherwise an
+  // open drawer is shown as `open` on the Chats icon.
+  const page = RAIL_OF_PAGE[activePage];
+  const active = page || (drawerOpen ? 'chats' : onBlankChat && !activePage ? 'new' : null);
   const items = [
     { id: 'new', label: 'New chat' },
     { id: 'chats', label: 'Chats' },
@@ -168,7 +173,7 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     { id: 'market', label: 'Market' },
     { id: 'memory', label: 'Memory' },
   ];
-  return items.map(({ id, label }) => ({ id, label, icon: RAIL_ICONS[id], active: active === id }));
+  return items.map(({ id, label }) => ({ id, label, icon: RAIL_ICONS[id], active: active === id, ...(id === 'chats' ? { open: drawerOpen } : {}) }));
 }
 
 // ── The greeting ───────────────────────────────────────────────────────────
