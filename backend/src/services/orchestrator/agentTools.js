@@ -283,53 +283,46 @@ export const AGENT_TOOLS = {
             error: 'No agent state available in context',
           });
         }
+        if (!userId) return JSON.stringify({ success: false, error: 'No authenticated user in context' });
 
-        // CRITICAL: Always use the agentId from context, NOT from agentState
-        const originalAgentId = agentId || agentState.id;
+        // Saved through AgentModel, by the rules AgentService.saveOrUpdateAgent
+        // uses. This used to INSERT OR REPLACE into columns `agents` no longer
+        // has (instructions, parameters), so every save failed (2026-10-23),
+        // and it took its id from context.agentId first: on the builder chat
+        // that is the 'agent-chat' sentinel, which must never become an id.
+        const SENTINELS = new Set(['agent-chat', 'orchestrator']);
+        const candidateId = [agentState.id, agentId].map((id) => (id ? String(id) : '')).find((id) => id && !SENTINELS.has(id) && !/^agent_\d+$/.test(id));
+        const { default: AgentModel } = await import('../../models/AgentModel.js');
+        const existing = candidateId ? await AgentModel.findOne(candidateId) : null;
+        const ownsExisting = !!existing && existing.created_by === userId;
+        const { default: generateUUID } = await import('../../utils/generateUUID.js');
+        const id = ownsExisting ? candidateId : generateUUID(); // someone else's agent is copied, never overwritten
 
-        // Use the exact agent state from context - no LLM regeneration
-        const state = {
+        const list = (value) => (Array.isArray(value) ? value.map((t) => (typeof t === 'string' ? t : t?.name || t?.id)).filter(Boolean) : null);
+        const agent = {
+          ...(ownsExisting ? existing : {}),
           ...agentState,
-          name: name || agentState.name || 'My Agent',
-          id: originalAgentId, // Force use of original ID
+          id,
+          name: name || agentState.name || existing?.name || 'My Agent',
+          systemPrompt: agentState.systemPrompt || agentState.instructions || existing?.systemPrompt || '',
+          assignedTools: list(agentState.assignedTools) || list(agentState.tools) || existing?.assignedTools || [],
+          assignedWorkflows: list(agentState.assignedWorkflows) || list(agentState.workflows) || existing?.assignedWorkflows || [],
+          status: agentState.status || existing?.status || 'active',
         };
-
-        // Save to database if available
-        if (db) {
-          await new Promise((resolve, reject) => {
-            const query = `INSERT OR REPLACE INTO agents (id, name, description, instructions, parameters, category, created_by, is_shareable, created_at, updated_at) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
-
-            db.run(
-              query,
-              [
-                originalAgentId,
-                state.name || 'Untitled Agent',
-                state.description || '',
-                state.instructions || '',
-                JSON.stringify(state),
-                'custom',
-                userId,
-                0, // not shareable by default
-              ],
-              function (err) {
-                if (err) {
-                  reject(err);
-                } else {
-                  resolve();
-                }
-              }
-            );
-          });
+        // AgentService pulls in the whole orchestrator: load it only when a default model is needed.
+        if (!ownsExisting && (!agent.provider || !agent.model)) {
+          const { applyUserDefaultProviderModel } = await import('../AgentService.js');
+          await applyUserDefaultProviderModel(agent, userId, 'new agent');
         }
+        await AgentModel.createOrUpdate(id, agent, userId);
 
-        // Return the exact state that was provided
         return JSON.stringify({
           success: true,
           message: `Agent saved${name ? ` with name "${name}"` : ''}.`,
-          name: state.name,
+          name: agent.name,
+          agentId: id,
           silent,
-          updatedAgent: state,
+          updatedAgent: agent,
           suggestion: `The agent has been saved${name ? ` with the new name "${name}"` : ''}.`,
         });
       } catch (error) {

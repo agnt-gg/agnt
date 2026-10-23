@@ -39,6 +39,71 @@ async function saveWorkflow(workflowId, workflowState, userId) {
 }
 
 /**
+ * Fill in what a model often leaves out of update_workflow's graph and that
+ * is mechanical, before validation: step ids, positions, a text label from
+ * label/name, edge ids, and edge ends written as a step's name, its index,
+ * `source`/`target` or `from`/`to`, or a bare string. A new workflow built
+ * in chat failed on "All nodes must have an id" and was never shown
+ * (2026-10-23). Anything that cannot be resolved is left for validation to
+ * refuse, with its own error.
+ */
+export function normalizeWorkflowDraft(input) {
+  // Steps and edges may arrive as JSON strings (the whole graph, or each item).
+  const parse = (value) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  };
+  const workflow = parse(input);
+  if (!workflow || typeof workflow !== 'object') return input;
+  const rawNodes = parse(workflow.nodes);
+  const rawEdges = parse(workflow.edges);
+  if (!Array.isArray(rawNodes) || !Array.isArray(rawEdges)) return workflow;
+  workflow.nodes = rawNodes.map(parse);
+  workflow.edges = rawEdges.map(parse);
+  const placed = [];
+  const original = new Map(); // what the model called each step -> its id
+  const nodes = workflow.nodes.map((raw, index) => {
+    const node = { ...raw };
+    const handle = node.id ?? node.key ?? node.name ?? node.label ?? node.text;
+    if (!node.id) node.id = generateNodeId();
+    if (!node.type) node.type = node.nodeType || node.node_type || node.toolType || node.data?.type || node.kind || undefined;
+    if (!node.text && (node.label || node.name || node.data?.label)) node.text = node.label || node.name || node.data.label;
+    if (node.x === undefined || node.y === undefined) {
+      const at = node.position && Number.isFinite(node.position.x) ? node.position : calculateAutoLayout(placed, placed.at(-1)?.id || null);
+      node.x = node.x ?? at.x;
+      node.y = node.y ?? at.y;
+    }
+    if (handle !== undefined && handle !== null) original.set(String(handle), node.id);
+    original.set(String(index), node.id);
+    placed.push(node);
+    return node;
+  });
+  const resolve = (end) => {
+    const ref = end && typeof end === 'object' ? end.id ?? end.node ?? end.nodeId : end;
+    if (ref === undefined || ref === null) return null;
+    const key = String(ref);
+    if (nodes.some((n) => n.id === key)) return key;
+    return original.get(key) || findNodeByIdentifier(nodes, key)?.id || null;
+  };
+  const edges = workflow.edges.map((raw) => {
+    const edge = { ...raw };
+    const startRef = edge.start ?? edge.source ?? edge.from;
+    const endRef = edge.end ?? edge.target ?? edge.to;
+    const startId = resolve(startRef);
+    const endId = resolve(endRef);
+    if (startId) edge.start = { ...(startRef && typeof startRef === 'object' ? startRef : {}), id: startId, type: (startRef && startRef.type) || 'output' };
+    if (endId) edge.end = { ...(endRef && typeof endRef === 'object' ? endRef : {}), id: endId, type: (endRef && endRef.type) || 'input' };
+    if (!edge.id && startId && endId) edge.id = generateEdgeId(startId, endId);
+    return edge;
+  });
+  return { ...workflow, nodes, edges };
+}
+
+/**
  * Extract user ID from auth token
  */
 function getUserIdFromToken(authToken) {
@@ -74,13 +139,17 @@ export const TOOLS = {
               type: 'object',
               description: 'Complete workflow object with nodes array, edges array, and all required properties. MUST include ALL nodes (existing + new) and ALL edges.',
               properties: {
+                // `items: object`: without it some models send each node as a
+                // JSON string, which validation then rejected (2026-10-23).
                 nodes: {
                   type: 'array',
-                  description: 'Array of all workflow nodes (existing + new)',
+                  description: 'Array of all workflow nodes (existing + new). Each node is an object: { id, type, text, x, y, parameters }.',
+                  items: { type: 'object' },
                 },
                 edges: {
                   type: 'array',
-                  description: 'Array of all workflow edges (existing + new)',
+                  description: 'Array of all workflow edges (existing + new). Each edge is an object: { id, start: { id, type: "output" }, end: { id, type: "input" } }.',
+                  items: { type: 'object' },
                 },
                 name: {
                   type: 'string',
@@ -98,9 +167,10 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ workflow, summary }, authToken, context) => {
+    execute: async ({ workflow: drafted, summary }, authToken, context) => {
       try {
         const { workflowState, workflowId } = context;
+        const workflow = normalizeWorkflowDraft(drafted) || drafted;
 
         if (!workflowState) {
           return JSON.stringify({ success: false, error: 'No workflow state available' });
@@ -135,7 +205,7 @@ export const TOOLS = {
             return JSON.stringify({ success: false, error: 'All nodes must have an id' });
           }
           if (!node.type) {
-            return JSON.stringify({ success: false, error: `Node ${node.id} must have a type` });
+            return JSON.stringify({ success: false, error: `Node ${node.id} must have a type (a node type from get_available_tool_node_types, in "type"); it has: ${Object.keys(node).join(', ')}` });
           }
           if (!node.text) {
             return JSON.stringify({ success: false, error: `Node ${node.id} must have a text label` });

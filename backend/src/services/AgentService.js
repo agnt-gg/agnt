@@ -34,7 +34,7 @@ function applyAgentModel(body, provider, model) {
  * an agent record paired to a model the user's provider cannot serve (e.g.
  * Codex provider + claude/gpt-4 model name silently 4xx's later).
  */
-async function applyUserDefaultProviderModel(agent, userId, label) {
+export async function applyUserDefaultProviderModel(agent, userId, label) {
   if (agent.provider && agent.model) return;
 
   const userSettings = await UserModel.getUserSettings(userId);
