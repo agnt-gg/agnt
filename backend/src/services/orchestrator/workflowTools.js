@@ -4,6 +4,7 @@ import WorkflowVersionService from '../WorkflowVersionService.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import {
   calculateAutoLayout,
+  layoutTopDown,
   validateNodeType,
   validateNodeConnections,
   cleanupOrphanedEdges,
@@ -47,7 +48,7 @@ async function saveWorkflow(workflowId, workflowState, userId) {
  * (2026-10-23). Anything that cannot be resolved is left for validation to
  * refuse, with its own error.
  */
-export function normalizeWorkflowDraft(input) {
+export function normalizeWorkflowDraft(input, previousNodes = []) {
   // Steps and edges may arrive as JSON strings (the whole graph, or each item).
   const parse = (value) => {
     if (typeof value !== 'string') return value;
@@ -67,6 +68,8 @@ export function normalizeWorkflowDraft(input) {
   const placed = [];
   const original = new Map(); // what the model called each step -> its id
   const nodes = workflow.nodes.map((raw, index) => {
+    // Not an object even after parsing: left as is, for validation to refuse.
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
     const node = { ...raw };
     const handle = node.id ?? node.key ?? node.name ?? node.label ?? node.text;
     if (!node.id) node.id = generateNodeId();
@@ -90,6 +93,7 @@ export function normalizeWorkflowDraft(input) {
     return original.get(key) || findNodeByIdentifier(nodes, key)?.id || null;
   };
   const edges = workflow.edges.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
     const edge = { ...raw };
     const startRef = edge.start ?? edge.source ?? edge.from;
     const endRef = edge.end ?? edge.target ?? edge.to;
@@ -100,6 +104,22 @@ export function normalizeWorkflowDraft(input) {
     if (!edge.id && startId && endId) edge.id = generateEdgeId(startId, endId);
     return edge;
   });
+  // Top-down (2026-10-23): a workflow built fresh is laid out by step order;
+  // a step added to an existing one goes below the step that feeds it. Steps
+  // already on the canvas keep where the user put them.
+  if (nodes.some((n) => !n || typeof n !== 'object')) return { ...workflow, nodes, edges };
+  const before = new Map((Array.isArray(previousNodes) ? previousNodes : []).map((n) => [n?.id, n]));
+  const fresh = !nodes.some((n) => before.has(n.id));
+  if (fresh) {
+    const at = layoutTopDown(nodes, edges);
+    for (const node of nodes) Object.assign(node, at.get(node.id));
+  } else {
+    for (const node of nodes) {
+      if (before.has(node.id)) continue;
+      const feeder = edges.find((e) => e.end?.id === node.id)?.start?.id;
+      Object.assign(node, calculateAutoLayout(nodes.filter((n) => n !== node), feeder || null));
+    }
+  }
   return { ...workflow, nodes, edges };
 }
 
@@ -170,7 +190,7 @@ export const TOOLS = {
     execute: async ({ workflow: drafted, summary }, authToken, context) => {
       try {
         const { workflowState, workflowId } = context;
-        const workflow = normalizeWorkflowDraft(drafted) || drafted;
+        const workflow = normalizeWorkflowDraft(drafted, workflowState?.nodes) || drafted;
 
         if (!workflowState) {
           return JSON.stringify({ success: false, error: 'No workflow state available' });

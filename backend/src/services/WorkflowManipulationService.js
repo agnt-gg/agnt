@@ -12,8 +12,7 @@ import { randomUUID } from 'crypto';
  * @returns {object} - {x, y} coordinates
  */
 export function calculateAutoLayout(existingNodes, insertAfterNodeId = null) {
-  const GRID_SPACING_X = 300;
-  const GRID_SPACING_Y = 150;
+  const GRID_SPACING_Y = TOP_DOWN.rowGap;
   const START_X = 100;
   const START_Y = 100;
 
@@ -38,22 +37,68 @@ export function calculateAutoLayout(existingNodes, insertAfterNodeId = null) {
     }
   }
 
-  // Otherwise, find the next available position in a grid layout
-  const rightmostNode = existingNodes.reduce(
+  // Otherwise below the lowest step: workflows read top-down (2026-10-23;
+  // they used to grow to the right).
+  const lowest = existingNodes.reduce(
     (max, node) => {
-      // Support both x/y and position.x/position.y
       const nodeX = node.x !== undefined ? node.x : node.position?.x;
       const nodeY = node.y !== undefined ? node.y : node.position?.y;
-      if (nodeX === undefined) return max;
-      return nodeX > max.x ? { x: nodeX, y: nodeY } : max;
+      if (nodeY === undefined) return max;
+      return nodeY > max.y ? { x: nodeX ?? START_X, y: nodeY } : max;
     },
-    { x: START_X, y: START_Y }
+    { x: START_X, y: START_Y - GRID_SPACING_Y }
   );
 
   return {
-    x: rightmostNode.x + GRID_SPACING_X,
-    y: rightmostNode.y,
+    x: lowest.x,
+    y: lowest.y + GRID_SPACING_Y,
   };
+}
+
+/** Spacing of the top-down layout. Steps are ~272px wide and up to ~150 tall. */
+export const TOP_DOWN = Object.freeze({ startX: 100, startY: 100, rowGap: 200, columnGap: 340 });
+
+/**
+ * Positions for a whole graph, top-down: each step one row below the deepest
+ * step that leads to it, steps of a row side by side. Pure; returns a Map of
+ * id -> {x, y}. Cycles are cut at the first revisit.
+ */
+export function layoutTopDown(nodes = [], edges = []) {
+  const ids = nodes.map((n) => n.id);
+  const incoming = new Map(ids.map((id) => [id, []]));
+  const outgoing = new Map(ids.map((id) => [id, []]));
+  for (const e of edges) {
+    const from = e?.start?.id ?? e?.source;
+    const to = e?.end?.id ?? e?.target;
+    if (incoming.has(to) && outgoing.has(from) && from !== to) {
+      incoming.get(to).push(from);
+      outgoing.get(from).push(to);
+    }
+  }
+  // Longest path from a root, so a step always sits below everything feeding it.
+  const depth = new Map();
+  const visiting = new Set();
+  const depthOf = (id) => {
+    if (depth.has(id)) return depth.get(id);
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const d = incoming.get(id).length ? Math.max(...incoming.get(id).map((p) => depthOf(p) + 1)) : 0;
+    visiting.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+  ids.forEach(depthOf);
+  const rows = new Map();
+  for (const id of ids) {
+    const d = depth.get(id);
+    if (!rows.has(d)) rows.set(d, []);
+    rows.get(d).push(id);
+  }
+  const positions = new Map();
+  for (const [d, row] of rows) {
+    row.forEach((id, i) => positions.set(id, { x: TOP_DOWN.startX + i * TOP_DOWN.columnGap, y: TOP_DOWN.startY + d * TOP_DOWN.rowGap }));
+  }
+  return positions;
 }
 
 /**
