@@ -23,6 +23,8 @@ const store = {
   dispatch: vi.fn().mockResolvedValue(undefined),
 };
 vi.mock('vuex', () => ({ useStore: () => store }));
+const route = { path: '/plugins', query: {} };
+vi.mock('vue-router', () => ({ useRoute: () => route }));
 
 let requested;
 vi.mock('@/utils/apiFetch.js', () => ({
@@ -60,6 +62,8 @@ const buttonByText = (wrapper, text) => wrapper.findAll('button').find((b) => b.
 const dispatched = (action) => store.dispatch.mock.calls.filter(([name]) => name === action).map(([, payload]) => payload);
 
 beforeEach(() => {
+  route.path = '/plugins';
+  route.query = {};
   installed = [
     { name: 'weather', version: '1.4.0', description: 'w', tools: [{ type: 'weather-now' }] },
     { name: 'notion-sync', version: '0.4.0', description: 'Notion pages', tools: [{ type: 'notion-search' }, { type: 'notion-page' }] },
@@ -183,6 +187,40 @@ describe('into the Forge', () => {
     expect(showModal.mock.calls[0][0].message).toContain('Todo Sync');
     expect(dispatched('pluginBuilder/resetAll')).toHaveLength(0);
     expect(dispatched('connectors/setActiveTab')).toContain('builder');
+  });
+
+  // Reported 2026-10-21: "Edit in the Forge" (/plugin-forge?select=plugin:<name>)
+  // landed on the Forge's start page; nothing read the selection.
+  it('"Edit in the Forge" opens that plugin in the editor directly', async () => {
+    route.path = '/plugin-forge';
+    route.query = { select: 'plugin:weather' };
+    mountScreen();
+    await flushPromises();
+
+    expect(dispatched('connectors/setActiveTab')).toContain('builder');
+    expect(dispatched('pluginBuilder/loadPluginForEditing')).toEqual(['weather']);
+    expect(showModal).not.toHaveBeenCalled();
+  });
+
+  it('it still asks before replacing an unfinished draft, and keeps it on Keep it', async () => {
+    route.path = '/plugin-forge';
+    route.query = { select: 'plugin:weather' };
+    store.state.pluginBuilder.generatedManifest = { name: 'todo-sync', tools: [] };
+    store.getters['pluginBuilder/hasUninstalledWork'] = true;
+    showModal.mockResolvedValue(false); // "Keep it"
+    mountScreen();
+    await flushPromises();
+
+    expect(showModal.mock.calls[0][0].title).toBe('Replace your unfinished plugin?');
+    expect(dispatched('pluginBuilder/loadPluginForEditing')).toEqual([]);
+  });
+
+  it('the same selection on the Plugins catalog does not open the Forge', async () => {
+    route.query = { select: 'plugin:weather' }; // path stays /plugins
+    mountScreen();
+    await flushPromises();
+
+    expect(dispatched('pluginBuilder/loadPluginForEditing')).toEqual([]);
   });
 
   it('a saved "publish" tab from the old layout lands on the library', async () => {

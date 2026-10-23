@@ -368,6 +368,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseInput from '@/views/Terminal/_components/BaseInput.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
@@ -638,6 +639,25 @@ export default {
       activeTab.value = 'builder';
     }
 
+    /**
+     * "Edit in the Forge" links here as /plugin-forge?select=plugin:<name>.
+     * Nothing read it, so the button landed on the Forge's start page
+     * (reported 2026-10-21). That plugin opens in the editor instead, through
+     * openInForge (which still asks before replacing an unfinished draft).
+     */
+    const route = useRoute();
+    const forgeTarget = computed(() => {
+      if (route?.path !== '/plugin-forge') return null;
+      const select = Array.isArray(route.query?.select) ? route.query.select[0] : route.query?.select;
+      return typeof select === 'string' && select.startsWith('plugin:') ? select.slice('plugin:'.length) || null : null;
+    });
+    async function openForgeTarget() {
+      const name = forgeTarget.value;
+      if (!name) return;
+      const plugin = installedPlugins.value.find((entry) => entry.name === name) || { name };
+      await openInForge(plugin);
+    }
+
     async function openInForge(plugin) {
       openMenuFor.value = null;
       const alreadyOpen = builder.value.generatedManifest?.name === plugin.name;
@@ -650,6 +670,11 @@ export default {
 
     // Stripe Connect status from store
     const stripeConnected = computed(() => store.getters['userAuth/stripeConnected'] || false);
+
+    // A new "Edit in the Forge" while the Forge is already open.
+    watch(forgeTarget, (name, previous) => {
+      if (name && name !== previous) openForgeTarget();
+    });
 
     // Watch for refresh trigger from SecretsPanel
     watch(
@@ -1704,6 +1729,7 @@ export default {
       if (activeTab.value === 'publish') activeTab.value = 'installed';
 
       refreshPlugins();
+      openForgeTarget();
       // Needed before the publish sheet can tell create from update.
       fetchMyPublishedPlugins();
       // Drives the review badge — the only thing on this screen still
