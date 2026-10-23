@@ -138,6 +138,41 @@ describe('tools', () => {
     expect(toolValues({ parameters: '{not json' }).inputs).toEqual([]);
     expect(toolValues({ parameters: ['x'] }).inputs).toEqual([]);
   });
+
+  // Reported 2026-10-21: the AGNT One tool editor had Inputs but no Outputs.
+  describe('outputs', () => {
+    it('a tool with none shows the standard ones, so they can be edited', () => {
+      expect(toolValues({ base: 'AI', parameters: {} }).outputs.map((o) => o.key)).toEqual(['success', 'result', 'error']);
+    });
+
+    it('adds, renames, retypes and removes outputs, keeping what the form does not show', () => {
+      const stored = { id: 't', title: 'Summarise', base: 'AI', parameters: {}, outputs: JSON.stringify({ summary: { type: 'string', description: 'The summary', items: 'kept' }, old: { type: 'number' } }) };
+      const v = toolValues(stored);
+      expect(v.outputs.map((o) => [o.key, o.type, o.description])).toEqual([['summary', 'string', 'The summary'], ['old', 'number', '']]);
+      v.outputs[0].key = 'gist';
+      v.outputs[0].type = 'object';
+      v.outputs.splice(1, 1);
+      v.outputs.push({ key: 'wordCount', originalKey: '', type: 'number', description: ' How long it is ' });
+      expect(toolPayload(stored, v).outputs).toEqual({
+        gist: { type: 'object', description: 'The summary', items: 'kept' },
+        wordCount: { type: 'number', description: 'How long it is' },
+      });
+    });
+
+    it('removing every output saves the standard ones rather than none', () => {
+      const v = toolValues({ base: 'CODE_JS', parameters: {} });
+      v.outputs = [];
+      expect(Object.keys(toolPayload({ parameters: {} }, v).outputs)).toEqual(['success', 'result', 'error']);
+    });
+
+    it('refuses a blank or duplicate output name', () => {
+      const v = toolValues({ base: 'AI', parameters: {} });
+      v.outputs.push({ key: '', type: 'string' });
+      expect(() => toolPayload({ parameters: {} }, v)).toThrow('Every output needs a name.');
+      v.outputs[3].key = 'result';
+      expect(() => toolPayload({ parameters: {} }, v)).toThrow('Two outputs have the same name.');
+    });
+  });
 });
 
 describe('skills and widgets', () => {

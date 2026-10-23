@@ -166,6 +166,24 @@
       </section>
 
       <section class="focused-edit-block">
+        <div class="focused-edit-block-head">
+          <h3>Outputs</h3>
+          <span class="focused-edit-hint">What it returns. Later workflow steps can use each one.</span>
+          <span class="focused-flex"></span>
+          <button v-if="!readOnly" type="button" class="focused-btn" data-action="add-output" @click="addOutput">Add output</button>
+        </div>
+        <p v-if="!v.outputs.length" class="focused-empty">No outputs. Saving gives it the standard ones (success, result, error).</p>
+        <div v-for="(output, idx) in v.outputs" :key="'o' + idx" class="focused-input-row" data-testid="output-row">
+          <input v-model="output.key" class="focused-input mono" placeholder="Name" aria-label="Output name" :readonly="readOnly" @input="output.key = cleanInputKey(output.key)" />
+          <input v-model="output.description" class="focused-input" placeholder="What it holds" aria-label="Output description" :readonly="readOnly" />
+          <CustomSelect v-model="output.type" :options="outputTypeOptions(output.type)" :disabled="readOnly" />
+          <button v-if="!readOnly" type="button" class="focused-icon-btn" :aria-label="'Remove output ' + output.key" @click="v.outputs.splice(idx, 1)">
+            <i class="fas fa-times" aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
+
+      <section class="focused-edit-block">
         <div class="focused-edit-block-head"><h3>Settings</h3></div>
         <div class="focused-edit-card">
           <div v-if="isPrompt" class="focused-edit-row">
@@ -261,6 +279,7 @@ import {
   TOOL_TYPES,
   isPromptTool,
   INPUT_TYPES,
+  OUTPUT_TYPES,
   cleanInputKey,
   renameInPrompt,
   isReadOnlySkill,
@@ -304,7 +323,9 @@ const note = computed(() => {
   return '';
 });
 const deleteLabel = computed(() => (isNew.value || readOnly.value || props.kind === 'tools' ? '' : `Delete ${tab.value.noun}`));
-const fullEditor = computed(() => !isNew.value && ['workflows', 'tools'].includes(props.kind));
+// Workflows keep the canvas. Tools are edited fully here (type, prompt or
+// code, inputs, outputs, model): AGNT One has no separate Tool Forge (2026-10-21).
+const fullEditor = computed(() => !isNew.value && props.kind === 'workflows');
 
 // ── Loading, through the shared stores ─────────────────────────────────────
 async function fetchRaw() {
@@ -408,6 +429,13 @@ const modelOptions = computed(() => {
   const cur = v.value.model;
   return cur && !ids.includes(cur) ? [cur, ...ids] : ids;
 });
+function addOutput() {
+  v.value.outputs.push({ key: '', originalKey: '', type: 'string', description: '' });
+}
+const outputTypeOptions = (current) => {
+  const opts = OUTPUT_TYPES.map(([value, label]) => ({ value, label }));
+  return current && !opts.some((o) => o.value === current) ? [{ value: current, label: current }, ...opts] : opts;
+};
 /** The type choices, keeping a stored type this editor does not offer. */
 const typeOptions = (current) => {
   const opts = INPUT_TYPES.map(([value, label]) => ({ value, label }));
@@ -503,8 +531,7 @@ async function leave() {
   nav.go({ page: 'library', tab: props.kind });
 }
 function openFull() {
-  if (props.kind === 'workflows') nav.studio('WorkflowForgeScreen', { workflowId: props.itemId });
-  else nav.studio('ToolForgeScreen', { toolId: props.itemId });
+  nav.studio('WorkflowForgeScreen', { workflowId: props.itemId });
 }
 const DELETE_ACTIONS = { workflows: 'workflows/deleteWorkflow', skills: 'skills/deleteSkill', widgets: 'widgetDefinitions/deleteDefinition' };
 async function remove() {
