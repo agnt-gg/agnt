@@ -6,6 +6,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const outputs = [
   { id: 'c1', title: 'Quarterly plan', updated_at: '2026-10-04T10:00:00Z', last_read_at: '2026-10-04T09:00:00Z' },
@@ -72,6 +75,11 @@ describe('navigation: false (beside a rail)', () => {
     // New chat is here, between search and close (it left the rail, 2026-10-21).
     const head = w.findAll('.focused-icon-btn').map((b) => b.attributes('aria-label'));
     expect(head.slice(head.indexOf('Search chats'), head.indexOf('Search chats') + 3)).toEqual(['Search chats', 'New chat', 'Close sidebar']);
+    // Their tooltips open below, not over the neighbouring buttons (2026-10-21).
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'FocusedSidebar.vue'), 'utf8');
+    for (const label of ['Search chats', 'New chat', 'Close sidebar']) {
+      expect(source, label).toMatch(new RegExp(`aria-label="${label}" v-tooltip\\.bottom=`));
+    }
     expect(w.find('[aria-label="Search chats"]').exists()).toBe(true);
     expect(w.find('.focused-account').exists()).toBe(true);
     w.unmount();

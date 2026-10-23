@@ -4,15 +4,17 @@
       <img class="focused-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
       <span class="focused-wordmark">agnt</span>
       <span class="focused-flex"></span>
-      <button type="button" class="focused-icon-btn" aria-label="Search chats" v-tooltip="'Search chats'" @click="toggleSearch">
+      <!-- Tooltips open BELOW these: above, at the top of the window, they sat
+           over the neighbouring buttons (2026-10-21). -->
+      <button type="button" class="focused-icon-btn" aria-label="Search chats" v-tooltip.bottom="'Search chats'" @click="toggleSearch">
         <i class="fas fa-search" aria-hidden="true"></i>
       </button>
       <!-- New chat lives here, between search and close, on every screen size
            (it left AGNT One's rail, 2026-10-21). -->
-      <button type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip="'New chat'" @click="$emit('new-chat')">
+      <button type="button" class="focused-icon-btn" data-testid="focused-new-chat" aria-label="New chat" v-tooltip.bottom="'New chat'" @click="$emit('new-chat')">
         <i class="fas fa-edit" aria-hidden="true"></i>
       </button>
-      <button type="button" class="focused-icon-btn" aria-label="Close sidebar" v-tooltip="'Close sidebar'" @click="$emit('close')">
+      <button type="button" class="focused-icon-btn" aria-label="Close sidebar" v-tooltip.bottom="'Close sidebar'" @click="$emit('close')">
         <i class="fas fa-angle-double-left" aria-hidden="true"></i>
       </button>
     </div>
