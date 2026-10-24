@@ -125,8 +125,8 @@ export function focusedLocation(screen, query = {}) {
       return listing ? { page: 'market', item: listing } : library('agents');
     }
     case 'TracesScreen':
-      // One run's full trace stays Studio's; the list of runs is Activity.
-      return str(query.executionId) || selected(query, 'trace') || selected(query, 'execution') ? null : { page: 'activity' };
+      // The list of runs, or one run in full (2026-10-23).
+      return { page: 'activity', item: str(query.executionId) || selected(query, 'execution') || selected(query, 'trace') || null };
     default:
       return null;
   }
@@ -168,7 +168,7 @@ export function routeFor(loc) {
   }
   if (loc.page === 'settings') return [PAGE_SCREENS.settings, loc.section === 'members' ? { section: 'members' } : {}];
   if (loc.page === 'market') return loc.item ? [PAGE_SCREENS.market, { select: { kind: 'marketplace', id: loc.item } }] : [LIBRARY_TAB_SCREENS.agents, {}];
-  if (loc.page === 'activity') return [PAGE_SCREENS.activity, {}];
+  if (loc.page === 'activity') return [PAGE_SCREENS.activity, loc.item ? { selectedExecutionId: loc.item } : {}];
   return ['ChatScreen', {}];
 }
 

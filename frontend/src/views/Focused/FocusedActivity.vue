@@ -20,14 +20,14 @@
     <p v-else-if="!rows.length" class="focused-empty">{{ query || kind !== 'all' ? 'Nothing matches.' : 'Nothing has run yet. Start a chat and it shows up here.' }}</p>
     <ul v-else class="focused-list" data-testid="activity-list">
       <li v-for="r in rows.slice(0, CAP)" :key="r.id">
-        <button type="button" class="focused-row" :data-kind="r.kind" :disabled="!canOpen(r)" @click="open(r)">
+        <button type="button" class="focused-row" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
           <span class="focused-row-icon" aria-hidden="true"><i :class="r.icon"></i></span>
           <span class="focused-row-text">
             <strong>{{ r.title }}</strong>
             <small>{{ [ago(r.at), r.detail].filter(Boolean).join(' · ') }}</small>
           </span>
           <span class="focused-status-pill" :class="r.status.tone">{{ r.status.label }}</span>
-          <i v-if="canOpen(r)" class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
+          <i class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
         </button>
       </li>
     </ul>
@@ -51,18 +51,6 @@ const loading = ref(false);
 
 const rows = computed(() => activityRows(store.getters['executionHistory/getExecutions'] || [], { kind: kind.value, query: query.value }));
 
-// A chat run knows its conversation; the chat opens by its saved output.
-const outputFor = (conversationId) => (store.getters['contentOutputs/outputs'] || []).find((o) => String(o.conversation_id || o.conversationId || '') === conversationId || String(o.id) === conversationId);
-const canOpen = (r) => !!r.target && (r.target.type !== 'conversation' || !!outputFor(r.target.id));
-function open(r) {
-  const t = r.target;
-  if (!t) return;
-  if (t.type === 'conversation') {
-    const output = outputFor(t.id);
-    if (output) nav.openConversation(output.id);
-  } else if (t.type === 'library') nav.go({ page: 'library', tab: t.tab, item: t.id });
-  else nav.go({ page: 'scheduled' });
-}
 
 function ago(at) {
   if (!at) return '';

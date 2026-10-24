@@ -63,6 +63,7 @@
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />
       <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
+      <FocusedActivityDetail v-else-if="page === 'activity' && location.item" :key="location.item" :run-id="location.item" />
       <FocusedActivity v-else-if="page === 'activity'" />
 
       <!-- The screen Terminal mounted. On a page that is Chat, kept alive
@@ -97,6 +98,7 @@ import FocusedMemory from '@/views/Focused/FocusedMemory.vue';
 import FocusedSettings from '@/views/Focused/FocusedSettings.vue';
 import FocusedMarket from '@/views/Focused/FocusedMarket.vue';
 import FocusedActivity from '@/views/Focused/FocusedActivity.vue';
+import FocusedActivityDetail from '@/views/Focused/FocusedActivityDetail.vue';
 import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';

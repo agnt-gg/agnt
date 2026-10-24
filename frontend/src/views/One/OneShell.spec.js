@@ -181,6 +181,7 @@ describe('OneShell', () => {
     ['MarketplaceScreen', { item: 'asset-1' }, 'FocusedMarket'],
     ['MarketplaceScreen', {}, 'FocusedLibrary'],
     ['TracesScreen', {}, 'FocusedActivity'],
+    ['TracesScreen', { executionId: 'agent-1' }, 'FocusedActivityDetail'],
   ])('%s %j renders %s', (screen, query, page) => {
     const w = mountShell(screen, query);
     expect(w.findComponent({ name: page }).exists()).toBe(true);

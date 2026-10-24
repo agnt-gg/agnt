@@ -91,9 +91,9 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
     }
   });
 
-  it('Traces is Activity; one run\'s full trace stays Studio\'s', () => {
-    expect(focusedLocation('TracesScreen', {})).toEqual({ page: 'activity' });
-    expect(focusedLocation('TracesScreen', { executionId: 'x1' })).toBeNull();
+  it('Traces is Activity, and a run opens as its own Activity page', () => {
+    expect(focusedLocation('TracesScreen', {})).toEqual({ page: 'activity', item: null });
+    expect(focusedLocation('TracesScreen', { executionId: 'agent-x1' })).toEqual({ page: 'activity', item: 'agent-x1' });
   });
 });
 
@@ -116,7 +116,8 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'memory', item: 'm1', isNew: false },
     { page: 'memory', item: null, isNew: true },
     { page: 'settings' },
-    { page: 'activity' },
+    { page: 'activity', item: null },
+    { page: 'activity', item: 'agent-a 1' },
     { page: 'market', item: 'asset-1' },
   ];
   it.each(locations.map((l) => [JSON.stringify(l), l]))('%s', (_, loc) => {
