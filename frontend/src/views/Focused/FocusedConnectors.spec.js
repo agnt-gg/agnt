@@ -12,7 +12,8 @@ const getters = reactive({
   'appAuth/connectedApps': [], 'apps/installed': [], 'apps/available': [],
   'widgetDefinitions/allDefinitions': [], 'skills/allSkills': [],
 });
-vi.mock('vuex', () => ({ useStore: () => ({ dispatch, state, getters }) }));
+// mapState/mapGetters: the Email & webhooks tab's components (options API) call them at import.
+vi.mock('vuex', () => ({ useStore: () => ({ dispatch, state, getters }), mapState: () => ({}), mapGetters: () => ({}), mapActions: () => ({}) }));
 vi.mock('@/utils/apiFetch.js', () => ({ apiFetch: vi.fn() }));
 // The provider editor is Studio's Connectors screen, embedded; its own spec covers it.
 vi.mock('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue', () => ({
@@ -68,7 +69,7 @@ describe('Focused shared Plugins page', () => {
   it('mounts the same page as Studio, with every Market package including no-auth ones', async () => {
     mountPage(); await flushPromises();
     expect(wrapper.findComponent(AppsSection).exists()).toBe(true);
-    expect(wrapper.findAll('[data-tab]').map((t) => t.attributes('data-tab'))).toEqual(['installed', 'browse', 'accounts', 'mine']);
+    expect(wrapper.findAll('[data-tab]').map((t) => t.attributes('data-tab'))).toEqual(['installed', 'browse', 'accounts', 'triggers', 'mcp', 'mine']); // + Email & webhooks, MCP servers (AGNT One)
     await tabButton('browse').trigger('click');
     expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);

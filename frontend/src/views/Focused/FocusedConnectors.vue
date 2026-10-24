@@ -16,6 +16,7 @@
     <AppsSection
       :selected-plugin="selectedPlugin"
       :vault-active="tab === 'vault'"
+      :start-tab="tab"
       @open-vault="nav.go({ page: 'connectors', tab: 'vault' })"
       @open-plugins="nav.go({ page: 'connectors' })"
       @select-app="openPlugin"
@@ -30,7 +31,8 @@
       @open-ai-models="nav.go({ page: 'settings' })"
       @open-integrations="showIntegrations = true"
       @add-account="showIntegrations = true"
-      @open-section="(section) => nav.studio('ConnectorsScreen', { section })"
+      @open-section="(section) => nav.go({ page: 'connectors', tab: section === 'mcp-servers' ? 'mcp' : 'triggers' })"
+      @open-workflow="(id) => nav.go({ page: 'library', tab: 'workflows', item: id })"
       @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
     />
   </section>

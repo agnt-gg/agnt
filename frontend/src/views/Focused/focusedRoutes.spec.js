@@ -160,3 +160,13 @@ describe('Vault routing', () => {
     expect(via(screen, options)).toEqual({ page: 'connectors', tab: 'vault', item: null });
   });
 });
+
+describe('Apps tabs for Studio\'s Email Inbox, Webhooks and MCP (2026-10-23)', () => {
+  it('their old section links land on the tab, and the tab routes back to a section', () => {
+    expect(focusedLocation('ConnectorsScreen', { section: 'email-server' })).toEqual({ page: 'connectors', tab: 'triggers', item: null });
+    expect(focusedLocation('ConnectorsScreen', { section: 'webhooks' })).toEqual({ page: 'connectors', tab: 'triggers', item: null });
+    expect(focusedLocation('ConnectorsScreen', { section: 'mcp-servers' })).toEqual({ page: 'connectors', tab: 'mcp', item: null });
+    expect(routeFor({ page: 'connectors', tab: 'mcp' })).toEqual(['ConnectorsScreen', { section: 'mcp-servers' }]);
+    expect(routeFor({ page: 'connectors', tab: 'triggers' })).toEqual(['ConnectorsScreen', { section: 'webhooks' }]);
+  });
+});

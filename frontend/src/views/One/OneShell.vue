@@ -104,7 +104,7 @@ import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneRail from './OneRail.vue';
 import OneCapsule from './OneCapsule.vue';
-import { RAIL_PAGE, railItems as buildRailItems } from './oneModel.js';
+import { RAIL_PAGE, MORE_SCREEN, railItems as buildRailItems } from './oneModel.js';
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 
 const { isElectron } = useElectron();
@@ -182,6 +182,7 @@ const railItems = computed(() =>
     activePage: page.value,
     drawerOpen: drawerShown.value,
     onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),
+    activeScreen: props.screenName,
   }),
 );
 
@@ -212,7 +213,9 @@ function selectRail(id) {
     setDrawer(!drawerShown.value);
     return;
   }
-  if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);
+  if (id === 'find') store.dispatch('shell/openJump');
+  else if (MORE_SCREEN[id]) pushScreen(MORE_SCREEN[id]);
+  else if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);
 }
 // The model is chosen in Settings, never through the chat (a key must not
 // enter a transcript).

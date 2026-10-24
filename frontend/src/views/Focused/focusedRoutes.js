@@ -99,6 +99,9 @@ export function focusedLocation(screen, query = {}) {
       // bookmarks) means "which model", which is Settings in both shells.
       if (str(query.section) === 'providers') return { page: 'settings' };
       if (['oauth', 'vault', 'api-keys'].includes(str(query.section))) return { page: 'connectors', tab: 'vault', item: null };
+      // Studio's Email Inbox, Webhooks and MCP sections are Apps tabs in AGNT One (2026-10-23).
+      if (['email-server', 'webhooks'].includes(str(query.section))) return { page: 'connectors', tab: 'triggers', item: null };
+      if (str(query.section) === 'mcp-servers') return { page: 'connectors', tab: 'mcp', item: null };
       // Public deep links use plugin:<name>; accept saved app:<name> links too.
       const plugin = selected(query, 'plugin') || selected(query, 'app');
       return { page: 'connectors', item: selected(query, 'provider') || (plugin ? `app:${plugin}` : null) };
@@ -150,6 +153,8 @@ export function routeFor(loc) {
   }
   if (loc.page === 'connectors') {
     if (loc.tab === 'vault') return [PAGE_SCREENS.connectors, { section: 'oauth' }];
+    if (loc.tab === 'triggers') return [PAGE_SCREENS.connectors, { section: 'webhooks' }];
+    if (loc.tab === 'mcp') return [PAGE_SCREENS.connectors, { section: 'mcp-servers' }];
     if (!loc.item) return [PAGE_SCREENS.connectors, {}];
     const app = String(loc.item).startsWith('app:') ? String(loc.item).slice(4) : null;
     return [PAGE_SCREENS.connectors, { select: app ? { kind: 'plugin', id: app } : { kind: 'provider', id: loc.item } }];

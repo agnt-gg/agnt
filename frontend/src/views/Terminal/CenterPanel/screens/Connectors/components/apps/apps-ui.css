@@ -236,3 +236,11 @@
 @media (prefers-reduced-motion: reduce) {
   .apps-studio .ap-switch::after, .apps-studio .ap-inside-chevron { transition: none; }
 }
+
+/* AGNT One's Email & webhooks and MCP servers tabs: Studio's own sections, embedded. */
+.apps-studio .ap-embedded {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 24px;
+}

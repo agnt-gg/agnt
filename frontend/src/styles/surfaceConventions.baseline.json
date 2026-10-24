@@ -40,7 +40,7 @@
   "views/Terminal/CenterPanel/screens/Chat/components/GoalProgressWidget.vue": 5,
   "views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue": 30,
   "views/Terminal/CenterPanel/screens/Chat/components/SystemHealthPanel.vue": 1,
-  "views/Terminal/CenterPanel/screens/Connectors/Connectors.vue": 11,
+  "views/Terminal/CenterPanel/screens/Connectors/Connectors.vue": 7,
   "views/Terminal/CenterPanel/screens/Connectors/components/EmailServer.vue": 7,
   "views/Terminal/CenterPanel/screens/Connectors/components/FallbackProviders.vue": 2,
   "views/Terminal/CenterPanel/screens/Connectors/components/PackStudio/LibrarySection.vue": 1,

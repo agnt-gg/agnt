@@ -260,13 +260,19 @@ describe('OneShell', () => {
       expect(push).toHaveBeenLastCalledWith({ path: '/plugins', query: {} });
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories']);
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Approvals', 'Find anythingCtrl K']);
       await w.find('[data-testid="one-rail-activity"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-memory"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/memory');
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-dashboard"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/dashboard');
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-find"]').trigger('click');
+      expect(dispatch).toHaveBeenCalledWith('shell/openJump');
       w.unmount();
     });
 

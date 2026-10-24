@@ -115,11 +115,19 @@
       <UsageManager />
     </section>
 
-    <div class="focused-form-foot">
-      <span class="focused-edit-hint">API keys, sounds, security and everything else:</span>
-      <span class="focused-flex"></span>
-      <button type="button" class="focused-btn" @click="nav.studio('SettingsScreen')">All settings</button>
-    </div>
+    <!-- Every other setting, in Studio's groups (2026-10-23); each row opens its section. -->
+    <section v-for="group in moreSettings" :key="group.label" class="focused-edit-block" :data-settings-group="group.label">
+      <div class="focused-edit-block-head"><h3>{{ group.label }}</h3></div>
+      <ul class="focused-list">
+        <li v-for="item in group.items" :key="item.id">
+          <button type="button" class="focused-row" :data-settings-section="item.id" @click="openSetting(item)">
+            <span class="focused-row-icon" aria-hidden="true"><i :class="item.icon"></i></span>
+            <span class="focused-row-text"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
+            <i class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
+          </button>
+        </li>
+      </ul>
+    </section>
     </template>
   </section>
 </template>
@@ -135,11 +143,23 @@ import ConnectYourAi from '@/views/_components/feature/ConnectYourAi.vue';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import UsageManager from '@/views/Terminal/CenterPanel/screens/Settings/components/UsageManager/UsageManager.vue';
 import { FOCUSED_PAGES, billingSummary } from './focusedModel.js';
+import { settingsDirectory } from '@/mobile/sectionDirectories.js';
 import { SUPPORTED_THEMES } from '@/store/app/theme.js';
 
 const store = useStore();
 const router = useRouter();
 const nav = inject('focusedNav');
+// Shown above already (Default model, Theme, Members, Billing, Usage, Sign out)
+// or not a setting any more in AGNT One (Navigation: the rail is fixed).
+const SHOWN_ABOVE = new Set(['providers', 'theme', 'members', 'billing', 'usage', 'general', 'navigation']);
+const moreSettings = settingsDirectory
+  .map((group) => ({ label: group.label === 'General' ? 'Preferences' : group.label, items: group.items.filter((item) => !SHOWN_ABOVE.has(item.id)) }))
+  .filter((group) => group.items.length);
+// A section opens in full (Studio's screen, with a way back); Learning is its own screen.
+function openSetting(item) {
+  if (item.screen) nav.openScreen(item.screen);
+  else nav.studio('SettingsScreen', { section: item.id });
+}
 
 // The same sign-out Studio's Settings uses (LoginSection.logout).
 async function logOut() {

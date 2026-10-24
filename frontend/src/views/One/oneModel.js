@@ -150,6 +150,10 @@ export const RAIL_ICONS = Object.freeze({
   memory: '<path d="M12 4.5c-1-1.2-3.2-1.3-4.3 0-1.6-.2-3 1.1-2.9 2.8-1.6.6-2.4 2.4-1.7 4-1.1 1-1.2 2.9-.1 4 .1 1.7 1.6 3 3.3 2.8.9 1.2 2.7 1.4 3.7.4zM12 4.5c1-1.2 3.2-1.3 4.3 0 1.6-.2 3 1.1 2.9 2.8 1.6.6 2.4 2.4 1.7 4 1.1 1 1.2 2.9.1 4-.1 1.7-1.6 3-3.3 2.8-.9 1.2-2.7 1.4-3.7.4M8.5 9.3c1 0 1.8.8 1.8 1.7M15.5 9.3c-1 0-1.8.8-1.8 1.7M8 14.2c.8.6 1.8.6 2.5 0M16 14.2c-.8.6-1.8.6-2.5 0"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  dashboard: '<rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/>',
+  goals: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  approvals: '<path d="M12 3.5 19.5 6v5.5c0 4.5-3.2 8-7.5 9-4.3-1-7.5-4.5-7.5-9V6z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/>',
+  find: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
 });
 
@@ -159,11 +163,21 @@ export const RAIL_ICONS = Object.freeze({
 const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'library', activity: 'more', memory: 'more', settings: 'settings' });
 /** The page each rail icon (or More entry) opens; `chats` toggles the drawer, `more` opens its menu. */
 export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', activity: 'activity', memory: 'memory', settings: 'settings' });
-/** What More holds, in order. */
+/**
+ * What More holds, in order (2026-10-23). Dashboard, Goals and Approvals are
+ * Studio's screens, opened in full with a way back (`screen`); Find anything
+ * opens the Ctrl+K palette, so every other screen is a click away too.
+ */
 export const MORE_ITEMS = Object.freeze([
   { id: 'activity', label: 'Activity' },
   { id: 'memory', label: 'Memories' },
+  { id: 'dashboard', label: 'Dashboard', screen: 'DashboardScreen' },
+  { id: 'goals', label: 'Goals', screen: 'GoalsScreen' },
+  { id: 'approvals', label: 'Approvals', screen: 'LearningScreen' },
+  { id: 'find', label: 'Find anything', hint: 'Ctrl K', separated: true },
 ]);
+/** The Studio screen a More entry opens, if any. */
+export const MORE_SCREEN = Object.freeze(Object.fromEntries(MORE_ITEMS.filter((m) => m.screen).map((m) => [m.id, m.screen])));
 
 /**
  * The rail is AGNT One's only navigation, so it always lists every place.
@@ -172,14 +186,15 @@ export const MORE_ITEMS = Object.freeze([
  * the same links again: two navigations side by side (reported 2026-10-21).
  * The drawer now holds chats only. Settings is pinned to the bottom.
  */
-export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false } = {}) {
+export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false, activeScreen = null } = {}) {
   // The page you are on is highlighted, open drawer or not. The drawer used to
   // win, so with it left open every page lit up Chats (reported 2026-10-21).
   // Chats is highlighted only on a chat with the drawer open; otherwise an
   // open drawer is shown as `open` on the Chats icon.
   // New chat is in the Chats drawer's header, not on the rail (2026-10-21), so
   // a blank chat highlights Chats like any other chat.
-  const page = RAIL_OF_PAGE[activePage];
+  // A Studio screen opened from More lights More.
+  const page = RAIL_OF_PAGE[activePage] || (!activePage && Object.values(MORE_SCREEN).includes(activeScreen) ? 'more' : null);
   const active = page || (drawerOpen || (onBlankChat && !activePage) ? 'chats' : null);
   const items = [
     { id: 'chats', label: 'Chats' },
@@ -194,7 +209,7 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     icon: RAIL_ICONS[id],
     active: active === id,
     ...(id === 'chats' ? { open: drawerOpen } : {}),
-    ...(id === 'more' ? { menu: MORE_ITEMS.map((m) => ({ ...m, icon: RAIL_ICONS[m.id], active: activePage === m.id })) } : {}),
+    ...(id === 'more' ? { menu: MORE_ITEMS.map((m) => ({ ...m, icon: RAIL_ICONS[m.id], active: activePage === m.id || (!!m.screen && activeScreen === m.screen) })) } : {}),
   }));
 }
 

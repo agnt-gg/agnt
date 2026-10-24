@@ -43,7 +43,7 @@
 
     <nav class="ap-tabs" role="tablist" aria-label="Plugins">
       <button v-for="entry in tabs" :key="entry.id" type="button" role="tab" class="ap-tab" :data-tab="entry.id" :aria-selected="String(tab === entry.id)" @click="switchTab(entry.id)">
-        {{ entry.label }} <span class="ap-count">{{ entry.count }}</span>
+        {{ entry.label }} <span v-if="entry.count != null" class="ap-count">{{ entry.count }}</span>
         <span v-if="entry.id === 'installed' && needsYouCount" class="ap-count warn" data-testid="needs-you-count" v-tooltip="`${needsYouCount} need you`">{{ needsYouCount }}</span>
       </button>
     </nav>
@@ -95,7 +95,7 @@
               </div>
             </template>
           </template>
-          <p class="ap-footnote">
+          <p v-if="!inAgntOne" class="ap-footnote">
             Also in Plugins:
             <button type="button" class="ap-link" data-section-link="mcp-servers" @click="emit('open-section', 'mcp-servers')">MCP servers</button>
             <button type="button" class="ap-link" data-section-link="webhooks" @click="emit('open-section', 'webhooks')">Webhooks</button>
@@ -226,6 +226,19 @@
           </p>
         </template>
 
+        <!-- ── Email & webhooks (AGNT One): the paid triggers, in place ── -->
+        <template v-else-if="tab === 'triggers'">
+          <div class="ap-embedded" data-section="triggers">
+            <EmailServer @open-workflow="(id) => emit('open-workflow', id)" />
+            <Webhooks @open-workflow="(id) => emit('open-workflow', id)" />
+          </div>
+        </template>
+
+        <!-- ── MCP servers (AGNT One) ── -->
+        <template v-else-if="tab === 'mcp'">
+          <div class="ap-embedded" data-section="mcp"><McpServers compact /></div>
+        </template>
+
         <!-- ── Built by me ───────────────────────────────────── -->
         <template v-else>
           <div class="ap-toolbar">
@@ -300,10 +313,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import EmailServer from './EmailServer.vue';
+import Webhooks from './Webhooks.vue';
+import McpServers from './McpServers.vue';
 import AppsIcon from './AppsIcon.vue';
 import InstalledCardRow from './apps/InstalledCardRow.vue';
 import PluginDetail from './apps/PluginDetail.vue';
@@ -324,10 +340,13 @@ import { useProviderConnection } from '@/composables/useProviderConnection.js';
 // vaultActive: the host's route says the Accounts & keys tab is open (Studio ?section=oauth, Focused tab=vault).
 // detailOnly: show only the selected plugin's page (no header, tabs or list); Back emits close-app.
 // backLabel: the Back button's words in that mode (e.g. "Browse Market").
-const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean, detailOnly: Boolean, backLabel: { type: String, default: '' } });
+// startTab: a tab to open on (AGNT One routes Email & webhooks and MCP servers here).
+const props = defineProps({ selectedPlugin: { type: String, default: undefined }, vaultActive: Boolean, detailOnly: Boolean, backLabel: { type: String, default: '' }, startTab: { type: String, default: '' } });
+// Inside AGNT One (focusedNav is provided only there).
+const inAgntOne = !!inject('focusedNav', null);
 const emit = defineEmits([
   'connect', 'reconnect', 'disconnect', 'open-app', 'open-widget', 'build-app', 'add-account', 'open-vault', 'open-plugins',
-  'select-app', 'close-app', 'open-market', 'open-integrations', 'open-ai-models', 'open-section', 'try-plugin',
+  'select-app', 'close-app', 'open-market', 'open-integrations', 'open-ai-models', 'open-section', 'try-plugin', 'open-workflow',
 ]);
 
 const INSTALLED_FILTERS = [
@@ -335,7 +354,7 @@ const INSTALLED_FILTERS = [
 ];
 const ACCOUNT_FILTERS = [{ id: 'all', label: 'All' }, { id: 'oauth', label: 'Sign-ins' }, { id: 'apikey', label: 'API keys' }];
 const DISCOVER_SHOWN = 12;
-const TAB_LABELS = { installed: 'Installed', browse: 'Browse', accounts: 'Accounts & keys', mine: 'Built by me' };
+const TAB_LABELS = { installed: 'Installed', browse: 'Browse', accounts: 'Accounts & keys', triggers: 'Email & webhooks', mcp: 'MCP servers', mine: 'Built by me' };
 
 const store = useStore();
 const root = ref(null);
@@ -344,6 +363,7 @@ const detailView = ref(null);
 const buildMenuRoot = ref(null);
 const buildMenuOpen = ref(false);
 const tab = ref('installed');
+watch(() => props.startTab, (id) => { if (inAgntOne && ['triggers', 'mcp'].includes(id)) tab.value = id; }, { immediate: true });
 const queries = reactive({ installed: '', browse: '', accounts: '' });
 const filters = reactive({ installed: 'all', browse: 'all', accounts: 'all' });
 const showAllServices = ref(false);
@@ -481,6 +501,8 @@ const tabs = computed(() => [
   { id: 'installed', label: TAB_LABELS.installed, count: installedRows.value.length },
   { id: 'browse', label: TAB_LABELS.browse, count: marketRows.value.length },
   { id: 'accounts', label: TAB_LABELS.accounts, count: accountRows(yourCards.value).length + (cards.value.models?.length || 0) },
+  // AGNT One has no side menu for these, so they are tabs here (2026-10-23).
+  ...(inAgntOne ? [{ id: 'triggers', label: TAB_LABELS.triggers, count: null }, { id: 'mcp', label: TAB_LABELS.mcp, count: null }] : []),
   { id: 'mine', label: TAB_LABELS.mine, count: mine.value.length + (forgeDraft.value ? 1 : 0) },
 ]);
 const tabLabel = computed(() => TAB_LABELS[tab.value]);
@@ -529,7 +551,8 @@ function switchTab(id) {
   closeDetail();
   tab.value = id;
   if (id === 'accounts' && !props.vaultActive) emit('open-vault');
-  else if (id !== 'accounts' && props.vaultActive) emit('open-plugins');
+  else if (id === 'triggers' || id === 'mcp') emit('open-section', id === 'mcp' ? 'mcp-servers' : 'webhooks');
+  else if (id !== 'accounts' && (props.vaultActive || ['triggers', 'mcp'].includes(props.startTab))) emit('open-plugins');
   if (id === 'mine') loadPublished();
 }
 function clearFilters(which) {

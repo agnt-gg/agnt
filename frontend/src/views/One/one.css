@@ -232,6 +232,19 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
   text-align: left;
   cursor: pointer;
 }
+.ui-one .one-rail-menu-item.is-separated {
+  margin-top: 4px;
+  padding-top: 11px;
+  border-top: 1px solid var(--terminal-border-color);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.ui-one .one-rail-menu-kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
 .ui-one .one-rail-menu-item:hover,
 .ui-one .one-rail-menu-item.is-active {
   background: var(--surface-hover);

@@ -135,7 +135,14 @@ describe('the rail', () => {
     expect(active('memory')).toEqual(['more']);
     expect(active('activity')).toEqual(['more']);
     const more = railItems({ activePage: 'activity' }).find((i) => i.id === 'more');
-    expect(more.menu.map((m) => [m.id, m.label, m.active])).toEqual([['activity', 'Activity', true], ['memory', 'Memories', false]]);
+    expect(more.menu.map((m) => [m.id, m.label, m.active])).toEqual([
+      ['activity', 'Activity', true], ['memory', 'Memories', false], ['dashboard', 'Dashboard', false],
+      ['goals', 'Goals', false], ['approvals', 'Approvals', false], ['find', 'Find anything', false],
+    ]);
+    // A Studio screen opened from More lights More and its entry.
+    const onDash = railItems({ activeScreen: 'DashboardScreen' });
+    expect(onDash.filter((i) => i.active).map((i) => i.id)).toEqual(['more']);
+    expect(onDash.find((i) => i.id === 'more').menu.find((m) => m.id === 'dashboard').active).toBe(true);
   });
 
   // Reported 2026-10-21: with the Chats drawer left open, every page lit up

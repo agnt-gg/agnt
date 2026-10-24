@@ -26,13 +26,13 @@
           type="button"
           role="menuitem"
           class="one-rail-menu-item"
-          :class="{ 'is-active': entry.active }"
+          :class="{ 'is-active': entry.active, 'is-separated': entry.separated }"
           :data-testid="`one-rail-${entry.id}`"
           @click="choose(entry.id)"
         >
           <!-- eslint-disable-next-line vue/no-v-html -- static icons from oneModel.js -->
           <svg class="one-rail-icon" viewBox="0 0 24 24" aria-hidden="true" v-html="entry.icon"></svg>
-          {{ entry.label }}
+          {{ entry.label }}<kbd v-if="entry.hint" class="one-rail-menu-kbd">{{ entry.hint }}</kbd>
         </button>
       </div>
     </div>
