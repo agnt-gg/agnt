@@ -22,14 +22,15 @@
 
       <section v-if="view.asked" class="focused-edit-block" data-section="asked">
         <div class="focused-edit-block-head"><h3>What was asked</h3></div>
-        <div class="focused-edit-card"><pre class="fad-text">{{ view.asked }}</pre></div>
+        <div class="focused-edit-card"><p class="fad-prose">{{ view.asked }}</p></div>
       </section>
 
       <section v-if="view.result || view.error" class="focused-edit-block" data-section="result">
         <div class="focused-edit-block-head"><h3>{{ view.error && !view.result ? 'What went wrong' : 'Result' }}</h3></div>
         <div class="focused-edit-card">
-          <pre v-if="view.result" class="fad-text">{{ view.result }}</pre>
-          <pre v-if="view.error" class="fad-text bad">{{ view.error }}</pre>
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitized with DOMPurify (resultHtml) -->
+          <div v-if="view.result" class="fad-markdown" v-html="resultHtml"></div>
+          <p v-if="view.error" class="fad-prose bad">{{ view.error }}</p>
         </div>
       </section>
 
@@ -69,6 +70,8 @@
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
+import DOMPurify from 'dompurify';
+import { renderMarkdown } from '@/utils/markdownPipeline.js';
 import { activityRows, activityDetail, kindFromId, statusOf } from './focusedActivity.js';
 
 const props = defineProps({ runId: { type: String, required: true } });
@@ -94,6 +97,8 @@ const workflowNodes = computed(() => {
   return wf?.nodes || [];
 });
 const view = computed(() => activityDetail(detail.value, { workflowNodes: workflowNodes.value }));
+// The answer is markdown, shown formatted as in the chat (sanitized like ArtifactInspector).
+const resultHtml = computed(() => DOMPurify.sanitize(renderMarkdown(view.value.result), { FORBID_TAGS: ['iframe', 'script', 'object', 'embed', 'form', 'input'] }));
 const stepsTitle = computed(() => ({ chat: 'Tools Annie used', agent: 'Tools it used', workflow: 'Steps', routine: 'Tasks' })[row.value.kind] || 'Steps');
 const when = computed(() => {
   const at = view.value.startedAt || row.value.at;
@@ -153,7 +158,54 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-secondary);
 }
+/* The card has no padding of its own; its content sets the inset. */
+.fad-prose,
+.fad-markdown {
+  padding: 14px 16px;
+}
+.fad-prose + .fad-prose,
+.fad-markdown + .fad-prose {
+  padding-top: 0;
+}
+.fad-prose {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.fad-prose.bad {
+  color: var(--color-red);
+}
+.fad-markdown {
+  max-height: 480px;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.fad-markdown :deep(> :first-child) {
+  margin-top: 0;
+}
+.fad-markdown :deep(> :last-child) {
+  margin-bottom: 0;
+}
+.fad-markdown :deep(table) {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.fad-markdown :deep(th),
+.fad-markdown :deep(td) {
+  padding: 6px 10px;
+  border: 1px solid var(--terminal-border-color);
+  text-align: left;
+}
 .fad-text {
+  width: auto;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
   margin: 0;
   max-height: 360px;
   overflow: auto;
