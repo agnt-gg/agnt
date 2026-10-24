@@ -6,8 +6,11 @@
        Found in the update rehearsal (a fresh install opens on the sign-in page). -->
   <UpdateNotification />
   <AIGuidedTourHost v-if="isAuthenticated" />
-  <!-- Getting started lives in AGNT One's top bar (views/One/OneCapsule.vue),
-       not in coach marks over the page. -->
+  <!-- Getting started lives in AGNT One's top bar (views/One/OneCapsule.vue);
+       the journey runs missions only, when started from Settings > Tours
+       (no checklist, no offers on pages). It was unmounted with the old
+       frame, which left every Tours Start button dead (2026-10-23). -->
+  <JourneyHost v-if="isAuthenticated" missions-only />
   <!-- One share sheet and one receive card for the whole app; see composables/useShare.js. -->
   <ShareSheet v-if="isAuthenticated" />
   <ReceiveShareDialog v-if="isAuthenticated" />
@@ -19,6 +22,7 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { useRealtimeSync } from '@/composables/useRealtimeSync';
 import AIGuidedTourHost from '@/views/_components/utility/AIGuidedTourHost.vue';
+import JourneyHost from '@/views/_components/utility/JourneyHost.vue';
 import UpdateNotification from '@/views/_components/common/UpdateNotification.vue';
 import ShareSheet from '@/views/_components/share/ShareSheet.vue';
 import ReceiveShareDialog from '@/views/_components/share/ReceiveShareDialog.vue';

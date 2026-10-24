@@ -26,7 +26,8 @@
       </div>
     </section>
 
-    <section class="focused-edit-block">
+    <!-- data-section="providers": the "Connect your AI" tour step points here. -->
+    <section class="focused-edit-block" data-section="providers">
       <div class="focused-edit-block-head">
         <h3>Default model</h3>
         <span class="focused-edit-hint">What AGNT uses unless a chat or an agent picks another.</span>

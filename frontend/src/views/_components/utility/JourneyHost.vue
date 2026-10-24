@@ -1,6 +1,6 @@
 <template>
   <CoachMark :view="view" @action="handleAction" @prompt="usePrompt" @close="handleAction('close')" />
-  <JourneyChecklist />
+  <JourneyChecklist v-if="!missionsOnly" />
 </template>
 
 <script setup>
@@ -15,13 +15,15 @@ import CoachMark from '@/views/_components/utility/CoachMark.vue';
 import JourneyChecklist from '@/views/_components/utility/JourneyChecklist.vue';
 import { installJourney, useJourney } from '@/composables/useJourney.js';
 
+// missionsOnly: only missions started on purpose (Settings > Tours) show.
+const props = defineProps({ missionsOnly: { type: Boolean, default: false } });
 const store = useStore();
 const router = useRouter();
 const { view, handleAction, usePrompt } = useJourney();
 
 let uninstall = null;
 onMounted(() => {
-  uninstall = installJourney({ store, router });
+  uninstall = installJourney({ store, router, missionsOnly: props.missionsOnly });
 });
 onBeforeUnmount(() => uninstall?.());
 </script>

@@ -18,7 +18,7 @@
     </template>
     <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
     <p v-else-if="!rows.length" class="focused-empty">{{ query || kind !== 'all' ? 'Nothing matches.' : 'Nothing has run yet. Start a chat and it shows up here.' }}</p>
-    <ul v-else class="focused-list" data-testid="activity-list">
+    <ul v-else class="focused-list" data-testid="activity-list" data-tour-id="traces.list">
       <li v-for="r in rows.slice(0, CAP)" :key="r.id">
         <button type="button" class="focused-row" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
           <span class="focused-row-icon" aria-hidden="true"><i :class="r.icon"></i></span>

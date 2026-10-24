@@ -47,10 +47,10 @@ function makeStore({ onboarding = false, connectedApps = [] } = {}) {
   });
 }
 
-async function boot(store, path) {
+async function boot(store, path, options = {}) {
   const router = createRouter({ history: createMemoryHistory(), routes });
   await router.push(path);
-  installJourney({ store, router });
+  installJourney({ store, router, ...options });
   // HYDRATE_DELAY (1.5s) → settle → offer delay (1.2s)
   await vi.advanceTimersByTimeAsync(1600);
   await flushPromises();
@@ -184,5 +184,30 @@ describe('useJourney', () => {
     await flushPromises();
     expect(useJourney().progress.value.flags.flashForNow).toBe(true);
     expect(useJourney().checklist.value.items[0]).toMatchObject({ id: 'model', done: false });
+  });
+});
+
+// 2026-10-23: AGNT One unmounted the journey with the old frame, so every
+// Settings > Tours "Start" did nothing. It runs again, missions only.
+describe('missions-only (AGNT One)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+  afterEach(() => {
+    uninstallJourney();
+    useAITour().end('test');
+    vi.useRealTimers();
+  });
+
+  it('Start runs the mission; nothing is offered on pages and no checklist shows', async () => {
+    const store = makeStore();
+    await boot(store, '/agents', { missionsOnly: true });
+    const journey = useJourney();
+    expect(journey.view.value).toBeNull(); // no offer on arriving at a page
+    expect(journey.checklist.value.visible).toBe(false);
+    journey.startMission('first-agent');
+    await flushPromises();
+    expect(journey.view.value).toMatchObject({ eyebrow: expect.any(String) });
   });
 });

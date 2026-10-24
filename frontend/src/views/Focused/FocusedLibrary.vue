@@ -59,7 +59,7 @@
          read as a mistake. A kind with no picks shows none. -->
     <!-- The Market for this kind lives here (there is no Market page,
          2026-10-23). "Browse all" opens more picks in place. -->
-    <MarketplaceShelf :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" :max-items="marketExpanded ? 60 : 6" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
+    <MarketplaceShelf data-tour-id="market.grid" :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" :max-items="marketExpanded ? 60 : 6" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
 
     <!-- What you shared to the Market, with how many people got it. -->
     <section v-if="shared.length" class="focused-shared" data-testid="library-shared">

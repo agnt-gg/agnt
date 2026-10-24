@@ -115,7 +115,6 @@ const canShow = computed(() => {
   const { store, router } = runtimeRef.value;
   if (!store.getters['userAuth/isAuthenticated']) return false;
   if (store.getters['userAuth/shouldShowOnboarding']) return false;
-  if (store.getters['theme/uiMode'] === 'focused') return false;
   if (runtimeRef.value.aiTour.isActive.value) return false;
   const path = router.currentRoute.value?.path || '';
   if (EXCLUDED_PATHS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return false;
@@ -201,7 +200,7 @@ function startMission(id) {
 }
 
 function offerMission(screen) {
-  if (run.value || !settled.value || !canShow.value || !offersEnabled()) return;
+  if (run.value || !settled.value || !canShow.value || !offersEnabled() || runtimeRef.value?.missionsOnly) return;
   if (runtimeRef.value.offered.has(screen)) return;
   const id = offerFor(screen, { facts: factsRef.value, flags: progress.value.flags, progress: progress.value });
   if (!id) return;
@@ -316,7 +315,7 @@ const checklist = computed(() => {
   const all = summary.value.done === summary.value.total;
   return {
     ...summary.value,
-    visible: settled.value && canShow.value && !progress.value.checklistHidden && !all,
+    visible: settled.value && canShow.value && !progress.value.checklistHidden && !all && !runtimeRef.value?.missionsOnly,
   };
 });
 
@@ -356,9 +355,9 @@ async function settle() {
  * Install the runtime. Idempotent; returns a disposer.
  * @param {{ store: object, router: object }} deps
  */
-export function installJourney({ store, router }) {
+export function installJourney({ store, router, missionsOnly = false }) {
   if (runtimeRef.value) return uninstallJourney;
-  runtimeRef.value = { store, router, aiTour: useAITour(), offered: new Set(), offerTimer: null, stops: [] };
+  runtimeRef.value = { store, router, missionsOnly, aiTour: useAITour(), offered: new Set(), offerTimer: null, stops: [] };
   const { stops } = runtimeRef.value;
 
   progress.value = loadProgress(account());
@@ -383,7 +382,7 @@ export function installJourney({ store, router }) {
     watch(
       () => summary.value.done === summary.value.total,
       (all) => {
-        if (all && settled.value && !progress.value.celebrated && !run.value) run.value = { kind: 'celebrate' };
+        if (all && settled.value && !progress.value.celebrated && !run.value && !runtimeRef.value?.missionsOnly) run.value = { kind: 'celebrate' };
       },
     ),
   );
