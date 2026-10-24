@@ -32,7 +32,7 @@
    it from the rail. With the Chats drawer open, the drawer's own right edge
    (.focused-sidebar, focused.css) is that divider, so the panel drops its own:
    both drawn made a 2px line (measured 2026-10-21). The custom-background
-   sheet keeps its full border; its rule is more specific than this one. */
+   sheet has no border at all (its own rule, more specific than this one). */
 .ui-one .one-main {
   background: var(--color-background);
   border-left: 1px solid var(--terminal-border-color);
@@ -112,7 +112,8 @@ body.custom-bg .ui-one .one-main .controls-panel {
    even gutter on every side, where it had only the band above it. */
 body.custom-bg .ui-one:not(.is-compact) .one-main {
   margin: 8px;
-  border: 1px solid var(--terminal-border-color);
+  /* No outline: it doubled the edge of what sits inside the sheet (2026-10-23). */
+  border: none;
   border-radius: 16px;
 }
 /* Floating, the sheet leaves 8px gutters beside its top bar. The drag strip
