@@ -171,7 +171,12 @@ export default {
 
     const changeScreen = (requestedScreen, requestedOptions = {}) => {
       if (!isAuthenticated.value && requestedScreen !== 'SettingsScreen') return;
-      const [screenName, options] = normalizeScreen(requestedScreen, requestedOptions);
+      const [screenName, normalized] = normalizeScreen(requestedScreen, requestedOptions);
+      // A screen opened in full (?studio=1) that moves within itself (Settings'
+      // own menu: another section) stays in full. Dropping the flag handed the
+      // route to AGNT One's page and the section never showed (2026-10-23).
+      const stayFull = route.query?.studio === '1' && screenName === activeScreen.value;
+      const options = stayFull ? { ...normalized, studio: true } : normalized;
       const target = screenRoute(screenName, options);
       if (!target) {
         console.warn(`Attempted to navigate to unknown screen: ${screenName}`);
