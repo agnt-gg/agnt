@@ -62,7 +62,7 @@
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />
-      <FocusedMarket v-else-if="page === 'market'" :item="location.item" />
+      <FocusedMarket v-else-if="page === 'market'" :item="location.item" :tab="location.tab" />
       <FocusedActivityDetail v-else-if="page === 'activity' && location.item" :key="location.item" :run-id="location.item" />
       <FocusedActivity v-else-if="page === 'activity'" />
 
@@ -200,7 +200,7 @@ function go(loc) {
 function openPage(id) {
   if (id === 'library') go({ page: 'library', tab: 'agents' });
   else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
-  else if (['connectors', 'scheduled', 'memory', 'activity', 'settings'].includes(id)) go({ page: id });
+  else if (['connectors', 'scheduled', 'market', 'memory', 'activity', 'settings'].includes(id)) go({ page: id });
 }
 function selectRail(id) {
   if (id === 'chats') {

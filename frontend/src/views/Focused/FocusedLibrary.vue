@@ -57,13 +57,16 @@
     <!-- Owned work first; discovery remains available after the list and its count. -->
     <!-- Picks of this tab's own kind only: agents offered on the Widgets tab
          read as a mistake. A kind with no picks shows none. -->
-    <!-- The Market for this kind lives here (there is no Market page,
-         2026-10-23). "Browse all" opens more picks in place. -->
-    <MarketplaceShelf data-tour-id="market.grid" :key="'market:' + tab.id" :asset-type="tab.noun" variant="strip" :dismissible="false" :max-items="marketExpanded ? 60 : 6" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
+    <!-- The Market for this kind, as agnt.gg shows it (catalogue cards).
+         "Show all" opens more picks in place; the Market page has the rest. -->
+    <MarketplaceShelf data-tour-id="market.grid" :key="'market:' + tab.id" :asset-type="tab.noun" variant="catalogue" :dismissible="false" :max-items="marketExpanded ? 60 : 6" @browse="browseMarket" @installed="() => store.dispatch(tab.fetch)" />
 
     <!-- What you shared to the Market, with how many people got it. -->
     <section v-if="shared.length" class="focused-shared" data-testid="library-shared">
-      <h3 class="focused-shared-title">Shared by you</h3>
+      <h3 class="focused-shared-title">
+        Shared by you
+        <button type="button" class="focused-link" data-action="your-listings" @click="nav.go({ page: 'market', tab: 'mine' })">Earnings &amp; all listings <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+      </h3>
       <ul class="focused-list">
         <li v-for="item in shared" :key="item.id" class="focused-row static" :data-listing="item.id">
           <span class="focused-row-icon" aria-hidden="true"><i class="fas fa-store"></i></span>

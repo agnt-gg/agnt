@@ -34,9 +34,9 @@ describe('Focused Market', () => {
   it('uses the shared catalog, no Studio panels, and real route navigation', async () => {
     const w = mountMarket();
     expect(dispatch).toHaveBeenCalledWith('marketplace/fetchShelfItems', { force: false });
-    expect(w.findAll('.focused-market-card')).toHaveLength(2);
+    expect(w.findAll('.mlc')).toHaveLength(2);
     expect(w.find('.three-panel-container').exists()).toBe(false);
-    await w.find('.focused-market-card-open').trigger('click');
+    await w.find('.mlc-tile').trigger('click');
     expect(nav.go).toHaveBeenCalledWith({ page: 'market', item: 'a1' });
     w.unmount();
   });
@@ -44,10 +44,10 @@ describe('Focused Market', () => {
   it('filters by type and search without changing Studio filters', async () => {
     const w = mountMarket();
     await w.findAll('.focused-tab')[2].trigger('click');
-    expect(w.findAll('.focused-market-card')).toHaveLength(1);
-    expect(w.find('.focused-market-card').text()).toContain('Weekly report');
+    expect(w.findAll('.mlc')).toHaveLength(1);
+    expect(w.find('.mlc').text()).toContain('Weekly report');
     await w.find('input').setValue('nothing matches');
-    expect(w.findAll('.focused-market-card')).toHaveLength(0);
+    expect(w.findAll('.mlc')).toHaveLength(0);
     expect(w.text()).toContain('Nothing matches yet');
     expect(dispatch).not.toHaveBeenCalledWith('marketplace/updateFilters', expect.anything());
     w.unmount();
@@ -121,7 +121,7 @@ describe('Focused Market', () => {
   it('opening a card links by the stable asset id', async () => {
     getters['marketplace/shelfItems'] = [{ id: 'row-9', asset_id: 'agnt-usecase-triage', title: 'Inbox triage', asset_type: 'agent', price: '0.00', downloads: 3 }];
     const w = mountMarket();
-    await w.find('.focused-market-card-open').trigger('click');
+    await w.find('.mlc-tile').trigger('click');
     expect(nav.go).toHaveBeenCalledWith({ page: 'market', item: 'agnt-usecase-triage' });
     w.unmount();
   });

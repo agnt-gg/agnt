@@ -127,6 +127,32 @@
         </div>
       </template>
 
+      <!-- CATALOGUE: AGNT One's Library tabs. The listing cards agnt.gg shows
+           (MarketListingCard), so the Market reads the same in the app and
+           on the website (2026-10-26). -->
+      <section v-else-if="variant === 'catalogue'" class="ms-catalogue" aria-label="From the Market">
+        <div class="ms-strip-head">
+          <div class="ms-head-txt">
+            <div class="ms-title">
+              <i class="fas fa-store"></i>{{ fallbackShelf ? 'Top picks from the Market' : 'More ' + typePlural + ' from the Market' }}
+              <span class="ms-count">{{ typeItems.length }}</span>
+            </div>
+            <div class="ms-sub">Most installed · install it and make it yours</div>
+          </div>
+          <button class="ms-all" @click="$emit('browse')">{{ topItems.length < typeItems.length ? `Show all ${typeItems.length}` : 'Browse the Market' }} <i class="fas fa-arrow-right"></i></button>
+        </div>
+        <div class="ms-catalogue-grid">
+          <MarketListingCard
+            v-for="item in topItems"
+            :key="item.id"
+            :listing="item"
+            :installing="installingIds.has(item.id)"
+            @open="$emit('browse', item)"
+            @install="install(item)"
+          />
+        </div>
+      </section>
+
       <!-- STRIP: the user already owns things, so the shelf steps aside.
            Compact rows, not cards: rendered as cards this section measured
            4.7x the height of the user's own items — an upsell dominating a
@@ -180,6 +206,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import MarketListingCard from './MarketListingCard.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import {
   MARKETPLACE_ASSET_TYPES,
@@ -213,11 +240,11 @@ const DISMISS_KEY = (t) => `marketplaceShelf.dismissed.${t}`;
 
 export default {
   name: 'MarketplaceShelf',
-  components: { SimpleModal, Tooltip },
+  components: { SimpleModal, Tooltip, MarketListingCard },
   props: {
     /** agent | workflow | tool | plugin | skill | (widget renders nothing — see MARKETPLACE_ASSET_TYPES) */
     assetType: { type: String, required: true },
-    /** 'full' = cold empty state (Create + shelf). 'strip' = compact rail under the user's own items. */
+    /** 'full' = cold empty state (Create + shelf). 'strip' = compact rail under the user's own items. 'catalogue' = agnt.gg listing cards (AGNT One). */
     variant: { type: String, default: 'full' },
     /** The screen's existing search string. The shelf NEVER writes to the marketplace store's global filters. */
     query: { type: String, default: '' },
@@ -880,6 +907,19 @@ export default {
   font-family: var(--font-family-primary);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
+}
+
+/* ── Catalogue variant (agnt.gg cards) ── */
+.ms-root > .ms-catalogue {
+  border-top: 1px solid var(--terminal-border-color);
+  padding-top: var(--spacing-lg);
+  margin-top: var(--spacing-sm);
+  min-width: 0;
+}
+.ms-catalogue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 18px;
 }
 
 /* ── Strip variant ───────────────────────────────────────────────────────── */

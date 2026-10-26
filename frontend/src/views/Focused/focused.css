@@ -1360,6 +1360,12 @@
   color: var(--text-tertiary);
   font-size: 12px;
 }
+/* The Market page grid: agnt.gg's catalogue grid (MarketListingCard). */
+.ui-focused .focused-market-catalogue {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 18px;
+}
 .ui-focused .focused-market-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2286,10 +2292,17 @@
   margin-top: 28px;
 }
 .ui-focused .focused-shared-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+.ui-focused .focused-shared-title .focused-link {
+  margin-left: auto;
+  font-weight: 500;
 }
 .ui-focused .focused-row.static {
   cursor: default;

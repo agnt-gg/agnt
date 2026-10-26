@@ -179,7 +179,7 @@ describe('OneShell', () => {
     ['MemoryScreen', {}, 'FocusedMemory'],
     ['SettingsScreen', {}, 'FocusedSettings'],
     ['MarketplaceScreen', { item: 'asset-1' }, 'FocusedMarket'],
-    ['MarketplaceScreen', {}, 'FocusedLibrary'],
+    ['MarketplaceScreen', {}, 'FocusedMarket'],
     ['TracesScreen', {}, 'FocusedActivity'],
     ['TracesScreen', { executionId: 'agent-1' }, 'FocusedActivityDetail'],
   ])('%s %j renders %s', (screen, query, page) => {
@@ -249,7 +249,7 @@ describe('OneShell', () => {
     it('is the one navigation: every place on a new account, Settings at the bottom', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-more', 'one-rail-settings',
+        'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-more', 'one-rail-settings',
       ]);
       w.unmount();
     });

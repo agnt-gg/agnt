@@ -122,7 +122,8 @@ describe('the rail', () => {
   it('lists every place, always, whatever the account holds', () => {
     // New chat is in the Chats drawer's header, not on the rail (2026-10-21).
     // 2026-10-23: no Market (its listings are Library and Apps sections); Activity and Memories under More.
-    const every = ['chats', 'apps', 'routines', 'library', 'more'];
+    // 2026-10-26: the Market is back on the rail, after the Library.
+    const every = ['chats', 'apps', 'routines', 'library', 'market', 'more'];
     expect(ids(railItems())).toEqual(every);
     expect(ids(railItems({ facts: { apps: 3, workflows: 2 } }))).toEqual(every);
     expect(railItems().every((i) => i.icon && i.label)).toBe(true);
@@ -131,7 +132,7 @@ describe('the rail', () => {
   it('marks the page that is open; Activity and Memories light More and their own entry', () => {
     const active = (activePage) => railItems({ activePage }).filter((i) => i.active).map((i) => i.id);
     expect(active('connectors')).toEqual(['apps']);
-    expect(active('market')).toEqual(['library']);
+    expect(active('market')).toEqual(['market']);
     expect(active('memory')).toEqual(['more']);
     expect(active('activity')).toEqual(['more']);
     const more = railItems({ activePage: 'activity' }).find((i) => i.id === 'more');

@@ -158,11 +158,11 @@ export const RAIL_ICONS = Object.freeze({
 });
 
 /** Which rail icon a page belongs to (its active state). */
-// Activity and Memories live under More (2026-10-23); a Market listing opened
-// from a Library or Apps section belongs to the Library.
-const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'library', activity: 'more', memory: 'more', settings: 'settings' });
+// Activity and Memories live under More (2026-10-23). The Market is on the
+// rail again (2026-10-26): publishing, your listings and earnings live there.
+const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'market', activity: 'more', memory: 'more', settings: 'settings' });
 /** The page each rail icon (or More entry) opens; `chats` toggles the drawer, `more` opens its menu. */
-export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', activity: 'activity', memory: 'memory', settings: 'settings' });
+export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', market: 'market', activity: 'activity', memory: 'memory', settings: 'settings' });
 /**
  * What More holds, in order (2026-10-23). Dashboard, Goals and Approvals are
  * Studio's screens, opened in full with a way back (`screen`); Find anything
@@ -201,6 +201,7 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     { id: 'apps', label: 'Apps' },
     { id: 'routines', label: 'Routines' },
     { id: 'library', label: 'Library' },
+    { id: 'market', label: 'Market' },
     { id: 'more', label: 'More' },
   ];
   return items.map(({ id, label }) => ({

@@ -70,8 +70,12 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
   });
 
   // 2026-10-23: no Market page; its listings are sections of Library and Apps.
-  it('Market: a listing opens; the bare Market lands on the Library', () => {
-    expect(focusedLocation('MarketplaceScreen')).toEqual({ page: 'library', tab: 'agents', item: null });
+  // 2026-10-26: the Market is a page again (publishing, your listings, earnings).
+  it('Market: a listing opens; the bare Market is its own page; Your listings round-trips', () => {
+    expect(focusedLocation('MarketplaceScreen')).toEqual({ page: 'market', item: null });
+    expect(focusedLocation('MarketplaceScreen', { section: 'mine' })).toEqual({ page: 'market', item: null, tab: 'mine' });
+    expect(routeFor({ page: 'market' })).toEqual(['MarketplaceScreen', {}]);
+    expect(routeFor({ page: 'market', tab: 'mine' })).toEqual(['MarketplaceScreen', { section: 'mine' }]);
     expect(focusedLocation('MarketplaceScreen', { item: 'asset-1' })).toEqual({ page: 'market', item: 'asset-1' });
     expect(focusedLocation('MarketplaceScreen', { studio: '1' })).toBeNull();
   });

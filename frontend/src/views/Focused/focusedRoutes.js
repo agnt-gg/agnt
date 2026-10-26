@@ -122,10 +122,11 @@ export function focusedLocation(screen, query = {}) {
     case 'SettingsScreen':
       return { page: 'settings', ...(str(query.section) === 'members' ? { section: 'members' } : {}) };
     case 'MarketplaceScreen': {
-      // No Market page of its own (2026-10-23): listings are sections of the
-      // Library and Apps pages. A link to one listing still opens it.
+      // The Market is a page again (2026-10-26): browsing lives in each
+      // Library tab too, but publishing, your listings and earnings need a home.
       const listing = str(query.item) || selected(query, 'marketplace') || null;
-      return listing ? { page: 'market', item: listing } : library('agents');
+      if (listing) return { page: 'market', item: listing };
+      return { page: 'market', item: null, ...(str(query.section) === 'mine' ? { tab: 'mine' } : {}) };
     }
     case 'TracesScreen':
       // The list of runs, or one run in full (2026-10-23).
@@ -172,7 +173,10 @@ export function routeFor(loc) {
     return [PAGE_SCREENS.memory, opts];
   }
   if (loc.page === 'settings') return [PAGE_SCREENS.settings, loc.section === 'members' ? { section: 'members' } : {}];
-  if (loc.page === 'market') return loc.item ? [PAGE_SCREENS.market, { select: { kind: 'marketplace', id: loc.item } }] : [LIBRARY_TAB_SCREENS.agents, {}];
+  if (loc.page === 'market') {
+    if (loc.item) return [PAGE_SCREENS.market, { select: { kind: 'marketplace', id: loc.item } }];
+    return [PAGE_SCREENS.market, loc.tab === 'mine' ? { section: 'mine' } : {}];
+  }
   if (loc.page === 'activity') return [PAGE_SCREENS.activity, loc.item ? { selectedExecutionId: loc.item } : {}];
   return ['ChatScreen', {}];
 }

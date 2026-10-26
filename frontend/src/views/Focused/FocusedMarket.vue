@@ -3,7 +3,7 @@
     <SimpleModal ref="modal" />
     <header class="focused-market-head">
       <div><h1>Market</h1><p>A little more possibility.</p></div>
-      <button type="button" class="focused-link" @click="nav.studio('MarketplaceScreen')">Publish & manage <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+      <button v-if="!item" type="button" class="focused-link" data-action="your-listings" @click="type = 'mine'">Your listings &amp; earnings <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </header>
 
     <!-- A plugin listing: the Plugins page's own detail (what's inside, the
@@ -17,7 +17,7 @@
         @close-app="backFromListing()"
         @connect="connect"
         @reconnect="connect"
-        @disconnect="connect"
+        @disconnect="disconnect"
         @open-widget="(id) => nav.go({ page: 'library', tab: 'widgets', item: id })"
         @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
         @open-ai-models="nav.go({ page: 'settings' })"
@@ -67,9 +67,12 @@
         <nav class="focused-market-tabs" aria-label="Asset types">
           <button v-for="tab in tabs" :key="tab.id" type="button" class="focused-tab" :class="{ active: type === tab.id }" :aria-pressed="type === tab.id" @click="type = tab.id">{{ tab.label }}</button>
         </nav>
-        <label class="focused-page-search focused-market-search"><i class="fas fa-search" aria-hidden="true"></i><input v-model="query" type="search" placeholder="Search Market" aria-label="Search Market" /></label>
+        <label v-if="type !== 'mine'" class="focused-page-search focused-market-search"><i class="fas fa-search" aria-hidden="true"></i><input v-model="query" type="search" placeholder="Search Market" aria-label="Search Market" /></label>
       </div>
 
+      <FocusedMarketMine v-if="type === 'mine'" @open="openItem" />
+
+      <template v-if="type !== 'mine'">
       <div v-if="status === 'ready' && !query && type === 'all' && spotlight" class="focused-market-spotlight">
         <div class="focused-market-spotlight-copy">
           <span class="focused-market-kind">Discover {{ assetTypeLabel(spotlight).toLowerCase() }}s</span>
@@ -85,20 +88,24 @@
 
       <template v-if="status === 'ready' && visibleItems.length">
         <div class="focused-market-section-head"><h2>{{ query ? 'Search results' : type === 'all' ? 'Explore the collection' : tabs.find(t => t.id === type)?.label }}</h2><span>{{ visibleItems.length }} {{ visibleItems.length === 1 ? 'item' : 'items' }}</span></div>
-        <div class="focused-market-grid">
-          <article v-for="listing in visibleItems" :key="listing.id" class="focused-market-card">
-            <button type="button" class="focused-market-card-open" @click="openItem(listing)">
-              <span class="focused-market-tile" :style="iconStyle(listing)"><img v-if="imageFor(listing)" :src="imageFor(listing)" alt="" @error="hideImage(listing)" /><i v-else :class="assetIcon(listing)" aria-hidden="true"></i></span>
-              <span class="focused-market-card-copy"><strong>{{ listing.title }}</strong><span>{{ listing.tagline || listing.description || assetTypeLabel(listing) }}</span><small>{{ assetTypeLabel(listing) }} · {{ listing.publisher_pseudonym || 'Anonymous' }}</small></span>
-            </button>
-            <button type="button" class="focused-market-get" :aria-label="`${installLabel(listing)} ${listing.title}`" :disabled="busy || isInstalled(listing)" @click="install(listing)">{{ installLabel(listing) }}</button>
-          </article>
+        <!-- The cards agnt.gg/marketplace shows (MarketListingCard). -->
+        <div class="focused-market-catalogue">
+          <MarketListingCard
+            v-for="listing in visibleItems"
+            :key="listing.id"
+            :listing="listing"
+            :installing="String(installingId) === String(listing.id)"
+            :installed="isInstalled(listing)"
+            @open="openItem"
+            @install="install"
+          />
         </div>
       </template>
       <div v-else-if="status === 'ready'" class="focused-empty" role="status">{{ query || type !== 'all' ? 'Nothing matches yet.' : 'The collection is empty for now.' }} <button v-if="query || type !== 'all'" type="button" class="focused-link" @click="query = ''; type = 'all'">Clear filters</button></div>
+      </template>
     </template>
 
-    <div v-if="status === 'loading' || status === 'idle'" class="focused-empty" role="status">Loading Market…</div>
+    <div v-if="type !== 'mine' && (status === 'loading' || status === 'idle')" class="focused-empty" role="status">Loading Market…</div>
     <div v-else-if="status === 'error'" class="focused-empty" role="alert">Market couldn’t load. <button type="button" class="focused-link" @click="load(true)">Try again</button></div>
     <p v-if="installError" class="focused-empty" role="alert">{{ installError }}</p>
   </section>
@@ -109,54 +116,83 @@ import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
-import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, iconStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
+import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import FocusedListingDetail from './FocusedListingDetail.vue';
+import FocusedMarketMine from './FocusedMarketMine.vue';
+import MarketListingCard from '@/views/Terminal/_components/MarketListingCard.vue';
 import { listingDetail } from '@/services/marketplaceListingDetail.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
+import { useAppCards } from '@/composables/useAppCards.js';
+import { findAppCard } from '@/services/appCards.js';
+import { useAppSignIn } from './useAppSignIn.js';
 
-const props = defineProps({ item: { type: String, default: null } });
+const props = defineProps({ item: { type: String, default: null }, tab: { type: String, default: null } });
 const nav = inject('focusedNav');
 const store = useStore();
 const modal = ref(null);
 const { handleInstall } = useMarketplaceInstall(modal);
-const type = ref('all');
+// `mine` is Your listings & earnings; the rest filter the collection by kind.
+const type = ref(props.tab === 'mine' ? 'mine' : 'all');
 const query = ref('');
 const installingId = ref(null);
 const installError = ref('');
 const installedHere = ref(new Set());
 const failedImages = ref(new Set());
-const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: `${assetTypeLabel({ asset_type: id })}s` }))];
+const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: `${assetTypeLabel({ asset_type: id })}s` })), { id: 'mine', label: 'Your listings' }];
 const status = computed(() => store.getters['marketplace/shelfStatus']);
 const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const visibleItems = computed(() => items.value.filter(listing => (type.value === 'all' || listing.asset_type === type.value) && matchesQuery(listing, query.value)).slice().sort(byPopularity));
 // `item` is a link key: asset id (shelves, agnt:// links) or listing id.
 const selectedItem = computed(() => items.value.find(listing => matchesMarketplaceKey(listing, props.item)));
 const spotlight = computed(() => visibleItems.value[0]);
-// Back from a listing: to the page its section lives on (no Market page, 2026-10-23).
+// Back from a listing: to the Market when it was opened here; otherwise to
+// the page whose Market section opened it (a Library tab, or Plugins).
 const LISTING_HOME = { agent: 'agents', workflow: 'workflows', tool: 'tools', skill: 'skills', widget: 'widgets' };
+const openedHere = ref(false);
 function backFromListing() {
-  const type = selectedItem.value?.asset_type;
-  if (type === 'plugin') nav.go({ page: 'connectors' });
-  else nav.go({ page: 'library', tab: LISTING_HOME[type] || 'agents' });
+  if (openedHere.value) {
+    openedHere.value = false;
+    return nav.go({ page: 'market', ...(type.value === 'mine' ? { tab: 'mine' } : {}) });
+  }
+  const kind = selectedItem.value?.asset_type;
+  if (kind === 'plugin') nav.go({ page: 'connectors' });
+  else nav.go({ page: 'library', tab: LISTING_HOME[kind] || 'agents' });
 }
 // A plugin listing's asset_id is the plugin's name in the catalog. Shown as the
 // Plugins page's detail when the catalog has it; otherwise the listing view.
 const catalogNames = computed(() => new Set([...(store.getters['apps/available'] || []), ...(store.getters['apps/installed'] || [])].map((p) => p?.name).filter(Boolean)));
 const pluginName = computed(() => (selectedItem.value?.asset_type === 'plugin' && catalogNames.value.has(selectedItem.value.asset_id) ? selectedItem.value.asset_id : null));
-// As the Plugins page does: sign-in on the account's page, model keys in Settings.
+// As the Plugins page does: the sign-in runs right here, model keys in Settings.
+const { cards: appCards } = useAppCards();
+const findCard = (id) => findAppCard(appCards.value, id);
+const signIn = useAppSignIn({ store, nav, findCard });
+const isModelProvider = (id) => AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase());
 function connect(connection) {
   const id = connection?.providerId;
   if (!id) return;
-  if (AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase())) nav.go({ page: 'settings' });
+  if (isModelProvider(id)) return nav.go({ page: 'settings' });
+  const card = findCard(id);
+  if (card) signIn.signIn(card);
+  else nav.go({ page: 'connectors', item: id });
+}
+function disconnect(connection) {
+  const id = connection?.providerId;
+  if (!id) return;
+  if (isModelProvider(id)) return nav.go({ page: 'settings' });
+  const card = findCard(id);
+  if (card) signIn.disconnect(card);
   else nav.go({ page: 'connectors', item: id });
 }
 const busy = computed(() => installingId.value !== null);
 const isInstalled = listing => installedHere.value.has(String(listing.id)) || (store.state.marketplace?.myInstalls || []).some(owned => String(owned.marketplace_item_id || owned.id) === String(listing.id));
 const price = listing => Number(listing.price) > 0 ? `$${Number(listing.price).toFixed(2)}` : 'Get';
 const installLabel = listing => String(installingId.value) === String(listing.id) ? 'Installing…' : isInstalled(listing) ? 'Installed' : price(listing);
-const openItem = listing => nav.go({ page: 'market', item: marketplaceItemKey(listing) });
+const openItem = listing => {
+  openedHere.value = true;
+  nav.go({ page: 'market', item: marketplaceItemKey(listing) });
+};
 const imageFor = listing => failedImages.value.has(String(listing.id)) ? null : listing.preview_image;
 const hideImage = listing => { failedImages.value = new Set([...failedImages.value, String(listing.id)]); };
 async function load(force = false) {
