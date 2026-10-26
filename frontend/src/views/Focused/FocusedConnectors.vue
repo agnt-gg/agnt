@@ -23,7 +23,7 @@
       @close-app="closePlugin"
       @connect="connect"
       @reconnect="connect"
-      @disconnect="connect"
+      @disconnect="disconnect"
       @open-widget="(id) => nav.go({ page: 'library', tab: 'widgets', item: id })"
       @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
       @build-app="nav.studio('PluginsScreen')"
@@ -40,18 +40,27 @@
 
 <script setup>
 // The same component supplies both shells' Plugins page: catalog, details,
-// purchase checks, installer, updates and Accounts & keys. Focused owns only
-// route navigation and its existing account page (FocusedConnection), which is
-// where connect, reconnect and sign-out happen in this shell.
+// purchase checks, installer, updates and Accounts & keys. Focused owns route
+// navigation and the sign-in itself, which runs where Connect was clicked
+// (useAppSignIn): no second page with a second Connect button. The account
+// page (FocusedConnection) remains for deep links.
 import { computed, inject, ref, watch } from 'vue';
+import { useStore } from 'vuex';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import FocusedConnection from './FocusedConnection.vue';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
+import { useAppCards } from '@/composables/useAppCards.js';
+import { findAppCard } from '@/services/appCards.js';
+import { useAppSignIn } from './useAppSignIn.js';
 
 const IntegrationsScreen = lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue'));
 const props = defineProps({ item: { type: String, default: null }, tab: { type: String, default: '' } });
 const nav = inject('focusedNav');
+const store = useStore();
+const { cards } = useAppCards();
+const findCard = (id) => findAppCard(cards.value, id);
+const signIn = useAppSignIn({ store, nav, findCard });
 const lastPlugin = ref(null);
 // The tab a sign-in started from (Accounts & keys is the route's 'vault' tab), so Back returns there.
 const returnTab = ref(null);
@@ -72,17 +81,29 @@ function openPlugin(name) {
 function closePlugin() {
   if (props.item) nav.go({ page: 'connectors' });
 }
-// Connect, reconnect and sign out all happen on the account's own page.
+const isModelProvider = (id) => AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase());
+// The account page, for a sign-in this page cannot run itself (no card yet).
+function openAccountPage(id) {
+  const from = props.tab || null;
+  nav.go({ page: 'connectors', item: id });
+  returnTab.value = from;
+}
+// Connect and reconnect start the sign-in right here: one click, one intent.
 function connect(connection) {
   const id = connection?.providerId;
   if (!id) return;
   // Model credentials remain Settings' responsibility in both shells.
-  if (AI_PROVIDERS_WITH_API.some((provider) => provider.toLowerCase() === id.toLowerCase())) {
-    nav.go({ page: 'settings' });
-  } else {
-    const from = props.tab || null;
-    nav.go({ page: 'connectors', item: id });
-    returnTab.value = from;
-  }
+  if (isModelProvider(id)) return nav.go({ page: 'settings' });
+  const card = findCard(id);
+  if (card) signIn.signIn(card);
+  else openAccountPage(id);
+}
+function disconnect(connection) {
+  const id = connection?.providerId;
+  if (!id) return;
+  if (isModelProvider(id)) return nav.go({ page: 'settings' });
+  const card = findCard(id);
+  if (card) signIn.disconnect(card);
+  else openAccountPage(id);
 }
 </script>

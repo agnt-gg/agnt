@@ -142,15 +142,14 @@
 // One app's page: what it turns on, how it signs in, what else it could turn
 // on. The account card comes from services/appCards; package browsing is shared separately;
 // every action goes through the shared stores — Focused never calls the API.
-import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
 import FocusedConnectorLogo from './FocusedConnectorLogo.vue';
-import { CLI_DISCONNECT_ACTIONS, editAsk } from './focusedModel.js';
+import { editAsk } from './focusedModel.js';
+import { useAppSignIn } from './useAppSignIn.js';
 import { useAppCards } from '@/composables/useAppCards.js';
 import { findAppCard, describeApps } from '@/services/appCards.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
-import providerAuthService from '@/services/providerAuthService.js';
-import { isTrustedOAuthMessageOrigin, hasOAuthMessagePayload } from '@/utils/oauthMessageOrigin.js';
 
 /** Legacy account links still work; in-app sign-in returns where it started: a plugin's details or a tab. */
 const props = defineProps({
@@ -161,11 +160,12 @@ const props = defineProps({
 const store = useStore();
 const nav = inject('focusedNav');
 
-const busy = ref(false);
-const error = ref('');
 const apiKey = ref('');
 const { cards, loading } = useAppCards();
 const card = computed(() => findAppCard(cards.value, props.cardId));
+// The same sign-in the Plugins page runs in place (useAppSignIn).
+const signIn = useAppSignIn({ store, nav, findCard: (id) => findAppCard(cards.value, id) });
+const { busy, error } = signIn;
 const isModelProvider = computed(() => AI_PROVIDERS_WITH_API.includes(String(props.cardId).toLowerCase()));
 
 const STATUS_WORD = Object.freeze({ ready: 'Ready', connect: 'Not connected', reconnect: 'Sign-in stopped working' });
@@ -176,11 +176,9 @@ function contents(app) {
     .join(' · ');
 }
 
-// The catalogue keeps its own id casing ('Slack'); the auth endpoints want it.
 const catalogueEntry = computed(() =>
   (store.state.appAuth?.allProviders || []).find((p) => String(p.id).toLowerCase() === card.value?.providerId),
 );
-const providerId = computed(() => (catalogueEntry.value ? String(catalogueEntry.value.id) : card.value?.providerId));
 const providerName = computed(() => catalogueEntry.value?.name || card.value?.providerId || '');
 
 const back = () => nav.go({
@@ -189,87 +187,12 @@ const back = () => nav.go({
   ...(props.returnTab ? { tab: props.returnTab } : {}),
 });
 
-// OAuth opens the provider's consent page in a popup (as Connectors does) and
-// re-reads the connections once it closes. The interval is cleared on close
-// and on leaving the page, so nothing polls after this view is gone.
-let popupTimer = null;
-async function connectOAuth() {
-  error.value = '';
-  busy.value = true;
-  try {
-    const authUrl = await store.dispatch('appAuth/requestOAuthUrl', providerId.value);
-    const w = 600;
-    const h = 700;
-    const popup = window.open(
-      authUrl,
-      `oauth_${providerId.value}`,
-      `width=${w},height=${h},left=${window.screenX + (window.outerWidth - w) / 2},top=${window.screenY + (window.outerHeight - h) / 2},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`,
-    );
-    if (!popup) {
-      busy.value = false;
-      error.value = 'Your browser blocked the sign-in window. Allow pop-ups for AGNT and try again.';
-      return;
-    }
-    clearInterval(popupTimer);
-    popupTimer = setInterval(async () => {
-      if (!popup.closed) return;
-      clearInterval(popupTimer);
-      popupTimer = null;
-      await store.dispatch('appAuth/refreshAfterConnect').catch(() => {});
-      // A reconnect clears the failing state only once health is re-read.
-      await store.dispatch('appAuth/checkConnectionHealth').catch(() => {});
-      busy.value = false;
-      if (card.value?.status === 'ready') nav.toast(`${card.value.name} connected.`);
-    }, 500);
-  } catch (e) {
-    busy.value = false;
-    error.value = `Couldn’t start connecting ${card.value.name}. ${e?.message || e}`;
-  }
-}
-
+// Sign-in, key and sign-out: the shared in-place actions (useAppSignIn).
+const connectOAuth = () => signIn.signInWithPopup(card.value);
 async function saveKey() {
-  const key = apiKey.value.trim();
-  if (!key) return;
-  error.value = '';
-  busy.value = true;
-  try {
-    await store.dispatch('appAuth/saveApiKey', { providerId: providerId.value, apiKey: key });
-    apiKey.value = '';
-    await store.dispatch('appAuth/checkConnectionHealth').catch(() => {});
-    nav.toast(`${card.value.name} connected.`);
-  } catch (e) {
-    error.value = `Couldn’t save the key. ${e?.message || e}`;
-  } finally {
-    busy.value = false;
-  }
+  if (await signIn.saveKey(card.value, apiKey.value)) apiKey.value = '';
 }
-
-async function disconnect() {
-  const name = card.value.name;
-  // One sign-in can power several apps; say which ones stop.
-  const stops = describeApps(card.value);
-  const message = stops && card.value.apps.length > 1
-    ? `${stops} will stop working until you connect ${name} again.`
-    : `AGNT won’t be able to use ${name} until you connect it again.`;
-  if (!(await nav.confirm({ title: `Disconnect ${name}?`, message, confirmText: 'Disconnect', danger: true }))) return;
-  error.value = '';
-  busy.value = true;
-  try {
-    const cliAction = CLI_DISCONNECT_ACTIONS[card.value.providerId];
-    if (cliAction) {
-      const result = await store.dispatch(cliAction);
-      if (result && result.success === false) throw new Error(result.error || 'Failed to disconnect.');
-      await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-    } else {
-      await store.dispatch('appAuth/disconnectApp', providerId.value);
-    }
-    nav.toast(`${name} disconnected.`);
-  } catch (e) {
-    error.value = `Couldn’t disconnect. ${e?.message || e}`;
-  } finally {
-    busy.value = false;
-  }
-}
+const disconnect = () => signIn.disconnect(card.value);
 
 async function addSuggested() {
   const names = card.value.suggested.map((s) => s.name);
@@ -284,24 +207,4 @@ async function addSuggested() {
   }
 }
 
-// Desktop path: for the desktop app's origin, api.agnt.gg's callback page postMessages the raw
-// `code` to this window instead of exchanging it, and the opener must POST it to /auth/callback.
-// Without this listener the popup closed and nothing was ever stored (Connectors does the same).
-async function onOAuthMessage(event) {
-  if (!isTrustedOAuthMessageOrigin(event.origin)) return;
-  if (!hasOAuthMessagePayload(event)) return;
-  if (event.data.type !== 'oauth-callback') return;
-  const { code, state } = event.data;
-  try {
-    const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });
-    if (!result?.success) throw new Error(result?.error || 'OAuth completion failed');
-    await store.dispatch('appAuth/refreshAfterConnect').catch(() => {});
-    await store.dispatch('appAuth/checkConnectionHealth').catch(() => {});
-  } catch (e) {
-    busy.value = false;
-    error.value = `Couldn’t finish connecting ${card.value?.name || 'the service'}. ${e?.message || e}`;
-  }
-}
-onMounted(() => window.addEventListener('message', onOAuthMessage));
-onBeforeUnmount(() => { clearInterval(popupTimer); window.removeEventListener('message', onOAuthMessage); });
 </script>

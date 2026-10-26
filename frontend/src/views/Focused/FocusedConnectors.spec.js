@@ -22,7 +22,10 @@ vi.mock('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue', () => 
 }));
 const confirm = vi.fn();
 const modalStub = defineComponent({ setup(_, { expose }) { expose({ showModal: confirm }); return () => null; } });
-const nav = { go: vi.fn(), ask: vi.fn(), studio: vi.fn(), toast: vi.fn(), confirm: vi.fn() };
+const nav = { go: vi.fn(), ask: vi.fn(), studio: vi.fn(), toast: vi.fn(), confirm: vi.fn(), prompt: vi.fn() };
+// The OAuth consent popup: stays open until a test closes it.
+let popup;
+const closePopup = async () => { popup.closed = true; await new Promise((r) => setTimeout(r, 600)); await flushPromises(); };
 const tool = (type, authProvider) => ({ type, schema: { title: type, ...(authProvider ? { authProvider } : {}) } });
 const gmail = { name: 'gmail-plugin', displayName: 'Gmail', category: 'productivity', tools: [tool('gmail-api', 'google')] };
 const pack = {
@@ -50,6 +53,8 @@ async function openListing(name) {
 }
 beforeEach(() => {
   vi.clearAllMocks(); confirm.mockResolvedValue(true);
+  popup = { closed: false };
+  vi.spyOn(window, 'open').mockImplementation(() => popup);
   state.appAuth.allProviders = [{ id: 'google', name: 'Google', connection_type: 'oauth' }, { id: 'notion', name: 'Notion', connection_type: 'apikey' }];
   state.appAuth.connectionHealth = { providers: [] };
   getters['appAuth/connectedApps'] = [];
@@ -60,10 +65,11 @@ beforeEach(() => {
     ? { success: true, valid: true, integrityState: 'verified', detected: {}, trustTier: 'community' }
     : { success: true, assets: [] } }));
   dispatch.mockImplementation(async (action, payload) => {
+    if (action === 'appAuth/requestOAuthUrl') return `https://idp.test/consent/${payload}`;
     if (action === 'marketplace/installPlugin') getters['apps/installed'].push({ ...getters['apps/available'].find(p => p.name === payload.pluginName) });
   });
 });
-afterEach(() => wrapper?.unmount());
+afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); });
 
 describe('Focused shared Plugins page', () => {
   it('mounts the same page as Studio, with every Market package including no-auth ones', async () => {
@@ -116,33 +122,37 @@ describe('Focused shared Plugins page', () => {
     await detail().find('[data-action="install"]').trigger('click'); await flushPromises();
     expect(dispatch.mock.calls.some(([a]) => a === 'marketplace/installPlugin')).toBe(false);
   });
-  it('Connect opens the existing account page and Back returns to the same plugin and search', async () => {
+  // Reported 2026-10-26: Connect opened a second page with a second Connect button.
+  it('Connect starts the sign-in right there: no second page, search and plugin kept', async () => {
     mountPage(); await flushPromises();
     await tabButton('browse').trigger('click');
     await wrapper.find('input[type="search"]').setValue('gmail');
     await wrapper.find('[data-listing="gmail-plugin"] .ap-row-open').trigger('click'); await flushPromises();
-    const sharedElement = wrapper.findComponent(AppsSection).element;
+    nav.go.mockClear();
     await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
-    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
-    expect(wrapper.findComponent(FocusedConnection).props()).toMatchObject({ cardId: 'google', returnItem: 'app:gmail-plugin' });
-    expect(wrapper.findComponent(AppsSection).element).toBe(sharedElement);
-    await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
-    expect(detail().find('.ap-detail-name').text()).toBe('Gmail');
+    expect(dispatch).toHaveBeenCalledWith('appAuth/requestOAuthUrl', 'google');
+    expect(window.open).toHaveBeenCalledWith('https://idp.test/consent/google', 'oauth_google', expect.any(String));
+    expect(nav.go).not.toHaveBeenCalled();
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
+    expect(detail().find('.ap-detail-name').text()).toBe('Gmail');
+    // Closing the popup re-reads the connections, once.
+    await closePopup();
+    expect(dispatch.mock.calls.filter(([a]) => a === 'appAuth/refreshAfterConnect')).toHaveLength(1);
     await wrapper.find('[data-action="back"]').trigger('click'); await flushPromises();
     expect(wrapper.find('input[type="search"]').element.value).toBe('gmail');
-    expect(wrapper.findAll('[data-listing]')).toHaveLength(1);
   });
-  it('Reconnect preserves the failing-account state and refreshes on return', async () => {
+  it('Reconnect starts a fresh sign-in in place and the detail shows connected once health is re-read', async () => {
     getters['appAuth/connectedApps'] = ['google'];
     state.appAuth.connectionHealth = { providers: [{ provider: 'google', status: 'error' }] };
     mountPage('app:gmail-plugin'); await flushPromises();
     const button = detail().find('[data-section="sign-in"] [data-action="connect"]');
     expect(button.text()).toBe('Reconnect');
     await button.trigger('click'); await flushPromises();
-    expect(wrapper.findComponent(FocusedConnection).text()).toContain('sign-in stopped working');
+    expect(dispatch).toHaveBeenCalledWith('appAuth/requestOAuthUrl', 'google');
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
     state.appAuth.connectionHealth = { providers: [{ provider: 'google', status: 'healthy' }] };
-    await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
+    await closePopup();
+    expect(dispatch).toHaveBeenCalledWith('appAuth/checkConnectionHealth');
     expect(detail().find('[data-section="sign-in"] .ap-connected').exists()).toBe(true);
   });
   it('legacy provider links still render setup and return to the page', async () => {
@@ -152,13 +162,29 @@ describe('Focused shared Plugins page', () => {
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
     expect(wrapper.findComponent(AppsSection).isVisible()).toBe(true);
   });
-  it('keeps API-key setup in the existing Focused account form', async () => {
+  it('an API-key sign-in asks for the key in one dialog, right there', async () => {
     getters['apps/available'] = [{ name: 'notion-plugin', tools: [tool('notion-api', 'notion')] }];
+    nav.prompt.mockResolvedValue('  test-key  ');
     mountPage('app:notion-plugin'); await flushPromises();
     await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
-    await wrapper.find('input[aria-label="API key"]').setValue('test-key');
-    await wrapper.find('form').trigger('submit'); await flushPromises();
+    expect(nav.prompt).toHaveBeenCalledWith(expect.objectContaining({ title: 'Connect Notion', secret: true }));
     expect(dispatch).toHaveBeenCalledWith('appAuth/saveApiKey', { providerId: 'notion', apiKey: 'test-key' });
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
+    expect(nav.toast).toHaveBeenCalledWith('Notion connected.');
+  });
+  it('cancelling the key dialog saves nothing', async () => {
+    getters['apps/available'] = [{ name: 'notion-plugin', tools: [tool('notion-api', 'notion')] }];
+    nav.prompt.mockResolvedValue(null);
+    mountPage('app:notion-plugin'); await flushPromises();
+    await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
+    expect(dispatch.mock.calls.some(([a]) => a === 'appAuth/saveApiKey')).toBe(false);
+  });
+  it('a sign-in that cannot start says why instead of failing quietly', async () => {
+    dispatch.mockImplementation(async (action) => { if (action === 'appAuth/requestOAuthUrl') throw new Error('502'); });
+    mountPage('app:gmail-plugin'); await flushPromises();
+    await detail().find('[data-section="sign-in"] [data-action="connect"]').trigger('click'); await flushPromises();
+    expect(window.open).not.toHaveBeenCalled();
+    expect(nav.toast).toHaveBeenCalledWith(expect.stringContaining('Couldn’t start connecting Google. 502'));
   });
   it('model credentials still belong to Focused Settings', async () => {
     state.appAuth.allProviders.push({ id: 'openrouter', name: 'OpenRouter', connection_type: 'apikey' });
@@ -201,8 +227,8 @@ describe('Focused shared Plugins page', () => {
     expect(lead.text()).toBe('Connect Google');
     expect(wrapper.text()).toContain('Gmail installed. Connect Google to start using it.');
     await lead.trigger('click'); await flushPromises();
-    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(true);
-    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
+    expect(dispatch).toHaveBeenCalledWith('appAuth/requestOAuthUrl', 'google');
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
   });
   it('a ready plugin leads with trying it, which asks Annie', async () => {
     getters['apps/installed'] = [gmail]; getters['appAuth/connectedApps'] = ['google'];
@@ -231,20 +257,22 @@ describe('Focused Accounts & keys', () => {
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors' });
     expect(tabButton('installed').attributes('aria-selected')).toBe('true');
   });
-  it('a vault deep link opens Accounts & keys; Connect and Sign out go to the account page', async () => {
+  it('a vault deep link opens Accounts & keys; Connect and Disconnect happen in place', async () => {
     getters['apps/installed'] = [gmail]; getters['appAuth/connectedApps'] = ['google'];
+    nav.prompt.mockResolvedValue('k');
+    nav.confirm.mockResolvedValue(true);
     mountPage(null, 'vault'); await flushPromises();
     expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
+    nav.go.mockClear();
     await wrapper.find('[data-service="notion"] [data-action="connect"]').trigger('click'); await flushPromises();
-    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'notion' });
-    expect(wrapper.findComponent(FocusedConnection).props()).toMatchObject({ cardId: 'notion', returnTab: 'vault' });
-    // Back returns to the tab the sign-in started from.
-    await wrapper.find('.focused-page-back').trigger('click'); await flushPromises();
-    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'vault' });
+    expect(dispatch).toHaveBeenCalledWith('appAuth/saveApiKey', { providerId: 'notion', apiKey: 'k' });
+    expect(nav.go).not.toHaveBeenCalled();
     expect(tabButton('accounts').attributes('aria-selected')).toBe('true');
     await wrapper.find('[data-account="google"] .ap-row-open').trigger('click'); await flushPromises();
     await detail().find('[data-action="disconnect"]').trigger('click'); await flushPromises();
-    expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', item: 'google' });
+    expect(nav.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Disconnect Google?', danger: true }));
+    expect(dispatch).toHaveBeenCalledWith('appAuth/disconnectApp', 'google');
+    expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
   });
   it('Edit integrations opens the embedded provider editor, and Back returns to Accounts & keys', async () => {
     mountPage(null, 'vault'); await flushPromises();
