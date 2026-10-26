@@ -96,6 +96,16 @@ describe('buildAppCards', () => {
     expect(ready).toEqual([...ready].sort((a, b) => a.localeCompare(b)));
   });
 
+  // Reported 2026-10-26: signing in to AGNT with Google showed a "Google login" plugin card.
+  it('the credential that signs you in to AGNT is never an app card', () => {
+    const cards = build({ connectedApps: [...CONNECTED, 'google-login', 'Google-Login'] });
+    expect(findAppCard(cards, 'google-login')).toBeNull();
+    expect([...cards.yours, ...cards.discover].some((c) => /google.?login/i.test(c.id + c.name))).toBe(false);
+    // Nor offered under Discover, should a catalogue ever list it.
+    const withCatalogue = build({ catalogue: [...CATALOGUE, { id: 'google-login', name: 'Google login', connection_type: 'oauth' }] });
+    expect(withCatalogue.discover.some((c) => c.id === 'google-login')).toBe(false);
+  });
+
   it('a sign-in with no plugin is still yours (used through Custom API)', () => {
     const stripe = findAppCard(build(), 'stripe');
     expect(stripe).toMatchObject({ kind: 'account', status: APP_STATUS.READY, apps: [] });

@@ -35,6 +35,15 @@ function modelProviderSet(aiProviderIds) {
   return new Set([...(Array.isArray(aiProviderIds) ? aiProviderIds : []), ...ALWAYS_MODEL_IDS].map((id) => String(id).toLowerCase()));
 }
 
+/**
+ * Credentials that sign you in TO AGNT, not apps AGNT uses. Signing in with
+ * Google stores `google-login`, which then showed on the Plugins page as a
+ * "Google login" card that looked like a plugin (reported 2026-10-26). The
+ * backend's health check skips the same id (AuthManager.checkConnectionHealth).
+ */
+export const AGNT_SIGN_IN_IDS = Object.freeze(['google-login']);
+const SIGN_IN_ID_SET = new Set(AGNT_SIGN_IN_IDS);
+
 /** Card states, in the order a person should deal with them. */
 export const APP_STATUS = Object.freeze({ RECONNECT: 'reconnect', CONNECT: 'connect', READY: 'ready' });
 const STATUS_RANK = { reconnect: 0, connect: 1, ready: 2 };
@@ -149,7 +158,7 @@ function statusFor(providerId, connected, unhealthy) {
  */
 export function buildAppCards({ installed, catalogue, connectedApps, health, available, widgets, skills, aiProviderIds } = {}, query = '') {
   const modelIds = modelProviderSet(aiProviderIds);
-  const connected = new Set(list(connectedApps).map(key));
+  const connected = new Set(list(connectedApps).map(key).filter((id) => !SIGN_IN_ID_SET.has(id)));
   const unhealthy = new Set(list(health).filter((h) => h?.status === 'error').map((h) => key(h.provider)));
   const catalogueById = new Map(list(catalogue).map((p) => [key(p.id), p]));
   const installedNames = new Set(list(installed).map((p) => key(p.name)));
@@ -229,7 +238,7 @@ export function buildAppCards({ installed, catalogue, connectedApps, health, ava
   // providers and on-this-computer CLIs are Settings' business.
   const discover = list(catalogue)
     .map((p) => key(p.id))
-    .filter((id) => id && !cards.has(id) && !modelIds.has(id) && connectionTypeOf(catalogueById.get(id)) !== 'cli')
+    .filter((id) => id && !cards.has(id) && !modelIds.has(id) && !SIGN_IN_ID_SET.has(id) && connectionTypeOf(catalogueById.get(id)) !== 'cli')
     .filter((id, index, ids) => ids.indexOf(id) === index)
     .map((id) => finish({ ...accountCard(id), apps: [] }));
 
