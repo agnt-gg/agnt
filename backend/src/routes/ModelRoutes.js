@@ -1,5 +1,4 @@
 import { getConnection } from '../services/ai/connectionRuntime.js';
-const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
 const projectConnection = getConnection('gemini-cli');
 import express from 'express';
@@ -26,6 +25,8 @@ import { getClientVersion } from '../services/ai/clientVersions.js';
 import { persistLastModels, getLastSuccessfulEntry } from '../services/ai/lastModelsCache.js';
 import { LISTING_SOURCE, listing, provenanceFields, redactUpstreamError } from '../services/ai/modelListing.js';
 import { extractToken, requireAuthHeader, verifyAuthToken } from '../utils/authGuard.js';
+import { subscriptionConnectionFor, noSubscriptionMessage } from '../services/ai/memberConnections.js';
+import { isHostedMember } from '../services/auth/memberAi.js';
 
 // ───────────────────────── PERSISTENT LAST-SUCCESSFUL MODEL CACHE ──────────────────────
 // Whenever an upstream fetch succeeds we persist the model list to disk so a
@@ -70,6 +71,29 @@ const router = express.Router();
 function verifiedUserId(req) {
   const result = verifyAuthToken(extractToken(req));
   return result.ok ? result.user.id : null;
+}
+
+/**
+ * The Claude Code / Codex connection whose models this caller should see: the
+ * instance's own for its owner or a desktop; on a hosted team instance a
+ * member's own sign-in, or the owner's when shared (memberConnections.js).
+ * Before this, a member who signed in with their own Claude Code was told it
+ * was "not connected", because the list always came from the owner's.
+ * An unverified caller keeps the old behaviour: the instance's own.
+ */
+export async function connectionForCaller(req, id, { resolve = subscriptionConnectionFor, userOf = verifiedUserId } = {}) {
+  const caller = userOf(req);
+  return caller ? resolve(caller, id) : getConnection(id);
+}
+
+/** The ChatGPT account a Codex token belongs to, read from the token itself. */
+export function chatGptAccountIdOf(token) {
+  try {
+    const claims = JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString());
+    return claims?.['https://api.openai.com/auth']?.chatgpt_account_id || null;
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────── AUTO-INSTANTIATE PROVIDER SERVICES ───────────────────────────
@@ -141,7 +165,7 @@ async function _fetchCodexModelsFromUpstream(token) {
   };
 
   try {
-    const accountId = responseConnection.getChatGptAccountId();
+    const accountId = chatGptAccountIdOf(token) || responseConnection.getChatGptAccountId();
     const headers = {
       'Authorization': `Bearer ${token}`,
       'originator': 'codex_cli_rs',
@@ -340,33 +364,35 @@ router.get('/:provider/models', async (req, res) => {
       // the env-level OPENAI_API_KEY override and would send a sk-* key to an
       // endpoint that rejects it, collapsing the model list to the fallback.
       if (providerLower === 'openai-codex') {
-        apiKey = responseConnection.getOAuthToken();
+        const codexConnection = await connectionForCaller(req, 'openai-codex');
+        apiKey = codexConnection?.getOAuthToken() || null;
         if (!apiKey) {
           return res.status(400).json({
             success: false,
-            error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
+            error: isHostedMember(verifiedUserId(req)) ? noSubscriptionMessage('Codex') : 'OpenAI Codex is not connected. Start device login from the provider setup.',
           });
         }
         // Refresh if the OAuth token is expiring soon (ensureValidToken does this
         // but also pulls in the API-key path we just rejected; re-do the refresh
         // step inline so we keep the OAuth-only guarantee).
-        if (responseConnection.isTokenExpiringSoon()) {
-          const refresh = await responseConnection.refreshAccessToken();
+        if (codexConnection.isTokenExpiringSoon()) {
+          const refresh = await codexConnection.refreshAccessToken();
           if (refresh?.success) {
-            apiKey = responseConnection.getOAuthToken() || apiKey;
+            apiKey = codexConnection.getOAuthToken() || apiKey;
           }
         }
       }
       // Claude Code: use local Claude Code OAuth auth.
       else if (providerLower === 'claude-code') {
-        const ccStatus = await messageConnection.checkApiUsable();
+        const ccConnection = await connectionForCaller(req, 'claude-code');
+        const ccStatus = ccConnection ? await ccConnection.checkApiUsable() : { available: false };
         if (!ccStatus.available) {
           return res.status(400).json({
             success: false,
-            error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
+            error: isHostedMember(verifiedUserId(req)) ? noSubscriptionMessage('Claude Code') : 'Claude Code is not connected. Use setup-token or paste a token to connect.',
           });
         }
-        apiKey = await messageConnection.getAccessToken();
+        apiKey = await ccConnection.getAccessToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
