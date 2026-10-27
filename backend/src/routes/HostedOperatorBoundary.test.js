@@ -41,6 +41,26 @@ describe('hosted operator boundary', () => {
     expect(media).not.toHaveBeenCalled();
   });
 
+  it('a member reads the plugin list without being an administrator', async () => {
+    // Measured on bravo 2026-10-27: a member's app got "/plugins/installed returned 403".
+    const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
+    const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
+    const boundary = createHostedOperatorBoundary(asMember, cloud);
+    for (const url of ['/api/plugins/installed', '/api/plugins/installed/blog-generator', '/api/plugins/marketplace', '/api/plugins/tools', '/api/plugins/updates', '/api/plugins/update-status']) {
+      expect(await run(boundary, request('GET', url)), url).toEqual({ next: true });
+    }
+    expect(cloud.request).not.toHaveBeenCalled();
+  });
+
+  it('plugin administration and plugin source stay administrator-only for a member', async () => {
+    const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
+    const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
+    const boundary = createHostedOperatorBoundary(asMember, cloud);
+    for (const [method, url] of [['POST', '/api/plugins/install'], ['DELETE', '/api/plugins/installed/blog-generator'], ['GET', '/api/plugins/installed/blog-generator/source'], ['GET', '/api/plugins/installed/blog-generator/package'], ['GET', '/api/plugins/inspect/blog-generator']]) {
+      expect(await run(boundary, request(method, url)), `${method} ${url}`).toMatchObject({ next: false, status: 403 });
+    }
+  });
+
   it('a non-owner media load is checked with the cookie credential it arrived with', async () => {
     const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'admin', id: 't1' }]), access: vi.fn(async () => ({})) };
     const media = (req, _res, next) => { req.user = { id: 'admin-2' }; next(); };
