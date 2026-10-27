@@ -1583,7 +1583,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/sentinel.agnt",
-      "size": 42002,
+      "size": 33555,
       "tags": [
         "security",
         "sast",
@@ -1620,7 +1620,7 @@
           }
         }
       ],
-      "integrity": "sha256-u8yXkGjD/XU4+Ug6yTIVVo8Y8XWyFnnbiGUsgIGez0o=",
+      "integrity": "sha256-MkIXzR+IcNq0I6K8evYYMAfi1tLe1hTHn9MBeZaL4B0=",
       "trustTier": "official",
       "declaredPermissions": [
         "env-access",

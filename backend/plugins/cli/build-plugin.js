@@ -270,9 +270,14 @@ async function buildPlugin(arg) {
     const isGitDir = item === '.git';
     const isDSStore = item === '.DS_Store';
     const isPackageLock = item === 'package-lock.json';
+    // Development-only: a plugin's own self-tests and fixtures. Sentinel's
+    // _selftest holds a deliberately vulnerable app (fake keys, injection
+    // routes); shipped inside every installer, it reads to antivirus software
+    // as malware. The capability scanner already treats test-fixtures the same.
+    const isDevOnly = item === '_selftest' || item === 'test-fixtures';
 
     // Skip these files/directories (but NOT node_modules)
-    if (isManifest || isPackageJson || isNpmCache || isGitDir || isDSStore || isPackageLock) {
+    if (isManifest || isPackageJson || isNpmCache || isGitDir || isDSStore || isPackageLock || isDevOnly) {
       return false;
     }
 

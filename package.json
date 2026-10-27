@@ -259,6 +259,7 @@
       "!**/*.css.map",
       "!node_modules/chromium-bidi/**/*",
       "!backend/.chrome/**/*",
+      "!backend/plugins/dev/**/*",
       "!backend/node_modules/**/*",
       "!backend/.env",
       "!backend/.env.*"
