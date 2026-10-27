@@ -266,6 +266,64 @@ describe('MobileReceiver.handle', () => {
     expect(api.requests.some((r) => r.url.endsWith('/orchestrator/chat'))).toBe(false);
     expect(calls.map((c) => c.path)).toEqual(['/messages/m-1/release']);
   });
+
+  // Reported 2026-10-27 (GeniiNow): every teammate's texts ran as the owner,
+  // in the owner's one Main chat, so their threads mixed and NEW wiped all.
+  describe('a teammate\'s phone on a team instance', () => {
+    const teammate = { isTeammate: (id) => id === 'amber', liveToken: () => null, mintTurnToken: (id) => `agnt-tool.for-${id}` };
+    const authOf = (api) => api.requests.filter((r) => r.url.includes('/api/')).map((r) => r.init.headers?.Authorization);
+
+    it('is answered as the teammate: every local call carries their credential, never the owner\'s', async () => {
+      const api = localApi();
+      await receiverWith(api, teammate).handle({ ...message, memberId: 'amber' });
+      expect(new Set(authOf(api))).toEqual(new Set(['Bearer agnt-tool.for-amber']));
+      expect(calls.map((c) => c.path)).toEqual(['/messages/m-1/reply']);
+    });
+
+    it('uses the teammate\'s own live session when this instance has one (connected apps work)', async () => {
+      const api = localApi();
+      await receiverWith(api, { ...teammate, liveToken: (id) => (id === 'amber' ? 'amber-session' : null) }).handle({ ...message, memberId: 'amber' });
+      expect(new Set(authOf(api))).toEqual(new Set(['Bearer amber-session']));
+    });
+
+    it('a phone naming someone who is not a teammate here is given back, never answered as the owner', async () => {
+      const api = localApi();
+      await receiverWith(api, teammate).handle({ ...message, memberId: 'stranger' });
+      expect(api.requests).toEqual([]);
+      expect(calls.map((c) => c.path)).toEqual(['/messages/m-1/release']);
+    });
+
+    it('the owner\'s own phone (no memberId, or the owner\'s id) is still answered as the owner', async () => {
+      const api = localApi();
+      await receiverWith(api, teammate).handle({ ...message, memberId: 'user-1' });
+      expect(new Set(authOf(api))).toEqual(new Set(['Bearer session-token']));
+    });
+
+    it('one person\'s texts never overlap; another person\'s do not wait for them', async () => {
+      let releaseFirst;
+      const firstHeld = new Promise((resolve) => { releaseFirst = resolve; });
+      const order = [];
+      const api = localApi({
+        extra: (url, init) => {
+          if (!url.endsWith('/orchestrator/chat')) return null;
+          const text = JSON.parse(init.body).messages.at(-1).content;
+          order.push(`start ${text}`);
+          const done = () => { order.push(`end ${text}`); return sse(['final_content', { content: 'ok' }]); };
+          return text === 'amber 1' ? firstHeld.then(done) : done();
+        },
+      });
+      const receiver = receiverWith(api, teammate);
+      const amber1 = receiver.handle({ ...message, id: 'a1', text: 'amber 1', memberId: 'amber' });
+      const amber2 = receiver.handle({ ...message, id: 'a2', text: 'amber 2', memberId: 'amber' });
+      const owner = receiver.handle({ ...message, id: 'o1', text: 'owner 1' });
+      await owner;
+      expect(order).toContain('end owner 1');
+      expect(order).not.toContain('start amber 2');
+      releaseFirst();
+      await Promise.all([amber1, amber2]);
+      expect(order.indexOf('end amber 1')).toBeLessThan(order.indexOf('start amber 2'));
+    });
+  });
 });
 
 describe('fileThreadStore', () => {

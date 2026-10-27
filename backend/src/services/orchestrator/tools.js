@@ -3,7 +3,7 @@ const responseConnection = getConnection('openai-codex');
 import { skillIdentity, isDefaultSkill } from '../../utils/skillTrust.js';
 import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from '../security/toolProcess.js';
-import { withToolActor, hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
+import { withToolActor, currentToolActor, hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -2094,7 +2094,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         const { textUser, textQueueReceipt } = await import('../mobileOutbound.js');
         // One key per call: a network retry inside it is one text, a
         // scheduled repeat is a new one.
-        const result = await textUser({ text, key: `tool-${randomUUID()}` });
+        // To the caller's own phone: on a team instance a teammate's turn texts them, not the owner.
+        const result = await textUser({ text, key: `tool-${randomUUID()}`, userId: currentToolActor() || null });
         if (result.sent) return JSON.stringify(textQueueReceipt(result));
         const why = {
           no_phone: 'No phone is linked. The user can link one in Settings → Text Annie.',

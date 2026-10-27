@@ -6,6 +6,7 @@ import { workflowAddress } from '../services/mailAddressing.js';
 import { legacyWebhooks } from '../services/legacyRelay.js';
 import { serviceAllowed, SERVICES, serviceFailure, callService, hostedInstanceSlug } from '../services/agntServices.js';
 import { getFlashAccount, startTopUp } from '../services/agntFlashAccount.js';
+import { textingMember, visiblePhones, assertOwnPhone } from '../services/mobileMembers.js';
 
 /**
  * What the hosted services have given this account: the inbox address every
@@ -131,40 +132,58 @@ AgntServicesRoutes.get('/inbox', authenticateToken, async (req, res) => {
 const mobileProxy = (method, path, { body, idempotent = false } = {}) =>
   callService('mobile', path, { method, body, idempotent, planGate: false, timeoutMs: 20000, retries: 2 });
 const mobileFailure = (res, error) => {
+  if (error?.code === 'phone_not_found') return res.status(404).json({ success: false, reason: 'phone_not_found', error: 'No such phone on your account.' });
   const failure = serviceFailure(error);
   // callService folds every 402 into 'pro_required'; keep the service's own
   // reason (hosting_required, insufficient_credit, ...) for the UI.
   const reason = error?.detail?.error || failure.code || 'request_failed';
   res.status(failure.status && failure.status >= 400 && failure.status < 600 ? failure.status : 502).json({ ...failure, reason });
 };
-AgntServicesRoutes.get('/mobile/status', authenticateToken, async (_req, res) => {
+AgntServicesRoutes.get('/mobile/status', authenticateToken, async (req, res) => {
   try {
     const status = await mobileProxy('GET', '/status');
     // A phone that finished linking since the last look: start answering it.
     if ((status.phones || []).some((p) => p.state === 'active')) kickReceiver();
-    res.set('Cache-Control', 'no-store').json({ ...status, instance: hostedInstanceSlug() || 'desktop' });
+    // A teammate texts this instance only, with their own phones; the account's
+    // allowance is shared, so they also see how many phones the team uses.
+    const member = textingMember(req);
+    const phones = visiblePhones(status.phones, member);
+    const team = member ? { member: true, accountPhones: (status.phones || []).filter((p) => p.state !== 'revoked').length, instances: [] } : {};
+    res.set('Cache-Control', 'no-store').json({ ...status, phones, ...team, instance: hostedInstanceSlug() || 'desktop' });
   } catch (error) { mobileFailure(res, error); }
 });
+const accountPhones = async () => (await mobileProxy('GET', '/phones')).phones || [];
 // A phone linked or rerouted here should be answered at once, not after the
 // receiver's idle back-off.
 const kickReceiver = () => import('../services/mobileReceiver.js').then((m) => m.getMobileReceiver()?.kick()).catch(() => {});
 AgntServicesRoutes.post('/mobile/phones', authenticateToken, async (req, res) => {
   try {
-    res.status(201).json(await mobileProxy('POST', '/phones', { body: { number: req.body?.number, route: req.body?.route || hostedInstanceSlug() || 'desktop' } }));
+    // A teammate's phone always texts this instance, as them (memberId).
+    const member = textingMember(req);
+    const route = member ? hostedInstanceSlug() : req.body?.route || hostedInstanceSlug() || 'desktop';
+    res.status(201).json(await mobileProxy('POST', '/phones', { body: { number: req.body?.number, route, memberId: member } }));
     kickReceiver();
   } catch (error) { mobileFailure(res, error); }
 });
 AgntServicesRoutes.post('/mobile/phones/:id/code', authenticateToken, async (req, res) => {
-  try { res.json(await mobileProxy('POST', `/phones/${encodeURIComponent(req.params.id)}/code`, { body: {} })); } catch (error) { mobileFailure(res, error); }
+  try {
+    await assertOwnPhone(req.params.id, textingMember(req), accountPhones);
+    res.json(await mobileProxy('POST', `/phones/${encodeURIComponent(req.params.id)}/code`, { body: {} }));
+  } catch (error) { mobileFailure(res, error); }
 });
 AgntServicesRoutes.put('/mobile/phones/:id', authenticateToken, async (req, res) => {
   try {
+    // A teammate's phone only ever texts this instance; there is nowhere to move it.
+    if (textingMember(req)) return res.status(403).json({ success: false, reason: 'member_route_fixed', error: 'Your phone texts this AGNT. Unlink it to stop.' });
     res.json(await mobileProxy('PUT', `/phones/${encodeURIComponent(req.params.id)}`, { body: { route: req.body?.route } }));
     kickReceiver();
   } catch (error) { mobileFailure(res, error); }
 });
 AgntServicesRoutes.delete('/mobile/phones/:id', authenticateToken, async (req, res) => {
-  try { res.json(await mobileProxy('DELETE', `/phones/${encodeURIComponent(req.params.id)}`)); } catch (error) { mobileFailure(res, error); }
+  try {
+    await assertOwnPhone(req.params.id, textingMember(req), accountPhones);
+    res.json(await mobileProxy('DELETE', `/phones/${encodeURIComponent(req.params.id)}`));
+  } catch (error) { mobileFailure(res, error); }
 });
 
 AgntServicesRoutes.get('/webhook/:workflowId', authenticateToken, async (req, res) => {

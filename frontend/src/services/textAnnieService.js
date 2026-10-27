@@ -84,11 +84,20 @@ export function currentLinkCode(codes, phone, now = Date.now()) {
   return entry.code;
 }
 
+/** The service's reason codes that need more than the code itself to act on. */
+const REASONS = {
+  hosting_required: 'Texting needs AGNT Mobile: included with paid AGNT plans, or $5/month at mobile.agnt.gg.',
+  phone_in_use: 'That number is already linked. If it was linked for someone else on this team, the owner can unlink it in Settings → Phone Access, then you can link it here.',
+  phone_limit: 'Every phone this plan includes is in use. The owner can add seats or unlink a phone.',
+  invalid_phone: 'That number doesn\u2019t look right. US numbers: +1 and 10 digits. Elsewhere: + and your country code.',
+  member_not_on_instance: 'You\u2019re not a member of this AGNT yet, so your phone can\u2019t text it. Ask the owner to add you.',
+};
+
 /** One sentence for any failure: the service's own message when it gave one. */
 export function explain(error) {
   const data = error?.response?.data;
   if (data?.message) return data.message;
-  if (data?.reason === 'hosting_required') return 'Texting needs AGNT Mobile: included with paid AGNT plans, or $5/month at mobile.agnt.gg.';
+  if (REASONS[data?.reason]) return REASONS[data.reason];
   if (typeof data?.error === 'string' && !/^[a-z_]+$/.test(data.error)) return data.error;
   if (error?.response?.status === 401) return 'Sign in to AGNT to text Annie.';
   if (!error?.response) return 'Could not reach AGNT. Check your connection and try again.';

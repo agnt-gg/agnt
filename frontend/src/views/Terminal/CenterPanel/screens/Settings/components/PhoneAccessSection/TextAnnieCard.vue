@@ -30,6 +30,7 @@
               <span :class="isOnline(phone.route) ? 'ta-on' : 'ta-off'">{{ isOnline(phone.route) ? 'online' : 'offline' }}</span>
             </template>
             <template v-if="phone.line"> · Annie: {{ formatNumber(phone.line) }}</template>
+            <template v-if="!isMember && phone.memberId"> · a teammate's phone</template>
           </small>
         </div>
         <div class="ta-phone-actions">
@@ -38,7 +39,7 @@
             <button v-else class="ta-btn ta-btn-primary" :disabled="busy" @click="requestNewCode(phone)">Get new code</button>
           </template>
           <CustomSelect
-            v-else
+            v-else-if="!isMember"
             class="ta-select"
             :model-value="phone.route"
             :options="targets"
@@ -74,14 +75,18 @@
       <form v-if="canAddPhone" class="ta-add" @submit.prevent="onAdd">
         <label class="ta-field">
           <span>Your mobile number</span>
-          <input v-model="number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 970 555 0101" required />
+          <input v-model="number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 970 555 0101" aria-describedby="ta-number-hint" required />
         </label>
-        <div class="ta-field">
+        <div v-if="!isMember" class="ta-field">
           <span>Send texts to</span>
           <CustomSelect v-model="route" class="ta-select" :options="targets" aria-label="Send texts to" />
         </div>
-        <button class="ta-btn ta-btn-primary" type="submit" :disabled="busy || !number.trim()">Link phone</button>
+        <button class="ta-btn ta-btn-primary" type="submit" :disabled="busy || numberDigits < MIN_PHONE_DIGITS">Link phone</button>
       </form>
+      <p v-if="canAddPhone" id="ta-number-hint" class="ta-fine">
+        US numbers start with +1 (already filled in): add your 10 digits. Outside the US, replace +1 with your country code.
+        <template v-if="isMember"> Your texts go to this AGNT, as you.</template>
+      </p>
 
       <p v-if="error" class="ta-note ta-note-error"><i class="fas fa-exclamation-circle"></i><span>{{ error }}</span></p>
       <p v-if="planEligible && state.plan" class="ta-fine">
@@ -104,7 +109,11 @@ const loading = ref(true);
 const loadError = ref('');
 const error = ref('');
 const busy = ref(false);
-const number = ref('');
+// US default: the +1 is filled in, so a US number is just its 10 digits.
+const US_PREFIX = '+1 ';
+const MIN_PHONE_DIGITS = 8; // the shortest real numbers with a country code
+const number = ref(US_PREFIX);
+const numberDigits = computed(() => number.value.replace(/\D/g, '').length);
 const route = ref('');
 const linking = ref(null); // { phone, code }
 const savedCodes = ref(textAnnie.loadLinkCodes()); // { [phoneId]: { code, expiresAt } }
@@ -116,15 +125,19 @@ let ticker = null;
 const phones = computed(() => state.value?.phones || []);
 const planEligible = computed(() => state.value?.plan?.eligible === true);
 const thisInstance = computed(() => state.value?.instance || 'desktop');
+// A teammate on a team instance: they see only their own phones, which always text this AGNT.
+const isMember = computed(() => state.value?.member === true);
 const canAddPhone = computed(() => {
   if (!state.value?.linking || !planEligible.value) return false;
   const max = state.value.plan?.maxPhones || 0;
-  return phones.value.length < max;
+  // The allowance is the whole account's (the team shares the owner's plan).
+  return (state.value.accountPhones ?? phones.value.length) < max;
 });
 
-/** This AGNT first, then every other AGNT the account owns. */
+/** This AGNT first, then every other AGNT the account owns. A teammate: this AGNT only. */
 const targets = computed(() => {
   const list = [{ value: thisInstance.value, label: thisInstance.value === 'desktop' ? 'This computer' : `This cloud AGNT (${thisInstance.value})` }];
+  if (isMember.value) return list;
   if (thisInstance.value !== 'desktop') list.push({ value: 'desktop', label: 'My desktop app' });
   for (const instance of state.value?.instances || []) {
     if (instance.slug !== thisInstance.value) list.push({ value: instance.slug, label: `Cloud AGNT (${instance.slug})` });
@@ -215,8 +228,11 @@ async function run(task) {
 }
 
 const onAdd = () => run(async () => {
-  const result = await textAnnie.addPhone(number.value, route.value || thisInstance.value);
-  number.value = '';
+  // A number pasted with its own + after the prefilled +1 keeps only its own country code.
+  const typed = number.value.trim();
+  const value = /^\+1\s*\+/.test(typed) ? typed.replace(/^\+1\s*/, '') : typed;
+  const result = await textAnnie.addPhone(value, route.value || thisInstance.value);
+  number.value = US_PREFIX;
   await load();
   if (!result.alreadyLinked) startLinking(result.phone, result.code);
 });

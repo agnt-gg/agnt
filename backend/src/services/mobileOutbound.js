@@ -17,6 +17,17 @@
 import { callService as defaultCallService } from './agntServices.js';
 import { findOutboundFiles, sendMedia } from './mobileMedia.js';
 import { toTextReply } from './mobileReceiver.js';
+import { isNonOwnerMember } from './security/memberIsolation.js';
+import { credentialUserId } from './auth/tenantOwnership.js';
+
+/**
+ * The teammate a text is for, or null for the account owner. On a team
+ * instance every phone is on the owner's account; without this the service
+ * picked "the most recently active phone", which could be anyone's.
+ */
+export function textRecipient(userId) {
+  return typeof userId === 'string' && isNonOwnerMember(userId) ? credentialUserId(userId.trim()) : null;
+}
 
 const REFUSALS = {
   phone_not_found: 'no_phone',
@@ -27,11 +38,12 @@ const REFUSALS = {
 
 const defaultResolveImage = async (id) => (await import('./ImageStorage.js')).findImageFile(id);
 
-/** Is any verified, unpaused phone linked to this account? Never throws. */
-export async function hasLinkedPhone({ callService = defaultCallService } = {}) {
+/** Is any verified, unpaused phone linked for this person? Never throws. */
+export async function hasLinkedPhone({ callService = defaultCallService, userId = null } = {}) {
   try {
     const { phones } = await callService('mobile', '/phones', { timeoutMs: 10_000, retries: 1, planGate: false });
-    return Array.isArray(phones) && phones.some((phone) => phone?.state === 'active');
+    const memberId = textRecipient(userId);
+    return Array.isArray(phones) && phones.some((phone) => phone?.state === 'active' && (phone.memberId || null) === memberId);
   } catch {
     return false;
   }
@@ -47,15 +59,16 @@ export async function hasLinkedPhone({ callService = defaultCallService } = {}) 
  *
  * @returns {Promise<{sent:boolean, id?:string, duplicate?:boolean, reason?:string}>}
  */
-export async function textUser({ text, imageIds = [], key }, { callService = defaultCallService, fetchImpl = fetch, resolveImage = defaultResolveImage } = {}) {
+export async function textUser({ text, imageIds = [], key, userId = null }, { callService = defaultCallService, fetchImpl = fetch, resolveImage = defaultResolveImage } = {}) {
   if (typeof key !== 'string' || key.length < 8) return { sent: false, reason: 'idempotency_key_required' };
   try {
+    const memberId = textRecipient(userId);
     const outgoing = await findOutboundFiles(String(text || ''), { imageIds, resolveImage });
-    const attached = outgoing.length ? await sendMedia(null, outgoing, { callService, fetchImpl }) : [];
+    const attached = outgoing.length ? await sendMedia(null, outgoing, { callService, fetchImpl, memberId }) : [];
     const body = toTextReply(text, { attached });
     const result = await callService('mobile', '/outbound', {
       method: 'POST',
-      body: { text: body, media: attached.map((file) => file.mediaId), key },
+      body: { text: body, media: attached.map((file) => file.mediaId), key, memberId },
       timeoutMs: 30_000,
       planGate: false,
     });

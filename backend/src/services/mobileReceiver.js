@@ -15,22 +15,32 @@
  * endpoint the chat window uses, so a texted request can do anything a typed
  * one can.
  *
- * WHERE IT LANDS: THE MAIN CHAT. A phone has one thread, so texts go to the
- * user's pinned Main chat (MainChatService), not a conversation of their own.
+ * WHERE IT LANDS: THE SENDER'S MAIN CHAT. A phone has one thread, so texts go
+ * to its person's pinned Main chat (MainChatService), not a conversation of
+ * their own. On a team instance every phone is on the owner's Mobile account,
+ * but a teammate's phone names the teammate (message.memberId): their texts
+ * are answered AS them, in THEIR Main chat, with member isolation. Before
+ * this, every teammate's texts ran as the owner, in the owner's one chat.
  * The turn runs exactly like one typed there: the history is the main chat's
  * own provider log (conversation_logs, the same thing a desktop turn leaves
  * behind), and the orchestrator's turn-end mirror writes the transcript. This
  * file never writes a transcript itself: a reconstructed copy could only ever
  * be poorer than the real one, and writing it would truncate the main chat.
  *
- * ONE AT A TIME. Texts are answered in order, never two at once, and never
- * while a turn typed on the desktop is still running in the main chat: two
- * concurrent turns in one conversation would each build on a history the other
- * is about to change.
+ * ONE AT A TIME PER PERSON. A person's texts are answered in order, never two
+ * at once, and never while a turn typed on the desktop is still running in
+ * their main chat: two concurrent turns in one conversation would each build
+ * on a history the other is about to change. Different people's texts do not
+ * wait for each other (up to MAX_CONCURRENT at once).
  *
  * NEW. The service counts NEW in the thread number it puts in each text's
- * conversation id (mobile-<phone>-<n>). When n goes up, the main chat is
- * cleared before the text is answered, so the reply starts fresh.
+ * conversation id (mobile-<phone>-<n>). When n goes up, THAT PERSON's main chat
+ * is cleared before the text is answered, so the reply starts fresh.
+ *
+ * A TEAMMATE'S CREDENTIAL. Their own live session when this instance has seen
+ * one (full authority: connected apps work), otherwise a turn-scoped token for
+ * this instance only (toolRunAuthority), which the auth middleware accepts
+ * only for a current member. Never the owner's credential.
  *
  * FAILURE. A text this instance cannot answer is released back to the queue
  * (another attempt, or the service's own one-hour expiry notice). Nothing is
@@ -38,15 +48,21 @@
  */
 import { callService, hostedInstanceSlug } from './agntServices.js';
 import { getSessionToken, getSessionUserId } from './auth/sessionTokenCache.js';
+import { isNonOwnerMember } from './security/memberIsolation.js';
+import { issueToolToken } from './security/toolRunAuthority.js';
 import { receiveMedia, findOutboundFiles, sendMedia, FILE_LINK, trimLink } from './mobileMedia.js';
 import { getRunStatus } from './orchestrator/activeRuns.js';
 import fs from 'fs/promises';
 import path from 'path';
 
 const WAIT_SECONDS = 25;
-// One conversation (the main chat) takes every text, so one turn at a time.
-const MAX_CONCURRENT = 1;
+// Each person's texts are serialized (see ONE AT A TIME PER PERSON); this caps
+// how many different people are answered at once.
+const MAX_CONCURRENT = 3;
 const TURN_TIMEOUT_MS = 8 * 60 * 1000;
+// A teammate's turn-scoped token outlives the turn, the main-chat reads around
+// it and the busy wait, and nothing more.
+const TEAMMATE_TOKEN_TTL_SECONDS = 20 * 60;
 // A desktop turn running in the main chat is waited out, but not past the
 // service's 10-minute claim: after this the text is released and retried.
 const BUSY_WAIT_MS = 7 * 60 * 1000;
@@ -146,7 +162,13 @@ export async function readTurn(response) {
 }
 
 export class MobileReceiver {
-  constructor({ port = process.env.PORT || 3333, fetchImpl = fetch, converters, resolveImage, runStatus = getRunStatus, threads = fileThreadStore(), busyPollMs = BUSY_POLL_MS, busyWaitMs = BUSY_WAIT_MS } = {}) {
+  constructor({ port = process.env.PORT || 3333, fetchImpl = fetch, converters, resolveImage, runStatus = getRunStatus, threads = fileThreadStore(), busyPollMs = BUSY_POLL_MS, busyWaitMs = BUSY_WAIT_MS,
+    isTeammate = isNonOwnerMember, liveToken = getSessionToken, mintTurnToken = (userId) => issueToolToken(userId, { ttlSeconds: TEAMMATE_TOKEN_TTL_SECONDS }) } = {}) {
+    this.isTeammate = isTeammate;
+    this.liveToken = liveToken;
+    this.mintTurnToken = mintTurnToken;
+    // userId -> the tail of that person's turns (ONE AT A TIME PER PERSON).
+    this.turnsByPerson = new Map();
     this.base = `http://127.0.0.1:${port}/api`;
     this.fetch = fetchImpl;
     this.converters = converters;
@@ -218,16 +240,49 @@ export class MobileReceiver {
     }
   }
 
-  /** One text: run Annie on it, reply, or give it back. */
+  /**
+   * Who answers this text, and with what credential.
+   *
+   * The account's own: the signed-in session on a desktop, the instance key on
+   * a hosted instance. A teammate's phone (memberId) on a team instance: that
+   * teammate, with their own live session or a turn-scoped token for this
+   * instance. A memberId this instance does not recognise as a teammate is
+   * refused rather than answered as the owner.
+   */
+  credentialFor(message) {
+    const account = getSessionUserId();
+    const memberId = typeof message?.memberId === 'string' && message.memberId ? message.memberId : null;
+    if (memberId && memberId !== account) {
+      if (!this.isTeammate(memberId)) throw new Error('a teammate\'s text reached an instance they are not a member of');
+      const token = this.liveToken(memberId) || this.mintTurnToken(memberId);
+      if (!token) throw new Error('no credential for this teammate');
+      return { userId: memberId, token };
+    }
+    const token = account ? getSessionToken(account) : null;
+    if (!token) throw new Error('no signed-in user');
+    return { userId: account, token };
+  }
+
+  /** One text: run Annie on it, reply, or give it back. One person's texts never overlap. */
   async handle(message) {
-    // The account's OWN credential: the signed-in session on a desktop, the
-    // instance key on a hosted instance. Never a locally minted token - a
-    // hosted instance verifies every token with the issuer, and a desktop
-    // must not act as anyone but the account that polled for this text.
-    const userId = getSessionUserId();
+    let person;
     try {
-      const token = userId ? getSessionToken(userId) : null;
-      if (!token) throw new Error('no signed-in user');
+      person = this.credentialFor(message);
+    } catch (error) {
+      console.error('[MobileReceiver] could not answer a text:', error.message);
+      await callService('mobile', `/messages/${encodeURIComponent(message.id)}/release`, { method: 'POST', body: {}, timeoutMs: 15_000, planGate: false }).catch(() => {});
+      return;
+    }
+    const previous = this.turnsByPerson.get(person.userId) || Promise.resolve();
+    const turn = previous.then(() => this.answer(message, person.token));
+    const tail = turn.catch(() => {});
+    this.turnsByPerson.set(person.userId, tail);
+    tail.then(() => { if (this.turnsByPerson.get(person.userId) === tail) this.turnsByPerson.delete(person.userId); });
+    return turn;
+  }
+
+  async answer(message, token) {
+    try {
       let main = await this.mainChat(token);
       if (await this.startsNewThread(message.conversationId)) main = await this.clearMainChat(token);
       await this.waitUntilIdle(main.conversation_id);

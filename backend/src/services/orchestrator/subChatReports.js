@@ -203,7 +203,8 @@ async function runReportTurn(deps, { userId, authToken, conversationId, content,
  */
 export async function deliverReports(deps, parentConversationId, { userId, authToken, reports }) {
   const outputIds = reports.map((r) => r.outputId);
-  const texting = await deps.hasLinkedPhone();
+  // This person's own phone: on a team instance a teammate's report texts them.
+  const texting = await deps.hasLinkedPhone(userId);
   const message = buildBatchReport(reports);
   const token = deps.freshToken?.(userId) || authToken;
   let outcome = null;
@@ -225,6 +226,7 @@ export async function deliverReports(deps, parentConversationId, { userId, authT
       text: reported ? outcome.content : fallbackText(reports),
       imageIds: reported ? outcome.imageIds : [],
       key: reportKey(reports),
+      userId,
     });
     texted = result.sent === true;
     if (!texted) console.log(`[SubChatReports] report not texted: ${result.reason}`);
@@ -324,7 +326,7 @@ export async function defaultReportDeps() {
       const log = await ConversationLogModel.getByConversationId(conversationId, userId);
       return (Array.isArray(log?.messages) ? log.messages : []).filter((m) => m && m.role !== 'system');
     },
-    hasLinkedPhone: () => mobileOutbound.hasLinkedPhone(),
+    hasLinkedPhone: (userId) => mobileOutbound.hasLinkedPhone({ userId }),
     textUser: (input) => mobileOutbound.textUser(input),
     // A worker can run for hours; the session's current token outlives the
     // one captured when it started.

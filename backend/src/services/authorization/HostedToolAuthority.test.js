@@ -8,6 +8,11 @@ const access = vi.fn();
 vi.mock('../CloudTeamClient.js', () => ({
   CloudTeamClient: class { request(...args) { return teams(...args); } access(...args) { return access(...args); } },
 }));
+// Turn-scoped tokens (toolRunAuthority) without the signing key: 'agnt-tool.<sub>'.
+vi.mock('../security/toolRunAuthority.js', () => ({
+  isToolToken: (token) => typeof token === 'string' && token.startsWith('agnt-tool.'),
+  verifyToolToken: (token) => { if (token.endsWith('.forged')) throw new Error('invalid signature'); return { sub: token.slice('agnt-tool.'.length) }; },
+}));
 const { requireHostedToolAuthority } = await import('./HostedToolAuthority.js');
 
 describe('requireHostedToolAuthority', () => {
@@ -35,6 +40,13 @@ describe('requireHostedToolAuthority', () => {
     vi.stubEnv('AGNT_TENANT_SLUG', '');
     await expect(requireHostedToolAuthority('anyone', undefined)).resolves.toBeUndefined();
     expect(teams).not.toHaveBeenCalled();
+  });
+
+  it('a text answered as a teammate uses the turn token this instance minted for that same teammate', async () => {
+    await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.amber')).resolves.toBeUndefined();
+    expect(teams).not.toHaveBeenCalled(); // the issuer cannot verify it, so it never goes there
+    await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.john')).rejects.toThrow(/does not match the caller/);
+    await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.amber.forged')).rejects.toThrow(/invalid signature/);
   });
 
   it('a member call with no credential is refused rather than waved through', async () => {
