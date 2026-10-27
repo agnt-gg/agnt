@@ -147,14 +147,25 @@ class LayoutService {
       } else {
         // Insert new (upsert behavior)
         const id = uuidv4();
-        await new Promise((resolve, reject) => {
-          db.run(
-            `INSERT INTO widget_layouts (id, user_id, page_id, page_name, page_icon, page_order, route, layout_data)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, userId, pageId, page_name || 'Page', page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
-            (err) => (err ? reject(err) : resolve()),
-          );
-        });
+        try {
+          await new Promise((resolve, reject) => {
+            db.run(
+              `INSERT INTO widget_layouts (id, user_id, page_id, page_name, page_icon, page_order, route, layout_data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [id, userId, pageId, page_name || 'Page', page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
+              (err) => (err ? reject(err) : resolve()),
+            );
+          });
+        } catch (error) {
+          // (user_id, route) is unique (widgetLayoutDedupe.js). On a team
+          // instance every teammate's pages share the team's owner, so a
+          // second teammate saving a page for a route that already has one
+          // under another page id hit this and got a 500 (genii, 2026-10-27).
+          // The route's page already exists: save into it, as createLayout does.
+          const adopted = route && /SQLITE_CONSTRAINT|UNIQUE constraint/i.test(error?.message || '') ? await this._saveIntoRoutePage(userId, route, req.body) : null;
+          if (!adopted) throw error;
+          return res.json({ message: 'Layout updated', page_id: adopted.page_id, deduplicated: true });
+        }
       }
 
       res.json({ message: 'Layout updated', page_id: pageId });
@@ -162,6 +173,31 @@ class LayoutService {
       console.error('Error updating layout:', error);
       res.status(500).json({ error: 'Failed to update layout' });
     }
+  }
+
+  /** Save a page's fields into the existing page for its route; returns that page, or null. */
+  async _saveIntoRoutePage(userId, route, { page_name, page_icon, page_order, layout_data } = {}) {
+    const existing = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id, page_id FROM widget_layouts WHERE user_id IS ? AND route = ? AND ${NOT_WORKSPACE_ROW}
+          ORDER BY page_order ASC, created_at ASC LIMIT 1`,
+        [userId, route],
+        (err, row) => (err ? reject(err) : resolve(row)),
+      );
+    });
+    if (!existing) return null;
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE widget_layouts
+            SET page_name = COALESCE(?, page_name), page_icon = COALESCE(?, page_icon),
+                page_order = COALESCE(?, page_order), layout_data = COALESCE(?, layout_data),
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+        [page_name, page_icon, page_order, layout_data, existing.id],
+        (err) => (err ? reject(err) : resolve()),
+      );
+    });
+    return existing;
   }
 
   /**
