@@ -5,6 +5,7 @@ import ToolConfig from '../tools/ToolConfig.js';
 import PluginAccounts from './PluginAccountStore.js';
 import PluginAssetLoader from './PluginAssetLoader.js';
 import { bindPluginSource, normalizeAuthDeclaration } from './pluginAuth.js';
+import { isMemberSafePluginEntry, setMemberSafePluginTools } from '../services/security/memberSafePlugins.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -119,11 +120,32 @@ class PluginManager {
       }
 
       this.initialized = true;
+      await this.refreshMemberSafeTools();
       console.log(`[PluginManager] Initialized with ${this.plugins.size} plugins, ${this.toolToPlugin.size} tools`);
     } catch (error) {
       console.error('[PluginManager] Initialization error:', error);
       // Don't throw - allow app to continue without plugins
     }
+  }
+
+  /**
+   * Recompute which loaded plugin tools members of a shared instance may call
+   * (memberSafePlugins.js), from what the installer recorded in registry.json.
+   * An unreadable registry yields an empty set: members are refused plugin
+   * tools, exactly as before this existed, and the owner is unaffected.
+   */
+  async refreshMemberSafeTools() {
+    let entries = [];
+    try {
+      const registry = JSON.parse(await fs.readFile(path.join(path.dirname(this.pluginsDir), 'registry.json'), 'utf-8'));
+      entries = Array.isArray(registry?.plugins) ? registry.plugins : [];
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.warn('[PluginManager] registry unreadable; no plugin tools are member-safe:', error.message);
+    }
+    const safePlugins = new Set(entries.filter(isMemberSafePluginEntry).map((entry) => entry.name));
+    const safeTools = [];
+    for (const [toolType, pluginName] of this.toolToPlugin) if (safePlugins.has(pluginName)) safeTools.push(toolType);
+    setMemberSafePluginTools(safeTools);
   }
 
   /**

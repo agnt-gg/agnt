@@ -71,7 +71,25 @@ const REGISTRY = {
   // Only ever to the account owner's own verified phone; the service picks it.
   text_user: { capabilities: ['http'], sink: [] },
 
+  // Runs its command in a fresh, disposable cloud VM (sandbox.agnt.gg). Inputs
+  // are inline strings and outputs come back in the result: nothing on this
+  // machine is read, written or executed.
+  sandbox_run: { capabilities: ['http'], sink: ['command'] },
+
+  // ── Orchestrator: AGNT platform, on the caller's own authority ───────────
+  // libs/agnt2.js calls this instance's own API (and api.agnt.gg for auth)
+  // with the CALLER's token, so every route check that applies to the caller
+  // in the app applies here too. Whatever they start (a workflow, a goal, an
+  // agent chat) is policed tool by tool and node by node when it runs.
+  agnt_agents: { capabilities: ['http'], sink: ['operation'] },
+  agnt_workflows: { capabilities: ['http'], sink: ['operation'] },
+  agnt_tools: { capabilities: ['http'], sink: ['operation'] },
+  agnt_goals: { capabilities: ['http'], sink: ['operation'] },
+  agnt_chat: { capabilities: ['http'], sink: ['operation'] },
+  agnt_auth: { capabilities: ['http'], sink: ['operation'] },
+
   // ── Orchestrator: no execution sink at all ───────────────────────────────
+  record_memory_use: { capabilities: [], sink: [] },
   // These cannot run, write, or fetch anything. Their arguments are pure
   // data, so no action rule can meaningfully apply to them.
   save_agent_memory: { capabilities: [], sink: [] },

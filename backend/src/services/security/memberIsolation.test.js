@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { isNonOwnerMember, memberRefusal } from './memberIsolation.js';
 import { withTeamExecution } from '../authorization/TeamExecutionContext.js';
+import { isMemberSafePluginEntry, setMemberSafePluginTools } from './memberSafePlugins.js';
 
 const ENV = ['AGNT_TENANT_SLUG', 'AGNT_TENANT_OWNER', 'AGNT_TENANT_MEMBERS', 'AGNT_AUTH_MODE'];
 const saved = {};
@@ -12,7 +13,7 @@ function businessTenant() {
 }
 
 describe('memberIsolation', () => {
-  beforeEach(() => { for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; } });
+  beforeEach(() => { setMemberSafePluginTools([]); for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; } });
   afterEach(() => { for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
 
   it('a desktop install has no members: nobody is refused anything', () => {
@@ -55,6 +56,44 @@ describe('memberIsolation', () => {
     for (const tool of ['web_search', 'web_scrape', 'save_agent_memory', 'recall', 'generate_image', 'send_email', 'start_chat']) {
       expect(memberRefusal(tool, {}, 'member-2'), tool).toBeNull();
     }
+  });
+
+  it('a member keeps the AGNT platform tools and the cloud sandbox (they act on the member\'s own authority, or off this machine)', () => {
+    businessTenant();
+    for (const tool of ['agnt_agents', 'agnt_workflows', 'agnt_tools', 'agnt_goals', 'agnt_chat', 'agnt_auth', 'sandbox_run', 'record_memory_use']) {
+      expect(memberRefusal(tool, { operation: 'list', command: 'python3 x.py' }, 'member-2'), tool).toBeNull();
+    }
+  });
+
+  it('a member is still refused the local browser, CLI agents and custom tools (they reach this machine)', () => {
+    businessTenant();
+    for (const tool of ['browser', 'codex_exec', 'cursor_exec', 'execute_custom_agnt_tool']) {
+      expect(memberRefusal(tool, {}, 'member-2'), tool).toMatch(/only its owner may use it/);
+    }
+  });
+
+  it('a member may call an official, verified, clean plugin tool in either spelling, and no other plugin tool', () => {
+    businessTenant();
+    setMemberSafePluginTools(['gmail-api']);
+    expect(memberRefusal('gmail-api', {}, 'member-2')).toBeNull();
+    expect(memberRefusal('gmail_api', {}, 'member-2')).toBeNull();
+    expect(memberRefusal('github_api', {}, 'member-2')).toMatch(/no declared capabilities/);
+    setMemberSafePluginTools([]);
+    expect(memberRefusal('gmail_api', {}, 'member-2')).toMatch(/no declared capabilities/);
+  });
+
+  it('member-safe plugins are exactly official + verified + scanned clean of anything but network', () => {
+    const ok = { trustTier: 'official', integrityState: 'verified', detectedCapabilities: [] };
+    expect(isMemberSafePluginEntry(ok)).toBe(true);
+    expect(isMemberSafePluginEntry({ ...ok, detectedCapabilities: ['network'] })).toBe(true);
+    for (const capability of ['filesystem', 'spawn-process', 'env-access', 'dynamic-eval', 'dynamic-import']) {
+      expect(isMemberSafePluginEntry({ ...ok, detectedCapabilities: ['network', capability] }), capability).toBe(false);
+    }
+    expect(isMemberSafePluginEntry({ ...ok, trustTier: 'community' })).toBe(false);
+    expect(isMemberSafePluginEntry({ ...ok, integrityState: 'unverified' })).toBe(false);
+    expect(isMemberSafePluginEntry({ ...ok, scanFailed: true })).toBe(false);
+    expect(isMemberSafePluginEntry({ trustTier: 'official', integrityState: 'verified' })).toBe(false);
+    expect(isMemberSafePluginEntry(null)).toBe(false);
   });
 
   it('no caller id (the instance\'s own background work) is not treated as a member', () => {

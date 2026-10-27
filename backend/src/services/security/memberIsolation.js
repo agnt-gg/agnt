@@ -15,8 +15,9 @@
  * reaches the owner's keys as easily as its own: file modes inside one process
  * cannot tell two of its users apart. What already existed did not close it:
  *
- *   HostedToolAuthority  direct tool calls only for the tenant owner or a
- *                        team owner/admin: an ADMIN could still run a shell.
+ *   HostedToolAuthority  only checks that the caller is still a member of
+ *                        this instance's team; what they may run is decided
+ *                        here, per tool, for members and admins alike.
  *   workflows            a member's own workflow never passed that check, so
  *                        its code and database nodes ran unchecked.
  *
@@ -31,12 +32,16 @@
  * a capability the owner granted there is the owner's decision.
  *
  * FAIL-CLOSED. A tool with no declared capabilities (a plugin, an MCP server,
- * a custom tool) could do anything, so a non-owner is refused it too. The
- * owner, and every single-user install, is unaffected.
+ * a custom tool) could do anything, so a non-owner is refused it too. The one
+ * exception is a plugin the installer recorded as official, integrity-verified
+ * and scanned clean of file, process, env and dynamic-code access
+ * (memberSafePlugins.js). The owner, and every single-user install, is
+ * unaffected.
  */
 import { isRestrictedInstance, tenantOwnerId, credentialUserId } from '../auth/tenantOwnership.js';
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { resolveToolCapabilities } from './toolCapabilities.js';
+import { isMemberSafePluginTool } from './memberSafePlugins.js';
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';
 
@@ -72,6 +77,7 @@ export function memberRefusal(toolName, args, userId) {
   if (currentTeamExecution()) return null; // owner-approved and allowlisted; see above
   const profile = resolveToolCapabilities(toolName, args || {});
   if (!profile) {
+    if (isMemberSafePluginTool(toolName)) return null;
     return `${toolName} has no declared capabilities, so it could run code or read this instance's files; on a shared instance only its owner may use it.`;
   }
   const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability));
