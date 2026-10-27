@@ -147,7 +147,7 @@
 <script>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
-import { API_CONFIG } from '@/tt.config.js';
+import { saveDisplayName } from '@/services/displayName.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
@@ -331,25 +331,8 @@ export default {
       pseudonymSaved.value = false;
 
       try {
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/referrals/update-pseudonym`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${store.state.userAuth.token}`,
-          },
-          body: JSON.stringify({
-            newPseudonym: trimmedValue,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to update display name');
-        }
-
-        // Update store with new pseudonym
-        store.commit('userAuth/SET_PSEUDONYM', trimmedValue);
+        // Saves, keeps the server's 32-character name, and adopts the session it re-issues.
+        editablePseudonym.value = await saveDisplayName(store, trimmedValue);
 
         pseudonymSaved.value = true;
         isEditingPseudonym.value = false;

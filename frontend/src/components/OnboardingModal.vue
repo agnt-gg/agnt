@@ -113,6 +113,21 @@
               />
             </div>
 
+            <!-- Text Annie: right after the AI, because once a phone is linked
+                 everything else (plugins, workflows, connecting apps) can be
+                 asked for by text. Optional: Next skips it. -->
+            <div v-if="currentStepId === 'phone'" class="step phone-step">
+              <div class="icon-circle">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+              </div>
+              <h2>Text Annie from your phone</h2>
+              <p class="subtitle">Link your number and you can ask for anything by text: install a plugin, run a workflow, check on work. You can skip this and do it later in Settings.</p>
+              <TextAnnieCard />
+            </div>
+
             <!-- Step 5: Workspace Folder -->
             <div v-if="currentStepId === 'workspace'" class="step workspace-step">
               <div class="icon-circle">
@@ -222,6 +237,8 @@ import { API_CONFIG } from '@/tt.config.js';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import { useAiProviderConnect } from '@/composables/useAiProviderConnect.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
+import { saveDisplayName } from '@/services/displayName.js';
+import TextAnnieCard from '@/views/Terminal/CenterPanel/screens/Settings/components/PhoneAccessSection/TextAnnieCard.vue';
 
 export default {
   name: 'OnboardingModal',
@@ -230,6 +247,7 @@ export default {
     ProviderLanes,
     WorkspacePicker,
     HarnessImport,
+    TextAnnieCard,
   },
   props: {
     show: {
@@ -337,7 +355,9 @@ export default {
      * one list makes position irrelevant.
      */
     const steps = computed(() => {
-      const list = ['welcome', 'theme', 'profile', 'provider', 'workspace'];
+      // The AI first and the phone second: with both, everything else can be
+      // done by asking Annie (from the 2026-10-27 GeniiNow onboarding).
+      const list = ['welcome', 'provider', 'phone', 'profile', 'theme', 'workspace'];
       // Only when there is something to offer. Having Claude Code installed
       // with every skill already in AGNT is a common state with nothing to
       // import, and a step that exists only to say so wastes the one first run
@@ -400,10 +420,14 @@ export default {
     };
 
     const complete = async () => {
-      // Save pseudonym if changed
-      if (pseudonym.value && pseudonym.value !== userPseudonym.value) {
-        // TODO: Save pseudonym to backend
-        console.log('Saving pseudonym:', pseudonym.value);
+      // Save the display name if it changed. A failure never blocks finishing:
+      // the person is told, and can set it in Settings → Profile.
+      if (pseudonym.value.trim() && pseudonym.value.trim() !== userPseudonym.value) {
+        try {
+          await saveDisplayName(store, pseudonym.value);
+        } catch (error) {
+          await showAlert('Display name not saved', `${error.message} You can set it any time in Settings → Profile.`);
+        }
       }
 
       // Final safety net — if the user reached the end without ever advancing

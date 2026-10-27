@@ -236,7 +236,7 @@ describe('OnboardingModal', () => {
     // Step 4 is the provider step — see the flow comment below.
     const lanes = async () => {
       wrapper = createWrapper({}, { allProviders: PROVIDERS, connectedApps: ['openai'] });
-      wrapper.vm.currentStep = 4;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('provider') + 1;
       await wrapper.vm.$nextTick();
       return wrapper.findComponent({ name: 'ProviderLanes' });
     };
@@ -323,10 +323,11 @@ describe('OnboardingModal', () => {
 
     it('derives the visible step id from the step list', async () => {
       wrapper = createWrapper();
-      expect(wrapper.vm.steps).toEqual(['welcome', 'theme', 'profile', 'provider', 'workspace', 'ready']);
+      expect(wrapper.vm.steps).toEqual(['welcome', 'provider', 'phone', 'profile', 'theme', 'workspace', 'ready']);
       expect(idAt(wrapper, 1)).toBe('welcome');
-      expect(idAt(wrapper, 4)).toBe('provider');
-      expect(idAt(wrapper, 5)).toBe('workspace');
+      expect(idAt(wrapper, 2)).toBe('provider');
+      expect(idAt(wrapper, 3)).toBe('phone');
+      expect(idAt(wrapper, 6)).toBe('workspace');
     });
 
     it('counts steps from the same list it renders from', async () => {
@@ -342,11 +343,11 @@ describe('OnboardingModal', () => {
       wrapper = createWrapper({}, { referralBalance: 500 });
       await flushPromises();
       expect(wrapper.vm.steps).toContain('referral');
-      expect(idAt(wrapper, 6)).toBe('referral');
-      expect(idAt(wrapper, 7)).toBe('ready');
+      expect(idAt(wrapper, 7)).toBe('referral');
+      expect(idAt(wrapper, 8)).toBe('ready');
       // ...and the two gated steps have NOT moved, because they sit above it.
-      expect(idAt(wrapper, 4)).toBe('provider');
-      expect(idAt(wrapper, 5)).toBe('workspace');
+      expect(idAt(wrapper, 2)).toBe('provider');
+      expect(idAt(wrapper, 6)).toBe('workspace');
     });
 
     it('gates the provider requirement on the provider step by name', async () => {
@@ -393,11 +394,11 @@ describe('OnboardingModal', () => {
       await flushPromises();
 
       expect(wrapper.vm.steps).toEqual(
-        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+        ['welcome', 'provider', 'phone', 'profile', 'theme', 'workspace', 'import', 'referral', 'ready'],
       );
-      expect(idAt(wrapper, 4)).toBe('provider');
-      expect(idAt(wrapper, 5)).toBe('workspace');
-      expect(idAt(wrapper, 8)).toBe('ready');
+      expect(idAt(wrapper, 2)).toBe('provider');
+      expect(idAt(wrapper, 6)).toBe('workspace');
+      expect(idAt(wrapper, 9)).toBe('ready');
     });
 
     it('starts the scan on mount', async () => {
@@ -518,7 +519,7 @@ describe('OnboardingModal', () => {
   describe('Theme Step', () => {
     it('renders the theme picker on step 2', async () => {
       wrapper = createWrapper();
-      wrapper.vm.currentStep = 2;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('theme') + 1;
       await wrapper.vm.$nextTick();
 
       expect(wrapper.find('.theme-step').exists()).toBe(true);
@@ -527,7 +528,7 @@ describe('OnboardingModal', () => {
 
     it('marks the current theme as active', async () => {
       wrapper = createWrapper({}, { currentTheme: 'nord' });
-      wrapper.vm.currentStep = 2;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('theme') + 1;
       await wrapper.vm.$nextTick();
 
       const active = wrapper.findAll('.theme-tile').filter((t) => t.classes().includes('active'));
@@ -537,7 +538,7 @@ describe('OnboardingModal', () => {
 
     it('dispatches theme/setTheme when a tile is clicked', async () => {
       wrapper = createWrapper();
-      wrapper.vm.currentStep = 2;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('theme') + 1;
       await wrapper.vm.$nextTick();
 
       await wrapper.findAll('.theme-tile')[1].trigger('click');
@@ -548,7 +549,7 @@ describe('OnboardingModal', () => {
 
   describe('Profile Step', () => {
     const gotoProfile = async () => {
-      wrapper.vm.currentStep = 3;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('profile') + 1;
       await wrapper.vm.$nextTick();
     };
 
@@ -623,7 +624,7 @@ describe('OnboardingModal', () => {
 
   describe('Provider Step', () => {
     const gotoProvider = async () => {
-      wrapper.vm.currentStep = 4;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('provider') + 1;
       await wrapper.vm.$nextTick();
     };
 
@@ -656,7 +657,7 @@ describe('OnboardingModal', () => {
       await flushPromises();
 
       // An AI provider is required, so the step must not advance.
-      expect(wrapper.vm.currentStep).toBe(4);
+      expect(wrapper.vm.currentStepId).toBe('provider');
     });
 
     /**
@@ -692,7 +693,7 @@ describe('OnboardingModal', () => {
 
       // The whole point: onboarding advances without the user connecting
       // anything, because AGNT found the session they already had.
-      expect(wrapper.vm.currentStep).toBe(5);
+      expect(wrapper.vm.currentStepId).toBe('phone');
     });
 
     it('anti-vacuity: the same CLI provider still blocks when NOT discovered', async () => {
@@ -707,7 +708,7 @@ describe('OnboardingModal', () => {
       await wrapper.find('.btn-primary').trigger('click');
       await flushPromises();
 
-      expect(wrapper.vm.currentStep).toBe(4);
+      expect(wrapper.vm.currentStepId).toBe('provider');
     });
 
     it('advances past the provider step once one is connected', async () => {
@@ -717,7 +718,7 @@ describe('OnboardingModal', () => {
       await wrapper.find('.btn-primary').trigger('click');
       await flushPromises();
 
-      expect(wrapper.vm.currentStep).toBe(5);
+      expect(wrapper.vm.currentStepId).toBe('phone');
     });
   });
 
@@ -872,7 +873,7 @@ describe('OnboardingModal', () => {
       wrapper = createWrapper({}, BOTH);
       await flushPromises();
       expect(wrapper.vm.steps).toEqual(
-        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+        ['welcome', 'provider', 'phone', 'profile', 'theme', 'workspace', 'import', 'referral', 'ready'],
       );
     });
 
@@ -913,9 +914,9 @@ describe('OnboardingModal', () => {
   describe('Referral Bonus Step', () => {
     it('adds a referral step and shows it when the user has a bonus', async () => {
       wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 100 });
-      expect(wrapper.vm.totalSteps).toBe(7);
+      expect(wrapper.vm.totalSteps).toBe(8);
 
-      wrapper.vm.currentStep = 6;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('referral') + 1;
       await wrapper.vm.$nextTick();
 
       expect(wrapper.find('.referral-step').exists()).toBe(true);
@@ -923,7 +924,7 @@ describe('OnboardingModal', () => {
 
     it('displays referral bonus amount', async () => {
       wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 250 });
-      wrapper.vm.currentStep = 6;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('referral') + 1;
       await wrapper.vm.$nextTick();
 
       expect(wrapper.text()).toContain('+250 pts');
@@ -931,12 +932,12 @@ describe('OnboardingModal', () => {
 
     it('omits the referral step when there is no bonus', async () => {
       wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 0 });
-      expect(wrapper.vm.totalSteps).toBe(6);
+      expect(wrapper.vm.totalSteps).toBe(7);
 
-      wrapper.vm.currentStep = 6;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('workspace') + 2;
       await wrapper.vm.$nextTick();
 
-      // Step 6 is the final (ready) step when no bonus step is inserted.
+      // Right after the workspace is the final (ready) step when no bonus step is inserted.
       expect(wrapper.find('.referral-step').exists()).toBe(false);
       expect(wrapper.find('.ready-step').exists()).toBe(true);
     });
@@ -1084,7 +1085,7 @@ describe('OnboardingModal', () => {
       global.fetch.mockRejectedValueOnce(new Error('Network error'));
 
       wrapper = createWrapper();
-      wrapper.vm.currentStep = 3;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('profile') + 1;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('TestName');
@@ -1102,7 +1103,7 @@ describe('OnboardingModal', () => {
       });
 
       wrapper = createWrapper();
-      wrapper.vm.currentStep = 3;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('profile') + 1;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('TestName');
@@ -1115,7 +1116,7 @@ describe('OnboardingModal', () => {
 
     it('clears pseudonym status when input is empty', async () => {
       wrapper = createWrapper();
-      wrapper.vm.currentStep = 3;
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('profile') + 1;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('Test');
