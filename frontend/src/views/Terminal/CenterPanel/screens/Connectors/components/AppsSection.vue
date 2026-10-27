@@ -606,15 +606,26 @@ async function install(app) {
         return;
       }
     }
-    const report = await inspectPlugin(app.name);
-    const message = [installSummary(app), installDisclosure(report)].filter(Boolean).join('<br><br>');
-    const confirmed = await modal.value.showModal({ title: `Install ${app.displayName}?`, message, confirmText: 'Install plugin', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-primary' });
+    // A member of a shared instance may not scan packages (403): the server only
+    // lets them switch on, for themselves, a plugin the owner already installed.
+    let report = null;
+    try {
+      report = await inspectPlugin(app.name);
+    } catch (failure) {
+      if (failure.status !== 403) throw failure;
+    }
+    const message = report
+      ? [installSummary(app), installDisclosure(report)].filter(Boolean).join('<br><br>')
+      : [installSummary(app), `Switch ${escapeDisclosure(app.displayName)} on for your account? This works for plugins the instance owner has already added.`].filter(Boolean).join('<br><br>');
+    const confirmed = await modal.value.showModal({ title: report ? `Install ${app.displayName}?` : `Switch on ${app.displayName}?`, message, confirmText: report ? 'Install plugin' : 'Switch on', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-primary' });
     if (!confirmed || !alive) return;
     await store.dispatch('marketplace/installPlugin', { pluginName: app.name });
     notice.value = `${app.displayName} installed.`;
     await reload();
   } catch (failure) {
-    error.value = failure.message || 'Installation failed. Please retry.';
+    // "Ask the owner" is an answer, not a failure to retry: no Retry link.
+    if (failure.code === 'admin_install_required') notice.value = failure.message;
+    else error.value = failure.message || 'Installation failed. Please retry.';
     console.error('[AppsSection] install:', failure);
   } finally {
     installing.value = null;

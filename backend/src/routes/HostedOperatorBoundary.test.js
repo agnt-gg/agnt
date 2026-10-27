@@ -56,9 +56,19 @@ describe('hosted operator boundary', () => {
     const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
     const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
     const boundary = createHostedOperatorBoundary(asMember, cloud);
-    for (const [method, url] of [['POST', '/api/plugins/install'], ['DELETE', '/api/plugins/installed/blog-generator'], ['GET', '/api/plugins/installed/blog-generator/source'], ['GET', '/api/plugins/installed/blog-generator/package'], ['GET', '/api/plugins/inspect/blog-generator']]) {
+    for (const [method, url] of [['POST', '/api/plugins/install-file'], ['POST', '/api/plugins/install-github'], ['POST', '/api/plugins/update/blog-generator'], ['DELETE', '/api/plugins/installed/blog-generator'], ['GET', '/api/plugins/installed/blog-generator/source'], ['GET', '/api/plugins/installed/blog-generator/package'], ['GET', '/api/plugins/inspect/blog-generator']]) {
       expect(await run(boundary, request(method, url)), `${method} ${url}`).toMatchObject({ next: false, status: 403 });
     }
+  });
+
+  it('a member reaches the account check to switch on an installed plugin (POST /plugins/install only)', async () => {
+    // The account boundary marks it activation-only; the install route then reuses the
+    // exact package already on disk or refuses with admin_install_required.
+    const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
+    const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
+    const boundary = createHostedOperatorBoundary(asMember, cloud);
+    expect(await run(boundary, request('POST', '/api/plugins/install'))).toEqual({ next: true });
+    expect(await run(boundary, request('GET', '/api/plugins/install'))).toMatchObject({ next: false, status: 403 });
   });
 
   it('a non-owner media load is checked with the cookie credential it arrived with', async () => {

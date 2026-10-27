@@ -9,8 +9,15 @@ export async function pluginAccountBoundary(req, res, next) {
     if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
     // Installing an extension executes trusted backend code. Membership alone
     // must never confer that administrative authority over a shared instance.
+    // The one thing a member may do is switch on, for their own account, a
+    // package the owner already installed: the install route then reuses the
+    // exact package on disk or refuses (req.memberActivationOnly).
     if (isRestrictedInstance() && req.method !== 'GET' && userId !== tenantOwnerId()) {
-      return res.status(403).json({ success: false, error: 'Only the instance owner may change installed extensions' });
+      if (req.method === 'POST' && req.path === '/install') {
+        req.memberActivationOnly = true;
+      } else {
+        return res.status(403).json({ success: false, error: 'Only the instance owner may change installed extensions' });
+      }
     }
     const suppliedName = req.body?.name || req.body?.pluginName || req.body?.manifest?.name;
     if (suppliedName && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(suppliedName)) return res.status(400).json({ success: false, error: 'Invalid plugin name' });

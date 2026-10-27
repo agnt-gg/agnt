@@ -277,6 +277,14 @@ router.post('/install', requireAuthHeader, accountPluginMutation(async (req, res
       }
       result = { success: true, pluginName: name, version: existing.version };
     } else {
+      // A member of a shared instance may only reuse a package already here.
+      if (req.memberActivationOnly) {
+        return res.status(403).json({
+          success: false,
+          code: 'admin_install_required',
+          error: 'Only the instance owner can add or update this plugin. Ask them to add it; then you can switch it on for yourself.',
+        });
+      }
       if ((await PluginAccounts.owners(name)).some(owner => owner !== req.user.userId)) {
         return res.status(409).json({ success: false, error: 'This package is in use by another account; it cannot be replaced by this install.' });
       }

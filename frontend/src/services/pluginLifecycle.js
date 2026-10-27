@@ -27,7 +27,9 @@ async function readJson(response) {
 export async function inspectPlugin(pluginName) {
   const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/inspect/${name(pluginName)}`);
   const report = await readJson(response);
-  if (!response.ok) throw new Error(report.error || 'Unable to inspect this package. Please retry.');
+  // status travels with the error: a member of a shared instance is refused the scan (403)
+  // and can still switch on a plugin the owner already installed.
+  if (!response.ok) throw Object.assign(new Error(report.error || 'Unable to inspect this package. Please retry.'), { status: response.status });
   return report;
 }
 

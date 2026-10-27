@@ -16,6 +16,10 @@ const MEDIA_METHODS=new Set(['GET','HEAD']);
 // owner/admin only.
 const MEMBER_READABLE=[/^\/plugins\/installed(\/[^/]+)?$/,/^\/plugins\/(marketplace|tools|updates|update-status)$/];
 function isMemberReadable(req){return MEDIA_METHODS.has(req.method)&&MEMBER_READABLE.some(pattern=>pattern.test(req.path));}
+// Switching on, for yourself, a plugin package already on this instance. No new code reaches
+// the machine: pluginAccountBoundary marks the request activation-only and the install route
+// refuses it unless the exact package (same version, same integrity) is already installed.
+function isMemberActivation(req){return req.method==='POST'&&req.path==='/plugins/install';}
 function isMediaRequest(req){
  if(!MEDIA_METHODS.has(req.method))return false;
  const pathname=String(req.originalUrl||'').split('?')[0];
@@ -27,7 +31,7 @@ export function createHostedOperatorBoundary(authenticate,cloud=new CloudTeamCli
  if(!process.env.AGNT_TENANT_SLUG||!machineApis.has(req.path.split('/')[1]))return next();
  const media=isMediaRequest(req);
  return (media?authenticateMedia:authenticate)(req,res,async()=>{try{const user=req.user?.id||req.user?.userId;
- if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req))return next();
+ if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req)||isMemberActivation(req))return next();
  // The control plane is asked with the same credential the caller authenticated with.
  const authorization=req.headers.authorization||(media?'Bearer '+extractToken(req,{allowCookie:true,allowQuery:true}):undefined);
  const teams=await cloud.request(authorization,'');const team=teams.find(t=>t.tenantSlug===process.env.AGNT_TENANT_SLUG);

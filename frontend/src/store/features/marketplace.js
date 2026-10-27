@@ -571,7 +571,8 @@ export default {
       console.log(`[Marketplace] Plugin install response for ${pluginName}:`, data);
 
       if (!data.success) {
-        throw new Error(data.error || `Failed to install plugin: ${pluginName}`);
+        // `code` lets the page tell "ask the owner" (admin_install_required) from a retryable failure.
+        throw Object.assign(new Error(data.error || `Failed to install plugin: ${pluginName}`), { code: data.code, status: response.status });
       }
 
       // Only refresh tools if not doing a batch install
