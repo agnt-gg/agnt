@@ -2,6 +2,7 @@
   <!-- The page header is Settings' own content-header (Settings.vue), like
        every other section; this is only the section's body. -->
   <section class="members-settings" aria-label="Members">
+    <MemberAiBilling />
     <TeamWorkspace
       :selected-team-id="selectedTeamId"
       initial-tab="Members"
@@ -16,6 +17,7 @@
 <script setup>
 import { ref } from 'vue';
 import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
+import MemberAiBilling from '@/views/_components/team/MemberAiBilling.vue';
 import { currentTeamScope } from '@/composables/useSpaces.js';
 defineEmits(['open-billing', 'close']);
 const selectedTeamId = ref(currentTeamScope()?.teamId || '');

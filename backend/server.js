@@ -74,6 +74,7 @@ import {createPersonalAssetBoundary} from './src/routes/PersonalAssetBoundary.js
 import {createScopeApiMiddleware} from './src/routes/ScopeApiMiddleware.js';
 import {createTeamInstanceScope} from './src/routes/TeamInstanceScope.js';
 import {createShareRouter} from './src/routes/ShareRoutes.js';
+import { createMemberAiRouter } from './src/routes/MemberAiRoutes.js';
 import {createDataRouter} from './src/routes/DataRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
@@ -281,6 +282,8 @@ app.use('/api/goals', GoalRoutes);
 app.use('/api/layouts', LayoutRoutes);
 app.use('/api/workspaces', WorkspaceRoutes);
 app.use('/api/teams', TeamRoutes);
+// Who pays for members' AI on a hosted team instance. Instance-wide, owner-set.
+app.use('/api/instance/member-ai', createMemberAiRouter());
 // Copy to team / copy to personal. Personal-side only: /api/share is not a team-scoped API.
 app.use('/api/share', createShareRouter({ getRepository: getTeamRepository }));
 // Backup restore and reset. Personal only: 'data' is not a team-scoped API, so a team header is refused.

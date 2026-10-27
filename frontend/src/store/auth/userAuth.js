@@ -68,6 +68,19 @@ function isWrongInstance(response) {
   return response?.data?.reason === 'not_tenant_member';
 }
 
+/**
+ * What to tell someone whose code was accepted but whose session this backend
+ * refused. On a hosted team instance that is almost always "not on this
+ * workspace yet": the code is spent by then, so the useful advice is to ask
+ * the owner, never to retry the code or restart anything.
+ */
+export function sessionRejectedMessage(failure) {
+  if (failure?.reason === 'wrong_instance') {
+    return 'You\u2019re signed in, but you don\u2019t have access to this workspace yet. Ask its owner to add you, then sign in again with a new code.';
+  }
+  return 'Signed in, but this computer\u2019s AGNT backend rejected the session. Restart AGNT and try again.';
+}
+
 /** A 403 that is about entitlement, not identity. Never clears the session. */
 function isPlanDenial(response) {
   const data = response?.data;
@@ -722,7 +735,7 @@ export default {
         return { success: false, error: errorMessage };
       }
     },
-    async verifyMagicLink({ commit, dispatch }, { email, code }) {
+    async verifyMagicLink({ commit, dispatch, state }, { email, code }) {
       try {
         const response = await axios.post(`${API_CONFIG.REMOTE_URL}/users/auth/magic-link/verify`, { email, code }, { withCredentials: true });
 
@@ -742,10 +755,7 @@ export default {
           // never got the token) into an honest failure at the login screen.
           const sessionState = await dispatch('verifySession');
           if (sessionState !== SESSION.VALID) {
-            return {
-              success: false,
-              error: 'Signed in, but this computer\u2019s AGNT backend rejected the session. Restart AGNT and try again.',
-            };
+            return { success: false, error: sessionRejectedMessage(state.lastAuthFailure) };
           }
 
           // If this is a new user, reset onboarding so they see it

@@ -50,7 +50,9 @@ class SchemaValidator {
     }
 
     // Validate authRequired if present
-    if (schema.authRequired && !['apiKey', 'oauth'].includes(schema.authRequired)) {
+    // Case-insensitive: hand-written plugin manifests say `apikey` as often as
+    // `apiKey`, and every consumer only tests the field for truthiness.
+    if (schema.authRequired && !['apikey', 'oauth'].includes(String(schema.authRequired).toLowerCase())) {
       errors.push(`Invalid authRequired: ${schema.authRequired}. Must be 'apiKey' or 'oauth'`);
     }
 

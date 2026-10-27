@@ -15,7 +15,8 @@ import { getPluginOAuthAccessToken, CLIENT_ROW_SUFFIX, clientRowId } from '../..
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
 import { authHeader, getSessionToken } from './sessionTokenCache.js';
 import { assertPersonalCredentialContext } from '../authorization/TeamExecutionContext.js';
-import { credentialUserId } from './tenantOwnership.js';
+import { credentialUserId, tenantOwnerId } from './tenantOwnership.js';
+import { isHostedMember, isAiProvider, isLendable, teamPaysForMembers } from './memberAi.js';
 import { resolveDefaultModel } from '../ai/defaultModel.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
@@ -49,7 +50,9 @@ class AuthManager {
     assertPersonalCredentialContext();
     userId = credentialUserId(userId); // a team workspace runs with the instance owner's connections
     if(String(userId).startsWith('scope:'))throw new Error('Shared resource owners cannot use personal credentials');
-    if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team connections');
+    // A member of a hosted team instance: their own vault, then the team's
+    // keys, AI models only (memberAi.js).
+    if (isHostedMember(userId)) return this._memberAccessToken(userId, providerId);
     // AGNT Models is credentialed by the account itself: the session token the
     // desktop already holds is what models.agnt.gg accepts. There is no key to
     // store, so nothing below applies.
@@ -93,6 +96,11 @@ class AuthManager {
     // `userId` is still sent so the endpoint keeps working while its
     // enforcement gate is in shadow. Once that gate is flipped the parameter is
     // ignored and identity comes from the header alone.
+    return this._remoteAccessToken(userId, providerId);
+  }
+
+  /** This account's credential from its own vault on api.agnt.gg, asked with its own session. */
+  async _remoteAccessToken(userId, providerId) {
     if (this.remoteUrl) {
       try {
         const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
@@ -131,10 +139,64 @@ class AuthManager {
 
     return null;
   }
+  /**
+   * A member of a hosted team instance (memberAi.js). Their own key comes from
+   * their own vault with their own session and is never stored here. The
+   * team's key is the owner's, used only when the owner pays for members' AI
+   * and only for providers that may be lent.
+   */
+  async _memberAccessToken(memberId, providerId) {
+    const owner = tenantOwnerId();
+    if (providerId === 'agnt') {
+      // AGNT Models bills whichever account's session is presented.
+      const teamSession = owner && teamPaysForMembers() ? getSessionToken(owner) : null;
+      return teamSession || getSessionToken(memberId) || null;
+    }
+    if (!isAiProvider(providerId)) throw new Error('Hosted members must use approved team connections');
+    const personal = await this._remoteAccessToken(memberId, providerId);
+    if (personal) return personal;
+    if (owner && teamPaysForMembers() && isLendable(providerId)) return this.getValidAccessToken(owner, providerId);
+    return null;
+  }
+
+  /**
+   * What a member of a hosted team instance can use: AI models in their own
+   * vault, plus the team's when the owner pays. This instance's own sources
+   * (env, local rows, CLI logins) are the owner's, not the member's.
+   */
+  async _memberConnectedApps(memberId, authToken) {
+    const usable = new Set((await this._remoteConnected(authToken)).filter(isAiProvider));
+    const owner = tenantOwnerId();
+    if (owner && teamPaysForMembers()) {
+      const team = await this.getConnectedApps(owner, getSessionToken(owner));
+      team.forEach(({ providerId }) => { if (isLendable(providerId)) usable.add(providerId); });
+    }
+    return Array.from(usable).map((providerId) => ({ providerId, connected: true }));
+  }
+
+  /** Providers connected in this account's vault on api.agnt.gg. Needs its session: anonymous asks are refused. */
+  async _remoteConnected(authToken) {
+    if (!this.remoteUrl || !authToken) return [];
+    try {
+      const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+        timeout: 5000,
+      });
+      if (!Array.isArray(response.data)) return [];
+      return response.data
+        .map((entry) => (typeof entry === 'string' ? entry : entry?.providerId || entry?.provider_id))
+        .filter(Boolean);
+    } catch (error) {
+      console.warn('getConnectedApps: remote fallback failed:', error.message);
+      return [];
+    }
+  }
+
   // Local-first connected list: env-sourced providers + local api_keys + local
   // oauth_tokens, merged with the remote /auth/connected list (always-on).
   // Shape preserved: array of { providerId, connected } (frontend compatibility).
   async getConnectedApps(userId, authToken) {
+    if (isHostedMember(userId)) return this._memberConnectedApps(userId, authToken);
     const connected = new Set();
 
     // 1. Env-sourced API keys
@@ -202,23 +264,7 @@ class AuthManager {
     // 5. Remote fallback (always-on; surfaces remote-stored keys for users who
     //    haven't re-saved locally yet). If remote is unreachable, the UI degrades
     //    silently to the local-only set above.
-    if (this.remoteUrl) {
-      try {
-        const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-          timeout: 5000,
-        });
-        if (Array.isArray(response.data)) {
-          response.data.forEach((entry) => {
-            if (typeof entry === 'string') connected.add(entry);
-            else if (entry?.providerId) connected.add(entry.providerId);
-            else if (entry?.provider_id) connected.add(entry.provider_id);
-          });
-        }
-      } catch (error) {
-        console.warn('getConnectedApps: remote fallback failed:', error.message);
-      }
-    }
+    for (const providerId of await this._remoteConnected(authToken)) connected.add(providerId);
 
     // Discovery and remote merges must not re-add an account's opt-out.
     if (userId) {

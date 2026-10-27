@@ -1,5 +1,6 @@
 import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import { credentialUserId } from '../auth/tenantOwnership.js';
+import { isHostedMember, assertMemberCanUseProvider } from '../auth/memberAi.js';
 import { getConnection } from './connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
@@ -42,7 +43,9 @@ export async function createLlmClient(provider, userId, options = {}) {
   if(teamExecution){if(String(provider).toLowerCase()!==teamExecution.provider)throw new Error('Provider is not granted to this team run');return teamExecution.broker.sdk();}
   userId = credentialUserId(userId); // a team workspace runs with the instance owner's connections
   if(String(userId).startsWith('scope:'))throw new Error('Shared execution requires its approved principal');
-  if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team model connections');
+  // A hosted member uses their own or the team's AI keys (AuthManager); the
+  // instance's CLI logins and custom providers are the owner's (memberAi.js).
+  if (isHostedMember(userId)) assertMemberCanUseProvider(provider);
   const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
 
   // 1. Check if this is a custom DB-backed provider (unchanged)

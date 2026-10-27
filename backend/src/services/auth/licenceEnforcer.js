@@ -9,7 +9,7 @@
  * boot, before anyone has logged in.
  */
 import { subscribe } from './sessionTokenCache.js';
-import { fetchLicence } from './licence.js';
+import { fetchLicence, hostedPlan, PAID_PLANS } from './licence.js';
 import { isEnforcing } from './planEntitlements.js';
 import { paidTriggersIn } from '../../workflow/workflowAdmission.js';
 import { FREE_LIMITS, isAutonomous, timerSchedulesIn, timerTooFastForFree } from './planLimits.js';
@@ -85,6 +85,11 @@ export async function enforceFreeLimits(userId, { listActive, deactivate, inGrac
 /** Check one account now: fetch its licence, and act if it is free. */
 export async function enforceForAccount(userId, deps) {
   if (!userId || !isEnforcing()) return null;
+  // A hosted instance runs on its own plan (verifiedPlan does the same). A free
+  // member signing in to a Business instance must not have workflows checked
+  // against their personal licence.
+  const plan = hostedPlan();
+  if (plan && PAID_PLANS.has(plan)) return { valid: true, paid: true, planType: plan, source: 'hosted' };
   const verdict = await fetchLicence(userId);
   if (!verdict?.valid || verdict.paid) return verdict;
   await stopPaidTriggerWorkflows(userId, deps);

@@ -133,10 +133,18 @@ const inFlight = new Map();
  * @param {{ network?: boolean }} [options] network: false reads only the
  *   cached file (the workflow process has no session to fetch with).
  */
+/**
+ * A hosted instance's plan, set by the fleet when it created the container,
+ * or '' on a desktop. On a hosted instance this IS everyone's plan: a member
+ * of a Business team works under the team's plan, not their own.
+ */
+export function hostedPlan() {
+  return process.env.AGNT_TENANT_SLUG ? String(process.env.AGNT_TENANT_PLAN || '').trim() : '';
+}
+
 export async function verifiedPlan(userId, { network = true, token } = {}) {
   if (!userId) return null;
-  // A hosted instance: the fleet set the plan when it created the container.
-  const tenantPlan = process.env.AGNT_TENANT_SLUG ? String(process.env.AGNT_TENANT_PLAN || '').trim() : '';
+  const tenantPlan = hostedPlan();
   if (tenantPlan) return tenantPlan;
 
   const cached = readCachedLicence(userId);
