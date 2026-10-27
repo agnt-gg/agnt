@@ -3,14 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  BILLING, isHostedMember, isAiProvider, isLendable, assertMemberCanUseProvider,
-  fileBillingStore, useBillingStore, memberAiBilling, setMemberAiBilling, teamPaysForMembers,
+  BILLING, isHostedMember, isAiProvider, canLendToMember, assertMemberCanUseProvider,
+  fileSettingsStore, useSettingsStore, memberAiBilling, setMemberAiBilling, teamPaysForMembers,
+  sharedSubscriptions, sharesSubscription, setSharedSubscriptions,
 } from './memberAi.js';
 
 const hosted = (owner = 'owner-1') => { vi.stubEnv('AGNT_TENANT_SLUG', 'bravo'); vi.stubEnv('AGNT_TENANT_OWNER', owner); };
 let dir;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'member-ai-')); useBillingStore(fileBillingStore(path.join(dir, 'member-ai.json'))); });
-afterEach(() => { vi.unstubAllEnvs(); useBillingStore(null); fs.rmSync(dir, { recursive: true, force: true }); });
+const file = () => path.join(dir, 'member-ai.json');
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'member-ai-')); useSettingsStore(fileSettingsStore(file())); });
+afterEach(() => { vi.unstubAllEnvs(); useSettingsStore(null); fs.rmSync(dir, { recursive: true, force: true }); });
 
 describe('who is a hosted member', () => {
   it('is nobody on a desktop', () => {
@@ -28,38 +30,54 @@ describe('who is a hosted member', () => {
   });
 });
 
-describe('which providers a member may use', () => {
-  it('lends ordinary AI model providers', () => {
-    for (const p of ['openai', 'anthropic', 'groq', 'openrouter', 'kimi', 'deepseek']) expect(isLendable(p), p).toBe(true);
+describe("what a member may use of the owner's", () => {
+  it('lends ordinary AI keys while the team pays, never once each member pays', () => {
+    for (const p of ['openai', 'anthropic', 'groq', 'openrouter', 'kimi', 'deepseek']) expect(canLendToMember(p), p).toBe(true);
+    setMemberAiBilling('member');
+    expect(canLendToMember('openai')).toBe(false);
   });
-  it('never lends a subscription or an instance CLI login', () => {
-    for (const p of ['kimi-code', 'claude-code', 'openai-codex', 'gemini-cli', 'cursor-cli']) expect(isLendable(p), p).toBe(false);
+  it('lends a subscription only when the owner shares it, whoever pays for keys', () => {
+    for (const p of ['kimi-code', 'claude-code', 'openai-codex']) expect(canLendToMember(p), p).toBe(false);
+    setSharedSubscriptions(['claude-code', 'kimi-code']);
+    setMemberAiBilling('member');
+    expect(canLendToMember('claude-code')).toBe(true);
+    expect(canLendToMember('kimi-code')).toBe(true);
+    expect(canLendToMember('openai-codex')).toBe(false);
   });
-  it('treats connected apps and AGNT Models as not AI-key providers', () => {
+  it('never lends connected apps', () => {
     for (const p of ['gmail', 'github', 'google', 'agnt']) expect(isAiProvider(p), p).toBe(false);
+    expect(canLendToMember('github')).toBe(false);
   });
-  it('refuses instance CLI logins and custom providers outright, allows the rest', () => {
-    expect(() => assertMemberCanUseProvider('claude-code')).toThrow(/signs in on this instance as its owner/);
+  it('lets members use Claude Code and Codex (their own sign-in), other instance logins only when shared', () => {
+    expect(() => assertMemberCanUseProvider('claude-code')).not.toThrow();
+    expect(() => assertMemberCanUseProvider('openai-codex')).not.toThrow();
+    expect(() => assertMemberCanUseProvider('gemini-cli')).toThrow(/owner\u2019s sign-in/);
+    setSharedSubscriptions(['gemini-cli']);
+    expect(() => assertMemberCanUseProvider('gemini-cli')).not.toThrow();
     expect(() => assertMemberCanUseProvider('my-custom-llm')).toThrow(/Custom providers/);
-    expect(() => assertMemberCanUseProvider('openai')).not.toThrow();
-    expect(() => assertMemberCanUseProvider('kimi-code')).not.toThrow();
     expect(() => assertMemberCanUseProvider('agnt')).not.toThrow();
   });
 });
 
-describe("the owner's choice", () => {
-  it('defaults to the team paying', () => {
+describe("the owner's choices", () => {
+  it('default to the team paying and nothing shared', () => {
     expect(memberAiBilling()).toBe(BILLING.TEAM);
     expect(teamPaysForMembers()).toBe(true);
+    expect([...sharedSubscriptions()]).toEqual([]);
   });
-  it('remembers "each member pays" across reads, on disk', () => {
-    expect(setMemberAiBilling('member')).toBe(BILLING.MEMBER);
+  it('are remembered together on disk', () => {
+    setMemberAiBilling('member');
+    setSharedSubscriptions(['openai-codex']);
+    const saved = JSON.parse(fs.readFileSync(file(), 'utf8'));
+    expect(saved).toMatchObject({ billing: 'member', sharedSubscriptions: ['openai-codex'] });
+    expect(sharesSubscription('openai-codex')).toBe(true);
     expect(teamPaysForMembers()).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'member-ai.json'), 'utf8')).billing).toBe('member');
   });
-  it('rejects anything else, and a damaged file reads as the default', () => {
+  it('reject unknown values, and a damaged file reads as the defaults', () => {
     expect(() => setMemberAiBilling('everyone')).toThrow(/team.*member/);
-    fs.writeFileSync(path.join(dir, 'member-ai.json'), '{not json');
+    expect(() => setSharedSubscriptions(['gmail'])).toThrow(/subscriptions/);
+    fs.writeFileSync(file(), '{not json');
     expect(memberAiBilling()).toBe(BILLING.TEAM);
+    expect([...sharedSubscriptions()]).toEqual([]);
   });
 });

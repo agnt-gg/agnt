@@ -1,59 +1,79 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
-import { createMemberAiRouter } from './MemberAiRoutes.js';
-import { useBillingStore } from '../services/auth/memberAi.js';
 
-let billing;
+vi.mock('../services/auth/AuthManager.js', () => ({ default: { getConnectedApps: async () => [] } }));
+const { createMemberAiRouter } = await import('./MemberAiRoutes.js');
+const { useSettingsStore } = await import('../services/auth/memberAi.js');
+
+let settings;
 let server;
 let base;
+const ownerConnected = [{ providerId: 'claude-code' }, { providerId: 'openai-codex' }, { providerId: 'openai' }];
 
 async function start(userId) {
   const app = express();
   app.use(express.json());
-  app.use('/api/instance/member-ai', createMemberAiRouter({ authenticate: (req, _res, next) => { req.user = { id: userId }; next(); } }));
+  app.use('/api/instance/member-ai', createMemberAiRouter({
+    authenticate: (req, _res, next) => { req.user = { id: userId }; next(); },
+    listConnected: async () => ownerConnected,
+  }));
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}/api/instance/member-ai`;
 }
-const put = (billingValue) => fetch(base, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billing: billingValue }) });
+const put = (body) => fetch(base, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 beforeEach(() => {
-  billing = null;
-  useBillingStore({ read: () => billing, write: (value) => { billing = value; } });
+  settings = {};
+  useSettingsStore({ read: () => settings, write: (value) => { settings = value; } });
   vi.stubEnv('AGNT_TENANT_SLUG', 'bravo');
   vi.stubEnv('AGNT_TENANT_OWNER', 'owner-1');
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
-  useBillingStore(null);
+  useSettingsStore(null);
   await new Promise((resolve) => server.close(resolve));
 });
 
-describe("who pays for members' AI", () => {
-  it('the owner reads it and changes it', async () => {
+describe("members' AI settings", () => {
+  it('the owner sees who pays and the subscriptions they could share', async () => {
     await start('owner-1');
-    expect(await (await fetch(base)).json()).toEqual({ hosted: true, isOwner: true, billing: 'team' });
-    const response = await put('member');
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ billing: 'member' });
-    expect(billing).toBe('member');
+    expect(await (await fetch(base)).json()).toEqual({
+      hosted: true, isOwner: true, billing: 'team',
+      subscriptions: [{ id: 'claude-code', name: 'Claude Code', shared: false }, { id: 'openai-codex', name: expect.any(String), shared: false }],
+    });
   });
 
-  it('a member reads it but cannot change it', async () => {
+  it('the owner changes who pays, and shares a subscription', async () => {
+    await start('owner-1');
+    expect((await put({ billing: 'member' })).status).toBe(200);
+    const shared = await (await put({ sharedSubscriptions: ['claude-code'] })).json();
+    expect(shared.billing).toBe('member');
+    expect(shared.subscriptions.find((s) => s.id === 'claude-code').shared).toBe(true);
+    expect(settings).toMatchObject({ billing: 'member', sharedSubscriptions: ['claude-code'] });
+  });
+
+  it('a member sees only what is shared, and cannot change anything', async () => {
+    settings = { sharedSubscriptions: ['openai-codex'] };
     await start('member-2');
-    expect(await (await fetch(base)).json()).toEqual({ hosted: true, isOwner: false, billing: 'team' });
-    expect((await put('member')).status).toBe(403);
-    expect(billing).toBeNull();
+    const view = await (await fetch(base)).json();
+    expect(view).toMatchObject({ hosted: true, isOwner: false, billing: 'team' });
+    expect(view.subscriptions.map((s) => s.id)).toEqual(['openai-codex']);
+    expect((await put({ sharedSubscriptions: ['claude-code'] })).status).toBe(403);
+    expect(settings).toEqual({ sharedSubscriptions: ['openai-codex'] });
   });
 
   it('a desktop has no members to decide for', async () => {
     vi.stubEnv('AGNT_TENANT_SLUG', '');
     await start('anyone');
-    expect(await (await fetch(base)).json()).toMatchObject({ hosted: false });
-    expect((await put('member')).status).toBe(404);
+    expect(await (await fetch(base)).json()).toMatchObject({ hosted: false, subscriptions: [] });
+    expect((await put({ billing: 'member' })).status).toBe(404);
   });
 
-  it('rejects a value that is neither team nor member', async () => {
+  it('rejects bad values without saving any part of the change', async () => {
     await start('owner-1');
-    expect((await put('everyone')).status).toBe(400);
+    expect((await put({ billing: 'everyone' })).status).toBe(400);
+    expect((await put({ billing: 'member', sharedSubscriptions: ['gmail'] })).status).toBe(400);
+    expect((await put({})).status).toBe(400);
+    expect(settings).toEqual({});
   });
 });

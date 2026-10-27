@@ -1,9 +1,8 @@
 import { assertLocalProviderAccess } from '../auth/localProviderAccess.js';
 import { credentialUserId } from '../auth/tenantOwnership.js';
 import { isHostedMember, assertMemberCanUseProvider } from '../auth/memberAi.js';
+import { subscriptionConnectionFor, noSubscriptionMessage } from './memberConnections.js';
 import { getConnection } from './connectionRuntime.js';
-const messageConnection = getConnection('claude-code');
-const responseConnection = getConnection('openai-codex');
 const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
@@ -60,7 +59,7 @@ export async function createLlmClient(provider, userId, options = {}) {
 
   // 2. Check for special auth providers that don't use the standard AuthManager flow
   await assertLocalProviderAccess(userId, lowerCaseProvider);
-  const specialClient = await _createSpecialAuthClient(lowerCaseProvider, options);
+  const specialClient = await _createSpecialAuthClient(lowerCaseProvider, options, userId);
   if (specialClient) return specialClient;
 
   // 3. Config-driven client construction
@@ -165,7 +164,7 @@ async function _createClientFromConfig(config, accessToken) {
  * Handles special-auth providers: local, openai-codex, claude-code.
  * Returns null if the provider is not a special-auth provider.
  */
-async function _createSpecialAuthClient(lowerCaseProvider, options) {
+async function _createSpecialAuthClient(lowerCaseProvider, options, userId = null) {
   // Local provider — no API key needed. Each request is routed to whichever
   // local server has its model (LM Studio, Ollama, AGNT's own llama-server…),
   // see services/localModels/localServers.js.
@@ -183,18 +182,22 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
   // Claude Code — uses Anthropic API with OAuth Bearer auth.
   // The custom fetch does two things on every outgoing request:
   //   1. Apply the request signature hash to the outgoing body.
-  //   2. Re-read the current OAuth token from messageConnection and
+  //   2. Re-read the current OAuth token from the caller's connection and
   //      overwrite the Authorization header. The SDK bakes `authToken` into
   //      the client at construction, so without this a mid-session refresh
   //      would leave a long tool loop sending the old Bearer token and 401.
   if (lowerCaseProvider === 'claude-code') {
-    const initialToken = await messageConnection.getAccessToken();
+    // The caller's own sign-in: the instance's for the owner or a desktop; a
+    // hosted member's own, or the owner's when shared (memberConnections.js).
+    const connection = await subscriptionConnectionFor(userId, 'claude-code');
+    if (!connection) throw new Error(noSubscriptionMessage('Claude Code'));
+    const initialToken = await connection.getAccessToken();
     if (!initialToken) {
-      throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
+      throw new Error(isHostedMember(userId) ? noSubscriptionMessage('Claude Code') : 'Claude Code is not connected. Use setup-token or paste a token to connect.');
     }
     const config = getProviderConfig('claude-code');
     const sdkOptions = await _resolveDynamicSdkOptions('claude-code', config?.sdkOptions);
-    const connectionFetch = await createConnectionFetch('claude-code');
+    const connectionFetch = await createConnectionFetch('claude-code', undefined, connection);
     return new Anthropic({
       apiKey: null,
       authToken: initialToken,
@@ -205,19 +208,21 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
   // OpenAI Codex — uses Codex OAuth token with ChatGPT backend
   if (lowerCaseProvider === 'openai-codex') {
+    const connection = await subscriptionConnectionFor(userId, 'openai-codex');
+    if (!connection) throw new Error(noSubscriptionMessage('Codex'));
     // Auto-refresh expired tokens before creating the client
-    const oauthToken = await responseConnection.ensureValidToken();
+    const oauthToken = await connection.ensureValidToken();
     if (!oauthToken || oauthToken.startsWith('sk-')) {
       // ensureValidToken returns API keys too — but Codex Responses API needs OAuth
-      const rawOAuth = responseConnection.getOAuthToken();
+      const rawOAuth = connection.getOAuthToken();
       if (!rawOAuth) {
         throw new Error(
-          'OpenAI Codex requires OAuth authentication. Use device login to connect.'
+          isHostedMember(userId) ? noSubscriptionMessage('Codex') : 'OpenAI Codex requires OAuth authentication. Use device login to connect.'
         );
       }
     }
-    const effectiveToken = responseConnection.getOAuthToken() || oauthToken;
-    const accountId = responseConnection.getChatGptAccountId();
+    const effectiveToken = connection.getOAuthToken() || oauthToken;
+    const accountId = connection.getChatGptAccountId();
     const headers = buildRequestHeaders('openai-codex', { accountId });
     const connectionFetch = await createConnectionFetch('openai-codex');
     return new OpenAI({

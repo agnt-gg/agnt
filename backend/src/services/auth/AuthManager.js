@@ -16,7 +16,8 @@ import { getUserTokenFromSession } from '../../routes/Middleware.js';
 import { authHeader, getSessionToken } from './sessionTokenCache.js';
 import { assertPersonalCredentialContext } from '../authorization/TeamExecutionContext.js';
 import { credentialUserId, tenantOwnerId } from './tenantOwnership.js';
-import { isHostedMember, isAiProvider, isLendable, teamPaysForMembers } from './memberAi.js';
+import { isHostedMember, isAiProvider, canLendToMember, MEMBER_SIGNIN_PROVIDERS, teamPaysForMembers } from './memberAi.js';
+import { subscriptionConnectionFor } from '../ai/memberConnections.js';
 import { resolveDefaultModel } from '../ai/defaultModel.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
@@ -153,9 +154,14 @@ class AuthManager {
       return teamSession || getSessionToken(memberId) || null;
     }
     if (!isAiProvider(providerId)) throw new Error('Hosted members must use approved team connections');
+    if (MEMBER_SIGNIN_PROVIDERS.has(providerId)) {
+      // A subscription sign-in: the member's own, or the owner's if shared (memberConnections.js).
+      const connection = await subscriptionConnectionFor(memberId, providerId);
+      return connection ? connection.getAccessToken() : null;
+    }
     const personal = await this._remoteAccessToken(memberId, providerId);
     if (personal) return personal;
-    if (owner && teamPaysForMembers() && isLendable(providerId)) return this.getValidAccessToken(owner, providerId);
+    if (owner && canLendToMember(providerId)) return this.getValidAccessToken(owner, providerId);
     return null;
   }
 
@@ -167,9 +173,10 @@ class AuthManager {
   async _memberConnectedApps(memberId, authToken) {
     const usable = new Set((await this._remoteConnected(authToken)).filter(isAiProvider));
     const owner = tenantOwnerId();
-    if (owner && teamPaysForMembers()) {
+    if (owner) {
+      // The owner's API keys when the team pays, and the subscriptions they share.
       const team = await this.getConnectedApps(owner, getSessionToken(owner));
-      team.forEach(({ providerId }) => { if (isLendable(providerId)) usable.add(providerId); });
+      team.forEach(({ providerId }) => { if (canLendToMember(providerId)) usable.add(providerId); });
     }
     return Array.from(usable).map((providerId) => ({ providerId, connected: true }));
   }

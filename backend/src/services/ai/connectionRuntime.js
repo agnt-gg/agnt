@@ -449,6 +449,21 @@ function writeJsonFile(filename, value) {
   fs.writeFileSync(filename, JSON.stringify(value, null, 2), { mode: 0o600 });
 }
 
+/**
+ * Where a connection keeps its files: the real filesystem. A team member's own
+ * sign-in on a hosted instance swaps this for a document in their own vault
+ * (memberConnections.js), so nothing of theirs is written to the instance.
+ */
+const defaultFiles = Object.freeze({
+  readJson: readJsonFile,
+  writeJson: writeJsonFile,
+  exists: (filename) => fs.existsSync(filename),
+  unlink: (filename) => fs.unlinkSync(filename),
+  readText: (filename) => fs.readFileSync(filename, 'utf8'),
+  writeText: (filename, text) => { fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, text, 'utf8'); },
+  realpath: (filename) => fs.realpathSync.native(filename),
+});
+
 /** Build an independent connection from a capability profile. Dependencies are
  * injectable; construction does not inspect credentials or start network I/O. */
 export function createManagedConnection(id, dependencies = {}) {
@@ -460,18 +475,20 @@ export function createManagedConnection(id, dependencies = {}) {
   const environment = dependencies.env || process.env;
   const store = dependencies.credentialStore || agntStore;
   const keychain = dependencies.readSecretJson || readSecretJson;
+  const files = dependencies.files || defaultFiles;
+  const readJsonFile = files.readJson, writeJsonFile = files.writeJson;
   const state = { health: null, refresh: null, deviceStart: null, sessions: new Map(), project: null, onboarded: false, tier: null, paidTier: null, cooldownUntil: 0, generation: 0 };
   let connection;
   function directory() {
     const configured = profile.homeEnv && environment[profile.homeEnv];
     let value = configured ? configured === '~' ? home() : configured.startsWith('~/') ? path.join(home(), configured.slice(2)) : configured : path.join(home(), profile.directory);
-    if (profile.homeEnv) { try { value = fs.realpathSync.native(value); } catch { /* Directory may not exist before first sign-in. */ } }
+    if (profile.homeEnv) { try { value = files.realpath(value); } catch { /* Directory may not exist before first sign-in. */ } }
     return value;
   }
   const credentialPath = () => path.join(directory(), profile.filename);
   function readEnvironmentField(name, unquote = false) {
     try {
-      const content = fs.readFileSync(path.join(directory(), '.env'), 'utf8');
+      const content = files.readText(path.join(directory(), '.env'));
       const match = content.match(new RegExp(`^${name}=(.+)$`, 'm'));
       const value = match ? match[1].trim() : null;
       return unquote && value ? value.replace(/^["']|["']$/g, '') : value;
@@ -481,12 +498,12 @@ export function createManagedConnection(id, dependencies = {}) {
     if (typeof value !== 'string' || !value || /[\r\n]/.test(value)) return { success: false, error: `Invalid ${name === 'GEMINI_API_KEY' ? 'API key' : 'project ID'}` };
     const filename = path.join(directory(), '.env');
     let content = '';
-    try { content = fs.readFileSync(filename, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { content = files.readText(filename); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const existing = content;
     const matcher = new RegExp(`^${name}=.*`, 'm');
     content = matcher.test(content) ? content.replace(matcher, () => `${name}=${value}`) : content.trim() + (content.trim() ? '\n' : '') + `${name}=${value}\n`;
     const prepared = reconcile(existing, content);
-    fs.mkdirSync(directory(), { recursive: true }); fs.writeFileSync(filename, prepared.content, 'utf8');
+    files.writeText(filename, prepared.content);
     invalidate(name !== 'GEMINI_API_KEY');
     return { success: true };
   }
@@ -650,16 +667,16 @@ export function createManagedConnection(id, dependencies = {}) {
         if (remaining?.ownedByAgnt && remaining.tier === 'vendor-file') {
           const raw = { ...remaining.raw };
           for (const key of [profile.block, 'oauth_token', 'token', 'access_token']) delete raw[key];
-          if (Object.keys(raw).length) writeJsonFile(credentialPath(), raw); else if (fs.existsSync(credentialPath())) fs.unlinkSync(credentialPath());
+          if (Object.keys(raw).length) writeJsonFile(credentialPath(), raw); else if (files.exists(credentialPath())) files.unlink(credentialPath());
         }
       } else if (profile.block) {
         const raw = readJsonFile(credentialPath());
         if (raw) { delete raw[profile.block]; delete raw[profile.apiKeyField]; writeJsonFile(credentialPath(), raw); }
       } else {
-        if (fs.existsSync(credentialPath())) fs.unlinkSync(credentialPath());
+        if (files.exists(credentialPath())) files.unlink(credentialPath());
         if (profile.apiKeyFile) {
           const filename = path.join(directory(), '.env');
-          try { fs.writeFileSync(filename, fs.readFileSync(filename, 'utf8').replace(/^GEMINI_API_KEY=.*\n?/m, ''), 'utf8'); }
+          try { files.writeText(filename, files.readText(filename).replace(/^GEMINI_API_KEY=.*\n?/m, '')); }
           catch (error) { if (error.code !== 'ENOENT') throw error; }
         }
       }
@@ -1495,11 +1512,11 @@ export function buildRequestHeaders(id, { purpose = 'inference', token, accountI
   if (accountId) headers[purpose === 'inference' ? 'chatgpt-account-id' : 'ChatGPT-Account-ID'] = accountId;
   return headers;
 }
-export async function createConnectionFetch(id, baseFetch = globalThis.fetch) {
+export async function createConnectionFetch(id, baseFetch = globalThis.fetch, connection = null) {
   if (id === 'claude-code') {
     const signedFetch = createRequestFetch(baseFetch);
     return async (url, init) => {
-      const token = await getConnection(id).getAccessToken();
+      const token = await (connection || getConnection(id)).getAccessToken();
       if (token) { const headers = new Headers(init?.headers || {}); headers.set('Authorization', `Bearer ${token}`); init = { ...init, headers }; }
       return signedFetch(url, init);
     };

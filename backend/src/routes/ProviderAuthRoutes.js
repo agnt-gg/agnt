@@ -18,6 +18,9 @@ import { requireAuthHeader } from '../utils/authGuard.js';
 import { isLocalProviderDisconnected, setLocalProviderDisconnected } from '../services/auth/localProviderAccess.js';
 import { listPluginAuthProviders, publicProviderView, getPluginAuthProvider } from '../plugins/pluginAuth.js';
 import { startPluginOAuth, completePluginOAuth, getPluginOAuthStatus } from '../plugins/pluginOAuth.js';
+import { isTenantInstance } from '../services/auth/tenantOwnership.js';
+import { isHostedMember, MEMBER_SIGNIN_PROVIDERS, sharesSubscription } from '../services/auth/memberAi.js';
+import { memberConnection } from '../services/ai/memberConnections.js';
 
 // The redirect URI a plugin OAuth app must register. Always loopback on the
 // port this server is actually listening on: never derived from the Host
@@ -85,6 +88,49 @@ router.param('providerId', (req, res, next, providerId) => {
   next();
 });
 
+// ─────────────────────────── HOSTED MEMBERS ───────────────────────────
+//
+// On a hosted team instance this instance's own sign-ins (Claude Code, Codex,
+// Gemini CLI, ...) are the owner's. Before this, a member's "connect" wrote
+// over the owner's Claude Code or Codex sign-in. Now a member's Claude Code or
+// Codex sign-in, status, refresh and sign-out run on their OWN connection,
+// kept in their own vault (services/ai/memberConnections.js), and a member can
+// never change any of the instance's sign-ins.
+const connectionIdFor = (providerId) => (providerId === 'codex' ? 'openai-codex' : providerId);
+
+async function scopeToMember(req, res) {
+  const userId = req.user?.id || req.user?.userId;
+  if (!isHostedMember(userId)) return null;
+  const connectionId = connectionIdFor(req.providerId);
+  const isStatus = req.method === 'GET' && /\/auth\/status$/.test(req.path);
+  if (MEMBER_SIGNIN_PROVIDERS.has(connectionId)) {
+    const own = await memberConnection(userId, connectionId);
+    if (isStatus && !own.describeCredential().connected && sharesSubscription(connectionId)) {
+      req.sharedByOwner = true; // not signed in themselves: they use the owner's shared one
+      return null;
+    }
+    req.providerEntry = { ...req.providerEntry, manager: own, memberScoped: true };
+    // Answer only once the member's vault has the change, so a restart cannot lose a sign-in.
+    const send = res.json.bind(res);
+    res.json = (body) => { Promise.resolve(own.flushVault?.()).finally(() => send(body)); return res; };
+    return null;
+  }
+  if (isStatus && !sharesSubscription(connectionId)) {
+    return { status: 200, body: { success: true, available: false, apiUsable: false, hint: 'This sign-in belongs to the instance owner. Ask them to share it with the team in Settings \u2192 Members.' } };
+  }
+  if (req.method !== 'GET') return { status: 403, body: { success: false, error: 'This sign-in belongs to the instance owner.' } };
+  return null;
+}
+
+router.all('/:providerId/auth/*', (req, res, next) => {
+  if (!req.providerEntry?.local || !isTenantInstance()) return next();
+  requireAuthHeader(req, res, () => {
+    scopeToMember(req, res)
+      .then((refusal) => (refusal ? res.status(refusal.status).json(refusal.body) : next()))
+      .catch((error) => res.status(error.status || 500).json({ success: false, error: error.message || 'Sign-in unavailable' }));
+  });
+});
+
 // ─────────────────────────── STATUS ───────────────────────────
 
 router.get('/:providerId/auth/status', requireAuthHeader, async (req, res) => {
@@ -107,7 +153,7 @@ router.get('/:providerId/auth/status', requireAuthHeader, async (req, res) => {
     }
     const status = await providerEntry.manager.checkApiUsable();
 
-    const extra = {};
+    const extra = req.sharedByOwner ? { sharedByOwner: true } : providerEntry.memberScoped ? { ownSignIn: true } : {};
     // Codex-specific extras
     if (providerEntry.config.authScheme === 'codex') {
       extra.codexWorkdir = CodexCliService.getDefaultWorkdir();
@@ -202,6 +248,12 @@ router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => 
 
 router.post('/:providerId/auth/disconnect', authenticateToken, async (req, res) => {
   const { providerEntry, providerId } = req;
+
+  if (providerEntry.memberScoped) {
+    // A member signing out of their own Claude Code / Codex: clears their vault copy.
+    const result = await providerEntry.manager.logout();
+    return res.status(result.success === false ? 500 : 200).json({ success: result.success !== false, providerId, message: 'Signed out of your own account here. The owner\u2019s sign-in is unchanged.' });
+  }
 
   if (providerEntry.local) {
     try {

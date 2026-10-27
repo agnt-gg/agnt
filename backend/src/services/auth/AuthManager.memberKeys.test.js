@@ -10,7 +10,7 @@ import ENV_KEY_MAP from './envKeyMap.js';
 
 const OWNER = 'owner-1';
 const MEMBER = 'member-2';
-const h = vi.hoisted(() => ({ vault: {}, connected: {}, sessions: {}, calls: [] }));
+const h = vi.hoisted(() => ({ vault: {}, connected: {}, sessions: {}, calls: [], subscriptions: {} }));
 
 vi.mock('axios', () => ({
   default: {
@@ -39,9 +39,13 @@ vi.mock('./sessionTokenCache.js', () => ({
   authHeader: (id) => (h.sessions[id] ? { Authorization: `Bearer ${h.sessions[id]}` } : {}),
 }));
 vi.mock('./localProviderAccess.js', () => ({ isLocalProviderDisconnected: async () => false }));
+vi.mock('../ai/memberConnections.js', () => ({
+  subscriptionConnectionFor: async (userId, providerId) => h.subscriptions[`${userId}/${providerId}`] || null,
+}));
 
 let AuthManager;
 let billing;
+let shared;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -51,11 +55,12 @@ beforeEach(async () => {
   vi.stubEnv('AGNT_TENANT_OWNER', OWNER);
   vi.stubEnv('OPENAI_API_KEY', 'owner-openai');
   vi.stubEnv('GROQ_API_KEY', 'owner-groq');
-  h.vault = {}; h.connected = {}; h.calls = [];
+  h.vault = {}; h.connected = {}; h.calls = []; h.subscriptions = {};
+  shared = [];
   h.sessions = { [OWNER]: 'owner-session', [MEMBER]: 'member-session' };
   billing = 'team';
   const memberAi = await import('./memberAi.js');
-  memberAi.useBillingStore({ read: () => billing, write: (value) => { billing = value; } });
+  memberAi.useSettingsStore({ read: () => ({ billing, sharedSubscriptions: shared }), write: (value) => { billing = value.billing; shared = value.sharedSubscriptions || []; } });
   AuthManager = (await import('./AuthManager.js')).default;
 });
 afterEach(() => { vi.unstubAllEnvs(); });
@@ -82,11 +87,29 @@ describe('a member of a hosted instance', () => {
     await expect(AuthManager.getValidAccessToken(MEMBER, 'gmail')).rejects.toThrow(/approved team connections/);
   });
 
-  it("never borrows the owner's subscription, but may use their own", async () => {
+  it("borrows the owner's subscription only when the owner shares it, and prefers their own", async () => {
     vi.spyOn(AuthManager, '_getApiKey').mockImplementation(async (user, provider) => (user === OWNER && provider === 'kimi-code' ? 'owner-kimi-code' : null));
     expect(await AuthManager.getValidAccessToken(MEMBER, 'kimi-code')).toBeNull();
+    shared = ['kimi-code'];
+    billing = 'member'; // sharing a subscription is its own choice, separate from who pays for keys
+    expect(await AuthManager.getValidAccessToken(MEMBER, 'kimi-code')).toBe('owner-kimi-code');
     h.vault[MEMBER] = { 'kimi-code': 'member-kimi-code' };
     expect(await AuthManager.getValidAccessToken(MEMBER, 'kimi-code')).toBe('member-kimi-code');
+  });
+
+  it('gets Claude Code from their own sign-in (or the shared one), never from a key lookup', async () => {
+    expect(await AuthManager.getValidAccessToken(MEMBER, 'claude-code')).toBeNull();
+    h.subscriptions[`${MEMBER}/claude-code`] = { getAccessToken: async () => 'member-claude-token' };
+    expect(await AuthManager.getValidAccessToken(MEMBER, 'claude-code')).toBe('member-claude-token');
+    expect(h.calls.filter((call) => call.url.endsWith('/auth/valid-token'))).toEqual([]);
+  });
+
+  it("lists a subscription the owner shares even when each member pays for keys", async () => {
+    billing = 'member';
+    shared = ['kimi-code'];
+    h.connected[OWNER] = ['kimi-code', 'groq'];
+    const ids = (await AuthManager.getConnectedApps(MEMBER, 'member-session')).map((entry) => entry.providerId);
+    expect(ids).toEqual(['kimi-code']);
   });
 
   it("runs AGNT Models on the owner's account when the team pays, their own otherwise", async () => {
