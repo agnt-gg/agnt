@@ -10,7 +10,9 @@
         <CustomSelect v-model="role" :options="roleOptions" aria-label="Role" />
         <button class="primary" :disabled="busy || seatsFull">Add person</button>
       </form>
-      <p v-if="canManage && seatsFull">All {{ seats.total }} seats are in use. Remove someone or add seats from billing.</p>
+      <p v-if="added" class="notice" role="status">{{ added }}</p>
+      <p v-if="canManage && seatsFull && !canManageSeats">All {{ seats.total }} seats are in use. Ask the owner to add seats, or remove someone.</p>
+      <TeamSeats v-if="canManageSeats" ref="seatControl" :slug="team.tenantSlug" @changed="reload" />
       <ul class="rows" aria-label="Team people">
         <li v-for="person in people" :key="person.user_id">
           <div class="who"><strong>{{ person.name || person.email || person.user_id }}</strong><span>{{ person.email }}</span></div>
@@ -55,6 +57,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import TeamSeats from './TeamSeats.vue';
 import { ROLES, roleLabel, teamRequest, tenantRequest, addPerson, removePerson, changeRole } from '@/utils/teamClient.js';
 
 const props = defineProps({ team: { type: Object, required: true } });
@@ -63,6 +66,10 @@ const store = useStore();
 const members = ref([]), instanceMembers = ref([]), invitations = ref([]), seats = ref({ used: 0, total: 0 });
 const email = ref(''), role = ref('member'), inviteEmail = ref(''), inviteRole = ref('member');
 const createdInvite = ref(''), copied = ref(false), busy = ref(false);
+// What adding someone did, in words: they had no way to know it worked, or where to sign in.
+const added = ref(''), instanceUrl = ref(''), seatControl = ref(null);
+// Seats are bought by whoever pays for the team: the owner.
+const canManageSeats = computed(() => props.team.capabilities?.manageBilling === true);
 const roleOptions = ROLES.map(r => ({ value: r.value, label: r.label }));
 const canManage = computed(() => props.team.capabilities?.manageMembers === true || ['owner', 'admin'].includes(props.team.role));
 const selfId = computed(() => store.state.userAuth?.user?.id || '');
@@ -94,9 +101,20 @@ async function load() {
   members.value = teamMembers; invitations.value = pending;
   instanceMembers.value = instance?.members || [];
   seats.value = instance?.seats || props.team.seats || { used: 0, total: 0 };
+  instanceUrl.value = instance?.url || '';
 }
 const reload = async () => { await load(); emit('changed'); };
-const add = () => perform(async () => { await addPerson(props.team, { email: email.value, role: role.value }); email.value = ''; await reload(); });
+const add = () => perform(async () => {
+  const who = email.value.trim();
+  added.value = '';
+  await addPerson(props.team, { email: who, role: role.value });
+  email.value = '';
+  await reload();
+  seatControl.value?.reload?.();
+  added.value = instanceUrl.value
+    ? `Added ${who}. They can sign in at ${instanceUrl.value} with that email.`
+    : `Added ${who}. They can sign in to ${props.team.tenantSlug} with that email.`;
+});
 const repair = person => perform(async () => { await teamRequest('/' + props.team.id + '/members', { method: 'POST', body: JSON.stringify({ userId: person.user_id, role: 'member' }) }); await reload(); });
 const setRole = (person, next) => perform(async () => { await changeRole(props.team, person.user_id, next); await reload(); });
 function remove(person) {

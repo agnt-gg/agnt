@@ -42,6 +42,16 @@
       </div>
     </div>
 
+    <!-- Team seats, bought here instead of on agnt.gg/account. Shows only for
+         a Business plan with an instance this account owns (TeamSeats loads it). -->
+    <div v-if="planType === 'business'" class="billing-section">
+      <div class="section-header">
+        <h3>Team Seats</h3>
+        <p>Everyone on your team needs a seat. Changes are billed with your plan.</p>
+      </div>
+      <TeamSeats />
+    </div>
+
     <!-- Plans: the same picker as the upgrade modal (components/PlanPicker.vue). -->
     <div class="billing-section">
       <div class="section-header">
@@ -164,6 +174,7 @@ import { PLANS } from '@/components/plans.js';
 // disagree with the upgrade modal, chat's credit card or the Usage page.
 const flashCredits = (planId) => PLANS.find((plan) => plan.id === planId)?.includes.find((row) => row.label === 'AGNT Flash')?.value || '';
 import PlanPicker from '@/components/PlanPicker.vue';
+import TeamSeats from '@/views/_components/team/TeamSeats.vue';
 
 // ============================================
 // DISCOUNT CONFIGURATION
@@ -177,6 +188,7 @@ export default {
   components: {
     SimpleModal,
     PlanPicker,
+    TeamSeats,
   },
   computed: {
     ...mapState('userAuth', ['subscription', 'planType']),
@@ -276,8 +288,8 @@ export default {
 
     plans() {
       // The Pro ladder. Prices and allowances mirror the live plan tables on
-      // api.agnt.gg; change them there first (prices: planPrices.js). Team seats are added on the
-      // Billing page after purchase, not chosen here.
+      // api.agnt.gg; change them there first (prices: planPrices.js). Team seats are added in the
+      // Team Seats section of this page (TeamSeats.vue) after purchase, not chosen here.
       const y = this.selectedInterval === 'yearly';
       const six = (flash, search, minutes, mail, hooks) => [
         { text: 'Hosted instance', included: true, detail: 'Your agent at yourname.agnt.gg' },
