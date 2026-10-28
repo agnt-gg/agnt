@@ -71,7 +71,8 @@ vi.mock('./browserUseEnvironment.js', () => ({
 vi.mock('./browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
   closeFallbackSurface: (...a) => closeFallbackSurface(...a),
-  launchedBrowserLabel: () => launchedLabel,
+  // A named browser is a real window; the unnamed launch reports 'launched' here (no label set).
+  describeLaunchedBrowser: () => (launchedLabel ? `${launchedLabel} window` : 'launched'),
   // The real predicate: any loopback ws:// endpoint, since a launched browser
   // picks its own port and path.
   isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
@@ -345,7 +346,7 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(ensureFallbackSurface).toHaveBeenCalledWith(expect.objectContaining({ browser: 'brave' }));
     expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(LAUNCHED_CDP);
     // Reported by NAME, so the user knows which window opened.
-    expect(out.surface).toBe('Brave');
+    expect(out.surface).toBe('Brave window');
   });
 
   it('does not even look for a widget when a browser is named', async () => {

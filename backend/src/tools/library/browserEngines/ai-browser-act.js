@@ -3,7 +3,7 @@ import {
   waitForSurface, forgetSurfaceByUrl, announceHostSurface, surfaceKind,
 } from '../../../services/browserSurfaces.js';
 import {
-  ensureFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
+  ensureFallbackSurface, isLoopbackWebSocket, describeLaunchedBrowser,
 } from './browserFallbackSurface.js';
 import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { performBrowserAction, BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
@@ -210,7 +210,9 @@ class AIBrowserAct extends BaseAction {
 
       return this.formatOutput({
         success: true,
-        surface: surface.kind === 'launched' ? (launchedBrowserLabel() || 'launched') : surface.kind,
+        // Where the browser IS, in words the agent can repeat: never "the
+        // Chrome window" for a browser with no window (describeLaunchedBrowser).
+        surface: surface.kind === 'launched' ? describeLaunchedBrowser() : surface.kind,
         ...result,
         error: null,
       });

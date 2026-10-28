@@ -101,8 +101,9 @@ class Browser extends BaseAction {
       + 'approving. DELEGATION: action="run" with instructions hands the '
       + 'WHOLE task to an autonomous browser agent that reports back when finished — slow but self-sufficient, right for '
       + 'workflows and fire-and-forget jobs. ESCAPE HATCH: action="script" with python drives the browser with raw '
-      + 'Python/CDP helpers — chat only, and refused unless the user\'s message asks for the browser. Never expect a '
-      + 'visible OS window unless the user explicitly asked for one (externalWindow, run only).',
+      + 'Python/CDP helpers — chat only, and refused unless the user\'s message asks for the browser. The browser is '
+      + 'HIDDEN: it has no window on the desktop and the user sees it only in the chat\'s live view, so never tell them '
+      + 'to look at or type into a browser window (externalWindow on run is the one exception, when they asked for one).',
     parameters: {
       action: {
         type: 'string',
@@ -298,7 +299,7 @@ class Browser extends BaseAction {
       recoveredFromBlock: { type: 'object', description: 'navigate first hit a bot-protection wall and a reload cleared it: {by, evidence}' },
       signInRequired: { type: 'object', description: 'The page needs the user: {kind: "sign-in"|"rejected-browser"|"consent", provider, hint}. Call action="signin"' },
       signedIn: { type: 'boolean', description: 'signin only: true once the page no longer asks for a sign-in' },
-      surface: { type: 'string', description: '"widget" for the canvas Browser widget, otherwise the launched browser' },
+      surface: { type: 'string', description: '"widget" for the canvas Browser widget, otherwise where the launched browser is (hidden: seen only in the chat\'s live view)' },
       result: { type: 'string', description: 'What the autonomous agent reported (run only)' },
       output: { type: 'string', description: 'What the script printed (script only)' },
       error: { type: 'string', description: 'Why the action could not be performed' },

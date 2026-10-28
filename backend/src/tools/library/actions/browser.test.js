@@ -87,6 +87,13 @@ describe('signin goes to the sign-in engine', () => {
     expect(description).toMatch(/Never ask for or type a password/);
     expect(description).not.toMatch(/login\/captcha → stop/);
   });
+
+  it('says the browser is hidden, so the agent never sends the user to a window', () => {
+    const { description, outputs } = browser.constructor.schema;
+    expect(description).toMatch(/HIDDEN: it has no window on the desktop/);
+    expect(description).toMatch(/never tell them to look at or type into a browser window/);
+    expect(outputs.surface.description).toMatch(/hidden: seen only in the chat's live view/);
+  });
 });
 
 describe('verbs go to the verb engine', () => {

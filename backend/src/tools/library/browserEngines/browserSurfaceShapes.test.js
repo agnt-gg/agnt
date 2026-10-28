@@ -32,7 +32,7 @@ vi.mock('./browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
   closeFallbackSurface: vi.fn(),
   isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
-  launchedBrowserLabel: () => 'Google Chrome',
+  describeLaunchedBrowser: () => "hidden Google Chrome — no window on the desktop; the user sees it only in the chat's live view",
 }));
 
 vi.mock('../../../services/orchestrator/pageContext.js', () => ({ isCanvasTurn: () => false }));

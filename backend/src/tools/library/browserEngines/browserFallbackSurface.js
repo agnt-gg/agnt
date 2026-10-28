@@ -24,8 +24,17 @@
  *     and no possibility of acting as the signed-in human by accident.
  *   - Launched by us, so we know its port and never have to guess which of the
  *     running Chromes is "ours".
- *   - Visible, not headless. A browser doing things on someone's behalf should
- *     be watchable; a hidden one is how automation surprises people.
+ *   - Watchable, though not a desktop window. Agent launches are HIDDEN
+ *     (headless) and watched through the screencast — the live card in the
+ *     chat, or the canvas Browser widget. A window popping over the desktop
+ *     unasked read as a malfunction. The only desktop windows are a browser
+ *     the user NAMES ("open Brave") and the sign-in window (openSignInWindow),
+ *     which exists because the person has to type into it.
+ *
+ * Because the browser is hidden, the agent must never be told it is "the
+ * Chrome window": describeLaunchedBrowser() is what its tool results say.
+ * Trace 64eeeb9c (2026-10-28) is what the old wording cost — the agent asked
+ * the user to type a password into a window that did not exist.
  *
  * The widget is still strongly preferred — it is on the canvas, next to the
  * conversation, where the work can be seen. This is the fallback, not the plan.
@@ -665,7 +674,15 @@ async function launchBrowser({ log, browser, hidden = false }) {
   // `requested` is remembered separately from `browserKey` so an explicit path
   // (key 'custom') asked for twice is not seen as a switch each time.
   session = {
-    child, adopted: false, cdpUrl: null, profilePath, browserKey: key, requested: browser || key, label, executable,
+    child,
+    adopted: false,
+    cdpUrl: null,
+    profilePath,
+    browserKey: key,
+    requested: browser || key,
+    label,
+    executable,
+    headless: runtimeFlags.includes('--headless=new'),
   };
   // Recorded now rather than after the port appears, so a browser that is
   // adopted mid-startup is still identifiable.
@@ -738,9 +755,19 @@ export async function closeFallbackSurfaceGracefully({ log = () => {} } = {}) {
   if (session === current) closeFallbackSurface();
 }
 
-/** Which browser is currently launched, if any. */
-export function launchedBrowserLabel() {
-  return isAlive() ? session.label : null;
+/**
+ * What a tool result calls the launched browser — the words the agent will
+ * repeat to the user, so they must say where the browser actually is.
+ * "Google Chrome" alone was read as a desktop window (trace 64eeeb9c).
+ */
+export function describeLaunchedBrowser() {
+  if (!isAlive()) return 'launched';
+  if (session.headless === false) return `${session.label} window`;
+  if (session.headless === true) {
+    return `hidden ${session.label} — no window on the desktop; the user sees it only in the chat's live view`;
+  }
+  // Adopted from a previous run: how it was launched is not known here.
+  return `${session.label} (the AGNT browser; the user watches it in the chat's live view)`;
 }
 
 // ─── the sign-in window ───────────────────────────────────────────────────────────

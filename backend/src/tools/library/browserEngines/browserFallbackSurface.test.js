@@ -38,7 +38,7 @@ vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a), spawnSync: () =>
 const {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, _fallbackSessionForTests,
   findBrowser, installedBrowsers, EXIT_PROFILE_IN_USE,
-  openSignInWindow, closeSignInWindow, isSignInWindowOpen, signInWindowClosed,
+  openSignInWindow, closeSignInWindow, isSignInWindowOpen, signInWindowClosed, describeLaunchedBrowser,
 } = await import('./browserFallbackSurface.js');
 
 const PROFILE = path.join(tmpDir, 'browser_control_profile');
@@ -876,6 +876,27 @@ describe('the sign-in window', () => {
   it('an automation launch that hands off to an open window says so', async () => {
     browserBehaviour = 'hands-off';
     await expect(ensureFallbackSurface({ ...quiet, hidden: true })).rejects.toThrow(/Another .* window is open on the AGNT browser profile/);
+  });
+});
+
+describe('what a tool result calls the browser', () => {
+  // Trace 64eeeb9c: "surface: Google Chrome" was repeated to the user as "the
+  // Chrome window" for a browser that had no window.
+  it('a hidden launch is described as hidden, with nowhere to look but the live view', async () => {
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+    const said = describeLaunchedBrowser();
+    expect(said).toMatch(/^hidden .+ — no window on the desktop; the user sees it only in the chat's live view$/);
+    expect(said).not.toMatch(/^\S+ window$/);
+  });
+
+  it('a visible launch (a browser the user named) is a window, and says so', async () => {
+    await ensureFallbackSurface({ log: () => {} });
+    expect(describeLaunchedBrowser()).toBe(`${path.basename(process.execPath)} window`);
+  });
+
+  it('nothing launched is "launched", as before', () => {
+    closeFallbackSurface();
+    expect(describeLaunchedBrowser()).toBe('launched');
   });
 });
 

@@ -21,7 +21,7 @@ const ensureFallbackSurface = vi.fn();
 vi.mock('./browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
   isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
-  launchedBrowserLabel: () => 'Chrome',
+  describeLaunchedBrowser: () => "hidden Chrome — no window on the desktop; the user sees it only in the chat's live view",
 }));
 
 const isCanvasTurn = vi.fn();
@@ -114,7 +114,7 @@ describe('which browser it drives', () => {
     isCanvasTurn.mockReturnValue(true);
     const out = await action.execute({ action: 'read' }, {}, CHAT);
 
-    expect(out.surface).toBe('Chrome');
+    expect(out.surface).toMatch(/^hidden Chrome — no window on the desktop/);
     expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
   });
 });
@@ -136,14 +136,14 @@ describe('one driver, every surface', () => {
     const out = await action.execute({ action: 'navigate', url: 'agnt.gg' }, {}, MAIN_CHAT);
     expect(waitForSurface).toHaveBeenCalledWith('u1', { workspaceId: null, instanceId: null }, 0);
     expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
-    expect(out.surface).toBe('Chrome');
+    expect(out.surface).toMatch(/^hidden Chrome — no window on the desktop/);
     expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'navigate', expect.objectContaining({ url: 'agnt.gg' }), expect.anything());
   });
 
   it('agent chat: identical to main chat — an agent is a chat with a different author', async () => {
     const out = await action.execute({ action: 'read' }, {}, AGENT_CHAT);
     expect(waitForSurface.mock.calls[0][2]).toBe(0);
-    expect(out.surface).toBe('Chrome');
+    expect(out.surface).toMatch(/^hidden Chrome — no window on the desktop/);
     expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'read', expect.anything(), expect.anything());
   });
 

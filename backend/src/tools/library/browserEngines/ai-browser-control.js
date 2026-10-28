@@ -8,7 +8,7 @@ import {
   getActiveTarget, setActiveTarget, claimTab, tabOwner,
 } from '../../../services/browserActiveTarget.js';
 import {
-  ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
+  ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, describeLaunchedBrowser,
 } from './browserFallbackSurface.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 import { wrapBrowserScript, readFinalTab } from './browserScriptPrelude.js';
@@ -281,7 +281,7 @@ class AIBrowserControl extends BaseAction {
       return this.formatOutput({
         success: true,
         url: cdpUrl,
-        surface: kind === 'launched' ? (launchedBrowserLabel() || 'launched') : kind,
+        surface: kind === 'launched' ? describeLaunchedBrowser() : kind,
         output: outcome.stdout,
         diagnostics: outcome.stderr || null,
         error: null,
