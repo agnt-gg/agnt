@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import fs from 'node:fs/promises';
+import nodeFs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -93,6 +94,46 @@ describe('saved artifact preview representation',()=>{
   });
   it('retains missing-file status',async()=>{
     expect((await fetch(url('missing.html'),{headers:auth()})).status).toBe(404);
+  });
+  it('previews a file recovered from a moved path, resolving relatives beside the real file',async()=>{
+    // A reaped worktree: the message still names it, the file now lives in the main checkout.
+    const real=path.join(root,'repo','site','page.html');
+    await fs.mkdir(path.dirname(real),{recursive:true});
+    await fs.writeFile(real,'<html><head></head><body><img src="pic.png"></body></html>');
+    const stale=path.join(root,'repo','.worktrees','reaped','site','page.html');
+    const response=await fetch(`${base}/api/local-preview/${encodeURI(stale.replaceAll('\\','/'))}`,{headers:auth()});
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-local-file-resolved-via')).toBe('worktree');
+    const baseHref=(await response.text()).match(/<base href="([^"]+)"/)[1];
+    expect(decodeURIComponent(baseHref)).toBe('/api/local-preview/'+real.replaceAll('\\','/'));
+  });
+  it('prepares each revision of a file once and never serves a stale one',async()=>{
+    const file=path.join(root,'cached.html');
+    await fs.writeFile(file,'<html><head></head><body>first</body></html>');
+    const reads=vi.spyOn(nodeFs.promises,'readFile');
+    try {
+      expect(await (await fetch(url('cached.html'),{headers:auth()})).text()).toContain('first');
+      expect(await (await fetch(url('cached.html')+'?__agnt_preview=0123456789abcdef',{headers:auth()})).text()).toContain('first');
+      expect(reads.mock.calls.filter(([target])=>String(target).endsWith('cached.html'))).toHaveLength(1);
+      await fs.writeFile(file,'<html><head></head><body>second edit</body></html>');
+      const later=new Date(Date.now()+5000);
+      await fs.utimes(file,later,later);
+      expect(await (await fetch(url('cached.html'),{headers:auth()})).text()).toContain('second edit');
+    } finally { reads.mockRestore(); }
+  });
+  it('gives every frame its own reporter channel from the shared plan',async()=>{
+    const one=await (await fetch(url('wrapper.html')+'?__agnt_preview=aaaaaaaaaaaaaaaa1',{headers:auth()})).text();
+    const two=await (await fetch(url('wrapper.html')+'?__agnt_preview=bbbbbbbbbbbbbbbb2',{headers:auth()})).text();
+    expect(one).toContain('aaaaaaaaaaaaaaaa1');expect(one).not.toContain('bbbbbbbbbbbbbbbb2');
+    expect(two).toContain('bbbbbbbbbbbbbbbb2');expect(two).not.toContain('aaaaaaaaaaaaaaaa1');
+  });
+  it('prepares a large document that needs rewriting',async()=>{
+    await fs.writeFile(path.join(root,'large.html'),`<html><head></head><body><img src="${pathToFileURL(path.join(root,'a b.svg'))}"><p>${'z'.repeat(300*1024)}</p></body></html>`);
+    const response=await fetch(url('large.html'),{headers:auth()});
+    expect(response.status).toBe(200);
+    const rendered=await response.text();
+    expect(rendered).toContain('src="/api/local-preview/');
+    expect(rendered).not.toMatch(/src="file:/);
   });
   it('does not return source-byte ranges for transformed HTML',async()=>{
     const response=await fetch(url('wrapper.html'),{headers:{...auth(),Range:'bytes=0-4'}});

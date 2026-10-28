@@ -5,11 +5,24 @@ import { requireAuthMedia } from '../utils/authGuard.js';
 import { isSecretPath, assertWithinRoots, describeRoots } from '../utils/localFileScope.js';
 import { resolveLocalFile } from '../utils/localFileResolve.js';
 
-import { MAX_PREVIEW_TEXT_BYTES, preparePreviewHTML, previewResourceURL, previewChannel, previewDocumentBase } from '../utils/artifactPreviewDocument.js';
+import { MAX_PREVIEW_TEXT_BYTES, previewResourceURL, previewChannel, previewDocumentBase, withPreviewReporter } from '../utils/artifactPreviewDocument.js';
+import { createPreviewPlanCache, previewPlanKey } from '../utils/artifactPreviewCache.js';
+import { planPreviewDocumentAsync, PREVIEW_LIMIT_ERRORS } from '../utils/artifactPreviewThread.js';
 import { rewritePreviewCSS } from '../utils/artifactPreviewUrls.js';
 
 const LocalFileRoutes = express.Router();
 export const LocalPreviewRoutes = express.Router();
+
+const TOO_LARGE_TO_PREVIEW = { error: 'Artifact is too large for an inline preview. Open the original file instead.' };
+
+// One plan per file revision, shared by the inline frame, the fullscreen
+// previewer and every re-render (see utils/artifactPreviewCache.js).
+const previewPlans = createPreviewPlanCache();
+
+function previewPlan(target, stat, documentURL, prefix) {
+  return previewPlans.obtain(previewPlanKey(target, stat, documentURL, prefix), async () =>
+    planPreviewDocumentAsync(await fs.promises.readFile(target, 'utf8'), { documentURL, prefix }));
+}
 
 const MIME = {
   // video
@@ -142,20 +155,27 @@ const serveLocalFile = async (req, res, { preview = false } = {}) => {
 
     if (preview && ['.html', '.htm', '.css'].includes(ext)) {
       if (fileSize > MAX_PREVIEW_TEXT_BYTES) {
-        return res.status(413).json({ error: 'Artifact is too large for an inline preview. Open the original file instead.' });
+        return res.status(413).json(TOO_LARGE_TO_PREVIEW);
       }
-      const source = await fs.promises.readFile(resolved, 'utf8');
       const prefix = '/api/local-preview/';
-      const documentURL = prefix + resolved.replace(/\\/g, '/').split('/').map((part, index) =>
+      // The file actually served, not the requested path: a recovered path
+      // no longer exists, and relative URLs must resolve beside the real file.
+      const documentURL = prefix + target.replace(/\\/g, '/').split('/').map((part, index) =>
         index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)
       ).join('/');
-      const rendered = ext === '.css'
-        ? rewritePreviewCSS(source, value => previewResourceURL(value, prefix))
-        : preparePreviewHTML(source, {
-          documentURL: previewDocumentBase(req.originalUrl, documentURL),
-          prefix,
-          channel: previewChannel(req.query),
-        });
+      let rendered;
+      if (ext === '.css') {
+        rendered = rewritePreviewCSS(await fs.promises.readFile(target, 'utf8'), value => previewResourceURL(value, prefix));
+      } else {
+        let plan;
+        try {
+          plan = await previewPlan(target, stat, previewDocumentBase(req.originalUrl, documentURL), prefix);
+        } catch (error) {
+          if (PREVIEW_LIMIT_ERRORS.has(error.message)) return res.status(413).json(TOO_LARGE_TO_PREVIEW);
+          throw error;
+        }
+        rendered = withPreviewReporter(plan, previewChannel(req.query));
+      }
       res.setHeader('Accept-Ranges', 'none');
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Content-Length', String(Buffer.byteLength(rendered)));
