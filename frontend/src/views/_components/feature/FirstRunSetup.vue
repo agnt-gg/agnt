@@ -435,6 +435,12 @@ const offer = computed(() => finishOffer(status.value));
 .frs--modal {
   max-width: none;
 }
+/* The app's typography gives every li a bottom margin and an ol's last li
+   16px; inside a centred row that lifted step 3 by 6px. These lists are
+   layout, not prose. */
+.frs li {
+  margin: 0;
+}
 .frs-loading {
   display: flex;
   justify-content: center;

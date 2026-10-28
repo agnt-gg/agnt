@@ -235,6 +235,19 @@ describe('done', () => {
   });
 });
 
+describe('layout', () => {
+  // Seen in a fresh account: the global `ol li:last-child { margin-bottom: 16px }`
+  // lifted step 3 six pixels above the others. jsdom computes no layout, so the
+  // reset is held in the source.
+  it('resets list-item margins inside the card', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+    const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'FirstRunSetup.vue'), 'utf8');
+    expect(source).toMatch(/\.frs li\s*\{\s*margin:\s*0;\s*\}/);
+  });
+});
+
 describe('opened at a step', () => {
   // A host's checklist (AGNT One's top-bar capsule) opens the setup where it points.
   it('opens where it is asked to, and moves when asked again', async () => {
