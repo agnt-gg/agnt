@@ -532,6 +532,30 @@ describe('the panel before it has measured anything', () => {
     CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
   });
 
+  // 2026-10-28: the section was hidden on cloud instances so members stopped
+  // meeting "Tenant administrator required", which also took Tailscale and
+  // device pairing away from the owner. Now it stays, and only a refused
+  // member sees one plain line.
+  it('a member the server refuses (403) sees one line, not an error, a switch or a pairing panel', async () => {
+    getStatus.mockRejectedValue(Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { error: 'Tenant administrator required' } } }));
+    const w = mount(PhoneAccessSection);
+    await flushPromises();
+
+    expect(w.text()).toContain('set up by its owner or an admin');
+    expect(w.find('.pa-note-error').exists()).toBe(false);
+    expect(w.find('input[type="checkbox"]').exists()).toBe(false);
+    expect(w.find('.pa-skeleton').exists()).toBe(false);
+    expect(w.text()).not.toContain('Tenant administrator required');
+    CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
+  });
+
+  it('the owner (status answered) still gets the full section, toggle included', async () => {
+    const w = await mountPanel();
+    expect(w.text()).not.toContain('set up by its owner or an admin');
+    expect(w.find('input[type="checkbox"]').exists()).toBe(true);
+    expect(w.text()).toContain('192.168.40.208');
+  });
+
   it('paints last-known-good on re-entry instead of a second skeleton', async () => {
     const first = await mountPanel();
     expect(first.text()).toContain('192.168.40.208');

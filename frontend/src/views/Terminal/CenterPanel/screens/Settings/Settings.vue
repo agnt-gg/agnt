@@ -177,15 +177,16 @@
         <div v-else-if="activeSection === 'phone-access'" class="settings-content" data-section="phone-access">
           <div class="content-header">
             <h2 class="content-title">Phone Access</h2>
-            <p class="content-subtitle">{{ isHostedInstance === false ? 'Text Annie from anywhere, or run this AGNT from your phone over your local network' : 'Text Annie from anywhere' }}</p>
+            <p class="content-subtitle">Text Annie from anywhere, or run this AGNT from your phone over your local network</p>
           </div>
           <div class="settings-grid">
             <div class="settings-section full-width">
               <TextAnnieCard />
             </div>
-            <!-- Local-network pairing is a desktop feature: a cloud instance has no LAN,
-                 and its members were shown "Tenant administrator required" here. -->
-            <div v-if="isHostedInstance === false" class="settings-section full-width">
+            <!-- Shown everywhere, cloud instances included: their owner and admins pair
+                 devices here (local network, Tailscale). A member the server refuses
+                 sees one line instead (PhoneAccessSection adminOnly). -->
+            <div class="settings-section full-width">
               <PhoneAccessSection />
             </div>
           </div>
@@ -337,7 +338,6 @@ import LeaderboardSection from './components/LeaderboardSection/LeaderboardSecti
 import DataExportSection from './components/DataExportSection/DataExportSection.vue';
 import DataRestoreSection from './components/DataExportSection/DataRestoreSection.vue';
 import DataResetSection from './components/DataExportSection/DataResetSection.vue';
-import { useInstanceKind } from '@/composables/useInstanceKind.js';
 
 export default {
   name: 'Settings',
@@ -376,7 +376,6 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const route = useRoute();
-    const { isHostedInstance } = useInstanceKind();
     const baseScreenRef = ref(null);
     const mobileView = inject('isMobile', ref(false));
     const mobileDirectoryOpen = ref(!route?.query?.section);
@@ -475,7 +474,7 @@ export default {
       if (newValue && !oldValue) activeSection.value = DEFAULT_SETTINGS_SECTION;
     });
 
-    return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory, isHostedInstance,
+    return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory,
       baseScreenRef,
       emit,
       initializeScreen,

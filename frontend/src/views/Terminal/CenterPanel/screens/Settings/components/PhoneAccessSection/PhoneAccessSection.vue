@@ -13,7 +13,7 @@
            springs back to off is indistinguishable from "it did not save".
            Absent entirely until measured: a switch rendered off is a claim, and
            an unread setting has not earned one. -->
-      <label v-if="ready" class="pa-switch" :class="{ disabled: busy || envPinned || planLocked }">
+      <label v-if="ready && !adminOnly" class="pa-switch" :class="{ disabled: busy || envPinned || planLocked }">
         <input
           type="checkbox"
           :checked="desiredLanEnabled"
@@ -22,8 +22,18 @@
         />
         <span class="pa-slider"></span>
       </label>
-      <span v-else class="pa-sk pa-sk-switch" aria-hidden="true"></span>
+      <span v-else-if="!ready" class="pa-sk pa-sk-switch" aria-hidden="true"></span>
     </div>
+
+    <!-- A member of a cloud instance: pairing devices to it (local network,
+         Tailscale) is for its owner and admins, and the server says so with a
+         403. One plain line instead of an error and a dead panel. -->
+    <p v-if="adminOnly" class="pa-note">
+      <i class="fas fa-user-shield"></i>
+      <span>Pairing phones and computers with this AGNT (local network or Tailscale) is set up by its owner or an admin.</span>
+    </p>
+
+    <template v-if="!adminOnly">
 
     <!-- Says so up front rather than letting the user flip a switch and meet a
          403. The backend is the authority (see planEntitlements.js); this only
@@ -289,6 +299,8 @@
       </div>
     </div>
 
+    </template>
+
     <p v-if="error" class="pa-note pa-note-error"><i class="fas fa-exclamation-circle"></i><span>{{ error }}</span></p>
   </div>
 </template>
@@ -320,7 +332,14 @@ const {
   patch: patchStatus,
 } = useAsyncResource(
   async () => {
-    const s = await pairingService.getStatus();
+    let s;
+    try {
+      s = await pairingService.getStatus();
+    } catch (e) {
+      // Refused for this person (a member of a cloud instance): an answer, not a failure.
+      if (e?.response?.status === 403) return { adminOnly: true };
+      throw e;
+    }
     // Normalise at the boundary so nothing downstream handles two shapes.
     return {
       ...s,
@@ -339,6 +358,7 @@ const {
 
 const refresh = () => loadStatus({ onError: friendly });
 
+const adminOnly = computed(() => status.value?.adminOnly === true);
 const lanEnabled = computed(() => status.value?.lanEnabled === true);
 const desiredLanEnabled = computed(() => status.value?.desiredLanEnabled === true);
 const bindHost = computed(() => status.value?.bindHost || '');

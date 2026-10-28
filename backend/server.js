@@ -526,9 +526,6 @@ app.get('/api/version', (req, res) => {
       version: packageJson.version,
       name: packageJson.name,
       productName: packageJson.productName,
-      // A cloud instance hides desktop-only settings (LAN phone pairing) that
-      // its members cannot use; obvious from the hostname anyway, so not a secret.
-      hosted: Boolean(process.env.AGNT_TENANT_SLUG),
     });
   } catch (error) {
     console.error('Error reading package.json:', error);
