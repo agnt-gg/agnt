@@ -61,10 +61,17 @@ const tab = ref('Preview'),
   truncated = ref(false),
   copied = ref(false);
 let controller = null,
-  epoch = 0;
+  epoch = 0,
+  sourceRead = false;
 const effectivePath = computed(() => resolvedPath.value || absolutePathFromFileUrl(props.artifact.href));
-const url = computed(() => props.artifact.href ? buildLocalFileUrl(effectivePath.value) : props.artifact.kind === 'image' && /^https?:/.test(props.artifact.url || '') ? props.artifact.url : '');
+// Built from the REQUESTED path, never the recovered one: the backend recovers
+// moved files on every request, and a URL that changed after the probe would
+// reload a preview that is already showing.
+const url = computed(() => props.artifact.href ? buildLocalFileUrl(absolutePathFromFileUrl(props.artifact.href)) : props.artifact.kind === 'image' && /^https?:/.test(props.artifact.url || '') ? props.artifact.url : '');
 const textual = computed(() => ['html', 'markdown', 'csv', 'text'].includes(props.artifact.kind));
+// Whether the current view shows text. An HTML preview renders from its URL;
+// only its Source tab needs the bytes.
+const needsSource = computed(() => textual.value && (props.artifact.kind !== 'html' || tab.value === 'Source'));
 const modes = computed(() => textual.value ? ['Preview', 'Source', 'Details'] : ['Preview', 'Details']);
 const inlineHtml = computed(() => rewriteLocalFileURLsInHTML(source.value, {
   baseDir: props.artifact.baseDir
@@ -83,9 +90,11 @@ async function load() {
   error.value = '';
   truncated.value = !!props.artifact.truncated;
   copied.value = false;
+  sourceRead = false;
   if (!props.artifact.href) {
     source.value = props.artifact.source || '';
     loading.value = false;
+    sourceRead = true;
     return
   }
   if (!absolutePathFromFileUrl(props.artifact.href)) {
@@ -93,7 +102,10 @@ async function load() {
     loading.value = false;
     return
   }
-  loading.value = true;
+  const withSource = needsSource.value;
+  // A preview rendered from its URL mounts now; the probe runs alongside it
+  // and only ever replaces it with an access or not-found message.
+  loading.value = withSource;
   try {
     const headers = {
       Authorization: 'Bearer ' + (localStorage.getItem('token') || ''),
@@ -118,7 +130,7 @@ async function load() {
       }
     }
     let content = '';
-    if (textual.value && response.status !== 416) {
+    if (withSource && response.status !== 416) {
       const total = Number((response.headers.get('Content-Range') || '').split('/')[1]);
       await response.body?.cancel();
       const readHeaders = {
@@ -166,6 +178,7 @@ async function load() {
     if (current !== epoch) return;
     resolvedPath.value = recovered;
     source.value = content;
+    sourceRead = withSource;
   } catch (e) {
     if (current === epoch && e.name !== 'AbortError') {
       error.value = e.message;
@@ -211,6 +224,10 @@ watch(() => props.artifact, () => {
   load()
 }, {
   immediate: true
+});
+// The first view that needs the text reads it.
+watch(needsSource, needed => {
+  if (needed && !sourceRead && !loading.value) load()
 });
 onBeforeUnmount(() => {
   epoch++;

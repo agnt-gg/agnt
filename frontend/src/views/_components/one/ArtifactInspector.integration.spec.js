@@ -195,6 +195,33 @@ describe('real card → existing inspector integration', () => {
     expect(w.find('[role=alert]').text()).toContain('access');
     expect(w.find('pre').exists()).toBe(false)
   });
+  it('shows an HTML file at once and reads its source only for the Source tab', async () => {
+    let resolveProbe;
+    const fetch = vi.fn()
+      .mockReturnValueOnce(new Promise(r => resolveProbe = r))
+      .mockResolvedValueOnce({ ok: true, status: 206, headers: new Headers({ 'Content-Range': 'bytes 0-0/13' }), body: { cancel: vi.fn() } })
+      .mockResolvedValueOnce({ ok: true, status: 206, text: async () => '<h1>Page</h1>' });
+    vi.stubGlobal('fetch', fetch);
+    const w = render({ id: 'h2', name: 'page.html', kind: 'html', href: 'file:///C:/work/page.html' });
+    await nextTick();
+    // Mounted before the probe answers: no waiting on a request the frame does not need.
+    expect(w.find('iframe').attributes('src')).toContain('/local-file/C:/work/page.html');
+    resolveProbe({ ok: true, status: 206, headers: new Headers({ 'Content-Range': 'bytes 0-0/13' }), body: { cancel: vi.fn() } });
+    await flushPromises();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await w.findAll('nav button').find(b => b.text() === 'Source').trigger('click');
+    await flushPromises();
+    expect(fetch.mock.calls[2][1].headers.Range).toBe('bytes=0-12');
+    expect(w.find('pre').text()).toBe('<h1>Page</h1>');
+  });
+  it('replaces an immediately shown frame with the reason when the file is gone', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, headers: new Headers() }));
+    const w = render({ id: 'g', name: 'gone.png', kind: 'image', href: 'file:///C:/work/gone.png' });
+    expect(w.find('img').exists()).toBe(true);
+    await flushPromises();
+    expect(w.find('[role=alert]').text()).toContain('no longer available');
+    expect(w.find('img').exists()).toBe(false);
+  });
   it('ignores stale asynchronous content after a different file is selected', async () => {
     let resolveOld;
     vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(new Promise(r => resolveOld = r)));
