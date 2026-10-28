@@ -455,6 +455,11 @@ export async function ensureFallbackSurface({ log = console.log, browser = '', h
   // A caller arriving mid-switch must not be handed the browser being closed.
   if (switching) await switching;
 
+  // The profile belongs to the person while they sign in. Launching on top of
+  // it would not even fail cleanly: Chromium hands the command line to the
+  // running window (opening a stray tab there) and the launch exits 0.
+  if (isSignInWindowOpen()) throw new Error(SIGN_IN_WINDOW_OPEN);
+
   // A DIFFERENT browser was asked for than the one already running. Naming a
   // browser is a human instruction, so it wins over the convenience of reusing
   // whatever happens to be open.
@@ -528,6 +533,12 @@ function describeEarlyExit({ label, code, headless }) {
   if (code === EXIT_PROFILE_IN_USE) {
     return `${what} Its profile is still in use by another browser process`
       + ' (usually one that is still shutting down); try again in a few seconds.';
+  }
+  // Exit 0 at once is Chromium handing its command line to a window already
+  // open on this profile — in practice a sign-in window left open.
+  if (code === 0) {
+    return `${what} Another ${label} window is open on the AGNT browser profile (usually a sign-in window). `
+      + 'Close that window and try again.';
   }
   if (headless) return what;
   return `${what} There may be no display available on this machine —`
@@ -654,7 +665,7 @@ async function launchBrowser({ log, browser, hidden = false }) {
   // `requested` is remembered separately from `browserKey` so an explicit path
   // (key 'custom') asked for twice is not seen as a switch each time.
   session = {
-    child, adopted: false, cdpUrl: null, profilePath, browserKey: key, requested: browser || key, label,
+    child, adopted: false, cdpUrl: null, profilePath, browserKey: key, requested: browser || key, label, executable,
   };
   // Recorded now rather than after the port appears, so a browser that is
   // adopted mid-startup is still identifiable.
@@ -732,6 +743,157 @@ export function launchedBrowserLabel() {
   return isAlive() ? session.label : null;
 }
 
+// ─── the sign-in window ───────────────────────────────────────────────────────────
+//
+// WHY A SEPARATE, PLAIN WINDOW. Google refuses web sign-in in any Chrome started
+// with --remote-debugging-port ("This browser or app may not be secure") —
+// visible or not, whatever the user agent says. The same PROFILE launched
+// normally signs in fine, and the cookies it writes are the profile's: the
+// automation browser relaunched on that profile afterwards is signed in.
+// So the window is the profile with every automation trait removed: no debug
+// port, no headless, no stealth flags. It is the only browser AGNT opens on
+// the desktop without being asked by name, because the person asked to sign in.
+//
+// One profile, one process: Chromium will not run two instances on one
+// user-data-dir, so the automation browser closes first and nothing may launch
+// it again until the window has gone (see the guard in ensureFallbackSurface).
+
+/** The open sign-in window: { child, executable, label, url, exited }. */
+let signInWindow = null;
+
+export const SIGN_IN_WINDOW_OPEN = 'The AGNT browser is open in a sign-in window right now. '
+  + 'Finish signing in and close that window (or press Done in the chat), then try again.';
+
+/** How long a just-spawned window has to prove it opened rather than handing off and exiting. */
+const SIGN_IN_WINDOW_SETTLE_MS = 1500;
+/** How long a polite close may take before it is forced. */
+const SIGN_IN_WINDOW_CLOSE_MS = 10000;
+
+export function isSignInWindowOpen() {
+  const child = signInWindow?.child;
+  return Boolean(child && child.exitCode === null && child.signalCode == null);
+}
+
+/**
+ * The executable for the sign-in window: exactly the one the automation runs
+ * (Chrome's cookie encryption is per install, so a different browser on this
+ * profile could not read what the window writes). An adopted browser has no
+ * recorded executable, so its marker key decides.
+ */
+function signInBrowser() {
+  if (session?.executable) return { executable: session.executable, label: session.label, key: session.browserKey };
+  const key = session?.browserKey || readMarker(path.join(PathManager.getUserDataPath(), PROFILE_DIR))?.key;
+  if (key && BROWSERS[key]) {
+    try { return findBrowser(key); } catch { /* uninstalled since: fall back to the default */ }
+  }
+  return findBrowser('');
+}
+
+/** Only real web pages are opened for the person to type a password into. */
+function signInUrl(url) {
+  const value = String(url || '').trim();
+  if (!/^https?:\/\//i.test(value)) throw new Error(`A sign-in window opens web pages only (http or https), not "${value.slice(0, 80)}".`);
+  return value;
+}
+
+/**
+ * Open the AGNT browser profile in a plain window at `url`, for the person to
+ * sign in. Closes the automation browser first. When a window is already open,
+ * the page opens in it instead.
+ * @returns {Promise<{ url: string, label: string, reused: boolean }>}
+ */
+export async function openSignInWindow({ url, log = console.log } = {}) {
+  const target = signInUrl(url);
+  const profilePath = path.join(PathManager.getUserDataPath(), PROFILE_DIR);
+
+  if (isSignInWindowOpen()) {
+    // Same profile: Chromium forwards this to the running window and the
+    // helper process exits at once. That hand-off is the feature here.
+    const helper = spawn(signInWindow.executable, [`--user-data-dir=${profilePath}`, target], { stdio: 'ignore', windowsHide: false });
+    helper.on('error', (err) => log(`[Browser Control] could not open the page in the sign-in window: ${err.message}`));
+    helper.unref();
+    signInWindow.url = target;
+    return { url: target, label: signInWindow.label, reused: true };
+  }
+
+  if (switching) await switching;
+  if (launching) await launching.catch(() => {});
+
+  // The same browser the automation runs in, so the cookies land where it reads them.
+  const found = signInBrowser();
+  if (!found) throw new Error('No Chromium-based browser is installed to open a sign-in window.');
+  fs.mkdirSync(profilePath, { recursive: true });
+
+  if (session) {
+    log('[Browser Control] closing the automation browser so the sign-in window can use its profile.');
+    await closeAndAwaitExit(log);
+  }
+  // A browser from a previous run can still hold the profile without being our session.
+  const holder = await findProfileHolder(profilePath);
+  if (holder) await closeOverCdp(holder.cdpUrl, holder.port, log);
+  try { fs.unlinkSync(path.join(profilePath, 'DevToolsActivePort')); } catch { /* not there */ }
+
+  const child = spawn(found.executable, [
+    `--user-data-dir=${profilePath}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--no-service-autorun',
+    // Closing the window must END the process: that exit is how the wait
+    // learns the person is finished, and how the profile is released.
+    '--disable-background-mode',
+    '--hide-crash-restore-bubble',
+    '--new-window',
+    target,
+  ], { stdio: 'ignore', windowsHide: false });
+  child.on('error', (err) => log(`[Browser Control] the sign-in window failed to start: ${err.message}`));
+  child.unref();
+
+  const exited = new Promise((resolve) => { child.once('exit', (code) => resolve(code)); });
+  signInWindow = { child, executable: found.executable, label: found.label, url: target, exited };
+  exited.then(() => { if (signInWindow?.child === child) signInWindow = null; });
+
+  const early = await Promise.race([exited.then((code) => ({ code })), wait(SIGN_IN_WINDOW_SETTLE_MS).then(() => null)]);
+  if (early) {
+    throw new Error(early.code === EXIT_PROFILE_IN_USE
+      ? `${found.label} could not open the sign-in window: its profile is still in use. Try again in a few seconds.`
+      : `${found.label} closed immediately (code ${early.code}) instead of opening the sign-in window. `
+        + 'If a window on the AGNT browser profile is already open, close it and try again.');
+  }
+  log(`[Browser Control] opened a ${found.label} sign-in window at ${new URL(target).host}`);
+  return { url: target, label: found.label, reused: false };
+}
+
+/** Resolves once the sign-in window has gone (at once when none is open). */
+export function signInWindowClosed() {
+  return signInWindow ? signInWindow.exited.then(() => {}) : Promise.resolve();
+}
+
+/**
+ * Close the sign-in window — politely first. A polite close lets Chromium
+ * flush the cookies it has just written, which are the entire point of the
+ * window; a kill can lose the newest ones and marks the profile crashed.
+ */
+export async function closeSignInWindow({ log = console.log } = {}) {
+  const current = signInWindow;
+  if (!current || !isSignInWindowOpen()) return;
+  const { child } = current;
+  try {
+    if (process.platform === 'win32') {
+      // No /F: taskkill sends WM_CLOSE, which Chrome treats as the user closing it.
+      spawn('taskkill', ['/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
+    } else {
+      child.kill('SIGTERM');
+    }
+  } catch { /* it may already be gone */ }
+  if (await waitForExit(child, SIGN_IN_WINDOW_CLOSE_MS)) return;
+  log(`[Browser Control] the sign-in window did not close within ${SIGN_IN_WINDOW_CLOSE_MS / 1000}s; forcing it.`);
+  try {
+    if (process.platform === 'win32') spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
+    else child.kill('SIGKILL');
+  } catch { /* gone */ }
+  await waitForExit(child, 5000);
+}
+
 /** Test seam. */
 export function _fallbackSessionForTests() {
   return session;
@@ -739,7 +901,17 @@ export function _fallbackSessionForTests() {
 
 // A browser we opened must not outlive the app that opened it.
 for (const signal of ['exit', 'SIGINT', 'SIGTERM']) {
-  process.once(signal, () => closeFallbackSurface());
+  process.once(signal, () => {
+    closeFallbackSurface();
+    // Politely, and without waiting: a sign-in window left open would hold the
+    // profile, and every launch of the next run would hand off to it and fail.
+    if (isSignInWindowOpen()) {
+      try {
+        if (process.platform === 'win32') spawn('taskkill', ['/PID', String(signInWindow.child.pid)], { stdio: 'ignore', windowsHide: true });
+        else signInWindow.child.kill('SIGTERM');
+      } catch { /* gone */ }
+    }
+  });
 }
 
 export default ensureFallbackSurface;

@@ -117,19 +117,22 @@ export function touchLane(instanceId) {
  * browser, and a remembered id for a dead tab is the same "drives nothing"
  * failure browserSurfaces.js exists to prevent.
  */
-export function ensureLane(userId, lane, { cdpUrl, workspaceId = null } = {}) {
+export function ensureLane(userId, lane, { cdpUrl, workspaceId = null, startUrl = null } = {}) {
   if (!userId || !lane || !cdpUrl) return Promise.reject(new Error('a lane needs a user, a lane id and a browser'));
   const instanceId = hostInstanceId(userId, lane);
   const inFlight = ensuring.get(instanceId);
   if (inFlight) return inFlight;
 
-  const work = openOrReuseTab({ userId, lane, instanceId, cdpUrl, workspaceId })
+  const work = openOrReuseTab({ userId, lane, instanceId, cdpUrl, workspaceId, startUrl })
     .finally(() => { if (ensuring.get(instanceId) === work) ensuring.delete(instanceId); });
   ensuring.set(instanceId, work);
   return work;
 }
 
-async function openOrReuseTab({ userId, lane, instanceId, cdpUrl, workspaceId }) {
+/** Only a real page is worth reopening; anything else starts on START_PAGE. */
+const REOPENABLE = /^https?:\/\//i;
+
+async function openOrReuseTab({ userId, lane, instanceId, cdpUrl, workspaceId, startUrl = null }) {
   const known = lanes.get(instanceId);
   // A different endpoint is a relaunched browser: every tab id from the old
   // one is meaningless, so start the lane clean rather than chase ghosts.
@@ -143,15 +146,16 @@ async function openOrReuseTab({ userId, lane, instanceId, cdpUrl, workspaceId })
     const mine = visiblePages(instanceId, targetInfos);
     tab = mine.find((page) => page.targetId === getActiveTarget(instanceId)) || mine[0] || null;
     if (!tab) {
+      const opening = REOPENABLE.test(startUrl || '') ? startUrl : START_PAGE;
       const created = await connection.send(
         'Target.createTarget',
-        { url: START_PAGE, newWindow: true },
+        { url: opening, newWindow: true },
         undefined,
         { timeoutMs: TAB_TIMEOUT_MS },
       );
       if (!created?.targetId) throw new Error('the browser did not open a tab for this conversation');
       claimTab(instanceId, created.targetId);
-      tab = { targetId: created.targetId, url: START_PAGE };
+      tab = { targetId: created.targetId, url: opening };
       console.log(`[BrowserLanes] opened a tab for ${instanceId}`);
     }
   } finally {
@@ -279,6 +283,67 @@ function disarmSweeper() {
   if (!sweeper) return;
   clearInterval(sweeper);
   sweeper = null;
+}
+
+/**
+ * Where every open lane's page is, read from the browser before it restarts.
+ *
+ * The sign-in window needs the profile, so the automation browser closes and
+ * every conversation's tab with it. Recording the pages first means each
+ * conversation gets its page back when the browser returns (reopenLanes),
+ * rather than an empty tab its agent did not ask for.
+ *
+ * @returns {Promise<Array<{ userId, lane, workspaceId, instanceId, url }>>}
+ */
+export async function captureLanePages() {
+  const byEndpoint = new Map();
+  for (const [instanceId, entry] of lanes) {
+    if (!byEndpoint.has(entry.cdpUrl)) byEndpoint.set(entry.cdpUrl, []);
+    byEndpoint.get(entry.cdpUrl).push({ instanceId, ...entry });
+  }
+  const pages = [];
+  for (const [cdpUrl, entries] of byEndpoint) {
+    let connection = null;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- one browser in practice
+      connection = await new CdpConnection(cdpUrl).connect({ timeoutMs: CONNECT_TIMEOUT_MS });
+      // eslint-disable-next-line no-await-in-loop
+      const { targetInfos = [] } = await connection.send('Target.getTargets');
+      for (const entry of entries) {
+        const active = getActiveTarget(entry.instanceId);
+        const page = targetInfos.find((t) => t.targetId === active);
+        pages.push({
+          userId: entry.userId, lane: entry.lane, workspaceId: entry.workspaceId, instanceId: entry.instanceId, url: page?.url || null,
+        });
+      }
+    } catch (err) {
+      // The browser is already gone: there is nothing to remember.
+      console.log(`[BrowserLanes] could not read lane pages before a restart: ${err.message}`);
+    } finally {
+      connection?.close();
+    }
+  }
+  return pages;
+}
+
+/**
+ * Reopen lanes captured by captureLanePages in the browser at `cdpUrl`, each
+ * at the page it was on. Best effort per lane: one that cannot reopen opens
+ * fresh on its next verb, exactly as before this existed.
+ */
+export async function reopenLanes(captured, cdpUrl, { except = null } = {}) {
+  let reopened = 0;
+  for (const page of captured || []) {
+    if (page.instanceId === except) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- sequential keeps one CDP connection open at a time
+      await ensureLane(page.userId, page.lane, { cdpUrl, workspaceId: page.workspaceId, startUrl: page.url });
+      reopened += 1;
+    } catch (err) {
+      console.log(`[BrowserLanes] could not reopen ${page.instanceId}: ${err.message}`);
+    }
+  }
+  return reopened;
 }
 
 /** Diagnostics: a user's open lanes. */

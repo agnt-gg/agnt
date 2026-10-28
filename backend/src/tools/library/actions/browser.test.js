@@ -48,6 +48,14 @@ vi.mock('../browserEngines/ai-browser-control.js', () => ({
   },
 }));
 
+const signInExecute = vi.fn();
+vi.mock('../browserEngines/ai-browser-signin.js', () => ({
+  default: {
+    execute: (...a) => signInExecute(...a),
+    constructor: { schema: { parameters: { url: {}, mode: {}, timeoutSeconds: {} } } },
+  },
+}));
+
 const { default: browser, userAskedForBrowser } = await import('./browser.js');
 
 const ENGINE = { userId: 'u1', provider: 'anthropic' };
@@ -59,6 +67,26 @@ beforeEach(() => {
   actExecute.mockResolvedValue({ success: true, url: 'https://x/' });
   useExecute.mockResolvedValue({ success: true, result: 'done' });
   controlExecute.mockResolvedValue({ success: true, output: 'ok' });
+  signInExecute.mockResolvedValue({ success: true, signedIn: true });
+});
+
+describe('signin goes to the sign-in engine', () => {
+  it('with only url, mode and timeoutSeconds — and the same workflowEngine, for its abort signal', async () => {
+    const engine = { ...ENGINE, conversationId: 'c1', abortSignal: new AbortController().signal };
+    const out = await browser.execute({
+      action: 'signin', url: 'https://accounts.google.com/', mode: 'window', timeoutSeconds: 300, ref: 'e1', python: 'nope',
+    }, {}, engine);
+    expect(out).toEqual({ success: true, signedIn: true });
+    expect(signInExecute).toHaveBeenCalledWith({ url: 'https://accounts.google.com/', mode: 'window', timeoutSeconds: 300 }, {}, engine);
+    expect(actExecute).not.toHaveBeenCalled();
+  });
+
+  it('is taught to the model: call signin, never ask for a password', () => {
+    const { description } = browser.constructor.schema;
+    expect(description).toMatch(/signInRequired[\s\S]*action="signin"/);
+    expect(description).toMatch(/Never ask for or type a password/);
+    expect(description).not.toMatch(/login\/captcha → stop/);
+  });
 });
 
 describe('verbs go to the verb engine', () => {

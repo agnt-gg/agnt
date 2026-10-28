@@ -325,3 +325,53 @@ describe('lanes are bounded', () => {
     expect(lanes.lanesForUser('u1').map((l) => l.lane)).toEqual(['conv:c1']);
   });
 });
+
+
+describe('a browser restart for a sign-in window', () => {
+  it('captures every lane\'s page, and reopens each at it in the new browser', async () => {
+    const a = await ensure('conv:a');
+    const b = await ensure('conv:b', 'u2');
+    // Each conversation has browsed somewhere real.
+    browser.pages.find((p) => p.targetId === targets.getActiveTarget(a.instanceId)).url = 'https://partner.example.com/apply';
+    browser.pages.find((p) => p.targetId === targets.getActiveTarget(b.instanceId)).url = 'https://docs.example.org/page';
+
+    const captured = await lanes.captureLanePages();
+    expect(captured.map(({ instanceId, url }) => ({ instanceId, url })).sort((x, y) => x.instanceId.localeCompare(y.instanceId))).toEqual([
+      { instanceId: a.instanceId, url: 'https://partner.example.com/apply' },
+      { instanceId: b.instanceId, url: 'https://docs.example.org/page' },
+    ].sort((x, y) => x.instanceId.localeCompare(y.instanceId)));
+
+    // The browser restarts: a new endpoint, none of the old tabs.
+    const relaunched = await fakeBrowser();
+    try {
+      const reopened = await lanes.reopenLanes(captured, relaunched.url(), { except: a.instanceId });
+      expect(reopened).toBe(1);
+      // b is back at its page in the NEW browser; a was skipped (its own sign-in restores it).
+      const bTab = relaunched.pages.find((p) => p.targetId === targets.getActiveTarget(b.instanceId));
+      expect(bTab.url).toBe('https://docs.example.org/page');
+      expect(relaunched.pages.some((p) => p.url === 'https://partner.example.com/apply')).toBe(false);
+    } finally {
+      await relaunched.close();
+    }
+  });
+
+  it('only real pages are reopened; anything else starts on the start page', async () => {
+    const relaunched = await fakeBrowser();
+    try {
+      await lanes.reopenLanes([
+        { userId: 'u1', lane: 'conv:x', workspaceId: null, instanceId: 'host:u1:conv:x', url: 'javascript:alert(1)' },
+      ], relaunched.url());
+      const created = relaunched.received.find((m) => m.method === 'Target.createTarget');
+      expect(created.params.url).toBe('data:text/html,ready');
+    } finally {
+      await relaunched.close();
+    }
+  });
+
+  it('a browser that is already gone yields nothing to reopen, not an error', async () => {
+    await ensure('conv:gone');
+    await browser.close();
+    expect(await lanes.captureLanePages()).toEqual([]);
+    browser = await fakeBrowser(); // afterEach closes it
+  });
+});

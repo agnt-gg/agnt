@@ -26,6 +26,9 @@ import { ensureFallbackSurface } from '../tools/library/browserEngines/browserFa
 import {
   laneForConversation, ensureLane, boundSurface, touchLane,
 } from '../services/browserLanes.js';
+import {
+  getSignIn, finishSignIn, requestSignInWindow, signInScope,
+} from '../services/browserSignIn.js';
 
 const router = express.Router();
 
@@ -252,6 +255,41 @@ router.delete('/view/:instanceId', authenticateToken, (req, res) => {
   const result = releaseViewer({ userId: req.user.id, instanceId: req.params.instanceId, viewerId: req.query.viewerId });
   return res.status(result.ok ? 200 : 404).json({ success: result.ok, ...result });
 });
+
+// ─── sign-in handoff (services/browserSignIn.js) ──────────────────────────────────────
+//
+// The card in the chat asks what the sign-in is waiting for, and answers for
+// the person. Every sign-in is keyed by the AUTHENTICATED user plus the
+// conversation, so one account can neither see nor end another's.
+
+/** The scope a request names: its conversation's lane, else the shared browser. */
+function signInScopeFor(source) {
+  return signInScope(laneForConversation(source?.conversationId));
+}
+
+/** GET /api/browser-agent/signin?conversationId= — the sign-in waiting there, or null. */
+router.get('/signin', authenticateToken, (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  return res.json({ success: true, signIn: getSignIn(req.user.id, signInScopeFor(req.query)) });
+});
+
+/** POST /api/browser-agent/signin/done|cancel|window — Body: { conversationId, id } */
+for (const [route, answer] of [
+  ['done', (userId, scope, id) => finishSignIn(userId, scope, 'done', id)],
+  ['cancel', (userId, scope, id) => finishSignIn(userId, scope, 'cancelled', id)],
+  ['window', (userId, scope, id) => requestSignInWindow(userId, scope, id)],
+]) {
+  router.post(`/signin/${route}`, authenticateToken, (req, res) => {
+    if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+    const id = typeof req.body?.id === 'string' ? req.body.id : null;
+    if (!id) return res.status(400).json({ success: false, error: 'id is required.' });
+    const scope = signInScopeFor(req.body);
+    if (!answer(req.user.id, scope, id)) {
+      return res.status(409).json({ success: false, error: 'That sign-in is no longer waiting.', signIn: getSignIn(req.user.id, scope) });
+    }
+    return res.json({ success: true, signIn: getSignIn(req.user.id, scope) });
+  });
+}
 
 /** GET /api/browser-agent/view/:instanceId — is anything streaming there? */
 router.get('/view/:instanceId', authenticateToken, (req, res) => {

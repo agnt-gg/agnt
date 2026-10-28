@@ -78,6 +78,7 @@
 
 import { CdpConnection, attachToPage } from './cdpConnection.js';
 import { BLOCK_PROBE_EXPRESSION, classifyBlockPage, blockedHint } from './browserBlockDetection.js';
+import { LOGIN_PROBE_EXPRESSION, classifyLoginPage, signInHint } from './browserLoginDetection.js';
 import {
   setActiveTarget, getActiveTarget, scopeFor, visiblePages, claimTab,
 } from './browserActiveTarget.js';
@@ -1058,6 +1059,41 @@ async function detectBlock(driver) {
   return classifyBlockPage({ ...probe, status: driver.documentStatus });
 }
 
+/** Does the page in front of us need the person (sign-in, refused browser, consent)? null when not, or unreadable. */
+async function detectLogin(driver) {
+  if (driver.dialog) return null;
+  const raw = await evaluate(driver, LOGIN_PROBE_EXPRESSION).catch(() => null);
+  let probe;
+  try { probe = JSON.parse(raw); } catch { return null; }
+  if (probe?.probe !== 'agnt-login-probe') return null;
+  return classifyLoginPage(probe);
+}
+
+/**
+ * Verbs after which the page in front of the agent may be a new one. A login
+ * wall is reported on these (and on any verb whose result says it navigated),
+ * so the agent learns it at the moment it arrives — not three clicks later.
+ */
+const PAGE_ARRIVAL_ACTIONS = new Set(['navigate', 'snapshot', 'back', 'focus', 'open', 'wait']);
+
+async function withSignInCheck(driver, action, result) {
+  if (result.blocked || result.blockedByDialog) return result;
+  if (!PAGE_ARRIVAL_ACTIONS.has(action) && !result.navigated) return result;
+  const login = await detectLogin(driver);
+  if (!login) return result;
+  return { ...result, signInRequired: { ...login, hint: signInHint(login) } };
+}
+
+/**
+ * Where the page is and whether it still needs the person. Internal: the
+ * sign-in wait polls this, so it is not a verb the model can call and it never
+ * feeds the loop guard (identical answers are the point of polling).
+ */
+async function inspectPage(driver) {
+  const state = await pageState(driver);
+  return { url: state.url || null, title: state.title || null, login: await detectLogin(driver) };
+}
+
 async function navigateTo(driver, url) {
   const target = normaliseUrl(url);
   driver.refs.clear();
@@ -1248,6 +1284,9 @@ export const BROWSER_ACTIONS = [
   'console', 'errors', 'requests',
 ];
 
+/** Internal, never in BROWSER_ACTIONS: the model cannot call it. See inspectPage. */
+const INSPECT_ACTION = '__inspect';
+
 /** Verbs whose params are the whole story — used by the loop guard's fingerprint. */
 const PARAM_KEYS = ['url', 'ref', 'selector', 'text', 'submit', 'key', 'deltaY', 'query', 'maxChars', 'value', 'ms', 'timeoutMs', 'tabId', 'accept', 'filter'];
 
@@ -1289,10 +1328,12 @@ async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried =
       case 'console': await ensureRuntimeObservers(driver); result = formatConsole(driver, { filter: params.filter, maxChars: params.maxChars }); break;
       case 'errors': await ensureRuntimeObservers(driver); result = formatErrors(driver, { maxChars: params.maxChars }); break;
       case 'requests': result = formatRequests(driver, { filter: params.filter, maxChars: params.maxChars }); break;
+      case INSPECT_ACTION: return await inspectPage(driver);
       default:
         throw new Error(`Unknown browser action "${action}". One of: ${BROWSER_ACTIONS.join(', ')}`);
     }
     if (driver.dialog && !result.blockedByDialog) result = { ...result, blockedByDialog: driver.dialog };
+    result = await withSignInCheck(driver, action, result);
     const picked = {};
     for (const k of PARAM_KEYS) if (params[k] !== undefined) picked[k] = params[k];
     return guardLoop(driver, action, picked, result);
@@ -1360,4 +1401,13 @@ export function performBrowserAction(userId, cdpUrl, action, params = {}, { inst
   queues.set(key, settled);
   settled.then(() => { if (queues.get(key) === settled) queues.delete(key); });
   return run;
+}
+
+/**
+ * Read where a surface's page is and whether it needs the person — through the
+ * same per-tab queue as the verbs, so a poll never interleaves with one.
+ * @returns {Promise<{ url: string|null, title: string|null, login: object|null }>}
+ */
+export function inspectBrowserPage(userId, cdpUrl, { instanceId = null } = {}) {
+  return performBrowserAction(userId, cdpUrl, INSPECT_ACTION, {}, { instanceId });
 }

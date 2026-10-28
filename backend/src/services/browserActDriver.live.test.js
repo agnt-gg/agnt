@@ -36,6 +36,13 @@ const FIXTURE = `<!doctype html><html><head><title>Fixture</title></head><body>
 
 const SECOND = '<!doctype html><html><head><title>Second</title></head><body><h1>Second page</h1><button id="b2">Back home</button></body></html>';
 
+// A site's own login form: what the sign-in check must recognise in a real
+// renderer, where "visible" is decided by layout rather than by a fixture flag.
+const LOGIN = '<!doctype html><html><head><title>Log in | Partner Portal</title></head><body><h1>Log in</h1>'
+  + '<form><input type="email" name="email" aria-label="Email"><input type="password" aria-label="Password">'
+  + '<input type="password" style="display:none" aria-label="Hidden"><button>Log in</button></form>'
+  + '<a id="home" href="/">Home</a></body></html>';
+
 let server;
 let base;
 let cdpUrl;
@@ -45,6 +52,7 @@ beforeAll(async () => {
   if (!haveBrowser) return;
   server = http.createServer((req, res) => {
     if (req.url === '/second') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(SECOND); }
+    if (req.url === '/login') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(LOGIN); }
     if (req.url === '/missing') { res.writeHead(404); return res.end('nope'); }
     res.writeHead(200, { 'content-type': 'text/html' });
     return res.end(FIXTURE);
@@ -66,6 +74,16 @@ const act = (action, params = {}) => performBrowserAction('live-user', cdpUrl, a
 const inner = (fenced) => fenced.split('\n').slice(1, -1).join('\n');
 
 describe.skipIf(!haveBrowser)('real Chromium', () => {
+  it('a login form is reported as signInRequired; an ordinary page is not', async () => {
+    const login = await act('navigate', { url: `${base}/login` });
+    // The hidden second password field must not make it read as a signup form.
+    expect(login.signInRequired).toMatchObject({ kind: 'sign-in', provider: '127.0.0.1', window: false });
+    expect(login.signInRequired.hint).toMatch(/action="signin"/);
+    const home = await act('click', { selector: '#home' });
+    expect(home.navigated).toBe(true);
+    expect(home.signInRequired).toBeUndefined();
+  }, 20000);
+
   it('navigate returns a snapshot with refs for the fixture controls', async () => {
     const r = await act('navigate', { url: `${base}/` });
     expect(r.title).toBe('Fixture');

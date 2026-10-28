@@ -38,6 +38,7 @@ vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a), spawnSync: () =>
 const {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, _fallbackSessionForTests,
   findBrowser, installedBrowsers, EXIT_PROFILE_IN_USE,
+  openSignInWindow, closeSignInWindow, isSignInWindowOpen, signInWindowClosed,
 } = await import('./browserFallbackSurface.js');
 
 const PROFILE = path.join(tmpDir, 'browser_control_profile');
@@ -144,7 +145,12 @@ beforeEach(() => {
       setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 10);
     } else if (browserBehaviour === 'profile-in-use') {
       setTimeout(() => { child.exitCode = EXIT_PROFILE_IN_USE; child.emit('exit', EXIT_PROFILE_IN_USE); }, 10);
+    } else if (browserBehaviour === 'hands-off') {
+      // What Chromium does when a window is already open on the profile: it
+      // forwards its command line there and exits 0.
+      setTimeout(() => { child.exitCode = 0; child.emit('exit', 0); }, 10);
     }
+    // 'stays-open': a plain window — no port file, no exit until it is closed.
     return child;
   });
 });
@@ -777,6 +783,99 @@ describe('choosing a browser by name', () => {
     await ensureFallbackSurface({ log: () => {}, browser: process.execPath });
     const { label } = _fallbackSessionForTests();
     expect(label).toBe(path.basename(process.execPath));
+  });
+});
+
+describe('the sign-in window', () => {
+  const quiet = { log: () => {} };
+  const AUTOMATION_TRAITS = /^--(remote-debugging-port|headless|user-agent|disable-blink-features|window-size|screen-info)/;
+
+  afterEach(async () => { await closeSignInWindow(quiet); });
+
+  /** The automation browser running, then the window opened over it. */
+  async function openOverAutomation(url = 'https://accounts.google.com/v3/signin/identifier') {
+    await ensureFallbackSurface({ ...quiet, hidden: true });
+    const automation = _fallbackSessionForTests().child;
+    browserBehaviour = 'stays-open';
+    spawned = [];
+    const opened = await openSignInWindow({ ...quiet, url });
+    return { automation, opened, windowLaunch: launchCalls()[0] };
+  }
+
+  it('is the SAME profile with every automation trait removed — what Google accepts', async () => {
+    const { automation, opened, windowLaunch } = await openOverAutomation();
+    // The automation browser had to let go of the profile first.
+    expect(automation.exitCode).not.toBeNull();
+    expect(_fallbackSessionForTests()).toBeNull();
+    expect(windowLaunch.args).toContain(`--user-data-dir=${PROFILE}`);
+    expect(windowLaunch.args).toContain('https://accounts.google.com/v3/signin/identifier');
+    // Closing the window must end the process: that is how the wait knows.
+    expect(windowLaunch.args).toContain('--disable-background-mode');
+    expect(windowLaunch.args.filter((a) => AUTOMATION_TRAITS.test(a))).toEqual([]);
+    expect(opened).toMatchObject({ reused: false });
+    expect(isSignInWindowOpen()).toBe(true);
+  });
+
+  it('nothing can launch the automation browser while the person is signing in', async () => {
+    await openOverAutomation();
+    const launchesBefore = launchCalls().length;
+    await expect(ensureFallbackSurface({ ...quiet, hidden: true })).rejects.toThrow(/sign-in window/);
+    expect(launchCalls()).toHaveLength(launchesBefore);
+  });
+
+  it('closes politely (no /F on Windows, SIGTERM elsewhere), then the automation browser can return', async () => {
+    await openOverAutomation();
+    const windowChild = fakeBrowsersByPid.get(Math.max(...fakeBrowsersByPid.keys()));
+    browserBehaviour = 'writes-port-file';
+    spawned = [];
+    await closeSignInWindow(quiet);
+    expect(isSignInWindowOpen()).toBe(false);
+    if (process.platform === 'win32') {
+      expect(spawned.filter((s) => /taskkill/i.test(s.command)).map((s) => s.args)).toEqual([['/PID', String(windowChild.pid)]]);
+    } else {
+      expect(windowChild.kill).toHaveBeenCalledWith('SIGTERM');
+    }
+    await expect(ensureFallbackSurface({ ...quiet, hidden: true })).resolves.toMatch(/^ws:\/\/127\.0\.0\.1:/);
+  });
+
+  it('the person closing the window is noticed at once', async () => {
+    await openOverAutomation();
+    const windowChild = fakeBrowsersByPid.get(Math.max(...fakeBrowsersByPid.keys()));
+    const closed = signInWindowClosed();
+    windowChild.exitCode = 0;
+    windowChild.emit('exit', 0);
+    await closed;
+    expect(isSignInWindowOpen()).toBe(false);
+  });
+
+  it('a second sign-in opens its page in the window already open', async () => {
+    await openOverAutomation();
+    spawned = [];
+    const second = await openSignInWindow({ ...quiet, url: 'https://login.microsoftonline.com/' });
+    expect(second.reused).toBe(true);
+    expect(launchCalls()[0].args).toEqual([`--user-data-dir=${PROFILE}`, 'https://login.microsoftonline.com/']);
+    expect(isSignInWindowOpen()).toBe(true);
+  });
+
+  it('a window that never opens is an error with its cause, and nothing is left open', async () => {
+    browserBehaviour = 'profile-in-use';
+    await expect(openSignInWindow({ ...quiet, url: 'https://example.com/login' })).rejects.toThrow(/still in use/);
+    browserBehaviour = 'hands-off';
+    await expect(openSignInWindow({ ...quiet, url: 'https://example.com/login' })).rejects.toThrow(/closed immediately \(code 0\)/);
+    expect(isSignInWindowOpen()).toBe(false);
+  });
+
+  it('opens web pages only', async () => {
+    for (const url of ['file:///C:/Windows/win.ini', 'javascript:alert(1)', 'chrome://settings', '']) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(openSignInWindow({ ...quiet, url })).rejects.toThrow(/web pages only/);
+    }
+    expect(launchCalls()).toEqual([]);
+  });
+
+  it('an automation launch that hands off to an open window says so', async () => {
+    browserBehaviour = 'hands-off';
+    await expect(ensureFallbackSurface({ ...quiet, hidden: true })).rejects.toThrow(/Another .* window is open on the AGNT browser profile/);
   });
 });
 
