@@ -30,7 +30,7 @@
               <span :class="isOnline(phone.route) ? 'ta-on' : 'ta-off'">{{ isOnline(phone.route) ? 'online' : 'offline' }}</span>
             </template>
             <template v-if="phone.line"> · Annie: {{ formatNumber(phone.line) }}</template>
-            <template v-if="!isMember && phone.memberId"> · a teammate's phone</template>
+            <template v-if="!isMember && phone.memberId && !canAssign(phone)"> · {{ teammateName(phone.memberId) }}'s phone</template>
           </small>
           <small v-if="deliveryNote(phone)" class="ta-alert" role="status"><i class="fas fa-exclamation-triangle"></i> {{ deliveryNote(phone) }}</small>
         </div>
@@ -47,6 +47,17 @@
             :disabled="busy"
             :aria-label="`Where texts from ${phone.number} go`"
             @update:modelValue="onRoute(phone, $event)"
+          />
+          <!-- Whose phone this is: the instance answers its texts as that person.
+               Attaches phones linked before teams could text, without re-linking. -->
+          <CustomSelect
+            v-if="canAssign(phone)"
+            class="ta-select ta-owner-select"
+            :model-value="phone.memberId || ''"
+            :options="ownerOptions"
+            :disabled="busy"
+            :aria-label="`Whose phone ${phone.number} is`"
+            @update:modelValue="onAssign(phone, $event)"
           />
           <button class="ta-btn" :disabled="busy" @click="onUnlink(phone)">Unlink</button>
         </div>
@@ -104,6 +115,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { toSvg } from '@/utils/qrcode.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import * as textAnnie from '@/services/textAnnieService.js';
+import { tenantRequest } from '@/utils/teamClient.js';
 
 const state = ref(null);
 const loading = ref(true);
@@ -134,6 +146,29 @@ const canAddPhone = computed(() => {
   // The allowance is the whole account's (the team shares the owner's plan).
   return (state.value.accountPhones ?? phones.value.length) < max;
 });
+
+// The owner of a team instance: who each phone belongs to.
+const teammates = ref([]); // [{ userId, email, name }], the owner left out
+const ownerOptions = computed(() => [
+  { value: '', label: 'Belongs to: you' },
+  ...teammates.value.map((m) => ({ value: m.userId, label: `Belongs to: ${m.name || m.email || m.userId}` })),
+]);
+const teammateName = (id) => {
+  const person = teammates.value.find((m) => m.userId === id);
+  return person ? person.name || person.email : 'a teammate';
+};
+/** Only the owner, only on a team instance, only for a linked phone texting this instance. */
+const canAssign = (phone) => !isMember.value && thisInstance.value !== 'desktop' && teammates.value.length > 0
+  && phone.route === thisInstance.value && phone.state !== 'pending';
+async function loadTeammates() {
+  if (isMember.value || thisInstance.value === 'desktop') return;
+  try {
+    const detail = await tenantRequest('/' + encodeURIComponent(thisInstance.value));
+    teammates.value = detail?.isOwner ? (detail.members || []).filter((m) => m.role !== 'owner') : [];
+  } catch (e) {
+    console.warn('[TextAnnieCard] team members:', e.message); // the picker just does not show
+  }
+}
 
 /** This AGNT first, then every other AGNT the account owns. A teammate: this AGNT only. */
 const targets = computed(() => {
@@ -251,6 +286,11 @@ const onRoute = (phone, value) => run(async () => {
   await textAnnie.setRoute(phone.id, value);
   await load();
 });
+const onAssign = (phone, memberId) => run(async () => {
+  if ((phone.memberId || '') === (memberId || '')) return;
+  await textAnnie.setPhoneMember(phone.id, memberId || null);
+  await load();
+});
 const onUnlink = (phone) => run(async () => {
   if (!window.confirm(`Unlink ${formatNumber(phone.number)}? Texts from it will stop reaching AGNT.`)) return;
   await textAnnie.removePhone(phone.id);
@@ -270,7 +310,8 @@ async function copy(value) {
 }
 
 onMounted(() => {
-  load();
+  // The team list needs to know which instance this is (from the status), so it follows load().
+  load().then(loadTeammates);
   ticker = setInterval(() => (now.value = Date.now()), 15000);
 });
 onBeforeUnmount(() => {

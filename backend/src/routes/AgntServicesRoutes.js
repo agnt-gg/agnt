@@ -175,7 +175,11 @@ AgntServicesRoutes.put('/mobile/phones/:id', authenticateToken, async (req, res)
   try {
     // A teammate's phone only ever texts this instance; there is nowhere to move it.
     if (textingMember(req)) return res.status(403).json({ success: false, reason: 'member_route_fixed', error: 'Your phone texts this AGNT. Unlink it to stop.' });
-    res.json(await mobileProxy('PUT', `/phones/${encodeURIComponent(req.params.id)}`, { body: { route: req.body?.route } }));
+    // The owner moves a phone ({ route }) and says whose it is ({ memberId }; null: the owner's).
+    const body = {};
+    if (req.body?.route !== undefined) body.route = req.body.route;
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'memberId')) body.memberId = req.body.memberId || null;
+    res.json(await mobileProxy('PUT', `/phones/${encodeURIComponent(req.params.id)}`, { body }));
     kickReceiver();
   } catch (error) { mobileFailure(res, error); }
 });

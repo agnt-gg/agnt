@@ -15,6 +15,9 @@ const getStatus = vi.fn();
 const addPhone = vi.fn();
 const newCode = vi.fn();
 const removePhone = vi.fn();
+const setPhoneMember = vi.fn();
+const tenantRequest = vi.fn();
+vi.mock('@/utils/teamClient.js', () => ({ tenantRequest: (...a) => tenantRequest(...a) }));
 
 vi.mock('@/services/textAnnieService.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -22,6 +25,7 @@ vi.mock('@/services/textAnnieService.js', async (importOriginal) => ({
   addPhone: (...a) => addPhone(...a),
   newCode: (...a) => newCode(...a),
   removePhone: (...a) => removePhone(...a),
+  setPhoneMember: (...a) => setPhoneMember(...a),
   setRoute: vi.fn(),
 }));
 vi.mock('@/utils/qrcode.js', () => ({ toSvg: () => '<svg id="stub-qr"></svg>' }));
@@ -52,7 +56,7 @@ const shownCode = (wrapper) => wrapper.find('.ta-code').exists() ? wrapper.find(
 
 beforeEach(() => {
   sessionStorage.clear();
-  [getStatus, addPhone, newCode, removePhone].forEach((fn) => fn.mockReset());
+  [getStatus, addPhone, newCode, removePhone, setPhoneMember, tenantRequest].forEach((fn) => fn.mockReset());
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => vi.restoreAllMocks());
@@ -179,7 +183,7 @@ describe('asking for a new code', () => {
     w.unmount();
   });
 
-  it('is offered right in the panel once the shown code expires', async () => {
+  it('is offered right in the panel once the shown code expires (unchanged by the team picker)', async () => {
     const expires = Date.now() + 30 * 60_000;
     sessionStorage.setItem('agnt.textAnnie.linkCodes', JSON.stringify({ 'phone-1': { code: 'AGNT-K7Q2XM', expiresAt: expires } }));
     getStatus.mockResolvedValue(status([pendingPhone(expires)]));
@@ -192,5 +196,48 @@ describe('asking for a new code', () => {
     expect(panel.text()).toContain('code expired');
     expect(panel.findAll('button').map((b) => b.text())).toContain('Get new code');
     w.unmount();
+  });
+});
+
+// Reported 2026-10-27 (GeniiNow): five phones linked before teams could text
+// were all answered as the owner. The owner attaches each to its person here,
+// in place, instead of everyone unlinking and re-linking.
+describe('whose phone it is, on a team instance', () => {
+  const teamPhone = (extra = {}) => ({ id: 'p-amber', number: NUMBER, state: 'active', route: 'genii', line: LINE, memberId: null, ...extra });
+  const teamStatus = (phones, extra = {}) => ({ ...status(phones), instance: 'genii', targets: [{ target: 'genii', online: true }], ...extra });
+  const DETAIL = { isOwner: true, members: [
+    { userId: 'david', email: 'david@geniinow.com', name: 'David', role: 'owner' },
+    { userId: 'amber', email: 'amber@geniinow.com', name: 'Amber', role: 'admin' },
+  ] };
+  const ownerPicker = (w) => w.findAllComponents({ name: 'CustomSelect' }).find((c) => (c.attributes('class') || '').includes('ta-owner-select'));
+
+  it('the owner picks a teammate and the phone is attached to them, with nothing unlinked', async () => {
+    getStatus.mockResolvedValue(teamStatus([teamPhone()]));
+    tenantRequest.mockResolvedValue(DETAIL);
+    setPhoneMember.mockResolvedValue({ phone: teamPhone({ memberId: 'amber' }) });
+    const w = await mountCard();
+    const picker = ownerPicker(w);
+    expect(picker).toBeTruthy();
+    expect(tenantRequest).toHaveBeenCalledWith('/genii');
+    expect(picker.props('options').map((o) => o.label)).toEqual(['Belongs to: you', 'Belongs to: Amber']);
+    picker.vm.$emit('update:modelValue', 'amber');
+    await flushPromises();
+    expect(setPhoneMember).toHaveBeenCalledWith('p-amber', 'amber');
+    expect(removePhone).not.toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it('a teammate never sees the picker, and neither does a desktop install', async () => {
+    getStatus.mockResolvedValue(teamStatus([teamPhone({ memberId: 'amber' })], { member: true, accountPhones: 5 }));
+    tenantRequest.mockResolvedValue(DETAIL);
+    const member = await mountCard();
+    expect(ownerPicker(member)).toBeFalsy();
+    expect(tenantRequest).not.toHaveBeenCalled();
+    member.unmount();
+
+    getStatus.mockResolvedValue(status([{ ...teamPhone(), route: 'desktop' }]));
+    const desktop = await mountCard();
+    expect(ownerPicker(desktop)).toBeFalsy();
+    desktop.unmount();
   });
 });

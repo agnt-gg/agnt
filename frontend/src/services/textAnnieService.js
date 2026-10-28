@@ -23,6 +23,10 @@ export async function newCode(phoneId) {
 export async function setRoute(phoneId, route) {
   return (await axios.put(`${base()}/phones/${encodeURIComponent(phoneId)}`, { route }, { headers: auth() })).data;
 }
+/** Owner only: whose phone this is on a team instance (a teammate's user id, or null for the owner). */
+export async function setPhoneMember(phoneId, memberId) {
+  return (await axios.put(`${base()}/phones/${encodeURIComponent(phoneId)}`, { memberId: memberId || null }, { headers: auth() })).data;
+}
 export async function removePhone(phoneId) {
   return (await axios.delete(`${base()}/phones/${encodeURIComponent(phoneId)}`, { headers: auth() })).data;
 }
@@ -87,7 +91,9 @@ export function currentLinkCode(codes, phone, now = Date.now()) {
 /** The service's reason codes that need more than the code itself to act on. */
 const REASONS = {
   hosting_required: 'Texting needs AGNT Mobile: included with paid AGNT plans, or $5/month at mobile.agnt.gg.',
-  phone_in_use: 'That number is already linked. If it was linked for someone else on this team, the owner can unlink it in Settings → Phone Access, then you can link it here.',
+  phone_in_use: 'That number is already linked to someone else.',
+  phone_assign_by_owner: 'That number is already linked on this team. Ask the owner to set it to you under Settings → Phone Access → Belongs to. Nothing needs to be unlinked.',
+  member_phone_needs_instance: 'A teammate\u2019s phone can only text this AGNT. Set it back to you first to move it.',
   phone_limit: 'Every phone this plan includes is in use. The owner can add seats or unlink a phone.',
   invalid_phone: 'That number doesn\u2019t look right. US numbers: +1 and 10 digits. Elsewhere: + and your country code.',
   member_not_on_instance: 'You\u2019re not a member of this AGNT yet, so your phone can\u2019t text it. Ask the owner to add you.',
