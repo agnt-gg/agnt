@@ -25,6 +25,15 @@ export function buildLocalPreviewUrl(absPath, cacheBust) {
   return url + (cacheBust ? `?_=${encodeURIComponent(cacheBust)}` : '');
 }
 
+/** True only for this app's own `/local-preview/` URLs: same origin as the API, under its path. */
+export function isLocalPreviewUrl(value) {
+  try {
+    const url = new URL(value, API_CONFIG.BASE_URL);
+    const api = new URL(API_CONFIG.BASE_URL);
+    return url.origin === api.origin && url.pathname.startsWith(api.pathname.replace(/\/$/, '') + '/local-preview/');
+  } catch { return false; }
+}
+
 export function toLocalPreviewUrl(value) {
   try {
     const url = new URL(value, API_CONFIG.BASE_URL);

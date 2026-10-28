@@ -1,7 +1,14 @@
 import { buildLocalPreviewUrl } from './localFileUrl.js';
 const escape = value => String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 
-/** A closed artifact fence is data, never executable HTML supplied by the model. */
+/**
+ * A closed artifact fence is data, never executable HTML supplied by the model.
+ *
+ * The iframe arrives inside the action wrapper the chat renderer would
+ * otherwise create by MOVING it there, and moving an iframe reloads it. The
+ * renderer preserves this wrapper while a message streams, so the preview can
+ * load once, in place, as soon as the fence closes.
+ */
 export function renderArtifactReference(source) {
   if (source.length > 8192) return '';
   let reference;
@@ -11,5 +18,5 @@ export function renderArtifactReference(source) {
   if (typeof path !== 'string' || !/^(?:[a-z]:[\\/]|\/(?!\/))/i.test(path) || /[\x00-\x1f]/.test(path) || !/\.html?$/i.test(path)) return '';
   if (typeof title !== 'string' || title.length > 300 || typeof view !== 'string' || view.length > 500) return '';
   const src=buildLocalPreviewUrl(path)+(view?'#'+encodeURIComponent(view):'');
-  return `<iframe src="${escape(src)}" title="${escape(title)}" width="100%" height="600" sandbox="allow-scripts allow-same-origin" style="display:block;width:100%;height:600px;border:0"></iframe>`;
+  return `<div class="html-inline-preview-wrapper iframe-inline-preview-wrapper"><iframe src="${escape(src)}" title="${escape(title)}" width="100%" height="600" sandbox="allow-scripts allow-same-origin" style="display:block;width:100%;height:600px;border:0"></iframe></div>`;
 }

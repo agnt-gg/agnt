@@ -3,10 +3,13 @@ import { PREVIEW_MESSAGE, PREVIEW_CHANNEL_PARAM } from '../../../backend/src/uti
 /**
  * Owner-side load diagnostics. A frame load event alone is never a readiness
  * assertion. Messages are bound to the actual frame, its origin and this load.
+ *
+ * `src` defaults to the frame's current src. Pass it for a frame that has none
+ * yet (see chatPreviewFrames.js): the channel URL is then the frame's FIRST
+ * and only navigation, instead of a second one that cancels the first.
  */
-export function monitorArtifactPreview(iframe, status, { timeoutMs = 12000 } = {}) {
-  const original = iframe.getAttribute('src') || '';
-  const url = new URL(original, window.location.href);
+export function monitorArtifactPreview(iframe, status, { timeoutMs = 12000, src = iframe.getAttribute('src') || '' } = {}) {
+  const url = new URL(src, window.location.href);
   if (!/\/local-preview\//.test(url.pathname)) return () => {};
   const channel = crypto.randomUUID().replaceAll('-','');
   url.searchParams.set(PREVIEW_CHANNEL_PARAM,channel);

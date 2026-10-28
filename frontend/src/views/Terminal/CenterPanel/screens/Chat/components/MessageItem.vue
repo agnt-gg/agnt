@@ -516,6 +516,7 @@ import {
 } from '@/utils/localFileUrl.js';
 import { handleLocalFileLinkClick } from '@/utils/openLocalFile.js';
 import { monitorArtifactPreview } from '@/utils/artifactPreviewStatus.js';
+import { PREVIEW_SRC_ATTR, holdPreviewFrameSource, heldPreviewSource } from '@/utils/chatPreviewFrames.js';
 import {
   findMatchingFileOnDisk as pairingMatch,
   getBaseDirFromToolCalls as pairingBaseDir,
@@ -1410,7 +1411,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             // Otherwise fall back to srcdoc with synthesized <base href=…>.
             const matchedFilePath = findMatchingFileOnDisk(htmlCode);
             if (matchedFilePath) {
-              iframe.src = buildLocalPreviewUrl(matchedFilePath, props.message?.id);
+              // No src yet: startPreviewDiagnostics gives the still-detached
+              // frame its one URL just before the wrapper goes in (chatPreviewFrames.js).
               iframe.setAttribute('data-local-file', matchedFilePath);
             } else {
               const codeBlockBaseDir = getBaseDirFromToolCalls();
@@ -1521,17 +1523,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             wrapper.appendChild(iframeScroller);
             wrapper.appendChild(codePre);
 
+            if (matchedFilePath) {
+              addOpenOriginalButton(buttonContainer, matchedFilePath);
+              startPreviewDiagnostics(iframe, wrapper, buildLocalPreviewUrl(matchedFilePath, props.message?.id));
+            }
             pre.replaceWith(wrapper);
-            if (matchedFilePath) attachPreviewDiagnostics(iframe, wrapper, buttonContainer, matchedFilePath);
           });
         }
       });
     };
 
-    const attachPreviewDiagnostics = (iframe, wrapper, actions, absolutePath) => {
-      const status = document.createElement('div');
-      status.className = 'artifact-preview-status';
-      wrapper.insertBefore(status, wrapper.querySelector('iframe')?.parentElement === wrapper ? iframe : wrapper.querySelector('.html-inline-iframe-scroller'));
+    const addOpenOriginalButton = (actions, absolutePath) => {
       const original = document.createElement('a');
       original.className = 'html-action-btn';
       original.textContent = 'Open original';
@@ -1540,7 +1542,33 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       ).join('/');
       original.setAttribute('data-local-path', absolutePath);
       actions.prepend(original);
-      monitorArtifactPreview(iframe, status);
+    };
+
+    // Load diagnostics, and with them the frame's one navigation: the monitor
+    // sets `src` (carrying its channel) itself, so the frame must have none yet.
+    const startPreviewDiagnostics = (iframe, wrapper, src) => {
+      const status = document.createElement('div');
+      status.className = 'artifact-preview-status';
+      wrapper.insertBefore(status, iframe.parentElement === wrapper ? iframe : wrapper.querySelector('.html-inline-iframe-scroller'));
+      monitorArtifactPreview(iframe, status, { src });
+    };
+
+    // Give a held frame (chatPreviewFrames.js) its one navigation. It must
+    // already be where it will stay: moving an iframe reloads it.
+    const activatePreviewFrame = (iframe, wrapper) => {
+      const src = heldPreviewSource(iframe);
+      if (!src || iframe.hasAttribute('src')) return;
+      const absolutePath = localFileUrlToAbsolutePath(src);
+      if (absolutePath && isPublishableEntry(absolutePath)) startPreviewDiagnostics(iframe, wrapper, src);
+      else iframe.setAttribute('src', src);
+    };
+
+    // Artifact fences arrive already wrapped (artifactReference.js) and
+    // morphdom preserves the wrapper, so they load while the message streams.
+    const activatePreviewFrames = () => {
+      messageRef.value
+        ?.querySelectorAll(`.iframe-inline-preview-wrapper > iframe[${PREVIEW_SRC_ATTR}]:not([src])`)
+        .forEach((iframe) => activatePreviewFrame(iframe, iframe.parentElement));
     };
 
     // Wrap plain LLM-rendered iframes (pointing at URLs, e.g. local HTML files
@@ -1558,20 +1586,21 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
         const iframes = messageRef.value.querySelectorAll('iframe:not(.html-inline-iframe):not([data-fs-added])');
         iframes.forEach((iframe) => {
-          // Skip if this iframe is already inside a wrapper we created.
-          if (iframe.closest('.iframe-inline-preview-wrapper')) {
+          const held = heldPreviewSource(iframe);
+          const source = held || iframe.getAttribute('src') || '';
+          if (!source) return;
+          // A wrapper from the markup (artifact fences) still needs its actions;
+          // one that already has them was finished by an earlier pass.
+          let wrapper = iframe.parentElement?.classList.contains('iframe-inline-preview-wrapper') ? iframe.parentElement : null;
+          if (wrapper?.querySelector(':scope > .html-code-actions')) {
             iframe.setAttribute('data-fs-added', 'true');
+            activatePreviewFrame(iframe, wrapper);
             return;
           }
-          const source = iframe.getAttribute('src') || '';
-          if (!source) return;
           const src = toLocalPreviewUrl(source);
-          if (src !== source) iframe.setAttribute('src', src);
+          if (!held && src !== source) iframe.setAttribute('src', src);
 
           iframe.setAttribute('data-fs-added', 'true');
-
-          const wrapper = document.createElement('div');
-          wrapper.className = 'html-inline-preview-wrapper iframe-inline-preview-wrapper';
 
           const actions = document.createElement('div');
           actions.className = 'html-code-actions';
@@ -1611,13 +1640,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           rightGroup.appendChild(fsBtn);
           actions.appendChild(rightGroup);
 
-          // Insert the wrapper at the iframe's current position, then move the
-          // iframe inside. This reloads the iframe once — acceptable since it
-          // happens when the message finishes streaming, before user interaction.
-          iframe.parentNode.insertBefore(wrapper, iframe);
-          wrapper.appendChild(actions);
-          wrapper.appendChild(iframe);
-          if (absolutePath && isPublishableEntry(absolutePath)) attachPreviewDiagnostics(iframe, wrapper, actions, absolutePath);
+          if (!wrapper) {
+            // Wrap in place. A held frame has no src yet, so moving it costs
+            // nothing; a frame with a live src (a remote embed) reloads once.
+            wrapper = document.createElement('div');
+            wrapper.className = 'html-inline-preview-wrapper iframe-inline-preview-wrapper';
+            iframe.parentNode.insertBefore(wrapper, iframe);
+            wrapper.appendChild(iframe);
+          }
+          wrapper.insertBefore(actions, wrapper.firstChild);
+          if (absolutePath && isPublishableEntry(absolutePath)) addOpenOriginalButton(actions, absolutePath);
+          activatePreviewFrame(iframe, wrapper);
         });
       });
     };
@@ -1807,6 +1840,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             node.setAttribute('srcset', rewritten);
           }
         }
+        // Last, once src is resolved: a local preview frame stays inert until
+        // the renderer has placed it (chatPreviewFrames.js).
+        holdPreviewFrameSource(node);
       });
 
       const sanitized = DOMPurify.sanitize(preRewritten, {
@@ -2339,6 +2375,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           renderThreeJsDiagrams();
           renderMermaidDiagrams();
           renderMathElements();
+          activatePreviewFrames();
 
           // Imperative DOM manipulation (replaceWith, appendChild) conflicts with
           // morphdom during streaming — render once when message is complete.
