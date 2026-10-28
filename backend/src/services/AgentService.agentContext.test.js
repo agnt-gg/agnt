@@ -93,6 +93,15 @@ describe('_getAgentContext', () => {
     expect(names).toEqual([BUILTIN_TOOL]);
   });
 
+  it('resolves a legacy marketplace slug to the registered runtime tool', async () => {
+    getAvailableToolSchemas.mockImplementation(async () => [schema(BUILTIN_TOOL), schema('gmail_api')]);
+    AgentModel.findOne.mockResolvedValue({
+      id: AGENT_ID, name: 'Inbox Triage', systemPrompt: '', assignedTools: ['gmail', 'hubspot'], created_by: USER_ID,
+    });
+    const names = toolNames(await AgentService._getAgentContext(AGENT_ID, USER_ID));
+    expect(names).toEqual(['gmail_api']);
+  });
+
   it('keeps the ownership gate — a stranger gets 403, not another user\u2019s tools', async () => {
     const ctx = await AgentService._getAgentContext(AGENT_ID, 'someone-else');
     expect(ctx.status).toBe(403);

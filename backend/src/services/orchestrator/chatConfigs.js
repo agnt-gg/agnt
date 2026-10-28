@@ -3,6 +3,7 @@ import { isDefaultSkill } from '../../utils/skillTrust.js';
 import { skillCatalogGist } from '../../utils/skillCatalogGist.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 import { getAvailableToolSchemas } from './tools.js';
+import { resolveAssignedToolNames, displayToolName, missingToolsNotice } from './legacyToolAliases.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
 import { getPluginToolIndex, pluginToolsByCategory, choosePluginResidency } from './pluginToolIndex.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
@@ -295,7 +296,13 @@ async function loadAgentOverride(context) {
         description: agent.description,
         systemPrompt: agent.systemPrompt || '',
       };
-      const assignedTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
+      // The surface step (getSavedAgentToolSchemas) runs first in every turn
+      // and records what actually resolved; without it, show runtime names.
+      const resolution = context._assignedTools?.agentId === context.agentId ? context._assignedTools : null;
+      const assignedTools = resolution
+        ? resolution.resolved
+        : (Array.isArray(agent.assignedTools) ? agent.assignedTools : []).map(displayToolName);
+      const missingNotice = missingToolsNotice(resolution?.missing);
       // Wording must match the actual tool surface: in restricted mode the
       // assigned list (plus baseline primitives) IS the complete toolset —
       // claiming a "full platform surface" would instruct the model to call
@@ -309,6 +316,7 @@ async function loadAgentOverride(context) {
       } else if (!isOpen) {
         pinnedToolsSection = `## Your Tool Surface\nYou have a focused baseline toolset (web_search, memory recall/save, skill activation). If a request needs a capability outside it, say so plainly instead of improvising.`;
       }
+      if (missingNotice) pinnedToolsSection = `${pinnedToolsSection}\n${missingNotice}`;
       return {
         name: agent.name,
         description: agent.description || '',
@@ -612,7 +620,16 @@ function detectSidebarSpecialty(context) {
 async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
   const agent = getVirtualAgent(context) || await AgentModel.findOne(context.agentId);
-  const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
+  // Stored names may be legacy website slugs ("gmail") from marketplace
+  // listings published before runtime names were enforced; resolve them
+  // against what is registered NOW. Recorded on the context because the
+  // prompt is built after this, from the same turn's context.
+  const registeredNames = new Set(allSchemas.map((s) => s.function?.name).filter(Boolean));
+  const { resolved: assignedToolNames, missing } = resolveAssignedToolNames(agent?.assignedTools, registeredNames);
+  context._assignedTools = { agentId: context.agentId, resolved: assignedToolNames, missing };
+  if (missing.length) {
+    console.warn(`[UnifiedChat] Agent ${context.agentId} has assigned tools that are not registered: ${missing.join(', ')}`);
+  }
 
   // RESTRICTED mode (the DEFAULT): assignedTools are the ceiling — the agent
   // sees only its assigned tools + agent defaults + universal primitives.
@@ -661,7 +678,7 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
     }
   }
 
-  const pinned = new Set(assignedToolNames);
+  const pinned = new Set(assignedToolNames); // resolved names, see getSavedAgentToolSchemas
   let filteredSchemas = allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;

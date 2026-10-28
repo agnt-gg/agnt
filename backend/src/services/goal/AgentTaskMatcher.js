@@ -9,6 +9,7 @@
  */
 
 import AgentModel from '../../models/AgentModel.js';
+import { resolveAssignedToolNames } from '../orchestrator/legacyToolAliases.js';
 
 class AgentTaskMatcher {
   /**
@@ -31,20 +32,20 @@ class AgentTaskMatcher {
 
       console.log(`[AgentTaskMatcher] Task requires tools (normalized): ${requiredTools.join(', ')}`);
 
+      const toolNamesOf = await this.agentToolResolver(userId);
+
       // If user has agents, try to find the best match that has ALL required tools
       if (agents.length > 0) {
         // First, find agents that have ALL required tools
         const fullyCapableAgents = agents.filter((agent) => {
-          const agentTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : JSON.parse(agent.tools || '[]');
-          // Normalize agent tools as well
-          const normalizedAgentTools = agentTools.map((tool) => tool.replace(/-/g, '_'));
+          const normalizedAgentTools = toolNamesOf(agent);
           return requiredTools.length === 0 || requiredTools.every((tool) => normalizedAgentTools.includes(tool));
         });
 
         if (fullyCapableAgents.length > 0) {
           // Score the fully capable agents and pick the best one
           const scoredAgents = fullyCapableAgents.map((agent) => {
-            const score = this.scoreAgent(agent, requiredTools, task);
+            const score = this.scoreAgent(agent, requiredTools, task, toolNamesOf(agent));
             return { agent, score };
           });
 
@@ -77,17 +78,42 @@ class AgentTaskMatcher {
   }
 
   /**
+   * Build agent => tool names (underscored) for matching. Stored names are kept
+   * and, for legacy marketplace slugs ("gmail"), the registered runtime name
+   * ("gmail_api") is ADDED - so aliasing can only make an agent match more,
+   * never less. If the registry cannot be read, the stored names are used as-is.
+   * @param {string} userId
+   * @returns {Promise<(agent: object) => string[]>}
+   */
+  static async agentToolResolver(userId) {
+    let registered = null;
+    try {
+      const { getAvailableToolSchemas } = await import('../orchestrator/tools.js');
+      registered = new Set((await getAvailableToolSchemas({ userId })).map((s) => s.function?.name).filter(Boolean));
+    } catch (error) {
+      console.warn('[AgentTaskMatcher] Tool registry unavailable; matching on stored tool names:', error.message);
+    }
+    return (agent) => {
+      const stored = (Array.isArray(agent.assignedTools) ? agent.assignedTools : JSON.parse(agent.tools || '[]'))
+        .filter((tool) => typeof tool === 'string')
+        .map((tool) => tool.replace(/-/g, '_'));
+      if (!registered) return stored;
+      return [...new Set([...stored, ...resolveAssignedToolNames(stored, registered).resolved])];
+    };
+  }
+
+  /**
    * Score an agent's suitability for a task
    * @param {Object} agent - The agent to score
    * @param {Array} requiredTools - Tools required by the task
    * @param {Object} task - The task object
    * @returns {number} Score (0-100)
    */
-  static scoreAgent(agent, requiredTools, task) {
+  static scoreAgent(agent, requiredTools, task, resolvedTools = null) {
     let score = 0;
 
-    // Parse agent's assigned tools
-    const agentTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : JSON.parse(agent.tools || '[]');
+    // Parse agent's assigned tools (resolved runtime names when the caller has them)
+    const agentTools = resolvedTools || (Array.isArray(agent.assignedTools) ? agent.assignedTools : JSON.parse(agent.tools || '[]'));
 
     // 1. Tool overlap score (0-40 points)
     if (requiredTools.length > 0) {

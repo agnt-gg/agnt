@@ -6,6 +6,7 @@ import generateUUID from '../utils/generateUUID.js';
 import universalChatHandler from './OrchestratorService.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { resolveRuntimeOptions } from './orchestrator/runtimeOptions.js';
+import { resolveAssignedToolNames } from './orchestrator/legacyToolAliases.js';
 import { trustedScopeRequest } from './authorization/ScopeRequestContext.js';
 
 /**
@@ -291,13 +292,12 @@ class AgentService {
       toolSchemaMap.set(toolSchema.function.name, toolSchema);
     });
 
-    for (const toolName of assignedTools) {
-      // Check if tool exists in the full orchestrator tool suite
-      if (toolSchemaMap.has(toolName)) {
-        availableTools.push(toolSchemaMap.get(toolName));
-      } else {
-        console.warn(`Tool "${toolName}" assigned to agent ${agent.id} but not found in orchestrator tool suite.`);
-      }
+    // Legacy marketplace agents store website slugs ("gmail"); resolve them to
+    // the registered runtime names ("gmail_api") without rewriting the record.
+    const { resolved, missing } = resolveAssignedToolNames(assignedTools, new Set(toolSchemaMap.keys()));
+    for (const toolName of resolved) availableTools.push(toolSchemaMap.get(toolName));
+    if (missing.length) {
+      console.warn(`Agent ${agent.id} has assigned tools not found in the orchestrator tool suite: ${missing.join(', ')}`);
     }
 
     // Persona-only context. The unified prompt builder (chatConfigs.js
