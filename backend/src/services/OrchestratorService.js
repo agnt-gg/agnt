@@ -890,6 +890,8 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     widgetState,
     pluginContext,
     pluginState,
+    // AGNT One's skill editor: the skill being edited (prompt: buildSkillContextBlock).
+    skillContext,
     // One Canvas chats send their own workspace identity in pageState. The
     // canvas tools address their writes to it, so a widget asked for in one
     // workspace cannot land in another when the user switches tabs mid-turn.

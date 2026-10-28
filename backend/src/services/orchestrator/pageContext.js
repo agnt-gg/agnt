@@ -28,6 +28,9 @@ export const PAGE_CONTEXT_FIELDS = Object.freeze([
   'pluginContext', 'pluginState',
   'goalId', 'goalContext',
   'codeId', 'codeContext',
+  // AGNT One's skill editor: the skill being EDITED (not one to follow; that
+  // is skillId / skillInstructions, read separately).
+  'skillContext',
   'workspaceState',
   // Not a surface, but the same shape of fact: something about HOW this turn
   // is being consumed that the prompt builder needs. `voiceMode` says the
