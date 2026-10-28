@@ -38,6 +38,29 @@ import {
 import { grantedPermissionsForEntry, newlyRequestedPermissions } from './pluginPermissions.js';
 import { catalogPresentation } from './catalogPresentation.js';
 
+/**
+ * An installed plugin takes updates only from the publisher it came from.
+ * Returns null when `record` may update `installed`, otherwise the reason it
+ * may not. The catalogue is keyed by name and quiet updates need no consent,
+ * so a newer version under the same name is not enough on its own.
+ *
+ *   - a record from the built-in catalogue ships with the app: always allowed;
+ *   - a recorded publisherId: the record must carry the same one;
+ *   - a first-party install (trustTier 'official'): the record must be official;
+ *   - neither recorded (older third-party installs): allowed, and the update
+ *     records the publisher from then on.
+ */
+export function updateOriginRefusal(installed, record) {
+  if (!installed || !record || record.source === 'local') return null;
+  if (installed.publisherId) {
+    return record.publisherId === installed.publisherId ? null : 'published by a different account than the installed copy';
+  }
+  if (installed.trustTier === 'official' && record.trustTier !== 'official') {
+    return 'not published by AGNT, unlike the installed copy';
+  }
+  return null;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1136,6 +1159,17 @@ class PluginInstaller {
             status: 'not-in-marketplace',
           };
         }
+        const refusal = updateOriginRefusal(plugin, record);
+        if (refusal) {
+          return {
+            name: plugin.name,
+            installed: plugin.version,
+            latest: record.version,
+            updateAvailable: false,
+            status: 'publisher-changed',
+            reason: refusal,
+          };
+        }
         const cmp = compareVersions(plugin.version, record.version);
         if (!cmp.comparable) {
           return {
@@ -1195,6 +1229,15 @@ class PluginInstaller {
       } catch {}
       if (!currentEntry) {
         throw new Error(`Plugin '${pluginName}' is not installed`);
+      }
+
+      const refusal = updateOriginRefusal(currentEntry, pluginInfo);
+      if (refusal) {
+        return {
+          success: false,
+          publisherChanged: true,
+          error: `Not updating '${pluginName}': the marketplace copy is ${refusal}. Your installed copy is untouched.`,
+        };
       }
 
       // Version guard: when both sides are semver and installed >= latest,
@@ -1297,6 +1340,7 @@ class PluginInstaller {
       await this.updateRegistry(pluginName, installedVersion, 'installed', {
         ...staged.registryFields,
         ...(sig ? { signedBy: sig.signedBy } : {}),
+        ...(pluginInfo.publisherId ? { publisherId: pluginInfo.publisherId } : {}),
       });
 
       console.log(`[PluginInstaller] ${pluginName} updated to ${installedVersion}`);
@@ -1520,6 +1564,7 @@ class PluginInstaller {
       await this.updateRegistry(pluginName, staged.version || version, 'installed', {
         ...staged.registryFields,
         ...(pluginInfo._signedBy ? { signedBy: pluginInfo._signedBy } : {}),
+        ...(pluginInfo.publisherId ? { publisherId: pluginInfo.publisherId } : {}),
       });
       // ecosystem assets: clear any prior user-uninstall record — the user is
       // explicitly bringing this plugin back.
@@ -1944,6 +1989,7 @@ class PluginInstaller {
             ...catalogPresentation(manifest),
             price: item.price ?? 0,
             marketplace_item_id: item.id,
+            publisherId: item.publisher_id || undefined,
             // trust system W1/W2/W3: trust fields served by the marketplace API
             // (dedicated columns first, metadata JSON as fallback)
             integrity: item.integrity || metadata.integrity || undefined,
@@ -1962,6 +2008,8 @@ class PluginInstaller {
           // to or newer than the remote listing. A truly newer remote version
           // wins cleanly and must provide/establish trust for its own bytes.
           const existing = allPlugins.get(plugin.name);
+          // A plugin the app ships is replaced only by AGNT's own listing of it.
+          if (existing?.source === 'local' && plugin.trustTier !== 'official') continue;
           if (existing?.integrity) {
             const versionComparison = compareVersions(existing.version, plugin.version);
             if (versionComparison.comparable && versionComparison.cmp >= 0) {
