@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { wrapBrowserScript } from './browserScriptPrelude.js';
+import { wrapBrowserScript, readFinalTab } from './browserScriptPrelude.js';
 
 /** A Python >= 3.8 (PyCF_ALLOW_TOP_LEVEL_AWAIT): the browser-use venv first, as production uses it. */
 function findPython() {
@@ -52,9 +52,9 @@ beforeAll(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-prelude-')); }
 afterAll(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 
 /** Run a model script the way the harness would: helpers in globals, then exec. */
-function runScript(source, { extraStubs = '' } = {}) {
+function runScript(source, { extraStubs = '', options = {} } = {}) {
   const file = path.join(tmp, `step-${Math.random().toString(36).slice(2)}.py`);
-  const program = `${HARNESS_STUBS}\n${extraStubs}\n${wrapBrowserScript(source)}\nprint("__CALLS__", json.dumps(CALLS))\n`;
+  const program = `${HARNESS_STUBS}\n${extraStubs}\n${wrapBrowserScript(source, options)}\nprint("__CALLS__", json.dumps(CALLS))\n`;
   fs.writeFileSync(file, program, 'utf8');
   const result = spawnSync(python, [file], {
     encoding: 'utf8', env: { ...process.env, STUB_TMP: tmp, PYTHONIOENCODING: 'utf-8' }, timeout: 30000,
@@ -166,5 +166,61 @@ describe('the wrapper itself', () => {
     const wrapped = wrapBrowserScript(hostile);
     expect(wrapped).not.toContain(hostile);
     expect(wrapped).not.toContain('os.system');
+  });
+});
+
+
+// The daemon remembers one current tab for the whole browser; a conversation's
+// step must start on ITS tab and say where it ended (ai-browser-control).
+const TAB_STUBS = String.raw`
+CURRENT = {"targetId": "START"}
+TABS = {"TAB1", "TAB2"}
+def switch_tab(target, activate=False):
+    if target not in TABS: raise Exception("No target with given id found")
+    CALLS.append(("switch_tab", target)); CURRENT["targetId"] = target; return "S"
+def current_tab():
+    return {"targetId": CURRENT["targetId"], "target_id": CURRENT["targetId"], "url": "", "title": ""}
+def new_tab(url="about:blank"):
+    switch_tab("TAB2"); return "TAB2"
+`;
+
+describe.skipIf(!python)('pinned to a conversation\'s tab', () => {
+  it('switches to the tab BEFORE the script runs, and reports the tab it ended on last', () => {
+    const r = runScript('print("hello")\nnew_tab("https://x.io")', { extraStubs: TAB_STUBS, options: { startTab: 'TAB1' } });
+    expect(r.status).toBe(0);
+    expect(r.calls[0]).toEqual(['switch_tab', 'TAB1']);
+    expect(readFinalTab(r.stdout)).toEqual({ output: 'hello', finalTab: 'TAB2' });
+  });
+
+  it('still reports the tab when the script raises', () => {
+    const r = runScript('raise ValueError("nope")', { extraStubs: TAB_STUBS, options: { startTab: 'TAB1' } });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('ValueError: nope');
+    expect(readFinalTab(r.stdout).finalTab).toBe('TAB1');
+  });
+
+  it('a tab that is gone fails the step by name, before any of the script runs', () => {
+    const r = runScript('print("must not run")', { extraStubs: TAB_STUBS, options: { startTab: 'GONE' } });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("Could not start on this conversation's browser tab");
+    expect(r.stdout).not.toContain('must not run');
+  });
+
+  it('an unpinned step is exactly the old wrapper: no switch, no marker', () => {
+    const r = runScript('print("plain")', { extraStubs: TAB_STUBS });
+    expect(r.stdout).toBe('plain');
+    expect(r.calls.some(([name]) => name === 'switch_tab')).toBe(false);
+  });
+});
+
+describe('readFinalTab / pinning guards', () => {
+  it('only a marker on the LAST line counts; one a script prints mid-output is output', () => {
+    expect(readFinalTab('a\n__AGNT_TAB__ T1\nb')).toEqual({ output: 'a\n__AGNT_TAB__ T1\nb', finalTab: null });
+    expect(readFinalTab('a\r\n__AGNT_TAB__ T9\r\n')).toEqual({ output: 'a', finalTab: 'T9' });
+    expect(readFinalTab('')).toEqual({ output: '', finalTab: null });
+  });
+
+  it('refuses to interpolate a tab id that is not a tab id', () => {
+    expect(() => wrapBrowserScript('print(1)', { startTab: 'x"); import os; ("' })).toThrow(/malformed tab id/);
   });
 });

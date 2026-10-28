@@ -53,9 +53,12 @@ vi.mock('../../../services/browserSurfaces.js', () => ({
 }));
 
 const bindConversation = vi.fn();
+/** A conversation's tab in the launched browser, as browserLanes opens one. */
+const ensureLane = vi.fn(async (userId, lane) => ({ instanceId: `host:${userId}:${lane}` }));
 vi.mock('../../../services/browserLanes.js', () => ({
   laneFor: (engine) => (engine?.conversationId ? `conv:${engine.conversationId}` : null),
   bindConversation: (...a) => bindConversation(...a),
+  ensureLane: (...a) => ensureLane(...a),
 }));
 
 vi.mock('./browserUseEnvironment.js', () => ({
@@ -76,7 +79,9 @@ vi.mock('./browserFallbackSurface.js', () => ({
 
 vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a) }));
 
-const { default: action, _resetDaemonEndpoint, stripHarnessNoise } = await import('./ai-browser-control.js');
+const { default: action, _resetDaemonEndpoint, stripHarnessNoise, inScriptOrder } = await import('./ai-browser-control.js');
+// Real: a leaf module of plain maps, and the thing these tests are about.
+const targets = await import('../../../services/browserActiveTarget.js');
 
 const CDP = 'ws://127.0.0.1:51234/tok3n';
 const OTHER_CDP = 'ws://127.0.0.1:60000/other';
@@ -241,13 +246,66 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBeUndefined();
   });
 
-  it('records which browser a conversation used, so its live card shows the work', async () => {
-    // The script daemon drives the whole browser, not a conversation's tab, so
-    // it cannot use a lane. The card must still follow it rather than show an
-    // idle lane while the script works somewhere else.
-    waitForSurface.mockResolvedValue(null);
-    await action.execute({ python: 'print(1)' }, {}, { ...CHAT, conversationId: 'c1' });
-    expect(bindConversation).toHaveBeenCalledWith('u1', 'conv:c1', 'host:u1');
+  describe('a conversation\'s script runs on the conversation\'s own tab', () => {
+    // THE BUG THIS PINS (trace 64eeeb9c, 2026-10-28). A script bound the
+    // conversation to the SHARED browser surface, so the live card left the
+    // conversation's tab — the Google sign-in page the agent was telling the
+    // user to type into — and showed whatever the shared view had.
+    const LANE = 'host:u1:conv:c1';
+    beforeEach(() => {
+      targets._resetActiveTargets();
+      targets.confineScope(LANE);
+      targets.claimTab(LANE, 'TAB1');
+      targets.setActiveTarget(LANE, 'TAB1');
+      waitForSurface.mockResolvedValue(null);
+    });
+    afterEach(() => targets._resetActiveTargets());
+
+    it('starts on that tab, and the card stays bound to it — never to the shared browser', async () => {
+      await action.execute({ python: 'print(1)' }, {}, { ...CHAT, conversationId: 'c1' });
+      expect(ensureLane).toHaveBeenCalledWith('u1', 'conv:c1', expect.objectContaining({ cdpUrl: LAUNCHED_CDP }));
+      expect(lastProgram()).toContain('switch_tab("TAB1")');
+      expect(bindConversation).not.toHaveBeenCalledWith('u1', 'conv:c1', 'host:u1');
+    });
+
+    it('the card follows the tab a script ends on, and the marker never reaches the model', async () => {
+      programBehaviour = () => ({ stdout: 'opened it\n__AGNT_TAB__ TAB2\n' });
+      const out = await action.execute({ python: 'new_tab("https://x.io")' }, {}, { ...CHAT, conversationId: 'c1' });
+      expect(out.output).toBe('opened it');
+      expect(targets.getActiveTarget(LANE)).toBe('TAB2');
+      expect(targets.tabOwner('TAB2')).toBe(LANE);
+    });
+
+    it('never follows onto another conversation\'s tab', async () => {
+      targets.confineScope('host:u2:conv:other');
+      targets.claimTab('host:u2:conv:other', 'THEIRS');
+      programBehaviour = () => ({ stdout: '__AGNT_TAB__ THEIRS\n' });
+      await action.execute({ python: 'switch_tab("THEIRS")' }, {}, { ...CHAT, conversationId: 'c1' });
+      expect(targets.getActiveTarget(LANE)).toBe('TAB1');
+      expect(targets.tabOwner('THEIRS')).toBe('host:u2:conv:other');
+    });
+
+    it('a script with no conversation keeps the shared browser, unpinned', async () => {
+      await action.execute({ python: 'print(1)' }, {}, CHAT);
+      expect(ensureLane).not.toHaveBeenCalled();
+      expect(lastProgram()).not.toContain('switch_tab(');
+      expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
+    });
+  });
+
+  it('scripts run one at a time — the daemon has one current tab', async () => {
+    const order = [];
+    let releaseFirst;
+    const first = inScriptOrder(() => new Promise((resolve) => { order.push('first:start'); releaseFirst = () => { order.push('first:end'); resolve(); }; }));
+    const second = inScriptOrder(async () => { order.push('second:start'); });
+    await new Promise((r) => { setTimeout(r, 20); });
+    expect(order).toEqual(['first:start']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['first:start', 'first:end', 'second:start']);
+    // A failed script must not block every later one.
+    await expect(inScriptOrder(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    await expect(inScriptOrder(async () => 'after')).resolves.toBe('after');
   });
 
   it('announces a NAMED browser too, because a headless host has no window either', async () => {

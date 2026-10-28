@@ -3,12 +3,46 @@ import { spawn } from '../../../services/security/toolProcess.js';
 import {
   waitForSurface, forgetSurfaceByUrl, getActiveSurface, announceHostSurface, surfaceKind, hostInstanceId,
 } from '../../../services/browserSurfaces.js';
-import { laneFor, bindConversation } from '../../../services/browserLanes.js';
+import { laneFor, bindConversation, ensureLane } from '../../../services/browserLanes.js';
+import {
+  getActiveTarget, setActiveTarget, claimTab, tabOwner,
+} from '../../../services/browserActiveTarget.js';
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
 } from './browserFallbackSurface.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
-import { wrapBrowserScript } from './browserScriptPrelude.js';
+import { wrapBrowserScript, readFinalTab } from './browserScriptPrelude.js';
+
+/**
+ * ONE SCRIPT AT A TIME, across every conversation.
+ *
+ * The harness daemon is a single process with a single "current tab", and it
+ * is restarted whenever a step targets a different browser. Two scripts at
+ * once — two conversations, or a chat and a workspace — would switch the
+ * daemon's tab under each other, or restart it mid-step. Serialising costs a
+ * wait only when two scripts truly overlap; interleaving costs a script
+ * silently acting on the wrong page.
+ */
+let scriptQueue = Promise.resolve();
+export function inScriptOrder(work) {
+  const run = scriptQueue.then(work, work);
+  scriptQueue = run.then(() => {}, () => {});
+  return run;
+}
+
+/**
+ * The live card follows a script that ended on another tab — one it opened,
+ * or switched to. Never onto a tab another conversation owns: taking it would
+ * hand this conversation's card (and next verbs) to that conversation's page.
+ */
+export function followScriptTab(laneScope, finalTab) {
+  if (!laneScope || !finalTab || getActiveTarget(laneScope) === finalTab) return false;
+  const owner = tabOwner(finalTab);
+  if (owner && owner !== laneScope) return false;
+  claimTab(laneScope, finalTab);
+  setActiveTarget(laneScope, finalTab);
+  return true;
+}
 
 /**
  * Browser Control — the chat agent drives the browser itself.
@@ -198,18 +232,25 @@ class AIBrowserControl extends BaseAction {
     }
 
     try {
-      const { cdpUrl, kind } = await this.resolveSurface(
+      const { cdpUrl, kind, laneScope = null } = await this.resolveSurface(
         workflowEngine, userId, 8000, undefined, params.browser,
       );
       const cli = await ensureCli();
-      if (await this.ensureDaemonTargets(cdpUrl)) {
-        await this.verifyDaemonSurface(cli, cdpUrl);
-      }
+      // The conversation's own tab, when it has one in the launched browser.
+      const startTab = laneScope ? getActiveTarget(laneScope) : null;
 
-      // Wrapped: accepts `await` and the common Playwright-style helper names
-      // (browserScriptPrelude.js). Raw, either one failed the whole step.
-      // Only the model's script is wrapped; our own probes run as written.
-      const outcome = await this.runStep(cli, wrapBrowserScript(python), cdpUrl, params);
+      const outcome = await inScriptOrder(async () => {
+        if (await this.ensureDaemonTargets(cdpUrl)) {
+          await this.verifyDaemonSurface(cli, cdpUrl);
+        }
+        // Wrapped: accepts `await` and the common Playwright-style helper names
+        // (browserScriptPrelude.js). Raw, either one failed the whole step.
+        // Only the model's script is wrapped; our own probes run as written.
+        return this.runStep(cli, wrapBrowserScript(python, { startTab }), cdpUrl, params);
+      });
+      const { output: stdout, finalTab } = readFinalTab(outcome.stdout);
+      outcome.stdout = stdout;
+      if (laneScope) followScriptTab(laneScope, finalTab);
 
       if (outcome.timedOut) {
         return this.formatOutput({
@@ -387,13 +428,28 @@ class AIBrowserControl extends BaseAction {
     if (!isLoopbackWebSocket(cdpUrl)) {
       throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }
+    // A CONVERSATION'S SCRIPT RUNS ON THE CONVERSATION'S TAB.
+    //
+    // This used to bind the conversation to the SHARED browser surface,
+    // reasoning that the daemon drives a whole browser, not a tab. So after one
+    // script the live card stopped showing this conversation's tab and showed
+    // whatever the shared view had — trace 64eeeb9c: the agent's Google tab
+    // vanished from the card while the agent told the user to sign in on it.
+    // The daemon can be pointed at a tab (wrapBrowserScript startTab), so the
+    // lane is the surface, exactly as it is for the verbs.
+    const lane = laneFor(workflowEngine);
+    if (lane) {
+      const laneSurface = await ensureLane(userId, lane, { cdpUrl, workspaceId });
+      return { cdpUrl, kind: 'launched', laneScope: laneSurface.instanceId };
+    }
+
     // THIS IS THE LINE THAT MAKES THE WEB CLIENT WORK.
     //
     // Without it, a browser tab reached exactly this point — no <webview>, so no
     // widget, so a launched browser — and the work happened on the host with no
     // way to see it. The registry entry is what a viewer subscribes to.
     announceHostSurface(userId, cdpUrl, { workspaceId });
-    bindConversation(userId, laneFor(workflowEngine), hostInstanceId(userId));
+    bindConversation(userId, lane, hostInstanceId(userId));
     return { cdpUrl, kind: 'launched' };
   }
 

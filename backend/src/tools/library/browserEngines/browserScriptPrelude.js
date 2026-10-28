@@ -93,10 +93,60 @@ def _bh_run(source):
 _bh_define_aliases()
 `;
 
-/** The Python to hand the harness in place of the raw step. */
-export function wrapBrowserScript(source) {
+/**
+ * The line a pinned step prints last: the tab it ENDED on, so the live card
+ * can follow a script that opened or switched tabs. Stripped from the output
+ * before the model sees it (readFinalTab).
+ */
+export const FINAL_TAB_MARKER = '__AGNT_TAB__';
+
+/** Target ids are hex; anything else is not something to interpolate into Python. */
+const TARGET_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * The Python to hand the harness in place of the raw step.
+ *
+ * WHY A STEP CAN BE PINNED TO A TAB. The harness daemon is one process for the
+ * whole browser and remembers ONE current tab across steps. Every
+ * conversation's script ran on whatever tab the last script — any
+ * conversation's — left it on, which is how one chat's script drove another
+ * chat's page. With `startTab` the step first attaches to the conversation's
+ * own tab, and reports the tab it ended on.
+ *
+ * @param {string} source
+ * @param {{ startTab?: string|null }} [options]
+ */
+export function wrapBrowserScript(source, { startTab = null } = {}) {
   const encoded = Buffer.from(String(source ?? ''), 'utf8').toString('base64');
-  return `${PRELUDE}\n_bh_run(_bh_base64.b64decode("${encoded}").decode("utf-8"))\n`;
+  const run = `_bh_run(_bh_base64.b64decode("${encoded}").decode("utf-8"))`;
+  if (!startTab) return `${PRELUDE}\n${run}\n`;
+  if (!TARGET_ID.test(String(startTab))) throw new Error(`Refusing to pin a script to a malformed tab id: ${String(startTab).slice(0, 40)}`);
+  return `${PRELUDE}
+try:
+    switch_tab("${startTab}")
+except Exception as _bh_pin_error:
+    raise RuntimeError("Could not start on this conversation's browser tab: %s" % _bh_pin_error)
+try:
+    ${run}
+finally:
+    try:
+        print("${FINAL_TAB_MARKER}", current_tab()["targetId"], flush=True)
+    except Exception:
+        pass
+`;
+}
+
+/**
+ * Split a pinned step's output into what the script printed and the tab it
+ * ended on. Only the LAST line can be the marker; a script printing the marker
+ * text itself elsewhere is just output.
+ * @returns {{ output: string, finalTab: string|null }}
+ */
+export function readFinalTab(stdout) {
+  const text = String(stdout ?? '');
+  const match = new RegExp(`(?:^|\\r?\\n)${FINAL_TAB_MARKER} ([A-Za-z0-9_-]{1,128})\\s*$`).exec(text);
+  if (!match) return { output: text, finalTab: null };
+  return { output: text.slice(0, match.index), finalTab: match[1] };
 }
 
 export default wrapBrowserScript;
