@@ -36,7 +36,7 @@ const ProviderLanesStub = { name: 'ProviderLanes', props: ['providers', 'connect
 
 let wrapper;
 let store;
-function setup({ connectedApps = [], selectedProvider = 'AGNT', phone = { phones: [], plan: { eligible: true } } } = {}) {
+function setup({ connectedApps = [], selectedProvider = 'AGNT', phone = { phones: [], plan: { eligible: true } }, props = {} } = {}) {
   getStatus.mockResolvedValue(phone);
   store = createStore({
     modules: {
@@ -55,6 +55,7 @@ function setup({ connectedApps = [], selectedProvider = 'AGNT', phone = { phones
   });
   vi.spyOn(store, 'dispatch');
   wrapper = mount(FirstRunSetup, {
+    props,
     global: {
       plugins: [store],
       stubs: {
@@ -231,6 +232,21 @@ describe('done', () => {
     await click('[data-action="skip"]');
     await click('.frs-tick[data-step-tab="google"]');
     expect(step()).toBe('google');
+  });
+});
+
+describe('opened at a step', () => {
+  // A host's checklist (AGNT One's top-bar capsule) opens the setup where it points.
+  it('opens where it is asked to, and moves when asked again', async () => {
+    await setup({ props: { start: 'phone' } });
+    expect(step()).toBe('phone');
+    await wrapper.setProps({ start: 'google' });
+    expect(step()).toBe('google');
+  });
+
+  it('ignores a step it does not have', async () => {
+    await setup({ props: { start: 'theme' } });
+    expect(step()).toBe('ai');
   });
 });
 

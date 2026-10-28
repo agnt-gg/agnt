@@ -233,9 +233,11 @@ import {
 } from '@/services/firstRunSetup.js';
 // nextStep: where Continue and Skip go. The first screen is decided on mount.
 
-defineProps({
+const props = defineProps({
   /** 'modal': the onboarding modal is the card. 'chat': the card sits in the first chat. */
   frame: { type: String, default: 'chat', validator: (value) => ['chat', 'modal'].includes(value) },
+  /** Open at this step ('ai' | 'google' | 'phone'), as a checklist's step asks; null: decide. */
+  start: { type: String, default: null },
 });
 /** `finish` carries `{ ask }`: a request to put in the composer, or null. */
 const emit = defineEmits(['finish']);
@@ -383,10 +385,18 @@ onMounted(async () => {
     // Always open on step 1, unless all three are done: an AI found already
     // signed in on this computer is confirmed there in one click (and can be
     // changed), rather than chosen silently. Continue passes over done steps.
-    show(allDone(status.value) ? null : 'ai');
+    show(startStep(props.start) || (allDone(status.value) ? null : 'ai'));
     ready.value = true;
   }
 });
+const startStep = (step) => (SETUP_STEPS.some((s) => s.id === step) ? step : null);
+// Asked for another step while open (the checklist again): go there.
+watch(
+  () => props.start,
+  (step) => {
+    if (ready.value && startStep(step)) show(step);
+  },
+);
 onBeforeUnmount(() => window.removeEventListener('focus', refreshConnections));
 
 // ── Copy ─────────────────────────────────────────────────────────────────
