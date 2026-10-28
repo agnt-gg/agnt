@@ -918,6 +918,16 @@ export default {
       nextTick(autoResizeTextarea);
     };
 
+    // How a parent puts text in the composer (Ask Annie, a getting-started
+    // step, a Jump palette ask). It must be EXPOSED: with expose() in use a
+    // template ref sees only what is listed, so Chat assigning
+    // currentUserInput through its ref wrote onto the expose proxy and the
+    // composer never changed. See askAnnie.contract.spec.js.
+    const setUserInput = (text) => {
+      currentUserInput.value = typeof text === 'string' ? text : '';
+      nextTick(autoResizeTextarea);
+    };
+
     const triggerFileInput = () => {
       if (fileInputRef.value) {
         fileInputRef.value.click();
@@ -1709,6 +1719,7 @@ export default {
       openMobilePanel, closeMobilePanel, mobilePanel, toggleProviderSelector, toggleToolSelector,
       setInputDisabled,
       clearInput,
+      setUserInput,
       focusInput,
       scrollToBottom,
       triggerPanelMethod,

@@ -2422,8 +2422,9 @@ export default {
       if (send && hasConnectedAIProvider.value) {
         handleUserInputSubmit(text);
       } else if (baseScreenRef.value) {
-        baseScreenRef.value.currentUserInput = text;
-        nextTick(() => baseScreenRef.value?.handleTextareaInput?.());
+        // Through the exposed setter: BaseScreen uses expose(), so assigning a
+        // property through this ref is silently a no-op.
+        baseScreenRef.value.setUserInput(text);
         focusInput();
       }
     };
