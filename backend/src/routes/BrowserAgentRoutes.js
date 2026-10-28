@@ -22,13 +22,15 @@ import {
 } from '../services/browserSurfaces.js';
 import { isStreaming, ownsStream } from '../services/BrowserScreencastService.js';
 import { acquireViewer, releaseViewer } from '../services/BrowserViewerLeaseService.js';
-import { ensureFallbackSurface } from '../tools/library/browserEngines/browserFallbackSurface.js';
+import { ensureFallbackSurface, isSignInWindowOpen } from '../tools/library/browserEngines/browserFallbackSurface.js';
 import {
   laneForConversation, ensureLane, boundSurface, touchLane,
 } from '../services/browserLanes.js';
 import {
   getSignIn, finishSignIn, requestSignInWindow, signInScope,
 } from '../services/browserSignIn.js';
+import { readSites, forgetSite } from '../services/browserSites.js';
+import { startSettingsSignIn, lastSettingsSignIn, SETTINGS_SCOPE } from '../services/browserSignInWindow.js';
 
 const router = express.Router();
 
@@ -262,15 +264,71 @@ router.delete('/view/:instanceId', authenticateToken, (req, res) => {
 // the person. Every sign-in is keyed by the AUTHENTICATED user plus the
 // conversation, so one account can neither see nor end another's.
 
-/** The scope a request names: its conversation's lane, else the shared browser. */
+/** The scope a request names: Settings, its conversation's lane, else the shared browser. */
 function signInScopeFor(source) {
+  if (source?.scope === SETTINGS_SCOPE) return SETTINGS_SCOPE;
   return signInScope(laneForConversation(source?.conversationId));
 }
 
-/** GET /api/browser-agent/signin?conversationId= — the sign-in waiting there, or null. */
+/**
+ * GET /api/browser-agent/signin?conversationId= | ?scope=settings
+ * The sign-in waiting there, or null — and for Settings, how the last one ended.
+ */
 router.get('/signin', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-  return res.json({ success: true, signIn: getSignIn(req.user.id, signInScopeFor(req.query)) });
+  const scope = signInScopeFor(req.query);
+  return res.json({
+    success: true,
+    signIn: getSignIn(req.user.id, scope),
+    ...(scope === SETTINGS_SCOPE ? { last: lastSettingsSignIn(req.user.id) } : {}),
+  });
+});
+
+/** POST /api/browser-agent/signin/start — Body: { url }. Settings › Browser: open a sign-in window at url. */
+router.post('/signin/start', authenticateToken, (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  try {
+    const signIn = startSettingsSignIn(req.user.id, req.body?.url, { log: (m) => console.log(m) });
+    return res.json({ success: true, signIn });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ─── signed-in sites (Settings › Browser; services/browserSites.js) ───────────────
+//
+// One profile serves every conversation and workflow, so these are the logins
+// the agent has. Site names, counts and expiry only — never a cookie value.
+
+/** A site as browserSites.siteOf names one. */
+const SITE = /^[a-z0-9.-]{1,253}$/i;
+
+/** GET /api/browser-agent/sites */
+router.get('/sites', authenticateToken, async (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  // The profile is the person's while a sign-in window is open; nothing reads it then.
+  if (isSignInWindowOpen()) return res.json({ success: true, signingIn: true, sites: [] });
+  try {
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+    return res.json({ success: true, signingIn: false, sites: await readSites(cdpUrl) });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: `Could not read the AGNT browser: ${err.message}` });
+  }
+});
+
+/** POST /api/browser-agent/sites/forget — Body: { site }. Sign the AGNT browser out of one site. */
+router.post('/sites/forget', authenticateToken, async (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  const site = typeof req.body?.site === 'string' ? req.body.site.trim().toLowerCase() : '';
+  if (!SITE.test(site)) return res.status(400).json({ success: false, error: 'site is required.' });
+  if (isSignInWindowOpen()) return res.status(409).json({ success: false, error: 'A sign-in window is open. Close it first.' });
+  try {
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+    const result = await forgetSite(cdpUrl, site);
+    return res.json({ success: result.remaining === 0, ...result, sites: await readSites(cdpUrl) });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: `Could not sign out of ${site}: ${err.message}` });
+  }
 });
 
 /** POST /api/browser-agent/signin/done|cancel|window — Body: { conversationId, id } */

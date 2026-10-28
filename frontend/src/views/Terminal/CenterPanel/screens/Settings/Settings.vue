@@ -216,6 +216,17 @@
           </div>
         </div>
 
+        <!-- Browser Section -->
+        <div v-else-if="activeSection === 'browser'" class="settings-content" data-section="browser">
+          <div class="content-header">
+            <h2 class="content-title">Browser</h2>
+            <p class="content-subtitle">The sites the agent's browser is signed in to, shared by every conversation and workflow</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width"><BrowserSitesSection /></div>
+          </div>
+        </div>
+
         <!-- Backup Section -->
         <div v-else-if="activeSection === 'backup'" class="settings-content" data-section="backup">
           <div class="content-header">
@@ -328,6 +339,7 @@ import ReleaseNotes from './components/ReleaseNotes/ReleaseNotes.vue';
 import TourSettings from './components/TourSettings/TourSettings.vue';
 import SoundsSettings from './components/SoundsSettings/SoundsSettings.vue';
 import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue';
+import BrowserSitesSection from './components/BrowserSitesSection/BrowserSitesSection.vue';
 import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdown.vue';
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
 import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue';
@@ -361,6 +373,7 @@ export default {
     TourSettings,
     SoundsSettings,
     SecuritySettings,
+    BrowserSitesSection,
     AgntScoreBreakdown,
     ProfileSection,
     ReferralsSection,

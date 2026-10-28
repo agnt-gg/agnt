@@ -1,9 +1,7 @@
 import BaseAction from '../BaseAction.js';
 import actTool from './ai-browser-act.js';
-import {
-  ensureFallbackSurface, openSignInWindow, closeSignInWindow, isSignInWindowOpen, signInWindowClosed,
-} from './browserFallbackSurface.js';
-import { laneFor, captureLanePages, reopenLanes } from '../../../services/browserLanes.js';
+import { laneFor } from '../../../services/browserLanes.js';
+import { signInWindowOps } from '../../../services/browserSignInWindow.js';
 import { performBrowserAction, inspectBrowserPage } from '../../../services/browserActDriver.js';
 import { identityProviderForHost } from '../../../services/browserLoginDetection.js';
 import {
@@ -17,7 +15,7 @@ import {
  * services/browserSignIn.js; this file binds it to the real browser: which tab
  * (the conversation's lane), how to look at it (the verbs driver, through the
  * same per-tab queue), and how to swap the automation browser for a plain
- * window and back (browserFallbackSurface + browserLanes).
+ * window and back (services/browserSignInWindow.js).
  *
  * Chat only: a sign-in needs a person at the screen. A workflow is told where
  * to sign in once instead (Settings), because the profile is shared.
@@ -174,8 +172,6 @@ class AIBrowserSignIn extends BaseAction {
         requested: String(params.mode || '').trim().toLowerCase(), login: first.login, url: first.url, surfaceKind: surface.kind,
       });
 
-      // Pages of every other conversation, so they come back after the window.
-      let otherPages = [];
       const result = await runSignIn({
         userId,
         scope,
@@ -188,19 +184,16 @@ class AIBrowserSignIn extends BaseAction {
           canUseWindow: surface.kind !== 'widget',
           inspect: () => inspectBrowserPage(userId, surface.cdpUrl, on()),
           finish: () => performBrowserAction(userId, surface.cdpUrl, 'snapshot', {}, on()),
-          openWindow: async (url) => {
-            otherPages = await captureLanePages();
-            await openSignInWindow({ url, log });
-          },
-          windowOpen: () => isSignInWindowOpen(),
-          windowClosed: () => signInWindowClosed(),
-          closeWindow: () => closeSignInWindow({ log }),
-          restore: async (url) => {
-            const cdpUrl = await ensureFallbackSurface({ hidden: true, log });
-            await reopenLanes(otherPages, cdpUrl, { except: surface.instanceId });
-            surface = await actTool.resolveSurface(workflowEngine, userId);
-            return performBrowserAction(userId, surface.cdpUrl, 'navigate', { url }, on());
-          },
+          // Every other conversation's page comes back after the window; this
+          // conversation's page is restored here, at the sign-in page.
+          ...signInWindowOps({
+            log,
+            keepLane: surface.instanceId,
+            restorePage: async (url) => {
+              surface = await actTool.resolveSurface(workflowEngine, userId);
+              return performBrowserAction(userId, surface.cdpUrl, 'navigate', { url }, on());
+            },
+          }),
         },
       });
       return this.formatOutput(describeSignIn(result, { minutes: Math.round(seconds / 60) || 1 }));

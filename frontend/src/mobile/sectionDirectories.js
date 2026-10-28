@@ -40,6 +40,12 @@ export const settingsDirectory = [
         "icon": "fas fa-shield-alt",
         "label": "Security",
         "description": "Permissions and policy"
+      },
+      {
+        "id": "browser",
+        "icon": "fas fa-globe",
+        "label": "Browser",
+        "description": "Sites the agent is signed in to"
       }
     ]
   },
