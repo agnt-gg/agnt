@@ -30,6 +30,24 @@ export function requireControlToken(req, res, next) {
 // Unauthenticated on purpose: the frontend polls this while the backend
 // drains/reboots, and the Electron supervisor may check it too. It exposes
 // nothing sensitive (state/pid/uptime).
+// Storage health: database file size, free pages, auto_vacuum mode, and the
+// last background maintenance pass (StorageMaintenance.js). Authenticated, and
+// its modules are imported per request so this router stays free of the
+// database at import time (see SystemRoutes.handoff.test.js for why).
+router.get('/storage', authenticateToken, async (req, res) => {
+  try {
+    const [{ default: db }, { databaseSpaceStats }, { getLastStorageMaintenanceReport }] = await Promise.all([
+      import('../models/database/index.js'),
+      import('../services/storage/freePages.js'),
+      import('../services/storage/StorageMaintenance.js'),
+    ]);
+    res.json({ database: await databaseSpaceStats(db), lastMaintenance: getLastStorageMaintenanceReport() });
+  } catch (err) {
+    console.warn('[System] storage statistics failed:', err.message);
+    res.status(500).json({ error: 'Storage statistics are unavailable' });
+  }
+});
+
 router.get('/status', (req, res) => {
   res.json(RestartManager.getStatus());
 });

@@ -39,6 +39,7 @@
 import db from '../../models/database/index.js';
 import { dbRunWithRetry } from '../../models/database/index.js';
 import PayloadStore from './PayloadStore.js';
+import { reclaimFreePages } from './freePages.js';
 import UserModel from '../../models/UserModel.js';
 
 const dbAll = (sql, params = []) =>
@@ -256,16 +257,13 @@ const RetentionService = {
    */
   async reclaimPages(maxPages = 10000) {
     try {
-      const mode = await dbGet('PRAGMA auto_vacuum');
-      const value = mode ? Object.values(mode)[0] : 0;
-      if (value !== 2) {
-        return { reclaimed: false, reason: `auto_vacuum=${value} (INCREMENTAL required); freed pages stay in the freelist` };
+      // Delegates to freePages.js, which steps the pragma to completion; the
+      // previous run()-based version freed one page per call (see that file).
+      const result = await reclaimFreePages(db, { maxPages: Number(maxPages) || 10000, keepFreeBytes: 0, pauseMs: 0 });
+      if (result.status.startsWith('skipped')) {
+        return { reclaimed: false, reason: `auto_vacuum=${result.before.autoVacuum} (INCREMENTAL required); freed pages stay in the freelist` };
       }
-      const before = Object.values(await dbGet('PRAGMA page_count'))[0];
-      await dbRun(`PRAGMA incremental_vacuum(${Number(maxPages) || 10000})`);
-      const after = Object.values(await dbGet('PRAGMA page_count'))[0];
-      const pageSize = Object.values(await dbGet('PRAGMA page_size'))[0];
-      return { reclaimed: true, pagesFreed: before - after, bytesFreed: (before - after) * pageSize };
+      return { reclaimed: true, pagesFreed: result.pagesFreed, bytesFreed: result.bytesFreed };
     } catch (err) {
       return { reclaimed: false, reason: err.message };
     }
