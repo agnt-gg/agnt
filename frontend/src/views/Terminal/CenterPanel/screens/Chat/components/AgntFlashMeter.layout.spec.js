@@ -21,7 +21,7 @@ describe('the AGNT Flash meter', () => {
   });
 
   it('appears only once the chat has content, in both modes', () => {
-    const mount = chat.match(/<AgntFlashMeter v-if="([^"]+)"/);
+    const mount = chat.match(/<AgntFlashMeter\s+v-if="([^"]+)"/);
     expect(mount, 'the meter is mounted in Chat.vue').not.toBeNull();
     expect(mount[1]).toMatch(/conversationStarted/);
     expect(chat).toMatch(/const conversationStarted = computed\(\(\) => !isUnstartedConversation\(store\.state\.chat\.messages\)\)/);

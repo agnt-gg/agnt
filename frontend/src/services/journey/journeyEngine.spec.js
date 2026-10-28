@@ -70,8 +70,10 @@ describe('journeySummary', () => {
     expect(summary.next.id).toBe('apps');
   });
 
-  it('a recorded choice counts: keeping AGNT Flash is choosing a model', () => {
-    expect(journeySummary(facts(), { modelChosen: true }).next.id).toBe('chat');
+  // 2026-10-21: only a connected AI completes it; starting on Flash does not.
+  it('Connect your AI stays next until an AI is connected, whatever was chosen for now', () => {
+    expect(journeySummary(facts(), { modelChosen: true, flashForNow: true }).next.id).toBe('model');
+    expect(journeySummary(facts({ aiModels: 1 }), {}).next.id).toBe('chat');
   });
 });
 

@@ -35,6 +35,7 @@
  * fails the build when one does not, because a mission that points at nothing
  * is worse than no mission.
  */
+import { CONNECT_AI_TITLE, CONNECT_AI_WHY } from '../ownAi.js';
 
 const COMPOSER = '[data-tour-id="chat.composer"]';
 const toChat = { screen: 'ChatScreen' };
@@ -58,10 +59,12 @@ export const FACT_KEYS = Object.freeze([
 export const MILESTONES = Object.freeze([
   {
     id: 'model',
-    title: 'Choose the brain',
-    outcome: 'Pick the AI model Annie thinks with.',
+    title: CONNECT_AI_TITLE,
+    outcome: 'Sign in with the ChatGPT, Claude or Gemini plan you already pay for.',
     mission: 'connect-model',
-    isDone: (facts, flags) => facts.aiModels > 0 || !!flags.modelChosen,
+    // Done only once an AI is connected: "Keep AGNT Flash" used to tick it
+    // off for good, so most people never connected one (2026-10-21).
+    isDone: (facts) => facts.aiModels > 0,
   },
   {
     id: 'chat',
@@ -117,8 +120,8 @@ export const MILESTONES = Object.freeze([
 export const MISSIONS = Object.freeze({
   // ── The journey, in milestone order ────────────────────────────────────
   'connect-model': {
-    title: 'Choose the brain',
-    pitch: 'AGNT Flash is already on. Want Claude, GPT or your own model instead? One click.',
+    title: CONNECT_AI_TITLE,
+    pitch: CONNECT_AI_WHY,
     milestone: 'model',
     screens: ['SettingsScreen'],
     steps: [
@@ -126,11 +129,11 @@ export const MISSIONS = Object.freeze({
         route: { screen: 'SettingsScreen', options: { section: 'providers' } },
         target: '[data-section="providers"]',
         placement: 'left',
-        title: 'Pick the brain behind Annie',
-        content:
-          'AGNT Flash is already switched on and comes with your account. Prefer your own? Click a provider below and sign in or paste a key. Plans you already pay for, like ChatGPT or Claude, work too.',
-        actions: [{ label: 'Keep AGNT Flash', flag: 'modelChosen' }],
-        until: { any: [{ grows: 'aiModels' }, { flag: 'modelChosen' }] },
+        title: 'Sign in with the AI you already pay for',
+        content: `${CONNECT_AI_WHY} Or pick a provider below and paste an API key.`,
+        // Closes the tour for now; the step stays open until an AI is connected.
+        actions: [{ label: 'Start with AGNT Flash for now', flag: 'flashForNow' }],
+        until: { any: [{ grows: 'aiModels' }, { flag: 'flashForNow' }] },
       },
     ],
   },

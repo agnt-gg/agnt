@@ -170,7 +170,9 @@ describe('useJourney', () => {
     expect(useJourney().view.value).not.toBeNull();
   });
 
-  it('a recorded choice completes a step: "Keep AGNT Flash"', async () => {
+  // 2026-10-21: starting on AGNT Flash closes the tour but no longer ticks the
+  // step off; only connecting an AI does.
+  it('"Start with AGNT Flash for now" closes the tour and leaves Connect your AI open', async () => {
     const store = makeStore();
     const router = await boot(store, '/settings');
     const { run, handleAction } = useJourney();
@@ -178,9 +180,9 @@ describe('useJourney', () => {
     handleAction('start');
     await flushPromises();
     expect(router.currentRoute.value.query.section).toBe('providers');
-    handleAction('flag:modelChosen');
+    handleAction('flag:flashForNow');
     await flushPromises();
-    expect(useJourney().progress.value.done['connect-model']).toBe(true);
-    expect(useJourney().checklist.value.items[0].done).toBe(true);
+    expect(useJourney().progress.value.flags.flashForNow).toBe(true);
+    expect(useJourney().checklist.value.items[0]).toMatchObject({ id: 'model', done: false });
   });
 });

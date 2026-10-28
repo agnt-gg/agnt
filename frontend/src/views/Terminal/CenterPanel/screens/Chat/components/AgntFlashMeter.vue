@@ -9,6 +9,12 @@
       <span v-if="account.trial" class="afm-left">{{ exhausted ? 'Used up' : '' }}</span>
       <span v-else class="afm-left">{{ formatCredits(account.remainingCredits) }} left<template v-if="account.balanceMicroUSD > 0"> · ${{ (account.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
     </div>
+    <!-- No AI of its own: one quiet line, once per session (services/ownAi.js). -->
+    <div v-if="showConnectAi" class="afm-own-ai" data-testid="flash-connect-ai">
+      <span>Using AGNT Flash. Connect your AI for top-quality results.</span>
+      <button type="button" class="afm-btn" data-action="connect-ai" @click="$emit('connect-ai')">Connect your AI</button>
+      <button type="button" class="afm-close" aria-label="Not now" data-action="connect-ai-later" @click="connectLater"><i class="fas fa-times"></i></button>
+    </div>
     <div v-if="showNudge" class="afm-nudge" role="status">
       <span v-if="account.trial"><b>Your free AGNT Flash credits are almost used up.</b> Upgrade or top up so Annie never stops mid-task.</span>
       <span v-else><b>{{ formatCredits(account.remainingCredits) }} credits left.</b> Top up or upgrade so Annie never stops mid-task.</span>
@@ -30,12 +36,15 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import { fetchFlashAccount, startFlashTopUp, formatCredits, usedShare, LOW_CREDIT_SHARE } from '@/services/agntFlash.js';
+import { readFacts } from '@/composables/useJourney.js';
+import { hasOwnAi, deferredThisSession, deferThisSession } from '@/services/ownAi.js';
 
 const DISMISS_KEY = 'agnt-flash-low-dismissed';
 
 export default {
   name: 'AgntFlashMeter',
   components: { UpgradeModal },
+  emits: ['connect-ai'],
   setup() {
     const store = useStore();
     const account = ref(null);
@@ -49,6 +58,13 @@ export default {
     // One nudge per allowance: the trial, or each monthly reset.
     const periodKey = computed(() => (account.value ? `${account.value.source}:${account.value.resetAt ?? 'once'}` : ''));
     const showNudge = computed(() => isLow.value && account.value.remainingCredits > 0 && dismissedFor.value !== periodKey.value);
+    const connectDeferred = ref(deferredThisSession());
+    // The credit nudge, when due, says more; never both at once.
+    const showConnectAi = computed(() => !showNudge.value && !connectDeferred.value && !hasOwnAi(readFacts(store)));
+    function connectLater() {
+      deferThisSession();
+      connectDeferred.value = true;
+    }
 
     async function refresh() {
       try {
@@ -90,7 +106,7 @@ export default {
       () => refresh(),
     );
 
-    return { account, busy, upgradeOpen, share, isLow, exhausted, showNudge, formatCredits, dismiss, topUp };
+    return { account, busy, upgradeOpen, share, isLow, exhausted, showNudge, showConnectAi, connectLater, formatCredits, dismiss, topUp };
   },
 };
 </script>
@@ -114,4 +130,5 @@ export default {
 .afm-btn { border: 1px solid var(--terminal-border-color); background: transparent; color: var(--color-text); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .afm-btn:disabled { opacity: 0.6; cursor: default; }
 .afm-close { background: none; border: 0; color: var(--color-text-secondary); cursor: pointer; }
+.afm-own-ai { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; color: var(--color-text-secondary); }
 </style>

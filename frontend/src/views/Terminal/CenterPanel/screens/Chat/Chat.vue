@@ -308,7 +308,10 @@
         <!-- AGNT Flash credits left, and a heads-up at 80% used -->
         <!-- Only once the chat has content: on an empty chat it was just in
              the way. Same rule as the home screen (chatHome.js). -->
-        <AgntFlashMeter v-if="isAgntProviderSelected && hasConnectedAIProvider && conversationStarted" />
+        <AgntFlashMeter
+          v-if="isAgntProviderSelected && hasConnectedAIProvider && conversationStarted"
+          @connect-ai="$emit('screen-change', 'SettingsScreen', { section: 'providers' })"
+        />
 
         <!-- Quick Actions (Studio's follow-up chips; Focused hides them in
              focused.css and shows its own ideas above) -->

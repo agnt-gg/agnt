@@ -100,6 +100,8 @@
             answer to "which model", so it lives inside 01 as a mode — putting it
             on top would place the rarest decision above the most common one.
           -->
+          <!-- No AI of its own yet: ask for one first, subscriptions before keys. -->
+          <ConnectYourAi @api-key="focusProviderPicker" />
           <div class="settings-grid">
             <ProviderSelector />
             <FallbackProviders />
@@ -322,6 +324,7 @@ import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import MembersSettings from './components/MembersSettings.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
 import ProviderSelector from './components/ProviderSelector/ProviderSelector.vue';
+import ConnectYourAi from '@/views/_components/feature/ConnectYourAi.vue';
 // Owned by the Connectors screen directory, which is where this page lived
 // before it moved under SYSTEM. Imported rather than copied so there is still
 // exactly one implementation of each card.
@@ -359,6 +362,7 @@ export default {
     LoginSection,
     MembersSettings,
     ProviderSelector,
+    ConnectYourAi,
     FallbackProviders,
     ChatBehaviorSettings,
     ApiKeyManager,
@@ -487,7 +491,14 @@ export default {
       if (newValue && !oldValue) activeSection.value = DEFAULT_SETTINGS_SECTION;
     });
 
-    return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory,
+    // "Use an API key instead": the provider picker just below the card.
+    function focusProviderPicker() {
+      const picker = document.querySelector('[data-section="providers"] .provider-section');
+      picker?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+      picker?.querySelector('.custom-select .selected, button, [tabindex]')?.focus?.();
+    }
+
+    return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory, focusProviderPicker,
       baseScreenRef,
       emit,
       initializeScreen,
