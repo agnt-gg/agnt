@@ -19,7 +19,7 @@
           <a href="https://mobile.agnt.gg/app.html#billing" target="_blank" rel="noopener">Add it</a>.</span>
       </p>
 
-      <div v-for="phone in phones" :key="phone.id" class="ta-phone">
+      <div v-for="phone in phones" :key="phone.id" class="ta-phone" :class="{ 'ta-phone-failing': deliveryNote(phone) }">
         <div class="ta-phone-main">
           <strong>{{ formatNumber(phone.number) }}</strong>
           <small>
@@ -32,6 +32,7 @@
             <template v-if="phone.line"> · Annie: {{ formatNumber(phone.line) }}</template>
             <template v-if="!isMember && phone.memberId"> · a teammate's phone</template>
           </small>
+          <small v-if="deliveryNote(phone)" class="ta-alert" role="status"><i class="fas fa-exclamation-triangle"></i> {{ deliveryNote(phone) }}</small>
         </div>
         <div class="ta-phone-actions">
           <template v-if="phone.state === 'pending'">
@@ -146,6 +147,8 @@ const targets = computed(() => {
 });
 
 const routeLabel = (value) => targets.value.find((t) => t.value === value)?.label.toLowerCase() || value;
+/** Annie's texts are not reaching this phone (from the service's delivery health), or null. */
+const deliveryNote = (phone) => textAnnie.deliveryNote(phone);
 const isOnline = (target) => !!state.value?.targets?.find((t) => t.target === target)?.online;
 const formatNumber = (value) => {
   const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(value || '');
@@ -299,6 +302,8 @@ onBeforeUnmount(() => {
 .ta-phone-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ta-phone-main strong { font-size: 14px; color: var(--color-text, #e0e0e0); }
 .ta-phone-main small { font-size: 12px; color: var(--color-light-med-navy, #8b93a7); }
+.ta-phone-failing { border-color: rgba(var(--red-rgb), 0.5); }
+.ta-phone-main small.ta-alert { color: var(--color-red); max-width: 60ch; }
 .ta-on { color: var(--color-primary, #19ef83); }
 .ta-off { color: var(--text-yellow); }
 .ta-phone-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

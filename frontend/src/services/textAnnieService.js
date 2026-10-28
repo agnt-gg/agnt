@@ -93,6 +93,24 @@ const REASONS = {
   member_not_on_instance: 'You\u2019re not a member of this AGNT yet, so your phone can\u2019t text it. Ask the owner to add you.',
 };
 
+const shortDate = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+/**
+ * What to say when Annie's texts are not reaching a phone, or null when they
+ * are (or nothing is known yet). From the service's per-phone delivery health:
+ * 'failing' means Photon rejected, or never sent, the latest texts it accepted.
+ * Reported 2026-10-27: a phone was dead both ways for four days while this card
+ * said "online". Unlinking cannot fix it, because linking again needs a text
+ * from that phone to get through, so the note says so.
+ */
+export function deliveryNote(phone, formatDate = shortDate) {
+  const health = phone?.delivery;
+  if (phone?.state !== 'active' || health?.status !== 'failing' || !(health.failedInARow > 0)) return null;
+  const what = health.failedInARow === 1 ? "Annie's last text" : `Annie's last ${health.failedInARow} texts`;
+  const heard = phone.lastInboundAt ? ` Last text received from it: ${formatDate(phone.lastInboundAt)}.` : '';
+  return `${what} to this phone didn't arrive.${heard} Don't unlink: linking again needs a text from this phone to get through.`;
+}
+
 /** One sentence for any failure: the service's own message when it gave one. */
 export function explain(error) {
   const data = error?.response?.data;

@@ -110,6 +110,33 @@ describe('the code you were given', () => {
   });
 });
 
+describe('texts that do not arrive', () => {
+  // 2026-10-27: Photon rejected every text to a phone for four days; this card said "online".
+  const activePhone = (delivery) => ({ id: 'phone-1', number: NUMBER, state: 'active', route: 'desktop', line: LINE, lastInboundAt: Date.UTC(2026, 9, 23, 22, 27), delivery });
+
+  it('are called out on the phone, which is marked', async () => {
+    getStatus.mockResolvedValue(status([activePhone({ status: 'failing', failedInARow: 2, lastError: 'photon_error_4', lastFailedAt: Date.now(), lastDeliveredAt: null })]));
+    const w = await mountCard();
+    const alert = w.find('.ta-alert');
+    expect(alert.exists()).toBe(true);
+    expect(alert.attributes('role')).toBe('status');
+    expect(alert.text()).toContain("Annie's last 2 texts to this phone didn't arrive.");
+    expect(alert.text()).toContain("Don't unlink");
+    expect(w.find('.ta-phone').classes()).toContain('ta-phone-failing');
+    w.unmount();
+  });
+
+  it('leave a healthy or not-yet-checked phone alone', async () => {
+    for (const delivery of [{ status: 'ok', failedInARow: 0 }, { status: 'unknown', failedInARow: 0 }, undefined]) {
+      getStatus.mockResolvedValue(status([activePhone(delivery)]));
+      const w = await mountCard();
+      expect(w.find('.ta-alert').exists()).toBe(false);
+      expect(w.find('.ta-phone').classes()).not.toContain('ta-phone-failing');
+      w.unmount();
+    }
+  });
+});
+
 describe('asking for a new code', () => {
   it('never hides behind "Finish linking"', async () => {
     getStatus.mockResolvedValue(status([pendingPhone(Date.now() + 60_000)]));
