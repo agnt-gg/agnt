@@ -61,6 +61,25 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+describe('a host can follow the link', () => {
+  // The first-run setup moves on when a phone links; it learns that from the
+  // card's own polling rather than asking the service a second time.
+  it('emits every status the service returns', async () => {
+    getStatus.mockResolvedValue(status([{ ...pendingPhone(null), state: 'active' }]));
+    const w = await mountCard();
+    expect(w.emitted('state')?.at(-1)?.[0].phones[0].state).toBe('active');
+    w.unmount();
+  });
+
+  it('can leave the heading to the host', async () => {
+    getStatus.mockResolvedValue(status([]));
+    const w = mount(TextAnnieCard, { props: { showHeader: false }, global: { stubs: { CustomSelect: true }, directives: { tooltip: {} } } });
+    await flushPromises();
+    expect(w.find('.ta-head').exists()).toBe(false);
+    w.unmount();
+  });
+});
+
 describe('the code you were given', () => {
   it('is still shown after leaving Settings and coming back, without asking for a new one', async () => {
     const expires = Date.now() + 30 * 60_000;

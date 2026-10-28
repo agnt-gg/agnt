@@ -155,6 +155,11 @@ export default {
     activeId: { type: String, default: '' },
     /** Offer AGNT Flash, the model included with a signed-in account. */
     included: { type: Boolean, default: false },
+    /**
+     * Which billing lanes to show. The first-run setup draws its own plan cards
+     * and uses this page for the API-key path only.
+     */
+    showLanes: { type: Array, default: () => ['subscription', 'api'] },
   },
   emits: ['connect', 'submit-credential'],
   setup(props, { emit }) {
@@ -171,6 +176,7 @@ export default {
 
     const visibleLanes = computed(() =>
       ['subscription', 'api']
+        .filter((key) => props.showLanes.includes(key))
         .map((key) => ({ key, ...LANE_COPY[key], all: lanes.value[key] }))
         .filter((lane) => lane.all.length > 0),
     );

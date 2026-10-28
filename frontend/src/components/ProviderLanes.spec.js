@@ -50,6 +50,24 @@ const openTile = async (wrapper, label) => {
   return tile;
 };
 
+describe('ProviderLanes — showLanes', () => {
+  it('shows both billing lanes by default', () => {
+    const w = mountLanes();
+    expect(w.find('.lane-subscription').exists()).toBe(true);
+    expect(w.find('.lane-api').exists()).toBe(true);
+  });
+
+  // The first-run setup draws its own plan cards; its API-key path must not
+  // offer the same subscriptions a second time.
+  it('can show the API-key lane alone, keeping the local footer', () => {
+    const w = mountLanes({ showLanes: ['api'] });
+    expect(w.find('.lane-subscription').exists()).toBe(false);
+    expect(tileText(w)).toContain('OpenAI');
+    expect(tileText(w)).not.toContain('Claude Code');
+    expect(w.find('.lane-foot').exists()).toBe(true);
+  });
+});
+
 describe('ProviderLanes — the footer icon', () => {
   /**
    * Asserted against the SOURCE because jsdom computes no layout and resolves

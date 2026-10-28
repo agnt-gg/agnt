@@ -124,10 +124,23 @@ describe('the two AI setup grids specifically', () => {
    * That cannot be satisfied by a copy, which is the point.
    */
   const LANES = 'components/ProviderLanes.vue';
+  // The first-run setup is onboarding's AI step (OnboardingModal and AGNT
+  // One's first chat both render it); its plan cards come from
+  // services/firstRunSetup.js, which reads connectableAiProviders.
   const GRIDS = [
-    'components/OnboardingModal.vue',
+    'views/_components/feature/FirstRunSetup.vue',
     'views/Terminal/CenterPanel/screens/Chat/components/ProviderSetup.vue',
   ];
+
+  it('the onboarding modal delegates its AI step to the first-run setup', () => {
+    const modal = read(path.join(SRC, 'components/OnboardingModal.vue'));
+    expect(modal).toMatch(/<FirstRunSetup[\s/>]/);
+    expect(modal).not.toMatch(/connectableAiProviders\s*\(|providerLanes\s*\(/);
+  });
+
+  it('the first-run plan cards are drawn from the shared list', () => {
+    expect(read(path.join(SRC, 'services/firstRunSetup.js'))).toMatch(/connectableAiProviders\s*\(/);
+  });
 
   it.each([LANES, ...GRIDS])('%s exists', (file) => {
     expect(fs.existsSync(path.join(SRC, file))).toBe(true);

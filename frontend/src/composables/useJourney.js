@@ -57,6 +57,11 @@ const JOURNEY_HYDRATION = HYDRATION.filter(([getter]) => Object.values(FACT_GETT
 // 'agnt' is AGNT Flash, which every signed-in account has: not a choice.
 const AI_KEYS = new Set([...AI_PROVIDERS_WITH_API, 'local'].map((key) => String(key).toLowerCase()).filter((key) => key !== 'agnt'));
 
+/** The connected ids that are an AI of the account's own: every AI provider but AGNT Flash. */
+export function ownAiIds(connectedIds) {
+  return (Array.isArray(connectedIds) ? connectedIds : []).map((id) => String(id).toLowerCase()).filter((id) => AI_KEYS.has(id));
+}
+
 /** Counts the journey reads, from the live store. Exported for its spec. */
 export function readFacts(store) {
   const facts = emptyFacts();
@@ -64,7 +69,7 @@ export function readFacts(store) {
   for (const [fact, getter] of Object.entries(FACT_GETTERS)) facts[fact] = len(getters[getter]);
   facts.chats = getters['contentOutputs/totalCount'] || len(getters['contentOutputs/outputs']);
   const connected = (store.state?.appAuth?.connectedApps || []).map((app) => String(app).toLowerCase()).filter((app) => app && app !== 'agnt');
-  facts.aiModels = connected.filter((app) => AI_KEYS.has(app)).length + len(store.state?.aiProvider?.customProviders);
+  facts.aiModels = ownAiIds(connected).length + len(store.state?.aiProvider?.customProviders);
   facts.apps = connected.filter((app) => !AI_KEYS.has(app)).length;
   return facts;
 }

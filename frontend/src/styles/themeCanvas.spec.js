@@ -7,7 +7,7 @@
  *
  *   1. `--color-background: #f1f0f5`            (styles/themes/_light.css)
  *   2. `body:not(.dark) main-area { #f5f5fa }`  (same file, 180 lines later)
- *   3. `.swatch-light { #f1f0f5 }`              (components/OnboardingModal.vue)
+ *   3. `.swatch-light { #f1f0f5 }`              (the onboarding theme picker, since removed)
  *
  * #2 is the element that actually paints the app backdrop, and it was a
  * near-duplicate rather than the token — so the two disagreed by 2 L*, and
@@ -39,9 +39,21 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const THEMES_DIR = path.join(SRC, 'styles', 'themes');
-const ONBOARDING = path.join(SRC, 'components', 'OnboardingModal.vue');
-
 const read = (p) => fs.readFileSync(p, 'utf8');
+
+/** Every component, for the swatch rule: a theme preview anywhere must show the real canvas. */
+function vueFiles(dir = SRC, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) vueFiles(full, out);
+    else if (entry.name.endsWith('.vue')) out.push(full);
+  }
+  return out;
+}
+/** `.swatch-<theme> { background: #hex }` previews in one source, as { name, hex }. */
+const swatchesIn = (src) =>
+  [...src.matchAll(/\.swatch-([a-z]+)\s*\{[^}]*background:\s*(#[0-9a-f]{6})/gi)].map((m) => ({ name: m[1].toLowerCase(), hex: m[2].toLowerCase() }));
 
 /** All theme stylesheets that declare their own canvas colour. */
 function themeFiles() {
@@ -117,17 +129,15 @@ describe('theme canvas colour', () => {
     expect(rule, 'main-area must not hardcode a colour').not.toMatch(/background:\s*#[0-9a-f]{3,8}/i);
   });
 
-  it('theme picker swatches match the canvas each theme actually renders', () => {
-    const onboarding = read(ONBOARDING);
-
-    for (const { name, css } of themeFiles()) {
-      const swatch = onboarding.match(new RegExp(`\\.swatch-${name}\\s*\\{[^}]*background:\\s*(#[0-9a-f]{6})`, 'i'));
-      if (!swatch) continue; // not every theme is offered in onboarding
-      expect(
-        swatch[1].toLowerCase(),
-        `.swatch-${name} previews ${swatch[1]} but the ${name} theme renders ${declaredBackground(css)}`
-      ).toBe(declaredBackground(css));
+  it('a theme picker swatch, wherever one is drawn, matches the canvas the theme renders', () => {
+    const canvas = Object.fromEntries(themeFiles().map(({ name, css }) => [name, declaredBackground(css)]));
+    const wrong = [];
+    for (const file of vueFiles()) {
+      for (const { name, hex } of swatchesIn(read(file))) {
+        if (canvas[name] && hex !== canvas[name]) wrong.push(`${path.relative(SRC, file)}: .swatch-${name} previews ${hex}, the theme renders ${canvas[name]}`);
+      }
     }
+    expect(wrong).toEqual([]);
   });
 
   it('light body text is painted by the token, not a fourth copy of it', () => {
@@ -197,10 +207,8 @@ describe('theme canvas colour', () => {
     }
   });
 
-  it('finds the swatches it claims to check (anti-vacuity)', () => {
-    const onboarding = read(ONBOARDING);
-    const checked = themeFiles().filter((t) => new RegExp(`\\.swatch-${t.name}\\s*\\{`, 'i').test(onboarding));
-    expect(checked.length).toBeGreaterThanOrEqual(4);
-    expect(checked.map((t) => t.name)).toContain('light');
+  it('the swatch rule reads a swatch when there is one (negative control)', () => {
+    expect(swatchesIn('.swatch-light { width: 8px; background: #F1F0F5; }')).toEqual([{ name: 'light', hex: '#f1f0f5' }]);
+    expect(themeFiles().map((t) => t.name)).toContain('light');
   });
 });

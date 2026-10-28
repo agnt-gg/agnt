@@ -4,221 +4,37 @@
 
   <Transition name="modal-fade">
     <div v-if="show" class="onboarding-overlay" @click.self="handleSkip">
-      <div class="onboarding-modal">
-        <!-- Progress Indicator -->
-        <div class="progress-dots">
-          <div v-for="step in totalSteps" :key="step" class="dot" :class="{ active: step === currentStep, completed: step < currentStep }"></div>
+      <div class="onboarding-modal" role="dialog" aria-modal="true" aria-label="Set up AGNT">
+        <button type="button" class="onboarding-close" aria-label="Skip setup" data-action="skip-setup" @click="handleSkip">×</button>
+
+        <!-- The first run IS the setup: your AI, Google, your phone
+             (FirstRunSetup, shared with AGNT One's first chat). Theme, display
+             name and workspace folder all have defaults and live in Settings. -->
+        <FirstRunSetup v-if="currentStepId === 'setup'" frame="modal" @finish="afterSetup" />
+
+        <!-- Import from other AI tools: only when this machine has something
+             worth offering, and reachable nowhere else. -->
+        <div v-else-if="currentStepId === 'import'" class="step import-step">
+          <h2>Bring your setup with you</h2>
+          <p class="subtitle">You've already built things in other AI tools.</p>
+          <HarnessImport :importer="harnessImport" />
         </div>
 
-        <!-- Step Content -->
-        <Transition :name="transitionName" mode="out-in">
-          <div :key="currentStep" class="step-content">
-            <!-- Step 1: Welcome -->
-            <div v-if="currentStepId === 'welcome'" class="step welcome-step">
-              <img src="/images/agnt-logo.png" alt="AGNT Logo" class="logo-large" />
-              <h1>Welcome to <span style="color: var(--color-primary)">AGNT</span>, {{ userName }}!</h1>
-              <p class="subtitle">Your AI-powered automation workspace is ready to go.</p>
-              <p class="description">Let's get you started in just a few quick steps.</p>
-            </div>
-
-            <!-- Step 2: Theme Selection -->
-            <div v-if="currentStepId === 'theme'" class="step theme-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="5"></circle>
-                  <line x1="12" y1="1" x2="12" y2="3"></line>
-                  <line x1="12" y1="21" x2="12" y2="23"></line>
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                  <line x1="1" y1="12" x2="3" y2="12"></line>
-                  <line x1="21" y1="12" x2="23" y2="12"></line>
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                </svg>
-              </div>
-              <h2>Choose Your Theme</h2>
-              <p class="subtitle">Pick a look that suits your style</p>
-              <div class="theme-grid">
-                <button
-                  v-for="theme in availableThemes"
-                  :key="theme.id"
-                  class="theme-tile"
-                  :class="{ active: currentTheme === theme.id }"
-                  @click="selectTheme(theme.id)"
-                >
-                  <div class="theme-swatch" :class="'swatch-' + theme.id"></div>
-                  <span class="theme-tile-name">{{ theme.name }}</span>
-                </button>
-              </div>
-              <p class="hint" style="margin-top: 16px; text-align: center">You can change this anytime in Settings.</p>
-            </div>
-
-            <!-- Step 3: Profile Setup -->
-            <div v-if="currentStepId === 'profile'" class="step profile-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-              </div>
-              <h2>Set Up Your Profile</h2>
-              <p class="subtitle">How would you like to be known in AGNT?</p>
-              <div class="input-group">
-                <label for="pseudonym">Display Name</label>
-                <div class="input-with-status">
-                  <input
-                    id="pseudonym"
-                    v-model="pseudonym"
-                    type="text"
-                    placeholder="Enter your display name"
-                    @input="checkPseudonymAvailability"
-                    @keyup.enter="nextStep"
-                  />
-                  <div v-if="pseudonymStatus" class="status-indicator" :class="pseudonymStatus">
-                    <span v-if="pseudonymStatus === 'checking'">⏳</span>
-                    <span v-else-if="pseudonymStatus === 'available'">✓</span>
-                    <span v-else-if="pseudonymStatus === 'taken'">✗</span>
-                    <span v-else-if="pseudonymStatus === 'current'">✓</span>
-                  </div>
-                </div>
-                <p v-if="pseudonymStatus === 'current'" class="hint success">This is your current display name</p>
-                <p v-else-if="pseudonymStatus === 'available'" class="hint success">This name is available!</p>
-                <p v-else-if="pseudonymStatus === 'taken'" class="hint error">This name is already taken</p>
-                <p v-else-if="pseudonymStatus === 'checking'" class="hint">Checking availability...</p>
-                <p v-else class="hint">This is how you'll appear on leaderboards and in the community.</p>
-              </div>
-            </div>
-
-            <!-- Step 4: AI Provider Setup -->
-            <div v-if="currentStepId === 'provider'" class="step provider-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                </svg>
-              </div>
-              <h2>Choose your AI</h2>
-              <p class="subtitle">Click one to use it. Plans you already pay for sign in here too. You can change this any time.</p>
-
-              <!-- The one AI page: AGNT Flash, every plan and every API key,
-                   each one click (ProviderLanes). It replaced a summary screen
-                   that linked to this list as a second page. -->
-              <ProviderLanes
-                :providers="allProviders"
-                :connected-ids="connectedApps"
-                :codex-status="codexStatus"
-                :active-id="selectedProvider || ''"
-                included
-                @connect="connectProvider"
-                @submit-credential="saveApiKey"
-              />
-            </div>
-
-            <!-- Text Annie: right after the AI, because once a phone is linked
-                 everything else (plugins, workflows, connecting apps) can be
-                 asked for by text. Optional: Next skips it. -->
-            <div v-if="currentStepId === 'phone'" class="step phone-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                </svg>
-              </div>
-              <h2>Text Annie from your phone</h2>
-              <p class="subtitle">Link your number and you can ask for anything by text: install a plugin, run a workflow, check on work. You can skip this and do it later in Settings.</p>
-              <TextAnnieCard />
-            </div>
-
-            <!-- Step 5: Workspace Folder -->
-            <div v-if="currentStepId === 'workspace'" class="step workspace-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
-              </div>
-              <h2>Choose Your Workspace</h2>
-              <p class="subtitle">Where should AGNT save the files your agents create?</p>
-              <p class="description" style="margin-bottom: 24px">
-                This is the root folder for projects, generated code, and artifacts. You can change it anytime in the file tree settings.
-              </p>
-              <div class="input-group">
-                <WorkspacePicker
-                  v-model="workspaceRoot"
-                  input-id="workspaceRoot"
-                  label="Workspace Folder"
-                  :default-path="defaultWorkspaceRoot"
-                  :error="workspaceError"
-                  :placeholder="defaultWorkspaceRoot || 'Loading default...'"
-                  @submit="nextStep"
-                />
-              </div>
-            </div>
-
-            <!-- Import from other AI tools (conditional — only when there is
-                 something on this machine worth offering) -->
-            <div v-if="currentStepId === 'import'" class="step import-step">
-              <div class="icon-circle">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-              </div>
-              <h2>Bring Your Setup With You</h2>
-              <p class="subtitle">You've already built things in other AI tools.</p>
-
-              <HarnessImport :importer="harnessImport" />
-            </div>
-
-            <!-- Referral Bonus (conditional) -->
-            <div v-if="currentStepId === 'referral'" class="step referral-step">
-              <div class="celebration-icon">🎉</div>
-              <h2>Your first cloud month is free</h2>
-              <p class="subtitle" v-if="referrerName">
-                <strong>{{ referrerName }}</strong> invited you, so your first month of AGNT Cloud is on us.
-              </p>
-              <p class="subtitle" v-else>You joined through an invite, so your first month of AGNT Cloud is on us.</p>
-              <div class="bonus-display">
-                <div class="bonus-amount">+{{ referralBalance }} pts</div>
-                <p class="bonus-label">Referral Score</p>
-              </div>
-              <p class="description">Start Personal Cloud any time and the first month is free. Invite your own friends and each one who becomes a paying customer earns you a free month too.</p>
-            </div>
-
-            <!-- Final Step: Ready to Go -->
-            <div v-if="currentStepId === 'ready'" class="step ready-step">
-              <div class="success-icon">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="var(--color-primary)" stroke-width="2" />
-                  <path d="M9 12l2 2 4-4" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" />
-                </svg>
-              </div>
-              <h2>Your Workspace is Ready!</h2>
-              <p class="subtitle">You're all set to start building with AGNT.</p>
-              <div class="ready-summary">
-                <div class="summary-item" v-if="pseudonym">
-                  <span class="summary-label">Display Name:</span>
-                  <span class="summary-value">{{ pseudonym }}</span>
-                </div>
-                <div class="summary-item">
-                  <span class="summary-label">Theme:</span>
-                  <span class="summary-value" style="text-transform: capitalize">{{ currentTheme }}</span>
-                </div>
-              </div>
-            </div>
+        <!-- Referral bonus: only for someone who joined through an invite. -->
+        <div v-else-if="currentStepId === 'referral'" class="step referral-step">
+          <div class="celebration-icon">🎉</div>
+          <h2>Your first cloud month is free</h2>
+          <p class="subtitle">You joined through an invite, so your first month of AGNT Cloud is on us.</p>
+          <div class="bonus-display">
+            <div class="bonus-amount">+{{ referralBalance }} pts</div>
+            <p class="bonus-label">Referral Score</p>
           </div>
-        </Transition>
+          <p class="description">Start Personal Cloud any time and the first month is free. Invite your own friends and each one who becomes a paying customer earns you a free month too.</p>
+        </div>
 
-        <!-- Navigation Buttons -->
-        <div class="modal-actions">
-          <button v-if="currentStep > 1" @click="prevStep" class="btn-secondary">← Back</button>
-          <div class="spacer" v-else></div>
-
-          <button v-if="currentStep < finalStep" @click="handleSkip" class="btn-text">Skip Tour</button>
-
-          <button v-if="currentStep < finalStep" @click="nextStep" class="btn-primary">
-            {{ continueLabel }} →
-          </button>
-          <button v-else @click="complete" class="btn-primary btn-large">Start Building</button>
+        <div v-if="currentStepId !== 'setup'" class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn-primary" data-action="next" @click="nextStep">{{ nextLabel }} →</button>
         </div>
       </div>
     </div>
@@ -226,433 +42,103 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import ProviderLanes from '@/components/ProviderLanes.vue';
-import WorkspacePicker from '@/components/WorkspacePicker.vue';
+import FirstRunSetup from '@/views/_components/feature/FirstRunSetup.vue';
 import HarnessImport from '@/components/HarnessImport.vue';
 import { useHarnessImport } from '@/composables/useHarnessImport.js';
-import { API_CONFIG } from '@/tt.config.js';
-import { resolveProviderKey } from '@/store/app/aiProvider.js';
-import { useAiProviderConnect } from '@/composables/useAiProviderConnect.js';
-import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
-import { saveDisplayName } from '@/services/displayName.js';
-import TextAnnieCard from '@/views/Terminal/CenterPanel/screens/Settings/components/PhoneAccessSection/TextAnnieCard.vue';
+import { useJourney } from '@/composables/useJourney.js';
 
 export default {
   name: 'OnboardingModal',
-  components: {
-    SimpleModal,
-    ProviderLanes,
-    WorkspacePicker,
-    HarnessImport,
-    TextAnnieCard,
-  },
+  components: { SimpleModal, FirstRunSetup, HarnessImport },
   props: {
-    show: {
-      type: Boolean,
-      default: true,
-    },
+    show: { type: Boolean, default: true },
   },
   emits: ['complete', 'skip'],
   setup(props, { emit }) {
     const store = useStore();
     const modal = ref(null);
+    const journey = useJourney();
 
     // Owned here rather than inside HarnessImport, because whether the import
     // step EXISTS is this component's question and the answer lives in the
     // composable. A child cannot decide whether it should be rendered.
     const harnessImport = useHarnessImport();
-
-    // Theme data
-    const currentTheme = computed(() => store.getters['theme/currentTheme']);
-    const availableThemes = [
-      { id: 'dark', name: 'Dark' },
-      { id: 'cyberpunk', name: 'Cyberpunk' },
-      { id: 'midnight', name: 'Midnight' },
-      { id: 'ember', name: 'Ember' },
-      { id: 'nord', name: 'Nord' },
-      { id: 'hacker', name: 'Hacker' },
-      { id: 'light', name: 'Light' },
-      { id: 'rose', name: 'Rose' },
-    ];
-    const selectTheme = (themeId) => {
-      store.dispatch('theme/setTheme', themeId);
-    };
-
-    // User data
-    const userName = computed(() => {
-      // Prefer the actual name from the user record, then fall back to the
-      // pseudonym (which chains through email-prefix), then 'there'.
-      // Exclude the hardcoded 'User' fallback that the userPseudonym getter
-      // appends — we'd rather say "Welcome, there!" than "Welcome, User!".
-      const name = store.getters['userAuth/userName'];
-      if (name) return name;
-      const pseudo = store.state.userAuth?.userPseudonym;
-      if (pseudo) return pseudo;
-      const email = store.state.userAuth?.userEmail;
-      if (email) return email.split('@')[0];
-      return 'there';
-    });
-    const userPseudonym = computed(() => store.getters['userAuth/userPseudonym']);
     const referralBalance = computed(() => store.state.userStats?.referralBalance || 0);
-    const hasReferralBonus = computed(() => referralBalance.value > 0);
-
-    // State
-    const currentStep = ref(1);
-    const pseudonym = ref('');
-    const pseudonymStatus = ref(null); // 'checking', 'available', 'taken', 'current'
-    const transitionName = ref('slide-left');
-    let checkTimeout = null;
-
-    // Workspace folder step state — populated from filesystemService.getSettings().
-    // We keep `initialWorkspaceRoot` so we only PUT to the backend when the user
-    // actually changed something (avoids clobbering an existing setting with the
-    // same value and writing code-settings.json unnecessarily).
-    const workspaceRoot = ref('');
-    const defaultWorkspaceRoot = ref('');
-    const initialWorkspaceRoot = ref('');
-    const workspaceError = ref('');
-
-    // Provider state
-    const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => (store.getters['appAuth/connectedApps'] ?? store.state.appAuth?.connectedApps) || []);
-    const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
-    // The filter, sort and lane split now live in ProviderLanes.vue, which the
-    // chat's setup card renders too. This screen supplies the raw store state
-    // and nothing else — the copy that used to live here is what drifted.
-
-    // Check if a provider is connected
-    const isProviderConnected = (providerId) => {
-      const providerKey = resolveProviderKey(providerId);
-      return connectedApps.value.some((app) => app.toLowerCase() === providerKey);
-    };
-
-    // Check if at least one AI provider is connected
-    const hasAnyProviderConnected = computed(() => {
-      return (connectedApps.value || []).length > 0;
-    });
-
-    // The provider in use. The store picks it on first run (a subscription
-    // found on this machine, else AGNT Flash; see applyIncludedModelDefault);
-    // the AI step marks it "In use" and any tile changes it in one click.
-    const selectedProvider = computed(() => store.state.aiProvider.selectedProvider);
-
-    // The last step's own button is "Start Building"; every step before it
-    // continues. ("Finish" used to sit on the step BEFORE the last one.)
-    const continueLabel = computed(() => 'Continue');
 
     /**
-     * The steps this run of onboarding will show, in order.
-     *
-     * NAMED, NOT NUMBERED. Steps used to be addressed by index — `currentStep
-     * === 4` gated the provider requirement and `=== 5` saved the workspace —
-     * while the number of steps already varied with the referral bonus. Any
-     * new conditional step inserted above those two silently shifts them, and
-     * the symptom is not a crash: it is the provider gate quietly guarding the
-     * wrong screen and the workspace never being saved. Deriving ids from this
-     * one list makes position irrelevant.
+     * The screens this run shows, in order. NAMED, NOT NUMBERED: the two
+     * after the setup are conditional, and addressing steps by index is how a
+     * conditional step once made a gate guard the wrong screen.
      */
     const steps = computed(() => {
-      // The AI first and the phone second: with both, everything else can be
-      // done by asking Annie (from the 2026-10-27 GeniiNow onboarding).
-      const list = ['welcome', 'provider', 'phone', 'profile', 'theme', 'workspace'];
-      // Only when there is something to offer. Having Claude Code installed
-      // with every skill already in AGNT is a common state with nothing to
-      // import, and a step that exists only to say so wastes the one first run
-      // this user gets.
+      const list = ['setup'];
       if (harnessImport.hasAnythingToImport.value) list.push('import');
-      if (hasReferralBonus.value) list.push('referral');
-      list.push('ready');
+      if (referralBalance.value > 0) list.push('referral');
       return list;
     });
+    const index = ref(0);
+    const currentStepId = computed(() => steps.value[index.value] || 'setup');
+    const isLast = computed(() => index.value >= steps.value.length - 1);
+    // What the setup's done screen asked for; put in the composer at the end.
+    const pendingAsk = ref(null);
+    const nextLabel = computed(() => (!isLast.value ? 'Continue' : pendingAsk.value ? 'Ask Annie' : 'Start'));
 
-    const totalSteps = computed(() => steps.value.length);
-    const finalStep = computed(() => totalSteps.value);
-    /** The id of the step on screen. `currentStep` stays 1-based for the dots. */
-    const currentStepId = computed(() => steps.value[currentStep.value - 1] || 'welcome');
-    const referrerName = ref(null);
-
-    // Persists the workspace root if the user changed it. Returns true on
-    // success (or no-op), false if validation/network failed so callers can
-    // decide whether to advance the step.
-    const saveWorkspaceIfChanged = async () => {
-      workspaceError.value = '';
-      const trimmed = workspaceRoot.value.trim();
-      // Empty input means "stick with default" — no PUT needed.
-      if (!trimmed) return true;
-      if (trimmed === initialWorkspaceRoot.value) return true;
-      try {
-        await updateWorkspaceSettings(trimmed);
-        initialWorkspaceRoot.value = trimmed;
-        return true;
-      } catch (err) {
-        workspaceError.value = err?.message || 'Failed to save workspace folder';
-        return false;
-      }
-    };
-
-    // Methods
-    const nextStep = async () => {
-      // On provider step, require at least one connected provider
-      if (currentStepId.value === 'provider' && !hasAnyProviderConnected.value) {
-        await showAlert('Provider Required', 'Please connect at least one AI provider to continue. AGNT needs an AI provider to power chat, agents, and workflows.');
-        return;
-      }
-      // On workspace step, persist any changes before moving on so the user
-      // sees the same root in the file tree once onboarding finishes.
-      if (currentStepId.value === 'workspace') {
-        const ok = await saveWorkspaceIfChanged();
-        if (!ok) return;
-      }
-      if (currentStep.value < totalSteps.value) {
-        transitionName.value = 'slide-left';
-        currentStep.value++;
-      }
-    };
-
-    const prevStep = () => {
-      if (currentStep.value > 1) {
-        transitionName.value = 'slide-right';
-        currentStep.value--;
-      }
-    };
-
-    const complete = async () => {
-      // Save the display name if it changed. A failure never blocks finishing:
-      // the person is told, and can set it in Settings → Profile.
-      if (pseudonym.value.trim() && pseudonym.value.trim() !== userPseudonym.value) {
-        try {
-          await saveDisplayName(store, pseudonym.value);
-        } catch (error) {
-          await showAlert('Display name not saved', `${error.message} You can set it any time in Settings → Profile.`);
-        }
-      }
-
-      // Final safety net — if the user reached the end without ever advancing
-      // past the workspace step (e.g., back-and-forth navigation), still
-      // persist whatever they typed.
-      await saveWorkspaceIfChanged();
-
+    const complete = () => {
+      const ask = pendingAsk.value;
       emit('complete', 'ChatScreen');
+      // Opens the chat and types the request in; nothing is sent until Enter.
+      if (ask) journey.usePrompt(ask);
     };
-
-    const checkPseudonymAvailability = async () => {
-      // Clear previous timeout
-      if (checkTimeout) {
-        clearTimeout(checkTimeout);
-      }
-
-      const trimmedPseudonym = pseudonym.value.trim();
-
-      // If empty, clear status
-      if (!trimmedPseudonym) {
-        pseudonymStatus.value = null;
-        return;
-      }
-
-      // If it's the current pseudonym, mark as current
-      if (trimmedPseudonym === userPseudonym.value) {
-        pseudonymStatus.value = 'current';
-        return;
-      }
-
-      // Set checking status
-      pseudonymStatus.value = 'checking';
-
-      // Debounce the API call
-      checkTimeout = setTimeout(async () => {
-        try {
-          const token = store.state.userAuth.token;
-
-          // Use the same endpoint as ProfileSection - check if pseudonym is available
-          const response = await fetch(`${API_CONFIG.REMOTE_URL}/referrals/check-availability`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              pseudonym: trimmedPseudonym,
-            }),
-          });
-
-          // Check if response is ok before parsing
-          if (!response.ok) {
-            console.warn('Pseudonym check endpoint not available, assuming available');
-            pseudonymStatus.value = 'available';
-            return;
-          }
-
-          const contentType = response.headers.get('content-type');
-          if (!contentType || !contentType.includes('application/json')) {
-            console.warn('Pseudonym check endpoint returned non-JSON, assuming available');
-            pseudonymStatus.value = 'available';
-            return;
-          }
-
-          const data = await response.json();
-
-          // The endpoint returns { available: true/false }
-          if (data.available) {
-            pseudonymStatus.value = 'available';
-          } else {
-            pseudonymStatus.value = 'taken';
-          }
-        } catch (error) {
-          console.error('Error checking pseudonym availability:', error);
-          // On error, assume available (graceful degradation)
-          pseudonymStatus.value = 'available';
-        }
-      }, 500); // 500ms debounce
+    const nextStep = () => {
+      if (isLast.value) return complete();
+      index.value += 1;
     };
-
-    const showAlert = async (title, message) => {
-      await modal.value.showModal({
-        title,
-        message,
-        confirmText: 'OK',
-        showCancel: false,
-      });
+    const afterSetup = ({ ask } = {}) => {
+      pendingAsk.value = ask || null;
+      nextStep();
     };
-
-    // Same pipeline as the chat's no-model card (useAiProviderConnect).
-    const { connect: connectProvider, saveApiKey } = useAiProviderConnect(modal, { store, source: 'onboarding' });
 
     const handleSkip = async () => {
-      // Safety check for modal ref
       if (!modal.value) {
         console.error('Modal ref not available');
         return;
       }
-
-      const hasProvider = hasAnyProviderConnected.value;
+      const hasProvider = connectedApps.value.length > 0;
       const message = hasProvider
-        ? 'Are you sure you want to skip the tour?<br/>You can always restart it from Tour Settings.'
+        ? 'Are you sure you want to skip setup?<br/>You can always restart it from Tour Settings.'
         : 'You haven\'t connected an AI provider yet.<br/><br/>Chat, agents, and workflows <strong>won\'t work</strong> without one. You can add a provider later in Settings &gt; Connectors.';
-
       const confirmed = await modal.value.showModal({
-        title: hasProvider ? 'Skip Onboarding?' : 'Skip Without Provider?',
+        title: hasProvider ? 'Skip setup?' : 'Skip Without Provider?',
         message,
         confirmText: 'Skip Anyway',
         cancelText: 'Go Back',
         showCancel: true,
         confirmClass: 'btn-danger',
       });
-
-      if (confirmed) {
-        emit('skip');
-      }
+      if (confirmed) emit('skip');
     };
 
-    // Watch for userPseudonym changes and populate the field
-    watch(
-      userPseudonym,
-      (newValue) => {
-        if (newValue && newValue !== 'User' && !pseudonym.value) {
-          pseudonym.value = newValue;
-          // Set status to current since it's their existing pseudonym
-          pseudonymStatus.value = 'current';
-        }
-      },
-      { immediate: true },
-    );
-
-    // Fetch referrer info if has bonus
-    onMounted(async () => {
-      // Deliberately NOT awaited. This looks at the disk for other AI tools and
-      // decides whether a whole step exists; awaiting it here would put a
-      // filesystem scan in front of the welcome screen. It resolves long
-      // before the user reaches the step it controls, and resolves to "nothing
-      // found" if it cannot answer.
+    onMounted(() => {
+      // Deliberately NOT awaited: a filesystem scan must never sit in front of
+      // the setup. It resolves long before the step it controls is reached,
+      // and to "nothing found" if it cannot answer.
       harnessImport.detect();
-
-      // Fetch providers if not already loaded
-      if (allProviders.value.length === 0) {
-        await store.dispatch('appAuth/fetchAllProviders');
-      }
-
-      // Fetch connected apps to check provider status
-      await store.dispatch('appAuth/fetchConnectedApps');
-
-      // No provider is picked here. The store makes the first-run pick once
-      // the server confirms the account has no default (loadUserSettings).
-      // This used to pick too, from whatever loaded first: it lost to an
-      // earlier AGNT Flash save on fresh installs, and could overwrite an
-      // existing account's default before its settings had arrived.
-
-      // Fetch workspace settings so the workspace step shows the user's
-      // current root (or the platform default if they've never changed it).
-      try {
-        const wsSettings = await getWorkspaceSettings();
-        defaultWorkspaceRoot.value = wsSettings.defaultRoot || '';
-        const current = wsSettings.workspaceRoot || '';
-        workspaceRoot.value = current;
-        initialWorkspaceRoot.value = current;
-      } catch (err) {
-        console.warn('Failed to load workspace settings:', err);
-      }
-
-      // ALWAYS fetch pseudonym to ensure it's loaded
-      await store.dispatch('userAuth/fetchPseudonym');
-
-      // Initialize pseudonym field with the fetched value, but skip the
-      // generic 'User' fallback from the getter — an empty input with a
-      // descriptive placeholder is better than pre-filling 'User'.
-      const resolvedPseudo = userPseudonym.value;
-      if (resolvedPseudo && resolvedPseudo !== 'User') {
-        pseudonym.value = resolvedPseudo;
-        pseudonymStatus.value = 'current';
-      }
-
-      if (hasReferralBonus.value) {
-        try {
-          // Try to get referrer info from referral tree
-          await store.dispatch('userStats/fetchReferralTree');
-          // The referrer would be in the tree data if available
-          // For now, we'll just show the bonus without the referrer name
-        } catch (error) {
-          console.error('Failed to fetch referrer info:', error);
-        }
-      }
     });
 
     return {
       modal,
-      currentStep,
-      currentStepId,
       steps,
-      totalSteps,
-      finalStep,
+      currentStepId,
       harnessImport,
-      userName,
-      pseudonym,
-      pseudonymStatus,
-      hasReferralBonus,
       referralBalance,
-      referrerName,
-      transitionName,
-      allProviders,
-      connectedApps,
-      codexStatus,
-      selectedProvider,
-      continueLabel,
-      currentTheme,
-      availableThemes,
-      workspaceRoot,
-      defaultWorkspaceRoot,
-      workspaceError,
-      selectTheme,
+      nextLabel,
       nextStep,
-      prevStep,
-      complete,
+      afterSetup,
       handleSkip,
-      connectProvider,
-      saveApiKey,
-      isProviderConnected,
-      hasAnyProviderConnected,
-      checkPseudonymAvailability,
     };
   },
 };
@@ -685,68 +171,43 @@ export default {
   background: linear-gradient(var(--color-popup), var(--color-popup)), var(--color-background);
   border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
-  padding: 48px;
-  max-width: 700px;
+  padding: 36px 40px 28px;
+  max-width: 780px;
   width: 100%;
-  max-height: 90vh;
+  max-height: 92vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
   position: relative;
 }
 
-/* Progress Dots */
-.progress-dots {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 40px;
+.onboarding-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
 }
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-darker-2);
-  transition: all 0.3s ease;
-}
-
-.dot.active {
-  background: var(--color-primary);
-  transform: scale(1.3);
-  box-shadow: var(--glow-accent-strong);
-}
-
-.dot.completed {
-  background: var(--color-primary);
-  opacity: 0.5;
-}
-
-/* Step Content */
-.step-content {
-  min-height: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.onboarding-close:hover {
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .step {
   text-align: center;
   width: 100%;
-}
-
-.step h1 {
-  font-size: 2.2em;
-  margin: 24px 0 12px;
-  /* background: linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text; */
+  padding-top: 12px;
 }
 
 .step h2 {
   font-size: 1.8em;
-  margin: 24px 0 12px;
+  margin: 12px 0;
   color: var(--color-text);
 }
 
@@ -762,237 +223,6 @@ export default {
   opacity: 0.8;
   line-height: 1.6;
 }
-
-/* Welcome Step */
-.logo-large {
-  width: 120px;
-  height: 120px;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-/* Profile Step */
-.icon-circle {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 24px;
-  color: var(--on-fill-accent);
-}
-
-.input-group {
-  margin-top: 32px;
-  text-align: left;
-  max-width: 400px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.input-group label {
-  display: block;
-  font-size: 0.9em;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-}
-
-.input-group input {
-  width: 100%;
-  padding: 12px 16px;
-  font-size: 1.1em;
-  font-family: var(--font-family-primary);
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  color: var(--color-text);
-  transition: all 0.2s ease;
-}
-
-.input-group input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
-}
-
-.input-with-status {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-with-status input {
-  padding-right: 48px;
-}
-
-.status-indicator {
-  position: absolute;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 1.2em;
-}
-
-.status-indicator.checking {
-  background: var(--color-darker-1);
-}
-
-.status-indicator.available,
-.status-indicator.current {
-  background: rgba(var(--primary-rgb), 0.2);
-  color: var(--color-primary);
-}
-
-.status-indicator.taken {
-  background: rgba(255, 0, 0, 0.2);
-  color: var(--color-red);
-}
-
-/* Provider step: the way back from the full list to the ready screen. */
-.provider-back {
-  display: block;
-  margin: 8px auto -8px;
-  padding: 6px 10px;
-}
-
-.hint {
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-  opacity: 0.7;
-  margin-top: 8px;
-}
-
-.hint.success {
-  color: var(--color-primary);
-  opacity: 1;
-}
-
-.hint.error {
-  color: var(--color-red);
-  opacity: 1;
-}
-
-.hint code {
-  background: var(--color-darker-1);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.92em;
-}
-
-/* The workspace field lives in WorkspacePicker.vue now, shared with the file
-   tree's settings dialog. It needs more room than the other single-line inputs
-   because it carries a Browse button beside a path. */
-.workspace-step .input-group {
-  max-width: 520px;
-}
-
-/* Theme Step */
-.theme-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: center;
-  margin-top: 28px;
-  max-width: 460px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.theme-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
-  border: 2px solid var(--color-darker-2);
-  border-radius: 12px;
-  cursor: pointer;
-  background: transparent;
-  transition: all 0.2s ease;
-  width: 96px;
-  font-family: inherit;
-}
-
-.theme-tile:hover {
-  border-color: var(--color-text-muted);
-  background: var(--color-darker-0);
-  transform: translateY(-2px);
-}
-
-.theme-tile.active {
-  border-color: var(--color-primary);
-  background: rgba(var(--primary-rgb), 0.1);
-}
-
-.theme-swatch {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-}
-
-.swatch-dark {
-  background: #10101f;
-  border-color: #19ef83;
-}
-.swatch-cyberpunk {
-  background: #0b0b30;
-  border-color: #19ef83;
-}
-.swatch-midnight {
-  background: #080818;
-  border-color: #a070ff;
-}
-.swatch-ember {
-  background: #120c08;
-  border-color: #e09040;
-}
-.swatch-nord {
-  background: #2e3440;
-  border-color: #88c0d0;
-}
-.swatch-hacker {
-  background: #000000;
-  border-color: #19ef83;
-}
-.swatch-light {
-  background: #fcfcfc;
-  /* Light shares the ONE brand palette with dark; its primary is brand pink.
-     #e53d8f is that pink — NOT the retired light-only #d03580. */
-  border-color: #e53d8f;
-}
-.swatch-rose {
-  background: #faf4f4;
-  border-color: #c8507a;
-}
-
-.theme-tile-name {
-  font-size: 0.85em;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-/* Provider Step — the grid, tiles and lane copy live in ProviderLanes.vue,
-   which the chat's setup card renders too. Both screens kept their own near
-   copy of this block, with different gaps and hover colours, which is how they
-   came to disagree about the same list. */
 
 /* Referral Step */
 .celebration-icon {
@@ -1033,70 +263,18 @@ export default {
   letter-spacing: 0.1em;
 }
 
-/* Ready Step */
-.success-icon {
-  margin-bottom: 24px;
-  animation: scaleIn 0.5s ease-out;
-}
-
-@keyframes scaleIn {
-  0% {
-    transform: scale(0);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.ready-summary {
-  background: var(--color-darker-0);
-  border: 1px solid var(--color-darker-1);
-  border-radius: 16px;
-  padding: 24px;
-  margin-top: 32px;
-  text-align: left;
-}
-
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-darker-0);
-}
-
-.summary-item:last-child {
-  border-bottom: none;
-}
-
-.summary-label {
-  color: var(--color-text-muted);
-  font-size: 0.95em;
-}
-
-.summary-value {
-  color: var(--color-text);
-  font-weight: 600;
-}
-
-/* Modal Actions
-   Pinned to the bottom of the modal's scroll area. The modal scrolls inside
-   90vh, and the AI step (every provider on one page) is taller than that, so
-   an unpinned row left Continue below the fold behind a hidden scrollbar.
-   The negative margins cancel the modal's 48px padding so the bar spans the
-   full width and sits flush with the bottom edge while content scrolls under. */
+/* Modal Actions: pinned to the bottom of the modal's scroll area, so the
+   button stays in reach while a long import list scrolls under it. */
 .modal-actions {
   position: sticky;
-  bottom: -48px;
+  bottom: -28px;
   z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin: 40px -48px -48px;
-  padding: 20px 48px 28px;
+  margin: 32px -40px -28px;
+  padding: 20px 40px 24px;
   border-top: 1px solid var(--color-darker-1);
   background: linear-gradient(var(--color-popup), var(--color-popup)), var(--color-background);
   border-radius: 0 0 24px 24px;
@@ -1106,53 +284,22 @@ export default {
   flex: 1;
 }
 
-.btn-primary,
-.btn-secondary,
-.btn-text {
+.btn-primary {
   padding: 12px 24px;
   border-radius: 999px;
+  border: none;
+  background: var(--color-primary);
+  color: var(--on-fill-accent);
   font-family: var(--font-family-primary);
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: none;
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: var(--on-fill-accent);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.3);
-}
-
-.btn-primary.btn-large {
-  padding: 16px 48px;
-  font-size: 1.2em;
-}
-
-.btn-secondary {
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  color: var(--color-text);
-}
-
-.btn-secondary:hover {
-  background: var(--color-darker-0);
-  border-color: var(--color-text-muted);
-}
-
-.btn-text {
-  background: transparent;
-  color: var(--color-text-muted);
-  padding: 12px 16px;
-}
-
-.btn-text:hover {
-  color: var(--color-text);
 }
 
 /* Transitions */
@@ -1199,62 +346,14 @@ export default {
   }
 }
 
-.slide-left-enter-active,
-.slide-left-leave-active,
-.slide-right-enter-active,
-.slide-right-leave-active {
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.slide-left-enter-from {
-  opacity: 0;
-  transform: translateX(20px);
-}
-
-.slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-20px);
-}
-
-.slide-right-enter-from {
-  opacity: 0;
-  transform: translateX(-20px);
-}
-
-.slide-right-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
-}
-
-/* Responsive */
 @media (max-width: 768px) {
   .onboarding-modal {
-    padding: 32px 24px;
-  }
-
-  .features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .step h1 {
-    font-size: 1.8em;
-  }
-
-  .step h2 {
-    font-size: 1.5em;
-  }
-
-  .theme-grid {
-    max-width: 100%;
-  }
-
-  .theme-tile {
-    width: 80px;
-    padding: 10px 6px;
+    padding: 28px 18px 20px;
   }
 
   .modal-actions {
-    flex-wrap: wrap;
+    margin: 24px -18px -20px;
+    padding: 16px 18px 20px;
   }
 }
 </style>

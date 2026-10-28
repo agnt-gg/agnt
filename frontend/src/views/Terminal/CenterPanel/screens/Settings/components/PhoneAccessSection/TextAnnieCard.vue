@@ -1,6 +1,6 @@
 <template>
   <section class="ta" :aria-busy="loading">
-    <div class="ta-head">
+    <div v-if="showHeader" class="ta-head">
       <div>
         <h3 class="ta-title"><i class="fas fa-comment-dots"></i> Text Annie</h3>
         <p class="ta-sub">Message Annie from iMessage, RCS or SMS. She answers from this AGNT, with its tools and models. No app to install.</p>
@@ -111,13 +111,24 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { toSvg } from '@/utils/qrcode.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import * as textAnnie from '@/services/textAnnieService.js';
 import { tenantRequest } from '@/utils/teamClient.js';
 
+defineProps({
+  /** Off where the host already says what Text Annie is (the first-run setup). */
+  showHeader: { type: Boolean, default: true },
+});
+// Every status the service returns, so a host can tell when a phone links
+// without polling the service a second time.
+const emit = defineEmits(['state']);
+
 const state = ref(null);
+watch(state, (value) => {
+  if (value) emit('state', value);
+});
 const loading = ref(true);
 const loadError = ref('');
 const error = ref('');

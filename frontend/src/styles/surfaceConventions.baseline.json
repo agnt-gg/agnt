@@ -6,7 +6,6 @@
   "canvas/widgets/BrowserAgentWidget.vue": 1,
   "canvas/widgets/BrowserStreamView.vue": 1,
   "components/MobileLite/QrScanner.vue": 3,
-  "components/OnboardingModal.vue": 9,
   "components/TermsPrivacyModal.vue": 6,
   "components/common/BoundedJson.vue": 2,
   "components/common/ProviderModelSearch.vue": 1,
