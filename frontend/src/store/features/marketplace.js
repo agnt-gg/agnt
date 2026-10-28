@@ -1,5 +1,6 @@
 import { API_CONFIG } from '@/tt.config.js';
 import { publishFailureMessage } from '@/services/pluginPublishCheck.js';
+import { openCheckout } from '@/services/checkoutLink.js';
 
 /**
  * Where each installable asset type is saved on the LOCAL backend once the
@@ -358,14 +359,9 @@ export default {
           throw new Error(data.error || 'Failed to create checkout session');
         }
 
-        // Open Stripe checkout in external browser (for Electron)
-        if (data.url) {
-          if (window.electron?.openExternalUrl) {
-            window.electron.openExternalUrl(data.url);
-          } else {
-            window.open(data.url, '_blank');
-          }
-        }
+        // Stripe checkout in the user's own browser, through agnt.gg's checkout bridge when the
+        // server signed one, so the purchase joins the buyer's website visit (services/checkoutLink.js).
+        openCheckout(data);
 
         return data;
       } catch (error) {

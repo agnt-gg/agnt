@@ -3,6 +3,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import LicenseValidator from '@/services/LicenseValidator.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { setMediaCookie, clearMediaCookie } from '@/services/mediaAuth.js';
+import { openCheckout } from '@/services/checkoutLink.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIdentity.js';
@@ -844,14 +845,9 @@ export default {
           }
         );
 
-        // Open Stripe checkout in external browser (for Electron)
-        if (response.data.url) {
-          if (window.electron?.openExternalUrl) {
-            window.electron.openExternalUrl(response.data.url);
-          } else {
-            window.open(response.data.url, '_blank');
-          }
-        }
+        // Stripe checkout in the user's own browser, through agnt.gg's checkout bridge when the
+        // server signed one, so the purchase joins the buyer's website visit (services/checkoutLink.js).
+        openCheckout(response.data);
 
         return response.data;
       } catch (error) {
