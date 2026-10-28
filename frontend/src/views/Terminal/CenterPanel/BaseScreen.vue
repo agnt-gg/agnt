@@ -302,6 +302,7 @@ import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
+import { modelDisplayLabel } from '@/utils/modelDisplayLabel.js';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 import { resolvePanel, resolveInput } from './screenRegistry.js';
@@ -980,10 +981,14 @@ export default {
       () => !!(conversationAi.value?.provider && conversationAi.value?.model),
     );
 
+    // Shown by its display name (utils/modelDisplayLabel: AGNT's own models
+    // by product name, every other model by its id).
     const effectiveModelLabel = computed(() =>
-      isConversationModelPinned.value
-        ? conversationAi.value.model
-        : store.state.aiProvider?.selectedModel || '',
+      modelDisplayLabel(
+        isConversationModelPinned.value
+          ? conversationAi.value.model
+          : store.state.aiProvider?.selectedModel || '',
+      ),
     );
 
     const providerButtonTooltip = computed(() => {
