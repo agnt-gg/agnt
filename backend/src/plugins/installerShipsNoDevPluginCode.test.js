@@ -43,10 +43,13 @@ describe('the installer ships no development-only plugin code', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('sentinel.agnt is still a complete plugin (its tools are there)', () => {
-    const entries = archiveEntries(path.join(pluginsDir, 'marketplace-default', 'sentinel.agnt'));
-    expect(entries.some((entry) => entry.endsWith('manifest.json'))).toBe(true);
-    expect(entries.some((entry) => entry.includes('/tools/'))).toBe(true);
+  it('Sentinel comes from the online marketplace, not the bundled catalogue', () => {
+    // Published to api.agnt.gg as AGNT (official, 1.0.1) on 2026-10-28; the
+    // installer merges the online catalogue in (PluginInstaller.getAvailablePlugins).
+    const catalogue = JSON.parse(fs.readFileSync(path.join(pluginsDir, 'marketplace.json'), 'utf8'));
+    const entries = catalogue.plugins || catalogue;
+    expect(entries.some((entry) => entry.name === 'sentinel')).toBe(false);
+    expect(fs.existsSync(path.join(pluginsDir, 'marketplace-default', 'sentinel.agnt'))).toBe(false);
   });
 
   it('the Electron build leaves plugin sources (backend/plugins/dev) out', () => {

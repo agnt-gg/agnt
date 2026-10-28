@@ -1,6 +1,6 @@
 {
   "name": "agnt-sentinel-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sentinel security auditor for AGNT — evidence-backed code & web security reports.",
   "type": "module",
   "main": "tools/audit.js",

@@ -1,6 +1,6 @@
 {
   "name": "sentinel",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Drop a URL, local path, or git repo and get a comprehensive, evidence-backed security report with exact file:line:CWE findings and concrete fixes. Real scanners find the bugs (semgrep, detect-secrets, dependency audits, web recon); the LLM only explains and prioritizes — it can never invent a finding.",
   "author": "AGNT",
   "icon": "shield-halved",
