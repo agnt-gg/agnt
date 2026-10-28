@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, reactive } from 'vue';
 
 const dispatch = vi.fn(() => Promise.resolve());
@@ -8,35 +8,48 @@ const state = reactive({ appAuth: { connectedApps: [] }, aiProvider: { customPro
 vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters, state }) }));
 const hydrate = vi.hoisted(() => vi.fn(() => Promise.resolve(new Set())));
 vi.mock('@/services/accountInventory.js', async (importOriginal) => ({ ...(await importOriginal()), hydrate }));
+const getStatus = vi.hoisted(() => vi.fn());
+vi.mock('@/services/textAnnieService.js', () => ({ getStatus }));
 
 import OneCapsule from './OneCapsule.vue';
-import { AHA_PROMPT, GOOGLE_PROMPT, flagsKey } from './oneModel.js';
+import { flagsKey } from './oneModel.js';
 
-const mountCapsule = () => mount(OneCapsule, { attachTo: document.body });
-const open = async (w) => { await w.find('[data-testid="one-capsule"]').trigger('click'); };
+const NO_PHONE = { phones: [], plan: { eligible: true } };
+const LINKED = { phones: [{ id: 'p1', state: 'active' }], plan: { eligible: true } };
+const mountCapsule = async () => {
+  const w = mount(OneCapsule, { attachTo: document.body });
+  await flushPromises();
+  return w;
+};
+const open = async (w) => {
+  await w.find('[data-testid="one-capsule"]').trigger('click');
+  await flushPromises();
+};
 
 describe('OneCapsule', () => {
   beforeEach(() => {
     localStorage.clear();
     dispatch.mockClear();
     hydrate.mockClear();
+    getStatus.mockReset();
+    getStatus.mockResolvedValue(NO_PHONE);
     for (const key of Object.keys(getters)) if (key !== 'userAuth/userEmail') delete getters[key];
     state.appAuth.connectedApps = [];
-    state.chat.messages = [];
   });
 
-  it('starts at 2 of 7: getting and opening AGNT are done by the time it shows', () => {
-    const w = mountCapsule();
-    expect(w.find('[data-testid="one-capsule"]').text()).toBe('2 of 7');
-    expect(w.find('.one-ring-value').attributes('style')).toContain('stroke-dashoffset: 35.91');
+  it('starts at 0 of 3: the first-run setup\'s three steps', async () => {
+    const w = await mountCapsule();
+    expect(w.find('[data-testid="one-capsule"]').text()).toBe('0 of 3');
+    expect(w.find('.one-ring-value').attributes('style')).toContain('stroke-dashoffset: 50.27');
     w.unmount();
   });
 
   const hydrated = () => hydrate.mock.calls.flatMap((call) => call[1].map(([getter]) => getter)).sort();
 
-  it('loads only what it reads, and the connected apps', () => {
-    const w = mountCapsule();
+  it('loads only what it reads: the connected apps and Text Annie\'s status', async () => {
+    const w = await mountCapsule();
     expect(dispatch).toHaveBeenCalledWith('appAuth/fetchConnectedApps');
+    expect(getStatus).toHaveBeenCalled();
     expect(hydrated()).toEqual(['agents/allAgents', 'contentOutputs/outputs', 'skills/allSkills', 'tools/customTools', 'workflows/allWorkflows']);
     w.unmount();
   });
@@ -44,7 +57,7 @@ describe('OneCapsule', () => {
   // Found on a fresh free account: every load logged a 403 from /api/schedules,
   // which only paid plans may read (planEntitlements.requireScheduledGoals).
   it('asks for schedules only once the plan includes them, even when the plan arrives late', async () => {
-    const w = mountCapsule();
+    const w = await mountCapsule();
     expect(hydrated()).not.toContain('schedules/allSchedules');
     getters['userAuth/planType'] = 'personal';
     await nextTick();
@@ -52,80 +65,80 @@ describe('OneCapsule', () => {
     w.unmount();
   });
 
-  it('opens on all seven steps, with the next one marked and finished ones inert', async () => {
+  it('opens on the three steps, your AI next, the phone marked Pro', async () => {
     getters['contentOutputs/totalCount'] = 4;
-    const w = mountCapsule();
+    const w = await mountCapsule();
     await open(w);
-    const steps = w.findAll('.one-step');
-    expect(steps).toHaveLength(7);
+    expect(w.findAll('.one-step').map((s) => s.attributes('data-testid'))).toEqual(['one-step-ai', 'one-step-google', 'one-step-phone']);
     // Connect your AI comes first and is required (2026-10-21): next even after chatting on Flash.
-    expect(steps.map((s) => s.attributes('data-testid')).slice(2, 4)).toEqual(['one-step-brain', 'one-step-chat']);
-    expect(w.find('.one-step.is-current').attributes('data-testid')).toBe('one-step-brain');
-    expect(w.find('.one-step.is-current').text()).toContain('Connect your AI');
+    expect(w.find('.one-step.is-current').attributes('data-testid')).toBe('one-step-ai');
     expect(w.find('.one-step.is-current .one-step-ask').text()).toBe('Connect');
-    expect(w.find('[data-testid="one-step-chat"]').attributes('disabled')).toBeDefined();
-    expect(w.find('[data-testid="one-step-brain"]').text()).not.toContain('optional');
+    expect(w.find('[data-testid="one-step-phone"] .one-step-optional').text()).toBe('Pro');
     w.unmount();
   });
 
-  it('a step asks Annie, and closes', async () => {
-    const w = mountCapsule();
+  it('a step opens the setup at that step, and closes', async () => {
+    const w = await mountCapsule();
     await open(w);
     await w.find('[data-testid="one-step-google"]').trigger('click');
-    expect(w.emitted('ask')).toEqual([[GOOGLE_PROMPT]]);
+    expect(w.emitted('open-setup')).toEqual([['google']]);
+    expect(w.emitted('ask')).toBeUndefined();
     expect(w.find('[data-testid="one-pop"]').exists()).toBe(false);
     w.unmount();
   });
 
-  it('the model step opens the picker instead of asking in the chat', async () => {
-    const w = mountCapsule();
+  // A phone links inside the setup; the capsule hears about it the next time it opens.
+  it('looks at Text Annie again each time it opens', async () => {
+    state.appAuth.connectedApps = ['google', 'openai-codex'];
+    const w = await mountCapsule();
+    expect(w.find('[data-testid="one-capsule"]').text()).toBe('2 of 3');
+    getStatus.mockResolvedValue(LINKED);
     await open(w);
-    await w.find('[data-testid="one-step-brain"]').trigger('click');
-    expect(w.emitted('open-models')).toHaveLength(1);
-    expect(w.emitted('ask')).toBeUndefined();
-    w.unmount();
-  });
-
-  it('the ah-ha counts only once it is asked with Google there to answer it', async () => {
-    const w = mountCapsule();
-    state.chat.messages = [{ role: 'user', content: AHA_PROMPT }];
-    await nextTick();
-    expect(JSON.parse(localStorage.getItem(flagsKey('maya@example.com')) || '{}').aha).not.toBe(true);
-
-    state.appAuth.connectedApps = ['google'];
-    state.chat.messages = [{ role: 'user', content: AHA_PROMPT }, { role: 'assistant', content: 'Connected.' }, { role: 'user', content: 'ok, prep me for tomorrow' }];
-    await nextTick();
-    expect(JSON.parse(localStorage.getItem(flagsKey('maya@example.com'))).aha).toBe(true);
-    await open(w);
-    expect(w.find('[data-testid="one-step-aha"]').classes()).toContain('is-done');
+    expect(w.find('[data-testid="one-step-phone"]').classes()).toContain('is-done');
     w.unmount();
   });
 
   it('says All set once every step is done, an AI of your own included', async () => {
-    getters['contentOutputs/totalCount'] = 2;
-    getters['workflows/allWorkflows'] = [{ id: 'w1' }];
     state.appAuth.connectedApps = ['google', 'openai-codex'];
-    localStorage.setItem(flagsKey('maya@example.com'), JSON.stringify({ aha: true }));
-    const w = mountCapsule();
+    getStatus.mockResolvedValue(LINKED);
+    const w = await mountCapsule();
     expect(w.find('[data-testid="one-capsule"]').text()).toBe('All set');
     expect(w.find('.one-capsule').classes()).toContain('is-set');
     w.unmount();
   });
 
+  it('is All set without a phone on a plan that cannot text', async () => {
+    state.appAuth.connectedApps = ['google', 'openai-codex'];
+    getStatus.mockResolvedValue({ phones: [], plan: { eligible: false } });
+    const w = await mountCapsule();
+    expect(w.find('[data-testid="one-capsule"]').text()).toBe('All set');
+    w.unmount();
+  });
+
+  it('still counts what it can see when Text Annie cannot be reached', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getStatus.mockRejectedValue(new Error('offline'));
+    state.appAuth.connectedApps = ['openai-codex'];
+    const w = await mountCapsule();
+    expect(w.find('[data-testid="one-capsule"]').text()).toBe('1 of 3');
+    w.unmount();
+    warn.mockRestore();
+  });
+
   it('Hide puts it away for this account, for good', async () => {
-    const w = mountCapsule();
+    const w = await mountCapsule();
     await open(w);
     await w.find('[data-testid="one-capsule-hide"]').trigger('click');
     expect(w.find('[data-testid="one-capsule"]').exists()).toBe(false);
     expect(JSON.parse(localStorage.getItem(flagsKey('maya@example.com'))).hidden).toBe(true);
     w.unmount();
-    const again = mountCapsule();
+    const again = await mountCapsule();
     expect(again.find('[data-testid="one-capsule"]').exists()).toBe(false);
     again.unmount();
   });
 
   it('closes on a click outside and on Escape', async () => {
-    const w = mountCapsule();
+    const w = await mountCapsule();
     await open(w);
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await nextTick();

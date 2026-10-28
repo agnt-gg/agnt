@@ -55,8 +55,8 @@ vi.mock('@/views/_components/common/SimpleModal.vue', () => ({
 vi.mock('./OneCapsule.vue', () => ({
   default: {
     name: 'OneCapsule',
-    emits: ['ask', 'open-models'],
-    template: '<div class="capsule-stub"><button class="ask" @click="$emit(\'ask\', \'Connect my Google account\')" /><button class="models" @click="$emit(\'open-models\')" /></div>',
+    emits: ['ask', 'open-models', 'open-setup'],
+    template: '<div class="capsule-stub"><button class="ask" @click="$emit(\'ask\', \'Connect my Google account\')" /><button class="models" @click="$emit(\'open-models\')" /><button class="setup" @click="$emit(\'open-setup\', \'phone\')" /></div>',
   },
 }));
 
@@ -356,6 +356,22 @@ describe('OneShell', () => {
       expect(push).toHaveBeenLastCalledWith({ path: '/settings', query: {} });
       expect(seen).not.toHaveBeenCalled();
       window.removeEventListener('agnt:ask-annie', seen);
+      w.unmount();
+    });
+
+    // The first-run setup lives in the empty chat (OneWelcome).
+    it('a setup step opens the setup at that step, in the chat, asking nothing', async () => {
+      const { setupRequest, clearSetupRequest } = await import('./oneSetupRequest.js');
+      const seen = vi.fn();
+      window.addEventListener('agnt:ask-annie', seen);
+      const w = mountShell('ConnectorsScreen');
+      await w.find('.capsule-stub .setup').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(setupRequest.value).toBe('phone');
+      expect(push).toHaveBeenCalledWith('/chat');
+      expect(seen).not.toHaveBeenCalled();
+      window.removeEventListener('agnt:ask-annie', seen);
+      clearSetupRequest();
       w.unmount();
     });
   });

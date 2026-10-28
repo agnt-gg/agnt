@@ -2,84 +2,62 @@
  * AGNT One — the model behind the frame. Pure: facts in, plain data out.
  *
  * Three things live here:
- *   the first ten minutes  the seven goals the top-bar capsule tracks;
- *   the rail               which icons it shows (it grows with the account);
- *   the greeting           what Annie says on an empty chat.
+ *   the setup     the three steps the top-bar capsule tracks;
+ *   the rail      which icons it shows;
+ *   the greeting  what Annie says on an empty chat.
  *
  * Facts are the counts useJourney.readFacts reads from the live store, plus
- * the connected-app ids. The two things no store records (the ah-ha request
- * was sent, the capsule was hidden) are flags kept per account in
+ * the connected-app ids and Text Annie's status. What no store records (the
+ * setup was finished, the capsule was hidden) is kept per account in
  * localStorage; see loadOneFlags.
  */
 import { CONNECT_AI_TITLE, CONNECT_AI_HINT } from '@/services/ownAi.js';
+import { isPhoneLinked, phoneEligible } from '@/services/firstRunSetup.js';
 
-// ── The first ten minutes ──────────────────────────────────────────────────
-
-/** The ah-ha. Specific on purpose: Annie needs the whole job to do it in one go. */
-export const AHA_PROMPT =
-  'Prep me for tomorrow: read my calendar, research anyone I am meeting from outside my company, ' +
-  'go through my recent email with them, write a one-page brief for each meeting in a Google Doc, ' +
-  'and draft the replies I owe. Read and draft only. Send nothing.';
-
-/** Two apps working together: the ah-ha, every weekday, delivered to Slack. */
-export const AUTOPILOT_PROMPT =
-  'Every weekday at 7am, prep me for the day the same way and send me the brief on Slack. Ask me before any email goes out.';
-
-/** Sent from the capsule's "First chat" step. */
-export const FIRST_CHAT_PROMPT = 'What can you do for me?';
-
-/** Sent from the capsule's "Connect Google" step. */
-export const GOOGLE_PROMPT = 'Connect my Google account';
-
-/** Matches the ah-ha however it was phrased: typed, edited, or sent from the capsule. */
-const AHA_PATTERN = /\bprep me for tomorrow\b/i;
-
-export function isAhaRequest(text) {
-  return typeof text === 'string' && AHA_PATTERN.test(text);
-}
+// ── The setup ────────────────────────────────────────────────────────────────
 
 /**
- * The seven goals, in order. `action` is what a tap does: put a sentence in
- * the composer (`ask`), or open the model picker (`models`; a key never goes
- * through the chat). The first two are done by the time anyone can see them.
+ * The first-run setup's three steps (services/firstRunSetup.js), in its
+ * order: your AI, then Google, then your phone. A tap opens the setup at that
+ * step in a blank chat (FirstRunSetup, in OneWelcome), which connects through
+ * the app's own pipelines (2026-10-28). They used to be seven goals, the last
+ * three of them requests to type; the setup's done screen now offers the
+ * first request itself.
  *
- * Connecting your own AI comes first and is required (2026-10-21): it was an
- * optional step after the first chat, so the capsule offered it last and the
- * first chats ran on AGNT Flash. It is done only when an AI is connected;
- * starting on Flash ("for now") leaves it as the next step.
+ * Connecting your own AI stays first and required (2026-10-21): starting on
+ * AGNT Flash ("for now") leaves it as the next step. The phone needs a plan
+ * with texting; on one without, it is shown as optional and "All set" does
+ * not wait for it.
  */
 export const ONE_STEPS = Object.freeze([
-  { id: 'get', title: 'Get AGNT' },
-  { id: 'open', title: 'Open it' },
-  { id: 'brain', title: CONNECT_AI_TITLE, hint: CONNECT_AI_HINT, action: { kind: 'models' } },
-  { id: 'chat', title: 'First chat', hint: 'Ask Annie anything', action: { kind: 'ask', text: FIRST_CHAT_PROMPT } },
-  { id: 'google', title: 'Connect Google', hint: 'Gmail, Calendar and Drive in one sign-in', action: { kind: 'ask', text: GOOGLE_PROMPT } },
-  { id: 'aha', title: 'Prep me for tomorrow', hint: 'The one that saves an hour', action: { kind: 'ask', text: AHA_PROMPT } },
-  { id: 'autopilot', title: 'Put it on autopilot', hint: 'Two apps, working together', action: { kind: 'ask', text: AUTOPILOT_PROMPT } },
+  { id: 'ai', title: CONNECT_AI_TITLE, hint: CONNECT_AI_HINT, action: { kind: 'setup', step: 'ai' } },
+  { id: 'google', title: 'Connect Google', hint: 'Gmail, Calendar and Drive in one sign-in', action: { kind: 'setup', step: 'google' } },
+  { id: 'phone', title: 'Text Annie from your phone', hint: 'iMessage, RCS or SMS', pro: true, action: { kind: 'setup', step: 'phone' } },
 ]);
 
 const count = (value) => (Number.isFinite(value) && value > 0 ? value : 0);
 
 const DONE = Object.freeze({
-  get: () => true,
-  open: () => true,
-  chat: ({ facts }) => count(facts.chats) > 0,
-  brain: ({ facts }) => count(facts.aiModels) > 0,
+  ai: ({ facts }) => count(facts.aiModels) > 0,
   google: ({ apps }) => apps.includes('google'),
-  aha: ({ flags }) => flags.aha === true,
-  autopilot: ({ facts }) => count(facts.workflows) + count(facts.schedules) > 0,
+  phone: ({ phone }) => isPhoneLinked(phone),
+});
+/** Shown, but not waited for: a plan that cannot text has nothing to link. */
+const OPTIONAL = Object.freeze({
+  phone: ({ phone }) => phoneEligible(phone) === false,
 });
 
 const normalizeApps = (apps) => (Array.isArray(apps) ? apps.map((app) => String(app).toLowerCase()) : []);
 
 /**
- * Where the account is in its first ten minutes.
- * `next` is the first unfinished required goal; an optional one is next only
- * once nothing required is left. `complete` ignores optional goals.
+ * Where the account is in its setup. `phone` is Text Annie's status (null
+ * until it answers). `next` is the first unfinished required step; an
+ * optional one is next only once nothing required is left. `complete`
+ * ignores optional steps.
  */
-export function oneSummary({ facts = {}, apps = [], flags = {} } = {}) {
-  const input = { facts: facts || {}, apps: normalizeApps(apps), flags: flags || {} };
-  const evaluated = ONE_STEPS.map((step) => ({ ...step, optional: step.optional === true, done: DONE[step.id](input) }));
+export function oneSummary({ facts = {}, apps = [], phone = null } = {}) {
+  const input = { facts: facts || {}, apps: normalizeApps(apps), phone };
+  const evaluated = ONE_STEPS.map((step) => ({ ...step, optional: !!OPTIONAL[step.id]?.(input), done: DONE[step.id](input) }));
   const next = evaluated.find((step) => !step.done && !step.optional) || evaluated.find((step) => !step.done) || null;
   const steps = evaluated.map((step) => ({ ...step, current: step.id === next?.id }));
   return {
@@ -102,7 +80,7 @@ export function ringOffset(done, total, circumference = RING_CIRCUMFERENCE) {
 // ── Flags no store records ─────────────────────────────────────────────────
 
 const FLAGS_KEY = 'agnt:one-journey';
-const EMPTY_FLAGS = Object.freeze({ aha: false, hidden: false });
+const EMPTY_FLAGS = Object.freeze({ setup: false, hidden: false });
 
 export function flagsKey(account) {
   return account ? `${FLAGS_KEY}:${account}` : FLAGS_KEY;
@@ -111,7 +89,7 @@ export function flagsKey(account) {
 /** Only known keys, only booleans: a hand-edited or stale value cannot leak through. */
 function cleanFlags(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...EMPTY_FLAGS };
-  return { aha: raw.aha === true, hidden: raw.hidden === true };
+  return { setup: raw.setup === true, hidden: raw.hidden === true };
 }
 
 export function loadOneFlags(account, storage = globalThis.localStorage) {

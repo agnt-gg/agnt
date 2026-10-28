@@ -44,7 +44,7 @@
           </button>
         </template>
         <span class="one-topbar-fill"></span>
-        <OneCapsule @ask="ask" @open-models="openModels" />
+        <OneCapsule @ask="ask" @open-models="openModels" @open-setup="openSetup" />
         <FocusedWindowControls />
       </header>
 
@@ -105,6 +105,7 @@ import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneRail from './OneRail.vue';
 import OneCapsule from './OneCapsule.vue';
 import { RAIL_PAGE, MORE_SCREEN, railItems as buildRailItems } from './oneModel.js';
+import { requestSetup } from './oneSetupRequest.js';
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 
 const { isElectron } = useElectron();
@@ -266,7 +267,7 @@ async function clearMain() {
  * a seed written before the switch lands was filed under the outgoing chat.
  */
 const ASK_SWITCH_TIMEOUT_MS = 8000;
-async function ask(text) {
+async function toBlankChat() {
   if (onBlankChat()) {
     closeDrawerOnPhone();
     await router.push('/chat').catch(() => {});
@@ -276,7 +277,15 @@ async function ask(text) {
     await waitUntil(() => store.state.chat?.activeConversationId !== leaving, ASK_SWITCH_TIMEOUT_MS, 50);
   }
   await nextTick();
+}
+async function ask(text) {
+  await toBlankChat();
   window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } }));
+}
+/** A capsule step: the first-run setup at that step, in a blank chat (OneWelcome shows it). */
+async function openSetup(step) {
+  requestSetup(step);
+  await toBlankChat();
 }
 
 // ── Dialogs, through the app's own modal ───────────────────────────────────
