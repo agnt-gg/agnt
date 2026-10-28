@@ -45,11 +45,20 @@ test.describe('Mobile lite pairing smoke', () => {
   let base;
   let prevSecret;
   let prevPort;
+  let prevEnforce;
 
   test.beforeAll(async () => {
     prevSecret = process.env.JWT_SECRET;
     prevPort = process.env.PORT;
+    prevEnforce = process.env.ENFORCE_PLAN_GATES;
     process.env.JWT_SECRET = SECRET;
+    // Minting a pair code is a paid feature (requirePaidFeature('remoteAccess')),
+    // proven only by a licence api.agnt.gg signs. A test cannot sign one, so
+    // with gates on the mint is refused 403 and this smoke never reaches the
+    // phone. This spec is about the pairing flow, not the gate: switch gates
+    // off through their documented test seam (planEntitlements.isEnforcing).
+    // The refusal itself is pinned in backend/src/routes/PairingRoutes.test.js.
+    process.env.ENFORCE_PLAN_GATES = 'false';
     _resetPairing();
     _resetRateLimits();
 
@@ -105,6 +114,7 @@ test.describe('Mobile lite pairing smoke', () => {
   test.afterAll(async () => {
     restoreEnv('JWT_SECRET', prevSecret);
     restoreEnv('PORT', prevPort);
+    restoreEnv('ENFORCE_PLAN_GATES', prevEnforce);
     if (server) await new Promise((r) => server.close(r));
   });
 
