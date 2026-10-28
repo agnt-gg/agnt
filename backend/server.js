@@ -40,6 +40,7 @@ import { attachBrowserViewerSocket, revokeBrowserViewerIdentity } from './src/se
 import { releaseSocketViewers } from './src/services/BrowserViewerLeaseService.js';
 import express from 'express';
 import compression from 'compression';
+import { shouldCompress, LOOPBACK_ADDRESS } from './src/utils/compressionPolicy.js';
 import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
@@ -178,36 +179,11 @@ const app = express();
 // Enable CORS and body parsing
 app.use(cors(config.corsOptions));
 // Gzip JSON / text responses above 1 KB. JSON compresses 10-20x.
-//
-// CRITICAL: compression buffers responses by default, which destroys
-// Server-Sent Events streaming (chat tokens arrive only after the full
-// response, not incrementally). We exclude known streaming route prefixes
-// up front, and additionally honour `x-no-compression` so any new endpoint
-// can opt out without touching this file.
-//
-// SSE-bearing route prefixes (verified via grep for `text/event-stream`
-// and `Content-Type: text/event-stream`):
-//   /api/stream/*         — StreamEngine SSE
-//   /api/orchestrator/*   — chat orchestrator SSE (every chat surface)
-//   /api/users/*          — magic-link SSE response
-//   /api/plugins/*        — plugin install/uninstall progress SSE
-const STREAMING_PATH_PREFIXES = [
-  '/api/stream',
-  '/api/orchestrator',
-  '/api/users/auth/magic-link',
-  '/api/plugins',
-];
+// CRITICAL: never streaming (SSE) responses, never local files to a local
+// caller. The rules and their reasons live in utils/compressionPolicy.js.
 app.use(compression({
   threshold: 1024,
-  filter: (req, res) => {
-    if (req.headers['x-no-compression']) return false;
-    if (STREAMING_PATH_PREFIXES.some((p) => req.path.startsWith(p))) return false;
-    // Last-resort guard: if the route has already set a streaming
-    // content-type by the time the filter runs, skip too.
-    const ct = res.getHeader('Content-Type');
-    if (typeof ct === 'string' && ct.includes('text/event-stream')) return false;
-    return compression.filter(req, res);
-  },
+  filter: (req, res) => shouldCompress(req, res, compression.filter),
 }));
 // Reachability witness. One assignment per request, only for non-loopback
 // callers. It exists so the Phone Access panel can answer "has my phone
@@ -505,10 +481,9 @@ const getPackageJson = () => {
  * caller could not act on it anyway — process.kill only means something to a
  * caller on the same machine.
  */
-const LOOPBACK = /^(::1|::ffff:127\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+)$/;
 app.get('/api/health', (req, res) => {
   const body = { status: 'OK' };
-  if (LOOPBACK.test(req.socket?.remoteAddress || '')) {
+  if (LOOPBACK_ADDRESS.test(req.socket?.remoteAddress || '')) {
     body.pid = process.pid;
     try {
       body.version = getPackageJson().version;
