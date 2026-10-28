@@ -39,28 +39,20 @@ import {
 } from '@/services/conversationCompaction.js';
 
 /**
- * Throttle for mid-stream autosaves, keyed by conversation id.
+ * NO TRANSCRIPT SAVES WHILE A REPLY STREAMS.
  *
- * The main chat keeps messages in memory only — its durability is the debounced
- * server autosave. That autosave is a pure debounce with no maximum latency, so
- * during continuous streaming the timer was reset on every event and the newest
- * copy on disk stayed frozen at ~3s after the turn STARTED. A refresh mid-answer
- * therefore restored a snapshot that predated the answer entirely.
+ * There used to be a 5 s throttle here that POSTed the whole transcript while
+ * text streamed, so a refresh mid-answer would not restore a snapshot from
+ * before the answer. Every one of those saves rewrote the whole saved row and
+ * its search index (~9.8 MB written per save on a real 2 MB conversation), so
+ * a turn's disk cost grew with how long it ran.
  *
- * A throttle (fire at most once per interval, but definitely fire) is the right
- * shape here where a debounce is the wrong one.
+ * The server now owns that durability: the run outlives the socket
+ * (activeRuns.js), is journalled to disk (runJournal.js), a reload reattaches
+ * and replays it, and persistTurnTranscript writes the saved row when the turn
+ * ends with no client involved. The client saves once, at the end of the turn
+ * ('done' / 'run_ended'). Pinned by chat.streamPersistence.spec.js.
  */
-const STREAM_AUTOSAVE_INTERVAL_MS = 5000;
-const lastStreamAutosaveAt = new Map();
-
-function throttledStreamAutosave(dispatch, conversationId) {
-  if (!dispatch || !conversationId) return;
-  const now = Date.now();
-  const last = lastStreamAutosaveAt.get(conversationId) || 0;
-  if (now - last < STREAM_AUTOSAVE_INTERVAL_MS) return;
-  lastStreamAutosaveAt.set(conversationId, now);
-  dispatch('autosaveConversation', { debounce: false, conversationId });
-}
 
 /**
  * A save asked for while another save of the same conversation is in flight.
@@ -4661,9 +4653,6 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         messageId: data.assistantMessageId,
         delta: data.delta,
       });
-      // Push the growing answer to the server periodically so a refresh that
-      // lands after the run has already finished still restores real text.
-      throttledStreamAutosave(dispatch, conversationId);
       break;
     case 'reasoning_delta':
       commit('SCOPED_APPEND_MESSAGE_REASONING', {
@@ -4781,7 +4770,6 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       break;
     case 'done':
       commit('SCOPED_SET_STREAMING', { conversationId, value: false });
-      lastStreamAutosaveAt.delete(conversationId);
       markRunEnded(conversationId);
       // Managed work owns subsequent segments and steering, not frontend resubmission.
       if (state?.conversations?.[conversationId]?.workState?.active) {
@@ -4855,7 +4843,6 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
     // Terminator for a reattached stream that ended without a normal 'done'.
     case 'run_ended':
       commit('SCOPED_SET_STREAMING', { conversationId, value: false });
-      lastStreamAutosaveAt.delete(conversationId);
       markRunEnded(conversationId);
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: false, conversationId });
