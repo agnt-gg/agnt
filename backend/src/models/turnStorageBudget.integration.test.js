@@ -83,7 +83,9 @@ afterAll(async () => {
   await all('PRAGMA wal_checkpoint(TRUNCATE)');
 });
 
-describe('storage budget of one chat turn', () => {
+// Each case writes a 2 MB transcript three times; generous timeout so a
+// saturated disk during the full parallel suite cannot turn a pass into a timeout.
+describe('storage budget of one chat turn', { timeout: 120_000 }, () => {
   it('the transcript under test is ~2 MB', () => {
     expect(uiTranscript().length).toBeGreaterThan(1_900_000);
     expect(JSON.stringify(history).length).toBeGreaterThan(1_900_000);

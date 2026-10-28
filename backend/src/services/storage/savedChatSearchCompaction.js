@@ -105,15 +105,25 @@ async function layoutIsExpected(db) {
  * @param {import('sqlite3').Database} db
  * @param {object} options
  * @param {string} options.statePath    JSON file holding the progress mark
- * @param {number} [options.batchSize]  rows re-indexed per transaction
+ * @param {number} [options.batchSize]  most rows re-indexed per transaction
+ * @param {number} [options.maxBatchBytes]  most stored body bytes per transaction:
+ *   removing a body makes FTS5 re-tokenize it while the shared connection is
+ *   held, so this bounds how long app writes can wait (a larger row goes alone)
  * @param {number} [options.scanSize]   search rows examined per read
  * @param {number} [options.pauseMs]    pause between transactions
  * @param {() => boolean} [options.shouldStop]  checked between batches
- * @returns {Promise<{status: string, examined: number, reindexed: number, checkedThrough: number}>}
+ * @returns {Promise<{status: string, examined: number, reindexed: number, transactions: number, checkedThrough: number}>}
  */
-export async function compactSavedChatSearchIndex(db, { statePath, batchSize = 10, scanSize = 500, pauseMs = 25, shouldStop = () => false } = {}) {
+export async function compactSavedChatSearchIndex(db, {
+  statePath,
+  batchSize = 10,
+  maxBatchBytes = 8 * 1024 * 1024,
+  scanSize = 500,
+  pauseMs = 25,
+  shouldStop = () => false,
+} = {}) {
   if (!statePath) throw new Error('compactSavedChatSearchIndex requires statePath');
-  const result = { status: 'complete', examined: 0, reindexed: 0, checkedThrough: 0 };
+  const result = { status: 'complete', examined: 0, reindexed: 0, transactions: 0, checkedThrough: 0 };
   if (!SPEC?.indexedValue?.content) return { ...result, status: 'skipped:no-rule' };
   if (!(await layoutIsExpected(db))) return { ...result, status: 'skipped:unexpected-layout' };
 
@@ -134,7 +144,7 @@ export async function compactSavedChatSearchIndex(db, { statePath, batchSize = 1
     if (shouldStop()) return { ...result, status: 'stopped' };
     const rows = await all(
       db,
-      `SELECT id, c0 AS docId FROM ${SPEC.name}_content
+      `SELECT id, c0 AS docId, octet_length(${contentCol}) AS bodyBytes FROM ${SPEC.name}_content
         WHERE id > ? AND id <= ? AND ${typeCol} = 'conversation' AND ${conversationCol} IS NOT NULL
           AND COALESCE(octet_length(${contentCol}), 0) > 0
           AND EXISTS (SELECT 1 FROM conversation_logs WHERE conversation_logs.conversation_id = ${SPEC.name}_content.${conversationCol})
@@ -146,15 +156,25 @@ export async function compactSavedChatSearchIndex(db, { statePath, batchSize = 1
     const scanEnd = rows.length < scanSize ? top : rows[rows.length - 1].id;
     result.examined += rows.length;
 
-    for (let i = 0; i < rows.length; i += batchSize) {
+    let next = 0;
+    while (next < rows.length) {
       if (shouldStop()) return { ...result, status: 'stopped' };
-      const batch = rows.slice(i, i + batchSize);
+      // Always at least one row; then add rows while both bounds hold.
+      const batch = [rows[next]];
+      let bytes = rows[next].bodyBytes || 0;
+      next += 1;
+      while (next < rows.length && batch.length < batchSize && bytes + (rows[next].bodyBytes || 0) <= maxBatchBytes) {
+        bytes += rows[next].bodyBytes || 0;
+        batch.push(rows[next]);
+        next += 1;
+      }
       await withTransaction(db, async () => {
         for (const row of batch) {
           await run(db, deleteSql, [row.docId]);
           await run(db, reinsertSql, [row.docId]);
         }
       }, { label: 'saved-chat search compaction' });
+      result.transactions += 1;
       result.reindexed += batch.length;
       cursor = batch[batch.length - 1].id;
       result.checkedThrough = cursor;

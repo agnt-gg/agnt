@@ -269,6 +269,28 @@ describe('upgrading an existing database', () => {
     await expectOutputsOneToOne();
   });
 
+  it('bounds each transaction by stored body bytes, so a huge transcript is re-indexed on its own', async () => {
+    await setupFullTextSearch(db);
+    await installLegacyContentOutputTriggers();
+    const big = 'word '.repeat(600_000); // ~3 MB of text; transcript() stores it twice, so each body is ~6 MB
+    for (let i = 0; i < 3; i++) {
+      await addHistory(`conv-big-${i}`, `big${i}`);
+      await addSavedChat(`out-big-${i}`, `conv-big-${i}`, `Big ${i}`, `big${i} ${big}`);
+    }
+    for (let i = 0; i < 4; i++) {
+      await addHistory(`conv-small-${i}`, `small${i}`);
+      await addSavedChat(`out-small-${i}`, `conv-small-${i}`, `Small ${i}`, `small${i}`);
+    }
+    await setupFullTextSearch(db);
+
+    const result = await compactSavedChatSearchIndex(db, { statePath, pauseMs: 0, batchSize: 10, maxBatchBytes: 4 * 1024 * 1024 });
+
+    // Each ~6 MB body exceeds the 4 MB bound and goes alone; the four small ones share one.
+    expect(result).toMatchObject({ status: 'complete', reindexed: 7, transactions: 4 });
+    for (let i = 0; i < 3; i++) expect(await storedBody(`out-big-${i}`)).toBe('');
+    await expectOutputsOneToOne();
+  });
+
   it('skips, without writing, a search table whose layout it does not recognise', async () => {
     await run(`CREATE VIRTUAL TABLE content_outputs_fts USING fts5(user_id UNINDEXED, doc_id UNINDEXED, title, content)`);
     const result = await compactSavedChatSearchIndex(db, { statePath, pauseMs: 0 });

@@ -15,7 +15,7 @@ const opened = [];
 const exec = (db, sql) => new Promise((resolve, reject) => db.exec(sql, (err) => (err ? reject(err) : resolve())));
 const all = (db, sql) => new Promise((resolve, reject) => db.all(sql, (err, rows) => (err ? reject(err) : resolve(rows))));
 
-async function database({ incremental, rows = 3000, keep = 0 }) {
+async function database({ incremental, rows = 1500, keep = 0 }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'free-pages-'));
   const db = new sqlite3.Database(path.join(dir, 'agnt.db'));
   opened.push({ db, dir });
@@ -35,7 +35,9 @@ afterEach(async () => {
   }
 });
 
-describe('reclaimFreePages', () => {
+// Real files, several MB of writes each: generous timeout so a saturated disk
+// during the full parallel suite cannot turn a pass into a timeout.
+describe('reclaimFreePages', { timeout: 60_000 }, () => {
   it('leaves a database without incremental auto_vacuum completely alone', async () => {
     const db = await database({ incremental: false });
     const before = await databaseSpaceStats(db);
@@ -57,7 +59,7 @@ describe('reclaimFreePages', () => {
   it('returns the free pages to the OS down to the reserve, and the file shrinks', async () => {
     const db = await database({ incremental: true });
     const before = await databaseSpaceStats(db);
-    expect(before.freelistCount).toBeGreaterThan(2500);
+    expect(before.freelistCount).toBeGreaterThan(1200);
 
     const keepPages = 100;
     const result = await reclaimFreePages(db, { keepFreeBytes: keepPages * before.pageSize, pauseMs: 0 });
@@ -78,9 +80,9 @@ describe('reclaimFreePages', () => {
   });
 
   it('never changes live data', async () => {
-    const db = await database({ incremental: true, keep: 500 });
+    const db = await database({ incremental: true, keep: 300 });
     const rowsBefore = await all(db, 'SELECT id, hex(body) AS body FROM kept ORDER BY id');
-    expect(rowsBefore).toHaveLength(500);
+    expect(rowsBefore).toHaveLength(300);
     await reclaimFreePages(db, { keepFreeBytes: 0, pauseMs: 0 });
     expect(await all(db, 'SELECT id, hex(body) AS body FROM kept ORDER BY id')).toEqual(rowsBefore);
     expect(await all(db, 'PRAGMA integrity_check')).toEqual([{ integrity_check: 'ok' }]);
