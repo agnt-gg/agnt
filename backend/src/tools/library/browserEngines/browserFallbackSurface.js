@@ -793,8 +793,13 @@ export const SIGN_IN_WINDOW_OPEN = 'The AGNT browser is open in a sign-in window
 
 /** How long a just-spawned window has to prove it opened rather than handing off and exiting. */
 const SIGN_IN_WINDOW_SETTLE_MS = 1500;
-/** How long a polite close may take before it is forced. */
-const SIGN_IN_WINDOW_CLOSE_MS = 10000;
+/**
+ * How long a polite close may take before it is forced. Generous on purpose:
+ * a forced close can lose the cookies the person just created, and Chrome's
+ * shutdown under heavy load was measured past 10s (the live gate lost its
+ * cookie at a 10s budget while three browsers started beside it).
+ */
+const SIGN_IN_WINDOW_CLOSE_MS = 30000;
 
 export function isSignInWindowOpen() {
   const child = signInWindow?.child;
@@ -902,7 +907,7 @@ export function signInWindowClosed() {
  */
 export async function closeSignInWindow({ log = console.log } = {}) {
   const current = signInWindow;
-  if (!current || !isSignInWindowOpen()) return;
+  if (!current || !isSignInWindowOpen()) return { closed: false, forced: false };
   const { child } = current;
   try {
     if (process.platform === 'win32') {
@@ -912,13 +917,16 @@ export async function closeSignInWindow({ log = console.log } = {}) {
       child.kill('SIGTERM');
     }
   } catch { /* it may already be gone */ }
-  if (await waitForExit(child, SIGN_IN_WINDOW_CLOSE_MS)) return;
-  log(`[Browser Control] the sign-in window did not close within ${SIGN_IN_WINDOW_CLOSE_MS / 1000}s; forcing it.`);
+  if (await waitForExit(child, SIGN_IN_WINDOW_CLOSE_MS)) return { closed: true, forced: false };
+  // Loud: a forced close may have lost the newest cookies. The sign-in's
+  // own check of the restored page is what reports whether it did.
+  log(`[Browser Control] the sign-in window did not close within ${SIGN_IN_WINDOW_CLOSE_MS / 1000}s; forcing it (its newest cookies may be lost).`);
   try {
     if (process.platform === 'win32') spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
     else child.kill('SIGKILL');
   } catch { /* gone */ }
   await waitForExit(child, 5000);
+  return { closed: true, forced: true };
 }
 
 /** Test seam. */

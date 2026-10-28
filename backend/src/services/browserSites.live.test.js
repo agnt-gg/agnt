@@ -20,7 +20,10 @@ let cdpUrl;
 beforeAll(async () => {
   if (!haveBrowser) return;
   cdpUrl = await ensureFallbackSurface({ hidden: true, log: () => {} });
-}, 60000);
+  // The first cookie call waits for the cookie store to load (browserSites.js);
+  // pay that here, where a slow cold start is not the thing under test.
+  await readSites(cdpUrl);
+}, 120000);
 
 afterAll(async () => {
   if (haveBrowser) await closeFallbackSurfaceGracefully();
@@ -30,7 +33,7 @@ async function plant(cookies) {
   const connection = await new CdpConnection(cdpUrl).connect({ timeoutMs: 10000 });
   try {
     // The first cookie call on a fresh profile waits for the store to load (browserSites.js).
-    await connection.send('Storage.setCookies', { cookies }, undefined, { timeoutMs: 20000 });
+    await connection.send('Storage.setCookies', { cookies }, undefined, { timeoutMs: 30000 });
   } finally {
     connection.close();
   }

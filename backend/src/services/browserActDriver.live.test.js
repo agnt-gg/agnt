@@ -74,16 +74,6 @@ const act = (action, params = {}) => performBrowserAction('live-user', cdpUrl, a
 const inner = (fenced) => fenced.split('\n').slice(1, -1).join('\n');
 
 describe.skipIf(!haveBrowser)('real Chromium', () => {
-  it('a login form is reported as signInRequired; an ordinary page is not', async () => {
-    const login = await act('navigate', { url: `${base}/login` });
-    // The hidden second password field must not make it read as a signup form.
-    expect(login.signInRequired).toMatchObject({ kind: 'sign-in', provider: '127.0.0.1', window: false });
-    expect(login.signInRequired.hint).toMatch(/action="signin"/);
-    const home = await act('click', { selector: '#home' });
-    expect(home.navigated).toBe(true);
-    expect(home.signInRequired).toBeUndefined();
-  }, 20000);
-
   it('navigate returns a snapshot with refs for the fixture controls', async () => {
     const r = await act('navigate', { url: `${base}/` });
     expect(r.title).toBe('Fixture');
@@ -93,6 +83,16 @@ describe.skipIf(!haveBrowser)('real Chromium', () => {
     expect(s).toMatch(/@e\d+ combobox "Country"/);
     expect(s).toMatch(/@e\d+ textbox "Search" value="old"/);
     expect(r.stats.refs).toBeGreaterThanOrEqual(7);
+  }, 20000);
+
+  it('a login form is reported as signInRequired; an ordinary page is not', async () => {
+    const login = await act('navigate', { url: `${base}/login` });
+    // The hidden second password field must not make it read as a signup form.
+    expect(login.signInRequired).toMatchObject({ kind: 'sign-in', provider: '127.0.0.1', window: false });
+    expect(login.signInRequired.hint).toMatch(/action="signin"/);
+    const home = await act('click', { selector: '#home' });
+    expect(home.navigated).toBe(true);
+    expect(home.signInRequired).toBeUndefined();
   }, 20000);
 
   it('a real alert() arrives as an event and is cleared by dialog', async () => {

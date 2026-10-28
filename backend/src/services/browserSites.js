@@ -22,9 +22,11 @@ const CONNECT_TIMEOUT_MS = 15000;
  * Cookie calls get far longer than CdpConnection's default. MEASURED
  * (Chrome, headless, fresh profile, 2026-10-28): the FIRST Storage.* call after
  * launch waits for the cookie store to load from disk — getCookies timed out
- * at 5s and the next call took 4s; every call after that took ~1ms.
+ * at 5s and the next call took 4s; every call after that took ~1ms. With three
+ * browsers starting at once on a loaded machine the first call passed 20s.
+ * The budget only exists to detect a hung browser, so it is generous.
  */
-const COOKIE_CALL_TIMEOUT_MS = 20000;
+const COOKIE_CALL_TIMEOUT_MS = 30000;
 
 /** Second-level labels that are not a site on their own: example.co.uk is the site, not co.uk. */
 const SHARED_SECOND_LEVEL = /^(co|com|net|org|gov|edu|ac|ltd|plc|ne|or|go|gob|nic|mil)$/;

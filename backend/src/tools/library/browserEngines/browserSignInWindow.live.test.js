@@ -18,7 +18,9 @@ import {
 import { performBrowserAction, _resetDrivers } from '../../../services/browserActDriver.js';
 
 const enabled = process.env.AGNT_LIVE_SIGNIN_WINDOW === '1' && installedBrowsers().length > 0;
-const quiet = { log: () => {} };
+/** The launcher's own account of what it did, attached to any failure below. */
+const launcherLog = [];
+const quiet = { log: (message) => launcherLog.push(`${new Date().toISOString()} ${message}`) };
 
 let server;
 let base;
@@ -70,7 +72,9 @@ describe.skipIf(!enabled)('the sign-in window, in a real browser', () => {
     expect(await until(() => seen.some((r) => r.path === '/signin'), 20000)).toBe(true);
 
     // The person is done: the window closes politely and releases the profile.
-    await closeSignInWindow(quiet);
+    // A FORCED close is how a fresh login gets lost, so it is a failure here.
+    const closing = await closeSignInWindow(quiet);
+    expect(closing, launcherLog.join('\n')).toEqual({ closed: true, forced: false });
     expect(isSignInWindowOpen()).toBe(false);
 
     const after = await ensureFallbackSurface({ ...quiet, hidden: true });
@@ -78,6 +82,6 @@ describe.skipIf(!enabled)('the sign-in window, in a real browser', () => {
     const page = await performBrowserAction('live-user', after, 'navigate', { url: `${base}/account` });
     expect(page.title).toBe('Account');
     const accountVisit = seen.filter((r) => r.path === '/account').at(-1);
-    expect(accountVisit.cookie).toContain('agnt_session=signed-in-in-the-window');
-  }, 90000);
+    expect(accountVisit.cookie, launcherLog.join('\n')).toContain('agnt_session=signed-in-in-the-window');
+  }, 150000);
 });
