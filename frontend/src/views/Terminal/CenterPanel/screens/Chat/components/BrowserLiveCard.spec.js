@@ -27,7 +27,7 @@ vi.mock('@/utils/chunkRecovery.js', () => ({
 }));
 
 const { default: BrowserLiveCard } = await import('./BrowserLiveCard.vue');
-const { _resetLiveRegistry } = await import('./browserLiveRegistry.js');
+const { _resetLiveRegistry, requestLiveFocus } = await import('./browserLiveRegistry.js');
 
 let wrapper;
 afterEach(() => { wrapper?.unmount(); wrapper = null; _resetLiveRegistry(); document.body.innerHTML = ''; });
@@ -191,5 +191,32 @@ describe('its own conversation', () => {
     await mountCard({ conversationId: 'conv-7' });
     expect(wrapper.find('.browser-live-card').exists()).toBe(true);
     expect(ownsLiveView('other')).toBe(true);
+  });
+});
+
+
+describe('a sign-in brings it forward', () => {
+  const card = () => document.body.querySelector('.browser-live-card');
+  const isFullscreen = () => card()?.classList.contains('is-fullscreen');
+
+  it('a focus request for ITS conversation expands it and goes fullscreen; the release brings it back', async () => {
+    await mountCard({ conversationId: 'c1' });
+    seen.emit('showing', true); await flushPromises();
+    card().querySelector('.live-header').click(); await flushPromises(); // collapsed by the person
+    expect(card().querySelector('.live-body')).toBeNull();
+
+    requestLiveFocus('c1', true); await flushPromises();
+    expect(isFullscreen()).toBe(true);
+    expect(card().querySelector('.live-body')).not.toBeNull();
+
+    requestLiveFocus('c1', false); await flushPromises();
+    expect(isFullscreen()).toBe(false);
+  });
+
+  it('ignores another conversation\'s sign-in', async () => {
+    await mountCard({ conversationId: 'c1' });
+    seen.emit('showing', true); await flushPromises();
+    requestLiveFocus('c2', true); await flushPromises();
+    expect(isFullscreen()).toBe(false);
   });
 });

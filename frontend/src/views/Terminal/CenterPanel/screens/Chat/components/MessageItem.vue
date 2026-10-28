@@ -115,6 +115,12 @@
                      or not the row is expanded. See connectCards.js. -->
                 <ConnectCard v-if="connectTarget(tc.toolCall)" :provider="connectTarget(tc.toolCall)" />
                 <ShareCard v-if="shareTarget(tc.toolCall)" :target="shareTarget(tc.toolCall)" />
+                <!-- The agent is waiting for the person to sign in: where, and the answers. See signInCards.js. -->
+                <SignInCard
+                  v-if="signInTarget(tc.toolCall) && browserConversationId !== null"
+                  :tool-call="tc.toolCall"
+                  :conversation-id="browserConversationId"
+                />
 
                 <div v-if="isExpanded(tc.index)" class="tool-call-content">
                   <!-- tool_pending draws the card before the arguments exist;
@@ -488,6 +494,7 @@ const AgntFlashCard = lazyComponent(() => import('./AgntFlashCard.vue'), { name:
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import { connectTarget } from './connectCards.js';
 import { shareTarget } from './shareCards.js';
+import { signInTarget } from './signInCards.js';
 import { useBrowserConversation } from './browserConversation.js';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { compactArtifactText } from '@/utils/chatArtifacts.js';
@@ -497,6 +504,7 @@ import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 // client, and this one pulls the canvas stream view in behind it.
 const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { name: 'BrowserLiveCard' });
 const ConnectCard = lazyComponent(() => import('./ConnectCard.vue'), { name: 'ConnectCard' });
+const SignInCard = lazyComponent(() => import('./SignInCard.vue'), { name: 'SignInCard' });
 const ShareCard = lazyComponent(() => import('./ShareCard.vue'), { name: 'ShareCard' });
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
@@ -659,6 +667,7 @@ export default {
     ArtifactCards,
     BrowserLiveCard,
     ConnectCard,
+    SignInCard,
     ShareCard,
     ShareBundlePreflight,
   },
@@ -3285,6 +3294,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       stopAsyncTool,
       connectTarget,
       shareTarget,
+      signInTarget,
       toggleToolCall,
       assistantAvatar,
       emojiAvatar,

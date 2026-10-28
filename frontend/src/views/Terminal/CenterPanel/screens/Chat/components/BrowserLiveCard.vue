@@ -75,9 +75,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, onDeactivated } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, onDeactivated } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
-import { claimLiveView, releaseLiveView, ownsLiveView } from './browserLiveRegistry.js';
+import {
+  claimLiveView, releaseLiveView, ownsLiveView, liveFocusRequest,
+} from './browserLiveRegistry.js';
 
 /**
  * The live browser, inline in the chat transcript.
@@ -172,6 +174,18 @@ watch(fullscreen, (on) => {
 // A newer turn taking the stream over unrenders this card; leave no
 // listener and no fullscreen state behind for when it comes back.
 watch(owns, (isOwner) => { if (!isOwner) exitFullscreen(); });
+
+// Something needs the person IN this browser — a sign-in (SignInCard). Only
+// the owning card answers: it is the one with the stream. Expanded and
+// fullscreen, because "the page is in a card you have to find" was the bug;
+// and back inline once the sign-in is over, so the chat is visible again.
+watch(() => liveFocusRequest(props.conversationId), async (request, previous) => {
+  if (!request || request.seq === previous?.seq || !owns.value) return;
+  if (!request.open) { exitFullscreen(); return; }
+  collapsed.value = false;
+  await nextTick();
+  if (!fullscreen.value) enterFullscreen();
+});
 
 // Chat lives inside <KeepAlive>. Navigating away DEACTIVATES it, and Vue does
 // not move teleported content on deactivation — a fullscreen browser would

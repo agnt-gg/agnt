@@ -96,8 +96,29 @@ export function ownsLiveView(key) {
 /** The owner of the default (no-conversation) group. Kept for callers that predate groups. */
 export const activeLiveKey = computed(() => owners.value[''] ?? null);
 
+/**
+ * group -> the latest request for that conversation's live browser to come
+ * forward ({ open: true }) or step back ({ open: false }). Sequenced, not a
+ * flag: the same request twice (a second sign-in, a second press of "Sign in
+ * here") must be seen as new.
+ */
+const focusRequests = ref({});
+
+/** Ask a conversation's live browser to come forward (expanded, fullscreen) — or, open=false, to step back. */
+export function requestLiveFocus(group = '', open = true) {
+  const key = group || '';
+  const seq = (focusRequests.value[key]?.seq || 0) + 1;
+  focusRequests.value = { ...focusRequests.value, [key]: { seq, open: Boolean(open) } };
+}
+
+/** Reactive: the latest focus request for a conversation, or null. */
+export function liveFocusRequest(group = '') {
+  return focusRequests.value[group || ''] || null;
+}
+
 /** Test seam. */
 export function _resetLiveRegistry() {
   mounted.clear();
   owners.value = {};
+  focusRequests.value = {};
 }
