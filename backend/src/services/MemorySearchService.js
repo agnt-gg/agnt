@@ -153,6 +153,41 @@ async function searchExecutions({ ftsQuery, since, until, userId, limit }) {
   }));
 }
 
+/**
+ * Saved chats whose transcript matches, found through the conversation-history
+ * index.
+ *
+ * content_outputs_fts no longer stores a second copy of a saved chat's body
+ * when its full history is indexed in conversation_logs_fts (see the
+ * content_outputs spec in fts.js). This puts those chats back into an
+ * outputs search, so `sources: ['outputs']` finds a chat by its text exactly
+ * as before, from the one index that holds it.
+ */
+async function searchSavedChatsByHistory({ ftsQuery, since, until, userId, limit }) {
+  const where = ['conversation_logs_fts MATCH ?', 'cl.user_id = ?', 'co.user_id = ?', "co.content_type = 'conversation'"];
+  const params = [ftsQuery, userId, userId];
+  if (since) { where.push('co.updated_at >= ?'); params.push(since); }
+  if (until) { where.push('co.updated_at <= ?'); params.push(until); }
+  params.push(limit);
+  const sql = `
+    SELECT
+      co.id AS id,
+      co.title AS title,
+      co.content_type AS content_type,
+      co.workflow_id AS workflow_id,
+      co.conversation_id AS conversation_id,
+      co.created_at AS created_at,
+      co.updated_at AS updated_at,
+      snippet(conversation_logs_fts, -1, '«', '»', '…', 16) AS snippet,
+      bm25(conversation_logs_fts) AS score
+    FROM conversation_logs_fts
+    JOIN conversation_logs cl ON cl.id = conversation_logs_fts.rowid
+    JOIN content_outputs co ON co.conversation_id = cl.conversation_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY score LIMIT ?`;
+  return dbAll(sql, params);
+}
+
 async function searchOutputs({ ftsQuery, since, until, userId, limit }) {
   const where = ['content_outputs_fts MATCH ?', 'content_outputs_fts.user_id = ?'];
   const params = [ftsQuery, userId];
@@ -173,7 +208,18 @@ async function searchOutputs({ ftsQuery, since, until, userId, limit }) {
     FROM content_outputs_fts
     WHERE ${where.join(' AND ')}
     ORDER BY score LIMIT ?`;
-  const rows = await dbAll(sql, params);
+  const [direct, viaHistory] = await Promise.all([
+    dbAll(sql, params),
+    searchSavedChatsByHistory({ ftsQuery, since, until, userId, limit }),
+  ]);
+  // One result per output: a chat can match on its title here AND on its
+  // transcript in the history index. Keep the better (lower bm25) match.
+  const best = new Map();
+  for (const row of [...direct, ...viaHistory]) {
+    const kept = best.get(row.id);
+    if (!kept || (row.score ?? 0) < (kept.score ?? 0)) best.set(row.id, row);
+  }
+  const rows = [...best.values()].sort((a, b) => (a.score ?? 0) - (b.score ?? 0)).slice(0, limit);
   return rows.map((r) => ({
     kind: 'output',
     id: r.id,

@@ -365,6 +365,13 @@ dbReady.then(() => {
   });
 });
 
+// Storage upkeep: incremental, owner-only, starts a couple of minutes after
+// boot. See src/services/storage/StorageMaintenance.js.
+dbReady.then(async () => {
+  const { startStorageMaintenance } = await import('./src/services/storage/StorageMaintenance.js');
+  startStorageMaintenance();
+}).catch((err) => console.warn('[StorageMaintenance] could not start (non-fatal):', err.message));
+
 // Multi-node: reclaim abandoned work, and start the pull loop on a worker.
 //
 // The reaper runs on EVERY install, including the overwhelming majority that

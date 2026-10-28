@@ -74,6 +74,19 @@ const FTS_TABLES = [
     pkCol: 'id',
     indexed: ['title', 'content'],
     unindexed: ['user_id', 'workflow_id', 'tool_id', 'conversation_id', 'content_type', 'created_at', 'updated_at'],
+    // A saved chat's body is the UI copy of conversation_logs.full_history,
+    // which conversation_logs_fts already indexes. Indexing it again stored a
+    // second full copy of every transcript (1.58 GB on a real install) and
+    // re-tokenized the whole transcript on every save (~5.4 MB written per
+    // save of a 2 MB chat). The body is indexed here only when no history row
+    // exists for that conversation, so every chat stays searchable by its
+    // text exactly once; titles are always indexed. MemorySearchService's
+    // searchOutputs joins the history index back in, so an outputs-only
+    // search still finds a chat by its body.
+    indexedValue: {
+      content: (row) =>
+        `CASE WHEN ${row}.content_type = 'conversation' AND EXISTS (SELECT 1 FROM conversation_logs WHERE conversation_logs.conversation_id = ${row}.conversation_id) THEN '' ELSE ${row}.content END`,
+    },
   },
   {
     name: 'insights_fts',
@@ -114,6 +127,17 @@ function buildCreateVirtualTableSql(spec) {
   )`;
 }
 
+/**
+ * The value written into the search row for `column`, read from `row`
+ * (`new` in a trigger, the source table in a backfill). Plain columns are
+ * mirrored verbatim, which keeps every spec without `indexedValue` producing
+ * exactly the SQL it always has.
+ */
+function sourceValue(spec, column, row) {
+  const expression = spec.indexedValue?.[column];
+  return expression ? expression(row) : `${row}.${column}`;
+}
+
 function buildInsertSql(spec) {
   // INSERT used by both backfill and AFTER INSERT trigger.
   const cols = [];
@@ -136,7 +160,7 @@ function buildInsertTriggerSql(spec) {
   const { cols } = buildInsertSql(spec);
   const newCols = cols.map((c) => {
     if (c === 'rowid' || c === 'doc_id') return `new.${spec.pkCol}`;
-    return `new.${c}`;
+    return sourceValue(spec, c, 'new');
   });
   return `CREATE TRIGGER IF NOT EXISTS ${spec.source}_ai AFTER INSERT ON ${spec.source} BEGIN
     INSERT INTO ${spec.name}(${cols.join(', ')})
@@ -252,7 +276,7 @@ function buildUpdateTriggerSql(spec, useDocIdIndex = false) {
   const { cols } = buildInsertSql(spec);
   const newCols = cols.map((c) => {
     if (c === 'rowid' || c === 'doc_id') return `new.${spec.pkCol}`;
-    return `new.${c}`;
+    return sourceValue(spec, c, 'new');
   });
   const deleteClause = buildDeleteClause(spec, useDocIdIndex);
   // SCOPED TO THE MIRRORED COLUMNS ONLY.
@@ -296,7 +320,7 @@ function buildBackfillSql(spec) {
   }
   for (const c of [...spec.unindexed, ...spec.indexed]) {
     ftsCols.push(c);
-    srcCols.push(c);
+    srcCols.push(spec.indexedValue?.[c] ? sourceValue(spec, c, spec.source) : c);
   }
   return `INSERT INTO ${spec.name}(${ftsCols.join(', ')})
     SELECT ${srcCols.join(', ')} FROM ${spec.source}`;
@@ -309,6 +333,13 @@ function buildBackfillSql(spec) {
 export async function syncSearchTriggers(db, spec) {
   const useDocIdIndex = await ensureDocIdIndex(db, spec);
   const replaced = [];
+  // The insert trigger is synced too: `CREATE TRIGGER IF NOT EXISTS` never
+  // replaces one, so an install created before a spec gained `indexedValue`
+  // would otherwise keep indexing the old way on every insert. A spec whose
+  // insert SQL has not changed compares equal and is left alone.
+  if (await replaceTriggerIfChanged(db, `${spec.source}_ai`, buildInsertTriggerSql(spec))) {
+    replaced.push(`${spec.source}_ai`);
+  }
   if (await replaceTriggerIfChanged(db, `${spec.source}_au`, buildUpdateTriggerSql(spec, useDocIdIndex))) {
     replaced.push(`${spec.source}_au`);
   }
@@ -373,4 +404,4 @@ export async function setupFullTextSearch(db) {
   return true;
 }
 
-export { FTS_TABLES };
+export { FTS_TABLES, buildInsertTriggerSql, buildUpdateTriggerSql, buildBackfillSql };
