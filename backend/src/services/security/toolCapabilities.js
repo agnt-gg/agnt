@@ -109,6 +109,42 @@ const REGISTRY = {
   analyze_image: { capabilities: [], sink: [] },
   generate_image: { capabilities: [], sink: [] },
 
+  // ── Orchestrator: workflow and agent builders, on the caller's own records ──
+  // Each reads or writes only the caller's rows: WorkflowModel refuses a
+  // foreign workflow id, save_agent copies (never overwrites) someone else's
+  // agent, load/delete/run_agent check created_by, and the version tools
+  // check ownership before touching history (workflowTools.requireOwnWorkflow).
+  // Whatever a run starts is policed node by node and tool by tool when it runs.
+  // Undeclared, every one of these was refused to every team member.
+  get_available_tool_node_types: { capabilities: [], sink: [] },
+  get_node_type_schema: { capabilities: [], sink: [] },
+  update_workflow: { capabilities: [], sink: [] },
+  revert_workflow: { capabilities: [], sink: [] },
+  list_workflow_versions: { capabilities: [], sink: [] },
+  create_checkpoint: { capabilities: [], sink: [] },
+  // Calls this instance's own /api/workflows/:id/start|stop with the caller's token.
+  start_workflow: { capabilities: ['http'], sink: [] },
+  stop_workflow: { capabilities: ['http'], sink: [] },
+  generate_agent: { capabilities: [], sink: [] },
+  modify_agent: { capabilities: [], sink: [] },
+  save_agent: { capabilities: [], sink: [] },
+  load_agent: { capabilities: [], sink: [] },
+  delete_agent: { capabilities: [], sink: [] },
+  list_agents: { capabilities: [], sink: [] },
+  run_agent: { capabilities: [], sink: [] },
+
+  // ── Orchestrator: the caller's own open app tab (UI state over the socket) ──
+  get_canvas_state: { capabilities: [], sink: [] },
+  inspect_canvas_widget: { capabilities: [], sink: [] },
+  open_canvas_widget: { capabilities: [], sink: [] },
+  close_canvas_widget: { capabilities: [], sink: [] },
+  move_canvas_widget: { capabilities: [], sink: [] },
+  list_tutorial_targets: { capabilities: [], sink: [] },
+  highlight_element: { capabilities: [], sink: [] },
+  start_guided_tour: { capabilities: [], sink: [] },
+  scan_page_elements: { capabilities: [], sink: [] },
+  end_guided_tour: { capabilities: [], sink: [] },
+
   // ── Workflow nodes: execution ────────────────────────────────────────────
   'execute-javascript': { capabilities: ['code-eval'], sink: ['code'] },
   'execute-javascript-child': { capabilities: ['code-eval'], sink: ['code'] },

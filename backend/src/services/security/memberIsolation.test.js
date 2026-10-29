@@ -42,7 +42,27 @@ describe('memberIsolation', () => {
       ['file-system-operation', { operation: 'readFile', rootDirectory: '/app/data', path: 'secrets' }],
     ];
     for (const [tool, args] of refused) {
-      expect(memberRefusal(tool, args, 'member-2'), tool).toMatch(/only its owner may use it/);
+      expect(memberRefusal(tool, args, 'member-2'), tool).toMatch(/safety guarantee, not a setting/);
+    }
+  });
+
+  it('a code refusal says it is not a setting and points at the cloud sandbox', () => {
+    businessTenant();
+    const refusal = memberRefusal('execute_javascript_code', { code: '1' }, 'member-2');
+    expect(refusal).toMatch(/not a setting/);
+    expect(refusal).toMatch(/sandbox_run/);
+  });
+
+  it('a member keeps the workflow, agent, canvas and tutorial builders (refused to every member until 2026-10-29)', () => {
+    businessTenant();
+    for (const tool of [
+      'get_available_tool_node_types', 'get_node_type_schema', 'update_workflow', 'revert_workflow', 'list_workflow_versions',
+      'create_checkpoint', 'start_workflow', 'stop_workflow', 'generate_agent', 'modify_agent', 'save_agent', 'load_agent',
+      'delete_agent', 'list_agents', 'run_agent', 'get_canvas_state', 'inspect_canvas_widget', 'open_canvas_widget',
+      'close_canvas_widget', 'move_canvas_widget', 'list_tutorial_targets', 'highlight_element', 'start_guided_tour',
+      'scan_page_elements', 'end_guided_tour',
+    ]) {
+      expect(memberRefusal(tool, {}, 'member-2'), tool).toBeNull();
     }
   });
 
@@ -68,7 +88,7 @@ describe('memberIsolation', () => {
   it('a member is still refused the local browser, CLI agents and custom tools (they reach this machine)', () => {
     businessTenant();
     for (const tool of ['browser', 'codex_exec', 'cursor_exec', 'execute_custom_agnt_tool']) {
-      expect(memberRefusal(tool, {}, 'member-2'), tool).toMatch(/only its owner may use it/);
+      expect(memberRefusal(tool, {}, 'member-2'), tool).toMatch(/safety guarantee, not a setting/);
     }
   });
 

@@ -5305,9 +5305,26 @@ export function executeTool(toolName, args, authToken, context) {
 async function executeToolWithActor(toolName, args, authToken, context) {
   const {requireTeamTool}=await import('../authorization/TeamToolPolicy.js');
   requireTeamTool(toolName);
-  if(process.env.AGNT_TENANT_SLUG){const {requireHostedToolAuthority}=await import('../authorization/HostedToolAuthority.js');await requireHostedToolAuthority(context?.userId,authToken);}
+  let teamPermissions=null;
+  if(process.env.AGNT_TENANT_SLUG){const {requireHostedToolAuthority}=await import('../authorization/HostedToolAuthority.js');teamPermissions=await requireHostedToolAuthority(context?.userId,authToken);}
   // CRITICAL: Resolve data references in arguments before gate + execution
   const resolvedArgs = resolveDataReferences(args, context);
+
+  // The team owner's rules for this member (authorization/teamPolicy.js),
+  // before AGNT's own guarantees, so a refusal names the owner's setting.
+  if (process.env.AGNT_TENANT_SLUG) {
+    const { teamPolicyRefusal } = await import('../authorization/teamPolicy.js');
+    const refusal = teamPolicyRefusal(toolName, context?.userId, teamPermissions);
+    if (refusal) {
+      return JSON.stringify({
+        success: false,
+        tool: toolName,
+        team_policy_blocked: true,
+        permission: refusal.permission,
+        error: `${refusal.message} This action was not executed. Tell the user exactly that; do not retry it or work around it with another tool.`,
+      });
+    }
+  }
 
   const gate = await checkAction({
     toolName,
@@ -5322,11 +5339,16 @@ async function executeToolWithActor(toolName, args, authToken, context) {
     // a block on `command` is the gate doing its job.
     const matchedFields = [...new Set(gate.violations.filter((v) => v.decision === 'block' && v.field).map((v) => v.field))];
     const where = matchedFields.length ? ` (matched in ${matchedFields.join(', ')})` : '';
+    // A member-isolation block is a guarantee with no setting behind it. Said
+    // as "which policy rule blocked it", it sent members hunting for one.
+    const isolation = gate.violations.find((v) => v.source === 'member-isolation');
     return JSON.stringify({
       success: false,
       tool: toolName,
       policy_blocked: true,
-      error: `Blocked by security policy: ${gate.blockedRules.join(', ')}${where} — this action was not executed. Explain what was attempted and which policy rule blocked it. Do not retry with trivial rewording.`,
+      error: isolation
+        ? `${isolation.description} (rule: ${isolation.rule}) This action was not executed. Tell the user this plainly. Do not suggest changing a setting: none exists for this. If they need code run, use sandbox_run.`
+        : `Blocked by security policy: ${gate.blockedRules.join(', ')}${where} — this action was not executed. Explain what was attempted and which policy rule blocked it. Do not retry with trivial rewording.`,
       violations: gate.violations,
       security: gate.policy,
     });

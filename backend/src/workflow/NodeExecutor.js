@@ -14,6 +14,17 @@ import { dbRunWithRetry } from '../models/database/index.js';
  * working. Empty string when the gate reported no field, so the message
  * shape is unchanged for older violations.
  */
+/**
+ * What a refused node reports. A member-isolation block is a guarantee with
+ * no setting behind it, so it says so in its own words instead of naming a
+ * "policy rule" people then go looking for.
+ */
+function blockMessage(gate) {
+  const isolation = (gate?.violations || []).find((v) => v.source === 'member-isolation');
+  if (isolation?.description) return `${isolation.description} (rule: ${isolation.rule}) Action not executed.`;
+  return `Blocked by security policy: ${gate.blockedRules.join(', ')}${describeBlockedFields(gate)} — action not executed`;
+}
+
 function describeBlockedFields(gate) {
   const fields = [...new Set((gate?.violations || []).filter((v) => v.decision === 'block' && v.field).map((v) => v.field))];
   return fields.length ? ` (matched in ${fields.join(', ')})` : '';
@@ -153,7 +164,7 @@ class NodeExecutor {
           // Internal gate errors must not break workflow execution.
         }
         if (policyBlock) {
-          throw new Error(`Blocked by security policy: ${policyBlock.blockedRules.join(', ')}${describeBlockedFields(policyBlock)} — action not executed`);
+          throw new Error(blockMessage(policyBlock));
         }
 
         const executableNode = {
@@ -266,9 +277,7 @@ class NodeExecutor {
           /* internal gate errors must never break workflow execution */
         }
         if (policyBlock) {
-          throw new Error(
-            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')}${describeBlockedFields(policyBlock)} — action not executed`
-          );
+          throw new Error(blockMessage(policyBlock));
         }
 
         // Runtime parameter validation happens in BaseAction.execute().

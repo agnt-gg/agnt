@@ -17,6 +17,21 @@ import {
 /**
  * Save workflow to database and broadcast update
  */
+/**
+ * Version history is keyed by workflow id alone (WorkflowVersionService has
+ * no owner), and the id comes from the caller's request context. On a shared
+ * instance that let one member list, checkpoint or revert another member's
+ * workflow. Answer exactly as WorkflowModel does for a foreign id: not found.
+ * An id with no row yet is a new, unsaved workflow and belongs to the caller.
+ */
+async function requireOwnWorkflow(workflowId, authToken, context) {
+  const userId = context?.userId || getUserIdFromToken(authToken);
+  if (!userId) return 'No authenticated user in context';
+  const existing = await WorkflowModel.findOne(workflowId);
+  if (existing && existing.user_id !== userId) return 'Workflow not found';
+  return null;
+}
+
 async function saveWorkflow(workflowId, workflowState, userId) {
   try {
     await WorkflowModel.createOrUpdate(workflowId, JSON.stringify(workflowState), userId, workflowState.isShareable || false);
@@ -324,6 +339,8 @@ export const TOOLS = {
         if (!workflowId) {
           return JSON.stringify({ success: false, error: 'No workflow ID available' });
         }
+        const refusal = await requireOwnWorkflow(workflowId, authToken, context);
+        if (refusal) return JSON.stringify({ success: false, error: refusal });
 
         let targetVersion;
 
@@ -391,6 +408,8 @@ export const TOOLS = {
         if (!workflowId) {
           return JSON.stringify({ success: false, error: 'No workflow ID available' });
         }
+        const refusal = await requireOwnWorkflow(workflowId, authToken, context);
+        if (refusal) return JSON.stringify({ success: false, error: refusal });
 
         const versions = await WorkflowVersionService.getVersionHistory(workflowId, {
           limit,
@@ -442,6 +461,8 @@ export const TOOLS = {
         if (!workflowId || !workflowState) {
           return JSON.stringify({ success: false, error: 'No workflow context available' });
         }
+        const refusal = await requireOwnWorkflow(workflowId, authToken, context);
+        if (refusal) return JSON.stringify({ success: false, error: refusal });
 
         const result = await WorkflowVersionService.createCheckpoint(workflowId, name, workflowState);
 

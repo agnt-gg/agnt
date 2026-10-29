@@ -26,8 +26,17 @@ describe('requireHostedToolAuthority', () => {
 
   it('a plain member of the team may call tools', async () => {
     teams.mockResolvedValue([{ id: 't1', tenantSlug: 'genii', role: 'member' }]);
-    await expect(requireHostedToolAuthority('member-2', 'Bearer member-token')).resolves.toBeUndefined();
+    await expect(requireHostedToolAuthority('member-2', 'Bearer member-token')).resolves.toBeNull();
     expect(access).toHaveBeenCalledWith('Bearer member-token', 't1');
+  });
+
+  it("returns the member's team permissions from that same check, and remembers them for text turns", async () => {
+    const permissions = { 'workflows.run': true, 'code.run': false };
+    teams.mockResolvedValue([{ id: 't1', tenantSlug: 'genii', role: 'member' }]);
+    access.mockResolvedValue({ tenantSlug: 'genii', policy: { revision: 2, permissions } });
+    await expect(requireHostedToolAuthority('amber', 'Bearer amber-token')).resolves.toEqual(permissions);
+    // A text answered as Amber cannot ask the cloud; the owner's rules still apply.
+    await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.amber')).resolves.toEqual(permissions);
   });
 
   it('someone who is not on this instance\'s team is refused', async () => {
@@ -36,14 +45,14 @@ describe('requireHostedToolAuthority', () => {
   });
 
   it('the owner never needs the control plane, and a desktop install is never checked', async () => {
-    await expect(requireHostedToolAuthority('owner-1', undefined)).resolves.toBeUndefined();
+    await expect(requireHostedToolAuthority('owner-1', undefined)).resolves.toBeNull();
     vi.stubEnv('AGNT_TENANT_SLUG', '');
-    await expect(requireHostedToolAuthority('anyone', undefined)).resolves.toBeUndefined();
+    await expect(requireHostedToolAuthority('anyone', undefined)).resolves.toBeNull();
     expect(teams).not.toHaveBeenCalled();
   });
 
   it('a text answered as a teammate uses the turn token this instance minted for that same teammate', async () => {
-    await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.amber')).resolves.toBeUndefined();
+    await expect(requireHostedToolAuthority('john', 'Bearer agnt-tool.john')).resolves.toBeNull(); // nothing known about John yet
     expect(teams).not.toHaveBeenCalled(); // the issuer cannot verify it, so it never goes there
     await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.john')).rejects.toThrow(/does not match the caller/);
     await expect(requireHostedToolAuthority('amber', 'Bearer agnt-tool.amber.forged')).rejects.toThrow(/invalid signature/);

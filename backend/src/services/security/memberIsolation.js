@@ -76,11 +76,19 @@ export function memberRefusal(toolName, args, userId) {
   if (!isNonOwnerMember(userId)) return null;
   if (currentTeamExecution()) return null; // owner-approved and allowlisted; see above
   const profile = resolveToolCapabilities(toolName, args || {});
+  // Every refusal says plainly that this is a guarantee, not a setting: an
+  // unexplained "blocked by security policy" sent members (and the assistant)
+  // looking for a setting that does not exist.
   if (!profile) {
     if (isMemberSafePluginTool(toolName)) return null;
-    return `${toolName} has no declared capabilities, so it could run code or read this instance's files; on a shared instance only its owner may use it.`;
+    return `${toolName} has no declared capabilities, so it is not verified safe to run next to the credentials stored on this shared instance. ${GUARANTEE}`;
   }
   const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability));
   if (reached.length === 0) return null;
-  return `${toolName} can ${reached.join(', ')} on this instance, where the owner's keys and every account's credentials are stored; on a shared instance only its owner may use it.`;
+  const runsCode = reached.some((capability) => capability === 'shell' || capability === 'code-eval');
+  return runsCode
+    ? `${toolName} would run code inside this shared instance, next to everyone's stored credentials. ${GUARANTEE} Run code in the secure cloud sandbox instead (sandbox_run).`
+    : `${toolName} would read or change this shared instance's own files or database, where everyone's credentials are stored. ${GUARANTEE}`;
 }
+
+export const GUARANTEE = 'Team members never can: this is an AGNT safety guarantee, not a setting, and nobody can switch it off. The instance owner can still do it themselves.';

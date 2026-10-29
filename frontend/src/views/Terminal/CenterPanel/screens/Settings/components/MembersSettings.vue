@@ -3,6 +3,7 @@
        every other section; this is only the section's body. -->
   <section class="members-settings" aria-label="Members">
     <MemberAiBilling />
+    <TeamPermissions :team-id="selectedTeamId" />
     <TeamWorkspace
       :selected-team-id="selectedTeamId"
       initial-tab="Members"
@@ -18,6 +19,7 @@
 import { ref } from 'vue';
 import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
 import MemberAiBilling from '@/views/_components/team/MemberAiBilling.vue';
+import TeamPermissions from '@/views/_components/team/TeamPermissions.vue';
 import { currentTeamScope } from '@/composables/useSpaces.js';
 defineEmits(['open-billing', 'close']);
 const selectedTeamId = ref(currentTeamScope()?.teamId || '');

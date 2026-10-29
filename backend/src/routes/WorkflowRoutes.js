@@ -4,6 +4,11 @@ import WorkflowService from '../services/WorkflowService.js';
 import WorkflowVersionService from '../services/WorkflowVersionService.js';
 import WorkflowModel from '../models/WorkflowModel.js';
 import { buildWorkflowEnvelope, parseWorkflowEnvelope, importWorkflow } from '../services/WorkflowImportService.js';
+import { requireTeamWorkflowPermission } from '../services/authorization/teamPolicy.js';
+
+// On a shared instance the team owner decides what members may do (teamPolicy.js).
+const canBuild = requireTeamWorkflowPermission('build');
+const canActivate = requireTeamWorkflowPermission('activate');
 
 // Set up new route
 const WorkflowRoutes = express.Router();
@@ -12,14 +17,14 @@ const WorkflowRoutes = express.Router();
 WorkflowRoutes.get('/health', WorkflowService.healthCheck);
 WorkflowRoutes.get('/', authenticateToken, WorkflowService.getAllWorkflows);
 WorkflowRoutes.get('/summary', authenticateToken, WorkflowService.getAllWorkflowsSummary);
-WorkflowRoutes.post('/save', authenticateToken, WorkflowService.saveWorkflow);
+WorkflowRoutes.post('/save', authenticateToken, canBuild, WorkflowService.saveWorkflow);
 WorkflowRoutes.post('/analyze-dependencies', authenticateToken, (req, res) => WorkflowService.analyzeDependencies(req, res));
 WorkflowRoutes.get('/:id', authenticateToken, WorkflowService.getWorkflowById);
-WorkflowRoutes.put('/:id', authenticateToken, WorkflowService.updateWorkflow);
-WorkflowRoutes.delete('/:id', authenticateToken, WorkflowService.deleteWorkflow);
-WorkflowRoutes.put('/:id/name', authenticateToken, WorkflowService.renameWorkflow);
+WorkflowRoutes.put('/:id', authenticateToken, canBuild, WorkflowService.updateWorkflow);
+WorkflowRoutes.delete('/:id', authenticateToken, canBuild, WorkflowService.deleteWorkflow);
+WorkflowRoutes.put('/:id/name', authenticateToken, canBuild, WorkflowService.renameWorkflow);
 WorkflowRoutes.get('/:id/status', authenticateToken, WorkflowService.fetchWorkflowState);
-WorkflowRoutes.post('/:id/start', authenticateToken, WorkflowService.activateWorkflow);
+WorkflowRoutes.post('/:id/start', authenticateToken, canActivate, WorkflowService.activateWorkflow);
 WorkflowRoutes.post('/:id/stop', authenticateToken, WorkflowService.deactivateWorkflow);
 
 // ============================================================================
@@ -172,7 +177,7 @@ WorkflowRoutes.get('/:id/export', authenticateToken, async (req, res) => {
   }
 });
 
-WorkflowRoutes.post('/import', authenticateToken, async (req, res) => {
+WorkflowRoutes.post('/import', authenticateToken, canBuild, async (req, res) => {
   try {
     const envelope = req.body?.envelope || req.body;
     const payload = parseWorkflowEnvelope(envelope);
