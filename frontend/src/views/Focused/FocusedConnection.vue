@@ -277,7 +277,7 @@ async function addSuggested() {
   }
 }
 
-// Desktop path: for an app on localhost:3333, api.agnt.gg's callback page postMessages the raw
+// Desktop path: for the desktop app's origin, api.agnt.gg's callback page postMessages the raw
 // `code` to this window instead of exchanging it, and the opener must POST it to /auth/callback.
 // Without this listener the popup closed and nothing was ever stored (Connectors does the same).
 async function onOAuthMessage(event) {

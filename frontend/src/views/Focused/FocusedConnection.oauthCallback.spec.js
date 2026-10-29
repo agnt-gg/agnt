@@ -4,7 +4,7 @@ import { ref } from 'vue';
 
 /**
  * Regression: connecting an OAuth service from Focused never completed in the desktop app.
- * For origin localhost:3333, api.agnt.gg's callback page postMessages the raw code to the
+ * For the desktop app origin, api.agnt.gg's callback page postMessages the raw code to the
  * opener ('oauth-callback') instead of exchanging it; Connectors handled that, Focused did not,
  * so the popup closed and nothing was stored.
  */
@@ -12,7 +12,7 @@ import { ref } from 'vue';
 const complete = vi.fn();
 vi.mock('@/services/providerAuthService.js', () => ({ default: { completeRemoteOAuthCallback: (...a) => complete(...a) } }));
 vi.mock('@/utils/oauthMessageOrigin.js', () => ({
-  isTrustedOAuthMessageOrigin: (origin) => origin === 'http://localhost:3333',
+  isTrustedOAuthMessageOrigin: (origin) => origin === 'http://app.test',
   hasOAuthMessagePayload: (e) => e?.data !== null && typeof e?.data === 'object',
 }));
 const card = { id: 'google', name: 'Google', providerId: 'google', status: 'connect', connectionType: 'oauth', apps: [], plugins: [], widgets: [], skills: [], suggested: [], installed: [] };
@@ -26,7 +26,7 @@ vi.mock('vuex', () => ({ useStore: () => ({ dispatch, state: { appAuth: { allPro
 import FocusedConnection from './FocusedConnection.vue';
 
 let wrapper;
-const post = (data, origin = 'http://localhost:3333') => window.dispatchEvent(new MessageEvent('message', { data, origin }));
+const post = (data, origin = 'http://app.test') => window.dispatchEvent(new MessageEvent('message', { data, origin }));
 
 beforeEach(() => {
   complete.mockReset().mockResolvedValue({ success: true });
@@ -40,9 +40,9 @@ afterEach(() => wrapper?.unmount());
 
 describe('FocusedConnection: desktop OAuth callback', () => {
   it('exchanges the code the callback page posts back, then refreshes connections', async () => {
-    post({ type: 'oauth-callback', code: 'c-1', state: 'google:n:http://localhost:3333', provider: 'google' });
+    post({ type: 'oauth-callback', code: 'c-1', state: 'google:n:http://app.test', provider: 'google' });
     await flushPromises();
-    expect(complete).toHaveBeenCalledWith({ code: 'c-1', state: 'google:n:http://localhost:3333' });
+    expect(complete).toHaveBeenCalledWith({ code: 'c-1', state: 'google:n:http://app.test' });
     expect(dispatch).toHaveBeenCalledWith('appAuth/refreshAfterConnect');
   });
 
