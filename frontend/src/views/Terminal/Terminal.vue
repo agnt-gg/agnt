@@ -65,6 +65,7 @@ import { useUiModeDefault } from '@/composables/useUiModeDefault.js';
 import { screenRoute, normalizeScreen, isNavigation } from './screenRoute.js';
 import { focusedLocation } from '@/views/Focused/focusedRoutes.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
+import { syncTeamSpaces } from '@/composables/useSpaces.js';
 
 // Chat is the only eager screen (it is the default). Everything else —
 // including Settings, the auth fallback — is lazy but ALWAYS renderable:
@@ -261,6 +262,10 @@ export default {
         setTimeout(startPreload, 100);
       }
     });
+
+    // In either frame, once signed in: hand the desktop the user's teams so it
+    // can open the space they were last in (useSpaces.syncTeamSpaces).
+    watch(isAuthenticated, (signedIn) => { if (signedIn) syncTeamSpaces(); }, { immediate: true });
 
     watch(
       () => route.path,

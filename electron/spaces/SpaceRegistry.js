@@ -56,12 +56,16 @@ export class SpaceRegistry {
   constructor(userDataDir, { fsImpl = fs } = {}) {
     this.file = path.join(userDataDir, FILE);
     this.fs = fsImpl;
+    this.lastActive = undefined; // never chosen; read() fills it
     this.spaces = this.read();
   }
 
   read() {
     try {
       const parsed = JSON.parse(this.fs.readFileSync(this.file, 'utf8'));
+      // Validated against the registry when it is used (restoreTarget), not here:
+      // the team list it names can still change before then.
+      if (typeof parsed?.lastActive === 'string' && parsed.lastActive.length <= 120) this.lastActive = parsed.lastActive;
       const spaces = Array.isArray(parsed?.spaces) ? parsed.spaces : [];
       // Re-validate on read: a hand-edited or older file cannot smuggle in an origin,
       // nor grant identity sharing to one that does not qualify for it.
@@ -80,11 +84,31 @@ export class SpaceRegistry {
 
   write() {
     const temporary = this.file + '.tmp';
-    this.fs.writeFileSync(temporary, JSON.stringify({ version: 1, spaces: this.spaces }, null, 2));
+    this.fs.writeFileSync(temporary, JSON.stringify({ version: 1, spaces: this.spaces, ...(this.lastActive ? { lastActive: this.lastActive } : {}) }, null, 2));
     this.fs.renameSync(temporary, this.file);
   }
 
   list() { return this.spaces.map(space => ({ ...space })); }
+
+  /** Remember the space the user is in, so the next launch opens there. */
+  rememberActive(id) {
+    if (!this.has(id) || this.lastActive === id) return;
+    this.lastActive = id;
+    this.write();
+  }
+
+  /**
+   * Where this launch should open, or null for the personal space.
+   *
+   * The last space the user was in, while they still belong to it. Someone
+   * who has never switched opens in their team: a team member who opened the
+   * app to an empty personal space reasonably concluded their work was gone.
+   */
+  restoreTarget() {
+    if (this.lastActive === undefined) return this.spaces[0] || null;
+    if (this.lastActive === PRIMARY_SPACE_ID) return null;
+    return this.get(this.lastActive);
+  }
   get(id) { return this.spaces.find(space => space.id === id) || null; }
   has(id) { return id === PRIMARY_SPACE_ID || Boolean(this.get(id)); }
 

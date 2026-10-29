@@ -142,9 +142,10 @@ describe('switching keeps the same user', () => {
 
   it('still switches when the personal session cannot be read', async () => {
     const { call, take, primary, acmeView, readPrimarySession } = setup();
-    readPrimarySession.mockRejectedValueOnce(new Error('renderer gone'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    take(acmeView); // the launch restore's handoff; this test is about the switch below
+    readPrimarySession.mockRejectedValueOnce(new Error('renderer gone'));
     expect(await call(primary, 'spaces:switch', 'team:acme')).toMatchObject({ ok: true });
     expect(take(acmeView)).toBeNull();
     warn.mockRestore();
@@ -337,5 +338,70 @@ describe('team view hardening', () => {
     expect(check(null, 'geolocation')).toBe(false);
     listeners['did-fail-load']({}, -105, 'NAME_NOT_RESOLVED', 'https://acme.agnt.gg/?team=acme', true);
     expect(view.webContents.loadFile).toHaveBeenCalledWith('/unavailable.html', { query: { name: 'Acme', url: 'https://acme.agnt.gg/?team=acme' } });
+  });
+});
+
+// A team member who opened the app to an empty personal space concluded their
+// work was gone (Genii, 2026-10-29). The app now opens where they work.
+describe('opens in the space you were last in', () => {
+  const beta = { id: 'beta', name: 'Beta', tenantUrl: 'https://beta.agnt.gg' };
+  function launch() {
+    const handlers = {};
+    const ipcMain = { handle: (c, fn) => { handlers[c] = fn; }, on: (c, fn) => { handlers[c] = fn; } };
+    const registry = new SpaceRegistry(dir);
+    const primary = { name: 'primary' };
+    const teamPage = { name: 'team page' };
+    const views = { activeId: PRIMARY_SPACE_ID, show: vi.fn(function (s) { this.activeId = s ? s.id : PRIMARY_SPACE_ID; return { ok: true, activeId: this.activeId }; }), close: vi.fn(), spaceIdFor: () => PRIMARY_SPACE_ID };
+    installSpaceIpc({ ipcMain, registry, views, primaryLabel: () => 'Personal', broadcast: vi.fn(), isPrimarySender: s => s === primary, readPrimarySession: async () => null });
+    const call = (sender, channel, ...args) => handlers[channel]({ sender }, ...args);
+    return { call, views, primary, teamPage, registry };
+  }
+
+  it('someone who has never chosen opens in their team once their teams are known', async () => {
+    const { call, views, primary } = launch();
+    await call(primary, 'spaces:sync-teams', [acme, beta], { replace: true });
+    expect(views.activeId).toBe('team:acme');
+  });
+
+  it('next launch reopens the space they were last in, personal included', async () => {
+    let app = launch();
+    await app.call(app.primary, 'spaces:sync-teams', [acme, beta], { replace: true });
+    await app.call(app.primary, 'spaces:switch', 'team:beta');
+    app = launch();
+    await app.call(app.primary, 'spaces:sync-teams', [acme, beta], { replace: true });
+    expect(app.views.activeId).toBe('team:beta');
+
+    await app.call(app.primary, 'spaces:switch', PRIMARY_SPACE_ID);
+    app = launch();
+    await app.call(app.primary, 'spaces:sync-teams', [acme, beta], { replace: true });
+    expect(app.views.activeId).toBe(PRIMARY_SPACE_ID);
+    expect(app.views.show).not.toHaveBeenCalled();
+  });
+
+  it('a team they no longer belong to is never reopened', async () => {
+    let app = launch();
+    await app.call(app.primary, 'spaces:sync-teams', [acme, beta], { replace: true });
+    await app.call(app.primary, 'spaces:switch', 'team:beta');
+    app = launch();
+    await app.call(app.primary, 'spaces:sync-teams', [acme], { replace: true });
+    expect(app.views.activeId).toBe(PRIMARY_SPACE_ID);
+  });
+
+  it('restores once per launch, and never over a choice made this launch', async () => {
+    const { call, views, primary } = launch();
+    await call(primary, 'spaces:switch', PRIMARY_SPACE_ID);
+    await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    expect(views.activeId).toBe(PRIMARY_SPACE_ID);
+    views.show.mockClear();
+    await call(primary, 'spaces:sync-teams', [acme], { replace: true });
+    expect(views.show).not.toHaveBeenCalled();
+  });
+
+  it('only the personal window\'s full team list can trigger it, never a team page', async () => {
+    const { call, views, primary, teamPage } = launch();
+    await call(teamPage, 'spaces:sync-teams', [acme], { replace: true });
+    expect(views.activeId).toBe(PRIMARY_SPACE_ID);
+    await call(primary, 'spaces:sync-teams', [acme]);
+    expect(views.activeId).toBe(PRIMARY_SPACE_ID, 'a partial list is not the user\'s real membership');
   });
 });

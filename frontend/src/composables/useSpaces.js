@@ -29,6 +29,32 @@ export function currentTeamScope(host = typeof window !== 'undefined' ? window :
   try { return JSON.parse(host.sessionStorage.getItem('agnt.teamScope') || 'null'); } catch { return null; }
 }
 
+/**
+ * Tell the desktop the user's complete team list, from whichever screen is up.
+ *
+ * The desktop opens the space the user was last in (their team, if they have
+ * never chosen) once it has the real list after sign-in. That list used to be
+ * sent only by the Studio frame, so someone in Focused mode always opened in
+ * an empty personal space. Desktop only; a browser has no spaces host.
+ */
+export async function syncTeamSpaces({ host = typeof window !== 'undefined' ? window : null } = {}) {
+  const spaces = host?.electron?.spaces;
+  if (!spaces?.syncTeams) return false;
+  const token = host.localStorage.getItem('token');
+  if (!token) return false;
+  try {
+    const response = await host.fetch(API_CONFIG.BASE_URL + '/teams', { headers: { Authorization: 'Bearer ' + token } });
+    if (!response.ok) return false;
+    const teams = await response.json();
+    if (!Array.isArray(teams)) return false;
+    await spaces.syncTeams(teams.filter(t => t.tenantUrl).map(t => ({ id: t.id, name: t.name, tenantUrl: t.tenantUrl })), { replace: true });
+    return true;
+  } catch (error) {
+    console.warn('[spaces] could not sync teams:', error.message);
+    return false;
+  }
+}
+
 /** Is this page a team's own instance? Then it has no personal mode at all. */
 export const onTeamInstance = (host = window) => Boolean(instanceTeam(host));
 

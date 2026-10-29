@@ -54,7 +54,7 @@ export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadc
   // later reload cannot pick up a session the personal window has since ended.
   const parked = new Map(); // spaceId -> { token, until }
 
-  ipcMain.handle('spaces:switch', async (_event, id, options = {}) => {
+  async function switchTo(id, options = {}) {
     if (typeof id !== 'string' || !registry.has(id)) return { ok: false, error: 'Unknown space' };
     const projectId = typeof options?.projectId === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(options.projectId) ? options.projectId : null;
     const space = id === PRIMARY_SPACE_ID ? null : registry.get(id);
@@ -65,8 +65,28 @@ export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadc
       else parked.delete(space.id);
     }
     const result = views.show(space, { projectId });
-    if (result.ok) announce();
+    if (result.ok) {
+      try { registry.rememberActive(id); } catch (error) { console.warn('[spaces] could not remember the active space:', error?.message || error); }
+      announce();
+    }
     return result;
+  }
+
+  // OPEN WHERE YOU WORK. Once per launch, when the personal window first
+  // reports the user's real team list (a trusted sync, so after sign-in), open
+  // the space they were last in — their team if they have never chosen. Never
+  // after they have switched by hand this launch: that choice wins.
+  let restored = false;
+  async function restoreLastSpace() {
+    if (restored) return;
+    restored = true;
+    const target = registry.restoreTarget();
+    if (target && views.activeId === PRIMARY_SPACE_ID) await switchTo(target.id);
+  }
+
+  ipcMain.handle('spaces:switch', async (_event, id, options = {}) => {
+    restored = true; // an explicit choice this launch; never override it
+    return switchTo(id, options);
   });
 
   // Synchronous on purpose: the page asks from its preload-exposed bridge at
@@ -93,13 +113,14 @@ export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadc
     event.returnValue = entry.token;
   });
 
-  ipcMain.handle('spaces:sync-teams', (event, teams, options = {}) => {
+  ipcMain.handle('spaces:sync-teams', async (event, teams, options = {}) => {
     if (!Array.isArray(teams) || teams.length > TEAM_LIST_LIMIT) return { ok: false, error: 'Invalid team list' };
     const trusted = isPrimarySender(event?.sender) === true;
     const { changed, removed } = registry.syncTeams(teams, { replace: options?.replace === true, trusted });
     // Losing a team closes its view: a removed member must not keep a live session on screen.
     for (const id of removed) { views.close(id); unread.delete(id); parked.delete(id); }
     if (changed) announce();
+    if (trusted && options?.replace === true) await restoreLastSpace();
     return { ok: true, changed };
   });
 
