@@ -135,13 +135,15 @@
 // One app's page: what it turns on, how it signs in, what else it could turn
 // on. The account card comes from services/appCards; package browsing is shared separately;
 // every action goes through the shared stores — Focused never calls the API.
-import { ref, computed, inject, onBeforeUnmount } from 'vue';
+import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import FocusedConnectorLogo from './FocusedConnectorLogo.vue';
 import { CLI_DISCONNECT_ACTIONS, editAsk } from './focusedModel.js';
 import { useAppCards } from '@/composables/useAppCards.js';
 import { findAppCard, describeApps } from '@/services/appCards.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
+import providerAuthService from '@/services/providerAuthService.js';
+import { isTrustedOAuthMessageOrigin, hasOAuthMessagePayload } from '@/utils/oauthMessageOrigin.js';
 
 /** Legacy account links still work; in-app sign-in returns where it started: a plugin's details or a tab. */
 const props = defineProps({
@@ -275,5 +277,24 @@ async function addSuggested() {
   }
 }
 
-onBeforeUnmount(() => clearInterval(popupTimer));
+// Desktop path: for an app on localhost:3333, api.agnt.gg's callback page postMessages the raw
+// `code` to this window instead of exchanging it, and the opener must POST it to /auth/callback.
+// Without this listener the popup closed and nothing was ever stored (Connectors does the same).
+async function onOAuthMessage(event) {
+  if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+  if (!hasOAuthMessagePayload(event)) return;
+  if (event.data.type !== 'oauth-callback') return;
+  const { code, state } = event.data;
+  try {
+    const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });
+    if (!result?.success) throw new Error(result?.error || 'OAuth completion failed');
+    await store.dispatch('appAuth/refreshAfterConnect').catch(() => {});
+    await store.dispatch('appAuth/checkConnectionHealth').catch(() => {});
+  } catch (e) {
+    busy.value = false;
+    error.value = `Couldn’t finish connecting ${card.value?.name || 'the service'}. ${e?.message || e}`;
+  }
+}
+onMounted(() => window.addEventListener('message', onOAuthMessage));
+onBeforeUnmount(() => { clearInterval(popupTimer); window.removeEventListener('message', onOAuthMessage); });
 </script>
