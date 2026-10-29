@@ -44,8 +44,9 @@ const MAX_DIFF_BLOCK_CHARS = 600;
  * ENOENT" (reported 2026-10-20, AGNT One). ensureWorkspaceRoot keeps its one
  * exception: a root inside the install directory is never re-created.
  */
-export async function getWorkspaceRootPath() {
-  return ensureWorkspaceRoot();
+// userId defaults (inside ensureWorkspaceRoot) to the acting user of the current tool run.
+export async function getWorkspaceRootPath(userId) {
+  return ensureWorkspaceRoot(userId);
 }
 
 /**
@@ -944,8 +945,8 @@ const WORKSPACE_PROMPT_IGNORE = new Set([
  * shape ({ name, type, path }), with optional { collapsed, childCount }
  * on directories that were not walked.
  */
-export async function listWorkspaceFiles({ maxEntries = 500, maxDepth = 3 } = {}) {
-  const WORKSPACE_ROOT = await getWorkspaceRoot();
+export async function listWorkspaceFiles({ maxEntries = 500, maxDepth = 3, userId } = {}) {
+  const WORKSPACE_ROOT = await getWorkspaceRoot(userId);
   await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
 
   const items = [];

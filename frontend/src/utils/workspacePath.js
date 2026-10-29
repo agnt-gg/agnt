@@ -135,6 +135,12 @@ export function artifactSelectToWorkspacePath(select, workspaceRoot) {
 }
 
 let workspaceRootPromise = null;
+// The session the cached root belongs to. Workspaces are per account, so a sign-in as
+// someone else must never reuse the previous account's folder.
+let workspaceRootSession = null;
+const currentSession = () => {
+  try { return globalThis.localStorage?.getItem('token') || ''; } catch { return ''; }
+};
 
 /**
  * The workspace root, fetched once per session.
@@ -146,7 +152,10 @@ let workspaceRootPromise = null;
  * call retries instead of pinning a transient error for the whole session.
  */
 export async function getWorkspaceRoot() {
+  const session = currentSession();
+  if (workspaceRootPromise && workspaceRootSession !== session) workspaceRootPromise = null;
   if (!workspaceRootPromise) {
+    workspaceRootSession = session;
     workspaceRootPromise = getSettings()
       .then((settings) => settings?.workspaceRoot || '')
       .catch((error) => {
@@ -160,6 +169,7 @@ export async function getWorkspaceRoot() {
 /** Test seam and settings-change hook. */
 export function resetWorkspaceRootCache() {
   workspaceRootPromise = null;
+  workspaceRootSession = null;
 }
 
 /**

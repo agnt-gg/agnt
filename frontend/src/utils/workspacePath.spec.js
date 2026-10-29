@@ -136,6 +136,16 @@ describe('getWorkspaceRoot', () => {
     expect(await getWorkspaceRoot()).toBe('C:/work');
     expect(getSettings).toHaveBeenCalledTimes(2);
   });
+
+  it('refetches after signing in as a different account (workspaces are per account)', async () => {
+    localStorage.setItem('token', 'account-a');
+    getSettings.mockResolvedValueOnce({ workspaceRoot: 'C:/a' }).mockResolvedValueOnce({ workspaceRoot: 'C:/b' });
+    expect(await getWorkspaceRoot()).toBe('C:/a');
+    localStorage.setItem('token', 'account-b');
+    expect(await getWorkspaceRoot()).toBe('C:/b');
+    expect(getSettings).toHaveBeenCalledTimes(2);
+    localStorage.removeItem('token');
+  });
 });
 
 describe('resolveWorkspaceEntry', () => {

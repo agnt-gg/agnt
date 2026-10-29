@@ -16,7 +16,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 /** Drafts and their exports are evidence, not automatic replacements for canonical instructions. */
 export default class SkillDraftService {
   static async exportVersion(skill, version) {
-    const workspace = await getWorkspaceRoot();
+    const workspace = await getWorkspaceRoot(skill.user_id);
     // Not inside a discovery root. Hash path components rather than trusting model names/IDs.
     const directory = path.join(workspace, 'skill-exports', hash(skill.user_id), hash(skill.id), `v${version.version}-${hash(version.instructions).slice(0, 16)}`);
     await fs.mkdir(directory, { recursive: true });

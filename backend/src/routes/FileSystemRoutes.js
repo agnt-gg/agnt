@@ -10,7 +10,7 @@ import { describeUnsafeRoot } from '../utils/installDirGuard.js';
 import { resolveManifestFile } from '../services/artifactBundles/manifest.js';
 import { preparePortableBundle, readPreparedFile } from '../services/artifactBundles/portableBundle.js';
 import {
-  DEFAULT_WORKSPACE_ROOT,
+  defaultRootFor,
   getWorkspaceRoot,
   saveWorkspaceRoot,
   ensureWorkspaceRoot,
@@ -90,10 +90,11 @@ warnIfWorkspaceUnsafe();
 // Returns current workspace root and default
 router.get('/settings', authenticateToken, async (req, res) => {
   try {
-    const workspaceRoot = await getWorkspaceRoot();
+    // Per account: each signed-in user has their own workspace folder.
+    const workspaceRoot = await getWorkspaceRoot(req.user?.id);
     res.json({
       workspaceRoot,
-      defaultRoot: DEFAULT_WORKSPACE_ROOT,
+      defaultRoot: await defaultRootFor(req.user?.id),
       // null when safe; the UI shows a banner when it isn't.
       unsafeRoot: describeUnsafeRoot(workspaceRoot),
     });
@@ -124,7 +125,7 @@ router.put('/settings', authenticateToken, async (req, res) => {
     // Verify the directory exists or can be created
     await fs.mkdir(resolved, { recursive: true });
 
-    await saveWorkspaceRoot(resolved);
+    await saveWorkspaceRoot(resolved, req.user?.id);
     res.json({ success: true, workspaceRoot: resolved });
   } catch (error) {
     console.error('FileSystem settings update error:', error);
@@ -136,7 +137,7 @@ router.put('/settings', authenticateToken, async (req, res) => {
 // Returns directory listing for the given relative path (default: root)
 router.get('/tree', authenticateToken, async (req, res) => {
   try {
-    const root = await ensureWorkspaceRoot();
+    const root = await ensureWorkspaceRoot(req.user?.id);
     const relDir = req.query.dir || '';
     const absDir = validatePath(relDir, root);
 
@@ -205,7 +206,7 @@ const SEARCH_MAX_ENTRIES = 20000;
 // result cap or the entry-scan cap (safety valve for pathological workspaces).
 router.get('/search', authenticateToken, async (req, res) => {
   try {
-    const root = await ensureWorkspaceRoot();
+    const root = await ensureWorkspaceRoot(req.user?.id);
     const q = (req.query.q || '').trim();
     if (!q) return res.json({ items: [], truncated: false });
 
@@ -275,7 +276,7 @@ router.get('/search', authenticateToken, async (req, res) => {
 // can show a "No preview available" placeholder without ever loading the bytes.
 router.get('/file', authenticateToken, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const relPath = req.query.path;
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 
@@ -319,7 +320,7 @@ router.get('/file', authenticateToken, async (req, res) => {
 // Write/create a file
 router.post('/file', authenticateToken, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const { path: relPath, content } = req.body;
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 
@@ -346,7 +347,7 @@ router.post('/file', authenticateToken, async (req, res) => {
 // root; empty string = root). Collisions get " (n)" suffixed before the ext.
 router.post('/upload', authenticateToken, upload.array('files'), async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const dir = typeof req.body.dir === 'string' ? req.body.dir : '';
     const files = req.files || [];
     if (files.length === 0) return res.status(400).json({ error: 'no files uploaded' });
@@ -400,7 +401,7 @@ router.post('/upload', authenticateToken, upload.array('files'), async (req, res
 // Create a directory
 router.post('/mkdir', authenticateToken, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const { path: relPath } = req.body;
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 
@@ -418,7 +419,7 @@ router.post('/mkdir', authenticateToken, async (req, res) => {
 // Rename or move a file/directory
 router.post('/rename', authenticateToken, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const { oldPath, newPath } = req.body;
     if (!oldPath || !newPath) return res.status(400).json({ error: 'oldPath and newPath are required' });
 
@@ -443,7 +444,7 @@ router.post('/rename', authenticateToken, async (req, res) => {
 // go through the same path as disk entries.
 router.post('/publish-manifest', authenticateToken, async (req, res) => {
   try {
-    const workspaceRoot = await getWorkspaceRoot();
+    const workspaceRoot = await getWorkspaceRoot(req.user?.id);
     const manifest = await preparePortableBundle({
       workspaceRoot, ownerId: req.user.id,
       entryPath: req.body?.entryPath, rootPath: req.body?.rootPath,
@@ -462,7 +463,7 @@ router.post('/publish-manifest', authenticateToken, async (req, res) => {
 // that changed after preflight instead of uploading bytes under a stale hash.
 router.get('/publish-file', authenticateToken, async (req, res) => {
   try {
-    const workspaceRoot = await getWorkspaceRoot();
+    const workspaceRoot = await getWorkspaceRoot(req.user?.id);
     if (req.query.preparationId) {
       const bytes = await readPreparedFile(req.query.preparationId, req.query.path, req.user.id);
       return res.type('application/octet-stream').send(bytes);
@@ -496,7 +497,7 @@ router.get('/publish-file', authenticateToken, async (req, res) => {
 // for any absolute path.
 router.get('/raw', requireAuthMedia, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const relPath = req.query.path;
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 
@@ -519,7 +520,7 @@ router.get('/raw', requireAuthMedia, async (req, res) => {
 // Delete a file or empty directory
 router.delete('/file', authenticateToken, async (req, res) => {
   try {
-    const root = await getWorkspaceRoot();
+    const root = await getWorkspaceRoot(req.user?.id);
     const relPath = req.query.path;
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 

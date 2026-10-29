@@ -142,7 +142,7 @@ async function loadFrozenWorkspaceSection(context) {
   if (context._frozenWorkspaceSection !== undefined) return context._frozenWorkspaceSection;
   let section = '';
   try {
-    section = await loadWorkspaceContextSection();
+    section = await loadWorkspaceContextSection(context.userId);
   } catch (e) {
     console.warn('[chatConfigs] Failed to load workspace context:', e.message);
   }

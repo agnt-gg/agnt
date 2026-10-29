@@ -385,7 +385,7 @@ async function buildPluginContextBlock({ pluginContext, pluginState }) {
 async function buildArtifactContextBlock(context) {
   const { codeId, codeContext } = context;
   if (!codeId && !codeContext) return '';
-  return await getCodeSystemContent({ codeContext });
+  return await getCodeSystemContent({ codeContext, userId: context.userId });
 }
 
 async function buildGoalContextBlock({ goalId, goalContext, goalState }) {

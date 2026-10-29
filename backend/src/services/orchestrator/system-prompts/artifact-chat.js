@@ -13,7 +13,7 @@ const OPEN_FILE_HEAD_CHARS = 16_000;
  * System prompt for code chat context
  */
 export async function getCodeSystemContent(context = {}) {
-  const { codeContext } = context;
+  const { codeContext, userId } = context;
   const openFilePath = codeContext?.openFilePath || null;
   const openFileContent = codeContext?.openFileContent || null;
   const consoleMessages = Array.isArray(codeContext?.consoleMessages) ? codeContext.consoleMessages : [];
@@ -21,7 +21,7 @@ export async function getCodeSystemContent(context = {}) {
   // Get current workspace root for system prompt
   let workspaceRootDisplay = '~/.agnt/projects/';
   try {
-    workspaceRootDisplay = await getWorkspaceRootPath();
+    workspaceRootDisplay = await getWorkspaceRootPath(userId);
   } catch { /* use default */ }
 
   // Build workspace file listing.
@@ -30,7 +30,7 @@ export async function getCodeSystemContent(context = {}) {
   // Annie should call `list_files` to drill into any collapsed dir.
   let workspaceSection = '';
   try {
-    const { items, truncated, collapsedDirs } = await listWorkspaceFiles();
+    const { items, truncated, collapsedDirs } = await listWorkspaceFiles({ userId });
     if (items.length > 0) {
       const lines = items.map((f) => {
         if (f.type === 'directory' && f.collapsed) {

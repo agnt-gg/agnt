@@ -3,10 +3,11 @@
 // goal task execution. The path is set in onboarding and editable in artifacts
 // settings; reading it here means tools that take a file path can default to
 // under the workspace.
-export async function loadWorkspaceContextSection() {
+// userId: the chat's user (prompts are built outside any tool run, so it must be passed).
+export async function loadWorkspaceContextSection(userId) {
   try {
     const { getWorkspaceRootPath } = await import('./codeTools.js');
-    const workspaceRoot = await getWorkspaceRootPath();
+    const workspaceRoot = await getWorkspaceRootPath(userId);
     if (!workspaceRoot) return '';
     return `## Workspace
 The user's workspace directory is: ${workspaceRoot}
