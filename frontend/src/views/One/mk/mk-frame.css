@@ -1,0 +1,34 @@
+/* How the approved mockup's rail, drawer, top bar and pages sit inside the
+   app's frame (OneShell is a flex row; the mockup was a CSS grid). Only
+   layout lives here; every visual rule is mk.css, generated from the mockup. */
+.mk.mk-rail-host,
+.mk.mk-drawer-host { display: flex; flex: none; min-height: 0; }
+.mk.mk-rail-host .rail { height: 100%; box-sizing: border-box; }
+.mk.mk-drawer-host .drawer { height: 100%; box-sizing: border-box; }
+.mk .mk-new-anchor { position: relative; }
+.mk.mk-chatlist-host { display: flex; flex: none; width: 240px; min-height: 0; border-right: 1px solid var(--line); }
+.mk.mk-chatlist-host .chat-list { flex: 1; border-right: 0; }
+.mk.mk-topbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.mk.mk-page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.mk.mk-page > .content { flex: 1; min-width: 0; }
+.mk .mk-strip-host { flex: none; }
+/* The mockup's drawer and chat list draw their own right edge: no second line from the panel. */
+.ui-one .mk-drawer-host + .one-main,
+.ui-one .mk-chatlist-host + .one-main { border-left: 0; }
+.ui-one .mk-drawer-host .drawer { border-left: 1px solid var(--line); }
+/* The mockup's compact row button (it set min-height:28px;padding:0 12px inline). */
+.mk .primary.sm { min-height: 28px; padding: 0 12px; }
+/* A teamspace: its page beside the card panel. */
+.mk .mk-split { flex: 1; min-width: 0; display: flex; overflow: hidden; }
+/* Small pieces the mockup drew inline. */
+.mk .mk-doc-body { width: 100%; min-height: 50vh; padding: 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--text-primary); font: inherit; font-size: 16px; line-height: 1.6; }
+.mk .mk-muted { font-size: 12.5px; color: var(--text-tertiary); }
+.mk .mk-error { margin: 0 0 14px; padding: 10px 12px; border: 1px solid rgba(var(--pink-rgb), 0.35); border-radius: 10px; background: rgba(var(--pink-rgb), 0.05); font-size: 13.5px; }
+.mk .mk-label { margin-bottom: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.mk .mk-wrap { white-space: normal; }
+.mk .scope.mk-private { background: var(--raised); border: 1px solid var(--line); }
+.mk .av.is-system { background: var(--surface-active); color: var(--text-tertiary); }
+.mk .tc-docprev { white-space: pre-wrap; max-height: 260px; overflow: auto; }
+@media (max-width: 860px) {
+  .mk.mk-drawer-host, .mk.mk-chatlist-host { display: none; }
+}

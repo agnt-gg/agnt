@@ -1,57 +1,55 @@
 <template>
-  <div class="ot-scroll">
-    <div class="ot-page">
-      <h1 class="ot-greet">Good {{ partOfDay() }}{{ firstName ? ', ' + firstName : '' }}.</h1>
-      <p class="ot-lead">{{ lead }}</p>
-      <div class="ot-chips">
-        <button type="button" class="ot-chip" @click="ctx.ask('')"><i class="far fa-comment" aria-hidden="true"></i>Ask Annie</button>
-        <template v-if="team && spaces.length">
-          <button type="button" class="ot-chip" @click="ctx.go({ view: 'space', space: spaces[0].id, tab: 'board' })"><i class="far fa-check-square" aria-hidden="true"></i>New task</button>
-          <button type="button" class="ot-chip" @click="ctx.go({ view: 'space', space: spaces[0].id, tab: 'docs' })"><i class="far fa-file-alt" aria-hidden="true"></i>New doc</button>
-          <button type="button" class="ot-chip" @click="ctx.go({ view: 'space', space: spaces[0].id, tab: 'chat' })"><i class="fas fa-hashtag" aria-hidden="true"></i>Message the team</button>
-        </template>
-        <button type="button" class="ot-chip" @click="ctx.openPage('scheduled')"><i class="fas fa-sync-alt" aria-hidden="true"></i>Routines</button>
+  <div class="content">
+    <div class="page">
+      <h1 class="greet">Good {{ partOfDay() }}{{ firstName ? ', ' + firstName : '' }}.</h1>
+      <p class="lead">{{ lead }}</p>
+      <div class="chips">
+        <button type="button" class="chip" @click="ctx.ask('')"><MkIcon name="chats" />Ask Annie</button>
+        <button type="button" class="chip" @click="ctx.create('task')"><MkIcon name="task" />New task</button>
+        <button type="button" class="chip" @click="ctx.create('doc')"><MkIcon name="doc" />New doc</button>
+        <button type="button" class="chip" @click="ctx.create('agent')"><MkIcon name="bot" />New agent</button>
+        <button type="button" class="chip" @click="ctx.create('routine')"><MkIcon name="bolt" />New routine</button>
       </div>
 
       <!-- Home IS the inbox: what needs me first, then my work. -->
-      <section class="ot-inbox" aria-label="Inbox" data-testid="home-inbox">
-        <div class="ot-inbox-head">
-          <nav class="ot-tabs" aria-label="Inbox">
-            <button v-for="t in TABS" :key="t.id" type="button" class="ot-tab" :class="{ 'is-active': tab === t.id }" @click="tab = t.id">
-              {{ t.label }}<span v-if="t.id === 'needs' && needCount" class="ot-count">{{ needCount }}</span>
+      <section class="hm-inbox" aria-label="Inbox" data-testid="home-inbox">
+        <div class="hm-inbox-h">
+          <nav class="tabs" aria-label="Inbox" style="margin: 0; border: 0">
+            <button v-for="t in TABS" :key="t.id" type="button" class="tab" :class="{ 'is-active': tab === t.id }" @click="tab = t.id">
+              {{ t.label }}<span v-if="t.id === 'needs' && needCount" class="count">{{ needCount }}</span>
             </button>
           </nav>
-          <span class="ot-fill"></span>
-          <button v-if="team" type="button" class="focused-btn is-small" :disabled="!ctx.unread.value" @click="readAll"><i class="fas fa-check" aria-hidden="true"></i>Mark all read</button>
+          <span class="fill"></span>
+          <button v-if="team" type="button" class="btn ghost sm" :disabled="!ctx.unread.value" @click="readAll"><MkIcon name="check" size="xs" />Mark all read</button>
         </div>
-        <div class="ot-inbox-body">
+        <div class="hm-inbox-b">
           <template v-if="tab === 'needs'">
-            <div v-if="checkpointsWaiting.length" class="ot-sub">Waiting for your OK</div>
-            <ul v-if="checkpointsWaiting.length" class="ot-list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
-            <div v-if="runsWaiting.length" class="ot-sub">Routine runs to review</div>
-            <ul v-if="runsWaiting.length" class="ot-list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
-            <div v-if="teamNeeds.length" class="ot-sub">Mentions, assignments and agent results</div>
-            <ul v-if="teamNeeds.length" class="ot-list"><li v-for="item in teamNeeds" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li></ul>
-            <ul v-if="!needCount" class="ot-list"><li class="ot-empty">Nothing needs you right now.</li></ul>
+            <div v-if="checkpointsWaiting.length" class="hm-sub">Waiting for your OK</div>
+            <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
+            <div v-if="runsWaiting.length" class="hm-sub">Routine runs to review</div>
+            <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
+            <div v-if="teamNeeds.length" class="hm-sub">Mentions, assignments and agent results</div>
+            <ul v-if="teamNeeds.length" class="list"><li v-for="item in teamNeeds" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li></ul>
+            <ul v-if="!needCount" class="list"><li class="empty">Nothing needs you right now.</li></ul>
           </template>
           <template v-else-if="tab === 'mentions'">
-            <ul class="ot-list">
-              <li v-if="!mentions.length" class="ot-empty">{{ team ? 'No mentions yet.' : 'Mentions come from teammates. Open a team to see them.' }}</li>
+            <ul class="list">
+              <li v-if="!mentions.length" class="empty">{{ team ? 'No mentions yet.' : 'Mentions come from teammates. Open a team to see them.' }}</li>
               <li v-for="item in mentions" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li>
             </ul>
           </template>
           <template v-else-if="tab === 'runs'">
-            <ul class="ot-list">
-              <li v-if="!runs.length" class="ot-empty">{{ runsLoaded ? 'No routine runs yet.' : 'Loading…' }}</li>
+            <ul class="list">
+              <li v-if="!runs.length" class="empty">{{ runsLoaded ? 'No routine runs yet.' : 'Loading…' }}</li>
               <li v-for="r in runs" :key="r.id"><TeamRunRow :run="r" /></li>
             </ul>
           </template>
           <template v-else>
-            <div v-if="checkpointsWaiting.length" class="ot-sub">Waiting for your OK</div>
-            <ul v-if="checkpointsWaiting.length" class="ot-list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
-            <div v-if="ctx.inbox.value.length" class="ot-sub">Everything else</div>
-            <ul class="ot-list">
-              <li v-if="!ctx.inbox.value.length && !checkpointsWaiting.length" class="ot-empty">Nothing here yet.</li>
+            <div v-if="checkpointsWaiting.length" class="hm-sub">Waiting for your OK</div>
+            <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
+            <div v-if="ctx.inbox.value.length" class="hm-sub">Everything else</div>
+            <ul class="list">
+              <li v-if="!ctx.inbox.value.length && !checkpointsWaiting.length" class="empty">Nothing here yet.</li>
               <li v-for="item in ctx.inbox.value" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li>
             </ul>
           </template>
@@ -59,26 +57,27 @@
       </section>
 
       <template v-if="team">
-        <div class="ot-two">
+        <div class="two">
           <div>
-            <div class="ot-sec"><h3>My tasks</h3><button type="button" class="focused-btn is-small" @click="ctx.go({ view: 'mine' })">All</button></div>
-            <ul class="ot-list">
-              <li v-if="!myTasks.length" class="ot-empty">{{ loading ? 'Loading…' : 'No open tasks assigned to you.' }}</li>
+            <div class="sec-head"><h3>My tasks</h3><button type="button" class="btn ghost sm" @click="ctx.go({ view: 'mine' })">All</button></div>
+            <ul class="list">
+              <li v-if="!myTasks.length" class="empty">{{ loading ? 'Loading…' : 'No open tasks assigned to you.' }}</li>
               <li v-for="t in myTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" /></li>
             </ul>
           </div>
           <div>
-            <div class="ot-sec"><h3>Agents at work</h3></div>
-            <ul class="ot-list">
-              <li v-if="!agentTasks.length" class="ot-empty">{{ loading ? 'Loading…' : 'No agent is working on a card.' }}</li>
+            <div class="sec-head"><h3>Agents at work</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('activity')">Activity</button></div>
+            <ul class="list">
+              <li v-if="!agentTasks.length" class="empty">{{ loading ? 'Loading…' : 'No agent is working on a card.' }}</li>
               <li v-for="t in agentTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" /></li>
             </ul>
-            <div class="ot-sec"><h3>Teamspaces</h3></div>
-            <div class="ot-cards" style="grid-template-columns: 1fr">
-              <button v-for="s in spaces" :key="s.id" type="button" class="ot-card" @click="ctx.go({ view: 'space', space: s.id })">
-                <div class="ot-row" style="flex-wrap: nowrap">
-                  <span class="ot-space-icon" style="width: 34px; height: 34px; font-size: 15px; border-radius: 10px">#</span>
-                  <div style="flex: 1; min-width: 0"><h4>{{ s.name }}</h4><p>{{ openCount(s.id) }} open {{ openCount(s.id) === 1 ? 'card' : 'cards' }}</p></div>
+            <div class="sec-head"><h3>Your teamspaces</h3></div>
+            <div class="cards" style="grid-template-columns: 1fr">
+              <button v-for="s in spaces" :key="s.id" type="button" class="card" @click="ctx.go({ view: 'space', space: s.id, tab: 'board' })">
+                <div class="card-top">
+                  <span class="space-icon" style="width: 34px; height: 34px; font-size: 16px; border-radius: 10px">#</span>
+                  <div style="flex: 1"><h4>{{ s.name }}</h4><p>{{ openCount(s.id) }} open</p></div>
+                  <span class="stack"><TeamAvatar v-for="p in ctx.people.value.slice(0, 4)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span>
                 </div>
               </button>
             </div>
@@ -87,14 +86,14 @@
       </template>
 
       <template v-else>
-        <div class="ot-sec"><h3>Your teams</h3></div>
-        <ul class="ot-list">
-          <li v-if="!teams.length" class="ot-empty">You are not on a team yet. A team shares chat, a board, docs and agents, each person keeping their own private space. <button type="button" class="ot-link" @click="ctx.teamSettings()">Set one up</button>.</li>
+        <div class="sec-head"><h3>Your teams</h3></div>
+        <ul class="list">
+          <li v-if="!teams.length" class="empty">You are not on a team yet. A team shares chat, a board, docs and agents, each person keeping their own private space. <button type="button" class="link" @click="ctx.teamSettings()">Set one up</button>.</li>
           <li v-for="t in teams" :key="t.id">
-            <div class="ot-r">
-              <span class="ot-r-icon"><img src="/images/agnt-logo-mark.svg" alt="" style="width: 15px" /></span>
-              <span class="ot-r-text"><strong>{{ t.name }}</strong><small>{{ roleLabel(t.role) }}</small></span>
-              <button type="button" class="focused-primary is-small" @click="ctx.openTeam(t)">Open</button>
+            <div class="r">
+              <span class="r-icon"><img src="/images/agnt-logo-mark.svg" alt="" style="width: 15px" /></span>
+              <span class="r-text"><strong>{{ t.name }}</strong><small>{{ roleLabel(t.role) }}</small></span>
+              <button type="button" class="primary sm" @click="ctx.openTeam(t)">Open</button>
             </div>
           </li>
         </ul>
@@ -106,6 +105,8 @@
 <script setup>
 import { ref, computed, watch, inject, onMounted } from 'vue';
 import TeamInboxRow from './TeamInboxRow.vue';
+import TeamAvatar from './TeamAvatar.vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamTaskRow from './TeamTaskRow.vue';
 import TeamCheckpointRow from './TeamCheckpointRow.vue';
 import TeamRunRow from './TeamRunRow.vue';

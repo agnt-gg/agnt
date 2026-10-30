@@ -1,12 +1,12 @@
 <template>
-  <button type="button" class="ot-r" @click="$emit('open', task)">
-    <span class="ot-col-dot" :style="{ background: statusColor(task.status) }"></span>
-    <span class="ot-r-text">
+  <button type="button" class="r" @click="$emit('open', task)">
+    <span class="col-dot" :style="{ background: statusColor(task.status) }"></span>
+    <span class="r-text">
       <strong>{{ task.title }}</strong>
       <small>{{ statusLabel(task.status) }}<template v-if="task.due"> · due {{ task.due }}</template><template v-if="spaceName"> · {{ spaceName }}</template></small>
     </span>
-    <span v-if="task.agentState === 'running'" class="ot-pulse" aria-label="Working"></span>
-    <span v-else-if="agentStateLabel(task.agentState)" class="ot-tag" :class="task.agentState === 'waiting' ? 'is-pink' : 'is-amber'">{{ agentStateLabel(task.agentState) }}</span>
+    <span v-if="task.agentState === 'running'" class="pulse" aria-label="Working"></span>
+    <span v-else-if="agentStateLabel(task.agentState)" class="tag" :class="task.agentState === 'waiting' ? 'pink' : 'amber'">{{ agentStateLabel(task.agentState) }}</span>
     <TeamAvatar v-if="task.assignee" :who="task.assignee" size="sm" />
   </button>
 </template>

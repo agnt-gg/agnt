@@ -16,7 +16,13 @@ describe('team location ↔ query', () => {
     }
   });
   it('falls back instead of trusting a crafted URL', () => {
-    expect(teamLocation({ view: 'evil', tab: '<script>', space: '../../x', task: 'a b' })).toEqual({ view: 'home', space: null, tab: 'chat', task: null, doc: null });
+    expect(teamLocation({ view: 'evil', tab: '<script>', space: '../../x', task: 'a b', item: '<x>' })).toEqual({ view: 'home', space: null, tab: 'chat', task: null, doc: null, item: null });
+  });
+  it('the mockup\u2019s pages have routes: Agents, an agent, Library tabs, Members', () => {
+    expect(teamLocation(teamQuery({ view: 'agent', item: 'a-1' }))).toMatchObject({ view: 'agent', item: 'a-1' });
+    expect(teamLocation(teamQuery({ view: 'library', tab: 'connections' }))).toMatchObject({ view: 'library', tab: 'connections' });
+    expect(teamLocation({ view: 'library' }).tab).toBe('agents');
+    expect(teamLocation({ view: 'members' }).view).toBe('members');
   });
 });
 

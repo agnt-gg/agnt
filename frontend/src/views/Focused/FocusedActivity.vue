@@ -1,49 +1,53 @@
 <!-- Activity (under More): every run, newest first. Tap one to open what ran. -->
 <template>
-  <FocusedPage :title="page.title" :sub="page.sub" v-model:query="query" search-placeholder="Search activity">
-    <template #tabs>
-      <div class="focused-tabs" role="tablist">
-        <button
-          v-for="k in ACTIVITY_KINDS"
-          :key="k.id"
-          type="button"
-          role="tab"
-          class="focused-tab"
-          :class="{ active: kind === k.id }"
-          :aria-selected="kind === k.id ? 'true' : 'false'"
-          :data-kind="k.id"
-          @click="kind = k.id"
-        >{{ k.label }}</button>
+  <!-- The approved mockup's Activity page, on every real run. -->
+  <div class="mk mk-page">
+    <div class="content">
+      <div class="page">
+        <div class="page-head"><div><h1>Activity</h1><p>Everything people and agents did that you can see.</p></div></div>
+        <nav class="tabs" role="tablist" aria-label="Show">
+          <button
+            v-for="k in ACTIVITY_KINDS"
+            :key="k.id"
+            type="button"
+            role="tab"
+            class="tab focused-tab"
+            :class="{ 'is-active': kind === k.id, active: kind === k.id }"
+            :aria-selected="kind === k.id ? 'true' : 'false'"
+            :data-kind="k.id"
+            @click="kind = k.id"
+          >{{ k.label }}</button>
+        </nav>
+        <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
+        <ul v-else-if="!rows.length" class="list"><li class="empty">{{ kind !== 'all' ? 'Nothing matches.' : 'No activity yet. Start a chat and it shows up here.' }}</li></ul>
+        <ul v-else class="list" data-testid="activity-list" data-tour-id="traces.list">
+          <li v-for="r in rows.slice(0, CAP)" :key="r.id">
+            <button type="button" class="r" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
+              <span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
+              <span class="r-text">
+                <strong style="white-space: normal">{{ r.title }} <span style="font-weight: 400; color: var(--text-secondary)">{{ r.detail }}</span></strong>
+                <small>{{ ago(r.at) }}</small>
+              </span>
+              <span class="tag" :class="TONE[r.status.tone] || ''">{{ r.status.label }}</span>
+            </button>
+          </li>
+        </ul>
       </div>
-    </template>
-    <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
-    <p v-else-if="!rows.length" class="focused-empty">{{ query || kind !== 'all' ? 'Nothing matches.' : 'Nothing has run yet. Start a chat and it shows up here.' }}</p>
-    <ul v-else class="focused-list" data-testid="activity-list" data-tour-id="traces.list">
-      <li v-for="r in rows.slice(0, CAP)" :key="r.id">
-        <button type="button" class="focused-row" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
-          <span class="focused-row-icon" aria-hidden="true"><i :class="r.icon"></i></span>
-          <span class="focused-row-text">
-            <strong>{{ r.title }}</strong>
-            <small>{{ [ago(r.at), r.detail].filter(Boolean).join(' · ') }}</small>
-          </span>
-          <span class="focused-status-pill" :class="r.status.tone">{{ r.status.label }}</span>
-          <i class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
-        </button>
-      </li>
-    </ul>
-  </FocusedPage>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import FocusedPage from './FocusedPage.vue';
-import { FOCUSED_PAGES } from './focusedModel.js';
+import '@/views/One/mk/mk.css';
+import '@/views/One/mk/mk-frame.css';
 import { ACTIVITY_KINDS, activityRows } from './focusedActivity.js';
 
 const store = useStore();
 const nav = inject('focusedNav');
-const page = FOCUSED_PAGES.activity;
+// The mockup's tag tones for each run outcome.
+const TONE = Object.freeze({ ok: 'green', success: 'green', done: 'green', running: 'blue', live: 'blue', warn: 'amber', error: 'amber', failed: 'amber', stopped: '' });
 const CAP = 200;
 const query = ref('');
 const kind = ref('all');

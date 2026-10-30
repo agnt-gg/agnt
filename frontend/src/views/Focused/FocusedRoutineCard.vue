@@ -1,54 +1,48 @@
 <template>
-  <!-- A routine as a widget: what it is, when it runs, its number, its last
-       runs (each opens that run), Run now. All from the routine's real run
-       history; nothing here is a placeholder. -->
-  <article class="rc" :class="{ 'is-off': !row.enabled }" :data-testid="`routine-card-${row.id}`">
-    <header class="rc-head">
-      <button type="button" class="rc-title" @click="$emit('open', row)">{{ row.label }}</button>
-      <button
-        type="button"
-        class="focused-switch"
-        role="switch"
-        :aria-checked="row.enabled ? 'true' : 'false'"
-        :aria-label="(row.enabled ? 'Pause ' : 'Resume ') + row.label"
-        @click="$emit('toggle', row)"
-      ></button>
-    </header>
-    <p class="rc-when">{{ row.cadence }}<template v-if="!row.enabled"> · Paused</template><template v-else-if="row.next"> · next {{ formatNext(row.next) }}</template></p>
-
-    <div class="rc-number">
+  <!-- A routine as the approved mockup's widget card (tc-rcard, mk.css), from
+       its real run history. -->
+  <div class="tc-rcard" :class="{ off: !row.enabled }" :data-testid="`routine-card-${row.id}`">
+    <div class="tc-rcard-h">
+      <button type="button" class="tc-rcard-t" @click="$emit('open', row)">{{ row.label }}</button>
+      <button type="button" class="switch" :class="{ on: row.enabled }" role="switch" :aria-checked="row.enabled ? 'true' : 'false'" :aria-label="(row.enabled ? 'Pause ' : 'Resume ') + row.label" @click="$emit('toggle', row)"></button>
+    </div>
+    <div class="tc-when">{{ row.cadence }}<template v-if="!row.enabled"> · off</template><template v-else-if="row.next"> · next: {{ formatNext(row.next) }}</template></div>
+    <div class="row-gap" style="margin-top: 8px">
+      <span class="scope sm" :class="scopeLabel ? '' : 'mk-private'"><MkIcon :name="scopeLabel ? 'users' : 'lock'" size="sm" />{{ scopeLabel || 'Private' }}</span>
+    </div>
+    <div v-if="loaded && runs.length" class="tc-kpirow">
       <div>
-        <div class="rc-value">{{ loaded ? stats.last30 : '…' }}</div>
-        <div class="rc-label">runs in 30 days<template v-if="stats.finishedShare !== null"> · {{ stats.finishedShare }}% finished</template></div>
+        <div class="tc-kpi-v">{{ stats.last30 }}</div>
+        <div class="tc-kpi-l">Runs in the last 30 days <span v-if="stats.finishedShare !== null" class="tc-delta">{{ stats.finishedShare }}% finished</span></div>
       </div>
-      <svg v-if="spark" class="rc-spark" viewBox="0 0 110 34" aria-hidden="true"><path class="rc-area" :d="spark + ' L110 34 L0 34Z'" /><path class="rc-line" :d="spark" /></svg>
+      <svg v-if="spark" class="tc-spark" viewBox="0 0 110 34" aria-hidden="true"><path class="area" :d="spark + ' L110 34 L0 34Z'" /><path :d="spark" /></svg>
     </div>
-
-    <div class="rc-runs">
-      <div class="rc-runs-head">Recent runs</div>
-      <p v-if="loaded && !runs.length" class="rc-empty">No runs yet. Run it now to see one.</p>
-      <button v-for="run in runs.slice(0, 3)" :key="run.id" type="button" class="rc-run" @click="openRun(run)">
-        <span class="rc-dot" :style="{ background: runTone(run.status).color }" aria-hidden="true"></span>
-        <span class="rc-run-when">{{ ago(run.fired_at) }}</span>
-        <span class="rc-run-text">{{ runTone(run.status).label }}</span>
-        <span class="rc-run-open">Open</span>
+    <div v-else class="tc-kpirow empty">{{ loaded ? 'Its number shows here after the first run.' : 'Loading…' }}</div>
+    <div class="tc-runs">
+      <div class="tc-runs-h">Recent runs</div>
+      <button v-for="run in runs.slice(0, 3)" :key="run.id" type="button" class="tc-runrow" @click="openRun(run)">
+        <span class="tc-dot" :class="runTone(run.status).state"></span>
+        <span class="tc-rdate">{{ ago(run.fired_at) }}</span>
+        <span class="tc-rtext">{{ runTone(run.status).label }}</span>
+        <span class="tc-ropen">Open</span>
       </button>
+      <div v-if="loaded && !runs.length" class="tc-rtext" style="padding: 6px 0">No runs yet.</div>
     </div>
-
-    <footer class="rc-foot">
-      <span class="rc-hint">{{ held ? 'Last run is still ' + (held.status === 'running' ? 'running' : 'waiting for you') : '' }}</span>
-      <button type="button" class="focused-btn" :disabled="busy" @click="runNow"><i class="fas fa-play" aria-hidden="true"></i> {{ held ? 'Open the last run' : 'Run now' }}</button>
-    </footer>
-  </article>
+    <div class="tc-rcard-f">
+      <span class="tc-rtext" style="color: var(--text-tertiary)">{{ held ? 'Last run is still ' + (held.status === 'running' ? 'running' : 'waiting for you') : 'Runs ' + row.cadence.toLowerCase() }}</span>
+      <button type="button" class="btn sm" :disabled="busy" @click="runNow"><MkIcon name="play" size="xs" />{{ held ? 'Open the last run' : 'Run now' }}</button>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { computed, inject, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { formatNext } from './focusedTime.js';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { ago, runTone, runStats, blockingRun, sparkPath } from '@/views/One/team/teamModel.js';
 
-const props = defineProps({ row: { type: Object, required: true } });
+const props = defineProps({ row: { type: Object, required: true }, scopeLabel: { type: String, default: '' } });
 defineEmits(['open', 'toggle']);
 const store = useStore();
 const nav = inject('focusedNav');
@@ -90,29 +84,3 @@ async function runNow() {
 onMounted(loadRuns);
 defineExpose({ loadRuns });
 </script>
-
-<style scoped>
-.rc { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px; border: 1px solid var(--terminal-border-color); border-radius: 14px; background: var(--color-background); }
-.rc.is-off { opacity: 0.72; }
-.rc-head { display: flex; align-items: center; gap: 8px; }
-.rc-title { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: 15px; font-weight: 600; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.rc-title:hover { text-decoration: underline; text-underline-offset: 3px; }
-.rc-when { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
-.rc-number { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: var(--color-darker-1); }
-.rc-value { font-size: 24px; font-weight: 700; line-height: 1; color: var(--text-primary); }
-.rc-label { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.rc-spark { width: 110px; height: 34px; flex: none; }
-.rc-line { fill: none; stroke: var(--color-pink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.rc-area { fill: rgba(var(--pink-rgb), 0.1); stroke: none; }
-.rc-runs { margin-top: 4px; }
-.rc-runs-head { margin: 4px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
-.rc-empty { margin: 4px 2px; font-size: 12.5px; color: var(--text-tertiary); }
-.rc-run { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 4px; border: 0; border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.rc-run:hover { background: var(--surface-hover); }
-.rc-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
-.rc-run-when { width: 64px; flex: none; color: var(--text-tertiary); font-size: 12px; }
-.rc-run-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-run-open { font-size: 12px; color: var(--text-tertiary); }
-.rc-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; }
-.rc-hint { flex: 1; min-width: 0; font-size: 12px; color: var(--text-tertiary); }
-</style>

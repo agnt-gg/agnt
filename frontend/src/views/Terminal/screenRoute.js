@@ -73,7 +73,7 @@ export function screenRoute(screenName, options = {}) {
     query = { insightId: options.selectedInsight.id };
   } else if (screenName === 'TeamScreen') {
     // Already a validated query (teamModel.teamQuery): view, space, tab, task, doc.
-    for (const key of ['view', 'space', 'tab', 'task', 'doc']) if (options.team?.[key]) query[key] = String(options.team[key]);
+    for (const key of ['view', 'space', 'tab', 'task', 'doc', 'item']) if (options.team?.[key]) query[key] = String(options.team[key]);
   } else {
     // Generic navigation intents, carried in the URL so a deep link reproduces
     // them: `select` opens an entity in the screen's inspector, `section`

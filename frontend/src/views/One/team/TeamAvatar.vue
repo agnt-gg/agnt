@@ -1,7 +1,7 @@
 <template>
-  <span v-if="who?.kind === 'agent'" v-tooltip="label || 'Agent'" class="ot-av is-agent" :class="sizeClass"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
-  <span v-else-if="who?.kind === 'system'" v-tooltip="'AGNT'" class="ot-av is-system" :class="sizeClass"><i class="fas fa-info" aria-hidden="true"></i></span>
-  <span v-else v-tooltip="label" class="ot-av" :class="sizeClass">{{ initials(label) }}</span>
+  <span v-if="who?.kind === 'agent'" v-tooltip="label || 'Agent'" class="av agent" :class="sizeClass"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
+  <span v-else-if="who?.kind === 'system'" v-tooltip="'AGNT'" class="av is-system" :class="sizeClass"><i class="fas fa-info" aria-hidden="true"></i></span>
+  <span v-else v-tooltip="label" class="av" :class="sizeClass">{{ initials(label) }}</span>
 </template>
 
 <script setup>

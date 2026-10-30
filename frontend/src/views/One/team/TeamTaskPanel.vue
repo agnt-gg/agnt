@@ -1,58 +1,58 @@
 <template>
-  <aside class="ot-panel" aria-label="Card">
-    <div class="ot-panel-head">
-      <span class="ot-tag"><i class="fas fa-hashtag" aria-hidden="true"></i> {{ spaceName }}</span>
-      <span class="ot-fill"></span>
+  <aside class="panel" aria-label="Card">
+    <div class="panel-head">
+      <span class="tag"><i class="fas fa-hashtag" aria-hidden="true"></i> {{ spaceName }}</span>
+      <span class="fill"></span>
       <button v-if="task && canDelete" v-tooltip="'Delete card'" type="button" class="one-icon-btn" aria-label="Delete card" @click="remove"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
-      <button type="button" class="focused-btn is-small" @click="$emit('close')">Close</button>
+      <button type="button" class="btn sm" @click="$emit('close')">Close</button>
     </div>
-    <div v-if="!task" class="ot-panel-scroll"><p class="ot-muted">{{ error || 'Loading…' }}</p></div>
+    <div v-if="!task" class="panel-scroll"><p class="mk-muted">{{ error || 'Loading…' }}</p></div>
     <template v-else>
-      <div class="ot-panel-scroll">
-        <input v-model="title" class="ot-title-input" aria-label="Card title" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveTitle" />
-        <div class="ot-props">
+      <div class="panel-scroll">
+        <input v-model="title" class="panel-title" aria-label="Card title" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveTitle" />
+        <div class="props">
           <span>Status</span>
           <CustomSelect :model-value="task.status" :options="statusOptions" :disabled="!canWrite" aria-label="Status" @update:model-value="(value) => value !== task.status && save({ status: value })" />
           <span>Assignee</span>
           <CustomSelect :model-value="assigneeValue" :options="assigneeOptions" :disabled="!canWrite" aria-label="Assignee" @update:model-value="(value) => value !== assigneeValue && assign(value)" />
           <span>Due</span>
-          <input v-model="due" class="ot-input" style="padding: 5px 9px; font-size: 13px" placeholder="e.g. Fri" aria-label="Due" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveDue" />
+          <input v-model="due" class="field" style="padding: 5px 9px; font-size: 13px" placeholder="e.g. Fri" aria-label="Due" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveDue" />
           <span>Visible to</span>
-          <span class="ot-scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
-          <template v-if="task.sourceMessageId"><span>From</span><button type="button" class="ot-link" style="justify-self: start" @click="$emit('open-chat')">a message in {{ spaceName }}</button></template>
+          <span class="scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
+          <template v-if="task.sourceMessageId"><span>From</span><button type="button" class="link" style="justify-self: start" @click="$emit('open-chat')">a message in {{ spaceName }}</button></template>
         </div>
 
-        <div v-if="task.agentState === 'running'" class="ot-banner"><span class="ot-pulse"></span>{{ who(task.assignee) }} is working on this.</div>
-        <div v-if="task.agentState === 'waiting'" class="ot-approve">
+        <div v-if="task.agentState === 'running'" class="banner"><span class="pulse"></span>{{ who(task.assignee) }} is working on this.</div>
+        <div v-if="task.agentState === 'waiting'" class="approve-box">
           <b>{{ who(task.assignee) }}</b> finished and needs a person to approve.
-          <div v-if="task.result" class="ot-result">{{ task.result }}</div>
-          <div v-if="canWrite" class="ot-row">
-            <button type="button" class="focused-primary is-small" :disabled="busy" @click="decide(true, false)">Approve</button>
-            <button type="button" class="focused-btn is-small" :disabled="busy" @click="decide(true, true)">Approve and save as doc</button>
-            <button type="button" class="focused-btn is-small" :disabled="busy" @click="sendBack">Send back</button>
+          <div v-if="task.result" class="tc-docprev">{{ task.result }}</div>
+          <div v-if="canWrite" class="row-gap">
+            <button type="button" class="primary sm" :disabled="busy" @click="decide(true, false)">Approve</button>
+            <button type="button" class="btn sm" :disabled="busy" @click="decide(true, true)">Approve and save as doc</button>
+            <button type="button" class="btn sm" :disabled="busy" @click="sendBack">Send back</button>
           </div>
         </div>
         <div v-else-if="task.result && task.status === 'done'" style="margin-top: 8px">
-          <div class="ot-label">Result</div>
-          <div class="ot-result">{{ task.result }}</div>
+          <div class="mk-label">Result</div>
+          <div class="tc-docprev">{{ task.result }}</div>
         </div>
 
-        <div class="ot-divider"></div>
-        <div class="ot-label">Thread</div>
-        <p v-if="!task.comments.length" class="ot-muted">No comments yet. @mention an agent here to hand it this card.</p>
-        <div v-for="c in task.comments" :key="c.id" class="ot-msg" style="padding: 7px 4px">
+        <div class="divider"></div>
+        <div class="mk-label">Thread</div>
+        <p v-if="!task.comments.length" class="mk-muted">No comments yet. @mention an agent here to hand it this card.</p>
+        <div v-for="c in task.comments" :key="c.id" class="msg" style="padding: 7px 4px">
           <TeamAvatar :who="c.author" :label="who(c.author)" />
-          <div class="ot-msg-body">
-            <div class="ot-msg-name">{{ who(c.author) }}<span class="ot-msg-time">{{ ago(c.createdAt) }}</span></div>
-            <div class="ot-msg-text">{{ c.body }}</div>
+          <div class="msg-body">
+            <div class="msg-name">{{ who(c.author) }}<span class="msg-time">{{ ago(c.createdAt) }}</span></div>
+            <div class="msg-text">{{ c.body }}</div>
           </div>
         </div>
       </div>
-      <form v-if="canWrite" class="ot-composer" style="margin: 12px" @submit.prevent="comment">
+      <form v-if="canWrite" class="composer" style="margin: 12px" @submit.prevent="comment">
         <textarea v-model="draft" rows="1" placeholder="Comment. @mention a teammate or an agent" aria-label="Comment" @keydown.enter.exact.prevent="comment"></textarea>
-        <div class="ot-composer-row">
-          <button v-for="a in agents.slice(0, 2)" :key="a.id" type="button" class="ot-mention-chip" @click="draft = (draft ? draft.trimEnd() + ' ' : '') + '@' + a.name + ' '"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
-          <button class="ot-send" type="submit" :disabled="!draft.trim() || busy" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
+        <div class="composer-row">
+          <button v-for="a in agents.slice(0, 2)" :key="a.id" type="button" class="mention-chip" @click="draft = (draft ? draft.trimEnd() + ' ' : '') + '@' + a.name + ' '"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
+          <button class="send" type="submit" :disabled="!draft.trim() || busy" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
         </div>
       </form>
     </template>

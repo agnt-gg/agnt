@@ -23,7 +23,15 @@ export const SPACE_TABS = Object.freeze([
   { id: 'routines', label: 'Routines' },
   { id: 'people', label: 'People' },
 ]);
-export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc']);
+export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc', 'agents', 'agent', 'library', 'members']);
+/** Library tabs, as in the approved mockup. */
+export const LIBRARY_TABS = Object.freeze([
+  { id: 'agents', label: 'Agents & skills' },
+  { id: 'connections', label: 'Connections' },
+  { id: 'templates', label: 'Templates' },
+]);
+/** My Space sections (the drawer). */
+export const MINE_TABS = Object.freeze(['tasks']);
 
 const str = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? String(v[0] ?? '') : '');
 const ID = /^[A-Za-z0-9_.:-]{1,200}$/;
@@ -32,8 +40,9 @@ const id = (v) => (ID.test(str(v)) ? str(v) : null);
 /** The team page a /team query describes. Unknown or malformed values fall back, never throw. */
 export function teamLocation(query = {}) {
   const view = VIEWS.includes(str(query.view)) ? str(query.view) : 'home';
-  const tab = SPACE_TABS.some((t) => t.id === str(query.tab)) ? str(query.tab) : 'chat';
-  return { view, space: id(query.space), tab, task: id(query.task), doc: id(query.doc) };
+  const tabs = view === 'library' ? LIBRARY_TABS : SPACE_TABS;
+  const tab = tabs.some((t) => t.id === str(query.tab)) ? str(query.tab) : tabs[0].id;
+  return { view, space: id(query.space), tab, task: id(query.task), doc: id(query.doc), item: id(query.item) };
 }
 
 /** The /team query for a location: the inverse of teamLocation (tested both ways). */
@@ -41,8 +50,10 @@ export function teamQuery(loc = {}) {
   const query = { view: VIEWS.includes(loc.view) ? loc.view : 'home' };
   if (loc.space) query.space = loc.space;
   if (loc.view === 'space' && loc.tab && loc.tab !== 'chat') query.tab = loc.tab;
+  if (loc.view === 'library' && loc.tab && loc.tab !== 'agents') query.tab = loc.tab;
   if (loc.task) query.task = loc.task;
   if (loc.doc) query.doc = loc.doc;
+  if (loc.item) query.item = loc.item;
   return query;
 }
 

@@ -1,48 +1,48 @@
 <template>
   <div>
-    <div class="ot-bar">
-      <div class="ot-seg" role="group" aria-label="Show">
-        <button v-for="f in FILTERS" :key="f.id" type="button" :class="{ 'is-on': filter === f.id }" @click="filter = f.id">{{ f.label }}</button>
+    <div class="board-bar">
+      <div class="seg" role="group" aria-label="Show">
+        <button v-for="f in FILTERS" :key="f.id" type="button" :class="{ 'on': filter === f.id }" @click="filter = f.id">{{ f.label }}</button>
       </div>
-      <span class="ot-muted">Drag cards between columns. Assign a teammate or an agent.</span>
-      <span class="ot-fill"></span>
-      <button v-if="canWrite" type="button" class="focused-primary" @click="adding = 'todo'"><i class="fas fa-plus" aria-hidden="true"></i>New task</button>
+      <span class="mk-muted">Drag cards between columns. Assign a teammate or an agent.</span>
+      <span class="fill"></span>
+      <button v-if="canWrite" type="button" class="primary" @click="adding = 'todo'"><i class="fas fa-plus" aria-hidden="true"></i>New task</button>
     </div>
-    <div class="ot-board">
+    <div class="board">
       <div
         v-for="column in TASK_STATUSES"
         :key="column.id"
-        class="ot-col"
-        :class="{ 'is-over': over === column.id }"
+        class="col"
+        :class="{ 'over': over === column.id }"
         @dragover.prevent="canWrite && (over = column.id)"
         @dragleave="over === column.id && (over = null)"
         @drop.prevent="drop(column.id)"
       >
-        <div class="ot-col-head"><span class="ot-col-dot" :style="{ background: column.color }"></span>{{ column.label }} <span>{{ byStatus(column.id).length }}</span></div>
+        <div class="col-head"><span class="col-dot" :style="{ background: column.color }"></span>{{ column.label }} <span>{{ byStatus(column.id).length }}</span></div>
         <button
           v-for="t in byStatus(column.id)"
           :key="t.id"
           type="button"
-          class="ot-tcard"
-          :class="{ 'is-selected': t.id === selected, 'is-dragging': t.id === dragging }"
+          class="tcard"
+          :class="{ 'sel': t.id === selected, 'dragging': t.id === dragging }"
           :draggable="canWrite"
           @dragstart="dragging = t.id"
           @dragend="dragging = null; over = null"
           @click="$emit('open-task', t.id)"
         >
-          <div class="ot-tcard-title">{{ t.title }}</div>
-          <div class="ot-tcard-meta">
+          <div class="tcard-title">{{ t.title }}</div>
+          <div class="tcard-meta">
             <TeamAvatar v-if="t.assignee" :who="t.assignee" :label="who(t.assignee)" size="sm" /><span>{{ who(t.assignee) }}</span>
-            <template v-if="t.agentState === 'running'"><span class="ot-pulse"></span>working</template>
-            <span v-else-if="agentStateLabel(t.agentState)" class="ot-tag" :class="t.agentState === 'waiting' ? 'is-pink' : 'is-amber'">{{ agentStateLabel(t.agentState) }}</span>
+            <template v-if="t.agentState === 'running'"><span class="pulse"></span>working</template>
+            <span v-else-if="agentStateLabel(t.agentState)" class="tag" :class="t.agentState === 'waiting' ? 'pink' : 'amber'">{{ agentStateLabel(t.agentState) }}</span>
             <span v-if="t.due">· {{ t.due }}</span>
             <span v-if="t.commentCount">· <i class="far fa-comment" aria-hidden="true"></i> {{ t.commentCount }}</span>
           </div>
         </button>
         <form v-if="adding === column.id" @submit.prevent="add(column.id)">
-          <input ref="addRef" v-model="newTitle" class="ot-input" placeholder="Task name, then Enter" aria-label="New task name" @keydown.esc="adding = null" @blur="!newTitle && (adding = null)" />
+          <input ref="addRef" v-model="newTitle" class="field" placeholder="Task name, then Enter" aria-label="New task name" @keydown.esc="adding = null" @blur="!newTitle && (adding = null)" />
         </form>
-        <button v-else-if="canWrite" type="button" class="ot-add-card" @click="adding = column.id">+ Add</button>
+        <button v-else-if="canWrite" type="button" class="add-card" @click="adding = column.id">+ Add</button>
       </div>
     </div>
   </div>

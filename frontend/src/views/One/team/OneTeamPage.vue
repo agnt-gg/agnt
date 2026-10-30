@@ -1,12 +1,16 @@
 <template>
-  <div class="ot" data-testid="one-team-page">
-    <div v-if="state.error && !state.team" class="ot-scroll"><div class="ot-page"><p class="ot-error">{{ state.error }}</p><button type="button" class="focused-btn" @click="reload">Try again</button></div></div>
-    <div v-else-if="!state.loaded" class="ot-scroll"><div class="ot-page"><p class="ot-muted">Loading your team…</p></div></div>
+  <div class="mk mk-page" data-testid="one-team-page">
+    <div v-if="state.error && !state.team" class="content"><div class="page"><p class="mk-error">{{ state.error }}</p><button type="button" class="btn" @click="reload">Try again</button></div></div>
+    <div v-else-if="!state.loaded" class="content"><div class="page"><p class="mk-muted">Loading your team…</p></div></div>
+    <MkAgents v-else-if="location.view === 'agents'" />
+    <MkAgent v-else-if="location.view === 'agent' && location.item" :key="location.item" :agent-id="location.item" />
+    <MkLibrary v-else-if="location.view === 'library'" :tab="location.tab" />
+    <MkMembers v-else-if="location.view === 'members'" />
     <TeamMyTasks v-else-if="location.view === 'mine' && state.team" />
     <TeamSpaceView v-else-if="location.view === 'space' && space" :key="space.id" :team="state.team" :space="space" :location="location" />
     <TeamDocPage v-else-if="location.view === 'doc' && space && location.doc" :key="location.doc" :workspace-id="space.id" :doc-id="location.doc" :space-name="space.name" @back="go({ view: 'space', space: space.id, tab: 'docs' })" />
-    <div v-else-if="['space', 'doc'].includes(location.view)" class="ot-scroll">
-      <div class="ot-page"><p class="ot-error">That teamspace is not available to you. It may have been archived, or your access was changed.</p><button type="button" class="focused-btn" @click="go({ view: 'home' })">Go home</button></div>
+    <div v-else-if="['space', 'doc'].includes(location.view)" class="content">
+      <div class="page"><p class="mk-error">That teamspace is not available to you. It may have been archived, or your access was changed.</p><button type="button" class="btn" @click="go({ view: 'home' })">Go home</button></div>
     </div>
     <!-- Home is the inbox: an old /team?view=inbox link opens Home on "Needs you". -->
     <TeamHome v-else initial-tab="needs" />
@@ -22,10 +26,15 @@ import { useCheckpoints } from '@/composables/useCheckpoints.js';
 import { useRoutineRuns } from '@/composables/useRoutineRuns.js';
 import TeamHome from './TeamHome.vue';
 import TeamMyTasks from './TeamMyTasks.vue';
+import MkAgents from '@/views/One/mk/MkAgents.vue';
+import MkAgent from '@/views/One/mk/MkAgent.vue';
+import MkLibrary from '@/views/One/mk/MkLibrary.vue';
+import MkMembers from '@/views/One/mk/MkMembers.vue';
 import TeamSpaceView from './TeamSpaceView.vue';
 import TeamDocPage from './TeamDocPage.vue';
 import '@/views/_components/team/team.css';
-import './team.css';
+import '@/views/One/mk/mk.css';
+import '@/views/One/mk/mk-frame.css';
 
 const props = defineProps({ location: { type: Object, required: true } });
 const store = useStore();
@@ -90,6 +99,7 @@ provide('teamCtx', {
   openTeam: openTeamIn,
   ask: (text) => nav.ask(text),
   openPage: (id) => nav.go({ page: id }),
+  create: (kind) => nav.create?.(kind),
   openLibrary: (tab, item) => nav.go({ page: 'library', tab, item }),
   teamSettings: () => nav.go({ page: 'settings', section: 'members' }),
   toast: (text) => nav.toast(text),

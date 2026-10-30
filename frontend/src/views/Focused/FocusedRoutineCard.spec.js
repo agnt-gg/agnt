@@ -28,18 +28,18 @@ describe('routine card', () => {
     ];
     const { wrapper, nav } = setup(runs);
     await flushPromises();
-    expect(wrapper.find('.rc-value').text()).toBe('4');
-    expect(wrapper.find('.rc-label').text()).toContain('75% finished');
-    expect(wrapper.findAll('.rc-run')).toHaveLength(3);
-    expect(wrapper.find('.rc-run .rc-run-text').text()).toBe('Done');
-    await wrapper.find('.rc-run').trigger('click');
+    expect(wrapper.find('.tc-kpi-v').text()).toBe('4');
+    expect(wrapper.find('.tc-kpi-l').text()).toContain('75% finished');
+    expect(wrapper.findAll('.tc-runrow')).toHaveLength(3);
+    expect(wrapper.find('.tc-runrow .tc-rtext').text()).toBe('Done');
+    await wrapper.find('.tc-runrow').trigger('click');
     expect(nav.openScreen).toHaveBeenCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g1' } });
   });
 
   it('Run now starts a run when nothing is pending', async () => {
     const { wrapper, fireNow } = setup([{ id: 'r1', fired_at: hoursAgo(2), status: 'completed' }]);
     await flushPromises();
-    await wrapper.find('.rc-foot button').trigger('click');
+    await wrapper.find('.tc-rcard-f button').trigger('click');
     await flushPromises();
     expect(fireNow).toHaveBeenCalledTimes(1);
   });
@@ -47,9 +47,9 @@ describe('routine card', () => {
   it('while the last run waits for you, Run now opens it instead of starting another', async () => {
     const { wrapper, fireNow, nav } = setup([{ id: 'r1', fired_at: hoursAgo(1), status: 'needs_review', run_target_id: 'g-run' }]);
     await flushPromises();
-    const button = wrapper.find('.rc-foot button');
+    const button = wrapper.find('.tc-rcard-f button');
     expect(button.text()).toContain('Open the last run');
-    expect(wrapper.find('.rc-hint').text()).toContain('waiting for you');
+    expect(wrapper.find('.tc-rcard-f .tc-rtext').text()).toContain('waiting for you');
     await button.trigger('click');
     expect(fireNow).not.toHaveBeenCalled();
     expect(nav.openScreen).toHaveBeenCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g-run' } });

@@ -1,25 +1,25 @@
 <template>
   <div>
-    <div class="ot-bar">
-      <span class="ot-muted">{{ kind === 'agent' ? `Agents anyone in ${spaceName} can @mention or put on a card. They run on the team's connections, only once published.` : `Routines that run for ${spaceName}, on the team's connections.` }}</span>
-      <span class="ot-fill"></span>
-      <button type="button" class="focused-btn" @click="$emit('open-editor', null)"><i class="fas fa-plus" aria-hidden="true"></i>New {{ kind === 'agent' ? 'agent' : 'routine' }}</button>
+    <div class="board-bar">
+      <span class="mk-muted">{{ kind === 'agent' ? `Agents anyone in ${spaceName} can @mention or put on a card. They run on the team's connections, only once published.` : `Routines that run for ${spaceName}, on the team's connections.` }}</span>
+      <span class="fill"></span>
+      <button type="button" class="btn" @click="$emit('open-editor', null)"><i class="fas fa-plus" aria-hidden="true"></i>New {{ kind === 'agent' ? 'agent' : 'routine' }}</button>
     </div>
-    <div v-if="!items.length" class="ot-list"><p class="ot-empty">{{ loading ? 'Loading…' : kind === 'agent' ? 'No agents here yet. Make one, or copy one in from your personal space.' : 'No routines here yet.' }}</p></div>
-    <div v-else class="ot-cards">
-      <div v-for="item in items" :key="item.id" class="ot-card">
-        <div class="ot-row" style="flex-wrap: nowrap">
+    <div v-if="!items.length" class="list"><p class="empty">{{ loading ? 'Loading…' : kind === 'agent' ? 'No agents here yet. Make one, or copy one in from your personal space.' : 'No routines here yet.' }}</p></div>
+    <div v-else class="cards">
+      <div v-for="item in items" :key="item.id" class="card">
+        <div class="row-gap" style="flex-wrap: nowrap">
           <TeamAvatar v-if="kind === 'agent'" :who="{ kind: 'agent', id: item.id }" size="lg" />
-          <span v-else class="ot-r-icon"><i class="fas fa-sync-alt" aria-hidden="true"></i></span>
+          <span v-else class="r-icon"><i class="fas fa-sync-alt" aria-hidden="true"></i></span>
           <h4 style="min-width: 0; overflow: hidden; text-overflow: ellipsis">{{ item.name }}</h4>
         </div>
-        <div class="ot-card-foot">
-          <span class="ot-tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label }}</span>
-          <span class="ot-fill"></span>
-          <button v-if="canPublish && item.status !== 'published'" type="button" class="focused-btn is-small" :disabled="busy === item.id" @click="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
-          <button type="button" class="focused-btn is-small" @click="$emit('open-editor', item)">Open</button>
+        <div class="card-foot">
+          <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label }}</span>
+          <span class="fill"></span>
+          <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
+          <button type="button" class="btn sm" @click="$emit('open-editor', item)">Open</button>
         </div>
-        <p v-if="item.status === 'changed'" class="ot-muted" style="margin: 0">Edited since publishing. The published version keeps running until you publish again.</p>
+        <p v-if="item.status === 'changed'" class="mk-muted" style="margin: 0">Edited since publishing. The published version keeps running until you publish again.</p>
       </div>
     </div>
   </div>
@@ -32,8 +32,8 @@ import { teamApi } from './useTeam.js';
 
 const STATUS = Object.freeze({
   draft: { label: 'Draft, not runnable yet', tone: '' },
-  published: { label: 'Published', tone: 'is-green' },
-  changed: { label: 'Changed since publishing', tone: 'is-amber' },
+  published: { label: 'Published', tone: 'green' },
+  changed: { label: 'Changed since publishing', tone: 'amber' },
 });
 const props = defineProps({ workspaceId: { type: String, required: true }, spaceName: { type: String, default: '' }, kind: { type: String, default: 'agent' } });
 defineEmits(['open-editor']);

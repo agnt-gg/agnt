@@ -1,23 +1,23 @@
 <template>
-  <div class="ot-scroll">
-    <div class="ot-doc">
-      <div class="ot-doc-meta">
-        <button type="button" class="focused-btn is-small" @click="$emit('back')"><i class="fas fa-arrow-left" aria-hidden="true"></i> {{ spaceName }} docs</button>
-        <span class="ot-scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
+  <div class="content">
+    <div class="doc">
+      <div class="doc-meta">
+        <button type="button" class="btn sm" @click="$emit('back')"><i class="fas fa-arrow-left" aria-hidden="true"></i> {{ spaceName }} docs</button>
+        <span class="scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
         <span v-if="doc">Version {{ doc.revision }} · edited by {{ who(doc.updatedBy) }} · {{ ago(doc.updatedAt) }}</span>
-        <span class="ot-fill"></span>
-        <span v-if="dirty" class="ot-muted">Unsaved changes</span>
-        <button v-if="doc && canWrite" type="button" class="focused-primary is-small" :disabled="!dirty || saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <span class="fill"></span>
+        <span v-if="dirty" class="mk-muted">Unsaved changes</span>
+        <button v-if="doc && canWrite" type="button" class="primary sm" :disabled="!dirty || saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
         <button v-if="doc && canDelete" v-tooltip="'Delete doc'" type="button" class="one-icon-btn" aria-label="Delete doc" @click="remove"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
       </div>
-      <div v-if="conflict" class="ot-error">
+      <div v-if="conflict" class="mk-error">
         Someone else saved a newer version while you were editing. Your text is still here. Copy anything you need, then
-        <button type="button" class="ot-link" @click="reload">load their version</button>.
+        <button type="button" class="link" @click="reload">load their version</button>.
       </div>
-      <p v-if="!doc" class="ot-muted">{{ error || 'Loading…' }}</p>
+      <p v-if="!doc" class="mk-muted">{{ error || 'Loading…' }}</p>
       <template v-else>
-        <input v-model="name" class="ot-doc-title" aria-label="Doc title" :readonly="!canWrite" @input="dirty = true" />
-        <textarea v-model="content" class="ot-doc-body" aria-label="Doc body" placeholder="Write in plain text or Markdown…" :readonly="!canWrite" @input="dirty = true" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save"></textarea>
+        <input v-model="name" class="doc-title" aria-label="Doc title" :readonly="!canWrite" @input="dirty = true" />
+        <textarea v-model="content" class="mk-doc-body" aria-label="Doc body" placeholder="Write in plain text or Markdown…" :readonly="!canWrite" @input="dirty = true" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save"></textarea>
       </template>
     </div>
   </div>

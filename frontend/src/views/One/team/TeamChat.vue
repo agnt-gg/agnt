@@ -1,17 +1,17 @@
 <template>
-  <div class="ot-chat">
-    <div ref="logRef" class="ot-log" aria-live="polite">
-      <p v-if="!loading && !messages.length" class="ot-empty">No messages yet. Say hello, or @mention an agent to hand it work.</p>
-      <div v-for="m in messages" :key="m.id" class="ot-msg" tabindex="-1">
+  <div class="chat-wrap">
+    <div ref="logRef" class="log" aria-live="polite">
+      <p v-if="!loading && !messages.length" class="empty">No messages yet. Say hello, or @mention an agent to hand it work.</p>
+      <div v-for="m in messages" :key="m.id" class="msg" tabindex="-1">
         <TeamAvatar :who="m.author" :label="displayName(m.author)" size="lg" />
-        <div class="ot-msg-body">
-          <div class="ot-msg-name">
-            {{ displayName(m.author) }}<span v-if="m.author.kind === 'agent'" class="ot-tag is-pink" style="margin-left: 6px">Agent</span><span class="ot-msg-time">{{ ago(m.createdAt) }}</span>
+        <div class="msg-body">
+          <div class="msg-name">
+            {{ displayName(m.author) }}<span v-if="m.author.kind === 'agent'" class="tag pink" style="margin-left: 6px">Agent</span><span class="msg-time">{{ ago(m.createdAt) }}</span>
           </div>
-          <div class="ot-msg-text"><template v-for="(run, i) in runsOf(m.body)" :key="i"><span v-if="run.mention" class="ot-mention">{{ run.text }}</span><template v-else>{{ run.text }}</template></template></div>
-          <button v-if="m.taskId" type="button" class="ot-attach" @click="$emit('open-task', m.taskId)"><i class="far fa-check-square" aria-hidden="true"></i>Open the card</button>
+          <div class="msg-text"><template v-for="(run, i) in runsOf(m.body)" :key="i"><span v-if="run.mention" class="mention">{{ run.text }}</span><template v-else>{{ run.text }}</template></template></div>
+          <button v-if="m.taskId" type="button" class="attach" @click="$emit('open-task', m.taskId)"><i class="far fa-check-square" aria-hidden="true"></i>Open the card</button>
         </div>
-        <div v-if="canWrite" class="ot-msg-actions">
+        <div v-if="canWrite" class="msg-actions">
           <button v-if="!m.taskId" type="button" @click="toTask(m)"><i class="far fa-check-square" aria-hidden="true"></i>Create task</button>
           <button v-if="!m.taskId && agents.length" type="button" @click="toAgent(m)"><i class="fas fa-robot" aria-hidden="true"></i>Hand to {{ agents[0].name }}</button>
           <button type="button" @click="toDoc(m)"><i class="far fa-file-alt" aria-hidden="true"></i>Save to doc</button>
@@ -19,14 +19,14 @@
         </div>
       </div>
     </div>
-    <form v-if="canWrite" class="ot-composer" @submit.prevent="send">
+    <form v-if="canWrite" class="composer" @submit.prevent="send">
       <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName}. @mention a teammate, or an agent to hand it work`" aria-label="Message" @keydown.enter.exact.prevent="send" @input="grow"></textarea>
-      <div class="ot-composer-row">
-        <button v-for="a in agents.slice(0, 3)" :key="a.id" type="button" class="ot-mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
-        <button class="ot-send" type="submit" data-tour-id="team-send" :disabled="!draft.trim() || sending" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
+      <div class="composer-row">
+        <button v-for="a in agents.slice(0, 3)" :key="a.id" type="button" class="mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
+        <button class="send" type="submit" data-tour-id="team-send" :disabled="!draft.trim() || sending" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
       </div>
     </form>
-    <p v-else class="ot-muted">You can read this teamspace. Ask an admin for edit access to post.</p>
+    <p v-else class="mk-muted">You can read this teamspace. Ask an admin for edit access to post.</p>
   </div>
 </template>
 

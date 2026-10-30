@@ -1,27 +1,27 @@
 <template>
   <div>
-    <div class="ot-bar">
-      <span class="ot-muted">Docs everyone in {{ spaceName }} can read and edit. Every save is kept as a version.</span>
-      <span class="ot-fill"></span>
-      <button v-if="canWrite" type="button" class="focused-btn" @click="pickerOpen = !pickerOpen"><i class="fas fa-share" aria-hidden="true"></i>Share one of my files</button>
-      <button v-if="canWrite" type="button" class="focused-primary" @click="create"><i class="fas fa-plus" aria-hidden="true"></i>New doc</button>
+    <div class="board-bar">
+      <span class="mk-muted">Docs everyone in {{ spaceName }} can read and edit. Every save is kept as a version.</span>
+      <span class="fill"></span>
+      <button v-if="canWrite" type="button" class="btn" @click="pickerOpen = !pickerOpen"><i class="fas fa-share" aria-hidden="true"></i>Share one of my files</button>
+      <button v-if="canWrite" type="button" class="primary" @click="create"><i class="fas fa-plus" aria-hidden="true"></i>New doc</button>
     </div>
-    <div v-if="pickerOpen" class="ot-banner" style="display: block">
+    <div v-if="pickerOpen" class="banner" style="display: block">
       <p style="margin: 0 0 8px">Pick a private file. A copy goes into {{ spaceName }}; your private original stays yours.</p>
-      <p v-if="!privateFiles.length" class="ot-muted">{{ loadingFiles ? 'Loading…' : 'You have no private files yet.' }}</p>
-      <ul v-else class="ot-list">
+      <p v-if="!privateFiles.length" class="mk-muted">{{ loadingFiles ? 'Loading…' : 'You have no private files yet.' }}</p>
+      <ul v-else class="list">
         <li v-for="f in privateFiles" :key="f.id">
-          <button type="button" class="ot-r" @click="share(f)"><span class="ot-r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span><span class="ot-r-text"><strong>{{ f.title || 'Untitled' }}</strong><small>Private to you</small></span><span class="ot-tag">Share copy</span></button>
+          <button type="button" class="r" @click="share(f)"><span class="r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span><span class="r-text"><strong>{{ f.title || 'Untitled' }}</strong><small>Private to you</small></span><span class="tag">Share copy</span></button>
         </li>
       </ul>
     </div>
-    <ul class="ot-list">
-      <li v-if="!docs.length" class="ot-empty">{{ loading ? 'Loading…' : 'No docs yet. Start one, or share one of your files.' }}</li>
+    <ul class="list">
+      <li v-if="!docs.length" class="empty">{{ loading ? 'Loading…' : 'No docs yet. Start one, or share one of your files.' }}</li>
       <li v-for="d in docs" :key="d.id">
-        <button type="button" class="ot-r" @click="$emit('open-doc', d.id)">
-          <span class="ot-r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>
-          <span class="ot-r-text"><strong>{{ d.name }}</strong><small>Edited by {{ who(d.updatedBy) }} · {{ ago(d.updatedAt) }} · version {{ d.revision }}</small></span>
-          <span class="ot-scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
+        <button type="button" class="r" @click="$emit('open-doc', d.id)">
+          <span class="r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>
+          <span class="r-text"><strong>{{ d.name }}</strong><small>Edited by {{ who(d.updatedBy) }} · {{ ago(d.updatedAt) }} · version {{ d.revision }}</small></span>
+          <span class="scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
         </button>
       </li>
     </ul>

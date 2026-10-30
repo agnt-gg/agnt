@@ -1,11 +1,11 @@
 <template>
-  <div class="ot-scroll">
-    <div class="ot-page">
-      <div class="ot-head"><div><h1>My tasks</h1><p>Every card assigned to you, across the teamspaces you can open.</p></div></div>
+  <div class="content">
+    <div class="page">
+      <div class="page-head"><div><h1>My tasks</h1><p>Every card assigned to you, across the teamspaces you can open.</p></div></div>
       <template v-for="status in TASK_STATUSES" :key="status.id">
-        <div class="ot-sec"><h3>{{ status.label }} · {{ grouped(status.id).length }}</h3></div>
-        <ul class="ot-list">
-          <li v-if="!grouped(status.id).length" class="ot-empty">{{ loading ? 'Loading…' : 'Nothing here.' }}</li>
+        <div class="sec-head"><h3>{{ status.label }} · {{ grouped(status.id).length }}</h3></div>
+        <ul class="list">
+          <li v-if="!grouped(status.id).length" class="empty">{{ loading ? 'Loading…' : 'Nothing here.' }}</li>
           <li v-for="t in grouped(status.id)" :key="t.id"><TeamTaskRow :task="t" @open="ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" /></li>
         </ul>
       </template>

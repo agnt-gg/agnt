@@ -1,13 +1,13 @@
 <template>
-  <div class="ot-r is-click" role="button" tabindex="0" @click="open" @keydown.enter="open">
-    <span class="ot-unread"></span>
+  <div class="r clickable" role="button" tabindex="0" @click="open" @keydown.enter="open">
+    <span class="unread"></span>
     <TeamAvatar :who="{ kind: 'agent', id: 'annie' }" label="Annie" size="lg" />
-    <span class="ot-r-text">
-      <strong class="is-wrap">{{ checkpoint.taskTitle || checkpoint.title }}</strong>
+    <span class="r-text">
+      <strong class="mk-wrap">{{ checkpoint.taskTitle || checkpoint.title }}</strong>
       <small>{{ KIND_SENTENCE[checkpoint.kind] || 'To check' }}: {{ checkpoint.title }} · {{ ago(checkpoint.createdAt) }}</small>
     </span>
-    <span class="ot-tag is-pink">Your OK</span>
-    <button type="button" class="focused-primary is-small" @click.stop="open">Review</button>
+    <span class="tag pink">Your OK</span>
+    <button type="button" class="primary sm" @click.stop="open">Review</button>
   </div>
 </template>
 

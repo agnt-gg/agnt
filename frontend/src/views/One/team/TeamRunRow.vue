@@ -1,12 +1,12 @@
 <template>
-  <button type="button" class="ot-r" @click="ctx.openRun(run)">
-    <span class="ot-col-dot" :style="{ background: tone.color }" aria-hidden="true"></span>
-    <span class="ot-r-text">
+  <button type="button" class="r" @click="ctx.openRun(run)">
+    <span class="col-dot" :style="{ background: tone.color }" aria-hidden="true"></span>
+    <span class="r-text">
       <strong>{{ run.routineName }}</strong>
       <small>{{ tone.label }} · {{ ago(run.fired_at) }}</small>
     </span>
-    <span v-if="run.status === 'needs_review'" class="ot-tag is-pink">Your OK</span>
-    <span class="ot-r-go">Open</span>
+    <span v-if="run.status === 'needs_review'" class="tag pink">Your OK</span>
+    <span class="r-go">Open</span>
   </button>
 </template>
 

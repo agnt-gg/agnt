@@ -8,32 +8,31 @@
          rules that fit the shared Chat screen and the pages into a minimal
          frame (one column, centred home, folded steps). one.css draws One over
          them. Comments stay INSIDE the root: one before it makes a fragment. -->
-    <OneRail v-if="!isMobile" :items="railItems" :settings-active="page === 'settings'" @select="selectRail" />
-
-    <!-- Spaces: the workspace switcher, Home, Inbox, My Space and the
-         teamspaces, beside every team page (Home, Inbox, a teamspace). -->
-    <OneSpacesDrawer
-      v-if="spacesDrawerShown"
+    <!-- The approved mockup's frame (projects/agnt-team-os-tasks): its rail
+         and its drawer, on every desktop page. Styled by mk/mk.css. -->
+    <MkRail v-if="!isMobile" :active="mkActive" :active-more="mkActiveMore" :badge="needsYou" :user-name="userName" @select="mkSelect" />
+    <MkDrawer
+      v-if="!isMobile"
       :team="teamState.team"
       :teams="teamState.teams"
       :spaces="teamState.spaces"
-      :unread="needsYou"
-      :location="location"
+      :active="mkDrawerActive"
+      :counts="mkCounts"
       @go="(loc) => go({ page: 'team', ...loc })"
+      @pick="mkPick"
       @find="store.dispatch('shell/openJump')"
-      @chats="selectRail('chats')"
-      @files="go({ page: 'library', tab: 'files', dir: '' })"
-      @team-settings="go({ page: 'settings', section: 'members' })"
       @new-space="newTeamspace"
       @error="toast"
     />
+    <!-- The chat page's list, as in the mockup: chats waiting for your OK first. -->
+    <MkChatList v-if="!isMobile && onChatPage" :active-id="activeChatId" @open="openConversation" @new-chat="newChat" />
 
     <!-- Chats: your chats only (Main chat, search, recents, right-click
          actions, account), as a drawer behind the rail's Chats icon. The rail
          is the one navigation; page links appear in the drawer only on a
          phone, where there is no rail. -->
     <FocusedSidebar
-      v-if="drawerShown"
+      v-if="drawerShown && isMobile"
       class="one-drawer"
       :open="true"
       :navigation="isMobile"
@@ -61,8 +60,17 @@
             <i class="fas fa-edit" aria-hidden="true"></i>
           </button>
         </template>
-        <span class="one-topbar-fill"></span>
+        <div v-if="!isMobile" class="mk mk-topbar">
+          <div class="crumbs" data-testid="mk-crumbs">
+            <template v-for="(c, i) in crumbs" :key="i">
+              <template v-if="i < crumbs.length - 1"><button type="button" @click="c.go()">{{ c.label }}</button><MkIcon name="chev" size="xs" /></template>
+              <b v-else>{{ c.label }}</b>
+            </template>
+          </div>
+        </div>
+        <span v-else class="one-topbar-fill"></span>
         <OneCapsule @ask="ask" @open-models="openModels" @open-setup="openSetup" />
+        <div v-if="!isMobile" class="mk"><button type="button" class="icon-btn" aria-label="Search (Ctrl K)" v-tooltip="'Search (Ctrl K)'" @click="store.dispatch('shell/openJump')"><MkIcon name="find" /></button></div>
         <FocusedWindowControls />
       </header>
 
@@ -88,6 +96,7 @@
       <!-- The screen Terminal mounted. On a page that is Chat, kept alive
            underneath (v-show) so a reply keeps streaming.
            data-fullscreen-host: the one box a screen's "fullscreen" may fill. -->
+      <MkTaskStrip v-if="!isMobile && onChatPage" :conversation-id="activeConversationId" @open-task="(t) => go({ page: 'team', view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" />
       <div v-show="!page" class="focused-screen" data-fullscreen-host>
         <slot />
       </div>
@@ -121,16 +130,21 @@ import FocusedActivityDetail from '@/views/Focused/FocusedActivityDetail.vue';
 import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
-import OneRail from './OneRail.vue';
 import OneCapsule from './OneCapsule.vue';
-import { RAIL_PAGE, MORE_SCREEN, railItems as buildRailItems } from './oneModel.js';
+import { RAIL_PAGE, MORE_SCREEN } from './oneModel.js';
 import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
-import OneSpacesDrawer from './team/OneSpacesDrawer.vue';
+import MkRail from './mk/MkRail.vue';
+import MkDrawer from './mk/MkDrawer.vue';
+import MkChatList from './mk/MkChatList.vue';
+import MkTaskStrip from './mk/MkTaskStrip.vue';
+import MkIcon from './mk/MkIcon.vue';
+import { useMkFrame } from './mk/useMkFrame.js';
+import './mk/mk.css';
+import './mk/mk-frame.css';
 import { useTeam, teamApi } from './team/useTeam.js';
 import { useCheckpoints } from '@/composables/useCheckpoints.js';
-// The rail's Inbox badge and the spaces drawer show outside the team page too.
-import './team/team.css';
+
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 
 const { isElectron } = useElectron();
@@ -211,7 +225,6 @@ const teamUnread = team.unread;
 const checkpointsWaiting = useCheckpoints();
 checkpointsWaiting.loadPending();
 const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value);
-const spacesDrawerShown = computed(() => !isMobile.value && page.value === 'team');
 /** Owner only (the server enforces it): a new teamspace, registered with the cloud and opened. */
 async function newTeamspace() {
   const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });
@@ -225,15 +238,15 @@ async function newTeamspace() {
   }
 }
 
-const railItems = computed(() =>
-  buildRailItems({
-    activePage: page.value,
-    drawerOpen: drawerShown.value,
-    onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),
-    activeScreen: props.screenName,
-    needsYou: needsYou.value,
-  }),
-);
+// The approved mockup's frame: what is lit, the breadcrumbs, where each entry goes, New….
+const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeChatId, activeConversationId } = useMkFrame({
+  store,
+  page,
+  location,
+  screenName: computed(() => props.screenName),
+  teamState,
+  nav: { go, chat: () => backToChat(), ask: (text) => ask(text), prompt: (o) => prompt(o), toast: (t) => toast(t) },
+});
 
 // ── Going places: every move is a route push (Back works, links work) ─────
 function pushScreen(screen, opts = {}) {
@@ -386,6 +399,7 @@ provide('focusedNav', {
   confirm,
   prompt,
   toast,
+  create: (kind) => create(kind),
 });
 
 // Ctrl/⌘+K opens the Jump palette: every screen stays one search away,

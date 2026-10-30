@@ -51,14 +51,14 @@ describe('TaskCheckpointCard', () => {
     await flushPromises();
     expect(w.find('.tc-body').html()).toContain('sam@globex.com');
     expect(w.find('.tc-body script').exists()).toBe(false);
-    expect(w.find('.tc-foot .tc-primary').text()).toBe('Approve');
+    expect(w.find('.tc-foot .primary').text()).toBe('Approve');
     expect(w.text()).toContain('Nothing happens until you approve.');
   });
 
   it('approve records the decision, then resumes Annie in this chat', async () => {
     const w = mountCard();
     await flushPromises();
-    await w.find('.tc-primary').trigger('click');
+    await w.find('.tc-foot .primary').trigger('click');
     await flushPromises();
     expect(calls.find((c) => c.url.endsWith('/decide')).body).toEqual({ decision: 'approved' });
     expect(asks).toEqual([{ text: 'Approved: “Check the email”. Go ahead.', send: true }]);
@@ -69,7 +69,7 @@ describe('TaskCheckpointCard', () => {
   it('ask for changes types into the composer and sends nothing', async () => {
     const w = mountCard();
     await flushPromises();
-    await w.findAll('.tc-btn').find((b) => b.text() === 'Ask for changes').trigger('click');
+    await w.findAll('.tc-foot .btn').find((b) => b.text() === 'Ask for changes').trigger('click');
     expect(asks).toEqual([{ text: 'Change to “Check the email”: ', send: false }]);
     expect(calls.some((c) => c.url.endsWith('/decide'))).toBe(false);
   });
@@ -84,6 +84,6 @@ describe('TaskCheckpointCard', () => {
     card = { ...card, kind: 'run', title: 'This run' };
     const w = mountCard();
     await flushPromises();
-    expect(w.findAll('.tc-btn').map((b) => b.text())).toContain('Skip this run');
+    expect(w.findAll('.tc-foot .btn').map((b) => b.text())).toContain('Skip this run');
   });
 });

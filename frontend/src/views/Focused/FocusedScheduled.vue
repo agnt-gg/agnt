@@ -6,25 +6,35 @@
     <UpgradePrompt title="Let Annie work on a schedule" description="Routines are included with paid plans. Ask once, like “every weekday at 7, brief me on my day”, and it runs on its own." />
   </section>
   <FocusedRoutine v-else-if="item || isNew" :key="item || 'new'" :schedule-id="item" />
-  <FocusedPage v-else :title="page.title" :sub="page.sub" action-label="New routine" v-model:query="query" search-placeholder="Search routines" @action="nav.go({ page: 'scheduled', isNew: true })">
-    <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
-    <p v-else-if="!rows.length" class="focused-empty">
-      {{ query ? `No routine matches “${query}”.` : 'When you ask Annie to do something regularly, it shows up here.' }}
-    </p>
-    <!-- Each routine is a widget: its number, its last runs, Run now. -->
-    <div v-else class="focused-routine-grid">
-      <FocusedRoutineCard v-for="r in rows" :key="r.id" :row="r" @open="nav.go({ page: 'scheduled', item: String(r.id) })" @toggle="toggle" />
+  <!-- The approved mockup's Routines page: each routine as a widget card. -->
+  <div v-else class="mk mk-page">
+    <div class="content">
+      <div class="page">
+        <div class="page-head">
+          <div><h1>Routines</h1><p>Tasks you approved to run again. Each run is recorded, and anything that sends or changes something asks you first.</p></div>
+          <button type="button" class="primary" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="plus" size="sm" />New routine</button>
+        </div>
+        <div class="sec-head"><h3><MkIcon :name="teamName ? 'users' : 'lock'" size="xs" /> {{ teamName || 'Mine' }}</h3></div>
+        <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
+        <ul v-else-if="!rows.length" class="list"><li class="empty">No routines yet. Finish a task in a chat and choose “Make it a routine”.</li></ul>
+        <div v-else class="tc-rgrid">
+          <FocusedRoutineCard v-for="r in rows" :key="r.id" :row="r" :scope-label="teamName" @open="nav.go({ page: 'scheduled', item: String(r.id) })" @toggle="toggle" />
+        </div>
+      </div>
     </div>
-  </FocusedPage>
+  </div>
 </template>
 
 <script setup>
 import UpgradePrompt from '@/components/UpgradePrompt.vue';
 import { ref, computed, inject, watch } from 'vue';
 import { useStore } from 'vuex';
-import FocusedPage from './FocusedPage.vue';
 import FocusedRoutine from './FocusedRoutine.vue';
 import FocusedRoutineCard from './FocusedRoutineCard.vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
+import { instanceTeam } from '@/utils/teamScopeTransport.js';
+import '@/views/One/mk/mk.css';
+import '@/views/One/mk/mk-frame.css';
 import { FOCUSED_PAGES, scheduleRows } from './focusedModel.js';
 import { canScheduleGoals } from '@/services/scheduledGoalsPlan.js';
 
@@ -37,6 +47,8 @@ const query = ref('');
 const loading = ref(false);
 
 const rows = computed(() => scheduleRows(store.getters['schedules/allSchedules'], query.value, store.getters['goals/allGoals']));
+// On a team's instance its routines are the team's: the section is named for the team, as in the mockup.
+const teamName = computed(() => instanceTeam()?.name || '');
 
 async function toggle(r) {
   if (!paid.value) return;
@@ -63,6 +75,4 @@ watch(paid, async (enabled) => {
 }, { immediate: true });
 </script>
 
-<style scoped>
-.focused-routine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-</style>
+

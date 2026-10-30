@@ -20,7 +20,8 @@ const storeState = reactive({
 });
 // mapState/mapActions: options-API components the pages import (UpgradeModal)
 // call them at module load, even though the pages are stubbed here.
-vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters: {}, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
+const getters = { 'contentOutputs/visibleOutputs': [], 'contentOutputs/outputs': [], 'contentOutputs/subChatIdSet': new Set(), 'chat/streamingOutputIds': new Set(), 'chat/speakingByOutputId': {}, 'agents/allAgents': [], 'schedules/allSchedules': [] };
+vi.mock('vuex', () => ({ useStore: () => ({ dispatch, getters, state: storeState }), mapState: () => ({}), mapActions: () => ({}) }));
 const push = vi.fn(() => Promise.resolve());
 const replace = vi.fn(() => Promise.resolve());
 const route = reactive({ query: {} });
@@ -243,103 +244,82 @@ describe('OneShell', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  // The approved mockup's frame (projects/agnt-team-os-tasks, 2026-10-30).
   describe('the rail', () => {
-    const railIds = (w) => w.findAll('.one-rail-btn').map((b) => b.attributes('data-testid'));
+    const railIds = (w) => w.findAll('.rail .rail-btn').map((b) => b.attributes('data-testid'));
 
-    it('is the one navigation: every place on a new account, Settings at the bottom', () => {
+    it('is the approved mockup\'s rail: Home, Chats, Agents, Routines, Library, More; Settings and you at the bottom', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-home', 'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-more', 'one-rail-settings',
+        'one-rail-home', 'one-rail-chats', 'one-rail-agents', 'one-rail-routines', 'one-rail-library', 'one-rail-more', 'one-rail-settings', 'one-rail-me',
       ]);
-      w.unmount();
-    });
-
-    it('Home (which is also the inbox) opens at a real, linkable route', async () => {
-      const w = mountShell();
-      await w.find('[data-testid="one-rail-home"]').trigger('click');
-      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
       expect(w.find('[data-testid="one-rail-inbox"]').exists()).toBe(false);
       w.unmount();
     });
 
-    it('Apps opens the apps page; More holds Activity and Memories', async () => {
+    it('every entry opens its real page at a linkable route', async () => {
+      const w = mountShell('ConnectorsScreen');
+      const click = (id) => w.find(`[data-testid="one-rail-${id}"]`).trigger('click');
+      await click('home');
+      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
+      await click('agents');
+      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'agents' } });
+      await click('library');
+      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'library' } });
+      await click('routines');
+      expect(push.mock.calls.at(-1)[0]).toEqual({ path: '/goals', query: { section: 'schedules' } });
+      await click('chats');
+      expect(push).toHaveBeenLastCalledWith('/chat');
+      w.unmount();
+    });
+
+    it('More holds Activity, Members, Approvals and Find anything', async () => {
       const w = mountShell();
-      await w.find('[data-testid="one-rail-apps"]').trigger('click');
-      expect(push).toHaveBeenLastCalledWith({ path: '/plugins', query: {} });
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Approvals', 'Find anythingCtrl K']);
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Members', 'Approvals', 'Find anythingCtrl K']);
       await w.find('[data-testid="one-rail-activity"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      await w.find('[data-testid="one-rail-memory"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/memory');
+      await w.find('[data-testid="one-rail-members"]').trigger('click');
+      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'members' } });
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      await w.find('[data-testid="one-rail-dashboard"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/dashboard');
+      await w.find('[data-testid="one-rail-approvals"]').trigger('click');
+      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
       await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-find"]').trigger('click');
       expect(dispatch).toHaveBeenCalledWith('shell/openJump');
       w.unmount();
     });
 
-    // Reported 2026-10-21: the drawer repeated the rail's links.
-    it('the Chats drawer beside the rail carries chats only, no page links', async () => {
-      const w = mountShell();
-      await w.find('[data-testid="one-rail-chats"]').trigger('click');
-      expect(w.find('.sidebar-stub').attributes('data-navigation')).toBe('false');
-      w.unmount();
-    });
-
-    it('Chats opens the drawer, remembers it, and the drawer closes itself', async () => {
-      const w = mountShell();
-      expect(w.find('.sidebar-stub').exists()).toBe(false);
-      await w.find('[data-testid="one-rail-chats"]').trigger('click');
-      expect(w.find('.sidebar-stub').exists()).toBe(true);
-      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
-      expect(w.find('[data-testid="one-rail-chats"]').attributes('aria-pressed')).toBe('true');
-      await w.find('.sidebar-stub').trigger('click');
-      expect(w.find('.sidebar-stub').exists()).toBe(false);
-      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('false');
-      w.unmount();
-    });
-
-    // Requested 2026-10-21: the drawer is the chat's; other pages get their width.
-    it('the drawer shows on the chat only, and comes back with it', async () => {
-      localStorage.setItem('agnt:one-drawer-open', 'true');
+    it('the drawer is on every desktop page; the chat list is the chat page\'s own', () => {
       const chat = mountShell('ChatScreen');
-      expect(chat.find('.sidebar-stub').exists()).toBe(true);
+      expect(chat.find('.drawer').exists()).toBe(true);
+      expect(chat.find('[data-testid="mk-chat-list"]').exists()).toBe(true);
+      expect(chat.find('.sidebar-stub').exists()).toBe(false);
       chat.unmount();
       const apps = mountShell('ConnectorsScreen');
-      expect(apps.find('.sidebar-stub').exists()).toBe(false);
-      expect(apps.find('.ui-one').classes()).not.toContain('is-drawer-open');
-      // Still remembered: nothing was switched off, it is just not shown here.
-      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
+      expect(apps.find('.drawer').exists()).toBe(true);
+      expect(apps.find('[data-testid="mk-chat-list"]').exists()).toBe(false);
       apps.unmount();
     });
 
-    it('Chats from another page goes back to the chat with its list open', async () => {
-      localStorage.setItem('agnt:one-drawer-open', 'false');
-      const w = mountShell('ConnectorsScreen');
-      await w.find('[data-testid="one-rail-chats"]').trigger('click');
-      expect(push).toHaveBeenLastCalledWith('/chat');
-      expect(localStorage.getItem('agnt:one-drawer-open')).toBe('true');
-      w.unmount();
-    });
-
-    // New chat moved from the rail into the Chats drawer's header (2026-10-21).
-    it('New chat in the Chats drawer starts a new conversation; the rail has none', async () => {
+    it('New chat in the chat list starts a new conversation', async () => {
       const fresh = vi.fn();
       window.addEventListener('trigger-new-chat', fresh);
-      localStorage.setItem('agnt:one-drawer-open', 'true');
       const w = mountShell();
-      expect(w.find('[data-testid="one-rail-new"]').exists()).toBe(false);
-      await w.find('.stub-new-chat').trigger('click');
+      await w.findAll('[data-testid="mk-chat-list"] button').find((b) => b.text() === 'New chat').trigger('click');
       await new Promise((r) => setTimeout(r, 0));
       expect(push).toHaveBeenCalledWith('/chat');
       expect(fresh).toHaveBeenCalledTimes(1);
       window.removeEventListener('trigger-new-chat', fresh);
+      w.unmount();
+    });
+
+    it('the top bar shows where you are', () => {
+      const w = mountShell('ChatScreen');
+      expect(w.find('[data-testid="mk-crumbs"]').text()).toBe('Chats with Annie');
       w.unmount();
     });
   });

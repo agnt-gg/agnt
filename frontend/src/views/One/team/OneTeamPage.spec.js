@@ -74,7 +74,7 @@ describe('teamspace chat', () => {
     const { wrapper } = mountPage(loc({ view: 'space', space: 'sales', tab: 'chat' }));
     await flushPromises();
     await wrapper.find('textarea[aria-label="Message"]').setValue('@Proposal Agent draft it, @Jess FYI');
-    await wrapper.find('form.ot-composer').trigger('submit');
+    await wrapper.find('form.composer').trigger('submit');
     await flushPromises();
     const sent = calls.find((c) => c.method === 'POST' && c.path.endsWith('/messages'));
     expect(sent.body).toEqual({ body: '@Proposal Agent draft it, @Jess FYI', mentions: [{ kind: 'agent', id: 'proposal' }, { kind: 'person', id: 'jess' }] });
@@ -84,9 +84,9 @@ describe('teamspace chat', () => {
     routes['/acme/workspaces/sales/messages'] = [{ id: 'm1', author: { kind: 'person', id: 'jess' }, body: '<img src=x onerror=alert(1)> hi @Jess', mentions: [], createdAt: new Date().toISOString() }];
     const { wrapper } = mountPage(loc({ view: 'space', space: 'sales', tab: 'chat' }));
     await flushPromises();
-    expect(wrapper.find('.ot-msg-text img').exists()).toBe(false);
-    expect(wrapper.find('.ot-msg-text').text()).toContain('<img src=x onerror=alert(1)>');
-    expect(wrapper.find('.ot-mention').text()).toBe('@Jess');
+    expect(wrapper.find('.msg-text img').exists()).toBe(false);
+    expect(wrapper.find('.msg-text').text()).toContain('<img src=x onerror=alert(1)>');
+    expect(wrapper.find('.mention').text()).toBe('@Jess');
   });
 });
 
@@ -96,7 +96,7 @@ describe('Home is the inbox', () => {
     const { wrapper, nav } = mountPage(loc({ view: 'home' }));
     await flushPromises();
     const panel = wrapper.find('[data-testid="home-inbox"]');
-    expect(panel.find('.ot-tab.is-active').text()).toMatch(/^Needs you/);
+    expect(panel.find('.tab.is-active').text()).toMatch(/^Needs you/);
     expect(panel.text()).toContain('Waiting for your OK');
     expect(panel.text()).toContain('Send the January price notice');
     expect(panel.text()).not.toMatch(/\bApprove\b/); // Review, never Approve: the whole card is in the chat
@@ -108,7 +108,7 @@ describe('Home is the inbox', () => {
     const { wrapper } = mountPage(loc({ view: 'inbox' }));
     await flushPromises();
     expect(wrapper.find('[data-testid="home-inbox"]').exists()).toBe(true);
-    expect(wrapper.find('.ot-greet').exists()).toBe(true);
+    expect(wrapper.find('.greet').exists()).toBe(true);
   });
 
   it('opening a row marks it read and goes to the card', async () => {
@@ -116,11 +116,11 @@ describe('Home is the inbox', () => {
     routes['POST /acme/inbox/i1/read'] = { success: true };
     const { wrapper, nav } = mountPage(loc({ view: 'inbox' }));
     await flushPromises();
-    await wrapper.find('.ot-r.is-click').trigger('click');
+    await wrapper.find('.r.clickable').trigger('click');
     await flushPromises();
     expect(calls.some((c) => c.method === 'POST' && c.path === '/acme/inbox/i1/read')).toBe(true);
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'team', view: 'space', space: 'sales', tab: 'board', task: 't1' });
-    expect(wrapper.find('.ot-unread').exists()).toBe(false);
+    expect(wrapper.find('.unread').exists()).toBe(false);
   });
 });
 
@@ -131,8 +131,8 @@ describe('card panel', () => {
     routes['POST /acme/workspaces/sales/tasks/t1/approve'] = { task: { ...task, status: 'done', agentState: null }, doc: null };
     const { wrapper } = mountPage(loc({ view: 'space', space: 'sales', tab: 'board', task: 't1' }));
     await flushPromises();
-    expect(wrapper.find('.ot-result').text()).toBe('The draft');
-    await wrapper.findAll('.ot-approve button').find((b) => b.text() === 'Approve').trigger('click');
+    expect(wrapper.find('.tc-docprev').text()).toBe('The draft');
+    await wrapper.findAll('.approve-box button').find((b) => b.text() === 'Approve').trigger('click');
     await flushPromises();
     expect(calls.find((c) => c.path.endsWith('/approve')).body).toEqual({ saveAsDoc: false });
   });
@@ -144,12 +144,12 @@ describe('board', () => {
     routes['PATCH /acme/workspaces/sales/tasks/t1'] = Object.assign(new Error('changed'), { code: 'revision_conflict', status: 409 });
     const { wrapper, nav } = mountPage(loc({ view: 'space', space: 'sales', tab: 'board' }));
     await flushPromises();
-    await wrapper.find('.ot-tcard').trigger('dragstart');
-    await wrapper.findAll('.ot-col')[2].trigger('drop');
+    await wrapper.find('.tcard').trigger('dragstart');
+    await wrapper.findAll('.col')[2].trigger('drop');
     await flushPromises();
     expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ status: 'review', expectedRevision: 2 });
     expect(nav.toast).toHaveBeenCalledWith(expect.stringMatching(/teammate just changed/));
-    expect(wrapper.findAll('.ot-col')[0].find('.ot-tcard').exists()).toBe(true);
+    expect(wrapper.findAll('.col')[0].find('.tcard').exists()).toBe(true);
   });
 });
 
