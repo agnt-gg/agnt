@@ -91,6 +91,20 @@ async function loadRequestedTools(context, toolSchemas, provider, userId) {
  * - Response caching
  * - Automatic context management
  */
+/**
+ * The text of an assistant message, whatever shape the adapter returned:
+ * a string, or an array of content blocks ({type:'text'|'output_text', text}).
+ * Non-text blocks (tool_use, thinking, images) contribute nothing.
+ */
+export function messageText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return content == null ? '' : String(content?.text ?? '');
+  return content
+    .map((part) => (typeof part === 'string' ? part : (part && (part.type === 'text' || part.type === 'output_text') && typeof part.text === 'string' ? part.text : '')))
+    .filter(Boolean)
+    .join('\n');
+}
+
 class LlmExecutionService {
   constructor() {
     // Performance metrics storage
@@ -440,14 +454,16 @@ class LlmExecutionService {
       console.warn(`[LlmExecutionService] Maximum tool rounds (${maxToolRounds}) reached`);
     }
 
-    // Extract final content
-    let finalContent;
-    if (provider.toLowerCase() === 'anthropic') {
-      const textBlock = responseMessage.content.find((c) => c.type === 'text');
-      finalContent = textBlock ? textBlock.text : '';
-    } else {
-      finalContent = responseMessage.content;
-    }
+    // Extract final content as text. Several adapters (Anthropic, Claude
+    // Code) return content blocks; only 'anthropic' was unwrapped, so on
+    // Claude Code every goal task's output was an array that downstream text
+    // consumers read as "[object Object]" (next-task context, file
+    // references, blocker detection, retries).
+    const finalContent = messageText(responseMessage?.content);
+    // The loop ended with tool calls still pending: the agent was cut off
+    // mid-work, and the final message is a request for more tools, not an
+    // answer. Callers must be able to tell, and continue the work.
+    const toolRoundsExhausted = Boolean(toolCalls && toolCalls.length > 0 && currentRound >= maxToolRounds);
 
     // Calculate execution time and update metrics
     const executionTime = Date.now() - startTime;
@@ -478,6 +494,7 @@ class LlmExecutionService {
     const result = {
       responseMessage,
       content: finalContent,
+      toolRoundsExhausted,
       toolExecutions: allToolExecutions,
       messages,
       metrics: {
@@ -700,18 +717,21 @@ class LlmExecutionService {
       console.warn(`[LlmExecutionService] Maximum tool rounds (${maxToolRounds}) reached`);
     }
 
-    // Extract final content
-    let finalContent;
-    if (provider.toLowerCase() === 'anthropic') {
-      const textBlock = responseMessage.content.find((c) => c.type === 'text');
-      finalContent = textBlock ? textBlock.text : '';
-    } else {
-      finalContent = responseMessage.content;
-    }
+    // Extract final content as text. Several adapters (Anthropic, Claude
+    // Code) return content blocks; only 'anthropic' was unwrapped, so on
+    // Claude Code every goal task's output was an array that downstream text
+    // consumers read as "[object Object]" (next-task context, file
+    // references, blocker detection, retries).
+    const finalContent = messageText(responseMessage?.content);
+    // The loop ended with tool calls still pending: the agent was cut off
+    // mid-work, and the final message is a request for more tools, not an
+    // answer. Callers must be able to tell, and continue the work.
+    const toolRoundsExhausted = Boolean(toolCalls && toolCalls.length > 0 && currentRound >= maxToolRounds);
 
     return {
       responseMessage,
       content: finalContent,
+      toolRoundsExhausted,
       toolExecutions: allToolExecutions,
       messages,
       ...recovered,

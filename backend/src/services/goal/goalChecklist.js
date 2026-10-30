@@ -78,13 +78,60 @@ export function withReviewerFeedback(worldState, feedback, at = new Date().toISO
   return text ? [...previous, { text, at }].slice(-MAX_REVIEWER_FEEDBACK) : previous;
 }
 
-/** Text of each task's result, bounded so one huge output cannot crowd the rest out. */
-function taskEvidence(tasks, perTask = 2500) {
+const EVIDENCE_PER_TASK = 6000;
+const SUMMARY_CHARS = 1500;
+const oneLine = (value, max) => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value ?? null);
+  const flat = String(text).replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
+const textOf = (content) => (Array.isArray(content)
+  ? content.map((part) => (typeof part === 'string' ? part : part?.text || '')).filter(Boolean).join('\n')
+  : String(content ?? ''));
+
+/** What a tool call acted on: the path/url/query/command if it names one. */
+function callTarget(args) {
+  let parsed = args;
+  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { return oneLine(parsed, 140); } }
+  if (!parsed || typeof parsed !== 'object') return '';
+  for (const key of ['path', 'file_path', 'filePath', 'url', 'query', 'command', 'code', 'operation']) {
+    if (parsed[key] != null) return `${key}=${oneLine(parsed[key], 160)}`;
+  }
+  return oneLine(parsed, 140);
+}
+
+/**
+ * One task's evidence, bounded: its final summary, then one line per tool call
+ * (tool, target, outcome). When the calls do not all fit, the first few and
+ * the LAST ones are kept: the end of the work is where deliverables are
+ * written and verified. Regression: the raw output JSON was cut to its first
+ * 2500 characters, which always dropped the final calls, so the checklist
+ * grader truthfully found "no evidence" and failed goals whose work was done.
+ */
+export function taskEvidence(tasks, perTask = EVIDENCE_PER_TASK) {
   return tasks
     .map((task, index) => {
       let output = task.output;
-      if (typeof output !== 'string') output = JSON.stringify(output ?? null);
-      return `### Task ${index + 1}: ${task.title} [${task.status}]\n${String(output).slice(0, perTask)}`;
+      if (typeof output === 'string') { try { output = JSON.parse(output); } catch { /* plain text output */ } }
+      const header = `### Task ${index + 1}: ${task.title} [${task.status}]`;
+      if (!output || typeof output !== 'object') return `${header}\n${String(output ?? '').slice(0, perTask)}`;
+      const summary = textOf(output.content).trim().slice(0, SUMMARY_CHARS) || '(no summary)';
+      const calls = (Array.isArray(output.toolExecutions) ? output.toolExecutions : []).map((call, n) =>
+        `${n + 1}. ${call?.name || 'tool'}(${callTarget(call?.arguments)}) -> ${oneLine(call?.response ?? call?.result ?? '', 220)}`);
+      const budget = Math.max(0, perTask - summary.length - header.length - 40);
+      let lines = calls;
+      if (calls.join('\n').length > budget) {
+        const head = calls.slice(0, 3);
+        const tail = [];
+        let used = head.join('\n').length + 60;
+        for (let i = calls.length - 1; i >= head.length && used + calls[i].length + 1 <= budget; i--) {
+          tail.unshift(calls[i]);
+          used += calls[i].length + 1;
+        }
+        const omitted = calls.length - head.length - tail.length;
+        lines = [...head, ...(omitted > 0 ? [`… ${omitted} earlier call(s) omitted …`] : []), ...tail];
+      }
+      return `${header}\nSummary: ${summary}\nTool calls (${calls.length}):\n${lines.join('\n') || '(none)'}`;
     })
     .join('\n\n');
 }

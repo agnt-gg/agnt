@@ -1,6 +1,9 @@
-// The checkpoint gate: a task's work is graded before it is marked completed,
-// gets one retry with the findings, and fails rather than letting dependents
-// build on work that did not pass.
+// The checkpoint gate: a task's work is graded before it is marked completed.
+// Like the chat, the agent keeps working in ONE conversation until the work
+// passes: it continues when it runs out of tool rounds and fixes what the
+// reviewer found on top of what it already did. It fails only after
+// TASK_WORK_TURNS turns, never letting dependents build on work that did not
+// pass. Regression: one blind retry from scratch, then the goal stopped.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../models/database/index.js', () => ({ default: {} }));
@@ -59,10 +62,10 @@ describe('checkpoint gate', () => {
     expect(statuses()).toContain('completed');
   });
 
-  it('Given work that fails review twice, Then the task fails with the reason and is never completed', async () => {
+  it('Given work that fails review on every turn, Then the task fails after the turn budget with the reason and is never completed', async () => {
     GoalEvaluator.evaluateTask.mockResolvedValue(fail);
     await expect(TaskOrchestrator.executeTask(task, 'u', null, 'openai', 'm')).rejects.toMatchObject({ code: 'TASK_REVIEW_FAILED' });
-    expect(agentChat).toHaveBeenCalledTimes(2);
+    expect(agentChat).toHaveBeenCalledTimes(5);
     expect(statuses()).not.toContain('completed');
     const failedWrite = TaskModel.updateStatus.mock.calls.find((call) => call[1] === 'failed' && call[7]);
     expect(failedWrite[7]).toMatch(/CRITERIA_UNMET.*Pricing section is missing/);
@@ -81,6 +84,39 @@ describe('checkpoint gate', () => {
     await expect(TaskOrchestrator.executeTask(task, 'u', null, 'openai', 'm')).rejects.toThrow(/blocked/i);
     expect(GoalEvaluator.evaluateTask).not.toHaveBeenCalled();
     expect(statuses()).not.toContain('completed');
+  });
+});
+
+describe('the task is worked like a chat, not retried blind', () => {
+  it('Given a rejected attempt, Then the fix continues the SAME conversation, with the findings, building on prior work', async () => {
+    const history = [{ role: 'user', content: 'task' }, { role: 'assistant', content: 'The draft.' }];
+    agentChat.mockResolvedValue({ content: 'The draft.', tool_executions: [], messages: history });
+    GoalEvaluator.evaluateTask.mockResolvedValueOnce(fail).mockResolvedValueOnce(pass);
+    await TaskOrchestrator.executeTask(task, 'u', null, 'openai', 'm');
+    expect(agentChat.mock.calls[0][7]).toEqual({ priorMessages: null });
+    expect(agentChat.mock.calls[1][7]).toEqual({ priorMessages: history });
+    expect(agentChat.mock.calls[1][1]).toMatch(/building on what you already did[\s\S]*Pricing section is missing/);
+  });
+
+  it('Given the agent runs out of tool rounds, Then it continues without being graded on unfinished work', async () => {
+    agentChat
+      .mockResolvedValueOnce({ content: '', toolRoundsExhausted: true, tool_executions: [{ name: 'web_search' }], messages: ['m1'] })
+      .mockResolvedValueOnce({ content: 'The draft.', tool_executions: [{ name: 'write_file' }], messages: ['m2'] });
+    GoalEvaluator.evaluateTask.mockResolvedValue(pass);
+    await TaskOrchestrator.executeTask(task, 'u', null, 'openai', 'm');
+    expect(agentChat).toHaveBeenCalledTimes(2);
+    expect(agentChat.mock.calls[1][1]).toMatch(/Continue the task from exactly where you stopped/);
+    expect(GoalEvaluator.evaluateTask).toHaveBeenCalledTimes(1);
+    // The reviewer sees the evidence from every turn, not just the last.
+    const reviewed = GoalEvaluator.evaluateTask.mock.calls[0][0];
+    expect(reviewed.output.toolExecutions.map((t) => t.name)).toEqual(['web_search', 'write_file']);
+    expect(statuses()).toContain('completed');
+  });
+
+  it('Given it needs the user, Then it stops at once instead of spending turns', async () => {
+    GoalEvaluator.evaluateTask.mockResolvedValue({ ...fail, needsInput: { what: 'Connect analytics', why: '401' } });
+    await expect(TaskOrchestrator.executeTask(task, 'u', null, 'openai', 'm')).rejects.toMatchObject({ code: 'TASK_NEEDS_INPUT' });
+    expect(agentChat).toHaveBeenCalledTimes(1);
   });
 });
 

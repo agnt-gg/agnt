@@ -60,6 +60,17 @@ import path from 'path';
  */
 const DEFAULT_LOCAL_TASK_CONCURRENCY = 4;
 
+// A goal task gets the chat's tool-round budget (the user's maxToolRounds
+// setting); this is the fallback when the setting cannot be read.
+const DEFAULT_TASK_TOOL_ROUNDS = 100;
+// Work turns per task in one run: continuing after the tool rounds run out,
+// or fixing what the reviewer found. Each turn is a full agent turn in the
+// same conversation. Bounded so a task that cannot pass still ends, and the
+// goal loop's re-plan gets its chance.
+const TASK_WORK_TURNS = 5;
+const CONTINUE_WORK_MESSAGE = 'You ran out of tool rounds before finishing. Continue the task from exactly where you stopped: do not redo work that is already done. When the task is complete, end with a short summary of what you produced and where it is saved.';
+const FIX_WORK_PREFIX = 'A reviewer checked your work on this task and it does not pass yet. Fix every point below, building on what you already did (do not start over or redo finished work), then end with a short summary of what you produced and where it is saved.\n\nREVIEW:';
+
 function localTaskConcurrency() {
   const raw = Number(process.env.AGNT_LOCAL_TASK_CONCURRENCY);
   if (!Number.isFinite(raw) || raw < 1) return DEFAULT_LOCAL_TASK_CONCURRENCY;
@@ -454,24 +465,17 @@ class TaskOrchestrator {
         agentName: agent.name,
       });
 
-      // Step 4: Execute task via agent chat
+      // Step 4: Work the task to completion, like the chat does: one
+      // conversation that keeps going until the work passes its own review.
+      // The agent continues when it runs out of tool rounds, and fixes what the
+      // reviewer found by building on its own work (it sees everything it
+      // already did) instead of starting over blind. Bounded by
+      // TASK_WORK_TURNS so a task that cannot pass still ends.
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
       const ledgerCtx = { origin: 'goal_task', originId: task.goal_id };
-      let result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal, ledgerCtx);
-      console.log(`[TaskOrchestrator] Step 4 Complete: Agent completed task execution`);
+      const { result, review } = await this._workTask(task, agent, taskMessage, userId, provider, model, signal, ledgerCtx);
+      console.log(`[TaskOrchestrator] Step 4 Complete: Agent finished working the task`);
 
-      // Step 4b: Checkpoint gate. The work is graded BEFORE the task is marked
-      // completed, so nothing that depends on it ever builds on unchecked work.
-      // One in-place retry with the reviewer's findings, then the task fails.
-      let review = await this._reviewTaskResult(task, result, userId, provider, model);
-      // A missing prerequisite only the user can supply is not fixed by trying
-      // again, so it skips the retry and stops the task with the ask.
-      if (review.rejected && review.code !== 'NEEDS_INPUT') {
-        console.log(`[TaskOrchestrator] Task ${task.id} did not pass review (${review.code}) — retrying once with the findings`);
-        const retryMessage = `${taskMessage}\n\nREVIEW OF YOUR PREVIOUS ATTEMPT (it did not pass — fix every point, then redo the task):\n${review.feedback}`;
-        result = await this.executeTaskViaAgentChat(agent, retryMessage, userId, provider, model, signal, ledgerCtx);
-        review = await this._reviewTaskResult(task, result, userId, provider, model);
-      }
       if (review.rejected) {
         const needsInput = review.code === 'NEEDS_INPUT' ? review.needsInput : null;
         const reason = (needsInput ? review.feedback : `Did not pass review (${review.code}): ${review.feedback}`).slice(0, 2000);
@@ -618,12 +622,54 @@ Begin working on this task now.`;
 
     return message;
   }
-  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null, ledgerCtx = null) {
+  /**
+   * Run one task until its work passes review, it needs the user, or it runs
+   * out of work turns. Each turn continues the same conversation:
+   *   - tool rounds exhausted -> "continue from where you stopped" (no review:
+   *     the work is unfinished, grading it would only reject it)
+   *   - review rejected       -> the findings, to fix on top of what exists
+   *   - review passed / NEEDS_INPUT -> done
+   * The reviewer always sees the tool executions of every turn, so evidence
+   * produced in an earlier turn still counts.
+   * @returns {Promise<{result:object, review:object}>}
+   */
+  static async _workTask(task, agent, taskMessage, userId, provider, model, signal, ledgerCtx) {
+    const allToolExecutions = [];
+    let conversation = null;
+    let nextMessage = taskMessage;
+    let result = null;
+    let review = { rejected: true, code: 'NOT_RUN', feedback: 'The task did not run.' };
+    for (let turn = 1; turn <= TASK_WORK_TURNS; turn++) {
+      result = await this.executeTaskViaAgentChat(agent, nextMessage, userId, provider, model, signal, ledgerCtx, { priorMessages: conversation });
+      allToolExecutions.push(...(result.tool_executions || []));
+      result = { ...result, tool_executions: [...allToolExecutions] };
+      conversation = result.messages || null;
+      const lastTurn = turn === TASK_WORK_TURNS;
+
+      if (result.toolRoundsExhausted && !lastTurn) {
+        console.log(`[TaskOrchestrator] Task ${task.id} used its tool rounds (turn ${turn}) — continuing the same conversation`);
+        nextMessage = CONTINUE_WORK_MESSAGE;
+        continue;
+      }
+      review = await this._reviewTaskResult(task, result, userId, provider, model);
+      if (!review.rejected || review.code === 'NEEDS_INPUT' || lastTurn) break;
+      console.log(`[TaskOrchestrator] Task ${task.id} did not pass review (${review.code}, turn ${turn}) — fixing in the same conversation`);
+      nextMessage = `${FIX_WORK_PREFIX}\n${review.feedback}`;
+    }
+    return { result, review };
+  }
+
+  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null, ledgerCtx = null, { priorMessages = null } = {}) {
     console.log(`[TaskOrchestrator] Sending task to agent ${agent.name} via chat`);
 
     try {
-      // Prepare messages
-      const messages = [{ role: 'user', content: taskMessage }];
+      // A continuing turn carries the conversation so far. Its system message
+      // is dropped: the runtime prompt is rebuilt and prepended below, and a
+      // kept copy would be merged into it a second time.
+      const messages = [
+        ...(Array.isArray(priorMessages) ? priorMessages.filter((message) => message?.role !== 'system') : []),
+        { role: 'user', content: taskMessage },
+      ];
 
       // Priority: request provider/model → agent config → user settings
       let provider = reqProvider;
@@ -637,11 +683,13 @@ Begin working on this task now.`;
         model = agent.model;
       }
 
-      // If still missing, fall back to user settings
+      // User settings: the default provider/model when neither the request nor
+      // the agent names one, and the tool-round budget the chat uses.
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const userSettings = await UserModel.getUserSettings(userId).catch(() => null);
+      const maxToolRounds = Number.isInteger(userSettings?.maxToolRounds) && userSettings.maxToolRounds > 0
+        ? userSettings.maxToolRounds : DEFAULT_TASK_TOOL_ROUNDS;
       if (!provider || !model) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-
         if (!provider) {
           provider = userSettings?.selectedProvider;
           console.log(`[TaskOrchestrator] Using user's default provider: ${provider}`);
@@ -701,13 +749,18 @@ Begin working on this task now.`;
         // filed every run_agent invocation under goal spend with a null goal
         // id — real money attributed to a goal that does not exist.
         ledger: ledgerCtx || { origin: 'system', originId: null },
-        maxToolRounds: 10,
+        // The chat's budget (user setting, default 100). This was 10: a goal
+        // task was cut off mid-work after ten tool rounds, a tenth of what the
+        // same request gets in the chat, then graded on the unfinished work.
+        maxToolRounds,
         signal,
       });
 
       // Format response to match expected structure
       return {
         content: result.content,
+        toolRoundsExhausted: result.toolRoundsExhausted === true,
+        messages: result.messages,
         // A recovered provider error is a notice, not the agent's reply.
         ...(result.error || result.success === false || result.recoveredFromError
           ? {success:false,error:result.error || result.recoveredError || 'Execution failed'} : {}),

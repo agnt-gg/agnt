@@ -58,8 +58,17 @@ describe('goal/run_agent runtime context handoff', () => {
     expect(config.systemPrompt).toBe('Runtime prompt');
     expect(config.signal).toBe(signal);
     expect(config.ledger).toBe(ledger);
-    expect(config.maxToolRounds).toBe(10);
-    expect(result).toEqual({ content: 'Done', tool_executions: [], usage: null });
+    // The chat's budget (user setting, default 100), not the old cap of 10.
+    expect(config.maxToolRounds).toBe(100);
+    expect(config.messages).toEqual([{ role: 'user', content: 'Task text' }]);
+    expect(result).toEqual({ content: 'Done', toolRoundsExhausted: false, tool_executions: [], usage: null });
+  });
+
+  it('continues a conversation without duplicating its system prompt', async () => {
+    buildAgentRuntime.mockResolvedValue({ systemPrompt: 'Prompt', toolSchemas: [], context: {} });
+    const prior = [{ role: 'system', content: 'Prompt' }, { role: 'user', content: 'Task' }, { role: 'assistant', content: 'Half done' }];
+    await TaskOrchestrator.executeTaskViaAgentChat({ id: 'a', name: 'A' }, 'Continue', 'u', 'openai', 'm', null, null, { priorMessages: prior });
+    expect(service.executeWithTools.mock.calls[0][0].messages).toEqual([prior[1], prior[2], { role: 'user', content: 'Continue' }]);
   });
 
   it('retains the run_agent/system ledger default and propagates runtime errors', async () => {

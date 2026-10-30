@@ -39,7 +39,8 @@ describe('parseChecklistVerdict', () => {
   it('prompts with every item and bounded task output', () => {
     const prompt = checklistPrompt({ title: 'G' }, checklist, [{ title: 'T', status: 'completed', output: 'x'.repeat(10000) }]);
     for (const item of checklist) expect(prompt).toContain(`${item.id}. ${item.text}`);
-    expect(prompt.length).toBeLessThan(4000);
+    // Bounded per task (6000 chars of evidence), however large the output.
+    expect(prompt.length).toBeLessThan(7500);
   });
 });
 
