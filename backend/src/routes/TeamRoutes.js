@@ -10,6 +10,9 @@ import { buildBundle, installBundle } from '../services/sharing/TeamBundle.js';
 import { nativeStore, nodeProvider } from '../services/sharing/nativeStore.js';
 import { parseItems } from './ShareRoutes.js';
 import { publicShareClient, publishLink, previewLink, receiveLink } from '../services/sharing/publicLinks.js';
+import { initializeTeamSpaces } from '../services/TeamSpaceRepository.js';
+import { createTeamSpaceRealtime } from '../services/TeamSpaceRealtime.js';
+import { mountTeamSpaceRoutes } from './TeamSpaceRoutes.js';
 import sqlite3 from 'sqlite3';
 import pathManager from '../utils/PathManager.js';
 import {
@@ -35,7 +38,8 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     if (!(req.user?.id || req.user?.userId)) return res.status(401).json({error:'Sign in required'});
     try {
       const path = req.path;
-      const assetRequest = /^\/[^/]+\/(assets|activity|workspaces|access)(\/|$)/.test(path);
+      // Served by this instance (and checked against the cloud below). Anything else is the cloud's own route.
+      const assetRequest = /^\/[^/]+\/(assets|activity|workspaces|access|inbox)(\/|$)/.test(path);
       if (!assetRequest) {
         const result = await cloud.request(req.headers.authorization, path, {
           method: req.method,
@@ -80,6 +84,8 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
       await repository.workspacesReady;
       if(!repository.executionReady)repository.executionReady=repository.transaction(()=>initializeNativeTeamExecution(repository));
       await repository.executionReady;
+      if(!repository.spacesReady)repository.spacesReady=repository.transaction(()=>initializeTeamSpaces(repository));
+      await repository.spacesReady;
       await repository.transaction(() => repository.run('INSERT OR IGNORE INTO teams(id,name,owner_id,created_at) VALUES(?,?,?,?)',[req.cloudTeam.id,req.cloudTeam.name,'cloud-authority',new Date().toISOString()]));
       const result = await fn(scoped, req, user);
       res.json(result ?? {
@@ -231,6 +237,18 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   router.post('/:teamId/workspaces/:id/archive',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,req.params.id)));
   router.get('/:teamId/workspaces/:id/resources',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).resources(req.params.teamId,user,req.params.id)));
   router.post('/:teamId/workspaces/:id/resources',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).attach(req.params.teamId,user,req.params.id,req.body?.assetId)));
+  // Teamspace chat, board, docs and inbox. Agents on cards run exactly as /native/agent/:id/run does:
+  // a snapshot of the native agent, then its PUBLISHED revision through NativeTeamExecution.
+  mountTeamSpaceRoutes(router,{
+    handler,
+    realtime:createTeamSpaceRealtime({cloud}),
+    workspaceAgents:async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);},
+    agentExecutor:(repo,req,user,agentId)=>async input=>{
+      const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();
+      const assetId=await resources.snapshot(req.params.teamId,user,scope,'agent',agentId);
+      return new NativeTeamExecution(repo,cloud).run(req.cloudTeam,user,assetId,input,scope,req.headers.authorization);
+    },
+  });
   return router;
 }
 export default createTeamRouter();

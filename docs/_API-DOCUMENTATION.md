@@ -4426,6 +4426,43 @@ Every route requires the normal authenticated session. Team lookups are membersh
 
 Membership and writes are checked in serialized SQLite transactions. Team endpoints set `Cache-Control: no-store`. Hosted-team entitlement/seat accounting, shared workflow execution, per-resource guest exceptions, automatic mail and independent cloud tenancy are not implemented by this first library slice.
 
+### Teamspace collaboration (chat, board, docs, inbox)
+
+Served by the team's own instance (`AGNT_TENANT_SLUG` set), under the same router as the routes above. Every `/:teamId/workspaces/:workspaceId/...` path is checked against the cloud first: team access, then the per-workspace capability (`resources.read` on GET, `resources.write` otherwise). Viewers read; owners, admins and members write. People named in a mention or an assignment must be members of the team; agents must be native agents of that teamspace. A realtime `team:space` signal (`{teamId, workspaceId, kind, taskId?, docId?}`, ids only) goes to every member on each change, and `team:inbox` (`{teamId}`) to anyone whose inbox changed; clients refetch through these routes.
+
+Mentions and assignees are `{ kind: 'person' | 'agent', id }`. Task statuses: `todo`, `doing`, `review`, `done`.
+
+**Chat**
+- **GET** `/:teamId/workspaces/:workspaceId/messages?before=<iso>`: the latest 200 messages, oldest first.
+- **POST** `/:teamId/workspaces/:workspaceId/messages`: body `{ body, mentions? }` (1–4000 characters, at most 20 mentions). Each mentioned teammate gets an inbox item. Each mentioned agent (up to 3) gets a card made from the message and starts on it (see Agents on cards).
+- **DELETE** `/:teamId/workspaces/:workspaceId/messages/:messageId`: the author, or an owner/admin.
+
+**Board**
+- **GET** `/:teamId/workspaces/:workspaceId/tasks`: up to 500 cards, with comment counts.
+- **GET** `/:teamId/workspaces/:workspaceId/tasks/:taskId`: one card with its thread.
+- **POST** `/:teamId/workspaces/:workspaceId/tasks`: body `{ title, status?, assignee?, due?, sourceMessageId? }`. Assigning a teammate notifies them; assigning an agent starts it.
+- **PATCH** `/:teamId/workspaces/:workspaceId/tasks/:taskId`: body `{ expectedRevision, title?, status?, assignee?, due? }`. A stale `expectedRevision` returns 409 `revision_conflict` and writes nothing.
+- **DELETE** `/:teamId/workspaces/:workspaceId/tasks/:taskId`: the card's creator, or an owner/admin.
+- **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/comments`: body `{ body, mentions? }`. Notifies the assignee, the creator and anyone mentioned (never the author). An @agent hands the card to that agent.
+- **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/approve`: body `{ saveAsDoc? }`. Only when an agent result is waiting (else 409 `not_waiting`). Moves the card to `done`; with `saveAsDoc` the result becomes a teamspace doc. Returns `{ task, doc }`.
+- **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/send-back`: body `{ note? }`. The agent runs again with the note.
+
+**Agents on cards.** The agent's PUBLISHED revision runs through the same path as `/native/agent/:id/run` (team connection, recorded in `team_native_runs`), after the response. The card shows `agentState` `running`, then `waiting` with the result in its thread and an `approval` inbox item for the card's creator, or `blocked` with a plain reason (for example, not published yet). Nothing reaches `done` without a person.
+
+**Docs** (versioned team assets linked to one teamspace; excluded from `/assets`, so they are reachable only through their teamspace)
+- **GET** `/:teamId/workspaces/:workspaceId/docs`: names and revisions, newest first.
+- **GET** `/:teamId/workspaces/:workspaceId/docs/:docId`: the current revision with its content.
+- **POST** `/:teamId/workspaces/:workspaceId/docs`: body `{ name, content? }` (content at most 200 KB).
+- **PUT** `/:teamId/workspaces/:workspaceId/docs/:docId`: body `{ expectedRevision, name?, content? }`. Each save is a new immutable revision; a stale revision returns 409 `revision_conflict`.
+- **DELETE** `/:teamId/workspaces/:workspaceId/docs/:docId`: the doc's creator, or an owner/admin. Unlinks it from the teamspace; its revisions are kept.
+
+**People**
+- **GET** `/:teamId/workspaces/:workspaceId/people`: `{ memberIds, agents: [{ id, name, status }] }` for mentions and assignment. Names come from `GET /:teamId/members`.
+
+**Inbox** (per person, across the team)
+- **GET** `/:teamId/inbox`: the latest 200 items: `{ id, kind, actor, summary, workspaceId, target, state, read, createdAt }`. Kinds: `mention`, `assigned`, `approval` (state `pending` / `approved` / `sent_back` / `superseded`), `run`, `shared`.
+- **POST** `/:teamId/inbox/:itemId/read`, **POST** `/:teamId/inbox/read-all`: only your own items.
+
 ## Workspace Routes
 
 Base path: `/api/workspaces`

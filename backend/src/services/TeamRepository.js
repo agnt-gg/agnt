@@ -53,6 +53,9 @@ export class TeamRepository {
         'CREATE TABLE IF NOT EXISTS team_assets(id TEXT PRIMARY KEY,team_id TEXT NOT NULL REFERENCES teams(id),name TEXT NOT NULL,kind TEXT NOT NULL,revision INTEGER NOT NULL,updated_by TEXT NOT NULL,updated_at TEXT NOT NULL)',
         'CREATE TABLE IF NOT EXISTS team_asset_versions(asset_id TEXT NOT NULL REFERENCES team_assets(id),revision INTEGER NOT NULL,content TEXT NOT NULL,author_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(asset_id,revision))',
         'CREATE TABLE IF NOT EXISTS team_events(id TEXT PRIMARY KEY,team_id TEXT NOT NULL REFERENCES teams(id),actor_id TEXT NOT NULL,action TEXT NOT NULL,target_id TEXT,created_at TEXT NOT NULL)',
+        // Teamspace docs (TeamSpaceRepository). Declared here so the library queries below can always
+        // exclude them: a teamspace doc is reachable only through its teamspace, which the cloud gates.
+        'CREATE TABLE IF NOT EXISTS space_docs(asset_id TEXT PRIMARY KEY REFERENCES team_assets(id),workspace_id TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL)',
         'CREATE INDEX IF NOT EXISTS team_members_user ON team_members(user_id)',
         'CREATE INDEX IF NOT EXISTS team_assets_team ON team_assets(team_id,updated_at)',
         'CREATE INDEX IF NOT EXISTS team_events_team ON team_events(team_id,created_at)',
@@ -169,14 +172,14 @@ export class TeamRepository {
   assets(teamId, userId) {
     return this.transaction(async () => {
       await this.member(teamId, userId);
-      return this.all('SELECT * FROM team_assets WHERE team_id=? ORDER BY updated_at DESC LIMIT 500', [teamId])
+      return this.all('SELECT * FROM team_assets WHERE team_id=? AND id NOT IN (SELECT asset_id FROM space_docs) ORDER BY updated_at DESC LIMIT 500', [teamId])
     })
   }
   asset(teamId, userId, id, revision) {
     return this.transaction(async () => {
       if(revision!==undefined && (!Number.isInteger(revision)||revision<1))fail(400,'Revision must be a positive integer');
       await this.member(teamId, userId);
-      const row = await this.get('SELECT * FROM team_assets WHERE id=? AND team_id=?', [id, teamId]);
+      const row = await this.get('SELECT * FROM team_assets WHERE id=? AND team_id=? AND id NOT IN (SELECT asset_id FROM space_docs)', [id, teamId]);
       if (!row) fail(404, 'Asset not found');
       const ver = await this.get('SELECT content,author_id,created_at FROM team_asset_versions WHERE asset_id=? AND revision=?', [id, revision || row.revision]);
       if (!ver) fail(404, 'Version not found');
@@ -198,7 +201,7 @@ export class TeamRepository {
       let id = input.id,
         revision = 1;
       if (id) {
-        const row = await this.get('SELECT * FROM team_assets WHERE team_id=? AND id=?', [teamId, id]);
+        const row = await this.get('SELECT * FROM team_assets WHERE team_id=? AND id=? AND id NOT IN (SELECT asset_id FROM space_docs)', [teamId, id]);
         if (!row) fail(404, 'Asset not found');
         if (!Number.isInteger(input.expectedRevision) || row.revision !== input.expectedRevision) fail(409, 'This asset changed. Reload before saving; your draft has not been applied.');
         revision = row.revision + 1;
