@@ -11,6 +11,30 @@ beforeEach(async () => {
 });
 afterEach(() => new Promise((resolve,reject) => db.close(error => error ? reject(error) : resolve())));
 describe('Per-account plugin installation registry', () => {
+  // Genii, 2026-10-30: all 26 shared workflows are stored under the team
+  // workspace principal, which installs nothing; every plugin step failed
+  // "Tool not found" although the owner had the plugins installed.
+  it("a team workspace uses its instance owner's installs on a hosted instance", async () => {
+    vi.stubEnv('AGNT_TENANT_SLUG', 'genii');
+    vi.stubEnv('AGNT_TENANT_OWNER', 'owner-1');
+    try {
+      await store.ready(); await store.add('gmail-plugin', 'owner-1'); await store.add('drive-plugin', 'member-2');
+      expect(await store.has('gmail-plugin', 'scope:team')).toBe(true);
+      await expect(store.assert('gmail-plugin', 'scope:team')).resolves.toBeUndefined();
+      expect(await store.names('scope:team')).toEqual(['gmail-plugin']);
+      expect((await store.installs('scope:team')).map((r) => r.plugin_name)).toEqual(['gmail-plugin']);
+      // Never a member's installs, and members keep only their own.
+      expect(await store.has('drive-plugin', 'scope:team')).toBe(false);
+      expect(await store.has('gmail-plugin', 'member-2')).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it('on a desktop install a scope principal maps to nobody (unchanged)', async () => {
+    vi.stubEnv('AGNT_TENANT_SLUG', '');
+    try {
+      await store.ready(); await store.add('gmail-plugin', 'owner-1');
+      expect(await store.has('gmail-plugin', 'scope:team')).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
+  });
   it('migrates known asset owners without assigning the first database user', async () => {
     await store.run("INSERT INTO users VALUES('alice'),('bob')");
     await store.run("INSERT INTO agents VALUES('a-bob','bob')");

@@ -1,5 +1,15 @@
 import db, { dbReady } from '../models/database/index.js';
 import { withTransaction } from '../models/database/connectionGate.js';
+import { credentialUserId } from '../services/auth/tenantOwnership.js';
+
+/**
+ * The account whose installs an identity uses. A team workspace's storage
+ * principal (`scope:…`) installs nothing itself: on a hosted instance it acts
+ * for the instance owner, exactly as it does for credentials and plan
+ * (tenantOwnership.credentialUserId). Keyed to the principal, every plugin step
+ * in every shared workflow failed "Tool not found" (Genii, 2026-10-30).
+ */
+const installsOf = (userId) => credentialUserId(userId);
 
 /** Installation is an account entitlement; the executable package is only a host cache.
  * Legacy ownership comes from asset rows; otherwise a pre-account package keeps the
@@ -73,10 +83,10 @@ export class PluginAccountStore {
     await this.run('INSERT OR IGNORE INTO plugin_account_legacy_seen(plugin_name) VALUES(?)', [pluginName]);
   }
   async owners(pluginName) { await this.ready(); return (await this.all('SELECT user_id FROM plugin_account_installs WHERE plugin_name=?', [pluginName])).map(r => r.user_id); }
-  async names(userId) { await this.ready(); if (!userId) return []; return (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [userId])).map(r => r.plugin_name); }
+  async names(userId) { await this.ready(); if (!userId) return []; return (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [installsOf(userId)])).map(r => r.plugin_name); }
   /** This account's installs with when each happened, newest first (the chat makes recent installs resident first). */
-  async installs(userId) { await this.ready(); if (!userId) return []; return this.all('SELECT plugin_name, installed_at FROM plugin_account_installs WHERE user_id=? ORDER BY installed_at DESC, plugin_name', [userId]); }
-  async has(pluginName, userId) { return !!userId && (await this.owners(pluginName)).includes(userId); }
+  async installs(userId) { await this.ready(); if (!userId) return []; return this.all('SELECT plugin_name, installed_at FROM plugin_account_installs WHERE user_id=? ORDER BY installed_at DESC, plugin_name', [installsOf(userId)]); }
+  async has(pluginName, userId) { return !!userId && (await this.owners(pluginName)).includes(installsOf(userId)); }
   async assert(pluginName, userId) { if (!(await this.has(pluginName, userId))) { const error = new Error('Plugin is not installed for this account'); error.status = 404; throw error; } }
   async add(pluginName, userId) { await this.ready(); if (!userId) throw new Error('Plugin install requires an account'); await this.run('INSERT OR IGNORE INTO plugin_account_installs(plugin_name,user_id) VALUES(?,?)', [pluginName,userId]); }
   async remove(pluginName, userId) { await this.ready(); await this.run('DELETE FROM plugin_account_installs WHERE plugin_name=? AND user_id=?', [pluginName,userId]); }
