@@ -25,7 +25,7 @@ class GoalEvaluator {
    * @param {string} model - AI model to use (optional, defaults to user's default)
    * @returns {Promise<Object>} Evaluation results with scores and feedback
    */
-  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null, { assertCurrent } = {}) {
+  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null, { assertCurrent, keepStatusOnFail = false } = {}) {
     try {
       assertCurrent?.();
       console.log(`[GoalEvaluator] Starting evaluation for goal ${goalId}`);
@@ -107,7 +107,7 @@ class GoalEvaluator {
         timestamp: new Date().toISOString(),
       };
 
-      const {evaluationId,status:newStatus} = await commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent});
+      const {evaluationId,status:newStatus} = await commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent,keepStatusOnFail});
 
       console.log(`[GoalEvaluator] Evaluation complete: ${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)`);
 

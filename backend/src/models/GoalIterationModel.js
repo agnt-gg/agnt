@@ -31,6 +31,24 @@ class GoalIterationModel {
     });
   }
 
+  /**
+   * Attach the re-plan an iteration produced. The iteration row is written
+   * when the work is graded, before re-planning rewrites the tasks, so the
+   * graded state survives a pause or failure during the re-plan.
+   */
+  static setReplannedTasks(id, replannedTasks) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE goal_iterations SET replanned_tasks = ? WHERE id = ?`,
+        [JSON.stringify(replannedTasks || []), id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
   static findByGoalId(goalId) {
     return new Promise((resolve, reject) => {
       db.all(

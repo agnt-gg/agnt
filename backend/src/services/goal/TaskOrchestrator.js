@@ -1218,7 +1218,9 @@ The goal you delegated did not fully pass. Let the user know:
         let evaluationFailed = false;
         try {
           evaluation = await raceWithAbort(
-            GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model, {assertCurrent:assertGradingCurrent}),
+            // A failed grade is the loop's to act on (re-plan, or needs_review
+            // when it stops); it must not flag a still-running goal for review.
+            GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model, {assertCurrent:assertGradingCurrent,keepStatusOnFail:true}),
             this._getGoalSignal(goalId)
           );
         } catch (error) {
@@ -1228,6 +1230,13 @@ The goal you delegated did not fully pass. Let the user know:
           }
           if (['STALE_GOAL_EVALUATION','EVALUATION_COMMIT_UNKNOWN'].includes(error.code)) {
             if (this.runningGoals.get(goalId) === gradingEntry) this.runningGoals.delete(goalId);
+            // The loop is stopping on an evaluation whose commit is uncertain;
+            // the goal must not keep reading as running. A stale evaluation
+            // belongs to whoever changed the goal, so it is left alone.
+            if (error.code === 'EVALUATION_COMMIT_UNKNOWN') {
+              await GoalModel.updateLoopStatus(goalId, 'stopped').catch(() => {});
+              await GoalModel.updateStatus(goalId, 'needs_review').catch((statusError) => console.error(`[AGI Loop] Could not flag goal ${goalId} for review:`, statusError));
+            }
             return {goalId,status:'needs_review',reason:error.code,iteration};
           }
           console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
@@ -1319,7 +1328,14 @@ The goal you delegated did not fully pass. Let the user know:
           return { goalId, status: 'stopped', iteration };
         }
 
-        // Phase 4: Re-plan failed tasks
+        // Phase 4: Record the graded iteration BEFORE re-planning. Re-planning
+        // resets tasks to pending (clearing their review errors) and rewrites
+        // their title and description in place, so this is the only moment
+        // the work, its outputs and its rejection reasons can be captured.
+        // A pause or stuck-stop during the re-plan must not lose the round.
+        const iterationRecordId = await this._recordIteration(goalId, iteration, evaluation, iterationDuration);
+
+        // Phase 5: Re-plan failed tasks
         console.log(`[AGI Loop] Goal ${goalId} needs improvement (${evaluation.scores.overall}%) — re-planning`);
         await GoalModel.updateLoopStatus(goalId, 'replanning');
 
@@ -1343,6 +1359,13 @@ The goal you delegated did not fully pass. Let the user know:
           }),
           this._getGoalSignal(goalId)
         );
+        if (iterationRecordId !== null) {
+          try {
+            await GoalIterationModel.setReplannedTasks(iterationRecordId, replannedTasks);
+          } catch (recordError) {
+            console.error(`[AGI Loop] Failed to attach re-plan to iteration ${iteration} of goal ${goalId}:`, recordError);
+          }
+        }
 
         // Guard: detect identical re-plans
         const replanHash = JSON.stringify(replannedTasks.map((t) => t.title + t.description).sort());
@@ -1366,20 +1389,6 @@ The goal you delegated did not fully pass. Let the user know:
         } else {
           identicalReplanCount = 0;
           lastReplanHash = replanHash;
-        }
-
-        // Phase 5: Update world state & record iteration (non-fatal if these fail)
-        let worldState = {};
-        try {
-          worldState = await this._updateWorldState(goalId, iteration, evaluation);
-          await GoalIterationModel.create(
-            goalId, iteration, evaluation.scores.overall, false,
-            worldState, replannedTasks, iterationDuration,
-            await this._captureTaskSnapshot(goalId)
-          );
-          await GoalIterationModel.prune(goalId);
-        } catch (stateError) {
-          console.error(`[AGI Loop] World state/iteration record error (non-fatal):`, stateError.message);
         }
 
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_END, {
@@ -1441,13 +1450,32 @@ The goal you delegated did not fully pass. Let the user know:
       return task.status === 'failed' || (taskEval && taskEval.score < 70);
     });
 
+    // What each task looked like when it was graded. Re-planning rewrites
+    // tasks in place, so this is recorded on the iteration as their history.
+    const replanRecord = (task, next = {}) => {
+      const taskEval = taskEvaluations.find((te) => te.taskId === task.id);
+      return {
+        id: task.id,
+        title: next.title || task.title,
+        description: next.description || task.description,
+        previous: {
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          error: task.error ?? null,
+          score: taskEval?.score ?? null,
+          feedback: taskEval?.feedback ?? null,
+        },
+      };
+    };
+
     if (failedTasks.length === 0) {
       // If no specific failures, reset all non-completed tasks
       const incompleteTasks = tasks.filter((t) => t.status !== 'completed' || t.status === 'needs_review');
       for (const task of incompleteTasks) {
         await TaskModel.updateStatus(task.id, 'pending', 0);
       }
-      return incompleteTasks.map((t) => ({ id: t.id, title: t.title, description: t.description }));
+      return incompleteTasks.map((t) => replanRecord(t));
     }
 
     // Use LLM to generate improved task descriptions
@@ -1543,11 +1571,15 @@ Rules:
       }
 
       const updatedTasks = JSON.parse(cleanedResult);
+      if (!Array.isArray(updatedTasks)) throw new Error('Re-plan is not a JSON array');
 
-      // Apply updates and reset tasks to pending
+      // Apply updates and reset tasks to pending. Only updates that name a
+      // task under re-plan are applied, and only those are reported.
+      const applied = [];
       for (const update of updatedTasks) {
-        const existingTask = failedTasks.find((t) => t.id === update.taskId);
-        if (existingTask) {
+        const existingTask = failedTasks.find((t) => t.id === update?.taskId);
+        if (existingTask && !applied.some((entry) => entry.id === existingTask.id)) {
+          applied.push(replanRecord(existingTask, update));
           // Reset to pending with updated description
           await TaskModel.updateStatus(update.taskId, 'pending', 0);
           // Update description if the model suggested one
@@ -1563,8 +1595,16 @@ Rules:
         }
       }
 
-      console.log(`[AGI Loop] Re-planned ${updatedTasks.length} tasks for goal ${goalId}`);
-      return updatedTasks;
+      // A task under re-plan the model left out still gets another attempt,
+      // unchanged; left failed, it would never run again.
+      for (const task of failedTasks) {
+        if (applied.some((entry) => entry.id === task.id)) continue;
+        await TaskModel.updateStatus(task.id, 'pending', 0);
+        applied.push(replanRecord(task));
+      }
+
+      console.log(`[AGI Loop] Re-planned ${applied.length} tasks for goal ${goalId} (${updatedTasks.length} proposed)`);
+      return applied;
     } catch (error) {
       console.error(`[AGI Loop] Re-plan LLM failed, doing simple reset:`, error);
 
@@ -1572,7 +1612,7 @@ Rules:
       for (const task of failedTasks) {
         await TaskModel.updateStatus(task.id, 'pending', 0);
       }
-      return failedTasks.map((t) => ({ id: t.id, title: t.title, description: t.description }));
+      return failedTasks.map((t) => replanRecord(t));
     }
   }
 
@@ -1619,6 +1659,33 @@ Rules:
 
     await GoalModel.updateWorldState(goalId, worldState);
     return worldState;
+  }
+
+  /**
+   * Record a graded, not-passed iteration: world state and task snapshot as
+   * graded, before re-planning changes them. Returns the iteration row id, or
+   * null when it could not be written. Recording never stops the loop, but a
+   * failure is logged with its full error so it cannot go unnoticed again.
+   */
+  static async _recordIteration(goalId, iteration, evaluation, durationMs) {
+    let worldState = {};
+    try {
+      worldState = await this._updateWorldState(goalId, iteration, evaluation);
+    } catch (stateError) {
+      console.error(`[AGI Loop] Failed to update world state for iteration ${iteration} of goal ${goalId}:`, stateError);
+    }
+    try {
+      const id = await GoalIterationModel.create(
+        goalId, iteration, evaluation.scores?.overall || 0, false,
+        worldState, [], durationMs,
+        await this._captureTaskSnapshot(goalId)
+      );
+      await GoalIterationModel.prune(goalId);
+      return id ?? null;
+    } catch (recordError) {
+      console.error(`[AGI Loop] Failed to record iteration ${iteration} of goal ${goalId}:`, recordError);
+      return null;
+    }
   }
 
   /**

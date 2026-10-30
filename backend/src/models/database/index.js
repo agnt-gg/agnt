@@ -1169,6 +1169,7 @@ function createTables() {
         task_snapshot JSON,
         git_commit_hash TEXT,
         duration_ms INTEGER,
+        state TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
       )`);
@@ -2112,6 +2113,10 @@ function runMigrations() {
         { name: 'replanned_tasks', type: 'JSON' },
         { name: 'git_commit_hash', type: 'TEXT' },
         { name: 'duration_ms', type: 'INTEGER' },
+        // GoalIterationModel.create writes the legacy 'state' column (NOT NULL
+        // in older databases). Databases created from the table above lacked
+        // it, so every iteration insert failed and goals recorded no history.
+        { name: 'state', type: 'TEXT' },
       ];
       goalIterationColumns.forEach(col => {
         db.run(`ALTER TABLE goal_iterations ADD COLUMN ${col.name} ${col.type}`, (err) => {

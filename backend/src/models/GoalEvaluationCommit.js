@@ -12,7 +12,11 @@ export const staleEvaluation = () => Object.assign(new Error('Goal or task evide
  * the database — see connectionGate.js.) No LLM/network work occurs while the
  * lock is held. Goal revision includes all task row mutations.
  */
-export async function commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent}) {
+/** keepStatusOnFail: the caller is a loop that will act on a failed grade
+ * itself (re-plan and retry, or set needs_review when it stops), so a failed
+ * grade leaves the goal's status alone instead of flagging a running goal for
+ * review. A pass always validates. */
+export async function commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent,keepStatusOnFail=false}) {
   if (!Number.isSafeInteger(goal.lifecycle_revision)) throw staleEvaluation();
   const run = (sql,args=[])=>new Promise((resolve,reject)=>db.run(sql,args,function(error){error?reject(error):resolve(this.changes);}));
   const get = (sql,args=[])=>new Promise((resolve,reject)=>db.get(sql,args,(error,row)=>error?reject(error):resolve(row)));
@@ -26,7 +30,7 @@ export async function commitGoalEvaluation({goal,userId,evaluationType,scores,pa
         [evaluationId,goal.id,evaluationType,scores.overall,passed?1:0,JSON.stringify(evaluationData),feedback,'system',tokenUsage?.inputTokens||0,tokenUsage?.outputTokens||0,tokenUsage?.totalTokens||0,tokenUsage?.estimatedCost||0]);
       for(const t of taskEvaluations) await run('INSERT INTO task_evaluations(id,task_id,goal_evaluation_id,criteria_met,score,feedback) VALUES(?,?,?,?,?,?)',
         [generateUUID(),t.taskId,evaluationId,JSON.stringify(t.criteriaMet),t.score,t.feedback]);
-      const status=passed?'validated':'needs_review';
+      const status=passed?'validated':(keepStatusOnFail?current.status:'needs_review');
       const changed=await run(`UPDATE goals SET status=?,updated_at=?,completed_at=? WHERE id=? AND user_id=? AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0)=?`,
         [status,new Date().toISOString(),passed?new Date().toISOString():null,goal.id,userId,goal.lifecycle_revision]);
       if(changed!==1)throw staleEvaluation();
