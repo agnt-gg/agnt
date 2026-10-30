@@ -33,6 +33,8 @@ export const SCREEN_ROUTES = Object.freeze({
   MemoryScreen: '/memory',
   AutonomyScreen: '/learning',
   WorkspaceScreen: '/workspace',
+  // Teamspaces (AGNT One): Home, Inbox, each teamspace, My tasks, a doc. One route, the view in the query.
+  TeamScreen: '/team',
 });
 
 /**
@@ -69,6 +71,9 @@ export function screenRoute(screenName, options = {}) {
     query = { executionId: options.selectedExecutionId };
   } else if (screenName === 'ExperimentsScreen' && options.selectedInsight) {
     query = { insightId: options.selectedInsight.id };
+  } else if (screenName === 'TeamScreen') {
+    // Already a validated query (teamModel.teamQuery): view, space, tab, task, doc.
+    for (const key of ['view', 'space', 'tab', 'task', 'doc']) if (options.team?.[key]) query[key] = String(options.team[key]);
   } else {
     // Generic navigation intents, carried in the URL so a deep link reproduces
     // them: `select` opens an entity in the screen's inspector, `section`

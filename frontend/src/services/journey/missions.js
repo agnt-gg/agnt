@@ -355,6 +355,25 @@ export const MISSIONS = Object.freeze({
       },
     ],
   },
+  team: {
+    title: 'Work with your team',
+    pitch: 'Chat, a board, docs and agents your whole team shares. Your own space stays private.',
+    screens: ['TeamScreen'],
+    steps: [
+      {
+        title: 'Open a teamspace',
+        content: 'Each teamspace has its own chat, board, docs and agents. Pick one on the left.',
+        target: '[data-tour-id="team-spaces"]',
+        until: { clickOn: '[data-tour-id="team-spaces"]' },
+      },
+      {
+        title: 'Hand work to an agent',
+        content: 'In the chat, @mention an agent with what you need. It makes a card, does the work, and asks you to approve the result.',
+        target: '[data-tour-id="team-send"]',
+        until: { clickOn: '[data-tour-id="team-send"]' },
+      },
+    ],
+  },
   learning: {
     title: 'See what Annie has learned',
     pitch: 'Annie studies every run and proposes improvements here.',

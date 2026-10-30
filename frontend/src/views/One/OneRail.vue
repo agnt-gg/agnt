@@ -18,6 +18,7 @@
       >
         <!-- eslint-disable-next-line vue/no-v-html -- static icons from oneModel.js, never user data -->
         <svg class="one-rail-icon" viewBox="0 0 24 24" aria-hidden="true" v-html="item.icon"></svg>
+        <span v-if="item.badge" class="one-rail-badge" :aria-label="`${item.badge} unread`">{{ item.badge }}</span>
       </button>
       <div v-if="item.menu && openMenu === item.id" class="one-rail-menu" role="menu" :data-testid="`one-rail-menu-${item.id}`">
         <button

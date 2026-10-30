@@ -16,6 +16,8 @@
  * screen a page is about to cover; AGNT One's OneShell uses it to pick the page.
  */
 
+import { teamLocation, teamQuery } from '@/views/One/team/teamModel.js';
+
 /** Library tabs, in order, with the screen that is each tab's route. */
 export const LIBRARY_TAB_SCREENS = Object.freeze({
   agents: 'AgentsScreen',
@@ -131,6 +133,8 @@ export function focusedLocation(screen, query = {}) {
     case 'TracesScreen':
       // The list of runs, or one run in full (2026-10-23).
       return { page: 'activity', item: str(query.executionId) || selected(query, 'execution') || selected(query, 'trace') || null };
+    case 'TeamScreen':
+      return { page: 'team', ...teamLocation(query) };
     default:
       return null;
   }
@@ -178,6 +182,7 @@ export function routeFor(loc) {
     return [PAGE_SCREENS.market, loc.tab === 'mine' ? { section: 'mine' } : {}];
   }
   if (loc.page === 'activity') return [PAGE_SCREENS.activity, loc.item ? { selectedExecutionId: loc.item } : {}];
+  if (loc.page === 'team') return ['TeamScreen', { team: teamQuery(loc) }];
   return ['ChatScreen', {}];
 }
 

@@ -10,6 +10,24 @@
          them. Comments stay INSIDE the root: one before it makes a fragment. -->
     <OneRail v-if="!isMobile" :items="railItems" :settings-active="page === 'settings'" @select="selectRail" />
 
+    <!-- Spaces: the workspace switcher, Home, Inbox, My Space and the
+         teamspaces, beside every team page (Home, Inbox, a teamspace). -->
+    <OneSpacesDrawer
+      v-if="spacesDrawerShown"
+      :team="teamState.team"
+      :teams="teamState.teams"
+      :spaces="teamState.spaces"
+      :unread="teamUnread"
+      :location="location"
+      @go="(loc) => go({ page: 'team', ...loc })"
+      @find="store.dispatch('shell/openJump')"
+      @chats="selectRail('chats')"
+      @files="go({ page: 'library', tab: 'files', dir: '' })"
+      @team-settings="go({ page: 'settings', section: 'members' })"
+      @new-space="newTeamspace"
+      @error="toast"
+    />
+
     <!-- Chats: your chats only (Main chat, search, recents, right-click
          actions, account), as a drawer behind the rail's Chats icon. The rail
          is the one navigation; page links appear in the drawer only on a
@@ -57,7 +75,8 @@
         <span class="focused-borrowed-title">{{ borrowedTitle }}</span>
       </div>
 
-      <FocusedLibrary v-if="page === 'library'" :location="location" />
+      <OneTeamPage v-if="page === 'team'" :location="location" />
+      <FocusedLibrary v-else-if="page === 'library'" :location="location" />
       <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" :tab="location.tab" />
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
@@ -106,6 +125,11 @@ import OneRail from './OneRail.vue';
 import OneCapsule from './OneCapsule.vue';
 import { RAIL_PAGE, MORE_SCREEN, railItems as buildRailItems } from './oneModel.js';
 import { requestSetup } from './oneSetupRequest.js';
+import OneTeamPage from './team/OneTeamPage.vue';
+import OneSpacesDrawer from './team/OneSpacesDrawer.vue';
+import { useTeam, teamApi } from './team/useTeam.js';
+// The rail's Inbox badge and the spaces drawer show outside the team page too.
+import './team/team.css';
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 
 const { isElectron } = useElectron();
@@ -178,12 +202,32 @@ const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat
 const onChatPage = computed(() => !page.value && props.screenName === 'ChatScreen');
 const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChatPage.value));
 
+// ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
+const team = useTeam(store);
+const teamState = team.state;
+const teamUnread = team.unread;
+const spacesDrawerShown = computed(() => !isMobile.value && page.value === 'team');
+/** Owner only (the server enforces it): a new teamspace, registered with the cloud and opened. */
+async function newTeamspace() {
+  const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });
+  if (!name || !name.trim()) return;
+  try {
+    const created = await teamApi.createSpace(name.trim());
+    await team.loadSpaces();
+    go({ page: 'team', view: 'space', space: created.id });
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 const railItems = computed(() =>
   buildRailItems({
     activePage: page.value,
     drawerOpen: drawerShown.value,
     onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),
     activeScreen: props.screenName,
+    teamView: location.value?.view || null,
+    inboxUnread: teamUnread.value,
   }),
 );
 
@@ -214,7 +258,8 @@ function selectRail(id) {
     setDrawer(!drawerShown.value);
     return;
   }
-  if (id === 'find') store.dispatch('shell/openJump');
+  if (id === 'home' || id === 'inbox') go({ page: 'team', view: id });
+  else if (id === 'find') store.dispatch('shell/openJump');
   else if (MORE_SCREEN[id]) pushScreen(MORE_SCREEN[id]);
   else if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);
 }

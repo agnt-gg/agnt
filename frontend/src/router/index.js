@@ -179,6 +179,14 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'MemoryScreen' },
     },
     {
+      // Teamspaces: Home, Inbox, a teamspace's Chat/Board/Docs/…, My tasks, a doc.
+      // AGNT One draws it as a page (focusedRoutes), with Chat kept alive underneath.
+      path: '/team',
+      name: 'TerminalTeam',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'TeamScreen' },
+    },
+    {
       path: '/autonomy',
       name: 'TerminalAutonomy',
       redirect: to => ({path:to.query.section==='schedules'?'/goals':'/learning',query:to.query}),

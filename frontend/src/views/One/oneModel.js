@@ -117,6 +117,8 @@ export function saveOneFlags(account, flags, storage = globalThis.localStorage) 
 
 /** 24×24 stroke icons. Static, trusted markup (rendered with v-html). */
 export const RAIL_ICONS = Object.freeze({
+  home: '<path d="M4 11 12 4l8 7v8.5a1 1 0 0 1-1 1h-4.5V15h-5v5.5H5a1 1 0 0 1-1-1z"/>',
+  inbox: '<path d="M4 13.5 6.5 5h11l2.5 8.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 13.5h4.5l1 2.5h5l1-2.5H20"/>',
   new: '<path d="M12 20h8M16.5 3.6a2.1 2.1 0 0 1 3 3L7.5 18.6 4 19.5l.9-3.5z"/>',
   chats: '<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/>',
   apps: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>',
@@ -164,7 +166,7 @@ export const MORE_SCREEN = Object.freeze(Object.fromEntries(MORE_ITEMS.filter((m
  * the same links again: two navigations side by side (reported 2026-10-21).
  * The drawer now holds chats only. Settings is pinned to the bottom.
  */
-export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false, activeScreen = null } = {}) {
+export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false, activeScreen = null, teamView = null, inboxUnread = 0 } = {}) {
   // The page you are on is highlighted, open drawer or not. The drawer used to
   // win, so with it left open every page lit up Chats (reported 2026-10-21).
   // Chats is highlighted only on a chat with the drawer open; otherwise an
@@ -172,9 +174,14 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
   // New chat is in the Chats drawer's header, not on the rail (2026-10-21), so
   // a blank chat highlights Chats like any other chat.
   // A Studio screen opened from More lights More.
-  const page = RAIL_OF_PAGE[activePage] || (!activePage && Object.values(MORE_SCREEN).includes(activeScreen) ? 'more' : null);
+  // Teamspaces: Inbox lights for the inbox, Home for everything else on /team
+  // (home, a teamspace, My tasks, a doc), since all of it is reached from Home.
+  const teamRail = activePage === 'team' ? (teamView === 'inbox' ? 'inbox' : 'home') : null;
+  const page = teamRail || RAIL_OF_PAGE[activePage] || (!activePage && Object.values(MORE_SCREEN).includes(activeScreen) ? 'more' : null);
   const active = page || (drawerOpen || (onBlankChat && !activePage) ? 'chats' : null);
   const items = [
+    { id: 'home', label: 'Home' },
+    { id: 'inbox', label: 'Inbox' },
     { id: 'chats', label: 'Chats' },
     { id: 'apps', label: 'Apps' },
     { id: 'routines', label: 'Routines' },
@@ -188,6 +195,7 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     icon: RAIL_ICONS[id],
     active: active === id,
     ...(id === 'chats' ? { open: drawerOpen } : {}),
+    ...(id === 'inbox' && inboxUnread > 0 ? { badge: inboxUnread > 99 ? '99+' : String(inboxUnread) } : {}),
     ...(id === 'more' ? { menu: MORE_ITEMS.map((m) => ({ ...m, icon: RAIL_ICONS[m.id], active: activePage === m.id || (!!m.screen && activeScreen === m.screen) })) } : {}),
   }));
 }
