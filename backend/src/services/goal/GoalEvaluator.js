@@ -5,7 +5,7 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import { acceptanceChecklistOf, checklistPrompt, parseChecklistVerdict } from './goalChecklist.js';
-import { taskReviewPrompt } from './taskReview.js';
+import { parseNeedsInput, taskReviewPrompt } from './taskReview.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { getModelCost } from '../ai/providerConfigs.js';
 
@@ -238,12 +238,14 @@ class GoalEvaluator {
     // Use AI to evaluate task output against criteria
     const evaluation = await this.aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider, model, accumulateUsage);
 
+    const needsInput = parseNeedsInput(evaluation.needsInput);
     return {
       taskId: task.id,
       taskTitle: task.title,
       score: evaluation.score,
       criteriaMet: evaluation.criteriaMet,
       feedback: evaluation.feedback,
+      ...(needsInput ? { needsInput } : {}),
     };
   }
 

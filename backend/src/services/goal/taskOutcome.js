@@ -10,7 +10,7 @@ function toolResult(execution) {
 }
 export function taskFailureReason(response) {
   if (!record(response)) return 'Missing task response';
-  if (['blocked','failed','incomplete'].includes(response.outcome)) return 'Stored task outcome is incomplete';
+  if (['blocked','failed','incomplete','needs_input'].includes(response.outcome)) return 'Stored task outcome is incomplete';
   if (response.success === false || response.error || ['blocked','failed','error','incomplete'].includes(response.status)) return 'Task reported failure or blocked execution';
   const content = typeof response.content === 'string' ? response.content : '';
   const opening = content.trim().split('\n').find(line => line.trim()) || '';

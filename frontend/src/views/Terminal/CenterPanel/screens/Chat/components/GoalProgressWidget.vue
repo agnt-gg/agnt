@@ -59,7 +59,8 @@
 
     <!-- Completed / Error state -->
     <div class="gpw-footer" v-if="isTerminal">
-      <div v-if="isNeedsReview">Execution stopped for review. Completed tasks do not imply acceptance.</div>
+      <div v-if="isNeedsInput" class="gpw-needs-input">{{ needsInputMessage }}</div>
+      <div v-else-if="isNeedsReview">Execution stopped for review. Completed tasks do not imply acceptance.</div>
       <div v-else-if="isCompleted" class="gpw-completed">Completed — {{ finalScore }}% score</div>
       <div v-else-if="isError" class="gpw-error">
         {{ errorMessage }}
@@ -143,6 +144,7 @@ export default {
 
     // Current phase label based on task state
     const currentPhase = computed(() => {
+      if (isNeedsInput.value) return 'Waiting on you';
       if (isNeedsReview.value) return 'Needs review — execution stopped';
       if (isTerminal.value) return '';
       const tp = taskProgress.value;
@@ -175,6 +177,18 @@ export default {
     });
 
     const isNeedsReview = computed(() => goal.value?.status === 'needs_review');
+    // Stopped because a task needs something only the user can supply.
+    const isNeedsInput = computed(() => isNeedsReview.value && goal.value?.loop_status === 'needs_input');
+    const needsInputMessage = computed(() => {
+      let state = goal.value?.world_state;
+      if (typeof state === 'string') {
+        try { state = JSON.parse(state); } catch { state = null; }
+      }
+      const asks = Array.isArray(state?.needsInput) ? state.needsInput.map((entry) => entry?.what).filter(Boolean) : [];
+      return asks.length
+        ? `Needs from you: ${asks.join('; ')}. Provide it, then resume the goal.`
+        : 'Needs something only you can provide. Open the goal to see what, then resume it.';
+    });
     const isStopped = computed(() => ['stopped','paused'].includes(goal.value?.status));
     const isCompleted = computed(() => {
       if (isNeedsReview.value || isStopped.value || ['failed','error'].includes(goal.value?.status)) return false;
@@ -216,6 +230,7 @@ export default {
     });
 
     const statusLabel = computed(() => {
+      if (isNeedsInput.value) return 'NEEDS YOU';
       if (isNeedsReview.value) return 'NEEDS REVIEW';
       if (isStopped.value) return goal.value.status.toUpperCase();
       if (isCompleted.value) return 'PASSED';
@@ -289,6 +304,8 @@ export default {
       bestScore,
       finalScore,
       errorMessage,
+      isNeedsInput,
+      needsInputMessage,
       isNeedsReview,
       isStopped,
       isCompleted,

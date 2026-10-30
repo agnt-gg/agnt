@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { taskReviewPrompt } from './taskReview.js';
+import { taskReviewPrompt, parseNeedsInput } from './taskReview.js';
 import { acceptanceChecklistOf } from './goalChecklist.js';
 
 const section = (prompt, start, end) => prompt.slice(prompt.indexOf(start), prompt.indexOf(end));
@@ -21,6 +21,19 @@ describe('taskReviewPrompt', () => {
     const bare = taskReviewPrompt({ title: 'Only a title' }, null, null);
     expect(section(bare, 'THE TASK', 'TASK OUTPUT:')).toContain('Description: Only a title');
     expect(bare).toContain('- (none listed)');
+  });
+});
+
+describe('needs input', () => {
+  it('the prompt defines the verdict and keeps it to prerequisites only the user can supply', () => {
+    const prompt = taskReviewPrompt({ title: 'T', description: 'D' }, {}, {});
+    expect(prompt).toMatch(/needsInput: set it ONLY when a requirement is unmet because of a prerequisite that only the user can supply/);
+    expect(prompt).toContain('"needsInput": null');
+  });
+  it('parses only a verdict that says what is needed, bounded to one line', () => {
+    expect(parseNeedsInput({ what: '  Sign in\n as admin ', why: '401' })).toEqual({ what: 'Sign in as admin', why: '401' });
+    expect(parseNeedsInput({ what: 'x'.repeat(900) }).what).toHaveLength(500);
+    expect([parseNeedsInput(null), parseNeedsInput('sign in'), parseNeedsInput([]), parseNeedsInput({ why: 'no what' }), parseNeedsInput({ what: 7 })]).toEqual([null, null, null, null, null]);
   });
 });
 

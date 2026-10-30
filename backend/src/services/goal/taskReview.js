@@ -46,6 +46,7 @@ EVALUATION INSTRUCTIONS:
 4. Provide a score from 0-100 for how well THIS task's requirements are met.
 5. List each requirement as a Boolean in criteriaMet (true/false). Do not invent requirements. Explain optional suggestions in feedback, not as failed criteria. Mixed tool failures/successes require explaining whether the failed operation was actually recovered; an unrelated successful call is not recovery.
 6. Review adversarially within the task's scope: look for every defect, gap or unsupported claim in what this task was asked to do. Any avoidable defect makes the criterion it affects false. Give no credit for intent, effort or plans, only for what the output shows.
+7. needsInput: set it ONLY when a requirement is unmet because of a prerequisite that only the user can supply (a credential or sign-in, access rights, an account or plan, a tool or connection that is not installed, or a decision) AND the output shows concrete evidence of it (an authentication or permission error, a missing tool, an explicit refusal). "what" names exactly what the user must provide; "why" cites the evidence. Retrying or re-planning cannot supply such a prerequisite, so it is not a defect in the work. Otherwise needsInput is null, including for anything the task could have done itself.
 
 Respond with ONLY a valid JSON object (no markdown, no extra text):
 {
@@ -56,6 +57,22 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
   },
   "feedback": "Detailed feedback explaining the evaluation",
   "strengths": ["What was done well"],
-  "improvements": ["What could be improved"]
+  "improvements": ["What could be improved"],
+  "needsInput": null
 }`;
+}
+
+const NEEDS_INPUT_MAX = 500;
+const oneLine = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, NEEDS_INPUT_MAX) : '');
+
+/**
+ * The grader's needs-input verdict, normalised: { what, why } or null.
+ * Untrusted model output, so it is shape-checked and bounded; a verdict that
+ * does not say WHAT the user must provide is no verdict.
+ */
+export function parseNeedsInput(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const what = oneLine(value.what);
+  if (!what) return null;
+  return { what, why: oneLine(value.why) };
 }

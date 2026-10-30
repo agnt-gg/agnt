@@ -1,4 +1,5 @@
 import { taskFailureReason, goalEvaluationPasses, taskEvaluationRejection } from './taskOutcome.js';
+import { parseNeedsInput } from './taskReview.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
@@ -463,17 +464,26 @@ class TaskOrchestrator {
       // completed, so nothing that depends on it ever builds on unchecked work.
       // One in-place retry with the reviewer's findings, then the task fails.
       let review = await this._reviewTaskResult(task, result, userId, provider, model);
-      if (review.rejected) {
+      // A missing prerequisite only the user can supply is not fixed by trying
+      // again, so it skips the retry and stops the task with the ask.
+      if (review.rejected && review.code !== 'NEEDS_INPUT') {
         console.log(`[TaskOrchestrator] Task ${task.id} did not pass review (${review.code}) — retrying once with the findings`);
         const retryMessage = `${taskMessage}\n\nREVIEW OF YOUR PREVIOUS ATTEMPT (it did not pass — fix every point, then redo the task):\n${review.feedback}`;
         result = await this.executeTaskViaAgentChat(agent, retryMessage, userId, provider, model, signal, ledgerCtx);
         review = await this._reviewTaskResult(task, result, userId, provider, model);
       }
       if (review.rejected) {
-        const reason = `Did not pass review (${review.code}): ${review.feedback}`.slice(0, 2000);
-        const output = { content: result?.content, toolExecutions: result?.tool_executions || [], outcome: 'incomplete', timestamp: new Date().toISOString() };
+        const needsInput = review.code === 'NEEDS_INPUT' ? review.needsInput : null;
+        const reason = (needsInput ? review.feedback : `Did not pass review (${review.code}): ${review.feedback}`).slice(0, 2000);
+        const output = {
+          content: result?.content,
+          toolExecutions: result?.tool_executions || [],
+          outcome: needsInput ? 'needs_input' : 'incomplete',
+          ...(needsInput ? { needsInput } : {}),
+          timestamp: new Date().toISOString(),
+        };
         await TaskModel.updateStatus(task.id, 'failed', 0, null, null, null, output, reason);
-        throw Object.assign(new Error(reason), { code: 'TASK_REVIEW_FAILED' });
+        throw Object.assign(new Error(reason), { code: needsInput ? 'TASK_NEEDS_INPUT' : 'TASK_REVIEW_FAILED' });
       }
 
       // Step 5: Process and store results
@@ -531,25 +541,41 @@ class TaskOrchestrator {
    * the final evaluation grades each task (taskReview.js). The goal's
    * deliverables are context here, not requirements: they belong to the goal
    * as a whole and are checked once, by the acceptance checklist, after every
-   * task has run. Self-reported blockers are left to
-   * processTaskResult (no grader call needed). A grader that cannot run lets
-   * the work through: the final evaluation still fails closed on it, and an
-   * outage must not burn the retry.
-   * @returns {Promise<{rejected:boolean, code?:string, feedback?:string}>}
+   * task has run.
+   *
+   * NEEDS_INPUT: the grader found the work is blocked on a prerequisite only
+   * the user can supply (a credential, access, an uninstalled tool), with
+   * evidence in the output. Retrying and re-planning cannot supply it, so the
+   * task stops with the ask and the loop stops instead of re-planning.
+   *
+   * Self-reported blockers are otherwise left to processTaskResult; they are
+   * shown to the grader only to find a needs-input block. A grader that cannot
+   * run lets the work through: the final evaluation still fails closed on it,
+   * and an outage must not burn the retry.
+   * @returns {Promise<{rejected:boolean, code?:string, feedback?:string, needsInput?:{what:string,why:string}}>}
    */
   static async _reviewTaskResult(task, result, userId, provider, model) {
-    if (taskFailureReason(result)) return { rejected: false };
+    const needsInputReview = (needsInput) => ({
+      rejected: true,
+      code: 'NEEDS_INPUT',
+      needsInput,
+      feedback: `Needs from you: ${needsInput.what}${needsInput.why ? ` (${needsInput.why})` : ''}`.slice(0, 1500),
+    });
+    const selfReportedBlock = taskFailureReason(result);
     try {
       const goal = await GoalModel.findOne(task.goal_id);
-      const graded = await GoalEvaluator.evaluateTask(
-        { ...task, status: 'completed', error: null, output: { content: result.content, toolExecutions: result.tool_executions || [] } },
-        goal?.success_criteria || {},
-        userId,
-        provider,
-        model,
-      );
+      const output = { content: result?.content, toolExecutions: result?.tool_executions || [] };
+      const reviewed = { ...task, status: 'completed', error: null, output };
+      if (selfReportedBlock) {
+        if (!String(result?.content || '').trim()) return { rejected: false };
+        const graded = await GoalEvaluator.aiEvaluateTaskOutput(reviewed, output, goal?.success_criteria || {}, userId, provider, model);
+        const needsInput = parseNeedsInput(graded?.needsInput);
+        return needsInput ? needsInputReview(needsInput) : { rejected: false };
+      }
+      const graded = await GoalEvaluator.evaluateTask(reviewed, goal?.success_criteria || {}, userId, provider, model);
       const code = taskEvaluationRejection(graded);
       if (!code || code === 'EVALUATION_UNAVAILABLE' || graded?.criteriaMet?.evaluated === false) return { rejected: false };
+      if (graded.needsInput) return needsInputReview(graded.needsInput);
       return { rejected: true, code, feedback: String(graded.feedback || 'Criteria not met').slice(0, 1500) };
     } catch (error) {
       if (this._isCancellation(error)) throw error;
@@ -887,6 +913,77 @@ The goal you delegated has completed. Synthesize the results from all tasks into
   }
 
   /**
+   * Failed tasks whose stored outcome says they need something only the user
+   * can supply, with the ask: [{ taskId, title, what, why }].
+   */
+  static async _tasksNeedingInput(goalId) {
+    const tasks = await TaskModel.findByGoalId(goalId);
+    return tasks.flatMap((task) => {
+      if (task.status !== 'failed') return [];
+      let output;
+      try {
+        output = typeof task.output === 'string' ? JSON.parse(task.output) : task.output;
+      } catch {
+        return [];
+      }
+      const needsInput = output?.outcome === 'needs_input' ? parseNeedsInput(output.needsInput) : null;
+      return needsInput ? [{ taskId: task.id, title: task.title, ...needsInput }] : [];
+    });
+  }
+
+  /**
+   * Stop the loop because work is blocked on the user, and say exactly what is
+   * needed: in world_state.needsInput, on the realtime channel and in the chat
+   * the goal came from. Resuming re-runs the blocked tasks.
+   */
+  static async _stopForInput(goalId, userId, iteration, needsInput, conversationId) {
+    const ask = needsInput.map((entry) => `${entry.title}: ${entry.what}`).join('; ');
+    console.log(`[AGI Loop] Goal ${goalId} needs input at iteration ${iteration}; stopping instead of re-planning (${ask})`);
+    try {
+      const state = (await GoalModel.getWorldState(goalId)) || {};
+      state.needsInput = needsInput.map((entry) => ({ ...entry, iteration, at: new Date().toISOString() }));
+      await GoalModel.updateWorldState(goalId, state);
+    } catch (stateError) {
+      console.error(`[AGI Loop] Could not record what goal ${goalId} needs:`, stateError);
+    }
+    await GoalModel.updateLoopStatus(goalId, 'needs_input');
+    await GoalModel.updateStatus(goalId, 'needs_review');
+    broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, { id: goalId, status: 'needs_review' });
+    broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, { goalId, iteration, error: `Needs from you: ${ask}`, needsInput });
+    if (conversationId) {
+      this._sendGoalFailureToChat(goalId, conversationId, 'needs_input',
+        `It stopped instead of retrying, because it needs something only the user can provide. ${ask}. Once that is provided, resume the goal and the blocked tasks run again.`).catch(() => {});
+    }
+    this.runningGoals.delete(goalId);
+    return { goalId, status: 'needs_input', iteration, needsInput, reason: `Needs from you: ${ask}` };
+  }
+
+  /**
+   * A new or resumed run starts with no outstanding ask. With releaseTasks,
+   * tasks stopped on one go back to pending so they run again. Never throws.
+   */
+  static async _clearNeedsInput(goalId, { releaseTasks = false } = {}) {
+    if (releaseTasks) {
+      try {
+        for (const entry of await this._tasksNeedingInput(goalId)) {
+          await TaskModel.updateStatus(entry.taskId, 'pending', 0);
+        }
+      } catch (taskError) {
+        console.error(`[AGI Loop] Could not release the tasks goal ${goalId} stopped on:`, taskError);
+      }
+    }
+    try {
+      const state = await GoalModel.getWorldState(goalId);
+      if (state && state.needsInput) {
+        delete state.needsInput;
+        await GoalModel.updateWorldState(goalId, state);
+      }
+    } catch (stateError) {
+      console.error(`[AGI Loop] Could not clear the outstanding ask for goal ${goalId}:`, stateError);
+    }
+  }
+
+  /**
    * Send goal failure/stuck notification back to the originating chat conversation.
    */
   static async _sendGoalFailureToChat(goalId, conversationId, reason, details, evaluation = null) {
@@ -1035,6 +1132,7 @@ The goal you delegated did not fully pass. Let the user know:
       }
 
       await GoalModel.updateStatus(goalId, 'executing');
+      await this._clearNeedsInput(goalId);
       this.runningGoals.set(goalId, {
         userId: goal.user_id,
         startTime: Date.now(),
@@ -1111,6 +1209,9 @@ The goal you delegated did not fully pass. Let the user know:
       await GoalModel.updateMaxIterations(goalId, maxIterations);
       await GoalModel.updateLoopStatus(goalId, 'starting');
       await GoalModel.updateStatus(goalId, 'executing');
+      // Starting the loop again is how the user answers a needs-input stop:
+      // the tasks it blocked run again (other failures keep their re-plan).
+      await this._clearNeedsInput(goalId, { releaseTasks: true });
 
       this.runningGoals.set(goalId, {
         userId,
@@ -1203,6 +1304,11 @@ The goal you delegated did not fully pass. Let the user know:
           await GoalModel.updateLoopStatus(goalId, 'stopped');
           return { goalId, status: 'stopped', iteration };
         }
+
+        // A task blocked on something only the user can supply stops the loop
+        // here: grading and re-planning would spend rounds that cannot succeed.
+        const needsInput = await this._tasksNeedingInput(goalId);
+        if (needsInput.length) return this._stopForInput(goalId, userId, iteration, needsInput, conversationId);
 
         // Phase 2: Evaluate
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_EVALUATE, {
