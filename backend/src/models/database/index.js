@@ -1684,6 +1684,30 @@ function runMigrations() {
         PRIMARY KEY (user_id, source_type, scope_id, signature)
       )`);
 
+      // Tasks in chat (2026-10-30): a card Annie posts in a conversation and
+      // then WAITS on (plan, a draft to check, a routine run, the final
+      // review). Private to the person whose conversation it is, like the
+      // conversation itself. See services/TaskCheckpoints.js.
+      db.run(`CREATE TABLE IF NOT EXISTS chat_checkpoints (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        output_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        task_title TEXT,
+        state TEXT NOT NULL DEFAULT 'pending',
+        note TEXT,
+        team_id TEXT,
+        workspace_id TEXT,
+        task_id TEXT,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
+      )`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_chat_checkpoints_user ON chat_checkpoints(user_id, state, created_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_chat_checkpoints_conversation ON chat_checkpoints(conversation_id, created_at)`);
+
       // Migration: Add current_version_id to workflows table for version control (2026-02-04)
       db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

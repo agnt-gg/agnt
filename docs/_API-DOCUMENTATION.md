@@ -6946,6 +6946,34 @@ Plugins are written in the Plugin Forge chat, not through dedicated generation e
 
 ---
 
+## Checkpoint Routes
+
+Base path: `/api/checkpoints`
+
+Tasks in chat. When Annie does real work (anything that sends, posts, pays or changes something), she posts a **checkpoint** card in the conversation with the `task_checkpoint` tool and her turn ends there: the plan, the exact draft to check, a routine run's specifics, the final review, or a routine to turn on. Nothing happens until the person decides. The client records the decision here, then sends the person's reply into the same chat so Annie carries on.
+
+A checkpoint is private to the person whose conversation it is, including on a team's instance (this API is private-in-team: a team header never pools it). Another person's id returns 404. A conversation has at most one pending checkpoint; a newer card marks the older one `superseded`. On a team instance the work can also be a card on a teamspace board: it is created and moved through the team routes with the person's own token (pending: Review; approved: In progress; final or routine approved: Done). A board that cannot be reached never blocks the checkpoint.
+
+Each change sends the person's windows a realtime `checkpoint:changed` event (`{ id, conversationId, state }`).
+
+Checkpoint shape: `{ id, conversationId, outputId, kind: 'plan' | 'review' | 'run' | 'final' | 'routine', title, content (markdown), taskTitle, state: 'pending' | 'approved' | 'changes' | 'skipped' | 'superseded', note, task: { teamId, workspaceId, id } | null, createdAt, decidedAt }`.
+
+**GET** `/`
+- **Authentication**: Required
+- Without a query: your pending checkpoints, newest first (Home's "Needs you"). With `?conversationId=`: every checkpoint in that conversation of yours.
+
+**GET** `/:id`
+- **Authentication**: Required
+- One of your checkpoints.
+
+**POST** `/:id/locate`
+- **Authentication**: Required
+- Body: `{ outputId }`. Records which saved chat the card lives in, so "Review" can reopen it. Set once; later calls keep the first value.
+
+**POST** `/:id/decide`
+- **Authentication**: Required
+- Body: `{ decision: 'approved' | 'changes' | 'skipped', note? }`. Only a pending checkpoint, once (else 409 `not_pending`). `skipped` is for a routine run (`kind: 'run'`). Returns `{ checkpoint, linkError }`.
+
 ## Schedule Routes
 
 Base path: `/api/schedules`

@@ -3650,6 +3650,21 @@ IMPORTANT: The image data is already available in the system context. You don't 
         break;
       }
 
+      // ---- Checkpoint: wait for the person -------------------------------
+      // task_checkpoint shows a plan / draft / run / final review and waits
+      // for the person's decision. Once its card has streamed, the turn is
+      // OVER: the model cannot act on something nobody approved yet. The
+      // decision arrives as the person's next message. Reuses the floor-pass
+      // gate so no follow-up summary or continuation nudge runs after it, but
+      // keeps segmentStopReason at 'response_ended': waiting for the person is
+      // a normal end of turn (durable segments accept only normal ends).
+      if (toolCalls.some((tc) => tc.function?.name === 'task_checkpoint')) {
+        floorPassed = true;
+        // No new stream event: the card is drawn from this tool's own tool_end.
+        console.log(`[Checkpoint] task_checkpoint executed in round ${currentRound} — ending turn, waiting for the person`);
+        break;
+      }
+
       // Dynamic tool loading: check if discover_tools requested new categories
       if (conversationContext._requestedToolCategories && conversationContext._requestedToolCategories.size > 0) {
         try {

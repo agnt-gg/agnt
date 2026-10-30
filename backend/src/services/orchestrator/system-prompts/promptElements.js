@@ -94,6 +94,7 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'tutorial',
   'canvas',
   'appearance',
+  'tasks',
   // NOT 'browser' AND NOT 'computer' — DELIBERATELY ON INTENT, NEVER RESIDENT.
   //
   // Both drive something the user can see: a real browser window, or the

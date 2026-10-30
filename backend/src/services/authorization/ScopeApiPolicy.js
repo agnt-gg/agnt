@@ -6,7 +6,7 @@ export const TEAM_ASSET_APIS = new Set(['agents','workflows','custom-tools','goa
  * would read them. Sharing a thread is a deliberate act, not a side effect of being in a team.
  * Mirrored in frontend/src/utils/teamScopeTransport.js (parity is tested).
  */
-export const PRIVATE_IN_TEAM_APIS = new Set(['content-outputs','conversations','memory','groups']);
+export const PRIVATE_IN_TEAM_APIS = new Set(['content-outputs','conversations','memory','groups','checkpoints']);
 export function scopeApiAction(method,path){
  if(/\/(execute|execute-autonomous|run|fire-now|start|chat|chat-stream|suggestions|evaluate|review|evolve)(\/|$)/.test(path))return 'run';
  if(method==='GET'||method==='HEAD')return 'view';

@@ -26,6 +26,7 @@ import { getPluginToolSchemas, executePluginTool } from './pluginTools.js';
 import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js';
 import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceTools.js';
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
+import { getTaskToolSchemas, executeTaskTool } from './taskTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import { readPlanDenialBody, planDenialMessage } from '../auth/planDenial.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
@@ -4845,6 +4846,7 @@ function injectAsyncParams(schema) {
   const tutorialToolSchemas = getTutorialToolSchemas();
   const appearanceToolSchemas = getAppearanceToolSchemas();
   const canvasToolSchemas = getCanvasToolSchemas();
+  const taskToolSchemas = getTaskToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const { default: PluginAccounts } = await import('../../plugins/PluginAccountStore.js');
   const ownedPluginNames = new Set(await PluginAccounts.names(userId));
@@ -4889,6 +4891,7 @@ function injectAsyncParams(schema) {
     ...tutorialToolSchemas,
     ...appearanceToolSchemas,
     ...canvasToolSchemas,
+    ...taskToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
     ...customToolSchemas,
@@ -5126,6 +5129,14 @@ async function executeToolInner(toolName, args, authToken, context) {
     if (isCanvasTool(toolName)) {
       console.log(`Executing canvas tool: ${toolName}`);
       const result = await executeCanvasTool(toolName, resolvedArgs, authToken, context);
+      return JSON.stringify(result);
+    }
+
+    // Tasks in chat: a checkpoint card, after which the turn ends (OrchestratorService).
+    const taskToolNames = new Set(getTaskToolSchemas().map(s => s.function.name));
+    if (taskToolNames.has(toolName)) {
+      console.log(`Executing task tool: ${toolName}`);
+      const result = await executeTaskTool(toolName, resolvedArgs, authToken, context);
       return JSON.stringify(result);
     }
 

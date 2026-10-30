@@ -239,6 +239,11 @@ export const TOOL_GROUPS = {
     'set_background_image',
     'clear_background_image',
   ],
+  // Tasks in chat: the card Annie shows (plan, draft, run, final review, routine)
+  // and waits on before doing real work. One schema; resident on the orchestrator.
+  tasks: [
+    'task_checkpoint',
+  ],
   // ONE browser tool. It was three (act/use/control) and the model had to
   // guess which to reach for — the 2026-09-01 surprise-window bug WAS that
   // guess going wrong. The unified tool folds them into one schema as
@@ -340,6 +345,7 @@ export const GROUP_TRIGGERS = {
   memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
   appearance: /\b(backgrounds?|wallpapers?|bg\s*images?|desktop\s*images?)\b/i,
+  tasks: /\b(send|e-?mails?|repl(?:y|ies)|posts?|publish|notify|chase|follow\s*ups?|onboard|orders?|book|pay|invoices?|schedules?|every\s+(?:day|week|month|monday|tuesday|wednesday|thursday|friday)|routines?|tasks?)\b/i,
   // The bare-domain alternative ("go to agnt.gg") matters: that exact phrase
   // carries none of the keywords and is the single most common way the request
   // arrives.
@@ -371,6 +377,7 @@ export const GROUP_DESCRIPTIONS = {
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
+  tasks: 'Show the person a plan, draft, routine run, final review or routine in the chat and wait for their decision before doing real work',
   browser: 'Drive a real browser with one tool: fast deterministic verbs by default, a whole-task autonomous agent via action="run", raw Python/CDP via action="script"',
   computer: 'Drive this computer with one tool: list windows and apps, observe a window\'s accessibility tree, then click, type, use menus, keys and the clipboard on real native applications',
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
@@ -433,6 +440,7 @@ export const GROUP_GUIDANCE = {
   memory: [],
   tutorial: ['IMPORTANT_GUIDELINES'],
   appearance: [],
+  tasks: [],
   browser: ['ASYNC_EXECUTION_GUIDANCE'],
 };
 
