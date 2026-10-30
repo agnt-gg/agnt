@@ -4,7 +4,8 @@ import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
-import { checklistOf, checklistPrompt, parseChecklistVerdict } from './goalChecklist.js';
+import { acceptanceChecklistOf, checklistPrompt, parseChecklistVerdict } from './goalChecklist.js';
+import { taskReviewPrompt } from './taskReview.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { getModelCost } from '../ai/providerConfigs.js';
 
@@ -159,13 +160,15 @@ class GoalEvaluator {
   }
 
   /**
-   * Check each acceptance-checklist item against the work. Never throws: a
+   * Check each acceptance-checklist item against the work of every task
+   * together. This is where the goal's deliverables are enforced: tasks are
+   * graded only on their own share (see taskReview.js). Never throws: a
    * failed model call leaves every item unassessed (met: null) rather than
    * failing the whole evaluation or inventing a verdict.
    * @returns {Promise<Array<{id,text,met,evidence}>>}
    */
   static async evaluateChecklist(goal, tasks, userId, provider = null, model = null, accumulateUsage = null) {
-    const checklist = checklistOf(goal.success_criteria, goal.world_state?.reviewerFeedback);
+    const checklist = acceptanceChecklistOf(goal.success_criteria, goal.world_state?.reviewerFeedback);
     if (!checklist.length) return [];
     try {
       const raw = await this._complete(checklistPrompt(goal, checklist, tasks), 'You check work against a checklist. Return valid JSON only.', userId, provider, model, accumulateUsage, goal.id);
@@ -204,9 +207,11 @@ class GoalEvaluator {
   }
 
   /**
-   * Evaluate a single task against success criteria
+   * Evaluate a single task against its own description. The goal's success
+   * criteria are passed to the grader as context only; the goal-level
+   * acceptance checklist enforces them across all tasks.
    * @param {Object} task - The task to evaluate
-   * @param {Object} successCriteria - The goal's success criteria
+   * @param {Object} successCriteria - The goal's success criteria (context)
    * @param {string} userId - User ID for AI service
    * @param {string} provider - AI provider to use
    * @param {string} model - AI model to use
@@ -243,10 +248,10 @@ class GoalEvaluator {
   }
 
   /**
-   * Use AI to evaluate task output against success criteria
+   * Use AI to evaluate task output against the task's own requirements
    * @param {Object} task - The task being evaluated
    * @param {Object} taskOutput - The task's output data
-   * @param {Object} successCriteria - Success criteria from goal
+   * @param {Object} successCriteria - Success criteria from goal (context only)
    * @param {string} userId - User ID for AI service
    * @param {string} provider - AI provider to use
    * @param {string} model - AI model to use
@@ -254,43 +259,12 @@ class GoalEvaluator {
    * @returns {Promise<Object>} AI evaluation results
    */
   static async aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider = null, model = null, accumulateUsage = null) {
-    const prompt = `You are an expert evaluator assessing whether a task output meets specified success criteria.
-
-TASK INFORMATION:
-Title: ${task.title}
-Description: ${task.description}
-
-TASK OUTPUT:
-${JSON.stringify(taskOutput, null, 2)}
-
-SUCCESS CRITERIA:
-Deliverables Expected: ${JSON.stringify(successCriteria.deliverables || [], null, 2)}
-Quality Checks: ${JSON.stringify(successCriteria.qualityChecks || [], null, 2)}
-
-EVALUATION INSTRUCTIONS:
-1. Analyze if the task output contains or demonstrates the expected deliverables
-2. Check if the output meets the quality standards specified
-3. Provide a score from 0-100 based on how well criteria are met
-4. List applicable required deliverable and quality criteria as Boolean values (true/false). Do not invent requirements. Explain optional suggestions in feedback, not as failed required criteria. Mixed tool failures/successes require explaining whether the failed operation was actually recovered; an unrelated successful call is not recovery.
-5. Review adversarially: look for every defect, gap or unsupported claim. Any defect the work could have avoided means the criterion it affects is false. Do not give credit for intent, effort or plans — only for what the output shows.
-
-Respond with ONLY a valid JSON object (no markdown, no extra text):
-{
-  "score": 85,
-  "criteriaMet": {
-    "deliverable1": true,
-    "deliverable2": false,
-    "qualityCheck1": true
-  },
-  "feedback": "Detailed feedback explaining the evaluation",
-  "strengths": ["What was done well"],
-  "improvements": ["What could be improved"]
-}`;
+    const prompt = taskReviewPrompt(task, taskOutput, successCriteria);
 
     try {
       const result = await this._complete(
         prompt,
-        'You are a strict, adversarial reviewer. Return valid JSON only.',
+        'You are a strict, adversarial reviewer of one task against its own requirements. Return valid JSON only.',
         userId,
         provider,
         model,

@@ -22,7 +22,7 @@ const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0
  * pass again until a grader shows the feedback was addressed.
  * @returns {{ id: string, text: string }[]}
  */
-export function checklistOf(successCriteria, reviewerFeedback = []) {
+export function checklistOf(successCriteria, reviewerFeedback = [], maxItems = MAX_ITEMS) {
   const criteria = successCriteria && typeof successCriteria === 'object' ? successCriteria : {};
   const explicit = Array.isArray(criteria.checklist) ? criteria.checklist : null;
   const source = explicit?.length
@@ -36,13 +36,38 @@ export function checklistOf(successCriteria, reviewerFeedback = []) {
     if (!text || seen.has(key)) continue;
     seen.add(key);
     items.push({ id: `c${items.length + 1}`, text });
-    if (items.length === MAX_ITEMS) break;
+    if (items.length === maxItems) break;
   }
   for (const entry of Array.isArray(reviewerFeedback) ? reviewerFeedback : []) {
     const text = clean(typeof entry === 'object' && entry ? entry.text : entry);
     if (text) items.push({ id: `c${items.length + 1}`, text: `Reviewer feedback addressed: ${text}` });
   }
   return items;
+}
+
+/**
+ * What the finished goal is checked against: the planner's checklist plus every
+ * goal deliverable it does not already name. Tasks are graded only on their own
+ * share of the work, so this is the one place the goal's deliverables are
+ * enforced. A planner checklist that omits a deliverable must not let it go
+ * unchecked. Reviewer feedback stays last, as in checklistOf.
+ * @returns {{ id: string, text: string }[]}
+ */
+export function acceptanceChecklistOf(successCriteria, reviewerFeedback = []) {
+  const planned = checklistOf(successCriteria);
+  const criteria = successCriteria && typeof successCriteria === 'object' ? successCriteria : {};
+  const seen = new Set(planned.map((item) => item.text.toLowerCase()));
+  const texts = planned.map((item) => item.text);
+  let added = 0;
+  for (const entry of Array.isArray(criteria.deliverables) ? criteria.deliverables : []) {
+    const text = clean(typeof entry === 'object' && entry ? entry.text : entry);
+    if (!text || seen.has(text.toLowerCase())) continue;
+    if (added === MAX_ITEMS) break;
+    seen.add(text.toLowerCase());
+    texts.push(`Deliverable produced: ${text}`);
+    added++;
+  }
+  return checklistOf({ checklist: texts }, reviewerFeedback, MAX_ITEMS * 2);
 }
 
 /** Keep the most recent reviewer requests; older ones are already in the work or superseded. */

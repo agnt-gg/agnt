@@ -527,8 +527,11 @@ class TaskOrchestrator {
     }
   }
   /**
-   * Grade one task's fresh result against the goal's criteria, the same way
-   * the final evaluation will. Self-reported blockers are left to
+   * Grade one task's fresh result against its OWN description, the same way
+   * the final evaluation grades each task (taskReview.js). The goal's
+   * deliverables are context here, not requirements: they belong to the goal
+   * as a whole and are checked once, by the acceptance checklist, after every
+   * task has run. Self-reported blockers are left to
    * processTaskResult (no grader call needed). A grader that cannot run lets
    * the work through: the final evaluation still fails closed on it, and an
    * outage must not burn the retry.
