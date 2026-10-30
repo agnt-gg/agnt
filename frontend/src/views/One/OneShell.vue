@@ -17,7 +17,7 @@
       :team="teamState.team"
       :teams="teamState.teams"
       :spaces="teamState.spaces"
-      :unread="teamUnread"
+      :unread="needsYou"
       :location="location"
       @go="(loc) => go({ page: 'team', ...loc })"
       @find="store.dispatch('shell/openJump')"
@@ -128,6 +128,7 @@ import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
 import OneSpacesDrawer from './team/OneSpacesDrawer.vue';
 import { useTeam, teamApi } from './team/useTeam.js';
+import { useCheckpoints } from '@/composables/useCheckpoints.js';
 // The rail's Inbox badge and the spaces drawer show outside the team page too.
 import './team/team.css';
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
@@ -206,6 +207,10 @@ const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChat
 const team = useTeam(store);
 const teamState = team.state;
 const teamUnread = team.unread;
+// Home is the inbox: its badge is everything waiting on you, team items and checkpoints alike.
+const checkpointsWaiting = useCheckpoints();
+checkpointsWaiting.loadPending();
+const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value);
 const spacesDrawerShown = computed(() => !isMobile.value && page.value === 'team');
 /** Owner only (the server enforces it): a new teamspace, registered with the cloud and opened. */
 async function newTeamspace() {
@@ -226,8 +231,7 @@ const railItems = computed(() =>
     drawerOpen: drawerShown.value,
     onBlankChat: props.screenName === 'ChatScreen' && onBlankChat(),
     activeScreen: props.screenName,
-    teamView: location.value?.view || null,
-    inboxUnread: teamUnread.value,
+    needsYou: needsYou.value,
   }),
 );
 
@@ -258,7 +262,7 @@ function selectRail(id) {
     setDrawer(!drawerShown.value);
     return;
   }
-  if (id === 'home' || id === 'inbox') go({ page: 'team', view: id });
+  if (id === 'home') go({ page: 'team', view: 'home' });
   else if (id === 'find') store.dispatch('shell/openJump');
   else if (MORE_SCREEN[id]) pushScreen(MORE_SCREEN[id]);
   else if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);

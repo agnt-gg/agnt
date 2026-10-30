@@ -148,6 +148,49 @@ export function inboxSentence(item) {
   }
 }
 
+// ── Routine runs (schedules → goal runs) ──
+
+/** How a routine run reads, from its recorded status (ScheduleRoutes run history). */
+export function runTone(status) {
+  switch (status) {
+    case 'running': return { label: 'Running', color: '#2d64bd', state: 'running' };
+    case 'needs_review': return { label: 'Waiting for your OK', color: '#e53d8f', state: 'need' };
+    case 'completed': return { label: 'Done', color: '#157839', state: 'done' };
+    case 'stopped': return { label: 'Stopped', color: '#87898e', state: 'done' };
+    case 'interrupted': return { label: 'Interrupted', color: '#915d06', state: 'problem' };
+    case 'failed': case 'stuck': case 'max_iterations': return { label: 'Needs a look', color: '#915d06', state: 'problem' };
+    default: return { label: status || 'Unknown', color: '#87898e', state: 'done' };
+  }
+}
+
+/**
+ * A routine's number, from its real run history: runs in the last 30 days,
+ * the share that finished, and runs per week for the last 8 weeks (oldest
+ * first) for the sparkline.
+ */
+export function runStats(runs = [], now = Date.now()) {
+  const WEEK = 7 * 86400e3;
+  const times = runs.map((r) => ({ t: Date.parse(r.fired_at), status: r.status })).filter((r) => Number.isFinite(r.t));
+  const recent = times.filter((r) => now - r.t <= 30 * 86400e3);
+  const ended = recent.filter((r) => r.status !== 'running');
+  const finished = ended.filter((r) => r.status === 'completed').length;
+  const weekly = Array.from({ length: 8 }, (_, i) => times.filter((r) => now - r.t >= (7 - i) * WEEK && now - r.t < (8 - i) * WEEK).length);
+  return { last30: recent.length, finishedShare: ended.length ? Math.round((finished / ended.length) * 100) : null, weekly };
+}
+
+/** The run Run-now must not race: the newest one, while it is still running or waiting for the person. */
+export function blockingRun(runs = []) {
+  const newest = [...runs].sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at))[0];
+  return newest && ['running', 'needs_review'].includes(newest.status) ? newest : null;
+}
+
+/** SVG path data for a small sparkline. */
+export function sparkPath(points = [], width = 110, height = 34) {
+  if (points.length < 2) return '';
+  const lo = Math.min(...points), hi = Math.max(...points);
+  return points.map((v, i) => `${i ? 'L' : 'M'}${((i * width) / (points.length - 1)).toFixed(1)} ${(height - 3 - ((v - lo) / (hi - lo || 1)) * (height - 8)).toFixed(1)}`).join(' ');
+}
+
 /** Card label for an agent's state. */
 export function agentStateLabel(state) {
   return { running: 'Working…', waiting: 'Needs approval', blocked: 'Blocked', sent_back: 'Sent back' }[state] || '';

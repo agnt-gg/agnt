@@ -115,6 +115,8 @@
                      or not the row is expanded. See connectCards.js. -->
                 <ConnectCard v-if="connectTarget(tc.toolCall)" :provider="connectTarget(tc.toolCall)" />
                 <ShareCard v-if="shareTarget(tc.toolCall)" :target="shareTarget(tc.toolCall)" />
+                <!-- Annie is waiting on this card (a plan, a draft, a run, the final review). See checkpointCards.js. -->
+                <TaskCheckpointCard v-if="checkpointTarget(tc.toolCall)" :target="checkpointTarget(tc.toolCall)" />
                 <!-- The agent is waiting for the person to sign in: where, and the answers. See signInCards.js. -->
                 <SignInCard
                   v-if="signInTarget(tc.toolCall) && browserConversationId !== null"
@@ -493,6 +495,8 @@ const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name:
 const AgntFlashCard = lazyComponent(() => import('./AgntFlashCard.vue'), { name: 'AgntFlashCard' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import { connectTarget } from './connectCards.js';
+import { checkpointTarget } from './checkpointCards.js';
+import TaskCheckpointCard from './TaskCheckpointCard.vue';
 import { shareTarget } from './shareCards.js';
 import { signInTarget } from './signInCards.js';
 import { useBrowserConversation } from './browserConversation.js';
@@ -669,6 +673,7 @@ export default {
     ConnectCard,
     SignInCard,
     ShareCard,
+    TaskCheckpointCard,
     ShareBundlePreflight,
   },
   directives: {
@@ -3293,6 +3298,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isAsyncToolRunning,
       stopAsyncTool,
       connectTarget,
+      checkpointTarget,
       shareTarget,
       signInTarget,
       toggleToolCall,

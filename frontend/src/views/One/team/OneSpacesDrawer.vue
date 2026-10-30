@@ -27,9 +27,9 @@
     </div>
     <button type="button" class="ot-find" @click="$emit('find')"><i class="fas fa-search" aria-hidden="true"></i>Search or ask Annie<kbd>Ctrl K</kbd></button>
     <div class="ot-drawer-scroll">
-      <button type="button" class="ot-d-item" :class="{ 'is-active': is('home') }" @click="go({ view: 'home' })"><i class="fas fa-home" aria-hidden="true"></i>Home</button>
-      <button type="button" class="ot-d-item" :class="{ 'is-active': is('inbox') }" @click="go({ view: 'inbox' })">
-        <i class="fas fa-inbox" aria-hidden="true"></i>Inbox<span v-if="unread" class="ot-count">{{ unread }}</span>
+      <!-- Home is also the inbox: the count is everything waiting on you. -->
+      <button type="button" class="ot-d-item" :class="{ 'is-active': is('home') || is('inbox') }" @click="go({ view: 'home' })">
+        <i class="fas fa-home" aria-hidden="true"></i>Home<span v-if="unread" class="ot-count">{{ unread }}</span>
       </button>
 
       <div class="ot-d-head"><i class="fas fa-lock" aria-hidden="true"></i> My Space</div>

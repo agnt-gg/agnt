@@ -123,21 +123,20 @@ describe('the rail', () => {
     // New chat is in the Chats drawer's header, not on the rail (2026-10-21).
     // 2026-10-23: no Market (its listings are Library and Apps sections); Activity and Memories under More.
     // 2026-10-26: the Market is back on the rail, after the Library.
-    // Teamspaces: Home and Inbox lead the rail (the team workspace's two front doors).
-    const every = ['home', 'inbox', 'chats', 'apps', 'routines', 'library', 'market', 'more'];
+    // Teamspaces: Home leads the rail; it is also the inbox (2026-10-30).
+    const every = ['home', 'chats', 'apps', 'routines', 'library', 'market', 'more'];
     expect(ids(railItems())).toEqual(every);
     expect(ids(railItems({ facts: { apps: 3, workflows: 2 } }))).toEqual(every);
     expect(railItems().every((i) => i.icon && i.label)).toBe(true);
   });
 
-  it('teamspaces: Inbox lights for the inbox, Home for every other team page, and Inbox carries the unread count', () => {
-    const active = (teamView) => railItems({ activePage: 'team', teamView }).filter((i) => i.active).map((i) => i.id);
-    expect(active('inbox')).toEqual(['inbox']);
-    for (const view of ['home', 'space', 'mine', 'doc']) expect(active(view)).toEqual(['home']);
-    const inbox = (n) => railItems({ inboxUnread: n }).find((i) => i.id === 'inbox');
-    expect(inbox(0).badge).toBeUndefined();
-    expect(inbox(3).badge).toBe('3');
-    expect(inbox(250).badge).toBe('99+');
+  it('teamspaces: every team page lights Home, and Home carries what needs you', () => {
+    expect(railItems({ activePage: 'team' }).filter((i) => i.active).map((i) => i.id)).toEqual(['home']);
+    const home = (n) => railItems({ needsYou: n }).find((i) => i.id === 'home');
+    expect(home(0).badge).toBeUndefined();
+    expect(home(3).badge).toBe('3');
+    expect(home(250).badge).toBe('99+');
+    expect(railItems().some((i) => i.id === 'inbox')).toBe(false);
   });
 
   it('marks the page that is open; Activity and Memories light More and their own entry', () => {

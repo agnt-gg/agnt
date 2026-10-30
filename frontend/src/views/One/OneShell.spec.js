@@ -249,17 +249,16 @@ describe('OneShell', () => {
     it('is the one navigation: every place on a new account, Settings at the bottom', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-home', 'one-rail-inbox', 'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-more', 'one-rail-settings',
+        'one-rail-home', 'one-rail-chats', 'one-rail-apps', 'one-rail-routines', 'one-rail-library', 'one-rail-market', 'one-rail-more', 'one-rail-settings',
       ]);
       w.unmount();
     });
 
-    it('Home and Inbox open the team pages at real, linkable routes', async () => {
+    it('Home (which is also the inbox) opens at a real, linkable route', async () => {
       const w = mountShell();
       await w.find('[data-testid="one-rail-home"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
-      await w.find('[data-testid="one-rail-inbox"]').trigger('click');
-      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'inbox' } });
+      expect(w.find('[data-testid="one-rail-inbox"]').exists()).toBe(false);
       w.unmount();
     });
 

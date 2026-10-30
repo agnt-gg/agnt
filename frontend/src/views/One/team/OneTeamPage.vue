@@ -2,14 +2,14 @@
   <div class="ot" data-testid="one-team-page">
     <div v-if="state.error && !state.team" class="ot-scroll"><div class="ot-page"><p class="ot-error">{{ state.error }}</p><button type="button" class="focused-btn" @click="reload">Try again</button></div></div>
     <div v-else-if="!state.loaded" class="ot-scroll"><div class="ot-page"><p class="ot-muted">Loading your team…</p></div></div>
-    <TeamInbox v-else-if="location.view === 'inbox'" />
     <TeamMyTasks v-else-if="location.view === 'mine' && state.team" />
     <TeamSpaceView v-else-if="location.view === 'space' && space" :key="space.id" :team="state.team" :space="space" :location="location" />
     <TeamDocPage v-else-if="location.view === 'doc' && space && location.doc" :key="location.doc" :workspace-id="space.id" :doc-id="location.doc" :space-name="space.name" @back="go({ view: 'space', space: space.id, tab: 'docs' })" />
     <div v-else-if="['space', 'doc'].includes(location.view)" class="ot-scroll">
       <div class="ot-page"><p class="ot-error">That teamspace is not available to you. It may have been archived, or your access was changed.</p><button type="button" class="focused-btn" @click="go({ view: 'home' })">Go home</button></div>
     </div>
-    <TeamHome v-else />
+    <!-- Home is the inbox: an old /team?view=inbox link opens Home on "Needs you". -->
+    <TeamHome v-else initial-tab="needs" />
   </div>
 </template>
 
@@ -18,8 +18,9 @@ import { computed, provide, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useTeam, teamApi } from './useTeam.js';
 import { openTeam } from '@/composables/useSpaces.js';
+import { useCheckpoints } from '@/composables/useCheckpoints.js';
+import { useRoutineRuns } from '@/composables/useRoutineRuns.js';
 import TeamHome from './TeamHome.vue';
-import TeamInbox from './TeamInbox.vue';
 import TeamMyTasks from './TeamMyTasks.vue';
 import TeamSpaceView from './TeamSpaceView.vue';
 import TeamDocPage from './TeamDocPage.vue';
@@ -51,6 +52,18 @@ async function openInbox(item) {
   else if (item.workspaceId) go({ view: 'space', space: item.workspaceId });
 }
 const reload = () => team.reload();
+const checkpoints = useCheckpoints();
+const routineRuns = useRoutineRuns(store);
+/** "Review" opens the chat the card is in, where the whole card is on screen. */
+function openCheckpoint(checkpoint) {
+  if (checkpoint.outputId) nav.openConversation(checkpoint.outputId);
+  else { nav.chat(); nav.toast('Open the chat this task started in to review it.'); }
+}
+/** A routine run is a goal run: open that run. */
+function openRun(run) {
+  const goalId = run.run_target_id || run.target_id;
+  if (goalId) nav.openScreen('GoalsScreen', { select: { kind: 'goal', id: goalId } });
+}
 
 provide('teamCtx', {
   team: computed(() => state.team),
@@ -68,6 +81,12 @@ provide('teamCtx', {
   reload,
   go,
   openInbox,
+  openCheckpoint,
+  openRun,
+  checkpoints,
+  routineRuns: routineRuns.runs,
+  routineRunsLoaded: routineRuns.loaded,
+  loadRoutineRuns: () => routineRuns.loadRoutineRuns(),
   openTeam: openTeamIn,
   ask: (text) => nav.ask(text),
   openPage: (id) => nav.go({ page: id }),

@@ -19,9 +19,15 @@ vi.mock('@/utils/teamClient.js', () => ({
 vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => null }));
 vi.mock('@/views/_components/team/TeamMembers.vue', () => ({ default: { template: '<div data-testid="members"></div>', props: ['team'] } }));
 vi.mock('@/views/_components/team/team.css', () => ({}));
+vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: 'http://api' } }));
+
+// Checkpoints (tasks in chat) are the person's own API, outside the team router.
+let checkpointsWaiting = [];
+global.fetch = vi.fn(async (url) => ({ ok: true, json: async () => (String(url).includes('/checkpoints') ? checkpointsWaiting : []) }));
 
 const { default: OneTeamPage } = await import('./OneTeamPage.vue');
 const { _resetTeamState } = await import('./useTeam.js');
+const { _resetCheckpoints } = await import('@/composables/useCheckpoints.js');
 
 const TEAM = { id: 'acme', name: 'Acme', role: 'member', tenantUrl: window.location.origin };
 const MEMBERS = [{ user_id: 'me', name: 'Nathan W', email: 'n@acme.co' }, { user_id: 'jess', name: 'Jess Park', email: 'j@acme.co' }];
@@ -42,7 +48,7 @@ function baseRoutes() {
 }
 
 function mountPage(location) {
-  const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(async () => true), prompt: vi.fn(async () => null) };
+  const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(async () => true), prompt: vi.fn(async () => null), openConversation: vi.fn(), chat: vi.fn(), openScreen: vi.fn() };
   const store = createStore({ state: { userAuth: { user: { id: 'me' } } } });
   const wrapper = mount(OneTeamPage, { props: { location }, global: { plugins: [store], provide: { focusedNav: nav } } });
   mounted.push(wrapper);
@@ -57,6 +63,8 @@ beforeEach(() => {
   calls.length = 0;
   routes = baseRoutes();
   _resetTeamState();
+  _resetCheckpoints();
+  checkpointsWaiting = [];
   localStorage.setItem('token', 'header.' + btoa(JSON.stringify({ id: 'me' })) + '.sig');
 });
 
@@ -82,7 +90,27 @@ describe('teamspace chat', () => {
   });
 });
 
-describe('inbox', () => {
+describe('Home is the inbox', () => {
+  it('a task waiting for your OK leads Needs you, and Review opens the chat it is in', async () => {
+    checkpointsWaiting = [{ id: 'cp1', conversationId: 'conv', outputId: 'out-1', kind: 'plan', title: 'The plan · 3 steps', content: '…', taskTitle: 'Send the January price notice', state: 'pending', createdAt: new Date().toISOString() }];
+    const { wrapper, nav } = mountPage(loc({ view: 'home' }));
+    await flushPromises();
+    const panel = wrapper.find('[data-testid="home-inbox"]');
+    expect(panel.find('.ot-tab.is-active').text()).toMatch(/^Needs you/);
+    expect(panel.text()).toContain('Waiting for your OK');
+    expect(panel.text()).toContain('Send the January price notice');
+    expect(panel.text()).not.toMatch(/\bApprove\b/); // Review, never Approve: the whole card is in the chat
+    await panel.findAll('button').find((b) => b.text() === 'Review').trigger('click');
+    expect(nav.openConversation).toHaveBeenCalledWith('out-1');
+  });
+
+  it('an old inbox link opens Home', async () => {
+    const { wrapper } = mountPage(loc({ view: 'inbox' }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-inbox"]').exists()).toBe(true);
+    expect(wrapper.find('.ot-greet').exists()).toBe(true);
+  });
+
   it('opening a row marks it read and goes to the card', async () => {
     routes['/acme/inbox'] = [{ id: 'i1', kind: 'assigned', actor: { kind: 'person', id: 'jess' }, summary: 'Call Northwind', workspaceId: 'sales', target: { kind: 'task', id: 't1' }, read: false, createdAt: new Date().toISOString() }];
     routes['POST /acme/inbox/i1/read'] = { success: true };

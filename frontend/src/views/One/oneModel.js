@@ -166,7 +166,7 @@ export const MORE_SCREEN = Object.freeze(Object.fromEntries(MORE_ITEMS.filter((m
  * the same links again: two navigations side by side (reported 2026-10-21).
  * The drawer now holds chats only. Settings is pinned to the bottom.
  */
-export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false, activeScreen = null, teamView = null, inboxUnread = 0 } = {}) {
+export function railItems({ activePage = null, drawerOpen = false, onBlankChat = false, activeScreen = null, needsYou = 0 } = {}) {
   // The page you are on is highlighted, open drawer or not. The drawer used to
   // win, so with it left open every page lit up Chats (reported 2026-10-21).
   // Chats is highlighted only on a chat with the drawer open; otherwise an
@@ -174,14 +174,13 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
   // New chat is in the Chats drawer's header, not on the rail (2026-10-21), so
   // a blank chat highlights Chats like any other chat.
   // A Studio screen opened from More lights More.
-  // Teamspaces: Inbox lights for the inbox, Home for everything else on /team
-  // (home, a teamspace, My tasks, a doc), since all of it is reached from Home.
-  const teamRail = activePage === 'team' ? (teamView === 'inbox' ? 'inbox' : 'home') : null;
+  // Teamspaces: Home is also the inbox (2026-10-30), so every /team page (Home,
+  // a teamspace, My tasks, a doc, an old inbox link) lights Home.
+  const teamRail = activePage === 'team' ? 'home' : null;
   const page = teamRail || RAIL_OF_PAGE[activePage] || (!activePage && Object.values(MORE_SCREEN).includes(activeScreen) ? 'more' : null);
   const active = page || (drawerOpen || (onBlankChat && !activePage) ? 'chats' : null);
   const items = [
     { id: 'home', label: 'Home' },
-    { id: 'inbox', label: 'Inbox' },
     { id: 'chats', label: 'Chats' },
     { id: 'apps', label: 'Apps' },
     { id: 'routines', label: 'Routines' },
@@ -195,7 +194,8 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     icon: RAIL_ICONS[id],
     active: active === id,
     ...(id === 'chats' ? { open: drawerOpen } : {}),
-    ...(id === 'inbox' && inboxUnread > 0 ? { badge: inboxUnread > 99 ? '99+' : String(inboxUnread) } : {}),
+    // What needs you (Home's inbox): checkpoints waiting for your OK plus unread team items.
+    ...(id === 'home' && needsYou > 0 ? { badge: needsYou > 99 ? '99+' : String(needsYou) } : {}),
     ...(id === 'more' ? { menu: MORE_ITEMS.map((m) => ({ ...m, icon: RAIL_ICONS[m.id], active: activePage === m.id || (!!m.screen && activeScreen === m.screen) })) } : {}),
   }));
 }

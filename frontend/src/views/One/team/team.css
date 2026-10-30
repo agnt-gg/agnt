@@ -114,7 +114,9 @@ button.ot-card:hover { border-color: var(--border-strong); }
 .ot-scope { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px; border: 1px solid transparent; border-radius: 999px; background: rgba(var(--pink-rgb), 0.09); color: var(--text-primary); font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .ot-scope.is-private { border-color: var(--terminal-border-color); background: var(--color-dark-navy); }
 button.ot-scope { cursor: pointer; }
-.ot-tabs { display: flex; gap: 2px; margin: 0 0 18px; overflow-x: auto; border-bottom: 1px solid var(--terminal-border-color); }
+/* Never a scrollbar: each tab hangs 1px below the line so its underline meets it, and with
+   overflow-x:auto that 1px alone drew scrollbars on a row that easily fits. Tabs wrap instead. */
+.ot-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 0 0 18px; overflow: visible; border-bottom: 1px solid var(--terminal-border-color); }
 .ot-tab { display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-tertiary); font: inherit; font-size: 14px; white-space: nowrap; cursor: pointer; }
 .ot-tab:hover { color: var(--text-primary); }
 .ot-tab.is-active { border-bottom-color: var(--color-pink); color: var(--text-primary); font-weight: 500; }
@@ -123,6 +125,15 @@ button.ot-scope { cursor: pointer; }
 .ot-seg { display: inline-flex; padding: 2px; border: 1px solid var(--terminal-border-color); border-radius: 999px; background: var(--color-dark-navy); }
 .ot-seg button { padding: 4px 11px; border: 0; border-radius: 999px; background: transparent; color: var(--text-tertiary); font: inherit; font-size: 12.5px; cursor: pointer; }
 .ot-seg button.is-on { background: var(--surface-active); color: var(--text-primary); font-weight: 500; }
+
+/* Home's inbox panel */
+.ot-inbox { margin: 18px 0 8px; overflow: hidden; border: 1px solid var(--terminal-border-color); border-radius: 16px; }
+.ot-inbox-head { display: flex; align-items: center; gap: 8px; padding: 4px 10px 0 12px; border-bottom: 1px solid var(--terminal-border-color); }
+.ot-inbox-head .ot-tabs { margin: 0; border-bottom: 0; }
+.ot-inbox-body { padding: 4px 12px 12px; }
+.ot-sub { padding: 12px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.ot-inbox-body > .ot-list { margin-top: 8px; }
+.ot-sub + .ot-list { margin-top: 0; }
 
 /* Board */
 .ot-board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 12px; align-items: start; overflow-x: auto; padding-bottom: 8px; }

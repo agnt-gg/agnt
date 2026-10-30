@@ -11,27 +11,10 @@
     <p v-else-if="!rows.length" class="focused-empty">
       {{ query ? `No routine matches “${query}”.` : 'When you ask Annie to do something regularly, it shows up here.' }}
     </p>
-    <ul v-else class="focused-list">
-      <li v-for="r in rows" :key="r.id">
-        <div class="focused-row" :class="{ paused: !r.enabled }">
-          <button type="button" class="focused-row-main" @click="nav.go({ page: 'scheduled', item: String(r.id) })">
-            <span class="focused-row-icon" aria-hidden="true"><i class="fas fa-redo"></i></span>
-            <span class="focused-row-text">
-              <strong>{{ r.label }}</strong>
-              <small>{{ r.cadence }}<template v-if="!r.enabled"> · Paused</template><template v-else-if="r.next"> · Next {{ formatNext(r.next) }}</template></small>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="focused-switch"
-            role="switch"
-            :aria-checked="r.enabled ? 'true' : 'false'"
-            :aria-label="(r.enabled ? 'Pause ' : 'Resume ') + r.label"
-            @click="toggle(r)"
-          ></button>
-        </div>
-      </li>
-    </ul>
+    <!-- Each routine is a widget: its number, its last runs, Run now. -->
+    <div v-else class="focused-routine-grid">
+      <FocusedRoutineCard v-for="r in rows" :key="r.id" :row="r" @open="nav.go({ page: 'scheduled', item: String(r.id) })" @toggle="toggle" />
+    </div>
   </FocusedPage>
 </template>
 
@@ -41,8 +24,8 @@ import { ref, computed, inject, watch } from 'vue';
 import { useStore } from 'vuex';
 import FocusedPage from './FocusedPage.vue';
 import FocusedRoutine from './FocusedRoutine.vue';
+import FocusedRoutineCard from './FocusedRoutineCard.vue';
 import { FOCUSED_PAGES, scheduleRows } from './focusedModel.js';
-import { formatNext } from './focusedTime.js';
 import { canScheduleGoals } from '@/services/scheduledGoalsPlan.js';
 
 defineProps({ item: { type: String, default: null }, isNew: { type: Boolean, default: false } });
@@ -79,3 +62,7 @@ watch(paid, async (enabled) => {
   }
 }, { immediate: true });
 </script>
+
+<style scoped>
+.focused-routine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+</style>

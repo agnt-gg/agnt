@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence } from './teamModel.js';
+import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath } from './teamModel.js';
 
 describe('team location ↔ query', () => {
   it('round-trips every view', () => {
@@ -54,6 +54,37 @@ describe('mentions', () => {
   it('splits text into runs for safe rendering', () => {
     expect(mentionRuns('hi @Jess, <b>x</b>', ['Jess'])).toEqual([{ text: 'hi ', mention: false }, { text: '@Jess', mention: true }, { text: ', <b>x</b>', mention: false }]);
     expect(mentionRuns('plain', [])).toEqual([{ text: 'plain', mention: false }]);
+  });
+});
+
+describe('routine runs', () => {
+  const now = Date.parse('2026-11-01T12:00:00Z');
+  const day = 86400e3;
+  const at = (daysAgo) => new Date(now - daysAgo * day).toISOString();
+  it('reads each recorded status the way a person would', () => {
+    expect(runTone('needs_review')).toMatchObject({ label: 'Waiting for your OK', state: 'need' });
+    expect(runTone('completed').state).toBe('done');
+    expect(runTone('failed').state).toBe('problem');
+    expect(runTone('stuck').state).toBe('problem');
+  });
+  it('counts real runs: last 30 days, share finished (running excluded), per week', () => {
+    const runs = [{ fired_at: at(1), status: 'running' }, { fired_at: at(2), status: 'completed' }, { fired_at: at(9), status: 'failed' }, { fired_at: at(40), status: 'completed' }];
+    const stats = runStats(runs, now);
+    expect(stats.last30).toBe(3);
+    expect(stats.finishedShare).toBe(50);
+    expect(stats.weekly).toHaveLength(8);
+    expect(stats.weekly.at(-1)).toBe(2);
+    expect(stats.weekly.at(-2)).toBe(1);
+    expect(runStats([], now)).toEqual({ last30: 0, finishedShare: null, weekly: [0, 0, 0, 0, 0, 0, 0, 0] });
+  });
+  it('Run now waits only for the newest run, while it runs or waits for you', () => {
+    expect(blockingRun([{ id: 'old', fired_at: at(3), status: 'needs_review' }, { id: 'new', fired_at: at(1), status: 'completed' }])).toBeNull();
+    expect(blockingRun([{ id: 'a', fired_at: at(3), status: 'completed' }, { id: 'b', fired_at: at(1), status: 'needs_review' }]).id).toBe('b');
+    expect(blockingRun([])).toBeNull();
+  });
+  it('sparkline needs two points', () => {
+    expect(sparkPath([1])).toBe('');
+    expect(sparkPath([0, 2]).startsWith('M0.0')).toBe(true);
   });
 });
 
