@@ -18,6 +18,8 @@
  *   restricted () => boolean   a shared instance (requests only exist there)
  *   serialize  (handler) => handler   the host's one-at-a-time plugin mutation queue (approve installs)
  */
+import { PLUGIN_FEATURES } from './pluginFeaturePolicy.js';
+
 const userOf = (req) => req.user?.userId || req.user?.id;
 const send = (res, error) => res.status(error.status || 500).json({ success: false, error: error.message, code: error.code });
 
@@ -26,20 +28,22 @@ export function canDecide(role, policy) {
   return role === 'owner' || (role === 'admin' && policy.adminsCanApprove === true);
 }
 
-export function mountPluginRequestRoutes(router, { requests, installer, accounts, reload, notify, roleOf, restricted, serialize = (handler) => handler }) {
+export function mountPluginRequestRoutes(router, { requests, installer, accounts, reload, notify, roleOf, restricted, refreshPolicy = async () => {}, serialize = (handler) => handler }) {
   router.get('/install-policy', async (req, res) => {
     try {
       const [policy, role] = await Promise.all([requests.policy(), roleOf(req)]);
-      res.json({ success: true, policy, hosted: restricted(), canEdit: role === 'owner', canDecide: canDecide(role, policy) });
+      res.json({ success: true, policy, features: PLUGIN_FEATURES, hosted: restricted(), canEdit: role === 'owner', canDecide: canDecide(role, policy) });
     } catch (error) { send(res, error); }
   });
 
-  router.put('/install-policy', async (req, res) => {
+  router.put('/install-policy', serialize(async (req, res) => {
     try {
       if ((await roleOf(req)) !== 'owner') return res.status(403).json({ success: false, error: 'Only the instance owner can change who may add plugins' });
-      res.json({ success: true, policy: await requests.setPolicy(req.body || {}) });
+      const policy = await requests.setPolicy(req.body || {});
+      await refreshPolicy();
+      res.json({ success: true, policy });
     } catch (error) { send(res, error); }
-  });
+  }));
 
   router.get('/requests', async (req, res) => {
     try {

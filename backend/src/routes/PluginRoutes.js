@@ -54,6 +54,7 @@ mountPluginRequestRoutes(router, {
   installer: PluginInstaller,
   accounts: PluginAccounts,
   reload: () => reloadAllPlugins(),
+  refreshPolicy: () => PluginManager.refreshMemberSafeTools(),
   notify: (userId, payload) => broadcastToUser(userId, RealtimeEvents.PLUGIN_INSTALLED, { ...payload, name: payload.pluginName, timestamp: new Date().toISOString() }),
   roleOf: instanceRole,
   restricted: isRestrictedInstance,

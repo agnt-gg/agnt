@@ -5,7 +5,9 @@ import ToolConfig from '../tools/ToolConfig.js';
 import PluginAccounts from './PluginAccountStore.js';
 import PluginAssetLoader from './PluginAssetLoader.js';
 import { bindPluginSource, normalizeAuthDeclaration } from './pluginAuth.js';
-import { isMemberSafePluginEntry, setMemberSafePluginTools } from '../services/security/memberSafePlugins.js';
+import { setMemberSafePluginTools } from '../services/security/memberSafePlugins.js';
+import PluginRequests from './PluginInstallRequests.js';
+import { pluginEntryGrant } from './pluginFeaturePolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -142,7 +144,10 @@ class PluginManager {
     } catch (error) {
       if (error.code !== 'ENOENT') console.warn('[PluginManager] registry unreadable; no plugin tools are member-safe:', error.message);
     }
-    const safePlugins = new Set(entries.filter(isMemberSafePluginEntry).map((entry) => entry.name));
+    // Revoke the previous snapshot before reading policy: a storage failure must not retain grants.
+    setMemberSafePluginTools([]);
+    const policy = await PluginRequests.policy();
+    const safePlugins = new Set(entries.filter((entry) => pluginEntryGrant(entry, policy)).map((entry) => entry.name));
     const safeTools = [];
     for (const [toolType, pluginName] of this.toolToPlugin) if (safePlugins.has(pluginName)) safeTools.push(toolType);
     setMemberSafePluginTools(safeTools);

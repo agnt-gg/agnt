@@ -6,7 +6,7 @@ import { API_CONFIG } from '@/tt.config.js';
  * (backend: plugins/pluginRequestRoutes.js). One cache for Home's "Needs you",
  * the Apps page and Settings, so a decision anywhere shows everywhere.
  */
-const state = reactive({ loaded: false, canDecide: false, pending: [], mine: [], policy: null, canEdit: false, hosted: false });
+const state = reactive({ loaded: false, canDecide: false, pending: [], mine: [], policy: null, features: [], canEdit: false, hosted: false });
 
 async function request(path, options = {}) {
   const response = await fetch(API_CONFIG.BASE_URL + '/plugins' + path, {
@@ -30,7 +30,7 @@ async function load() {
 }
 async function loadPolicy() {
   const body = await request('/install-policy');
-  Object.assign(state, { policy: body.policy, canEdit: !!body.canEdit, hosted: !!body.hosted, canDecide: !!body.canDecide });
+  Object.assign(state, { policy: body.policy, features: body.features || [], canEdit: !!body.canEdit, hosted: !!body.hosted, canDecide: !!body.canDecide });
   return body.policy;
 }
 
@@ -64,4 +64,4 @@ export function reachLabel(capabilities = []) {
 export const requestNeeds = (s) => (s.canDecide ? s.pending.length : 0) + s.mine.filter((r) => r.status !== 'pending').length;
 
 /** For tests. */
-export function _resetPluginRequests() { Object.assign(state, { loaded: false, canDecide: false, pending: [], mine: [], policy: null, canEdit: false, hosted: false }); }
+export function _resetPluginRequests() { Object.assign(state, { loaded: false, canDecide: false, pending: [], mine: [], policy: null, features: [], canEdit: false, hosted: false }); }

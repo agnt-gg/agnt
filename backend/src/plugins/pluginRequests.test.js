@@ -113,6 +113,6 @@ describe('plugin requests through the routes', () => {
     expect((await call('PUT', '/install-policy', 'own', { preApproved: ['../etc'] })).status).toBe(400);
     expect((await call('PUT', '/install-policy', 'own', { membersAllOfficial: 'yes' })).status).toBe(400);
     const set = (await call('PUT', '/install-policy', 'own', { preApproved: ['youtube-plugin', 'youtube-plugin'], membersAllOfficial: true })).body.policy;
-    expect(set).toEqual({ preApproved: ['youtube-plugin'], adminsCanApprove: false, membersAllOfficial: true });
+    expect(set).toEqual({ ...POLICY_DEFAULTS, preApproved: ['youtube-plugin'], adminsCanApprove: false, membersAllOfficial: true });
   });
 });

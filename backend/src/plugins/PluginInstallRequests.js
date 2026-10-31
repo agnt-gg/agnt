@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_FEATURES, PLUGIN_FEATURES, pluginFeatureGrant } from './pluginFeaturePolicy.js';
 import db, { dbReady } from '../models/database/index.js';
 
 /**
@@ -12,7 +13,7 @@ import db, { dbReady } from '../models/database/index.js';
  *   members_all_official any official, byte-verified plugin, whatever it reaches
  * Every default is the strict one. Instance-local: this instance's database.
  */
-export const POLICY_DEFAULTS = Object.freeze({ preApproved: [], adminsCanApprove: false, membersAllOfficial: false });
+export const POLICY_DEFAULTS = Object.freeze({ preApproved: [], blockedPlugins: [], allowedFeatures: DEFAULT_FEATURES, adminsCanApprove: false, membersAllOfficial: false });
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,120}$/;
 const fail = (status, message, code) => { throw Object.assign(new Error(message), { status, ...(code ? { code } : {}) }); };
 
@@ -35,11 +36,8 @@ export function reportSummary(report = {}) {
  * `memberSafe` is memberInstallRefusal(report) === null.
  */
 export function memberInstallGrant(name, report, policy, memberSafe) {
-  if (!report || report.success === false || report.integrityState === 'mismatch') return null;
-  if (memberSafe) return 'member-safe';
-  if ((policy.preApproved || []).includes(name)) return 'pre-approved';
-  if (policy.membersAllOfficial && report.trustTier === 'official' && report.integrityState === 'verified' && report.valid) return 'all-official';
-  return null;
+  const grant = pluginFeatureGrant(name, report, policy);
+  return grant === 'features' && memberSafe ? 'member-safe' : grant;
 }
 
 function requestRow(r) {
@@ -73,6 +71,8 @@ export class PluginInstallRequests {
     const stored = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)]));
     return {
       preApproved: Array.isArray(stored.preApproved) ? stored.preApproved.filter((n) => NAME.test(n)) : [],
+      blockedPlugins: Array.isArray(stored.blockedPlugins) ? stored.blockedPlugins.filter((n) => NAME.test(n)) : [],
+      allowedFeatures: Array.isArray(stored.allowedFeatures) ? stored.allowedFeatures.filter((id) => PLUGIN_FEATURES.some((f) => f.id === id)) : [...DEFAULT_FEATURES],
       adminsCanApprove: stored.adminsCanApprove === true,
       membersAllOfficial: stored.membersAllOfficial === true,
     };
@@ -81,9 +81,16 @@ export class PluginInstallRequests {
   async setPolicy(input = {}) {
     await this.ready();
     const next = {};
-    if (input.preApproved !== undefined) {
-      if (!Array.isArray(input.preApproved) || input.preApproved.length > 500 || input.preApproved.some((n) => typeof n !== 'string' || !NAME.test(n))) fail(400, 'preApproved must be a list of plugin names');
-      next.preApproved = [...new Set(input.preApproved)].sort();
+    for (const key of Object.keys(input)) if (!Object.hasOwn(POLICY_DEFAULTS, key)) fail(400, `Unknown plugin policy field: ${key}`);
+    for (const key of ['preApproved', 'blockedPlugins']) {
+      if (input[key] !== undefined) {
+        if (!Array.isArray(input[key]) || input[key].length > 500 || input[key].some((n) => typeof n !== 'string' || !NAME.test(n))) fail(400, `${key} must be a list of plugin names`);
+        next[key] = [...new Set(input[key])].sort();
+      }
+    }
+    if (input.allowedFeatures !== undefined) {
+      if (!Array.isArray(input.allowedFeatures) || input.allowedFeatures.length > PLUGIN_FEATURES.length || input.allowedFeatures.some((id) => !PLUGIN_FEATURES.some((f) => f.id === id))) fail(400, 'allowedFeatures must contain known feature IDs');
+      next.allowedFeatures = [...new Set(input.allowedFeatures)].sort();
     }
     for (const key of ['adminsCanApprove', 'membersAllOfficial']) {
       if (input[key] !== undefined) { if (typeof input[key] !== 'boolean') fail(400, `${key} must be true or false`); next[key] = input[key]; }

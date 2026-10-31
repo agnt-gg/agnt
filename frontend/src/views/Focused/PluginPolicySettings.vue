@@ -2,8 +2,16 @@
   <!-- Who may add plugins on this shared instance. Owner only; every default is the strict one. -->
   <section v-if="state.hosted && state.canEdit && policy" class="focused-edit-block" data-testid="plugin-policy">
     <div class="focused-edit-block-head"><h3>Plugins</h3></div>
-    <p class="pp-muted" style="margin: 0 0 10px">Members can always add official plugins that only use the internet. Anything else comes to you as a request on Home.</p>
+    <p class="pp-muted" style="margin: 0 0 10px">Approve features once for all verified official plugins. Members can add and run plugins within these permissions without asking you about each one. Other capabilities still require approval.</p>
     <div class="focused-edit-card">
+      <div v-for="feature in state.features" :key="feature.id" class="focused-edit-row">
+        <span class="focused-edit-label">{{ feature.label }}</span>
+        <label class="pp-check"><input type="checkbox" :checked="(policy.allowedFeatures || []).includes(feature.id)" :disabled="saving || policy.membersAllOfficial" :data-testid="`feature-${feature.id}`" @change="toggleFeature(feature.id, $event.target.checked)" />Allow across plugins</label>
+      </div>
+      <p class="pp-muted">Filesystem, environment and code permissions can reach this shared instance’s files and credentials. Only grant them to trusted members. These are plugin permissions; the security gate still checks every call.</p>
+    </div>
+    <details class="focused-edit-card">
+      <summary>Advanced · individual plugin exceptions</summary>
       <div class="focused-edit-row" style="align-items: flex-start">
         <span class="focused-edit-label">Pre-approved</span>
         <div style="flex: 1; min-width: 0">
@@ -14,6 +22,14 @@
           <CustomSelect :model-value="''" :options="addable" placeholder="Pre-approve a plugin…" aria-label="Pre-approve a plugin" :disabled="saving || !addable.length" @update:model-value="add" />
         </div>
       </div>
+      <div class="focused-edit-row" style="align-items: flex-start">
+        <span class="focused-edit-label">Blocked</span>
+        <div style="flex: 1; min-width: 0">
+          <div class="pp-chips"><span v-for="name in policy.blockedPlugins || []" :key="name" class="pp-chip">{{ label(name) }}<button type="button" :disabled="saving" :aria-label="`Unblock ${label(name)}`" @click="unblock(name)">×</button></span></div>
+          <CustomSelect :model-value="''" :options="blockable" placeholder="Block a plugin…" aria-label="Block a plugin" :disabled="saving || !blockable.length" @update:model-value="block" />
+          <p class="pp-muted">Blocks take priority over feature grants and pre-approvals. Exceptions affect members, not the owner.</p>
+        </div>
+      </div>
       <div class="focused-edit-row">
         <span class="focused-edit-label">Admins decide</span>
         <label class="pp-check"><input type="checkbox" :checked="policy.adminsCanApprove" :disabled="saving" data-testid="admins-can-approve" @change="save({ adminsCanApprove: $event.target.checked })" />Admins can approve plugin requests too</label>
@@ -22,7 +38,7 @@
         <span class="focused-edit-label">All official</span>
         <label class="pp-check"><input type="checkbox" :checked="policy.membersAllOfficial" :disabled="saving" data-testid="members-all-official" @change="save({ membersAllOfficial: $event.target.checked })" />Members can add any official AGNT plugin, even ones that reach this instance’s files or keys</label>
       </div>
-    </div>
+    </details>
     <p v-if="error" class="pp-error" role="alert">{{ error }}</p>
   </section>
 </template>
@@ -41,6 +57,11 @@ const error = ref('');
 const names = computed(() => new Map(catalog.value.map((p) => [p.name, p.displayName || p.title || p.name])));
 const label = (name) => names.value.get(name) || name;
 const addable = computed(() => catalog.value.filter((p) => !(policy.value?.preApproved || []).includes(p.name)).map((p) => ({ value: p.name, label: p.displayName || p.title || p.name })));
+
+const blockable = computed(() => catalog.value.filter((p) => !(policy.value?.blockedPlugins || []).includes(p.name)).map((p) => ({ value: p.name, label: label(p.name) })));
+const block = (name) => name && save({ blockedPlugins: [...(policy.value.blockedPlugins || []), name] });
+const unblock = (name) => save({ blockedPlugins: policy.value.blockedPlugins.filter((n) => n !== name) });
+const toggleFeature = (id, enabled) => save({ allowedFeatures: enabled ? [...(policy.value.allowedFeatures || []), id] : (policy.value.allowedFeatures || []).filter((feature) => feature !== id) });
 
 async function save(patch) {
   saving.value = true;
