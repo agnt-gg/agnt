@@ -336,11 +336,12 @@ export function cronLabel(cron) {
     return +min === 0 ? 'Every hour' : `Every hour at :${min.padStart(2, '0')}`;
   }
   if (!num(min) || !num(hour) || mon !== '*') return c;
-  const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
-  if (dom === '*' && dow === '*') return `Every day at ${time}`;
-  if (dom === '*' && /^(MON-FRI|1-5)$/i.test(dow)) return `Weekdays at ${time}`;
-  if (dom === '*' && DAY_NAMES[dow.toUpperCase()]) return `Every ${DAY_NAMES[dow.toUpperCase()]} at ${time}`;
-  if (dow === '*' && num(dom)) return `Monthly on day ${+dom} at ${time}`;
+  // The approved mockup's wording: "Every Monday 9:00", "Weekdays 8:00".
+  const time = `${+hour}:${min.padStart(2, '0')}`;
+  if (dom === '*' && dow === '*') return `Every day ${time}`;
+  if (dom === '*' && /^(MON-FRI|1-5)$/i.test(dow)) return `Weekdays ${time}`;
+  if (dom === '*' && DAY_NAMES[dow.toUpperCase()]) return `Every ${DAY_NAMES[dow.toUpperCase()]} ${time}`;
+  if (dow === '*' && num(dom)) return `Monthly on day ${+dom}, ${time}`;
   return c;
 }
 
@@ -372,6 +373,10 @@ export function scheduleRows(schedules, query = '', goals = []) {
         lastError: s.last_error || '',
         runCount: Number(s.run_count) || 0,
         enabled: !!s.enabled,
+        // The routine card: how each run works (a schedule made before this was recorded asks first),
+        // and the chat it was made in, if any.
+        runMode: s.run_mode === 'auto' ? 'auto' : 'ask',
+        sourceConversationId: s.source_conversation_id || null,
       };
     })
     .filter((r) => matches(query, r.label, r.cadence))

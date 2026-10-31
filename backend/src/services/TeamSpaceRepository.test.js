@@ -140,6 +140,39 @@ describe('teamspace board', () => {
   });
 });
 
+// My Space: a private card is its owner's alone, and invisible to everyone else (not even "forbidden").
+describe('private tasks', () => {
+  it('show only on their owner\'s My Space, never on the teamspace board', async () => {
+    const ws = await workspace('General');
+    const mine = await spaces.createTask(TEAM, 'ana', ws, { title: 'Call the dentist', private: true });
+    await spaces.createTask(TEAM, 'ana', ws, { title: 'Team card' });
+    expect(mine.private).toBe(true);
+    expect((await spaces.tasks(TEAM, 'ana', ws)).map((t) => t.title)).toEqual(['Team card']);
+    expect((await spaces.tasks(TEAM, 'ana', ws, { private: true })).map((t) => t.title)).toEqual(['Call the dentist']);
+    expect(await spaces.tasks(TEAM, 'ben', ws, { private: true })).toEqual([]);
+    expect((await spaces.tasks(TEAM, 'owner', ws)).map((t) => t.title)).toEqual(['Team card']);
+  });
+  it('are not found for anyone else, even an owner, on every path', async () => {
+    const ws = await workspace('General');
+    const card = await spaces.createTask(TEAM, 'ana', ws, { title: 'Private', private: true });
+    for (const who of ['ben', 'owner']) {
+      await expect(spaces.task(TEAM, who, ws, card.id)).rejects.toMatchObject({ status: 404 });
+      await expect(spaces.updateTask(TEAM, who, ws, card.id, { status: 'done', expectedRevision: 1 })).rejects.toMatchObject({ status: 404 });
+      await expect(spaces.deleteTask(TEAM, who, ws, card.id)).rejects.toMatchObject({ status: 404 });
+      await expect(spaces.addComment(TEAM, who, ws, card.id, { body: 'hi' })).rejects.toMatchObject({ status: 404 });
+    }
+    const { task } = await spaces.updateTask(TEAM, 'ana', ws, card.id, { status: 'doing', expectedRevision: 1 });
+    expect(task.status).toBe('doing');
+  });
+  it('can only be assigned to their owner', async () => {
+    const ws = await workspace('General');
+    await expect(spaces.createTask(TEAM, 'ana', ws, { title: 'x', private: true, assignee: { kind: 'person', id: 'ben' } })).rejects.toMatchObject({ status: 400 });
+    await expect(spaces.createTask(TEAM, 'ana', ws, { title: 'x', private: true, assignee: { kind: 'agent', id: 'a1' } })).rejects.toMatchObject({ status: 400 });
+    const card = await spaces.createTask(TEAM, 'ana', ws, { title: 'x', private: true, assignee: { kind: 'person', id: 'ana' } });
+    await expect(spaces.updateTask(TEAM, 'ana', ws, card.id, { assignee: { kind: 'person', id: 'ben' }, expectedRevision: 1 })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
 describe('agent results wait for a person', () => {
   it('waiting → approval inbox → approve moves the card to done and resolves the inbox item', async () => {
     const ws = await workspace('sales');

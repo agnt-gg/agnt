@@ -65,6 +65,9 @@ export async function initializeTeamSpaces(repository) {
     `CREATE TABLE IF NOT EXISTS inbox_items(id TEXT PRIMARY KEY,team_id TEXT NOT NULL,user_id TEXT NOT NULL,kind TEXT NOT NULL,actor_kind TEXT NOT NULL,actor_id TEXT NOT NULL,summary TEXT NOT NULL,workspace_id TEXT,target_kind TEXT,target_id TEXT,state TEXT,read_at TEXT,created_at TEXT NOT NULL)`,
     'CREATE INDEX IF NOT EXISTS inbox_items_user ON inbox_items(team_id,user_id,created_at)',
   ]) await repository.run(sql);
+  // My Space tasks: a card only its owner sees. Added after the table shipped, so added in place.
+  const columns = await repository.all('PRAGMA table_info(space_tasks)');
+  if (!columns.some((c) => c.name === 'private_to')) await repository.run('ALTER TABLE space_tasks ADD COLUMN private_to TEXT');
 }
 
 const now = () => new Date().toISOString();
@@ -80,6 +83,7 @@ export function taskRow(row) {
     agentState: row.agent_state || null, result: row.result_text || null,
     revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
     commentCount: row.comment_count ?? undefined,
+    private: Boolean(row.private_to),
   };
 }
 function commentRow(row) {
@@ -101,9 +105,14 @@ export class TeamSpaceRepository {
     return row;
   }
 
-  async taskIn(teamId, workspaceId, taskId) {
+  /**
+   * The card, live and in this workspace. With `user`, someone else's private
+   * card is "not found" exactly like a missing one, so its existence never leaks.
+   * Server-side paths (agent runs) pass no user.
+   */
+  async taskIn(teamId, workspaceId, taskId, user = null) {
     const row = await this.repository.get('SELECT * FROM space_tasks WHERE id=? AND team_id=? AND workspace_id=? AND deleted_at IS NULL', [taskId, teamId, workspaceId]);
-    if (!row) fail(404, 'Task not found');
+    if (!row || (user !== null && row.private_to && row.private_to !== user)) fail(404, 'Task not found');
     return row;
   }
 
@@ -180,13 +189,15 @@ export class TeamSpaceRepository {
 
   // ── Board ───────────────────────────────────────────────────────────────
 
-  tasks(teamId, user, workspaceId) {
+  /** The teamspace board (never anyone's private cards), or with `private`, only the caller's own private cards. */
+  tasks(teamId, user, workspaceId, { private: own = false } = {}) {
     const r = this.repository;
     return r.transaction(async () => {
       await r.member(teamId, user);
       await this.workspace(teamId, workspaceId);
       const rows = await r.all(`SELECT t.*,(SELECT COUNT(*) FROM space_task_comments c WHERE c.task_id=t.id) AS comment_count
-        FROM space_tasks t WHERE t.workspace_id=? AND t.team_id=? AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 500`, [workspaceId, teamId]);
+        FROM space_tasks t WHERE t.workspace_id=? AND t.team_id=? AND t.deleted_at IS NULL AND ${own ? 't.private_to=?' : 't.private_to IS NULL'} ORDER BY t.updated_at DESC LIMIT 500`,
+      own ? [workspaceId, teamId, user] : [workspaceId, teamId]);
       return rows.map(taskRow);
     });
   }
@@ -196,7 +207,7 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user);
       await this.workspace(teamId, workspaceId);
-      const row = await this.taskIn(teamId, workspaceId, taskId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
       const comments = await r.all('SELECT * FROM space_task_comments WHERE task_id=? ORDER BY created_at LIMIT 500', [taskId]);
       return { ...taskRow(row), comments: comments.map(commentRow) };
     });
@@ -212,6 +223,8 @@ export class TeamSpaceRepository {
       if (!TASK_STATUSES.includes(status)) fail(400, 'Invalid status');
       const assignee = parseAssignee(input.assignee);
       const due = text(input.due, 60, 'due date', { optional: true });
+      const own = input.private === true;
+      if (own && (input.sourceMessageId || (assignee && !(assignee.kind === 'person' && assignee.id === user)))) fail(400, 'A private task can only be assigned to you');
       let sourceMessageId = null;
       if (input.sourceMessageId) {
         const message = await r.get('SELECT id FROM space_messages WHERE id=? AND workspace_id=? AND team_id=? AND deleted_at IS NULL', [input.sourceMessageId, workspaceId, teamId]);
@@ -220,8 +233,8 @@ export class TeamSpaceRepository {
       }
       const id = randomUUID();
       const at = now();
-      await r.run('INSERT INTO space_tasks(id,team_id,workspace_id,title,status,assignee_kind,assignee_id,due,created_by,source_message_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
-        [id, teamId, workspaceId, title, status, assignee?.kind || null, assignee?.id || null, due, user, sourceMessageId, at, at]);
+      await r.run('INSERT INTO space_tasks(id,team_id,workspace_id,title,status,assignee_kind,assignee_id,due,created_by,source_message_id,created_at,updated_at,private_to) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [id, teamId, workspaceId, title, status, assignee?.kind || null, assignee?.id || null, due, user, sourceMessageId, at, at, own ? user : null]);
       if (sourceMessageId) await r.run('UPDATE space_messages SET task_id=? WHERE id=? AND task_id IS NULL', [id, sourceMessageId]);
       if (assignee?.kind === 'person' && assignee.id !== user) {
         await this.notify(teamId, [{ userId: assignee.id, kind: 'assigned', actor: { kind: 'person', id: user }, summary: title, workspaceId, target: { kind: 'task', id } }]);
@@ -240,13 +253,14 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user, WRITERS);
       await this.workspace(teamId, workspaceId);
-      const row = await this.taskIn(teamId, workspaceId, taskId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
       if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== row.revision) fail(409, 'This card changed. Reload it before saving.', 'revision_conflict');
       const title = input.title === undefined ? row.title : text(input.title, MAX_TITLE, 'task title');
       const status = input.status === undefined ? row.status : input.status;
       if (!TASK_STATUSES.includes(status)) fail(400, 'Invalid status');
       const due = input.due === undefined ? row.due : text(input.due, 60, 'due date', { optional: true });
       const assignee = input.assignee === undefined ? (row.assignee_kind ? { kind: row.assignee_kind, id: row.assignee_id } : null) : parseAssignee(input.assignee);
+      if (row.private_to && assignee && !(assignee.kind === 'person' && assignee.id === user)) fail(400, 'A private task can only be assigned to you');
       const assigneeChanged = input.assignee !== undefined && (assignee?.kind !== (row.assignee_kind || undefined) || assignee?.id !== (row.assignee_id || undefined));
       // A new assignee, or a card moved off "done", clears an agent's stale run state.
       const agentState = assigneeChanged ? null : status === 'done' ? null : row.agent_state;
@@ -266,7 +280,7 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       const member = await r.member(teamId, user, WRITERS);
       await this.workspace(teamId, workspaceId);
-      const row = await this.taskIn(teamId, workspaceId, taskId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
       if (row.created_by !== user && !MANAGERS.includes(member.role)) fail(403, 'Only the person who made this card, or an admin, can delete it');
       await r.run('UPDATE space_tasks SET deleted_at=?,revision=revision+1 WHERE id=?', [now(), taskId]);
       await r.event(teamId, user, 'task.deleted', taskId);
@@ -286,7 +300,7 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user, WRITERS);
       await this.workspace(teamId, workspaceId);
-      const row = await this.taskIn(teamId, workspaceId, taskId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
       const content = text(body, MAX_BODY, 'comment');
       const list = parseMentions(mentions);
       const created = await this.comment(taskId, 'person', user, content);
@@ -332,7 +346,7 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user, WRITERS);
       await this.workspace(teamId, workspaceId);
-      const row = await this.taskIn(teamId, workspaceId, taskId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
       if (row.agent_state !== 'waiting') fail(409, 'Nothing is waiting for approval on this card', 'not_waiting');
       const remark = text(note, 1000, 'note', { optional: true });
       await r.run('UPDATE space_tasks SET agent_state=?,status=?,revision=revision+1,updated_at=? WHERE id=?', [approve ? null : 'sent_back', approve ? 'done' : 'doing', now(), taskId]);

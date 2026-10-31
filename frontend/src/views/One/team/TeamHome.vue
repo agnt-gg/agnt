@@ -75,7 +75,7 @@
             <div class="cards" style="grid-template-columns: 1fr">
               <button v-for="s in spaces" :key="s.id" type="button" class="card" @click="ctx.go({ view: 'space', space: s.id, tab: 'board' })">
                 <div class="card-top">
-                  <span class="space-icon" style="width: 34px; height: 34px; font-size: 16px; border-radius: 10px">#</span>
+                  <span class="space-icon" style="width: 34px; height: 34px; font-size: 16px; border-radius: 10px">{{ spaceEmoji(s) }}</span>
                   <div style="flex: 1"><h4>{{ s.name }}</h4><p>{{ openCount(s.id) }} open</p></div>
                   <span class="stack"><TeamAvatar v-for="p in ctx.people.value.slice(0, 4)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span>
                 </div>
@@ -112,7 +112,7 @@ import TeamCheckpointRow from './TeamCheckpointRow.vue';
 import TeamRunRow from './TeamRunRow.vue';
 import { teamApi } from './useTeam.js';
 import { roleLabel } from '@/utils/teamClient.js';
-import { partOfDay, pendingApprovals } from './teamModel.js';
+import { partOfDay, spaceEmoji } from './teamModel.js';
 
 const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
@@ -135,14 +135,13 @@ const needCount = computed(() => checkpointsWaiting.value.length + runsWaiting.v
 const myTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'person' && t.assignee.id === ctx.me.value));
 const agentTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'agent'));
 const openCount = (id) => tasks.value.filter((t) => t.workspaceId === id && t.status !== 'done').length;
+/** The mockup's sentence: "7 things need you, 4 tasks on your plate and 2 agent jobs in flight." */
 const lead = computed(() => {
-  const parts = [];
-  const approvals = checkpointsWaiting.value.length + runsWaiting.value.length + pendingApprovals(ctx.inbox.value).length;
-  parts.push(needCount.value ? `${needCount.value} ${needCount.value === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you');
-  if (approvals) parts.push(`${approvals} waiting for your OK`);
-  if (team.value) parts.push(`${myTasks.value.length} ${myTasks.value.length === 1 ? 'task' : 'tasks'} on your plate`);
-  const summary = parts.join(', ') + '.';
-  return team.value ? summary : `${summary} This is your personal space; everything here is private to you.`;
+  const n = needCount.value;
+  const need = n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you, ` : 'Nothing needs you, ';
+  if (!team.value) return `${need.replace(/, $/, '.')} This is your personal space; everything here is private to you.`;
+  const plate = myTasks.value.length, jobs = agentTasks.value.length;
+  return `${need}${plate} ${plate === 1 ? 'task' : 'tasks'} on your plate and ${jobs} agent ${jobs === 1 ? 'job' : 'jobs'} in flight.`;
 });
 
 async function readAll() {

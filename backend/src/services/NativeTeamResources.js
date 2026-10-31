@@ -53,7 +53,7 @@ export class NativeTeamResources{
       publishedRevision=binding?.approved_revision??null;
      }
     }catch(error){if(!(error instanceof SyntaxError))throw error;}
-    result.push({id:row.id,name:row.name||row.title,kind,scopeId:scope.id,status,publishedRevision});
+    result.push({id:row.id,name:row.name||row.title,kind,scopeId:scope.id,status,publishedRevision,description:String(row.description||'').slice(0,300)});
    }
   }
   return result;

@@ -7,7 +7,7 @@
     </span>
     <span v-if="task.agentState === 'running'" class="pulse" aria-label="Working"></span>
     <span v-else-if="agentStateLabel(task.agentState)" class="tag" :class="task.agentState === 'waiting' ? 'pink' : 'amber'">{{ agentStateLabel(task.agentState) }}</span>
-    <TeamAvatar v-if="task.assignee" :who="task.assignee" size="sm" />
+    <TeamAvatar v-if="task.assignee" :who="task.assignee" :label="ctx.people.value.find((p) => p.id === task.assignee.id)?.name || ''" size="sm" />
   </button>
 </template>
 

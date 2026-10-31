@@ -1,5 +1,6 @@
 import { reactive, computed, readonly } from 'vue';
 import { teamRequest } from '@/utils/teamClient.js';
+import { API_CONFIG } from '@/tt.config.js';
 import { instanceTeam, rememberInstanceTeam } from '@/utils/teamScopeTransport.js';
 import { currentTeamScope } from '@/composables/useSpaces.js';
 import { getRealtimeSocket } from '@/composables/useRealtimeSync.js';
@@ -130,7 +131,8 @@ export const teamApi = {
   messages: (ws) => teamRequest(space(ws, '/messages')),
   postMessage: (ws, body, mentions) => teamRequest(space(ws, '/messages'), json('POST', { body, mentions })),
   deleteMessage: (ws, id) => teamRequest(space(ws, '/messages/' + encodeURIComponent(id)), { method: 'DELETE' }),
-  tasks: (ws) => teamRequest(space(ws, '/tasks')),
+  /** The teamspace board, or with { private: true } the caller's own My Space cards in that workspace. */
+  tasks: (ws, { private: own = false } = {}) => teamRequest(space(ws, own ? '/tasks?private=1' : '/tasks')),
   task: (ws, id) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id))),
   createTask: (ws, input) => teamRequest(space(ws, '/tasks'), json('POST', input)),
   updateTask: (ws, id, input) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id)), json('PATCH', input)),
@@ -149,6 +151,26 @@ export const teamApi = {
   createSpace: (name) => teamRequest(path('/workspaces'), json('POST', { name })),
   markRead: (id) => teamRequest(path('/inbox/' + encodeURIComponent(id) + '/read'), json('POST', {})),
   markAllRead: () => teamRequest(path('/inbox/read-all'), json('POST', {})),
+};
+
+/**
+ * A teamspace's Files, on this instance's workspace-files service (the cloud
+ * authorises every call per teamspace: files.read / files.write).
+ */
+async function filesFetch(teamId, workspaceId, suffix, init = {}) {
+  const response = await fetch(`${API_CONFIG.BASE_URL}/workspace-files/${encodeURIComponent(teamId)}/${encodeURIComponent(workspaceId)}${suffix}`, {
+    ...init, headers: { Authorization: 'Bearer ' + (localStorage.getItem('token') || ''), ...(init.headers || {}) },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(body.error || 'Files are unavailable right now'), { status: response.status });
+  }
+  return response;
+}
+export const teamFiles = {
+  list: async (teamId, ws) => (await filesFetch(teamId, ws, '/files')).json(),
+  upload: (teamId, ws, name, blob) => filesFetch(teamId, ws, '/content?path=' + encodeURIComponent(name), { method: 'PUT', body: blob, headers: { 'Content-Type': 'application/octet-stream' } }),
+  download: async (teamId, ws, name) => (await filesFetch(teamId, ws, '/content?path=' + encodeURIComponent(name))).blob(),
 };
 
 export function useTeam(store) {

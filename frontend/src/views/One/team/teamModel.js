@@ -15,13 +15,15 @@ export const TASK_STATUSES = Object.freeze([
 export const statusLabel = (id) => TASK_STATUSES.find((s) => s.id === id)?.label || id;
 export const statusColor = (id) => TASK_STATUSES.find((s) => s.id === id)?.color || '#87898e';
 
+/** A teamspace's tabs, as in the approved mockup. People is reached from the header's "Add people". */
 export const SPACE_TABS = Object.freeze([
-  { id: 'chat', label: 'Chat' },
-  { id: 'board', label: 'Board' },
-  { id: 'docs', label: 'Docs' },
-  { id: 'agents', label: 'Agents' },
-  { id: 'routines', label: 'Routines' },
-  { id: 'people', label: 'People' },
+  { id: 'chat', label: 'Chat', icon: 'chats' },
+  { id: 'board', label: 'Board', icon: 'board' },
+  { id: 'docs', label: 'Docs', icon: 'doc' },
+  { id: 'agents', label: 'Agents', icon: 'bot' },
+  { id: 'routines', label: 'Routines', icon: 'bolt' },
+  { id: 'files', label: 'Files', icon: 'file' },
+  { id: 'people', label: 'People', icon: 'users', hidden: true },
 ]);
 export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc', 'agents', 'agent', 'library', 'members']);
 /** Library tabs, as in the approved mockup. */
@@ -55,6 +57,29 @@ export function teamQuery(loc = {}) {
   if (loc.doc) query.doc = loc.doc;
   if (loc.item) query.item = loc.item;
   return query;
+}
+
+/** "1 member", "3 members". */
+export const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * A teamspace's emoji: the one it was given, else one that fits its name, so
+ * every teamspace reads like the mockup's (💼 Sales, ⚙️ Ops, 📣 Marketing).
+ */
+const SPACE_EMOJI = [[/sales|deal|client|pipeline/i, '💼'], [/ops|operation|billing|finance|admin/i, '⚙️'], [/market|content|social|brand/i, '📣'],
+  [/eng|dev|product|build/i, '🛠️'], [/design|creative/i, '🎨'], [/support|help|service/i, '🤝'], [/general|team|company|all/i, '💬']];
+export function spaceEmoji(space) {
+  if (space?.emoji) return space.emoji;
+  const name = String(space?.name || '');
+  return SPACE_EMOJI.find(([pattern]) => pattern.test(name))?.[1] || '📁';
+}
+
+/** A person's avatar colour, stable for their id, from the mockup's palette. */
+const HUES = ['#e53d8f', '#2d64bd', '#157839', '#915d06', '#7d3de5', '#5c5c72'];
+export function avatarHue(id) {
+  let hash = 0;
+  for (const ch of String(id || '')) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return HUES[hash % HUES.length];
 }
 
 /** "Jess Park" → "JP"; "sam@globex.com" → "SA". */

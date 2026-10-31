@@ -6,20 +6,22 @@
     <UpgradePrompt title="Let Annie work on a schedule" description="Routines are included with paid plans. Ask once, like “every weekday at 7, brief me on my day”, and it runs on its own." />
   </section>
   <FocusedRoutine v-else-if="item || isNew" :key="item || 'new'" :schedule-id="item" />
-  <!-- The approved mockup's Routines page: each routine as a widget card. -->
+  <!-- The approved mockup's Routines page: Mine, then each teamspace, every routine a widget card. -->
   <div v-else class="mk mk-page">
     <div class="content">
       <div class="page">
         <div class="page-head">
-          <div><h1>Routines</h1><p>Tasks you approved to run again. Each run is recorded, and anything that sends or changes something asks you first.</p></div>
+          <div><h1>Routines</h1><p>Tasks you approved to run again. Each run opens its own chat, and anything that sends or changes something asks you first.</p></div>
           <button type="button" class="primary" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="plus" size="sm" />New routine</button>
         </div>
-        <div class="sec-head"><h3><MkIcon :name="teamName ? 'users' : 'lock'" size="xs" /> {{ teamName || 'Mine' }}</h3></div>
-        <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
-        <ul v-else-if="!rows.length" class="list"><li class="empty">No routines yet. Finish a task in a chat and choose “Make it a routine”.</li></ul>
-        <div v-else class="tc-rgrid">
-          <FocusedRoutineCard v-for="r in rows" :key="r.id" :row="r" :scope-label="teamName" @open="nav.go({ page: 'scheduled', item: String(r.id) })" @toggle="toggle" />
-        </div>
+        <template v-for="section in sections" :key="section.key">
+          <div class="sec-head"><h3><MkIcon v-if="!section.emoji" name="lock" size="xs" /><span v-else>{{ section.emoji }}</span> {{ section.title }}</h3></div>
+          <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
+          <ul v-else-if="!section.rows.length" class="list"><li class="empty">{{ section.empty }}</li></ul>
+          <div v-else class="tc-rgrid">
+            <FocusedRoutineCard v-for="r in section.rows" :key="r.id" :row="r" :scope-label="section.scope" @open="nav.go({ page: 'scheduled', item: String(r.id) })" @toggle="toggle" @mode="switchMode" />
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -33,6 +35,8 @@ import FocusedRoutine from './FocusedRoutine.vue';
 import FocusedRoutineCard from './FocusedRoutineCard.vue';
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { instanceTeam } from '@/utils/teamScopeTransport.js';
+import { useTeam } from '@/views/One/team/useTeam.js';
+import { spaceEmoji } from '@/views/One/team/teamModel.js';
 import '@/views/One/mk/mk.css';
 import '@/views/One/mk/mk-frame.css';
 import { FOCUSED_PAGES, scheduleRows } from './focusedModel.js';
@@ -45,16 +49,39 @@ const page = FOCUSED_PAGES.scheduled;
 const paid = computed(() => canScheduleGoals(store.getters['userAuth/planType']));
 const query = ref('');
 const loading = ref(false);
+const team = useTeam(store);
 
 const rows = computed(() => scheduleRows(store.getters['schedules/allSchedules'], query.value, store.getters['goals/allGoals']));
-// On a team's instance its routines are the team's: the section is named for the team, as in the mockup.
-const teamName = computed(() => instanceTeam()?.name || '');
+/**
+ * The mockup's sections. On a team's instance the routines are the team's, and they run in its
+ * main teamspace, so they sit under that teamspace (by its own name and emoji, never the
+ * workspace's). Anywhere else they are yours alone: "Mine".
+ */
+const sections = computed(() => {
+  const own = instanceTeam();
+  const spaces = team.state.spaces || [];
+  const home = own ? (spaces.find((s) => s.is_default) || spaces[0] || null) : null;
+  if (!home) return [{ key: 'mine', title: 'Mine', emoji: '', scope: '', rows: rows.value, empty: 'No private routines. Finish a task in a chat and choose “Make it a routine”.' }];
+  return [
+    { key: 'mine', title: 'Mine', emoji: '', scope: '', rows: [], empty: 'No private routines. Make one from your own space.' },
+    { key: home.id, title: home.name, emoji: spaceEmoji(home), scope: home.name, rows: rows.value, empty: 'None yet.' },
+  ];
+});
 
 async function toggle(r) {
   if (!paid.value) return;
   try {
     await store.dispatch('schedules/updateSchedule', { id: r.id, patch: { enabled: !r.enabled } });
     nav.toast(r.enabled ? 'Paused.' : 'Resumed.');
+  } catch (e) {
+    nav.toast('Couldn’t change it. ' + (e?.message || e));
+  }
+}
+async function switchMode(r) {
+  const runMode = r.runMode === 'ask' ? 'auto' : 'ask';
+  try {
+    await store.dispatch('schedules/updateSchedule', { id: r.id, patch: { runMode } });
+    nav.toast(runMode === 'ask' ? 'Every run now shows you what it will do and waits.' : 'Runs on its own now; each run posts its result.');
   } catch (e) {
     nav.toast('Couldn’t change it. ' + (e?.message || e));
   }
@@ -74,5 +101,3 @@ watch(paid, async (enabled) => {
   }
 }, { immediate: true });
 </script>
-
-

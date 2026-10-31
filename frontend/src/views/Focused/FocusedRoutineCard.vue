@@ -8,7 +8,8 @@
     </div>
     <div class="tc-when">{{ row.cadence }}<template v-if="!row.enabled"> · off</template><template v-else-if="row.next"> · next: {{ formatNext(row.next) }}</template></div>
     <div class="row-gap" style="margin-top: 8px">
-      <span class="scope sm" :class="scopeLabel ? '' : 'mk-private'"><MkIcon :name="scopeLabel ? 'users' : 'lock'" size="sm" />{{ scopeLabel || 'Private' }}</span>
+      <span class="scope sm" :class="scopeLabel ? 'team' : ''"><MkIcon :name="scopeLabel ? 'users' : 'lock'" size="sm" />{{ scopeLabel || 'Private' }}</span>
+      <button v-tooltip="'Change how runs work'" type="button" class="tc-mode" :class="row.runMode" @click="$emit('mode', row)">{{ row.runMode === 'auto' ? 'Runs on its own' : 'Asks you before acting' }}</button>
     </div>
     <div v-if="loaded && runs.length" class="tc-kpirow">
       <div>
@@ -29,7 +30,9 @@
       <div v-if="loaded && !runs.length" class="tc-rtext" style="padding: 6px 0">No runs yet.</div>
     </div>
     <div class="tc-rcard-f">
-      <span class="tc-rtext" style="color: var(--text-tertiary)">{{ held ? 'Last run is still ' + (held.status === 'running' ? 'running' : 'waiting for you') : 'Runs ' + row.cadence.toLowerCase() }}</span>
+      <span v-if="held" class="tc-rtext" style="color: var(--text-tertiary)">Last run is still {{ held.status === 'running' ? 'running' : 'waiting for you' }}</span>
+      <button v-else-if="row.sourceConversationId" type="button" class="link" @click="nav.openConversation(row.sourceConversationId)">Open the chat it came from →</button>
+      <span v-else class="tc-rtext" style="color: var(--text-tertiary)">Built by hand</span>
       <button type="button" class="btn sm" :disabled="busy" @click="runNow"><MkIcon name="play" size="xs" />{{ held ? 'Open the last run' : 'Run now' }}</button>
     </div>
   </div>
@@ -43,7 +46,7 @@ import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { ago, runTone, runStats, blockingRun, sparkPath } from '@/views/One/team/teamModel.js';
 
 const props = defineProps({ row: { type: Object, required: true }, scopeLabel: { type: String, default: '' } });
-defineEmits(['open', 'toggle']);
+defineEmits(['open', 'toggle', 'mode']);
 const store = useStore();
 const nav = inject('focusedNav');
 const runs = ref([]);

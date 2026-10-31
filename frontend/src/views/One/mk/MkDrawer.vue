@@ -41,7 +41,7 @@
             <button v-if="team.role === 'owner'" v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
           </div>
           <button v-for="s in spaces" :key="s.id" type="button" class="d-item" :class="{ 'is-active': active === 'space:' + s.id }" @click="$emit('go', { view: 'space', space: s.id })">
-            <span style="width: 15px; text-align: center">#</span>{{ s.name }}
+            <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}
           </button>
           <p v-if="!spaces.length" class="d-note">No teamspaces yet.<template v-if="team.role === 'owner'"> Add one with +.</template></p>
         </template>
@@ -55,6 +55,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import MkIcon from './MkIcon.vue';
 import { roleLabel } from '@/utils/teamClient.js';
+import { spaceEmoji } from '@/views/One/team/teamModel.js';
 import { openTeam, openPersonal } from '@/composables/useSpaces.js';
 
 const props = defineProps({

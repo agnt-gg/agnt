@@ -84,7 +84,8 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   }));
 
   // ── Board ───────────────────────────────────────────────────────────────
-  router.get(W + '/tasks', handler((repo, req, user) => spacesOf(repo).tasks(req.params.teamId, user, req.params.workspaceId)));
+  // ?private=1: the caller's own My Space cards in this workspace; otherwise the shared board.
+  router.get(W + '/tasks', handler((repo, req, user) => spacesOf(repo).tasks(req.params.teamId, user, req.params.workspaceId, { private: req.query.private === '1' })));
   router.get(W + '/tasks/:taskId', handler((repo, req, user) => spacesOf(repo).task(req.params.teamId, user, req.params.workspaceId, req.params.taskId)));
 
   router.post(W + '/tasks', handler(async (repo, req, user) => {
@@ -92,6 +93,8 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     if (assignee) await checkTargets(repo, req, [assignee]);
     const task = await spacesOf(repo).createTask(req.params.teamId, user, req.params.workspaceId, req.body || {});
     if (task.assignee?.kind === 'agent') startAgent(repo, req, user, task, agentInput(task));
+    // A private card is nobody else's business: no teamspace signal for it.
+    if (task.private) return task;
     signal(req, 'tasks', { taskId: task.id });
     if (task.assignee?.kind === 'person') realtime.inbox(req.params.teamId, [task.assignee.id]);
     return task;

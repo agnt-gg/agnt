@@ -17,6 +17,16 @@ export class WorkspaceFileService{
   for(let index=0;index<parts.length;index++){current=path.join(current,parts[index]);try{const entry=await fs.lstat(current);if(entry.isSymbolicLink())deny(403,'Links are not permitted');if(index<parts.length-1&&!entry.isDirectory())deny(400,'Invalid parent directory');}catch(error){if(error.code!=='ENOENT'||index<parts.length-1)throw error;}}
   return current;
  }
+ /** The teamspace's files, top level only, newest first. A teamspace with no files yet has none (no root is created by reading). */
+ async list(context){
+  await this.authorize(context,'files.read');
+  let root;try{root=await this.resolve(context,'probe');}catch(error){if(error.code==='ENOENT')return[];throw error;}
+  root=path.dirname(root);
+  let entries;try{entries=await fs.readdir(root,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return[];throw error;}
+  const files=[];
+  for(const entry of entries){if(!entry.isFile()||entry.name.includes('.upload-'))continue;const stat=await fs.stat(path.join(root,entry.name));files.push({name:entry.name,bytes:stat.size,modifiedAt:stat.mtime.toISOString()});}
+  return files.sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));
+ }
  async read(context,relative){await this.authorize(context,'files.read');const target=await this.resolve(context,relative);const stat=await fs.stat(target);if(!stat.isFile()||stat.size>this.maxBytes)deny(413,'File exceeds read limit');return fs.readFile(target);}
  async write(context,relative,bytes){await this.authorize(context,'files.write');if(!Buffer.isBuffer(bytes)||bytes.length>this.maxBytes)deny(413,'File exceeds write limit');const target=await this.resolve(context,relative,{createRoot:true});const temporary=target+'.upload-'+randomUUID();try{await fs.writeFile(temporary,bytes,{flag:'wx',mode:0o600});await this.authorize(context,'files.write');await fs.rename(temporary,target);}catch(error){try{await fs.unlink(temporary);}catch(cleanup){if(cleanup.code!=='ENOENT')throw new AggregateError([error,cleanup],'Write cleanup failed');}throw error;}return{bytes:bytes.length};}
 }

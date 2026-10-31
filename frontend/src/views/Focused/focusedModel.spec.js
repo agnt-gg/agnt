@@ -244,10 +244,10 @@ describe('scheduled', () => {
   it.each([
     ['0 * * * *', 'Every hour'],
     ['15 * * * *', 'Every hour at :15'],
-    ['30 9 * * *', 'Every day at 09:30'],
-    ['0 8 * * MON-FRI', 'Weekdays at 08:00'],
-    ['0 17 * * FRI', 'Every Friday at 17:00'],
-    ['0 6 1 * *', 'Monthly on day 1 at 06:00'],
+    ['30 9 * * *', 'Every day 9:30'],
+    ['0 8 * * MON-FRI', 'Weekdays 8:00'],
+    ['0 17 * * FRI', 'Every Friday 17:00'],
+    ['0 6 1 * *', 'Monthly on day 1, 6:00'],
     ['*/5 * * * *', '*/5 * * * *'],
     ['', 'Custom schedule'],
   ])('cronLabel(%j) = %j', (cron, label) => {

@@ -8,12 +8,12 @@ import generateUUID from '../utils/generateUUID.js';
  * SchedulerService ticks every 60s and fires anything where next_run <= now.
  */
 class ScheduleModel {
-  static create({ userId, targetType, targetId, cron, timezone, nextRun, enabled, onMissed }) {
+  static create({ userId, targetType, targetId, cron, timezone, nextRun, enabled, onMissed, runMode = null, sourceConversationId = null }) {
     const id = generateUUID();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO schedules (id, user_id, target_type, target_id, cron, timezone, next_run, enabled, on_missed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO schedules (id, user_id, target_type, target_id, cron, timezone, next_run, enabled, on_missed, run_mode, source_conversation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           userId,
@@ -24,6 +24,8 @@ class ScheduleModel {
           nextRun ? new Date(nextRun).toISOString() : null,
           enabled === false ? 0 : 1,
           onMissed || 'fire_once',
+          runMode,
+          sourceConversationId,
         ],
         function (err) {
           if (err) reject(err);
@@ -119,6 +121,16 @@ class ScheduleModel {
           else resolve(this.changes);
         }
       );
+    });
+  }
+
+  /** How each run works: 'ask' (shows what it will do and waits) or 'auto'. */
+  static setRunMode(id, runMode) {
+    return new Promise((resolve, reject) => {
+      db.run('UPDATE schedules SET run_mode = ? WHERE id = ?', [runMode, id], function (err) {
+        if (err) reject(err);
+        else resolve(this.changes);
+      });
     });
   }
 

@@ -27,7 +27,7 @@ export function getTaskToolSchemas() {
           '1) kind="plan": the steps, with the real specifics (who, how many, which records) and a line saying what you will NOT do; ' +
           '2) kind="review": the exact output to check (the full email text with To/Subject, the table, the post) before it goes anywhere; ' +
           '3) kind="final": when finished, a checklist of what was planned plus every output; ' +
-          '4) kind="routine": after a finished task the person wants repeated, the routine (when it runs, each step, what still asks them first, what you will measure); create the schedule only after they approve it; ' +
+          '4) kind="routine": after a finished task the person wants repeated, the routine (when it runs, each step, what still asks them first, what you will measure); create the schedule only after they approve it, passing runMode ("ask" if any step sends or changes something, else "auto") and sourceConversationId (this chat\'s id) so its card shows how it runs and links back here; ' +
           '5) kind="run": inside a routine run, this run\'s specifics before acting. ' +
           'Put EVERYTHING the person is approving in `content` (markdown, tables welcome): never ask them to approve something they cannot see on the card. ' +
           'Do not call it for questions, research, summaries or anything read-only. One card at a time; after a change request, post the revised card.',

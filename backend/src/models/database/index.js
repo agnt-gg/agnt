@@ -1350,6 +1350,13 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
+      // A routine's card: how each run works ('ask' first, or 'auto'), and the chat it was made in.
+      // Existing schedules stay NULL: shown as "Asks you before acting" and "Built by hand".
+      for (const column of ['run_mode TEXT', 'source_conversation_id TEXT']) {
+        db.run(`ALTER TABLE schedules ADD COLUMN ${column}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) console.error(`Error adding ${column} to schedules:`, err);
+        });
+      }
 
       // A trigger's next fire time, written down so it survives the process and
       // the fleet can wake a sleeping instance for it. See TriggerWakeModel.js.

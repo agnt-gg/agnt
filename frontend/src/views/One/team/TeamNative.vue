@@ -1,42 +1,61 @@
 <template>
   <div>
     <div class="board-bar">
-      <span class="mk-muted">{{ kind === 'agent' ? `Agents anyone in ${spaceName} can @mention or put on a card. They run on the team's connections, only once published.` : `Routines that run for ${spaceName}, on the team's connections.` }}</span>
+      <span style="color: var(--text-secondary); font-size: 13.5px">{{ kind === 'agent' ? `Published agents anyone in ${spaceName} can @mention or assign. Runs use team connections.` : `Routines that run for ${spaceName}, on the team's connections.` }}</span>
       <span class="fill"></span>
-      <button type="button" class="btn" @click="$emit('open-editor', null)"><i class="fas fa-plus" aria-hidden="true"></i>New {{ kind === 'agent' ? 'agent' : 'routine' }}</button>
+      <button v-if="kind === 'agent'" type="button" class="btn" @click="$emit('library')"><MkIcon name="library" size="sm" />Add from Library</button>
+      <button type="button" :class="kind === 'agent' ? 'btn' : 'primary'" @click="$emit('open-editor', null)"><MkIcon name="plus" size="sm" />New {{ kind === 'agent' ? 'agent' : 'routine' }}</button>
     </div>
-    <div v-if="!items.length" class="list"><p class="empty">{{ loading ? 'Loading…' : kind === 'agent' ? 'No agents here yet. Make one, or copy one in from your personal space.' : 'No routines here yet.' }}</p></div>
-    <div v-else class="cards">
-      <div v-for="item in items" :key="item.id" class="card">
-        <div class="row-gap" style="flex-wrap: nowrap">
-          <TeamAvatar v-if="kind === 'agent'" :who="{ kind: 'agent', id: item.id }" size="lg" />
-          <span v-else class="r-icon"><i class="fas fa-sync-alt" aria-hidden="true"></i></span>
-          <h4 style="min-width: 0; overflow: hidden; text-overflow: ellipsis">{{ item.name }}</h4>
+
+    <!-- Agents: cards, as in the mockup. -->
+    <template v-if="kind === 'agent'">
+      <ul v-if="!items.length" class="list"><li class="empty">{{ loading ? 'Loading…' : 'No agents yet.' }}</li></ul>
+      <div v-else class="cards">
+        <div v-for="item in items" :key="item.id" class="card clickable" role="button" tabindex="0" @click="$emit('open-editor', item)" @keydown.enter="$emit('open-editor', item)">
+          <div class="card-top">
+            <TeamAvatar :who="{ kind: 'agent', id: item.id }" :label="item.name" size="lg" />
+            <div style="min-width: 0"><h4>{{ item.name }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">Team agent · {{ spaceName }}</div></div>
+          </div>
+          <p>{{ item.description || 'No description yet.' }}</p>
+          <div class="card-foot" style="flex-wrap: wrap">
+            <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label(item) }}</span>
+            <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click.stop="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
+            <span class="fill"></span>
+            <span class="scope team sm"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
+          </div>
         </div>
-        <div class="card-foot">
-          <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label }}</span>
-          <span class="fill"></span>
-          <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
-          <button type="button" class="btn sm" @click="$emit('open-editor', item)">Open</button>
-        </div>
-        <p v-if="item.status === 'changed'" class="mk-muted" style="margin: 0">Edited since publishing. The published version keeps running until you publish again.</p>
       </div>
-    </div>
+    </template>
+
+    <!-- Routines: one list of rows, as in the mockup. -->
+    <ul v-else class="list">
+      <li v-if="!items.length" class="empty">{{ loading ? 'Loading…' : 'No routines yet.' }}</li>
+      <li v-for="item in items" :key="item.id">
+        <div class="r clickable" role="button" tabindex="0" @click="$emit('open-editor', item)" @keydown.enter="$emit('open-editor', item)">
+          <span class="r-icon"><MkIcon name="bolt" size="sm" /></span>
+          <span class="r-text"><strong>{{ item.name }}</strong><small>{{ item.description || (item.status === 'published' ? 'Runs on the team’s connections' : 'Publish it to let it run for the team') }}</small></span>
+          <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label(item) }}</span>
+          <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click.stop="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
+          <span class="scope team sm"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
+        </div>
+      </li>
+    </ul>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, inject, onMounted } from 'vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamAvatar from './TeamAvatar.vue';
 import { teamApi } from './useTeam.js';
 
 const STATUS = Object.freeze({
-  draft: { label: 'Draft, not runnable yet', tone: '' },
-  published: { label: 'Published', tone: 'green' },
-  changed: { label: 'Changed since publishing', tone: 'amber' },
+  draft: { label: () => 'Draft', tone: '' },
+  published: { label: (item) => (item.publishedRevision ? `Published v${item.publishedRevision}` : 'Published'), tone: 'green' },
+  changed: { label: () => 'Changed since publishing', tone: 'amber' },
 });
 const props = defineProps({ workspaceId: { type: String, required: true }, spaceName: { type: String, default: '' }, kind: { type: String, default: 'agent' } });
-defineEmits(['open-editor']);
+defineEmits(['open-editor', 'library']);
 const ctx = inject('teamCtx');
 
 const all = ref([]);

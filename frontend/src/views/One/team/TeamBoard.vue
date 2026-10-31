@@ -4,9 +4,9 @@
       <div class="seg" role="group" aria-label="Show">
         <button v-for="f in FILTERS" :key="f.id" type="button" :class="{ 'on': filter === f.id }" @click="filter = f.id">{{ f.label }}</button>
       </div>
-      <span class="mk-muted">Drag cards between columns. Assign a teammate or an agent.</span>
+      <span style="font-size: 12.5px; color: var(--text-tertiary)">Drag cards between columns · assign to a person or an agent</span>
       <span class="fill"></span>
-      <button v-if="canWrite" type="button" class="primary" @click="adding = 'todo'"><i class="fas fa-plus" aria-hidden="true"></i>New task</button>
+      <button v-if="canWrite" type="button" class="primary" @click="adding = 'todo'"><MkIcon name="plus" size="sm" />New task</button>
     </div>
     <div class="board">
       <div
@@ -18,7 +18,7 @@
         @dragleave="over === column.id && (over = null)"
         @drop.prevent="drop(column.id)"
       >
-        <div class="col-head"><span class="col-dot" :style="{ background: column.color }"></span>{{ column.label }} <span>{{ byStatus(column.id).length }}</span></div>
+        <div class="col-head"><span class="col-dot" :style="{ background: column.color }"></span>{{ column.label }}<span class="n">{{ byStatus(column.id).length }}</span></div>
         <button
           v-for="t in byStatus(column.id)"
           :key="t.id"
@@ -51,6 +51,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, inject, onMounted } from 'vue';
 import TeamAvatar from './TeamAvatar.vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { teamApi } from './useTeam.js';
 import { TASK_STATUSES, filterTasks, nameOf, agentStateLabel } from './teamModel.js';
 
@@ -59,6 +60,8 @@ const props = defineProps({
   workspaceId: { type: String, required: true },
   agents: { type: Array, default: () => [] },
   selected: { type: String, default: null },
+  // My Space: the caller's private cards in this workspace; new cards are private and theirs.
+  private: { type: Boolean, default: false },
 });
 defineEmits(['open-task']);
 const ctx = inject('teamCtx');
@@ -76,13 +79,13 @@ const byStatus = (status) => visible.value.filter((t) => t.status === status);
 const who = (ref_) => nameOf(ref_, { people: ctx.people.value, agents: props.agents, me: ctx.me.value });
 
 async function load() {
-  try { tasks.value = await teamApi.tasks(props.workspaceId); } catch (error) { ctx.toast(error.message); }
+  try { tasks.value = await teamApi.tasks(props.workspaceId, { private: props.private }); } catch (error) { ctx.toast(error.message); }
 }
 async function add(status) {
   const title = newTitle.value.trim();
   if (!title) { adding.value = null; return; }
   try {
-    await teamApi.createTask(props.workspaceId, { title, status });
+    await teamApi.createTask(props.workspaceId, props.private ? { title, status, private: true, assignee: { kind: 'person', id: ctx.me.value } } : { title, status });
     newTitle.value = '';
     await load();
   } catch (error) { ctx.toast(error.message); }
@@ -110,5 +113,6 @@ watch(() => ctx.version.value, () => {
   if (!signal || signal.workspaceId === props.workspaceId) load();
 });
 onMounted(load);
-defineExpose({ load });
+/** The page header's "New task" opens the add field in a column, the same as the bar's button. */
+defineExpose({ load, startAdding: (status = 'todo') => { adding.value = status; } });
 </script>

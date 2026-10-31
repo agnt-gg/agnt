@@ -20,7 +20,7 @@
       </div>
     </div>
     <form v-if="canWrite" class="composer" @submit.prevent="send">
-      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName}. @mention a teammate, or an agent to hand it work`" aria-label="Message" @keydown.enter.exact.prevent="send" @input="grow"></textarea>
+      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName} — @mention an agent to hand it work`" aria-label="Message" @keydown.enter.exact.prevent="send" @input="grow"></textarea>
       <div class="composer-row">
         <button v-for="a in agents.slice(0, 3)" :key="a.id" type="button" class="mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
         <button class="send" type="submit" data-tour-id="team-send" :disabled="!draft.trim() || sending" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>

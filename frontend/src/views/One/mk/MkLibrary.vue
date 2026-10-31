@@ -21,7 +21,7 @@
               <span v-else class="r-icon"><MkIcon :name="l.asset_type === 'workflow' ? 'bolt' : 'template'" size="sm" /></span>
               <div style="min-width: 0"><h4>{{ l.title }}</h4><div class="mk-muted">{{ l.creator_name || l.author || 'AGNT' }}</div></div>
             </div>
-            <p>{{ l.description || '' }}</p>
+            <p class="mk-clamp2">{{ l.description || '' }}</p>
             <div class="row-gap"><span class="tag">{{ typeLabel(l) }}</span><span v-if="Number(l.price) > 0" class="tag">${{ Number(l.price).toFixed(2) }}</span></div>
             <div class="card-foot lib-foot">
               <button type="button" class="primary" style="min-height: 30px" :disabled="busy || isInstalled(l)" @click="install(l)">{{ installingId === l.id ? 'Adding…' : isInstalled(l) ? 'Added' : tab === 'templates' ? 'Use template' : 'Add to My Space' }}</button>

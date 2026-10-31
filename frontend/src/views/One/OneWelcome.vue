@@ -27,7 +27,8 @@
       </template>
       <template v-else>
         <h1 class="one-welcome-title">{{ greeting }}</h1>
-        <p class="one-welcome-sub">What should we get done?</p>
+        <!-- The approved mockup's promise: real work becomes a task you see and approve. -->
+        <p class="one-welcome-sub">What can I get done for you? When it’s real work, it becomes a task: you see the plan before anything happens, and you approve every step that sends or changes something.</p>
       </template>
     </template>
   </div>

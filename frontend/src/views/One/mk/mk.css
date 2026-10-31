@@ -125,6 +125,9 @@
 .mk .card p,.mk.card p{margin:0;font-size:13px;color:var(--text-secondary)}
 .mk .card-foot,.mk.card-foot{display:flex;align-items:center;gap:8px;margin-top:auto;font-size:12px;color:var(--text-tertiary)}
 .mk .card-foot.lib-foot,.mk.card-foot.lib-foot{flex-wrap:wrap}
+/* Library and agent cards: the mockup's two-line description, so cards in a row stay even. */
+.mk .mk-clamp2,.mk.mk-clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mk .cards .card p,.mk.cards .card p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .mk .card-foot.lib-foot .primary,.mk.card-foot.lib-foot .primary{flex:none}
 .mk .card-foot.lib-foot .sel,.mk.card-foot.lib-foot .sel{flex:1 1 130px;min-width:0;width:100%;text-overflow:ellipsis}
 .mk .chips,.mk.chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -157,7 +160,7 @@
 .mk .tabs,.mk.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 18px;overflow-x:auto}
 .mk .tab,.mk.tab{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--text-tertiary);font-size:14px;white-space:nowrap}
 .mk .tab:hover,.mk.tab:hover{color:var(--text-primary)}
-.mk .tab.is-active,.mk.tab.is-active{color:var(--text-primary);border-bottom-color:var(--color-pink);font-weight:500}
+.mk .tab.is-active,.mk.tab.is-active{color:var(--text-primary);border-bottom-color:currentColor;font-weight:500}
 .mk .tab .count,.mk.tab .count{font-size:11.5px;color:var(--text-tertiary)}
 .mk .space-head,.mk.space-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
 .mk .space-icon,.mk.space-icon{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:var(--surface-active);font-size:20px;font-weight:600}

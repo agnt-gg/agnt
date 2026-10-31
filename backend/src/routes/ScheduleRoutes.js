@@ -46,11 +46,16 @@ ScheduleRoutes.post('/preview', authenticateToken, (req, res) => {
   }
 });
 
+/** How a routine's runs work: 'ask' shows each run's specifics and waits for approval; 'auto' runs and reports. */
+const RUN_MODES = ['ask', 'auto'];
+
 // POST /api/schedules
 ScheduleRoutes.post('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { targetType, targetId, cron, timezone, enabled, onMissed } = req.body || {};
+    const { targetType, targetId, cron, timezone, enabled, onMissed, runMode, sourceConversationId } = req.body || {};
+    if (runMode !== undefined && !RUN_MODES.includes(runMode)) return res.status(400).json({ error: "runMode must be 'ask' or 'auto'" });
+    if (sourceConversationId !== undefined && (typeof sourceConversationId !== 'string' || sourceConversationId.length > 200)) return res.status(400).json({ error: 'Invalid sourceConversationId' });
     if (!targetType || !targetId || !cron) {
       return res.status(400).json({ error: 'targetType, targetId, and cron are required' });
     }
@@ -66,6 +71,8 @@ ScheduleRoutes.post('/', authenticateToken, async (req, res) => {
       userId, targetType, targetId, cron, timezone: tz, nextRun,
       enabled: enabled !== false,
       onMissed: onMissed || 'fire_once',
+      runMode: runMode || null,
+      sourceConversationId: sourceConversationId || null,
     });
     const schedule = await ScheduleModel.findOne(id);
     res.status(201).json({ success: true, schedule });
@@ -82,7 +89,9 @@ ScheduleRoutes.patch('/:id', authenticateToken, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Schedule not found' });
     if (existing.user_id !== req.user.userId) return res.status(403).json({ error: 'Forbidden' });
 
-    const { cron, timezone, enabled, onMissed } = req.body || {};
+    const { cron, timezone, enabled, onMissed, runMode } = req.body || {};
+    if (runMode !== undefined && !RUN_MODES.includes(runMode)) return res.status(400).json({ error: "runMode must be 'ask' or 'auto'" });
+    if (runMode) await ScheduleModel.setRunMode(req.params.id, runMode);
 
     if (typeof enabled === 'boolean') {
       await ScheduleModel.setEnabled(req.params.id, enabled);
