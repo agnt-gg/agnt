@@ -63,6 +63,8 @@ function bindRealtime() {
     if (signal?.teamId !== state.team?.id) return;
     state.lastSignal = signal;
     state.version++;
+    // Someone was added to or removed from a teamspace: the drawer's list of spaces may have changed.
+    if (signal.kind === 'people') loadSpaces().catch((error) => console.warn('[team] spaces:', error.message));
   });
   socket.on('team:inbox', (signal) => {
     if (signal?.teamId !== state.team?.id) return;
@@ -146,6 +148,9 @@ export const teamApi = {
   saveDoc: (ws, id, input) => teamRequest(space(ws, '/docs/' + encodeURIComponent(id)), json('PUT', input)),
   deleteDoc: (ws, id) => teamRequest(space(ws, '/docs/' + encodeURIComponent(id)), { method: 'DELETE' }),
   people: (ws) => teamRequest(space(ws, '/people')),
+  /** Who is in a teamspace: { access: 'team'|'invited', isDefault, memberIds }. */
+  spaceMembers: (ws) => teamRequest(space(ws, '/members')),
+  setSpaceMember: (ws, userId, member) => teamRequest(space(ws, '/members/' + encodeURIComponent(userId)), member ? json('PUT', {}) : { method: 'DELETE' }),
   native: (ws) => teamRequest(space(ws, '/native')),
   publish: (ws, kind, id) => teamRequest(space(ws, '/native/' + kind + '/' + encodeURIComponent(id) + '/publish'), json('POST', {})),
   createSpace: (name) => teamRequest(path('/workspaces'), json('POST', { name })),

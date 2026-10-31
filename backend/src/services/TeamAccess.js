@@ -30,18 +30,22 @@ export function effectiveCapabilities(role, overrides = []) {
 const path = (teamId, tenantSlug, workspaceId) => '/' + encodeURIComponent(teamId) + '/instances/' + encodeURIComponent(tenantSlug) + '/workspaces/' + encodeURIComponent(workspaceId);
 
 /**
- * Reconciles the cloud's grants with roles + overrides. Grant and revoke are
- * idempotent on the cloud, so the full target set is written rather than diffed
- * against a read that could already be stale.
+ * Reconciles the cloud's grants with membership, roles and overrides. Grant and
+ * revoke are idempotent on the cloud, so the full target set is written rather
+ * than diffed against a read that could already be stale.
+ *
+ * isMember(workspaceId, userId): someone who is not in a teamspace gets nothing
+ * there, whatever their team role (an invite-only space is like a private Slack
+ * channel). The cloud then refuses every request they make to it.
  */
-export async function syncProjectAccess({ cloud, authorization, team, workspaceIds, members, overridesFor }) {
+export async function syncProjectAccess({ cloud, authorization, team, workspaceIds, members, overridesFor, isMember = () => true }) {
   const failures = [];
   for (const workspaceId of workspaceIds) {
     const base = path(team.id, team.tenantSlug, workspaceId);
     for (const member of members) {
       const userId = member.user_id || member.userId;
       if (!userId) continue;
-      const target = effectiveCapabilities(member.role, await overridesFor(workspaceId, userId));
+      const target = (await isMember(workspaceId, userId)) ? effectiveCapabilities(member.role, await overridesFor(workspaceId, userId)) : new Set();
       for (const capability of CAPABILITIES) {
         try {
           await cloud.request(authorization, base + '/members/' + encodeURIComponent(userId) + '/capabilities/' + capability, { method: target.has(capability) ? 'PUT' : 'DELETE', body: '{}' });

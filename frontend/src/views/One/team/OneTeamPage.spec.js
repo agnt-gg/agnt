@@ -41,6 +41,7 @@ function baseRoutes() {
     '/acme/workspaces': [SPACE],
     '/acme/inbox': [],
     '/acme/workspaces/sales/people': { memberIds: ['me', 'jess'], agents: [AGENT] },
+    '/acme/workspaces/sales/members': { access: 'invited', isDefault: false, memberIds: ['me', 'jess'] },
     '/acme/workspaces/sales/messages': [],
     '/acme/workspaces/sales/tasks': [],
     '/acme/workspaces/sales/docs': [],

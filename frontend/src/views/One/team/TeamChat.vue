@@ -62,7 +62,10 @@ const taggableAgents = computed(() => [ANNIE, ...props.agents]);
 const chips = computed(() => taggableAgents.value.slice(0, 3));
 const names = computed(() => [...taggableAgents.value.map((a) => a.name), ...ctx.people.value.flatMap((p) => [p.name, p.first])]);
 const picker = reactive({ open: false, query: '', start: 0, index: 0 });
-const options = computed(() => mentionOptions(picker.query, { people: ctx.people.value, agents: props.agents, me: ctx.me.value }));
+// Only the people in this teamspace can be tagged in it.
+const spaceMemberIds = inject('spaceMemberIds', null);
+const taggablePeople = computed(() => ctx.people.value.filter((p) => !spaceMemberIds?.value || spaceMemberIds.value.includes(p.id)));
+const options = computed(() => mentionOptions(picker.query, { people: taggablePeople.value, agents: props.agents, me: ctx.me.value }));
 function onInput() {
   grow();
   const el = inputRef.value;
@@ -110,7 +113,7 @@ async function send() {
   if (!body || sending.value) return;
   sending.value = true;
   try {
-    await teamApi.postMessage(props.workspaceId, body, mentionsIn(body, { people: ctx.people.value, agents: taggableAgents.value }), props.spaceName);
+    await teamApi.postMessage(props.workspaceId, body, mentionsIn(body, { people: taggablePeople.value, agents: taggableAgents.value }), props.spaceName);
     draft.value = '';
     grow();
     await load({ scroll: true });

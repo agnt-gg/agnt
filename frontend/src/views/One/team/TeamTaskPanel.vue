@@ -74,6 +74,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'open-chat', 'open-doc', 'changed']);
 const ctx = inject('teamCtx');
+// Inside a teamspace, only its people can be assigned (null outside one: no narrowing).
+const spaceMemberIds = inject('spaceMemberIds', computed(() => null));
 
 const task = ref(null);
 const error = ref('');
@@ -87,7 +89,7 @@ const assigneeValue = computed(() => (task.value?.assignee ? task.value.assignee
 const statusOptions = TASK_STATUSES.map((s) => ({ label: s.label, value: s.id }));
 const assigneeOptions = computed(() => [
   { label: 'Unassigned', value: '' },
-  ...ctx.people.value.map((p) => ({ label: p.isMe ? p.name + ' (you)' : p.name, value: 'person:' + p.id })),
+  ...ctx.people.value.filter((p) => !spaceMemberIds.value || spaceMemberIds.value.includes(p.id)).map((p) => ({ label: p.isMe ? p.name + ' (you)' : p.name, value: 'person:' + p.id })),
   ...props.agents.map((a) => ({ label: 'Agent: ' + a.name + (a.status === 'draft' ? ' (not published)' : ''), value: 'agent:' + a.id })),
 ]);
 const who = (ref_) => nameOf(ref_, { people: ctx.people.value, agents: props.agents, me: ctx.me.value });

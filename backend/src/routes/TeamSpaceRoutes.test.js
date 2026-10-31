@@ -10,10 +10,16 @@ import { initializeTeamSpaces } from '../services/TeamSpaceRepository.js';
 beforeEach(() => vi.stubEnv('AGNT_TENANT_SLUG', 'example'));
 afterEach(() => vi.unstubAllEnvs());
 
-/** The cloud: roles per user, per-workspace capability denials, and a record of every call. */
+/**
+ * The cloud: roles per user, the per-workspace capability grants the instance writes (and enforces them,
+ * as the real cloud does), explicit denials, and a record of every call.
+ */
 function cloudDouble(roles, denied = new Set()) {
+  const grants = new Map();
   return {
     calls: [],
+    grants,
+    granted: (workspaceId, user) => [...(grants.get(workspaceId + '|' + user) || [])].sort(),
     access: vi.fn(async (token, id) => {
       const user = token?.replace('Bearer ', '');
       if (id !== 'team' || !roles.has(user)) throw Object.assign(new Error('Team not found'), { status: 404 });
@@ -23,8 +29,15 @@ function cloudDouble(roles, denied = new Set()) {
       this.calls.push(path);
       const user = token?.replace('Bearer ', '');
       if (path === '/team/members') return [...roles].map(([user_id, role]) => ({ user_id, role }));
+      const grant = path.match(/workspaces\/([^/]+)\/members\/([^/]+)\/capabilities\/(.+)$/);
+      if (grant) {
+        const key = grant[1] + '|' + decodeURIComponent(grant[2]);
+        const set = grants.get(key) || new Set(); grants.set(key, set);
+        if (options.method === 'PUT') set.add(grant[3]); else set.delete(grant[3]);
+        return {};
+      }
       const access = path.match(/workspaces\/([^/]+)\/access\/(.+)$/);
-      if (access && denied.has(user + '|' + access[1])) throw Object.assign(new Error('No access to this workspace'), { status: 403 });
+      if (access && (denied.has(user + '|' + access[1]) || !grants.get(access[1] + '|' + user)?.has(access[2]))) throw Object.assign(new Error('No access to this workspace'), { status: 403 });
       if (access) return { accessRevision: 1 };
       return {};
     }),
@@ -45,7 +58,9 @@ async function fixture(run, { denied, extraRoles = [] } = {}) {
     return { status: response.status, body: await response.json() };
   };
   try {
+    // An invite-only teamspace with the team invited, as the owner would set it up.
     const ws = (await request('/team/workspaces', 'POST', { name: 'Sales' }, 'owner')).body.id;
+    for (const user of ['ana', 'ben', 'vic']) expect((await request(`/team/workspaces/${ws}/members/${user}`, 'PUT', {}, 'owner')).status).toBe(200);
     await run({ request, cloud, repository, ws });
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -107,6 +122,74 @@ describe('teamspace routes through the real team router', () => {
     expect((await request(`/team/workspaces/${ws}/docs/${doc.id}`, 'PUT', { content: 'v2', expectedRevision: 1 }, 'ben')).body.revision).toBe(2);
   }));
 
+});
+
+describe('invite-only teamspaces (like Slack channels)', () => {
+  it('a new teamspace has only its creator; nobody else can see it, open it or be tagged in it', () => fixture(async ({ request, cloud }) => {
+    const hr = (await request('/team/workspaces', 'POST', { name: 'HR' }, 'owner')).body;
+    expect(hr.access).toBe('invited');
+    expect((await request(`/team/workspaces/${hr.id}/members`, 'GET', null, 'owner')).body).toMatchObject({ access: 'invited', isDefault: false, memberIds: ['owner'] });
+    // Not in the list, and every route refuses: the cloud holds no grant for them.
+    expect((await request('/team/workspaces', 'GET', null, 'ana')).body.map((w) => w.name)).not.toContain('HR');
+    expect((await request(`/team/workspaces/${hr.id}/messages`, 'GET', null, 'ana')).status).toBe(403);
+    expect((await request(`/team/workspaces/${hr.id}/members`, 'GET', null, 'ana')).status).toBe(403);
+    expect(cloud.granted(hr.id, 'ana')).toEqual([]);
+    // Even an admin who was not invited is out.
+    expect(cloud.granted(hr.id, 'ada')).toEqual([]);
+    expect((await request(`/team/workspaces/${hr.id}/messages`, 'GET', null, 'ada')).status).toBe(403);
+    // People outside the space cannot be mentioned or assigned in it.
+    expect((await request(`/team/workspaces/${hr.id}/messages`, 'POST', { body: 'hi', mentions: [{ kind: 'person', id: 'ana' }] }, 'owner')).status).toBe(400);
+    expect((await request(`/team/workspaces/${hr.id}/tasks`, 'POST', { title: 'x', assignee: { kind: 'person', id: 'ana' } }, 'owner')).status).toBe(400);
+  }, { extraRoles: [['ada', 'admin']] }));
+
+  it('adding someone lets them in with their role; removing them takes it all away', () => fixture(async ({ request, cloud }) => {
+    const hr = (await request('/team/workspaces', 'POST', { name: 'HR' }, 'owner')).body.id;
+    const added = await request(`/team/workspaces/${hr}/members/ana`, 'PUT', {}, 'owner');
+    expect(added.body).toEqual({ access: 'invited', memberIds: ['owner', 'ana'] });
+    expect(cloud.granted(hr, 'ana')).toContain('resources.write');
+    expect(cloud.granted(hr, 'ana')).not.toContain('access.manage');
+    expect((await request('/team/workspaces', 'GET', null, 'ana')).body.map((w) => w.name)).toContain('HR');
+    expect((await request(`/team/workspaces/${hr}/messages`, 'POST', { body: 'hello' }, 'ana')).status).toBe(200);
+    // /members and /people read the same spaceMembers(); /people also lists agents, which needs the app DB.
+    expect((await request(`/team/workspaces/${hr}/members`, 'GET', null, 'ana')).body.memberIds).toEqual(['owner', 'ana']);
+    expect((await request(`/team/workspaces/${hr}/members/ana`, 'DELETE', null, 'owner')).body.memberIds).toEqual(['owner']);
+    expect(cloud.granted(hr, 'ana')).toEqual([]);
+    expect((await request(`/team/workspaces/${hr}/messages`, 'GET', null, 'ana')).status).toBe(403);
+  }));
+
+  it('only an owner or admin inside the space changes its people; nobody can remove themselves or add a stranger', () => fixture(async ({ request, ws }) => {
+    expect((await request(`/team/workspaces/${ws}/members/ben`, 'DELETE', null, 'ana')).status).toBe(403);
+    expect((await request(`/team/workspaces/${ws}/members/owner`, 'DELETE', null, 'owner')).body.error).toBe('You cannot remove yourself from a teamspace');
+    expect((await request(`/team/workspaces/${ws}/members/stranger`, 'PUT', {}, 'owner')).body.error).toBe('That person is not on this team');
+  }));
+
+  it('live updates reach only the people in the space', async () => {
+    const sent = [];
+    const { createTeamSpaceRealtime } = await import('../services/TeamSpaceRealtime.js');
+    const realtime = createTeamSpaceRealtime({ cloud: { request: async () => [{ user_id: 'a' }, { user_id: 'b' }, { user_id: 'c' }] }, send: (id) => sent.push(id) });
+    await realtime.space('team', 'Bearer a', { workspaceId: 'hr', kind: 'messages' }, async () => ['a', 'b']);
+    expect(sent).toEqual(['a', 'b']);
+  });
+
+  it('the default teamspace is everyone\u2019s, and a teamspace from before invite-only keeps everyone until its people are edited', () => fixture(async ({ request, repository, cloud }) => {
+    const general = (await request('/team/workspaces/default', 'GET', null, 'owner')).body;
+    expect(general).toMatchObject({ name: 'General', access: 'team' });
+    expect((await request(`/team/workspaces/${general.id}/messages`, 'GET', null, 'ana')).status).toBe(200);
+    expect((await request(`/team/workspaces/${general.id}/members/ana`, 'DELETE', null, 'owner')).body.error).toBe('Everyone on the team is in the default teamspace');
+    // A space made before this change: access defaults to 'team'.
+    const old = (await request('/team/workspaces', 'POST', { name: 'Old' }, 'owner')).body.id;
+    await repository.run("UPDATE shared_workspaces SET access='team' WHERE id=?", [old]);
+    await repository.run('DELETE FROM shared_workspace_members WHERE workspace_id=?', [old]);
+    await request('/team/access/sync', 'POST', { workspaceIds: [old] }, 'owner');
+    expect((await request(`/team/workspaces/${old}/messages`, 'GET', null, 'ben')).status).toBe(200);
+    // Taking one person out makes it invite-only and keeps everybody else.
+    const edited = (await request(`/team/workspaces/${old}/members/ben`, 'DELETE', null, 'owner')).body;
+    expect(edited.access).toBe('invited');
+    expect(edited.memberIds.sort()).toEqual(['ana', 'owner', 'vic']);
+    expect((await request(`/team/workspaces/${old}/messages`, 'GET', null, 'ben')).status).toBe(403);
+    expect((await request(`/team/workspaces/${old}/messages`, 'GET', null, 'ana')).status).toBe(200);
+    expect(cloud.granted(old, 'ben')).toEqual([]);
+  }));
 });
 
 describe('cardTitle', () => {

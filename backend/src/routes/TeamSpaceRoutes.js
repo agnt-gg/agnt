@@ -8,8 +8,9 @@ import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../service
  * /workspaces/:id/... the cloud's per-workspace capability (resources.read on
  * GET, resources.write otherwise). Nothing here widens that.
  *
- * Added here: people named in a mention or assignment must be members of the
- * team (the cloud's list), and agents must be native agents of THIS teamspace.
+ * Added here: people named in a mention or assignment must be members of THIS
+ * teamspace (an invite-only space is like a private channel), and agents must be
+ * native agents of it. Live signals go to the teamspace's members only.
  *
  * deps:
  *   handler(fn)                          TeamRoutes' request wrapper (fn gets the request-bound repo)
@@ -18,6 +19,7 @@ import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../service
  *   agentExecutor(repo, req, user, id)   (input) => run result, through NativeTeamExecution
  *   schedule(fn)                         runs agent work after the response (setImmediate in production)
  *   askAnnie({userId, authToken, prompt}) Annie's answer as the tagging person (TeamSpaceAnnie.runAnnieTurn)
+ *   spaceMembers(req)                    ids of the people in req.params.workspaceId (default: the whole team)
  */
 /** A card title from a chat message: the text with the @mentioned agents' names taken out. */
 export function cardTitle(body, agentNames) {
@@ -26,15 +28,15 @@ export function cardTitle(body, agentNames) {
   return title.replace(/^[\s,:;-]+/, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn), askAnnie = runAnnieTurn }) {
+export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn), askAnnie = runAnnieTurn, spaceMembers = (req) => realtime.members(req.params.teamId, req.headers.authorization) }) {
   const W = '/:teamId/workspaces/:workspaceId';
   const spacesOf = (repo) => new TeamSpaceRepository(repo);
-  const signal = (req, kind, extra = {}) => realtime.space(req.params.teamId, req.headers.authorization, { workspaceId: req.params.workspaceId, kind, ...extra });
+  const signal = (req, kind, extra = {}) => realtime.space(req.params.teamId, req.headers.authorization, { workspaceId: req.params.workspaceId, kind, ...extra }, () => spaceMembers(req));
 
   async function checkPeople(req, ids) {
     if (!ids.length) return;
-    const members = new Set(await realtime.members(req.params.teamId, req.headers.authorization));
-    if (ids.some((id) => !members.has(id))) throw Object.assign(new Error('You can only mention or assign people on this team'), { status: 400 });
+    const members = new Set(await spaceMembers(req));
+    if (ids.some((id) => !members.has(id))) throw Object.assign(new Error('You can only mention or assign people in this teamspace'), { status: 400 });
   }
   async function checkAgents(repo, req, ids) {
     if (!ids.length) return new Map();
@@ -185,9 +187,9 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     return result;
   }));
 
-  // ── Members of the team, for avatars, @mentions and assignment ──────────
+  // ── Members of this teamspace, for avatars, @mentions and assignment ────
   router.get(W + '/people', handler(async (repo, req) => {
-    const ids = new Set(await realtime.members(req.params.teamId, req.headers.authorization));
+    const ids = new Set(await spaceMembers(req));
     const agents = (await workspaceAgents(repo, req)).filter((a) => a.kind === 'agent').map((a) => ({ id: a.id, name: a.name, status: a.status }));
     return { memberIds: [...ids], agents };
   }));

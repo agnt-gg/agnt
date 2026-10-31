@@ -6,10 +6,10 @@
           <span class="space-icon">{{ emoji }}</span>
           <div style="flex: 1; min-width: 0">
             <h1 style="font-size: 22px; font-weight: 700">{{ space.name }}</h1>
-            <div style="font-size: 13px; color: var(--text-secondary)">{{ space.description || `Everyone on ${team.name} works here` }}</div>
+            <div style="font-size: 13px; color: var(--text-secondary)">{{ space.description || (membership.access === 'invited' ? 'Only the people in it can see it' : `Everyone on ${team.name} works here`) }}</div>
           </div>
-          <span class="scope team"><MkIcon name="users" size="sm" />{{ plural(ctx.people.value.length, 'member') }} + {{ plural(agents.length, 'agent') }}</span>
-          <button v-if="canManage" type="button" class="btn" @click="ctx.go({ view: 'space', space: space.id, tab: 'people' })"><MkIcon name="plus" size="sm" />Add people</button>
+          <button type="button" class="scope team" data-testid="space-member-count" @click="showPeople = true"><MkIcon name="users" size="sm" />{{ plural(membership.memberIds.length, 'member') }} + {{ plural(agents.length, 'agent') }}</button>
+          <button v-if="canManage && !membership.isDefault" type="button" class="btn" data-testid="space-add-people" @click="showPeople = true"><MkIcon name="plus" size="sm" />Add people</button>
         </div>
         <nav class="tabs" aria-label="Teamspace">
           <button v-for="t in tabs" :key="t.id" type="button" class="tab" :class="{ 'is-active': location.tab === t.id }" :aria-current="location.tab === t.id ? 'page' : undefined" @click="ctx.go({ view: 'space', space: space.id, tab: t.id })">
@@ -22,19 +22,17 @@
         <TeamNative v-else-if="location.tab === 'agents'" :workspace-id="space.id" :space-name="space.name" kind="agent" @open-editor="openEditor('agents', $event)" @library="ctx.go({ view: 'library' })" />
         <TeamNative v-else-if="location.tab === 'routines'" :workspace-id="space.id" :space-name="space.name" kind="workflow" @open-editor="openEditor('workflows', $event)" />
         <TeamFiles v-else-if="location.tab === 'files'" :team-id="team.id" :workspace-id="space.id" :space-name="space.name" @open-doc="openDoc" @loaded="counts.files = $event.length" />
-        <div v-else-if="location.tab === 'people'">
-          <p class="mk-muted" style="margin-top: 0">Everyone on {{ team.name }} works in every teamspace by their role. Owners and admins can narrow one person's access per teamspace in Team settings.</p>
-          <TeamMembers :team="team" @error="ctx.toast" @changed="ctx.reload" />
-        </div>
       </div>
     </div>
+    <TeamSpacePeople v-if="showPeople || location.tab === 'people'" :space="space" :team-name="team.name" :people="ctx.people.value" :member-ids="membership.memberIds"
+      :is-default="membership.isDefault" :can-manage="canManage" @changed="onPeopleChanged" @error="ctx.toast" @invite="ctx.teamSettings()" @close="closePeople" />
     <TeamTaskPanel v-if="location.task" :key="location.task" :workspace-id="space.id" :task-id="location.task" :space-name="space.name" :agents="agents"
       @close="ctx.go({ view: 'space', space: space.id, tab: location.tab })" @open-chat="ctx.go({ view: 'space', space: space.id, tab: 'chat' })" @open-doc="openDoc" />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, inject, onMounted } from 'vue';
+import { ref, reactive, computed, watch, inject, provide, onMounted } from 'vue';
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamChat from './TeamChat.vue';
 import TeamBoard from './TeamBoard.vue';
@@ -42,7 +40,7 @@ import TeamDocs from './TeamDocs.vue';
 import TeamNative from './TeamNative.vue';
 import TeamFiles from './TeamFiles.vue';
 import TeamTaskPanel from './TeamTaskPanel.vue';
-import TeamMembers from '@/views/_components/team/TeamMembers.vue';
+import TeamSpacePeople from './TeamSpacePeople.vue';
 import '@/views/_components/team/team.css';
 import { teamApi, teamFiles } from './useTeam.js';
 import { SPACE_TABS, spaceEmoji, plural } from './teamModel.js';
@@ -54,6 +52,18 @@ const counts = reactive({});
 const tabs = SPACE_TABS.filter((t) => !t.hidden);
 const emoji = computed(() => spaceEmoji(props.space));
 const canManage = computed(() => ['owner', 'admin'].includes(ctx.role.value));
+// Who is in this teamspace. Pickers inside it (@mentions, assignment) offer only these people.
+const membership = reactive({ access: 'team', isDefault: false, memberIds: [] });
+provide('spaceMemberIds', computed(() => membership.memberIds));
+const showPeople = ref(false);
+async function loadMembership() {
+  try { Object.assign(membership, await teamApi.spaceMembers(props.space.id)); } catch (e) { console.warn('[team] members:', e.message); }
+}
+function onPeopleChanged(result) { Object.assign(membership, result); }
+function closePeople() {
+  showPeople.value = false;
+  if (props.location.tab === 'people') ctx.go({ view: 'space', space: props.space.id, tab: 'chat' });
+}
 
 async function loadAgents() {
   try { agents.value = (await teamApi.people(props.space.id)).agents || []; } catch (e) { agents.value = []; console.warn('[team] agents:', e.message); }
@@ -77,7 +87,7 @@ function openEditor(tab, item) {
   if (props.space.is_default) ctx.openLibrary(tab, item?.id || null);
   else ctx.openTeam(props.team, props.space.id);
 }
-watch(() => props.space.id, () => { loadAgents(); loadCounts(); });
-watch(() => ctx.version.value, () => { loadCounts(); if (props.location.tab === 'agents') loadAgents(); });
-onMounted(() => { loadAgents(); loadCounts(); });
+watch(() => props.space.id, () => { loadAgents(); loadCounts(); loadMembership(); });
+watch(() => ctx.version.value, () => { loadCounts(); loadMembership(); if (props.location.tab === 'agents') loadAgents(); });
+onMounted(() => { loadAgents(); loadCounts(); loadMembership(); });
 </script>

@@ -4,7 +4,7 @@ import {databaseRepository,ensureSharedScope} from '../services/authorization/Sc
 import {NativeTeamResources} from '../services/NativeTeamResources.js';
 import {NativeTeamExecution,initializeNativeTeamExecution} from '../services/NativeTeamExecution.js';
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
-import { TeamWorkspaceRepository, initializeTeamWorkspaces, DEFAULT_PROJECT_NAME } from '../services/TeamWorkspaceRepository.js';
+import { TeamWorkspaceRepository, initializeTeamWorkspaces, DEFAULT_PROJECT_NAME, SPACE_ACCESS } from '../services/TeamWorkspaceRepository.js';
 import { CAPABILITIES, syncProjectAccess } from '../services/TeamAccess.js';
 import { buildBundle, installBundle } from '../services/sharing/TeamBundle.js';
 import { nativeStore, nodeProvider } from '../services/sharing/nativeStore.js';
@@ -53,7 +53,9 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
       if (!process.env.AGNT_TENANT_SLUG) return res.status(409).json({error:'Open the team cloud instance to access its shared assets',code:'team_instance_required',tenantUrl:team.tenantUrl});
       const parts=path.split('/');
       if(parts[2]==='workspaces'&&parts[3]&&parts[3]!=='default'){
-        const capability=parts.at(-1)==='run'?'runs.execute':['authorize','publish','archive','overrides'].includes(parts.at(-1))||parts.includes('capabilities')?'access.manage':req.method==='GET'?'resources.read':'resources.write';
+        // Changing who is in a teamspace needs access.manage there: an owner/admin who is a member of it.
+        const membershipChange=parts[4]==='members'&&parts.length===6&&req.method!=='GET';
+        const capability=parts.at(-1)==='run'?'runs.execute':membershipChange||['authorize','publish','archive','overrides'].includes(parts.at(-1))||parts.includes('capabilities')?'access.manage':req.method==='GET'?'resources.read':'resources.write';
         await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(parts[3])+'/access/'+capability);
       }
       req.cloudTeam = team;
@@ -158,18 +160,29 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   }));
   const projectPath=(req,workspaceId)=>'/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId);
   const requireManager=req=>{if(!['owner','admin'].includes(req.cloudTeam.role))throw Object.assign(new Error('Only owners and admins manage access'),{status:403});};
-  /** Everyone on the team gets their role's access to the listed projects. */
-  const syncAccess=async(repo,req,workspaceIds)=>{
+  const realtime=createTeamSpaceRealtime({cloud});
+  /** Each teamspace member gets their role's access to the listed projects; everyone else gets none. onlyUserId: just that person. */
+  const syncAccess=async(repo,req,workspaceIds,{onlyUserId=null}={})=>{
     const projects=new TeamWorkspaceRepository(repo);
-    const members=await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/members');
-    return syncProjectAccess({cloud,authorization:req.headers.authorization,team:{id:req.params.teamId,tenantSlug:req.cloudTeam.tenantSlug},workspaceIds,members:Array.isArray(members)?members:[],overridesFor:(workspaceId,userId)=>projects.overrides(workspaceId,userId)});
+    const listed=await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/members');
+    const members=(Array.isArray(listed)?listed:[]).filter(m=>!onlyUserId||(m.user_id||m.userId)===onlyUserId);
+    const membership=await projects.membership(req.params.teamId,workspaceIds);
+    return syncProjectAccess({cloud,authorization:req.headers.authorization,team:{id:req.params.teamId,tenantSlug:req.cloudTeam.tenantSlug},workspaceIds,members,overridesFor:(workspaceId,userId)=>projects.overrides(workspaceId,userId),isMember:(workspaceId,userId)=>membership.get(workspaceId)(userId)});
   };
-  /** Registers the project with the cloud, then grants the whole team access by role. Archives on failure. */
-  const createProject=async(repo,req,user,name)=>{
+  /** Who is in a teamspace: its invited members (still on the team), or the whole team for access='team'. */
+  const spaceMembers=async req=>{
+    const team=await realtime.members(req.params.teamId,req.headers.authorization);
+    const row=await new TeamWorkspaceRepository(getRepository()).find(req.params.teamId,req.params.workspaceId||req.params.id);
+    if(row.access!==SPACE_ACCESS.INVITED)return team;
+    const onTeam=new Set(team);
+    return (await new TeamWorkspaceRepository(getRepository()).memberIds(row.id)).filter(id=>onTeam.has(id));
+  };
+  /** Registers the project with the cloud, then grants its members access by role. Archives on failure. */
+  const createProject=async(repo,req,user,name,{access=SPACE_ACCESS.INVITED}={})=>{
     // Owner and Admin are one tier in the approved design (Members: "Owner/Admin, Member, Guest").
     if(!['owner','admin'].includes(req.cloudTeam.role))throw Object.assign(new Error('Only owners and admins can create a teamspace'),{status:403});
     const projects=new TeamWorkspaceRepository(repo);
-    const workspace=await projects.create(req.params.teamId,user,name);
+    const workspace=await projects.create(req.params.teamId,user,name,{access});
     try{
       await cloud.request(req.headers.authorization,projectPath(req,workspace.id),{method:'PUT',body:'{}'});
       await syncAccess(repo,req,[workspace.id]);
@@ -184,10 +197,12 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     const pending=(async()=>{
       const projects=new TeamWorkspaceRepository(repo);
       const existing=await projects.defaultFor(teamId);if(existing)return existing;
-      const oldest=(await projects.list(teamId,user))[0];
+      // Only a team-wide space can become everyone's default; an invite-only one stays private.
+      const oldest=(await projects.list(teamId,user)).find(w=>w.access!==SPACE_ACCESS.INVITED);
       if(oldest){await projects.markDefault(teamId,oldest.id);return oldest;}
       if(req.cloudTeam.role!=='owner')return null;
-      const created=await createProject(repo,req,user,DEFAULT_PROJECT_NAME);
+      // The default teamspace is everyone's, like Slack's #general.
+      const created=await createProject(repo,req,user,DEFAULT_PROJECT_NAME,{access:SPACE_ACCESS.TEAM});
       await projects.markDefault(teamId,created.id);return created;
     })().finally(()=>ensuringDefault.delete(teamId));
     ensuringDefault.set(teamId,pending);return pending;
@@ -233,6 +248,26 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     return visible;
   }));
   router.post('/:teamId/workspaces',handler((repo,req,user)=>createProject(repo,req,user,req.body?.name)));
+  // People in a teamspace (the mockup's "People in <space>"): read by its members, changed by its owners/admins.
+  router.get('/:teamId/workspaces/:id/members',handler(async(repo,req)=>{
+    const projects=new TeamWorkspaceRepository(repo);const row=await projects.find(req.params.teamId,req.params.id);
+    const isDefault=(await projects.defaultFor(req.params.teamId))?.id===row.id;
+    return {access:row.access,isDefault,memberIds:await spaceMembers(req)};
+  }));
+  const setSpaceMember=member=>handler(async(repo,req,user)=>{
+    requireManager(req);
+    const {teamId,id,userId}=req.params;
+    const teamMemberIds=await realtime.members(teamId,req.headers.authorization);
+    if(!teamMemberIds.includes(userId))throw Object.assign(new Error('That person is not on this team'),{status:400});
+    const result=await new TeamWorkspaceRepository(repo).setMember(teamId,user,id,{userId,member,teamMemberIds});
+    // Only this person's grants change: converting from access='team' keeps everyone else who was in it.
+    const sync=await syncAccess(repo,req,[id],{onlyUserId:userId});
+    if(sync.failures.length)console.warn('[Teamspaces] access sync incomplete:',sync.failures.length,'grant(s)');
+    realtime.space(teamId,req.headers.authorization,{workspaceId:id,kind:'people'},async()=>[...result.memberIds,userId]);
+    return result;
+  });
+  router.put('/:teamId/workspaces/:id/members/:userId',setSpaceMember(true));
+  router.delete('/:teamId/workspaces/:id/members/:userId',setSpaceMember(false));
   router.patch('/:teamId/workspaces/:id',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).update(req.params.teamId,user,req.params.id,req.body||{})));
   router.put('/:teamId/workspaces/:id/preferences',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).close(req.params.teamId,user,req.params.id,req.body?.isOpen)));
   router.post('/:teamId/workspaces/:id/archive',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,req.params.id)));
@@ -242,7 +277,8 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   // a snapshot of the native agent, then its PUBLISHED revision through NativeTeamExecution.
   mountTeamSpaceRoutes(router,{
     handler,
-    realtime:createTeamSpaceRealtime({cloud}),
+    realtime,
+    spaceMembers,
     workspaceAgents:async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);},
     agentExecutor:(repo,req,user,agentId)=>async input=>{
       const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();

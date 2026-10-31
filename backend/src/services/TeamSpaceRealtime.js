@@ -28,10 +28,14 @@ export function createTeamSpaceRealtime({ cloud, send = broadcastToUser, now = D
 
   return {
     members,
-    /** Tell every member a teamspace changed. Best effort: delivery never fails the write. */
-    async space(teamId, authorization, signal) {
+    /**
+     * Tell the people in a teamspace it changed: `recipients` (its members) when given, else the whole
+     * team. Best effort: delivery never fails the write.
+     */
+    async space(teamId, authorization, signal, recipients = null) {
       try {
-        for (const id of await members(teamId, authorization)) send(id, 'team:space', { teamId, ...signal });
+        const ids = recipients ? await recipients() : await members(teamId, authorization);
+        for (const id of new Set(ids)) send(id, 'team:space', { teamId, ...signal });
       } catch (error) {
         console.warn('[Teamspaces] realtime fan-out skipped:', error.message);
       }
