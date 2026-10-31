@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { teamApi } from '@/views/One/team/useTeam.js';
+import { spaceEmoji } from '@/views/One/team/teamModel.js';
 
 /**
  * The approved mockup's frame, driven by the app's real routes and data:
@@ -111,7 +112,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (p === 'team') {
       const { view, space, item } = loc();
       const s = (teamState.spaces || []).find((x) => x.id === space);
-      if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? '# ' + s.name : 'Teamspace' }];
+      if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? spaceEmoji(s) + ' ' + s.name : 'Teamspace' }];
       if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'docs' }) }, { label: 'Doc' }];
       if (view === 'mine') return [{ label: 'My Space', go: () => team('mine') }, { label: 'My tasks' }];
       if (view === 'agent') {

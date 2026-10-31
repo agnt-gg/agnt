@@ -27,7 +27,7 @@
       </div>
       <template v-if="team">
         <template v-for="s in spaces" :key="s.id">
-          <div class="sec-head"><h3># {{ s.name }}</h3><button type="button" class="btn ghost sm" @click="ctx.go({ view: 'space', space: s.id, tab: 'agents' })">Open</button></div>
+          <div class="sec-head"><h3>{{ spaceEmoji(s) }} {{ s.name }}</h3><button type="button" class="btn ghost sm" @click="ctx.go({ view: 'space', space: s.id, tab: 'agents' })">Open</button></div>
           <div class="cards">
             <div v-for="a in bySpace[s.id] || []" :key="a.id" class="card clickable" @click="ctx.go({ view: 'space', space: s.id, tab: 'agents' })">
               <div class="card-top"><span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div class="mk-muted">{{ s.name }}</div></div></div>
@@ -46,6 +46,7 @@ import { computed, inject, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
 import { teamApi } from '@/views/One/team/useTeam.js';
+import { spaceEmoji } from '@/views/One/team/teamModel.js';
 
 const ctx = inject('teamCtx');
 const store = useStore();

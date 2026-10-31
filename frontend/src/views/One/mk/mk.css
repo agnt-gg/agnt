@@ -208,6 +208,10 @@
 .mk .composer textarea,.mk.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font-size:14.5px;min-height:22px;max-height:140px}
 .mk .composer-row,.mk.composer-row{display:flex;align-items:center;gap:6px;margin-top:6px}
 .mk .send,.mk.send{width:32px;height:32px;border-radius:50%;border:0;background:var(--text-primary);color:var(--ink-on-ink);display:grid;place-items:center;margin-left:auto}
+/* The row spans the composer and Send sits at its right edge, as in the mockup, whatever another
+   sheet's .composer layout or button reset says (measured on bravo: row 169px of 1068, margin 0). */
+.mk .composer .composer-row{width:100%;align-self:stretch}
+.mk .composer .composer-row .send{margin-left:auto}
 .mk .send:hover,.mk.send:hover{opacity:.85}
 .mk .mention-chip,.mk.mention-chip{border:1px solid var(--line);background:var(--raised);border-radius:999px;padding:3px 9px 3px 4px;font-size:12px;display:inline-flex;align-items:center;gap:5px;color:var(--text-secondary)}
 .mk .mention-chip:hover,.mk.mention-chip:hover{border-color:var(--border-strong);color:var(--text-primary)}

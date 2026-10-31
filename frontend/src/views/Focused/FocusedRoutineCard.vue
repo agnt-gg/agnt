@@ -6,7 +6,7 @@
       <button type="button" class="tc-rcard-t" @click="$emit('open', row)">{{ row.label }}</button>
       <button type="button" class="switch" :class="{ on: row.enabled }" role="switch" :aria-checked="row.enabled ? 'true' : 'false'" :aria-label="(row.enabled ? 'Pause ' : 'Resume ') + row.label" @click="$emit('toggle', row)"></button>
     </div>
-    <div class="tc-when">{{ row.cadence }}<template v-if="!row.enabled"> · off</template><template v-else-if="row.next"> · next: {{ formatNext(row.next) }}</template></div>
+    <div class="tc-when">{{ row.cadence }}<template v-if="!row.enabled"> · off</template><template v-else-if="row.next"> · next: {{ nextRun(row.next) }}</template></div>
     <div class="row-gap" style="margin-top: 8px">
       <span class="scope sm" :class="scopeLabel ? 'team' : ''"><MkIcon :name="scopeLabel ? 'users' : 'lock'" size="sm" />{{ scopeLabel || 'Private' }}</span>
       <button v-tooltip="'Change how runs work'" type="button" class="tc-mode" :class="row.runMode" @click="$emit('mode', row)">{{ row.runMode === 'auto' ? 'Runs on its own' : 'Asks you before acting' }}</button>
@@ -42,6 +42,13 @@
 import { computed, inject, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { formatNext } from './focusedTime.js';
+
+/** The mockup's "next: Mon, 9:00" (same clock as the schedule line) within the coming week; a date further out. */
+function nextRun(ms, now = Date.now()) {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime()) || d.getTime() - now > 6 * 86400e3) return formatNext(ms);
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })}, ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { ago, runTone, runStats, blockingRun, sparkPath } from '@/views/One/team/teamModel.js';
 
