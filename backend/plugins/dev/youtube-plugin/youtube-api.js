@@ -429,7 +429,7 @@ class YouTubeAPI {
       return cachedResult;
     }
 
-    console.log(`[YouTubePlugin] Starting 3-tier fallback system for video: ${videoId}`);
+    console.log(`[YouTubePlugin] Starting 4-tier fallback system for video: ${videoId}`);
     console.log(`[YouTubePlugin] URL: ${url}`);
     console.log(`[YouTubePlugin] Fallback method: ${fallbackMethod}`);
 
@@ -556,10 +556,43 @@ class YouTubeAPI {
       }
     }
 
-    // TIER 3: OpenAI Whisper Transcription
+    // TIER 3: Gemini, from the video URL. YouTube refuses anonymous caption/audio fetches with a bot wall
+    // (servers and homes alike), so tiers 2 and 4 fail for most videos; Gemini fetches the video itself.
+    if (fallbackMethod === 'all' || fallbackMethod === 'gemini') {
+      try {
+        console.log('[YouTubePlugin] TIER 3: Attempting Gemini transcription...');
+        const GeminiModule = await import(`file://${path.join(APP_PATH, 'backend/src/utils/youtube-gemini-transcriber.js').replace(/\\/g, '/')}`);
+        const geminiResult = await new GeminiModule.default(userId).transcribe(url);
+
+        results.attempts.push({
+          tier: 3,
+          method: 'Gemini',
+          success: true,
+          content: geminiResult.content,
+          details: `Transcribed from the video URL with ${geminiResult.method}${geminiResult.truncated ? ' (cut off at the output limit)' : ''}`,
+        });
+        results.finalResult = {
+          success: true,
+          content: geminiResult.content,
+          method: geminiResult.method,
+          length: geminiResult.length,
+          source: 'gemini',
+          truncated: geminiResult.truncated,
+        };
+        results.method = 'Gemini';
+        console.log(`[YouTubePlugin] TIER 3 SUCCESS: Retrieved ${geminiResult.length} characters via ${geminiResult.method}`);
+        this.cacheResult(actualVideoId, results);
+        return results;
+      } catch (error) {
+        results.attempts.push({ tier: 3, method: 'Gemini', success: false, error: error.message, details: 'Gemini transcription failed' });
+        console.log(`[YouTubePlugin] TIER 3 FAILED: ${error.message}`);
+      }
+    }
+
+    // TIER 4: OpenAI Whisper Transcription
     if (fallbackMethod === 'all' || fallbackMethod === 'whisper') {
       try {
-        console.log('[YouTubePlugin] TIER 3: Attempting OpenAI Whisper transcription...');
+        console.log('[YouTubePlugin] TIER 4: Attempting OpenAI Whisper transcription...');
 
         // Import utilities dynamically via APP_PATH so they resolve from the
         // app bundle, not the plugin's install dir.
@@ -582,7 +615,7 @@ class YouTubeAPI {
         transcriber.cleanupAudioFile(audioResult.filePath);
 
         results.attempts.push({
-          tier: 3,
+          tier: 4,
           method: 'OpenAI Whisper',
           success: true,
           content: transcriptionResult.content,
@@ -607,7 +640,7 @@ class YouTubeAPI {
         results.totalCost = transcriptionResult.estimatedCost;
         results.method = 'OpenAI Whisper';
         console.log(
-          `[YouTubePlugin] TIER 3 SUCCESS: Transcribed ${
+          `[YouTubePlugin] TIER 4 SUCCESS: Transcribed ${
             transcriptionResult.content.length
           } characters via Whisper (Cost: $${transcriptionResult.estimatedCost.toFixed(4)})`
         );
@@ -615,14 +648,14 @@ class YouTubeAPI {
         return results;
       } catch (error) {
         results.attempts.push({
-          tier: 3,
+          tier: 4,
           method: 'OpenAI Whisper',
           success: false,
           error: error.message,
           details: 'OpenAI Whisper transcription failed',
         });
 
-        console.log(`[YouTubePlugin] TIER 3 FAILED: ${error.message}`);
+        console.log(`[YouTubePlugin] TIER 4 FAILED: ${error.message}`);
       }
     }
 

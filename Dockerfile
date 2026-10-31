@@ -257,6 +257,11 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # guarantees it.
 ENV NODE_ENV=production
 
+# Where the app lives. Plugins import the app's own helpers through APP_PATH (Electron sets it on desktop).
+# Without it they fall back to <plugin dir>/../../.., which in this image is /app/data, not /app: every
+# plugin step that loads an app helper (YouTube transcripts, Memory Toolkit, Plaid, Zapier...) failed.
+ENV APP_PATH=/app
+
 # Bind all interfaces inside the container. The server defaults to loopback
 # for desktop installs; in a container the network namespace is the isolation
 # boundary and the published port is the explicit opt-in.

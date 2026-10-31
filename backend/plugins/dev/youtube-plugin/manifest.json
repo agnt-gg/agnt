@@ -1,6 +1,6 @@
 {
   "name": "youtube-plugin",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions",
   "author": "AGNT",
   "icon": "youtube",
@@ -72,10 +72,11 @@
               "all",
               "api",
               "ytdlp",
+              "gemini",
               "whisper"
             ],
             "default": "all",
-            "description": "Transcription method: 'all' (try all methods), 'api' (YouTube API only), 'ytdlp' (yt-dlp only), 'whisper' (OpenAI Whisper only). IMPORTANT: Use 'all' for best results - tries YouTube API first, then yt-dlp, then Whisper as fallbacks.",
+            "description": "Transcription method: 'all' (try all methods), 'api' (YouTube API only), 'ytdlp' (yt-dlp only), 'gemini' (Gemini reads the video from its URL), 'whisper' (OpenAI Whisper only). IMPORTANT: Use 'all' for best results - tries YouTube API first, then yt-dlp, then Gemini, then Whisper.",
             "conditional": {
               "field": "action",
               "value": "GET_TRANSCRIPTION"

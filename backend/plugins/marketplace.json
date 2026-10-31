@@ -885,12 +885,12 @@
       "name": "youtube-plugin",
       "displayName": "YouTube",
       "icon": "youtube",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/youtube-plugin.agnt",
-      "size": 12529393,
+      "size": 12521427,
       "tags": [
         "youtube",
         "video",
@@ -908,7 +908,7 @@
           }
         }
       ],
-      "integrity": "sha256-R2MEA3pQLVZBxnJ5+JQws1F9UCbFOOTylUphKSCOaxE=",
+      "integrity": "sha256-/QZt6JveeIG7mBE9AfW5rzsopDuo3+ngAK2d+btmkeo=",
       "trustTier": "official",
       "declaredPermissions": [
         "dynamic-import",
