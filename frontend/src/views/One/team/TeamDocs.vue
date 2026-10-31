@@ -1,10 +1,9 @@
 <template>
   <div>
     <div class="board-bar">
-      <span class="mk-muted">Docs everyone in {{ spaceName }} can read and edit. Every save is kept as a version.</span>
       <span class="fill"></span>
-      <button v-if="canWrite" type="button" class="btn" @click="pickerOpen = !pickerOpen"><i class="fas fa-share" aria-hidden="true"></i>Share one of my files</button>
-      <button v-if="canWrite" type="button" class="primary" @click="create"><i class="fas fa-plus" aria-hidden="true"></i>New doc</button>
+      <button v-if="canWrite" type="button" class="btn ghost sm" @click="pickerOpen = !pickerOpen"><MkIcon name="share" size="sm" />Share one of my files</button>
+      <button v-if="canWrite" type="button" class="primary" @click="create"><MkIcon name="plus" size="sm" />New doc</button>
     </div>
     <div v-if="pickerOpen" class="banner" style="display: block">
       <p style="margin: 0 0 8px">Pick a private file. A copy goes into {{ spaceName }}; your private original stays yours.</p>
@@ -20,8 +19,8 @@
       <li v-for="d in docs" :key="d.id">
         <button type="button" class="r" @click="$emit('open-doc', d.id)">
           <span class="r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>
-          <span class="r-text"><strong>{{ d.name }}</strong><small>Edited by {{ who(d.updatedBy) }} · {{ ago(d.updatedAt) }} · version {{ d.revision }}</small></span>
-          <span class="scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
+          <span class="r-text"><strong>{{ d.name }}</strong><small>{{ who(d.updatedBy) }} · edited {{ ago(d.updatedAt) }}</small></span>
+          <span class="scope team sm"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
         </button>
       </li>
     </ul>
@@ -31,6 +30,7 @@
 <script setup>
 import { ref, computed, watch, inject, onMounted } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { teamApi } from './useTeam.js';
 import { ago, nameOf } from './teamModel.js';
 

@@ -18,7 +18,7 @@
                 <td><div class="who"><TeamAvatar :who="{ kind: 'person', id: p.user_id }" :label="p.name || p.email" size="lg" /><div><b style="font-weight: 500">{{ p.name || p.email }}{{ p.user_id === me ? ' (you)' : '' }}</b><div style="font-size: 12px; color: var(--text-tertiary)">{{ p.email }}</div></div></div></td>
                 <td>
                   <span v-if="p.role === 'owner'" class="tag pink">Owner</span>
-                  <CustomSelect v-else-if="canManage && p.user_id !== me" :model-value="p.role" :options="roleOptions" :disabled="busy" :aria-label="'Role for ' + (p.email || p.name)" @update:model-value="(value) => setRole(p, value)" />
+                  <CustomSelect v-else-if="canManage && p.user_id !== me" class="mk-role" :model-value="p.role" :options="roleOptions" :disabled="busy" :aria-label="'Role for ' + (p.email || p.name)" @update:model-value="(value) => setRole(p, value)" />
                   <span v-else class="tag">{{ roleLabel(p.role) }}</span>
                 </td>
                 <td><div class="row-gap"><span v-for="s in spaces" :key="s.id" class="tag">{{ spaceEmoji(s) }} {{ s.name }}</span><span v-if="!spaces.length" style="color: var(--text-tertiary); font-size: 12.5px">None</span></div></td>

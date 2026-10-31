@@ -69,6 +69,8 @@
           </div>
         </div>
         <span v-else class="one-topbar-fill"></span>
+        <!-- The mockup's teamspace top bar: who works here, beside the setup pill. -->
+        <div v-if="!isMobile && onTeamspace && teamState.members.length" class="mk"><span v-tooltip="`${teamState.members.length} ${teamState.members.length === 1 ? 'member' : 'members'}`" class="stack"><TeamAvatar v-for="p in teamState.members.slice(0, 5)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span></div>
         <OneCapsule @ask="ask" @open-models="openModels" @open-setup="openSetup" />
         <div v-if="!isMobile" class="mk"><button type="button" class="icon-btn" aria-label="Search (Ctrl K)" v-tooltip="'Search (Ctrl K)'" @click="store.dispatch('shell/openJump')"><MkIcon name="find" /></button></div>
         <FocusedWindowControls />
@@ -131,6 +133,7 @@ import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneCapsule from './OneCapsule.vue';
+import TeamAvatar from './team/TeamAvatar.vue';
 import { RAIL_PAGE, MORE_SCREEN } from './oneModel.js';
 import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
@@ -220,6 +223,7 @@ const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChat
 // ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
 const team = useTeam(store);
 const teamState = team.state;
+const onTeamspace = computed(() => page.value === 'team' && ['space', 'doc'].includes(String(route.query.view || '')));
 const teamUnread = team.unread;
 // Home is the inbox: its badge is everything waiting on you, team items and checkpoints alike.
 const checkpointsWaiting = useCheckpoints();

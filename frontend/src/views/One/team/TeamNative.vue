@@ -1,10 +1,11 @@
 <template>
   <div>
     <div class="board-bar">
-      <span style="color: var(--text-secondary); font-size: 13.5px">{{ kind === 'agent' ? `Published agents anyone in ${spaceName} can @mention or assign. Runs use team connections.` : `Routines that run for ${spaceName}, on the team's connections.` }}</span>
+      <span v-if="kind === 'agent'" style="color: var(--text-secondary); font-size: 13.5px">Published agents anyone in {{ spaceName }} can @mention or assign. Runs use team connections.</span>
       <span class="fill"></span>
       <button v-if="kind === 'agent'" type="button" class="btn" @click="$emit('library')"><MkIcon name="library" size="sm" />Add from Library</button>
-      <button type="button" :class="kind === 'agent' ? 'btn' : 'primary'" @click="$emit('open-editor', null)"><MkIcon name="plus" size="sm" />New {{ kind === 'agent' ? 'agent' : 'routine' }}</button>
+      <!-- As in the mockup: agents come in from the Library (a new one is made from New…); routines start here. -->
+      <button v-if="kind !== 'agent'" type="button" class="primary" @click="$emit('open-editor', null)"><MkIcon name="plus" size="sm" />New routine</button>
     </div>
 
     <!-- Agents: cards, as in the mockup. -->

@@ -2,7 +2,7 @@
   <div>
     <div class="board-bar">
       <span class="fill"></span>
-      <label v-if="canWrite" class="primary" style="cursor: pointer"><MkIcon name="up" size="sm" />Upload<input type="file" hidden @change="upload" /></label>
+      <label v-if="canWrite" class="primary" style="cursor: pointer; display: inline-flex; width: auto; flex: none"><MkIcon name="up" size="sm" />Upload<input type="file" hidden @change="upload" /></label>
     </div>
     <ul class="list">
       <li v-if="!files.length" class="empty">{{ loading ? 'Loading…' : error || 'No files yet.' }}</li>

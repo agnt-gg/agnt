@@ -310,6 +310,11 @@
 .mk .tbl td,.mk.tbl td{padding:10px 14px;border-bottom:1px solid var(--line-light)}
 .mk .tbl tr:last-child td,.mk.tbl tr:last-child td{border-bottom:0}
 .mk .who,.mk.who{display:flex;align-items:center;gap:10px}
+/* Measured on bravo: a div row's padding overflowed its list by 26px (no box-sizing), team.css drew
+   column rules inside the mockup's table, and a role picker took the whole column. */
+.mk .list .r{box-sizing:border-box;max-width:100%}
+.mk .tbl td,.mk .tbl th{border-right:0;border-left:0}
+.mk .tbl .mk-role{width:120px}
 .mk .two,.mk.two{display:grid;grid-template-columns:1.4fr 1fr;gap:22px}
 @media (max-width:1100px){
 .mk .two,.mk.two{grid-template-columns:1fr}
