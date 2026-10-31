@@ -153,7 +153,9 @@ class AuthManager {
       const teamSession = owner && teamPaysForMembers() ? getSessionToken(owner) : null;
       return teamSession || getSessionToken(memberId) || null;
     }
-    if (!isAiProvider(providerId)) throw new Error('Hosted members must use approved team connections');
+    // Connected apps (Google, GitHub, Gmail...): the member's OWN connection, from their own vault with their
+    // own session, so a plugin the owner approved works for them as themselves. The owner's are never lent.
+    if (!isAiProvider(providerId)) return this._remoteAccessToken(memberId, providerId);
     if (MEMBER_SIGNIN_PROVIDERS.has(providerId)) {
       // A subscription sign-in: the member's own, or the owner's if shared (memberConnections.js).
       const connection = await subscriptionConnectionFor(memberId, providerId);
@@ -171,7 +173,8 @@ class AuthManager {
    * (env, local rows, CLI logins) are the owner's, not the member's.
    */
   async _memberConnectedApps(memberId, authToken) {
-    const usable = new Set((await this._remoteConnected(authToken)).filter(isAiProvider));
+    // Everything in their own vault: their AI keys and their own connected apps (used only as themselves).
+    const usable = new Set(await this._remoteConnected(authToken));
     const owner = tenantOwnerId();
     if (owner) {
       // The owner's API keys when the team pays, and the subscriptions they share.

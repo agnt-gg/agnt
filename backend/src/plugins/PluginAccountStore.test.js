@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import sqlite3 from 'sqlite3';
 vi.mock('../models/database/index.js', () => ({ default: {}, dbReady: Promise.resolve() }));
-import { PluginAccountStore } from './PluginAccountStore.js';
+import { PluginAccountStore, setTeamWidePlugins } from './PluginAccountStore.js';
 let db, store;
 beforeEach(async () => {
   db = new sqlite3.Database(':memory:'); store = new PluginAccountStore(db);
@@ -11,6 +11,22 @@ beforeEach(async () => {
 });
 afterEach(() => new Promise((resolve,reject) => db.close(error => error ? reject(error) : resolve())));
 describe('Per-account plugin installation registry', () => {
+  // Bravo, 2026-10-31: the owner installed and approved YouTube; the member who asked never had it, because a
+  // member only had plugins they installed themselves. A plugin the owner made available is every member's.
+  it('a plugin the owner made available is every member\u2019s, after their own installs', async () => {
+    try {
+      await store.ready(); await store.add('drive-plugin', 'member-2');
+      expect(await store.has('youtube-plugin', 'member-2')).toBe(false);
+      setTeamWidePlugins(['youtube-plugin']);
+      expect(await store.has('youtube-plugin', 'member-2')).toBe(true);
+      await expect(store.assert('youtube-plugin', 'member-3')).resolves.toBeUndefined();
+      expect((await store.names('member-2')).sort()).toEqual(['drive-plugin', 'youtube-plugin']);
+      expect((await store.installs('member-2')).map((r) => r.plugin_name)).toEqual(['drive-plugin', 'youtube-plugin']);
+      expect(await store.has('youtube-plugin', null)).toBe(false);
+      setTeamWidePlugins([]);
+      expect(await store.has('youtube-plugin', 'member-2')).toBe(false);
+    } finally { setTeamWidePlugins([]); }
+  });
   // Genii, 2026-10-30: all 26 shared workflows are stored under the team
   // workspace principal, which installs nothing; every plugin step failed
   // "Tool not found" although the owner had the plugins installed.

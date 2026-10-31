@@ -2,7 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ToolConfig from '../tools/ToolConfig.js';
-import PluginAccounts from './PluginAccountStore.js';
+import PluginAccounts, { setTeamWidePlugins } from './PluginAccountStore.js';
+import { isRestrictedInstance } from '../services/auth/tenantOwnership.js';
 import PluginAssetLoader from './PluginAssetLoader.js';
 import { bindPluginSource, normalizeAuthDeclaration } from './pluginAuth.js';
 import { setMemberSafePluginTools } from '../services/security/memberSafePlugins.js';
@@ -146,11 +147,15 @@ class PluginManager {
     }
     // Revoke the previous snapshot before reading policy: a storage failure must not retain grants.
     setMemberSafePluginTools([]);
+    setTeamWidePlugins([]);
     const policy = await PluginRequests.policy();
     const safePlugins = new Set(entries.filter((entry) => pluginEntryGrant(entry, policy)).map((entry) => entry.name));
     const safeTools = [];
     for (const [toolType, pluginName] of this.toolToPlugin) if (safePlugins.has(pluginName)) safeTools.push(toolType);
     setMemberSafePluginTools(safeTools, [...this.toolToPlugin.keys()]);
+    // On a team instance, a plugin the owner installed and made available is every member's: they need not
+    // install it again (they run it with their own connections; AuthManager never lends the owner's apps).
+    if (isRestrictedInstance()) setTeamWidePlugins([...safePlugins].filter((name) => this.plugins.has(name)));
   }
 
   /**

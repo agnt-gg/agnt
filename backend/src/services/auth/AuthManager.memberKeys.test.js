@@ -83,8 +83,15 @@ describe('a member of a hosted instance', () => {
     expect(await AuthManager.getValidAccessToken(MEMBER, 'openai')).toBe('member-openai');
   });
 
-  it("never gets the owner's connected apps", async () => {
-    await expect(AuthManager.getValidAccessToken(MEMBER, 'gmail')).rejects.toThrow(/approved team connections/);
+  // THE BUG: an approved plugin (YouTube) failed for members with "Hosted members must use approved team
+  // connections" even though their own Google was connected. They use their own; never the owner's.
+  it("uses their own connected apps for approved plugins, and never gets the owner's", async () => {
+    h.vault[OWNER] = { google: 'owner-google' };
+    expect(await AuthManager.getValidAccessToken(MEMBER, 'google')).toBeNull();
+    h.vault[MEMBER] = { google: 'member-google' };
+    expect(await AuthManager.getValidAccessToken(MEMBER, 'google')).toBe('member-google');
+    expect(h.calls.at(-1)).toEqual({ url: 'https://api.example/auth/valid-token', token: 'member-session' });
+    expect(h.calls.some((call) => call.token === 'owner-session')).toBe(false);
   });
 
   it("borrows the owner's subscription only when the owner shares it, and prefers their own", async () => {
@@ -118,11 +125,11 @@ describe('a member of a hosted instance', () => {
     expect(await AuthManager.getValidAccessToken(MEMBER, 'agnt')).toBe('member-session');
   });
 
-  it('sees their own AI connections plus the lendable team ones, never apps or the instance CLI', async () => {
+  it('sees their own connections plus the lendable team AI ones, never the owner\u2019s apps or the instance CLI', async () => {
     h.connected[MEMBER] = ['anthropic', 'gmail'];
     h.connected[OWNER] = ['kimi-code', 'github'];
     const ids = (await AuthManager.getConnectedApps(MEMBER, 'member-session')).map((entry) => entry.providerId).sort();
-    expect(ids).toEqual(['anthropic', 'groq', 'openai']);
+    expect(ids).toEqual(['anthropic', 'gmail', 'groq', 'openai']);
   });
 
   it('sees only their own when each member pays', async () => {

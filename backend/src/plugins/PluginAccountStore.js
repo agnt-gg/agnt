@@ -11,6 +11,15 @@ import { credentialUserId } from '../services/auth/tenantOwnership.js';
  */
 const installsOf = (userId) => credentialUserId(userId);
 
+/**
+ * Plugins every account on this instance has, whoever installed them: on a team instance, the ones the
+ * owner made available to members (member-safe, or approved). Without this a member only had plugins they
+ * installed themselves, so a plugin the owner installed and approved did not exist for them.
+ * Set by PluginManager.refreshMemberSafeTools after every (re)load and policy change.
+ */
+let teamWide = new Set();
+export function setTeamWidePlugins(names) { teamWide = new Set(names || []); }
+
 /** Installation is an account entitlement; the executable package is only a host cache.
  * Legacy ownership comes from asset rows; otherwise a pre-account package keeps the
  * visibility it already had: every account that existed when it was first seen.
@@ -83,10 +92,15 @@ export class PluginAccountStore {
     await this.run('INSERT OR IGNORE INTO plugin_account_legacy_seen(plugin_name) VALUES(?)', [pluginName]);
   }
   async owners(pluginName) { await this.ready(); return (await this.all('SELECT user_id FROM plugin_account_installs WHERE plugin_name=?', [pluginName])).map(r => r.user_id); }
-  async names(userId) { await this.ready(); if (!userId) return []; return (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [installsOf(userId)])).map(r => r.plugin_name); }
-  /** This account's installs with when each happened, newest first (the chat makes recent installs resident first). */
-  async installs(userId) { await this.ready(); if (!userId) return []; return this.all('SELECT plugin_name, installed_at FROM plugin_account_installs WHERE user_id=? ORDER BY installed_at DESC, plugin_name', [installsOf(userId)]); }
-  async has(pluginName, userId) { return !!userId && (await this.owners(pluginName)).includes(installsOf(userId)); }
+  async names(userId) { await this.ready(); if (!userId) return []; const own = (await this.all('SELECT plugin_name FROM plugin_account_installs WHERE user_id=?', [installsOf(userId)])).map(r => r.plugin_name); return [...new Set([...own, ...teamWide])]; }
+  /** This account's installs with when each happened, newest first (the chat makes recent installs resident first), then the team-wide ones. */
+  async installs(userId) {
+    await this.ready(); if (!userId) return [];
+    const own = await this.all('SELECT plugin_name, installed_at FROM plugin_account_installs WHERE user_id=? ORDER BY installed_at DESC, plugin_name', [installsOf(userId)]);
+    const mine = new Set(own.map(r => r.plugin_name));
+    return [...own, ...[...teamWide].filter(name => !mine.has(name)).sort().map(plugin_name => ({ plugin_name, installed_at: null }))];
+  }
+  async has(pluginName, userId) { return !!userId && (teamWide.has(pluginName) || (await this.owners(pluginName)).includes(installsOf(userId))); }
   async assert(pluginName, userId) { if (!(await this.has(pluginName, userId))) { const error = new Error('Plugin is not installed for this account'); error.status = 404; throw error; } }
   async add(pluginName, userId) { await this.ready(); if (!userId) throw new Error('Plugin install requires an account'); await this.run('INSERT OR IGNORE INTO plugin_account_installs(plugin_name,user_id) VALUES(?,?)', [pluginName,userId]); }
   async remove(pluginName, userId) { await this.ready(); await this.run('DELETE FROM plugin_account_installs WHERE plugin_name=? AND user_id=?', [pluginName,userId]); }
