@@ -1,6 +1,8 @@
 import {createHash,randomUUID} from 'node:crypto';
 const TYPES={agent:'agents',workflow:'workflows',tool:'tools'};
 const ownerColumn=kind=>kind==='workflow'?'user_id':'created_by';
+/** Agents and workflows are soft-deleted (deleted_at); tools are deleted outright. A deleted item is gone for the team too: never listed, published or run. */
+const live=kind=>kind==='tool'?'':' AND deleted_at IS NULL';
 const refuse=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const hashOf=content=>createHash('sha256').update(content).digest('hex');
 /** The executable definition of a native row. One function, so a snapshot and a status check can never disagree. */
@@ -39,7 +41,7 @@ export class NativeTeamResources{
   await this.initialize();
   const result=[];
   for(const [kind,table]of Object.entries(TYPES)){
-   const rows=await this.native.all(`SELECT * FROM ${table} WHERE ${ownerColumn(kind)}=?`,[scope.resourceOwnerId]);
+   const rows=await this.native.all(`SELECT * FROM ${table} WHERE ${ownerColumn(kind)}=?${live(kind)}`,[scope.resourceOwnerId]);
    for(const row of rows){
     let status='draft',publishedRevision=null;
     try{
@@ -56,8 +58,8 @@ export class NativeTeamResources{
   }
   return result;
  }
- async hints(scope,kind,id){const table=TYPES[kind];if(!table)refuse(400,'Unsupported executable resource');const row=await this.native.get(`SELECT * FROM ${table} WHERE id=? AND ${ownerColumn(kind)}=?`,[id,scope.resourceOwnerId]);if(!row)refuse(404,'Resource not found');return modelHintsOf(kind,row);}
- async snapshot(teamId,actor,scope,kind,id){const table=TYPES[kind];if(!table)refuse(400,'Unsupported executable resource');const row=await this.native.get(`SELECT * FROM ${table} WHERE id=? AND ${ownerColumn(kind)}=?`,[id,scope.resourceOwnerId]);if(!row)refuse(404,'Resource not found');
+ async hints(scope,kind,id){const table=TYPES[kind];if(!table)refuse(400,'Unsupported executable resource');const row=await this.native.get(`SELECT * FROM ${table} WHERE id=? AND ${ownerColumn(kind)}=?${live(kind)}`,[id,scope.resourceOwnerId]);if(!row)refuse(404,'Resource not found');return modelHintsOf(kind,row);}
+ async snapshot(teamId,actor,scope,kind,id){const table=TYPES[kind];if(!table)refuse(400,'Unsupported executable resource');const row=await this.native.get(`SELECT * FROM ${table} WHERE id=? AND ${ownerColumn(kind)}=?${live(kind)}`,[id,scope.resourceOwnerId]);if(!row)refuse(404,'Resource not found');
  const content=JSON.stringify(definitionOf(kind,row)),hash=hashOf(content);
  return this.teams.transaction(async()=>{const mapping=await this.teams.get('SELECT * FROM team_native_resources WHERE scope_id=? AND kind=? AND resource_id=?',[scope.id,kind,id]);let assetId=mapping?.asset_id||randomUUID();
  if(mapping?.content_hash===hash)return assetId;
