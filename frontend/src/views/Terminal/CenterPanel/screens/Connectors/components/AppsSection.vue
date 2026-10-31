@@ -716,8 +716,9 @@ async function install(app) {
     await reload();
     notice.value = installedNotice(app.name, app.displayName);
   } catch (failure) {
-    // "Ask the owner" is an answer, not a failure to retry: no Retry link.
-    if (failure.code === 'admin_install_required') notice.value = failure.message;
+    // "Ask the owner" and "requested" are answers, not failures to retry: no Retry link.
+    if (failure.code === 'install_requested') notice.value = `Request sent. You’ll be told on Home when the owner decides about ${app.displayName}.`;
+    else if (failure.code === 'admin_install_required') notice.value = failure.message;
     else error.value = failure.message || 'Installation failed. Please retry.';
     console.error('[AppsSection] install:', failure);
   } finally {
@@ -755,12 +756,18 @@ async function installAll(suggested, serviceName) {
     });
     if (!confirmed || !alive) return;
     const failed = [];
+    const requested = [];
     for (const app of free) {
-      try { await store.dispatch('marketplace/installPlugin', { pluginName: app.name }); } catch (failure) { failed.push(`${app.displayName} (${failure.message || 'failed'})`); }
+      try { await store.dispatch('marketplace/installPlugin', { pluginName: app.name }); }
+      catch (failure) { if (failure.code === 'install_requested') requested.push(app.displayName); else failed.push(`${app.displayName} (${failure.message || 'failed'})`); }
     }
     await reload();
-    const done = free.length - failed.length;
-    notice.value = [`Installed ${done} of ${free.length} ${serviceName} plugins.`, failed.length ? `Not installed: ${failed.join(', ')}.` : ''].filter(Boolean).join(' ');
+    const done = free.length - failed.length - requested.length;
+    notice.value = [
+      `Installed ${done} of ${free.length} ${serviceName} plugins.`,
+      requested.length ? `Requested from the owner: ${requested.join(', ')}. You’ll be told on Home when they decide.` : '',
+      failed.length ? `Not installed: ${failed.join(', ')}.` : '',
+    ].filter(Boolean).join(' ');
   } catch (failure) {
     error.value = failure.message || 'Install all failed. Please retry.';
     console.error('[AppsSection] install all:', failure);

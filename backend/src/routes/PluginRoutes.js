@@ -8,6 +8,10 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import { memberInstallRefusal } from '../services/security/memberSafePlugins.js';
+import PluginRequests, { memberInstallGrant } from '../plugins/PluginInstallRequests.js';
+import { mountPluginRequestRoutes } from '../plugins/pluginRequestRoutes.js';
+import { isRestrictedInstance, tenantOwnerId } from '../services/auth/tenantOwnership.js';
+import { CloudTeamClient } from '../services/CloudTeamClient.js';
 import PluginManager from '../plugins/PluginManager.js';
 import PluginAccounts from '../plugins/PluginAccountStore.js';
 import { pluginAccountBoundary, accountPluginMutation } from '../plugins/pluginAccountRoutes.js';
@@ -24,6 +28,37 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 router.use(authenticateToken, pluginAccountBoundary);
+
+/**
+ * The caller's role on this instance. Desktop: everyone there owns it. Hosted:
+ * the owner by id; an admin only if the cloud says so for THIS instance, asked
+ * with the caller's own credential (as HostedOperatorBoundary asks).
+ */
+const cloudTeams = new CloudTeamClient();
+async function instanceRole(req) {
+  if (!isRestrictedInstance()) return 'owner';
+  const userId = req.user?.userId || req.user?.id;
+  const owner = tenantOwnerId();
+  if (userId && (userId === owner || (owner.includes('@') && String(req.user?.email || '').toLowerCase() === owner.toLowerCase()))) return 'owner';
+  if (!process.env.AGNT_TENANT_SLUG || !req.headers.authorization) return 'member';
+  try {
+    const teams = await cloudTeams.request(req.headers.authorization, '');
+    const team = (Array.isArray(teams) ? teams : []).find((t) => t.tenantSlug === process.env.AGNT_TENANT_SLUG);
+    return team?.role === 'admin' || team?.role === 'owner' ? 'admin' : 'member';
+  } catch { return 'member'; }
+}
+
+// Plugin install requests and the owner's install policy (pluginRequestRoutes.js).
+mountPluginRequestRoutes(router, {
+  requests: PluginRequests,
+  installer: PluginInstaller,
+  accounts: PluginAccounts,
+  reload: () => reloadAllPlugins(),
+  notify: (userId, payload) => broadcastToUser(userId, RealtimeEvents.PLUGIN_INSTALLED, { ...payload, name: payload.pluginName, timestamp: new Date().toISOString() }),
+  roleOf: instanceRole,
+  restricted: isRestrictedInstance,
+  serialize: accountPluginMutation,
+});
 
 /**
  * Plugin API Routes
@@ -281,18 +316,25 @@ router.post('/install', requireAuthHeader, accountPluginMutation(async (req, res
       if ((await PluginAccounts.owners(name)).some(owner => owner !== req.user.userId)) {
         return res.status(409).json({ success: false, error: 'This package is in use by another account; it cannot be replaced by this install.' });
       }
-      // A member of a shared instance may download an official, verified,
-      // network-only plugin, judged by this server's own inspection, with no
-      // dependency install scripts. Anything else still needs the owner.
+      // A member of a shared instance adds a plugin themselves when this server's
+      // own inspection finds it member-safe, or the owner's policy allows it
+      // (pre-approved, or every official plugin). Dependency install scripts never
+      // run for a member's install. Anything else becomes a request to the owner.
       if (req.memberActivationOnly) {
         const report = await PluginInstaller.inspectMarketplacePlugin(name, { authToken: req.headers.authorization || null });
         const refusal = memberInstallRefusal(report);
-        if (refusal) {
-          return res.status(403).json({
-            success: false,
-            code: 'admin_install_required',
-            error: `${refusal} Ask the instance owner to add it; then you can switch it on for yourself.`,
-          });
+        const grant = memberInstallGrant(name, report, await PluginRequests.policy(), refusal === null);
+        if (!grant) {
+          // A tampered or uncheckable download is never something to approve.
+          if (!report || report.success === false || report.integrityState === 'mismatch') {
+            return res.status(403).json({ success: false, code: 'admin_install_required', error: `${refusal || 'It could not be checked.'} Ask the instance owner to add it.` });
+          }
+          if (Number(listing?.price) > 0) {
+            return res.status(403).json({ success: false, code: 'admin_install_required', error: 'Paid plugins need the instance owner to add them first; then you can buy and switch it on.' });
+          }
+          const { request, created } = await PluginRequests.request(name, req.user.userId, report);
+          return res.status(202).json({ success: false, requested: true, code: 'install_requested', request,
+            error: created ? `Request sent to the owner. ${refusal}` : 'You already asked for this plugin; the owner will decide.' });
         }
       }
       result = await PluginInstaller.installFromMarketplace(name, version, {

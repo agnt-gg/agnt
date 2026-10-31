@@ -1,6 +1,10 @@
 import PluginAccounts from './PluginAccountStore.js';
 import { isRestrictedInstance, tenantOwnerId } from '../services/auth/tenantOwnership.js';
 
+/** Deciding or dismissing a plugin request, or setting the install policy. */
+const isRequestAction = (req) =>
+  (req.method === 'POST' && /^\/requests\/[^/]+\/(approve|decline|seen)$/.test(req.path)) || (req.method === 'PUT' && req.path === '/install-policy');
+
 /** Keep every installed-package read/write behind the same account check. */
 export async function pluginAccountBoundary(req, res, next) {
   try {
@@ -15,6 +19,9 @@ export async function pluginAccountBoundary(req, res, next) {
     if (isRestrictedInstance() && req.method !== 'GET' && userId !== tenantOwnerId()) {
       if (req.method === 'POST' && req.path === '/install') {
         req.memberActivationOnly = true;
+      } else if (isRequestAction(req)) {
+        // Plugin requests and the install policy: each route checks the caller's
+        // role itself (pluginRequestRoutes: owner, or admin when allowed).
       } else {
         return res.status(403).json({ success: false, error: 'Only the instance owner may change installed extensions' });
       }

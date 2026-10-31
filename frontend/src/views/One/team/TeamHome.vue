@@ -28,6 +28,14 @@
             <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
             <div v-if="runsWaiting.length" class="hm-sub">Routine runs to review</div>
             <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
+            <div v-if="pluginAsks.length" class="hm-sub">Plugin requests</div>
+            <ul v-if="pluginAsks.length" class="list" data-testid="plugin-requests">
+              <li v-for="r in pluginAsks" :key="r.id"><TeamPluginRequestRow :request="r" decider :busy="deciding === r.id" @approve="approvePlugin" @decline="declinePlugin" /></li>
+            </ul>
+            <div v-if="pluginOutcomes.length" class="hm-sub">Your plugin requests</div>
+            <ul v-if="pluginOutcomes.length" class="list">
+              <li v-for="r in pluginOutcomes" :key="r.id"><TeamPluginRequestRow :request="r" @dismiss="(x) => plugins.seen(x.id)" /></li>
+            </ul>
             <div v-if="teamNeeds.length" class="hm-sub">Mentions, assignments and agent results</div>
             <ul v-if="teamNeeds.length" class="list"><li v-for="item in teamNeeds" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li></ul>
             <ul v-if="!needCount" class="list"><li class="empty">Nothing needs you right now.</li></ul>
@@ -110,6 +118,8 @@ import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamTaskRow from './TeamTaskRow.vue';
 import TeamCheckpointRow from './TeamCheckpointRow.vue';
 import TeamRunRow from './TeamRunRow.vue';
+import TeamPluginRequestRow from './TeamPluginRequestRow.vue';
+import { usePluginRequests } from '@/composables/usePluginRequests.js';
 import { teamApi } from './useTeam.js';
 import { roleLabel } from '@/utils/teamClient.js';
 import { partOfDay, spaceEmoji } from './teamModel.js';
@@ -131,7 +141,22 @@ const runsLoaded = computed(() => ctx.routineRunsLoaded.value);
 const runsWaiting = computed(() => runs.value.filter((r) => r.status === 'needs_review'));
 const teamNeeds = computed(() => ctx.inbox.value.filter((i) => !i.read || (i.kind === 'approval' && i.state === 'pending')));
 const mentions = computed(() => ctx.inbox.value.filter((i) => i.kind === 'mention'));
-const needCount = computed(() => checkpointsWaiting.value.length + runsWaiting.value.length + teamNeeds.value.length);
+// Plugin requests: the ones you decide, and your own once decided (until dismissed).
+const plugins = usePluginRequests();
+const pluginAsks = computed(() => (plugins.state.canDecide ? plugins.state.pending : []));
+const pluginOutcomes = computed(() => plugins.state.mine.filter((r) => r.status !== 'pending'));
+const deciding = ref(null);
+async function decidePlugin(request, approve) {
+  deciding.value = request.id;
+  try {
+    const result = approve ? await plugins.approve(request.id) : await plugins.decline(request.id);
+    const name = request.pluginName.replace(/-plugin$/, '');
+    ctx.toast(approve ? `Installed ${name}${result.approved > 1 ? ` for ${result.approved} people` : ''}. They’ve been told it’s ready.` : `Declined ${name}. They’ve been told.`);
+  } catch (e) { ctx.toast(e.message); await plugins.load(); } finally { deciding.value = null; }
+}
+const approvePlugin = (r) => decidePlugin(r, true);
+const declinePlugin = (r) => decidePlugin(r, false);
+const needCount = computed(() => checkpointsWaiting.value.length + runsWaiting.value.length + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
 const myTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'person' && t.assignee.id === ctx.me.value));
 const agentTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'agent'));
 const openCount = (id) => tasks.value.filter((t) => t.workspaceId === id && t.status !== 'done').length;
@@ -155,6 +180,6 @@ async function load() {
   loading.value = false;
 }
 watch(() => props.initialTab, (value) => { if (TABS.some((t) => t.id === value)) tab.value = value; });
-watch(() => [ctx.version.value, spaces.value.length, team.value?.id], load);
-onMounted(() => { load(); ctx.checkpoints.loadPending(); ctx.loadRoutineRuns(); });
+watch(() => [ctx.version.value, spaces.value.length, team.value?.id], () => { load(); plugins.load(); });
+onMounted(() => { load(); ctx.checkpoints.loadPending(); ctx.loadRoutineRuns(); plugins.load(); });
 </script>

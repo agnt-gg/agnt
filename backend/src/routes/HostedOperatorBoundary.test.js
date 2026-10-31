@@ -71,6 +71,20 @@ describe('hosted operator boundary', () => {
     expect(await run(boundary, request('GET', '/api/plugins/install'))).toMatchObject({ next: false, status: 403 });
   });
 
+  it('plugin requests: a member reads them and dismisses their own; deciding and the policy need an admin', async () => {
+    const member = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
+    const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
+    const boundary = createHostedOperatorBoundary(asMember, member);
+    expect(await run(boundary, request('GET', '/api/plugins/requests'))).toEqual({ next: true });
+    expect(await run(boundary, request('GET', '/api/plugins/install-policy'))).toEqual({ next: true });
+    expect(await run(boundary, request('POST', '/api/plugins/requests/r1/seen'))).toEqual({ next: true });
+    for (const [method, url] of [['POST', '/api/plugins/requests/r1/approve'], ['POST', '/api/plugins/requests/r1/decline'], ['PUT', '/api/plugins/install-policy']]) {
+      expect(await run(boundary, request(method, url)), `${method} ${url}`).toMatchObject({ next: false, status: 403 });
+    }
+    const admin = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'admin', id: 't1' }]), access: vi.fn(async () => ({})) };
+    expect(await run(createHostedOperatorBoundary(asMember, admin), request('POST', '/api/plugins/requests/r1/approve'))).toEqual({ next: true });
+  });
+
   it('a non-owner media load is checked with the cookie credential it arrived with', async () => {
     const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'admin', id: 't1' }]), access: vi.fn(async () => ({})) };
     const media = (req, _res, next) => { req.user = { id: 'admin-2' }; next(); };
