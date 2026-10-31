@@ -229,7 +229,7 @@ const teamUnread = team.unread;
 const checkpointsWaiting = useCheckpoints();
 checkpointsWaiting.loadPending();
 const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value);
-/** Owner only (the server enforces it): a new teamspace, registered with the cloud and opened. */
+/** Owners and admins (the server enforces it): a new teamspace, registered with the cloud and opened. */
 async function newTeamspace() {
   const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });
   if (!name || !name.trim()) return;

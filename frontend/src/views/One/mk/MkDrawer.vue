@@ -37,12 +37,13 @@
         <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-files' }" @click="pick('mine-files')"><MkIcon name="file" size="sm" />My files</button>
         <template v-if="team">
           <div class="d-head" data-tour-id="team-spaces"><MkIcon name="users" size="xs" /> Teamspaces
-            <button v-if="team.role === 'owner'" v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
+            <!-- Always shown, as in the approved mockup. The server decides who may create (owner/admin) and says why if not. -->
+            <button v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" data-testid="new-teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
           </div>
           <button v-for="s in spaces" :key="s.id" type="button" class="d-item" :class="{ 'is-active': active === 'space:' + s.id }" @click="$emit('go', { view: 'space', space: s.id })">
             <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}
           </button>
-          <p v-if="!spaces.length" class="d-note">No teamspaces yet.<template v-if="team.role === 'owner'"> Add one with +.</template></p>
+          <p v-if="!spaces.length" class="d-note">No teamspaces yet. Add one with +.</p>
         </template>
         <div v-else class="d-note">This is your personal workspace: everything here is private.<template v-if="teams.length"> Teamspaces live in <button type="button" class="link" @click="goTeam(teams[0])">{{ teams[0].name }}</button>.</template><template v-else> <button type="button" class="link" @click="pick('team-settings')">Set up a team</button> to work with others.</template></div>
       </div>

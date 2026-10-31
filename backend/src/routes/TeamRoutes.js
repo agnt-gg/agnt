@@ -166,7 +166,8 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   };
   /** Registers the project with the cloud, then grants the whole team access by role. Archives on failure. */
   const createProject=async(repo,req,user,name)=>{
-    if(req.cloudTeam.role!=='owner')throw Object.assign(new Error('Only the owner can create a project'),{status:403});
+    // Owner and Admin are one tier in the approved design (Members: "Owner/Admin, Member, Guest").
+    if(!['owner','admin'].includes(req.cloudTeam.role))throw Object.assign(new Error('Only owners and admins can create a teamspace'),{status:403});
     const projects=new TeamWorkspaceRepository(repo);
     const workspace=await projects.create(req.params.teamId,user,name);
     try{

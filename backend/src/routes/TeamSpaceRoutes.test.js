@@ -31,10 +31,10 @@ function cloudDouble(roles, denied = new Set()) {
   };
 }
 
-async function fixture(run, { denied } = {}) {
+async function fixture(run, { denied, extraRoles = [] } = {}) {
   const db = new sqlite3.Database(':memory:');
   const repository = new TeamRepository(db); await repository.ready;
-  const roles = new Map([['owner', 'owner'], ['ana', 'member'], ['ben', 'member'], ['vic', 'viewer']]);
+  const roles = new Map([['owner', 'owner'], ['ana', 'member'], ['ben', 'member'], ['vic', 'viewer'], ...extraRoles]);
   const cloud = cloudDouble(roles, denied);
   cloud.request = cloud.request.bind(cloud);
   const app = express(); app.use(express.json());
@@ -54,6 +54,18 @@ async function fixture(run, { denied } = {}) {
 }
 
 describe('teamspace routes through the real team router', () => {
+  it('new teamspace: owners and admins can create one; members and guests are refused with the reason', () => fixture(async ({ request }) => {
+    expect((await request('/team/workspaces', 'POST', { name: 'Product' }, 'owner')).status).toBe(200);
+    const byAdmin = await request('/team/workspaces', 'POST', { name: 'Ops' }, 'ada');
+    expect(byAdmin.status).toBe(200);
+    expect(byAdmin.body.name).toBe('Ops');
+    for (const user of ['ana', 'vic']) {
+      const refused = await request('/team/workspaces', 'POST', { name: 'Nope' }, user);
+      expect(refused.status).toBe(403);
+      expect(refused.body.error).toBe('Only owners and admins can create a teamspace');
+    }
+  }, { extraRoles: [['ada', 'admin']] }));
+
   it('chat: a member posts, a teammate sees it, and the mention lands in their inbox on this instance', () => fixture(async ({ request, cloud, ws }) => {
     const posted = await request(`/team/workspaces/${ws}/messages`, 'POST', { body: 'hi @ben', mentions: [{ kind: 'person', id: 'ben' }] });
     expect(posted.status).toBe(200);
