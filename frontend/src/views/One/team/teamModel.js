@@ -26,11 +26,18 @@ export const SPACE_TABS = Object.freeze([
   { id: 'people', label: 'People', icon: 'users', hidden: true },
 ]);
 export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc', 'agents', 'agent', 'library', 'members']);
-/** Library tabs, as in the approved mockup. */
+/**
+ * Library tabs: every kind of asset you own, your connections, and the Market
+ * to add more. `asset` is the Focused Library tab whose store list it shows.
+ */
 export const LIBRARY_TABS = Object.freeze([
-  { id: 'agents', label: 'Agents & skills' },
-  { id: 'connections', label: 'Connections' },
-  { id: 'templates', label: 'Templates' },
+  { id: 'agents', label: 'Agents', icon: 'bot', asset: 'agents' },
+  { id: 'workflows', label: 'Workflows', icon: 'bolt', asset: 'workflows' },
+  { id: 'tools', label: 'Tools', icon: 'pen', asset: 'tools' },
+  { id: 'skills', label: 'Skills', icon: 'library', asset: 'skills' },
+  { id: 'widgets', label: 'Widgets', icon: 'board', asset: 'widgets' },
+  { id: 'connections', label: 'Connections', icon: 'plug' },
+  { id: 'market', label: 'Market', icon: 'share' },
 ]);
 /** My Space sections (the drawer). */
 export const MINE_TABS = Object.freeze(['tasks']);
