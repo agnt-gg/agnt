@@ -31,6 +31,8 @@
     </div>
     <div class="ap-row-side">
       <span class="ap-status" :class="statusView.tone">{{ statusView.label }}</span>
+      <!-- More of this sign-in's plugins to add (Google: Calendar, Drive…): all of them in one go. -->
+      <button v-if="moreToInstall" type="button" class="ap-btn small" data-action="install-all" v-tooltip="card.suggested.map((s) => s.displayName).join(', ')" @click="emit('install-all', card)">Install all {{ card.suggested.length }}</button>
       <button v-if="card.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', card)">Reconnect {{ card.name }}</button>
       <button v-else-if="card.status === 'connect' && card.usesModelKey" type="button" class="ap-btn primary small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
       <button v-else-if="card.status === 'connect' && card.connectable === false" type="button" class="ap-btn small" data-action="connect-unavailable" disabled v-tooltip="'Not available to connect on your account'">Can’t connect yet</button>
@@ -52,7 +54,8 @@ const props = defineProps({
   notices: { type: Map, required: true },
   selectedKey: { type: String, default: null },
 });
-const emit = defineEmits(['open-card', 'open-plugin', 'connect', 'reconnect', 'open-ai-models']);
+const emit = defineEmits(['open-card', 'open-plugin', 'connect', 'reconnect', 'open-ai-models', 'install-all']);
+const moreToInstall = computed(() => (props.card.suggested?.length || 0) > 0 && props.card.suggested.length + props.card.apps.length > 1);
 
 const solo = computed(() => (props.card.apps.length === 1 ? props.card.apps[0] : null));
 const soloRow = computed(() => (solo.value ? props.rows.get(solo.value.name) || null : null));

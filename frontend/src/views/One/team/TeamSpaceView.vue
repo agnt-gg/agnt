@@ -21,7 +21,7 @@
         <TeamDocs v-else-if="location.tab === 'docs'" :workspace-id="space.id" :space-name="space.name" @open-doc="openDoc" />
         <TeamNative v-else-if="location.tab === 'agents'" :workspace-id="space.id" :space-name="space.name" kind="agent" @open-editor="openEditor('agents', $event)" @library="ctx.go({ view: 'library' })" />
         <TeamNative v-else-if="location.tab === 'routines'" :workspace-id="space.id" :space-name="space.name" kind="workflow" @open-editor="openEditor('workflows', $event)" />
-        <TeamFiles v-else-if="location.tab === 'files'" :team-id="team.id" :workspace-id="space.id" :space-name="space.name" @loaded="counts.files = $event.length" />
+        <TeamFiles v-else-if="location.tab === 'files'" :team-id="team.id" :workspace-id="space.id" :space-name="space.name" @open-doc="openDoc" @loaded="counts.files = $event.length" />
         <div v-else-if="location.tab === 'people'">
           <p class="mk-muted" style="margin-top: 0">Everyone on {{ team.name }} works in every teamspace by their role. Owners and admins can narrow one person's access per teamspace in Team settings.</p>
           <TeamMembers :team="team" @error="ctx.toast" @changed="ctx.reload" />
@@ -66,9 +66,9 @@ async function loadCounts() {
   ]);
   for (const key of Object.keys(counts)) delete counts[key];
   if (tasks) counts.board = tasks.filter((t) => t.status !== 'done').length;
-  if (docs) counts.docs = docs.length;
   if (native) { counts.agents = native.filter((i) => i.kind === 'agent').length; counts.routines = native.filter((i) => i.kind === 'workflow').length; }
-  if (files) counts.files = files.length;
+  // Files holds uploads and the teamspace's docs.
+  if (files || docs) counts.files = (files?.length || 0) + (docs?.length || 0);
 }
 const openTask = (id) => ctx.go({ view: 'space', space: props.space.id, tab: props.location.tab === 'chat' ? 'chat' : 'board', task: id });
 const openDoc = (id) => ctx.go({ view: 'doc', space: props.space.id, doc: id });

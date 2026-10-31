@@ -77,7 +77,28 @@ describe('teamspace chat', () => {
     await wrapper.find('form.composer').trigger('submit');
     await flushPromises();
     const sent = calls.find((c) => c.method === 'POST' && c.path.endsWith('/messages'));
-    expect(sent.body).toEqual({ body: '@Proposal Agent draft it, @Jess FYI', mentions: [{ kind: 'agent', id: 'proposal' }, { kind: 'person', id: 'jess' }] });
+    expect(sent.body).toMatchObject({ body: '@Proposal Agent draft it, @Jess FYI', mentions: [{ kind: 'agent', id: 'proposal' }, { kind: 'person', id: 'jess' }] });
+  });
+
+  it('@Annie is taggable, and typing @ opens a picker with Annie, teammates and agents', async () => {
+    routes['POST /acme/workspaces/sales/messages'] = { id: 'm1' };
+    const { wrapper } = mountPage(loc({ view: 'space', space: 'sales', tab: 'chat' }));
+    await flushPromises();
+    const box = wrapper.find('textarea[aria-label="Message"]');
+    await box.setValue('@');
+    box.element.setSelectionRange(1, 1);
+    await box.trigger('input');
+    const picker = wrapper.find('[data-testid="mention-picker"]');
+    expect(picker.exists()).toBe(true);
+    expect(picker.text()).toContain('Annie');
+    expect(picker.text()).toContain('Proposal Agent');
+    await box.trigger('keydown', { key: 'Enter' });
+    expect(box.element.value).toBe('@Annie ');
+    await box.setValue('@Annie sum this up');
+    await wrapper.find('form.composer').trigger('submit');
+    await flushPromises();
+    const sent = calls.find((c) => c.method === 'POST' && c.path.endsWith('/messages'));
+    expect(sent.body.mentions).toEqual([{ kind: 'agent', id: 'annie' }]);
   });
 
   it('renders message text as text, never HTML', async () => {

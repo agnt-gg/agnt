@@ -129,7 +129,7 @@ const json = (method, body) => ({ method, body: JSON.stringify(body ?? {}) });
 
 export const teamApi = {
   messages: (ws) => teamRequest(space(ws, '/messages')),
-  postMessage: (ws, body, mentions) => teamRequest(space(ws, '/messages'), json('POST', { body, mentions })),
+  postMessage: (ws, body, mentions, spaceName) => teamRequest(space(ws, '/messages'), json('POST', { body, mentions, spaceName })),
   deleteMessage: (ws, id) => teamRequest(space(ws, '/messages/' + encodeURIComponent(id)), { method: 'DELETE' }),
   /** The teamspace board, or with { private: true } the caller's own My Space cards in that workspace. */
   tasks: (ws, { private: own = false } = {}) => teamRequest(space(ws, own ? '/tasks?private=1' : '/tasks')),

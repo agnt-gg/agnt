@@ -4,7 +4,7 @@
   <div v-if="cards.length" class="mk mk-strip-host">
     <div class="tc-strip" data-testid="mk-task-strip">
       <span class="tc-status" :class="status">{{ STATUS[status] }}</span>
-      <button v-if="task" type="button" class="link" @click="$emit('open-task', task)"><MkIcon name="task" size="xs" /> Task on the board</button>
+      <button v-if="task" type="button" class="link" @click="$emit('open-task', task)"><MkIcon name="task" size="xs" /> Open in Tasks</button>
       <span>{{ decided }} of {{ cards.length }} approved</span>
       <span class="fill"></span>
       <button v-if="pending" type="button" class="link" @click="jump">Jump to what needs you ↓</button>

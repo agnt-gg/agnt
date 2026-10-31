@@ -213,6 +213,12 @@
    sheet's .composer layout or button reset says (measured on bravo: row 169px of 1068, margin 0). */
 .mk .composer .composer-row{width:100%;align-self:stretch}
 .mk .composer .composer-row .send{margin-left:auto}
+/* The @ picker sits above the composer. */
+.mk .mk-mentions{position:absolute;left:10px;bottom:calc(100% + 6px);z-index:40;min-width:260px;max-width:360px;margin:0;padding:6px;list-style:none;border:1px solid var(--line);border-radius:12px;background:var(--color-popup);box-shadow:var(--shadow-lg)}
+.mk .mk-mentions li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13.5px}
+.mk .mk-mentions li.on,.mk .mk-mentions li:hover{background:var(--surface-hover)}
+.mk .mk-mentions-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)}
+.mk .mk-mentions-h{font-size:11.5px;color:var(--text-tertiary)}
 .mk .send:hover,.mk.send:hover{opacity:.85}
 .mk .mention-chip,.mk.mention-chip{border:1px solid var(--line);background:var(--raised);border-radius:999px;padding:3px 9px 3px 4px;font-size:12px;display:inline-flex;align-items:center;gap:5px;color:var(--text-secondary)}
 .mk .mention-chip:hover,.mk.mention-chip:hover{border-color:var(--border-strong);color:var(--text-primary)}

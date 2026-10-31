@@ -15,11 +15,15 @@ export const TASK_STATUSES = Object.freeze([
 export const statusLabel = (id) => TASK_STATUSES.find((s) => s.id === id)?.label || id;
 export const statusColor = (id) => TASK_STATUSES.find((s) => s.id === id)?.color || '#87898e';
 
-/** A teamspace's tabs, as in the approved mockup. People is reached from the header's "Add people". */
+/**
+ * A teamspace's tabs. The board is called Tasks; docs live in Files, beside
+ * uploads, so their tab is hidden (old ?tab=docs links still open it).
+ * People is reached from the header's "Add people".
+ */
 export const SPACE_TABS = Object.freeze([
   { id: 'chat', label: 'Chat', icon: 'chats' },
-  { id: 'board', label: 'Board', icon: 'board' },
-  { id: 'docs', label: 'Docs', icon: 'doc' },
+  { id: 'board', label: 'Tasks', icon: 'board' },
+  { id: 'docs', label: 'Docs', icon: 'doc', hidden: true },
   { id: 'agents', label: 'Agents', icon: 'bot' },
   { id: 'routines', label: 'Routines', icon: 'bolt' },
   { id: 'files', label: 'Files', icon: 'file' },
@@ -63,6 +67,30 @@ export function teamQuery(loc = {}) {
   if (loc.doc) query.doc = loc.doc;
   if (loc.item) query.item = loc.item;
   return query;
+}
+
+/** Annie, taggable in every teamspace chat: she answers as the person who tagged her (TeamSpaceAnnie.js). */
+export const ANNIE = Object.freeze({ id: 'annie', name: 'Annie' });
+
+/**
+ * The @ being typed at the caret, or null: `{ query, start }` where start is
+ * the index of the @. Only at a word start, and only up to 30 characters.
+ */
+export function mentionAt(text, caret) {
+  const before = String(text || '').slice(0, caret);
+  const m = /(^|\s)@([^\s@]{0,30}(?: [^\s@]{0,30})?)$/.exec(before);
+  return m ? { query: m[2], start: before.length - m[2].length - 1 } : null;
+}
+
+/** Who the @ picker offers for a query: Annie, then teammates, then the teamspace's agents. */
+export function mentionOptions(query, { people = [], agents = [], me = null } = {}) {
+  const q = String(query || '').toLowerCase();
+  const all = [
+    { kind: 'agent', id: ANNIE.id, name: ANNIE.name, hint: 'Assistant' },
+    ...people.filter((p) => p.id !== me).map((p) => ({ kind: 'person', id: p.id, name: p.name, hint: 'Teammate' })),
+    ...agents.map((a) => ({ kind: 'agent', id: a.id, name: a.name, hint: 'Agent' })),
+  ];
+  return all.filter((o) => !q || o.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) || o.name.toLowerCase().startsWith(q)).slice(0, 8);
 }
 
 /** "1 member", "3 members". */
@@ -111,6 +139,7 @@ export function toPeople(members = [], me = null) {
 /** Who someone is, for a byline. "You" for yourself. */
 export function nameOf(ref, { people = [], agents = [], me = null } = {}) {
   if (!ref) return 'Unassigned';
+  if (ref.kind === 'agent' && ref.id === ANNIE.id) return ANNIE.name;
   if (ref.kind === 'agent') return agents.find((a) => a.id === ref.id)?.name || 'Agent';
   if (ref.kind === 'system') return 'AGNT';
   if (ref.id === me) return 'You';

@@ -135,7 +135,7 @@ describe('per-workspace access', () => {
 });
 
 describe('agents on cards (stubbed executor, real routes and repository)', () => {
-  async function agentFixture(run, executor) {
+  async function agentFixture(run, executor, annie = async () => { throw new Error('Annie was not asked'); }) {
     const db = new sqlite3.Database(':memory:');
     const repository = new TeamRepository(db); await repository.ready;
     await initializeTeamWorkspaces(repository); await initializeTeamSpaces(repository);
@@ -143,6 +143,7 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     await repository.run("INSERT INTO shared_workspaces(id,team_id,name,created_by) VALUES('ws','team','Sales','owner')");
     const roles = new Map([['ana', 'member'], ['ben', 'member']]);
     const pending = [];
+    const annieCalls = [];
     const app = express(); app.use(express.json());
     app.use((req, _res, next) => { req.user = { id: req.headers.authorization.replace('Bearer ', '') }; next(); });
     const router = express.Router();
@@ -163,6 +164,7 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
       workspaceAgents: async () => [{ id: 'proposal', name: 'Proposal Agent', kind: 'agent', status: 'published' }],
       agentExecutor: () => executor,
       schedule: (fn) => pending.push(fn()),
+      askAnnie: (input) => (annieCalls.push(input), annie(input)),
     });
     app.use('/teams', router);
     const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -170,7 +172,7 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
       const response = await fetch(`http://127.0.0.1:${server.address().port}/teams${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user }, ...(body ? { body: JSON.stringify(body) } : {}) });
       return { status: response.status, body: await response.json() };
     };
-    try { await run({ request, settle: () => Promise.all(pending.splice(0)), realtime }); } finally {
+    try { await run({ request, settle: () => Promise.all(pending.splice(0)), realtime, annieCalls }); } finally {
       await new Promise((resolve) => server.close(resolve));
       await new Promise((resolve) => db.close(() => resolve()));
     }
@@ -208,6 +210,27 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     expect(detail).toMatchObject({ status: 'todo', agentState: 'blocked' });
     expect(detail.comments.at(-1).body).toMatch(/not published/);
   }, async () => { throw Object.assign(new Error('Publish this before running it'), { status: 409, code: 'publish_required' }); }));
+
+  // @Annie answers in the chat as the person who tagged her, with the chat as context; she makes no card.
+  it('@Annie answers in the teamspace chat as the person who tagged her, with no card', () => agentFixture(async ({ request, settle, annieCalls }) => {
+    await request('/team/workspaces/ws/messages', 'POST', { body: 'we need a Globex follow-up' }, 'ben');
+    const posted = await request('/team/workspaces/ws/messages', 'POST', { body: '@Annie draft a two-line follow-up to Globex', mentions: [{ kind: 'agent', id: 'annie' }] });
+    expect(posted.status).toBe(200);
+    await settle();
+    expect(annieCalls).toHaveLength(1);
+    expect(annieCalls[0]).toMatchObject({ userId: 'ana', authToken: 'Bearer ana' });
+    expect(annieCalls[0].prompt).toMatch(/we need a Globex follow-up/);
+    expect(annieCalls[0].prompt).toMatch(/The request: @Annie draft a two-line follow-up to Globex/);
+    const messages = (await request('/team/workspaces/ws/messages')).body;
+    expect(messages.at(-1)).toMatchObject({ author: { kind: 'agent', id: 'annie' }, body: 'Hi Globex, following up on Tuesday.' });
+    expect((await request('/team/workspaces/ws/tasks')).body).toEqual([]);
+  }, async () => { throw new Error('no agent runs'); }, async () => 'Hi Globex, following up on Tuesday.'));
+
+  it('if Annie cannot answer, the chat says so plainly', () => agentFixture(async ({ request, settle }) => {
+    await request('/team/workspaces/ws/messages', 'POST', { body: '@Annie hi', mentions: [{ kind: 'agent', id: 'annie' }] });
+    await settle();
+    expect((await request('/team/workspaces/ws/messages')).body.at(-1).body).toMatch(/could not answer/);
+  }, async () => { throw new Error('no agent runs'); }, async () => { throw new Error('model down'); }));
 
   it('sending a result back runs the agent again with the note', () => agentFixture(async ({ request, settle }) => {
     const task = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'Draft', assignee: { kind: 'agent', id: 'proposal' } })).body;

@@ -6,7 +6,7 @@
       <div ref="headRef" class="drawer-head">
         <button type="button" class="ws-btn" data-testid="ot-switcher" :aria-expanded="String(menu === 'ws')" @click="toggle('ws')">
           <span class="ws-tile"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
-          <span style="flex: 1; min-width: 0"><div class="ws-name">{{ team ? team.name : 'Personal' }}</div><div class="ws-plan">{{ team ? roleLabel(team.role) + ' · team workspace' : 'Only you' }}</div></span>
+          <span style="flex: 1; min-width: 0"><div class="ws-name">{{ team ? titled(team.name) : 'Personal' }}</div><div class="ws-plan">{{ team ? roleLabel(team.role) + ' · Team Workspace' : 'Only you' }}</div></span>
           <MkIcon name="down" size="sm" />
         </button>
         <div v-if="menu === 'ws'" class="ws-menu" role="menu">
@@ -14,7 +14,7 @@
             <span class="ws-tile" style="width: 22px; height: 22px"><MkIcon name="lock" size="xs" /></span><span style="flex: 1"><div>Personal</div><div class="ws-plan">Only you</div></span><MkIcon v-if="!team" name="check" size="sm" />
           </button>
           <button v-for="t in teams" :key="t.id" type="button" class="menu-item" :class="{ 'is-active': team?.id === t.id }" role="menuitem" @click="goTeam(t)">
-            <span class="ws-tile" style="width: 22px; height: 22px"><img src="/images/agnt-logo-mark.svg" alt="" /></span><span style="flex: 1"><div>{{ t.name }}</div><div class="ws-plan">{{ roleLabel(t.role) }}</div></span><MkIcon v-if="team?.id === t.id" name="check" size="sm" />
+            <span class="ws-tile" style="width: 22px; height: 22px"><img src="/images/agnt-logo-mark.svg" alt="" /></span><span style="flex: 1"><div>{{ titled(t.name) }}</div><div class="ws-plan">{{ roleLabel(t.role) }}</div></span><MkIcon v-if="team?.id === t.id" name="check" size="sm" />
           </button>
           <button type="button" class="menu-item sep" role="menuitem" @click="pick('team-settings')"><MkIcon name="plus" size="sm" />Create or join a team</button>
         </div>
@@ -32,7 +32,6 @@
         </div>
         <div class="d-head"><MkIcon name="lock" size="xs" /> My Space</div>
         <button v-if="team" type="button" class="d-item" :class="{ 'is-active': active === 'mine-tasks' }" @click="pick('mine-tasks')"><MkIcon name="task" size="sm" />My tasks<span v-if="counts.tasks" class="count">{{ counts.tasks }}</span></button>
-        <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-drafts' }" @click="pick('mine-drafts')"><MkIcon name="doc" size="sm" />Drafts<span v-if="counts.drafts" class="count">{{ counts.drafts }}</span></button>
         <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-agents' }" @click="pick('mine-agents')"><MkIcon name="bot" size="sm" />My agents<span v-if="counts.agents" class="count">{{ counts.agents }}</span></button>
         <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-routines' }" @click="pick('mine-routines')"><MkIcon name="bolt" size="sm" />My routines<span v-if="counts.routines" class="count">{{ counts.routines }}</span></button>
         <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-files' }" @click="pick('mine-files')"><MkIcon name="file" size="sm" />My files</button>
@@ -56,6 +55,9 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import MkIcon from './MkIcon.vue';
 import { roleLabel } from '@/utils/teamClient.js';
 import { spaceEmoji } from '@/views/One/team/teamModel.js';
+
+/** A workspace name as a name: "bravo" reads "Bravo". The stored name is unchanged. */
+const titled = (name) => { const s = String(name || ''); return s ? s[0].toUpperCase() + s.slice(1) : s; };
 import { openTeam, openPersonal } from '@/composables/useSpaces.js';
 
 const props = defineProps({

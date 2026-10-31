@@ -19,10 +19,16 @@
         </div>
       </div>
     </div>
-    <form v-if="canWrite" class="composer" @submit.prevent="send">
-      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName} — @mention an agent to hand it work`" aria-label="Message" @keydown.enter.exact.prevent="send" @input="grow"></textarea>
+    <form v-if="canWrite" class="composer" style="position: relative" @submit.prevent="send">
+      <!-- @ picker: Annie, teammates and this teamspace's agents. -->
+      <ul v-if="picker.open && options.length" class="mk-mentions" role="listbox" aria-label="Mention" data-testid="mention-picker">
+        <li v-for="(o, i) in options" :key="o.kind + o.id" role="option" :aria-selected="i === picker.index" :class="{ on: i === picker.index }" @mousedown.prevent="pick(o)">
+          <TeamAvatar :who="{ kind: o.kind, id: o.id }" :label="o.name" size="sm" /><span class="mk-mentions-n">{{ o.name }}</span><span class="mk-mentions-h">{{ o.hint }}</span>
+        </li>
+      </ul>
+      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName} — @mention a teammate, an agent or Annie`" aria-label="Message" @keydown="onKey" @input="onInput" @click="onInput" @blur="picker.open = false"></textarea>
       <div class="composer-row">
-        <button v-for="a in agents.slice(0, 3)" :key="a.id" type="button" class="mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
+        <button v-for="a in chips" :key="a.id" type="button" class="mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
         <button class="send" type="submit" data-tour-id="team-send" :disabled="!draft.trim() || sending" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
       </div>
     </form>
@@ -31,10 +37,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, inject, onMounted } from 'vue';
+import { ref, reactive, computed, watch, nextTick, inject, onMounted } from 'vue';
 import TeamAvatar from './TeamAvatar.vue';
 import { teamApi } from './useTeam.js';
-import { ago, mentionsIn, mentionRuns, nameOf } from './teamModel.js';
+import { ago, mentionsIn, mentionRuns, nameOf, ANNIE, mentionAt, mentionOptions } from './teamModel.js';
 
 const props = defineProps({
   workspaceId: { type: String, required: true },
@@ -51,7 +57,35 @@ const sending = ref(false);
 const logRef = ref(null);
 const inputRef = ref(null);
 const canWrite = computed(() => ctx.canWrite.value);
-const names = computed(() => [...props.agents.map((a) => a.name), ...ctx.people.value.flatMap((p) => [p.name, p.first])]);
+// Annie is taggable everywhere; the server answers her as the person who tagged her.
+const taggableAgents = computed(() => [ANNIE, ...props.agents]);
+const chips = computed(() => taggableAgents.value.slice(0, 3));
+const names = computed(() => [...taggableAgents.value.map((a) => a.name), ...ctx.people.value.flatMap((p) => [p.name, p.first])]);
+const picker = reactive({ open: false, query: '', start: 0, index: 0 });
+const options = computed(() => mentionOptions(picker.query, { people: ctx.people.value, agents: props.agents, me: ctx.me.value }));
+function onInput() {
+  grow();
+  const el = inputRef.value;
+  const at = el ? mentionAt(draft.value, el.selectionStart) : null;
+  if (!at) { picker.open = false; return; }
+  Object.assign(picker, { open: true, query: at.query, start: at.start, index: 0 });
+}
+function pick(option) {
+  const el = inputRef.value;
+  const caret = el ? el.selectionStart : draft.value.length;
+  draft.value = draft.value.slice(0, picker.start) + '@' + option.name + ' ' + draft.value.slice(caret);
+  picker.open = false;
+  nextTick(() => { if (!el) return; const pos = picker.start + option.name.length + 2; el.focus(); el.setSelectionRange(pos, pos); grow(); });
+}
+function onKey(event) {
+  if (picker.open && options.value.length) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); picker.index = (picker.index + 1) % options.value.length; return; }
+    if (event.key === 'ArrowUp') { event.preventDefault(); picker.index = (picker.index - 1 + options.value.length) % options.value.length; return; }
+    if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); pick(options.value[picker.index]); return; }
+    if (event.key === 'Escape') { event.preventDefault(); picker.open = false; return; }
+  }
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
+}
 const runsOf = (body) => mentionRuns(body, names.value);
 const displayName = (ref_) => {
   const name = nameOf(ref_, { people: ctx.people.value, agents: props.agents, me: ctx.me.value });
@@ -76,7 +110,7 @@ async function send() {
   if (!body || sending.value) return;
   sending.value = true;
   try {
-    await teamApi.postMessage(props.workspaceId, body, mentionsIn(body, { people: ctx.people.value, agents: props.agents }));
+    await teamApi.postMessage(props.workspaceId, body, mentionsIn(body, { people: ctx.people.value, agents: taggableAgents.value }), props.spaceName);
     draft.value = '';
     grow();
     await load({ scroll: true });
@@ -102,7 +136,7 @@ async function toTask(m) {
   try {
     const task = await teamApi.createTask(props.workspaceId, { title: titleFrom(m.body), sourceMessageId: m.id });
     await load();
-    ctx.toast('Card created on the board');
+    ctx.toast('Added to Tasks');
     emit('open-task', task.id);
   } catch (error) { ctx.toast(error.message); }
 }
@@ -118,7 +152,7 @@ async function toAgent(m) {
 async function toDoc(m) {
   try {
     const doc = await teamApi.createDoc(props.workspaceId, 'From chat: ' + titleFrom(m.body).slice(0, 60), m.body);
-    ctx.toast('Saved as a doc in this teamspace');
+    ctx.toast('Saved as a doc in this teamspace’s Files');
     emit('open-doc', doc.id);
   } catch (error) { ctx.toast(error.message); }
 }

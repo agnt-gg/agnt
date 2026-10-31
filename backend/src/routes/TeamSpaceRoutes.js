@@ -1,5 +1,6 @@
 import { TeamSpaceRepository, parseAssignee, parseMentions } from '../services/TeamSpaceRepository.js';
 import { runAgentOnTask } from '../services/TeamSpaceAgents.js';
+import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../services/TeamSpaceAnnie.js';
 
 /**
  * Teamspace collaboration routes, mounted inside TeamRoutes' router so every
@@ -16,6 +17,7 @@ import { runAgentOnTask } from '../services/TeamSpaceAgents.js';
  *   workspaceAgents(repo, req)           [{id, name, status}] native agents in the teamspace
  *   agentExecutor(repo, req, user, id)   (input) => run result, through NativeTeamExecution
  *   schedule(fn)                         runs agent work after the response (setImmediate in production)
+ *   askAnnie({userId, authToken, prompt}) Annie's answer as the tagging person (TeamSpaceAnnie.runAnnieTurn)
  */
 /** A card title from a chat message: the text with the @mentioned agents' names taken out. */
 export function cardTitle(body, agentNames) {
@@ -24,7 +26,7 @@ export function cardTitle(body, agentNames) {
   return title.replace(/^[\s,:;-]+/, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn) }) {
+export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn), askAnnie = runAnnieTurn }) {
   const W = '/:teamId/workspaces/:workspaceId';
   const spacesOf = (repo) => new TeamSpaceRepository(repo);
   const signal = (req, kind, extra = {}) => realtime.space(req.params.teamId, req.headers.authorization, { workspaceId: req.params.workspaceId, kind, ...extra });
@@ -61,12 +63,22 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
 
   router.post(W + '/messages', handler(async (repo, req, user) => {
     const mentions = parseMentions(req.body?.mentions);
-    const agents = await checkTargets(repo, req, mentions);
+    // @Annie is the assistant, not a teamspace agent: checked apart, and she gets no card.
+    const annie = mentions.some(isAnnie);
+    const agents = await checkTargets(repo, req, mentions.filter((m) => !isAnnie(m)));
     const spaces = spacesOf(repo);
     const { teamId, workspaceId } = req.params;
     const message = await spaces.postMessage(teamId, user, workspaceId, { body: req.body?.body, mentions });
+    if (annie) {
+      // Context is read now, inside the request that proved the caller may read this chat.
+      const history = await spaces.messages(teamId, user, workspaceId);
+      const names = new Map((await workspaceAgents(repo, req)).map((a) => [a.id, a.name]));
+      const prompt = anniePrompt({ spaceName: req.body?.spaceName, message, history: history.filter((m) => m.id !== message.id), names });
+      const authToken = req.headers.authorization;
+      schedule(() => answerInTeamChat({ spaces, teamId, workspaceId, prompt, ask: (p) => askAnnie({ userId: user, authToken, prompt: p }), changed: () => signal(req, 'messages') }));
+    }
     // Each @agent gets a card made from the message and starts on it.
-    for (const mention of mentions.filter((m) => m.kind === 'agent').slice(0, 3)) {
+    for (const mention of mentions.filter((m) => m.kind === 'agent' && !isAnnie(m)).slice(0, 3)) {
       const title = cardTitle(message.body, [...agents.values()].map((a) => a.name)) || 'Request from chat';
       const task = await spaces.createTask(teamId, user, workspaceId, { title, assignee: mention, sourceMessageId: message.id });
       await spaces.postAgentMessage(teamId, workspaceId, mention.id, 'Got it. I made a card for this and I am starting now.', task.id);

@@ -223,7 +223,7 @@ export class TeamRepository {
   history(teamId, userId) {
     return this.transaction(async () => {
       await this.member(teamId, userId);
-      return this.all('SELECT * FROM team_events WHERE team_id=? ORDER BY created_at DESC LIMIT 100', [teamId])
+      return this.all('SELECT * FROM team_events WHERE team_id=? ORDER BY created_at DESC LIMIT 300', [teamId])
     })
   }
 }

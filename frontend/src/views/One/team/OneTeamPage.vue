@@ -8,7 +8,7 @@
     <MkMembers v-else-if="location.view === 'members'" />
     <TeamMyTasks v-else-if="location.view === 'mine' && state.team" />
     <TeamSpaceView v-else-if="location.view === 'space' && space" :key="space.id" :team="state.team" :space="space" :location="location" />
-    <TeamDocPage v-else-if="location.view === 'doc' && space && location.doc" :key="location.doc" :workspace-id="space.id" :doc-id="location.doc" :space-name="space.name" @back="go({ view: 'space', space: space.id, tab: 'docs' })" />
+    <TeamDocPage v-else-if="location.view === 'doc' && space && location.doc" :key="location.doc" :workspace-id="space.id" :doc-id="location.doc" :space-name="space.name" @back="go({ view: 'space', space: space.id, tab: 'files' })" />
     <div v-else-if="['space', 'doc'].includes(location.view)" class="content">
       <div class="page"><p class="mk-error">That teamspace is not available to you. It may have been archived, or your access was changed.</p><button type="button" class="btn" @click="go({ view: 'home' })">Go home</button></div>
     </div>

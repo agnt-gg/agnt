@@ -91,6 +91,7 @@
                   @connect="(c) => emit('connect', c)"
                   @reconnect="(c) => emit('reconnect', c)"
                   @open-ai-models="emit('open-ai-models')"
+                  @install-all="(c) => installAll(c.suggested, c.name)"
                 />
               </div>
             </template>
@@ -182,6 +183,7 @@
                 </div>
                 <div class="ap-row-side">
                   <span class="ap-status" :class="accountTone(account.status)">{{ accountStatus(account.status) }}</span>
+                  <button v-if="!account.aiModel && canInstallAll(account.card?.suggested, account.apps.length)" type="button" class="ap-btn small" data-action="install-all" :disabled="!!installing" @click="installAll(account.card.suggested, account.name)">{{ installing === '__all__' ? 'Installing…' : `Install all ${account.card.suggested.length}` }}</button>
                   <button v-if="account.aiModel" type="button" class="ap-btn small" data-action="disconnect-ai" :disabled="togglingAi === account.id" @click="toggleAi(account.id)">{{ account.status === 'reconnect' ? 'Reconnect' : 'Disconnect' }}</button>
                   <button v-else-if="account.status === 'reconnect'" type="button" class="ap-btn primary small" data-action="reconnect" @click="emit('reconnect', account.card)">Reconnect</button>
                   <button v-else-if="account.status === 'connect'" type="button" class="ap-btn primary small" data-action="connect" @click="emit('connect', account.card)">Connect</button>
@@ -216,7 +218,10 @@
                 <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge connection">{{ connectionKind(service.connectionType) }}</span></div>
                 <p v-if="service.suggested.length" class="ap-row-desc">Plugins for it: {{ service.suggested.map((s) => s.displayName).join(', ') }}</p>
               </div>
-              <div class="ap-row-side"><button type="button" class="ap-btn small" data-action="connect" @click="emit('connect', service)">Connect</button></div>
+              <div class="ap-row-side">
+                <button v-if="canInstallAll(service.suggested)" type="button" class="ap-btn small" data-action="install-all" :disabled="!!installing" @click="installAll(service.suggested, service.name)">{{ installing === '__all__' ? 'Installing…' : `Install all ${service.suggested.length}` }}</button>
+                <button type="button" class="ap-btn small" data-action="connect" @click="emit('connect', service)">Connect</button>
+              </div>
             </div>
           </div>
           <button v-if="discover.length > shownDiscover.length" type="button" class="ap-btn quiet small" data-action="show-all-services" @click="showAllServices = true">Show all {{ discover.length }}</button>
@@ -715,6 +720,50 @@ async function install(app) {
     if (failure.code === 'admin_install_required') notice.value = failure.message;
     else error.value = failure.message || 'Installation failed. Please retry.';
     console.error('[AppsSection] install:', failure);
+  } finally {
+    installing.value = null;
+  }
+}
+
+/**
+ * Install All for a sign-in with several plugins (Google: Gmail, Calendar,
+ * Drive…). The same checks as one install, in one confirmation: each plugin's
+ * summary and package inspection. Paid plugins are left out and named; they go
+ * through their own checkout. One failure never stops the rest.
+ */
+const canInstallAll = (suggested = [], installedCount = 0) => suggested.length > 0 && suggested.length + installedCount > 1;
+async function installAll(suggested, serviceName) {
+  if (installing.value) return;
+  const apps = (suggested || []).map((s) => rowsByName.value.get(s.name)).filter((app) => app && !app.installed);
+  const free = apps.filter((app) => !priceLabel(app));
+  const paid = apps.filter((app) => priceLabel(app));
+  if (!free.length) { notice.value = `These ${serviceName} plugins are paid. Get each from its own page.`; return; }
+  installing.value = '__all__';
+  error.value = '';
+  notice.value = '';
+  try {
+    const parts = [];
+    for (const app of free) {
+      let report = null;
+      try { report = await inspectPlugin(app.name); } catch (failure) { if (failure.status !== 403) throw failure; }
+      parts.push(`<b>${escapeDisclosure(app.displayName)}</b><br>${[installSummary(app), report ? installDisclosure(report) : ''].filter(Boolean).join('<br>')}`);
+    }
+    if (paid.length) parts.push(`Not included (paid, get each from its page): ${escapeDisclosure(paid.map((app) => app.displayName).join(', '))}.`);
+    const confirmed = await modal.value.showModal({
+      title: `Install all ${free.length} ${serviceName} plugins?`, message: parts.join('<br><br>'),
+      confirmText: `Install ${free.length}`, cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-primary',
+    });
+    if (!confirmed || !alive) return;
+    const failed = [];
+    for (const app of free) {
+      try { await store.dispatch('marketplace/installPlugin', { pluginName: app.name }); } catch (failure) { failed.push(`${app.displayName} (${failure.message || 'failed'})`); }
+    }
+    await reload();
+    const done = free.length - failed.length;
+    notice.value = [`Installed ${done} of ${free.length} ${serviceName} plugins.`, failed.length ? `Not installed: ${failed.join(', ')}.` : ''].filter(Boolean).join(' ');
+  } catch (failure) {
+    error.value = failure.message || 'Install all failed. Please retry.';
+    console.error('[AppsSection] install all:', failure);
   } finally {
     installing.value = null;
   }

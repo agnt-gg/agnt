@@ -7,6 +7,7 @@ import { humanizeToolName } from '@/services/stepsSummary.js';
 
 export const ACTIVITY_KINDS = Object.freeze([
   { id: 'all', label: 'All' },
+  { id: 'team', label: 'Teamspaces' },
   { id: 'chat', label: 'Chats' },
   { id: 'agent', label: 'Agents' },
   { id: 'workflow', label: 'Workflows' },
@@ -113,6 +114,46 @@ export function activityDetail(detail = {}, { workflowNodes = [] } = {}) {
     endedAt: d.endTime || null,
     duration: durationLabel(ms(d.startTime, d.endTime)),
   };
+}
+
+/**
+ * Teamspace activity: what people did in the team (team_events), in words.
+ * Names come only from lists the person may read (each teamspace's tasks and
+ * docs, the teamspaces they belong to): an event whose target cannot be
+ * resolved (someone's private card, a teamspace they cannot open, something
+ * deleted) is left out rather than shown half-known.
+ *
+ * @param events  [{ id, actor_id, action, target_id, created_at }]
+ * @param lookups { spaces: Map(id → {name}), tasks: Map(id → {title, workspaceId}), docs: Map(id → {name, workspaceId}), people: Map(id → name), me }
+ * @returns rows: { id, kind:'team', actorId, actor, sentence, where, at, target }
+ */
+export function teamActivityRows(events = [], { spaces = new Map(), tasks = new Map(), docs = new Map(), people = new Map(), me = null } = {}) {
+  const who = (id) => (id === me ? 'You' : people.get(id) || 'A teammate');
+  const TASK = { 'task.created': 'created the task', 'task.moved': 'moved the task', 'task.approved': 'approved the task', 'task.sent_back': 'sent back the task' };
+  const DOC = { 'doc.created': 'created the doc', 'doc.revised': 'edited the doc' };
+  const MEMBER = { 'member.invited': 'invited someone to the team', 'member.joined': 'joined the team', 'member.removed': 'removed someone from the team' };
+  const rows = [];
+  for (const e of Array.isArray(events) ? events : []) {
+    const base = { id: 'team:' + e.id, kind: 'team', actorId: e.actor_id, actor: who(e.actor_id), at: e.created_at };
+    if (TASK[e.action]) {
+      const t = tasks.get(e.target_id);
+      if (!t) continue;
+      rows.push({ ...base, sentence: `${TASK[e.action]} “${t.title}”`, where: spaces.get(t.workspaceId)?.name || '', target: { type: 'task', space: t.workspaceId, id: e.target_id } });
+    } else if (DOC[e.action]) {
+      const d = docs.get(e.target_id);
+      if (!d) continue;
+      rows.push({ ...base, sentence: `${DOC[e.action]} “${d.name}”`, where: spaces.get(d.workspaceId)?.name || '', target: { type: 'doc', space: d.workspaceId, id: e.target_id } });
+    } else if (e.action === 'message.posted') {
+      const s = spaces.get(e.target_id);
+      if (!s) continue;
+      rows.push({ ...base, sentence: 'posted in chat', where: s.name, target: { type: 'space', space: e.target_id } });
+    } else if (MEMBER[e.action]) {
+      rows.push({ ...base, sentence: MEMBER[e.action], where: '', target: { type: 'members' } });
+    } else if (e.action === 'asset.created' || e.action === 'asset.revised') {
+      rows.push({ ...base, sentence: e.action === 'asset.created' ? 'published an item to the team' : 'published a new version of a team item', where: '', target: null });
+    }
+  }
+  return rows.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
 }
 
 /** @returns rows: { id, kind, icon, title, detail, at, status, target } */

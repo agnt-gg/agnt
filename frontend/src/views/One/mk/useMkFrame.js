@@ -77,29 +77,42 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     }
   }
 
-  /** The teamspace new work lands in: the one open, else the team's default, else the first. */
-  const targetSpace = () => {
+  /** The teamspace on screen, if any. New work only goes to a teamspace when you are in it. */
+  const openSpace = () => {
+    const { view, space } = loc();
+    if (page.value !== 'team' || !['space', 'doc'].includes(view)) return null;
+    return (teamState.spaces || []).find((s) => s.id === space) || null;
+  };
+  /** Where private My Space cards live: the team's main workspace, visible to their owner only. */
+  const homeSpace = () => {
     const spaces = teamState.spaces || [];
-    return spaces.find((s) => s.id === loc().space) || spaces.find((s) => s.is_default) || spaces[0] || null;
+    return spaces.find((s) => s.is_default) || spaces[0] || null;
   };
   async function create(kind) {
     if (kind === 'agent') return nav.go({ page: 'library', tab: 'agents', isNew: true });
     if (kind === 'routine') return nav.go({ page: 'scheduled', isNew: true });
-    const space = teamState.team ? targetSpace() : null;
-    if (!space) {
-      // Personal: a task is something Annie does with you (she shows the plan first); a doc is a private file.
-      if (kind === 'task') return nav.ask('Make this a task: ');
-      return nav.go({ page: 'library', tab: 'files', dir: '' });
+    const space = teamState.team ? openSpace() : null;
+    if (kind === 'doc') {
+      // Docs live in Files: the open teamspace's, else your own private files.
+      return space ? team('space', { space: space.id, tab: 'files' }) : nav.go({ page: 'library', tab: 'files', dir: '' });
     }
-    const name = await nav.prompt({ title: kind === 'task' ? 'New task' : 'New doc', message: `In ${space.name}. Everyone there can see it.`, placeholder: kind === 'task' ? 'Call Northwind about the renewal' : 'Q4 plan', confirmText: 'Create' });
+    const home = teamState.team && !space ? homeSpace() : null;
+    if (!space && !home) return nav.ask('Make this a task: '); // personal: Annie plans it with you
+    const name = await nav.prompt({
+      title: 'New task',
+      message: space ? `In ${space.name}. Everyone there can see it.` : 'In My Space. Only you can see it.',
+      placeholder: 'Call Northwind about the renewal',
+      confirmText: 'Create',
+    });
     if (!name || !name.trim()) return undefined;
     try {
-      if (kind === 'task') {
+      if (space) {
         const task = await teamApi.createTask(space.id, { title: name.trim() });
         return team('space', { space: space.id, tab: 'board', task: task.id });
       }
-      const doc = await teamApi.createDoc(space.id, name.trim(), '');
-      return team('doc', { space: space.id, doc: doc.id });
+      await teamApi.createTask(home.id, { title: name.trim(), private: true, assignee: { kind: 'person', id: teamState.me } });
+      nav.toast('Added to My tasks. Only you can see it.');
+      return team('mine');
     } catch (error) {
       nav.toast(error.message);
       return undefined;
@@ -114,7 +127,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       const { view, space, item } = loc();
       const s = (teamState.spaces || []).find((x) => x.id === space);
       if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? spaceEmoji(s) + ' ' + s.name : 'Teamspace' }];
-      if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'docs' }) }, { label: 'Doc' }];
+      if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'files' }) }, { label: 'Doc' }];
       if (view === 'mine') return [{ label: 'My Space', go: () => team('mine') }, { label: 'My tasks' }];
       if (view === 'agent') {
         const agent = (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(item));
