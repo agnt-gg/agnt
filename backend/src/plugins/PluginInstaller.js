@@ -555,7 +555,7 @@ class PluginInstaller {
    *   `effectivePermissions` — `declaredPermissions` is the author's raw block
    *   and is empty for most packages, which is what made the gate inert.
    */
-  async stagedInstall(archivePath, pluginName, { integrityState = 'none', integrity = null, beforeSwap = null, tierOverride = null } = {}) {
+  async stagedInstall(archivePath, pluginName, { integrityState = 'none', integrity = null, beforeSwap = null, tierOverride = null, ignoreScripts = false } = {}) {
     const livePath = path.join(this.pluginsDir, pluginName);
     const stagingPath = path.join(this.tempDir, `staging-${pluginName}-${Date.now()}`);
 
@@ -597,7 +597,7 @@ class PluginInstaller {
 
       // Deep validation + dependency install IN STAGING — the same checks the
       // old code ran against the live dir, now run before anything goes live.
-      const isValid = await this.validatePluginAt(stagingPath, pluginName);
+      const isValid = await this.validatePluginAt(stagingPath, pluginName, { ignoreScripts });
       if (!isValid) {
         throw new Error('Plugin validation failed');
       }
@@ -1404,7 +1404,7 @@ class PluginInstaller {
    * anything is swapped live. Same checks as the original validatePlugin —
    * just path-addressable.
    */
-  async validatePluginAt(pluginPath, pluginName) {
+  async validatePluginAt(pluginPath, pluginName, { ignoreScripts = false } = {}) {
     const manifestPath = path.join(pluginPath, 'manifest.json');
     const packageJsonPath = path.join(pluginPath, 'package.json');
     const nodeModulesPath = path.join(pluginPath, 'node_modules');
@@ -1485,11 +1485,11 @@ class PluginInstaller {
           const contents = await fs.readdir(nodeModulesPath);
           if (contents.length === 0) {
             console.log(`[PluginInstaller] ${pluginName}: node_modules is empty, installing dependencies...`);
-            await this.installDependencies(pluginPath, pluginName);
+            await this.installDependencies(pluginPath, pluginName, { ignoreScripts });
           }
         } catch {
           console.log(`[PluginInstaller] ${pluginName}: Missing node_modules, installing dependencies...`);
-          await this.installDependencies(pluginPath, pluginName);
+          await this.installDependencies(pluginPath, pluginName, { ignoreScripts });
         }
       }
 
@@ -1505,7 +1505,7 @@ class PluginInstaller {
    * Install a plugin from the marketplace
    * Downloads pre-built package with node_modules included
    */
-  async installFromMarketplace(pluginName, version = 'latest', { authToken = null } = {}) {
+  async installFromMarketplace(pluginName, version = 'latest', { authToken = null, ignoreScripts = false } = {}) {
     console.log(`[PluginInstaller] Installing ${pluginName}@${version} from marketplace...`);
 
     const tempFile = path.join(this.tempDir, `${pluginName}.tar.gz`);
@@ -1555,6 +1555,7 @@ class PluginInstaller {
         integrityState,
         integrity: actualIntegrity,
         tierOverride: pluginInfo.trustTier === 'official' ? 'official' : null,
+        ignoreScripts,
       });
 
       // Clean up temp file
@@ -2162,13 +2163,18 @@ class PluginInstaller {
    * Install dependencies for a plugin using npm (async/non-blocking)
    * Handles native module compilation for the target platform
    */
-  async installDependencies(pluginPath, pluginName) {
+  /**
+   * @param {object} [opts]
+   * @param {boolean} [opts.ignoreScripts] no dependency install scripts: a member's install on a
+   *   shared instance, whose package scan never sees what a dependency's script would run.
+   */
+  async installDependencies(pluginPath, pluginName, { ignoreScripts = false } = {}) {
     const { spawn } = await import('child_process');
 
     console.log(`[PluginInstaller] Installing dependencies for ${pluginName}...`);
 
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const args = ['install', '--production', '--no-audit', '--no-fund', `--platform=${process.platform}`, `--arch=${process.arch}`];
+    const args = ['install', '--production', '--no-audit', '--no-fund', `--platform=${process.platform}`, `--arch=${process.arch}`, ...(ignoreScripts ? ['--ignore-scripts'] : [])];
 
     try {
       await this.runNpmCommand(npmCommand, args, pluginPath, pluginName);

@@ -298,7 +298,8 @@ describe('PluginInstaller — download capabilities', () => {
     it('the routes forward the caller\'s Authorization header', () => {
       // Three routes, each of which must hand its own request's credential down.
       const forwards = [...routesSource.matchAll(/authToken: req\.headers\.authorization/g)];
-      expect(forwards.length).toBe(4);
+      // + the member pre-install inspection (POST /install), which downloads as the member too.
+      expect(forwards.length).toBe(5);
     });
 
     it('the background scheduler deliberately passes no token', async () => {
