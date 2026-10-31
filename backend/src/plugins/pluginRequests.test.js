@@ -35,7 +35,7 @@ describe('plugin requests through the routes', () => {
     app.use((req, _res, next) => { req.user = { id: req.headers['x-user'] }; next(); });
     const router = express.Router();
     mountPluginRequestRoutes(router, {
-      requests: { policy: () => store.policy(), setPolicy: (p) => store.setPolicy(p), pending: () => store.pending(), mine: (u) => store.mine(u), find: (i) => store.find(i), pendingFor: (n) => store.pendingFor(n), decide: (...a) => store.decide(...a), markSeen: (...a) => store.markSeen(...a) },
+      requests: { policy: () => store.policy(), setPolicy: (p) => store.setPolicy(p), pending: () => store.pending(), mine: (u) => store.mine(u), find: (i) => store.find(i), pendingFor: (n) => store.pendingFor(n), decide: (...a) => store.decide(...a), markSeen: (...a) => store.markSeen(...a), grantToMembers: (n) => store.grantToMembers(n) },
       installer: { getAvailablePlugins: async () => ({ plugins: [listing] }), installFromMarketplace: async (name, _v, opts) => { installs.push({ name, opts }); return installResult; } },
       accounts: { add: async (name, user) => added.push(`${name}:${user}`) },
       reload: async () => { reloads++; },
@@ -78,6 +78,39 @@ describe('plugin requests through the routes', () => {
     expect(mine[0]).toMatchObject({ status: 'approved', seen: false });
     await call('POST', `/requests/${one.id}/seen`, 'ana');
     expect((await call('GET', '/requests', 'ana')).body.mine).toEqual([]);
+  });
+
+  // THE BUG: approving installed the plugin for the member, but never let them USE it. YouTube reaches the
+  // filesystem and env, so with the default policy its tools stayed refused to the person it was approved for.
+  it('approving a plugin lets members use it, not only have it installed', async () => {
+    const r = (await store.request('youtube-plugin', 'ana', youtube)).request;
+    expect(memberInstallGrant('youtube-plugin', youtube, await store.policy(), false)).toBe(null);
+    await call('POST', `/requests/${r.id}/approve`, 'own');
+    const policy = await store.policy();
+    expect(policy.preApproved).toEqual(['youtube-plugin']);
+    expect(memberInstallGrant('youtube-plugin', youtube, policy, false)).toBe('pre-approved');
+  });
+
+  it('the owner\u2019s block wins: a blocked plugin cannot be approved, by the owner or an admin', async () => {
+    await store.setPolicy({ blockedPlugins: ['youtube-plugin'], adminsCanApprove: true });
+    const r = (await store.request('youtube-plugin', 'ana', youtube)).request;
+    for (const who of ['adm', 'own']) expect((await call('POST', `/requests/${r.id}/approve`, who)).body.code).toBe('plugin_blocked');
+    expect(installs).toEqual([]);
+    expect((await store.policy()).preApproved).toEqual([]);
+  });
+
+  it('plugins approved before this fix are granted once on upgrade, and only once', async () => {
+    const legacy = new sqlite3.Database(':memory:');
+    const run = (sql, p = []) => new Promise((res, rej) => legacy.run(sql, p, (e) => (e ? rej(e) : res())));
+    // The schema as it was, with an approval that never granted use.
+    await run("CREATE TABLE plugin_install_requests(id TEXT PRIMARY KEY, plugin_name TEXT NOT NULL, requester_id TEXT NOT NULL, status TEXT NOT NULL, report_json TEXT NOT NULL DEFAULT '{}', decided_by TEXT, decided_at TEXT, error TEXT, seen_at TEXT, created_at TEXT NOT NULL)");
+    await run("INSERT INTO plugin_install_requests VALUES('1','youtube-plugin','ana','approved','{}','own','now',NULL,NULL,'now'),('2','x-plugin','ben','declined','{}','own','now',NULL,NULL,'now')");
+    const upgraded = new PluginInstallRequests(legacy);
+    expect((await upgraded.policy()).preApproved).toEqual(['youtube-plugin']);
+    // The owner removes it later; restarting must not grant it again.
+    await upgraded.setPolicy({ preApproved: [] });
+    expect((await new PluginInstallRequests(legacy).policy()).preApproved).toEqual([]);
+    await new Promise((resolve) => legacy.close(resolve));
   });
 
   it('members and (by default) admins cannot decide; the owner can let admins', async () => {

@@ -41,7 +41,7 @@
 import { isRestrictedInstance, tenantOwnerId, credentialUserId } from '../auth/tenantOwnership.js';
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { resolveToolCapabilities } from './toolCapabilities.js';
-import { isMemberSafePluginTool } from './memberSafePlugins.js';
+import { isMemberSafePluginTool, isPluginTool } from './memberSafePlugins.js';
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';
 
@@ -81,6 +81,8 @@ export function memberRefusal(toolName, args, userId) {
   // looking for a setting that does not exist.
   if (!profile) {
     if (isMemberSafePluginTool(toolName)) return null;
+    // A plugin is the owner's decision, not a guarantee: say who can turn it on and how.
+    if (isPluginTool(toolName)) return PLUGIN_NOT_APPROVED(toolName);
     return `${toolName} has no declared capabilities, so it is not verified safe to run next to the credentials stored on this shared instance. ${GUARANTEE}`;
   }
   const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability));
@@ -90,5 +92,7 @@ export function memberRefusal(toolName, args, userId) {
     ? `${toolName} would run code inside this shared instance, next to everyone's stored credentials. ${GUARANTEE} Run code in the secure cloud sandbox instead (sandbox_run).`
     : `${toolName} would read or change this shared instance's own files or database, where everyone's credentials are stored. ${GUARANTEE}`;
 }
+
+export const PLUGIN_NOT_APPROVED = (toolName) => `${toolName} comes from a plugin the instance owner has not approved for team members yet. Ask the owner to approve it: they can approve your request for it, or allow it in Settings > Plugins. Once approved, you can use it.`;
 
 export const GUARANTEE = 'Team members never can: this is an AGNT safety guarantee, not a setting, and nobody can switch it off. The instance owner can still do it themselves.';

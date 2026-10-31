@@ -61,8 +61,33 @@ export class PluginInstallRequests {
         decided_by TEXT, decided_at TEXT, error TEXT, seen_at TEXT, created_at TEXT NOT NULL)`);
       await this.run('CREATE INDEX IF NOT EXISTS plugin_install_requests_status ON plugin_install_requests(status, created_at)');
       await this.run('CREATE TABLE IF NOT EXISTS plugin_install_policy(key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+      // Approving a request once installed the plugin without letting members use it. Every plugin
+      // already approved is granted now, once; later approvals grant as they happen (grantToMembers).
+      if (!(await this.get("SELECT 1 FROM plugin_install_policy WHERE key='grantsFromApprovals'"))) {
+        const approved = (await this.all("SELECT DISTINCT plugin_name FROM plugin_install_requests WHERE status='approved'")).map((r) => r.plugin_name);
+        await this.addPreApproved(approved);
+        await this.run("INSERT INTO plugin_install_policy(key,value) VALUES('grantsFromApprovals','true')");
+      }
     })().catch((error) => { this.initializing = null; throw error; });
     return this.initializing;
+  }
+  /** Raw add to the stored pre-approved list (no ready(): used during initialisation too). */
+  async addPreApproved(names) {
+    const valid = names.filter((name) => typeof name === 'string' && NAME.test(name));
+    if (!valid.length) return;
+    const row = await this.get("SELECT value FROM plugin_install_policy WHERE key='preApproved'");
+    const current = row ? JSON.parse(row.value) : [];
+    const next = [...new Set([...(Array.isArray(current) ? current : []), ...valid])].sort();
+    await this.run("INSERT INTO plugin_install_policy(key,value) VALUES('preApproved',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [JSON.stringify(next)]);
+  }
+  /**
+   * The owner (or an admin they allow) approved this plugin for members: members may now USE it, not
+   * only have it installed. Recorded as pre-approved, which the owner can see and remove in Settings.
+   */
+  async grantToMembers(name) {
+    await this.ready();
+    if (!NAME.test(name)) fail(400, 'Invalid plugin name');
+    await this.addPreApproved([name]);
   }
 
   async policy() {

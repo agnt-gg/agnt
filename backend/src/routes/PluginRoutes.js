@@ -19,6 +19,7 @@ import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
 import { bundleSelection } from '../plugins/PluginBundler.js';
 import { packageInstalledPlugin } from '../plugins/packageInstalledPlugin.js';
 import reloadAllPlugins from '../plugins/reloadAllPlugins.js';
+import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import { authenticateToken } from './Middleware.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
@@ -54,7 +55,12 @@ mountPluginRequestRoutes(router, {
   installer: PluginInstaller,
   accounts: PluginAccounts,
   reload: () => reloadAllPlugins(),
-  refreshPolicy: () => PluginManager.refreshMemberSafeTools(),
+  // The main process holds chat's tool registry; the forked workflow child keeps its own copy of who may
+  // call which plugin tool, so a policy change must reach it too or members' workflows stay refused.
+  refreshPolicy: async () => {
+    await PluginManager.refreshMemberSafeTools();
+    await WorkflowProcessBridge.reloadPlugins().catch((error) => console.warn('[PluginRoutes] workflow process did not pick up the plugin policy:', error.message));
+  },
   notify: (userId, payload) => broadcastToUser(userId, RealtimeEvents.PLUGIN_INSTALLED, { ...payload, name: payload.pluginName, timestamp: new Date().toISOString() }),
   roleOf: instanceRole,
   restricted: isRestrictedInstance,

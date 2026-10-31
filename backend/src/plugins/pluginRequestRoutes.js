@@ -4,7 +4,8 @@
  *   GET  /install-policy               anyone: the policy, and whether you may edit it / decide requests
  *   PUT  /install-policy               owner only
  *   GET  /requests                     yours, plus every open one if you may decide
- *   POST /requests/:id/approve         owner, or an admin when the owner allows it: installs it for the requester
+ *   POST /requests/:id/approve         owner, or an admin when the owner allows it: installs it, switches it on for
+ *                                      everyone who asked, and lets members USE it (pre-approved)
  *   POST /requests/:id/decline         same deciders
  *   POST /requests/:id/seen            the requester dismisses a decided request
  *
@@ -66,6 +67,8 @@ export function mountPluginRequestRoutes(router, { requests, installer, accounts
     try {
       const request = await decider(req);
       const name = request.pluginName;
+      // The owner's block wins over any approval, including an admin's.
+      if ((await requests.policy()).blockedPlugins?.includes(name)) throw Object.assign(new Error('The owner has blocked this plugin on this instance. Unblock it in Settings first.'), { status: 409, code: 'plugin_blocked' });
       const listing = (await installer.getAvailablePlugins()).plugins?.find((p) => p.name === name);
       if (!listing) throw Object.assign(new Error('This plugin is no longer in the marketplace'), { status: 410 });
       // A purchase is each person's own: an approval never spends the approver's.
@@ -77,6 +80,9 @@ export function mountPluginRequestRoutes(router, { requests, installer, accounts
         notify(request.requesterId, { kind: 'plugin_request', status: 'failed', pluginName: name });
         return res.status(502).json({ success: false, error: result?.error || 'Install failed', request: failed });
       }
+      // Approving it means members may use it, not only have it installed: without this grant every tool
+      // in a plugin that reaches beyond the network stayed refused to the very member it was approved for.
+      await requests.grantToMembers(name);
       // Everyone who asked for it gets it switched on, and hears so.
       const asked = await requests.pendingFor(name);
       for (const open of asked) {

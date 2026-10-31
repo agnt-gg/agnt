@@ -102,6 +102,22 @@ describe('memberIsolation', () => {
     expect(memberRefusal('gmail_api', {}, 'member-2')).toMatch(/no declared capabilities/);
   });
 
+  // A plugin the owner has not approved is their decision, not a guarantee. The old text said "nobody can switch
+  // it off", so Annie told a member the YouTube tool could never be used, though one approval turns it on.
+  it('a plugin tool not yet approved says the owner can approve it, never that it is impossible', () => {
+    businessTenant();
+    setMemberSafePluginTools([], ['youtube_search', 'gmail-api']);
+    const refusal = memberRefusal('youtube_search', {}, 'member-2');
+    expect(refusal).toMatch(/not approved for team members yet/);
+    expect(refusal).toMatch(/approve your request/);
+    expect(refusal).not.toMatch(/nobody can switch it off/);
+    setMemberSafePluginTools(['youtube_search'], ['youtube_search', 'gmail-api']);
+    expect(memberRefusal('youtube_search', {}, 'member-2')).toBeNull();
+    // Not a plugin tool: still fail-closed with the guarantee.
+    expect(memberRefusal('mcp__filesystem__read', { path: '/' }, 'member-2')).toMatch(/no declared capabilities/);
+    setMemberSafePluginTools([], []);
+  });
+
   it('member-safe plugins are exactly official + verified + scanned clean of anything but network', () => {
     const ok = { trustTier: 'official', integrityState: 'verified', detectedCapabilities: [] };
     expect(isMemberSafePluginEntry(ok)).toBe(true);

@@ -150,7 +150,7 @@ class PluginManager {
     const safePlugins = new Set(entries.filter((entry) => pluginEntryGrant(entry, policy)).map((entry) => entry.name));
     const safeTools = [];
     for (const [toolType, pluginName] of this.toolToPlugin) if (safePlugins.has(pluginName)) safeTools.push(toolType);
-    setMemberSafePluginTools(safeTools);
+    setMemberSafePluginTools(safeTools, [...this.toolToPlugin.keys()]);
   }
 
   /**

@@ -24,6 +24,8 @@ const SAFE_DETECTED = new Set(['network']);
 
 /** @type {Set<string>} */
 let safeToolNames = new Set();
+/** Every loaded plugin tool, safe or not: a refused plugin tool is the owner's call, not a guarantee. */
+let pluginToolNames = new Set();
 
 /** Is this installer registry entry member-safe? */
 export function isMemberSafePluginEntry(entry) {
@@ -58,11 +60,24 @@ function spellings(toolName) {
   return name ? [name, name.replace(/-/g, '_'), name.replace(/_/g, '-')] : [];
 }
 
-/** Replace the member-safe set. Called by PluginManager after every (re)load. */
-export function setMemberSafePluginTools(toolNames) {
+const spelled = (toolNames) => {
   const next = new Set();
   for (const toolName of toolNames || []) for (const spelling of spellings(toolName)) next.add(spelling);
-  safeToolNames = next;
+  return next;
+};
+
+/**
+ * Replace the member-safe set (and, when given, the set of all loaded plugin tools).
+ * Called by PluginManager after every (re)load and every policy change.
+ */
+export function setMemberSafePluginTools(toolNames, allPluginToolNames = null) {
+  safeToolNames = spelled(toolNames);
+  if (allPluginToolNames) pluginToolNames = spelled(allPluginToolNames);
+}
+
+/** Is this a tool from an installed plugin (whether or not members may call it)? */
+export function isPluginTool(toolName) {
+  return spellings(toolName).some((spelling) => pluginToolNames.has(spelling) || safeToolNames.has(spelling));
 }
 
 export function isMemberSafePluginTool(toolName) {
