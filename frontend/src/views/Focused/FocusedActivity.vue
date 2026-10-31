@@ -24,7 +24,7 @@
           <li v-for="r in rows.slice(0, CAP)" :key="r.id">
             <!-- What a person did in a teamspace. -->
             <button v-if="r.kind === 'team'" type="button" class="r" data-kind="team" @click="openTeam(r)">
-              <TeamAvatar :who="{ kind: 'person', id: r.actorId }" :label="r.actor" size="lg" />
+              <TeamAvatar :who="{ kind: 'person', id: r.actorId }" :label="personName(r.actorId) || r.actor" size="lg" />
               <span class="r-text">
                 <strong style="white-space: normal">{{ r.actor }} <span style="font-weight: 400; color: var(--text-secondary)">{{ r.sentence }}</span></strong>
                 <small>{{ ago(r.at) }}<template v-if="r.where"> · {{ r.where }}</template></small>
@@ -87,13 +87,16 @@ async function loadTeam() {
   // Your own private My Space cards are yours to see in your activity.
   const home = spaces.find((s) => s.is_default) || spaces[0];
   const mine = home ? await teamApi.tasks(home.id, { private: true }).catch(() => []) : [];
-  const tasks = new Map([...lists.flatMap((l) => l.tasks), ...mine].map((x) => [x.id, x]));
-  const docs = new Map(lists.flatMap((l) => l.docs).map((d) => [d.id, d]));
+  // Each list is read per teamspace, so the teamspace is known even when a row does not carry it.
+  const tasks = new Map([...lists.flatMap((l) => l.tasks.map((x) => ({ workspaceId: l.s.id, ...x }))), ...mine.map((x) => ({ workspaceId: home.id, ...x }))].map((x) => [x.id, x]));
+  const docs = new Map(lists.flatMap((l) => l.docs.map((d) => ({ ...d, workspaceId: d.workspaceId || l.s.id }))).map((d) => [d.id, d]));
   teamRows.value = teamActivityRows(events, {
     spaces: new Map(spaces.map((s) => [s.id, s])), tasks, docs,
     people: new Map((team.state.members || []).map((p) => [p.id, p.name])), me: team.state.me,
   });
 }
+/** The real name behind "You", for the avatar's initials. */
+const personName = (id) => (team.state.members || []).find((p) => p.id === id)?.name || '';
 function openTeam(r) {
   const target = r.target;
   if (!target) return;
