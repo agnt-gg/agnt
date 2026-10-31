@@ -20,7 +20,7 @@ describe('team location ↔ query', () => {
   });
   it('the mockup\u2019s pages have routes: Agents, an agent, Library tabs, Members', () => {
     expect(teamLocation(teamQuery({ view: 'agent', item: 'a-1' }))).toMatchObject({ view: 'agent', item: 'a-1' });
-    expect(teamLocation(teamQuery({ view: 'library', tab: 'connections' }))).toMatchObject({ view: 'library', tab: 'connections' });
+    expect(teamLocation(teamQuery({ view: 'library', tab: 'skills' }))).toMatchObject({ view: 'library', tab: 'skills' });
     expect(teamLocation({ view: 'library' }).tab).toBe('agents');
     expect(teamLocation({ view: 'members' }).view).toBe('members');
   });

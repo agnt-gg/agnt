@@ -18,12 +18,13 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (p === 'team') {
       const v = loc().view;
       if (v === 'home' || v === 'inbox') return 'home';
-      if (v === 'agents' || v === 'agent') return 'agents';
-      if (v === 'library') return 'library';
+      // Agents live in the Library now.
+      if (v === 'agents' || v === 'agent' || v === 'library') return 'library';
       if (v === 'members') return 'more';
       return null; // a teamspace, My tasks or a doc: lit in the drawer
     }
     if (p === 'scheduled') return 'routines';
+    if (p === 'connectors') return 'apps';
     if (p === 'market') return 'library';
     if (p === 'activity') return 'more';
     if (p === 'settings') return 'settings';
@@ -52,7 +53,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
   function mkSelect(id) {
     if (id === 'home' || id === 'approvals') return team('home');
     if (id === 'chats') return nav.chat();
-    if (id === 'agents') return team('agents');
+    if (id === 'apps') return nav.go({ page: 'connectors' });
     if (id === 'routines') return nav.go({ page: 'scheduled' });
     if (id === 'library') return team('library');
     if (id === 'activity') return nav.go({ page: 'activity' });

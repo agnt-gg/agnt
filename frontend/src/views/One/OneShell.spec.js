@@ -248,12 +248,13 @@ describe('OneShell', () => {
   describe('the rail', () => {
     const railIds = (w) => w.findAll('.rail .rail-btn').map((b) => b.attributes('data-testid'));
 
-    it('is the approved mockup\'s rail: Home, Chats, Agents, Routines, Library, More; Settings and you at the bottom', () => {
+    it('is Home, Chats, Routines, Library, Apps, More; Settings and you at the bottom (agents live in the Library)', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-home', 'one-rail-chats', 'one-rail-agents', 'one-rail-routines', 'one-rail-library', 'one-rail-more', 'one-rail-settings', 'one-rail-me',
+        'one-rail-home', 'one-rail-chats', 'one-rail-routines', 'one-rail-library', 'one-rail-apps', 'one-rail-more', 'one-rail-settings', 'one-rail-me',
       ]);
       expect(w.find('[data-testid="one-rail-inbox"]').exists()).toBe(false);
+      expect(w.find('[data-testid="one-rail-agents"]').exists()).toBe(false);
       w.unmount();
     });
 
@@ -262,8 +263,8 @@ describe('OneShell', () => {
       const click = (id) => w.find(`[data-testid="one-rail-${id}"]`).trigger('click');
       await click('home');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
-      await click('agents');
-      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'agents' } });
+      await click('apps');
+      expect(push.mock.calls.at(-1)[0]).toMatchObject({ path: '/plugins' }); // Apps: plugins, connectors, MCP
       await click('library');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'library' } });
       await click('routines');

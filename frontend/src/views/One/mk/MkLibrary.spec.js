@@ -4,7 +4,6 @@ import { createStore } from 'vuex';
 import MkLibrary from './MkLibrary.vue';
 import { LIBRARY_TABS, teamLocation } from '@/views/One/team/teamModel.js';
 
-vi.mock('@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue', () => ({ default: { template: '<div class="apps-stub" />' } }));
 vi.mock('@/composables/useMarketplaceInstall', () => ({ useMarketplaceInstall: () => ({ handleInstall: vi.fn() }) }));
 
 // The Library shows every kind of asset you own, Connections and the Market; there are no "Templates".
@@ -25,11 +24,12 @@ function mountLibrary(tab, { agents = [], workflows = [] } = {}) {
 }
 
 describe('Library', () => {
-  it('has a tab for every asset kind, Connections and the Market, and no Templates', () => {
-    expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'connections', 'market']);
+  it('has a tab for every asset kind and the Market; no Templates, and Connections live on Apps', () => {
+    expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'market']);
     expect(teamLocation({ view: 'library', tab: 'templates' }).tab).toBe('agents');
+    expect(teamLocation({ view: 'library', tab: 'connections' }).tab).toBe('agents');
     const { wrapper } = mountLibrary('agents');
-    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Connections', 'Market']);
+    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Market']);
   });
   it('loads every kind so each tab shows its real count', async () => {
     const { wrapper, dispatch } = mountLibrary('agents', { agents: [{ id: 'a1', name: 'Scout' }], workflows: [{ id: 'w1', name: 'Brief' }, { id: 'w2', name: 'Chase' }] });

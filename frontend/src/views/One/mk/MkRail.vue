@@ -1,7 +1,7 @@
 <template>
-  <!-- The approved mockup's rail (projects/agnt-team-os-tasks): Home (also the
-       inbox, with its badge), Chats, Agents, Routines, Library, More; Settings
-       and you at the bottom. -->
+  <!-- The rail: Home (also the inbox, with its badge), Chats, Routines, Library
+       (agents, workflows, tools, skills, widgets), Apps (plugins, connectors),
+       More; Settings and you at the bottom. -->
   <div class="mk mk-rail-host">
     <nav class="rail" aria-label="AGNT">
       <img class="rail-mark" src="/images/agnt-logo-mark.svg" alt="AGNT" />
@@ -45,9 +45,9 @@ import MkIcon from './MkIcon.vue';
 const ITEMS = Object.freeze([
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'chats', label: 'Chats with Annie', icon: 'chats' },
-  { id: 'agents', label: 'Agents', icon: 'bot' },
   { id: 'routines', label: 'Routines', icon: 'routines' },
   { id: 'library', label: 'Library', icon: 'library' },
+  { id: 'apps', label: 'Apps', icon: 'plug' },
 ]);
 const MORE = Object.freeze([
   { id: 'activity', label: 'Activity', icon: 'activity' },

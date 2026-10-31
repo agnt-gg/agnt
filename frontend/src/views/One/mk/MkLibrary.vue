@@ -1,10 +1,10 @@
 <template>
   <!-- The Library in the mockup's style: every asset you own, by kind, plus
-       Connections and the Market. Backed by the real stores and catalog. -->
+       the Market. Connections and plugins are on Apps. Backed by the real stores and catalog. -->
   <div class="content">
     <div class="page">
       <div class="page-head">
-        <div><h1>Library</h1><p>Everything you’ve built or added: agents, workflows, tools, skills, widgets and connections. Add more from the Market.</p></div>
+        <div><h1>Library</h1><p>Everything you’ve built or added: agents, workflows, tools, skills and widgets. Add more from the Market; connections and plugins are on Apps.</p></div>
         <button v-if="asset" type="button" class="primary" @click="ctx.openLibrary(asset.id, null, true)"><MkIcon name="plus" size="sm" />New {{ asset.noun }}</button>
       </div>
       <nav class="tabs" aria-label="Library">
@@ -31,11 +31,6 @@
             </div>
           </div>
         </div>
-      </template>
-
-      <template v-else-if="tab === 'connections'">
-        <div class="banner"><MkIcon name="plug" size="sm" /><span>Connections follow scope: <b>yours</b> power your private agents and routines, <b>team</b> connections power everything in teamspaces. Nobody sees anyone else’s keys.</span></div>
-        <AppsSection />
       </template>
 
       <!-- The Market: agents, workflows, tools, skills and widgets from AGNT and makers. -->
@@ -68,7 +63,6 @@ import { computed, inject, onMounted, reactive, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { assetTypeLabel } from '@/composables/useMarketplaceCard';
 import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
