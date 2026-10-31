@@ -25,7 +25,6 @@
             </div>
             <p>{{ r.description || 'No description yet.' }}</p>
             <div class="card-foot">
-              <span class="tag">{{ asset.noun[0].toUpperCase() + asset.noun.slice(1) }}</span>
               <span v-if="r.status" class="tag" :class="['listening', 'running'].includes(r.status) ? 'green' : ''">{{ statusLabel(r.status) }}</span>
               <span class="fill"></span>
               <button type="button" class="btn sm" @click.stop="ctx.openLibrary(asset.id, r.itemId)">Open</button>
