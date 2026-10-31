@@ -1,5 +1,6 @@
 import * as childProcess from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { currentToolActor, hostedToolBoundaryRequired, issueToolToken } from './toolRunAuthority.js';
@@ -8,6 +9,18 @@ import { createToolNetwork } from './toolNetwork.js';
 export const TOOL_WORKSPACE = '/app/data/projects';
 const LAUNCHER = '/usr/local/bin/agnt-tool-run';
 const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE'];
+
+/**
+ * A folder both the server and a sandboxed tool process see at the same path. On a hosted instance tool
+ * processes must run inside the workspace and see a private /tmp, so a file a tool writes to os.tmpdir()
+ * never reaches the code that reads it. Elsewhere this is just the temp folder.
+ */
+export function toolWorkDir(...parts) {
+  const base = hostedToolBoundaryRequired() ? path.posix.join(TOOL_WORKSPACE, '.tool-work') : os.tmpdir();
+  const dir = path.join(base, ...parts);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken } = {}) {
   if (!hosted) return { command, args, options };

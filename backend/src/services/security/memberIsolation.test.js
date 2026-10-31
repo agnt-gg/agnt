@@ -46,6 +46,22 @@ describe('memberIsolation', () => {
     }
   });
 
+  // Bravo, 2026-10-31: a member could not run a line of code or open the browser, though on a hosted instance
+  // every tool process runs in the kernel sandbox that holds no database, secrets or credentials.
+  it('on a hosted instance a member runs code, shell and the browser in the sandbox; files and SQL stay owner-only', () => {
+    businessTenant();
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      for (const [tool, args] of [['execute_shell_command', { command: 'yt-dlp --version' }], ['execute_javascript_code', { code: '1' }], ['browser', { action: 'open' }]]) {
+        expect(memberRefusal(tool, args, 'member-2'), tool).toBeNull();
+      }
+      for (const [tool, args] of [['read_file', { path: '/app/data/agnt.db' }], ['write_file', { path: 'x', content: 'y' }], ['database-operation', { operation: 'select' }]]) {
+        expect(memberRefusal(tool, args, 'member-2'), tool).toMatch(/safety guarantee, not a setting/);
+      }
+    } finally { Object.defineProperty(process, 'platform', platform); }
+  });
+
   it('a code refusal says it is not a setting and points at the cloud sandbox', () => {
     businessTenant();
     const refusal = memberRefusal('execute_javascript_code', { code: '1' }, 'member-2');

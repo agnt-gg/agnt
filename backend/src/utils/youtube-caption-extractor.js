@@ -1,4 +1,5 @@
-import { execFile, exec } from '../services/security/toolProcess.js';
+import { execFile, exec, toolWorkDir } from '../services/security/toolProcess.js';
+import { hostedToolBoundaryRequired } from '../services/security/toolRunAuthority.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
@@ -14,7 +15,9 @@ const execAsync = promisify(exec);
 
 class YouTubeCaptionExtractor {
   constructor() {
-    this.cookiesPath = PathManager.getPath('cookies.txt');
+    // yt-dlp runs in the tool sandbox on a hosted instance, which cannot see the data folder: keep its
+    // cookies where it can read and refresh them.
+    this.cookiesPath = hostedToolBoundaryRequired() ? path.join(toolWorkDir('yt-dlp'), 'cookies.txt') : PathManager.getPath('cookies.txt');
     // Ensure cookies.txt exists in user data
     this.initCookies();
   }
@@ -227,7 +230,7 @@ class YouTubeCaptionExtractor {
   async extractCaptions(youtubeUrl) {
     console.log(`[yt-dlp] Starting caption extraction for: ${youtubeUrl}`);
 
-    const tempDir = os.tmpdir();
+    const tempDir = toolWorkDir('yt-dlp');
     const uniquePrefix = `caption_extract_${Date.now()}`;
     const captionDir = path.join(tempDir, `${uniquePrefix}_captions`);
 
@@ -437,7 +440,7 @@ class YouTubeCaptionExtractor {
    * Download audio for Whisper transcription
    */
   async downloadAudio(youtubeUrl) {
-    const tempDir = os.tmpdir();
+    const tempDir = toolWorkDir('yt-dlp');
     const uniquePrefix = `audio_download_${Date.now()}`;
     const tempAudioName = `${uniquePrefix}_audio`;
     const tempAudioPathBase = path.join(tempDir, tempAudioName);

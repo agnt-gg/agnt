@@ -42,6 +42,20 @@ import { isRestrictedInstance, tenantOwnerId, credentialUserId } from '../auth/t
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { resolveToolCapabilities } from './toolCapabilities.js';
 import { isMemberSafePluginTool, isPluginTool } from './memberSafePlugins.js';
+import { hostedToolBoundaryRequired } from './toolRunAuthority.js';
+
+/**
+ * On a hosted instance every tool process runs in the kernel sandbox (scripts/agnt-tool-run.py through
+ * toolProcess.js): its own user, pid and network namespaces, seccomp, no capabilities, a scrubbed env,
+ * filtered egress, and a mount namespace holding only the runtime and the workspace. The database,
+ * secrets and credential store are not in it, and toolProcess refuses to run anything if the sandbox is
+ * missing. Code a member runs there cannot reach anyone's keys, so refusing it only broke members.
+ * File tools (fs-read/fs-write) and SQL still run inside the server process, so they stay owner-only.
+ */
+const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval']);
+/** Tools with no capability profile whose every process goes through the same sandbox. */
+const SANDBOXED_TOOLS = new Set(['browser']);
+const sandboxed = () => hostedToolBoundaryRequired();
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';
 
@@ -81,11 +95,12 @@ export function memberRefusal(toolName, args, userId) {
   // looking for a setting that does not exist.
   if (!profile) {
     if (isMemberSafePluginTool(toolName)) return null;
+    if (sandboxed() && SANDBOXED_TOOLS.has(toolName)) return null;
     // A plugin is the owner's decision, not a guarantee: say who can turn it on and how.
     if (isPluginTool(toolName)) return PLUGIN_NOT_APPROVED(toolName);
     return `${toolName} has no declared capabilities, so it is not verified safe to run next to the credentials stored on this shared instance. ${GUARANTEE}`;
   }
-  const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability));
+  const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability) && !(sandboxed() && SANDBOXED_CAPABILITIES.has(capability)));
   if (reached.length === 0) return null;
   const runsCode = reached.some((capability) => capability === 'shell' || capability === 'code-eval');
   return runsCode

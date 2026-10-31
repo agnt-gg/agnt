@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import fs from 'fs';
-import { execFile } from '../services/security/toolProcess.js';
+import { execFile, toolWorkDir } from '../services/security/toolProcess.js';
 import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
@@ -78,7 +78,8 @@ class WhisperTranscriber {
 
     console.log(`[Whisper] Audio file size (${Math.round(fileSize / (1024 * 1024))}MB) exceeds limit, splitting into chunks...`);
 
-    const tempDir = os.tmpdir();
+    // ffmpeg runs in the tool sandbox on a hosted instance: chunks go where both sides see them.
+    const tempDir = toolWorkDir('whisper');
     const uniquePrefix = `whisper_chunk_${Date.now()}`;
     const chunkPrefix = path.join(tempDir, `${uniquePrefix}_chunk_`);
     const audioExtension = path.extname(audioPath);
