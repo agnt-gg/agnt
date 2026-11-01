@@ -80,6 +80,9 @@
 .apps-studio .ap-search { position: relative; flex: 1; min-width: 200px; max-width: 420px; display: flex; align-items: center; }
 /* Browse: search, kind and the two dropdowns share one row; it wraps only on narrow screens. */
 .apps-studio .ap-browse-bar { flex-wrap: nowrap; }
+/* Every control on the row is the chips' 36px tall, so tops and bottoms line up. */
+.apps-studio .ap-browse-bar .ap-search input { min-height: 36px; height: 36px; }
+.apps-studio .ap-browse-bar .ap-select { height: 36px; }
 .apps-studio .ap-browse-bar .ap-search { flex: 1 1 140px; min-width: 120px; max-width: 280px; }
 .apps-studio .ap-browse-bar .ap-chips { flex: none; flex-wrap: nowrap; }
 .apps-studio .ap-browse-bar .ap-select { margin-left: auto; }
