@@ -48,10 +48,6 @@ vi.mock('@/views/Focused/FocusedMarket.vue', () => page('FocusedMarket'));
 vi.mock('@/views/Focused/FocusedSidebar.vue', () => ({
   default: { name: 'FocusedSidebar', props: ['open', 'activePage', 'onChat', 'navigation'], emits: ['close', 'new-chat'], template: '<aside class="sidebar-stub" :data-navigation="String(navigation)" @click="$emit(\'close\')"><button class="stub-new-chat" @click.stop="$emit(\'new-chat\')" /></aside>' },
 }));
-// Studio's Saved Chats has its own specs; here only WHERE it mounts matters.
-vi.mock('@/views/Terminal/LeftPanel/types/ChatPanel/components/OutputList.vue', () => ({
-  default: { name: 'OutputList', template: '<div class="output-list-stub" />' },
-}));
 vi.mock('@/canvas/JumpPalette.vue', () => ({ default: { name: 'JumpPalette', template: '<div class="jump-stub" />' } }));
 vi.mock('@/views/_components/common/SimpleModal.vue', () => ({
   default: { name: 'SimpleModal', template: '<div />', methods: { showModal: () => Promise.resolve(true) } },
@@ -301,15 +297,27 @@ describe('OneShell', () => {
     it('the drawer is on every desktop page; the chat list is the chat page\'s own', () => {
       const chat = mountShell('ChatScreen');
       expect(chat.find('.drawer').exists()).toBe(true);
-      // The chat list is Studio's Saved Chats (groups and all), not a second list.
-      expect(chat.find('[data-testid="one-chat-list"] .output-list-stub').exists()).toBe(true);
-      expect(chat.find('[data-testid="mk-chat-list"]').exists()).toBe(false);
+      expect(chat.find('[data-testid="mk-chat-list"]').exists()).toBe(true);
+      // All / Unread / Groups, in One's own list.
+      expect(chat.findAll('[data-testid="mk-chat-list"] .cl-seg button').map((b) => b.attributes('data-view'))).toEqual(['all', 'unread', 'groups']);
       expect(chat.find('.sidebar-stub').exists()).toBe(false);
       chat.unmount();
       const apps = mountShell('ConnectorsScreen');
       expect(apps.find('.drawer').exists()).toBe(true);
-      expect(apps.find('[data-testid="one-chat-list"]').exists()).toBe(false);
+      expect(apps.find('[data-testid="mk-chat-list"]').exists()).toBe(false);
       apps.unmount();
+    });
+
+    it('New chat in the chat list starts a new conversation', async () => {
+      const fresh = vi.fn();
+      window.addEventListener('trigger-new-chat', fresh);
+      const w = mountShell();
+      await w.find('[data-testid="mk-chat-list"] [data-action="new-chat"]').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(push).toHaveBeenCalledWith('/chat');
+      expect(fresh).toHaveBeenCalledTimes(1);
+      window.removeEventListener('trigger-new-chat', fresh);
+      w.unmount();
     });
 
     it('the top bar shows where you are', () => {
