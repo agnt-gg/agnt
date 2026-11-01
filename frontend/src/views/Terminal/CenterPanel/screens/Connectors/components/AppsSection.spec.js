@@ -53,11 +53,37 @@ function setup(options = {}) {
     }
     return [];
   });
-  wrapper = mount(AppsSection, { props: options.props || {}, global: { plugins: [store], stubs: { SimpleModal: modalStub, SvgIcon: { template: '<span />' } } } });
+  wrapper = mount(AppsSection, { props: options.props || {}, global: { plugins: [store], stubs: { SimpleModal: modalStub, SvgIcon: { props: ['name'], template: '<span class="svg-stub" :data-icon="name" />' } } } });
+  // The page opens on For you; these specs exercise the tab they name (Installed unless told otherwise).
+  const hostChoosesTab = ['vaultActive', 'selectedPlugin', 'startTab'].some((key) => options.props && key in options.props);
+  const start = options.tab ?? 'installed';
+  if (start !== 'foryou' && !hostChoosesTab) wrapper.find(`[data-tab="${start}"]`).exists() && wrapper.find(`[data-tab="${start}"]`).trigger('click');
   return { store, dispatch };
 }
 const tab = (id) => wrapper.find(`[data-tab="${id}"]`);
 const detail = () => wrapper.find('.ap-detail');
+
+describe('For you: connect your apps first, then what they unlock', () => {
+  const calendar = { name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
+  const gmailApp = { name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('mail', { authProvider: 'google' })] };
+  it('is the page’s home, leads with Connect Google, and shows each app’s real brand icon', async () => {
+    setup({ tab: 'foryou', available: [gmailApp, calendar, { ...research, kind: 'pack' }, calculator] }); await flushPromises();
+    expect(wrapper.find('[data-testid="for-you"]').exists()).toBe(true);
+    expect(wrapper.find('[data-action="hero-connect"]').text()).toContain('Connect Google');
+    const google = wrapper.find('[data-family="google"]');
+    expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail', 'google-calendar']);
+    // A pack that needs Google says so, and offers the connection.
+    expect(wrapper.find('[data-pack="research"]').text()).toContain('Needs 1 app');
+  });
+  it('Connect hands the sign-in card to the host; an ask goes to chat with its words', async () => {
+    setup({ tab: 'foryou', available: [gmailApp, calculator] }); await flushPromises();
+    await wrapper.find('[data-action="hero-connect"]').trigger('click');
+    expect(wrapper.emitted('connect')[0][0]).toMatchObject({ providerId: 'google' });
+    setup({ tab: 'foryou', available: [gmailApp, { ...calculator, name: 'calculator-plugin', kind: 'utility' }], connected: ['google'] }); await flushPromises();
+    await wrapper.findAll('[data-action="ask"]')[0].trigger('click');
+    expect(wrapper.emitted('try-plugin')[0][0]).toMatchObject({ prompt: 'Summarize my unread email from today' });
+  });
+});
 const inspectCalls = () => apiFetch.mock.calls.filter(([url]) => url.includes('/inspect/'));
 async function openListing(name) {
   await flushPromises();

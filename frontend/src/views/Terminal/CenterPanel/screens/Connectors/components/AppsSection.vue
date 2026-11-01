@@ -55,8 +55,19 @@
     <div class="ap-layout" :class="{ 'has-detail': hasDetail }">
       <!-- plugins.catalog: the "Give Annie hands" mission (services/journey/missions.js) points here. -->
       <section v-if="!detailOnly" class="ap-main" data-tour-id="plugins.catalog" :aria-label="tabLabel">
+        <!-- ── For you: connect your apps, then what they unlock ── -->
+        <ForYouView
+          v-if="tab === 'foryou'"
+          :rows="catalog" :cards="cards" :connected-ids="connectedApps" :model-provider-ids="modelProviderIds"
+          :installing="installing || ''" :install-busy="!!installing"
+          @connect="(c) => emit('connect', c)"
+          @install="(row) => install(row)"
+          @open="openPlugin"
+          @ask="(a) => emit('try-plugin', { name: a.plugin || a.provider, displayName: a.displayName || '', prompt: a.text })"
+          @browse="browseKind"
+        />
         <!-- ── Installed ─────────────────────────────────────── -->
-        <template v-if="tab === 'installed'">
+        <template v-else-if="tab === 'installed'">
           <div class="ap-toolbar">
             <label class="ap-search"><AppsIcon name="search" /><input v-model="queries.installed" type="search" placeholder="Search plugins and what’s inside" aria-label="Search installed plugins" /></label>
             <div class="ap-chips" role="group" aria-label="Show">
@@ -129,7 +140,7 @@
           </div>
           <div v-else class="ap-list">
             <div v-for="row in visibleMarket" :key="row.name" class="ap-row" :class="{ selected: selectedKey === row.name }" :data-listing="row.name">
-              <span class="ap-logo"><SvgIcon :name="row.icon || 'puzzle-piece'" /></span>
+              <span class="ap-logo"><SvgIcon :name="brandOf(row)" /></span>
               <div class="ap-row-body">
                 <div class="ap-row-title">
                   <button type="button" class="ap-row-open" @click="openPlugin(row.name)">{{ row.displayName }}</button>
@@ -171,7 +182,7 @@
             <h3 class="ap-group-label" :data-section="section.id">{{ section.label }} <span>{{ section.rows.length }}</span></h3>
             <div class="ap-list">
               <div v-for="account in section.rows" :key="account.id" class="ap-row" :class="{ selected: selectedKey === account.id }" :data-account="account.id">
-                <span class="ap-logo"><SvgIcon :name="account.icon || 'connect'" /></span>
+                <span class="ap-logo"><SvgIcon :name="brandIcon(account.id, account.icon, 'connect')" /></span>
                 <div class="ap-row-body">
                   <div class="ap-row-title">
                     <strong v-if="account.aiModel">{{ account.name }}</strong>
@@ -181,7 +192,7 @@
                   <p v-if="account.aiModel" class="ap-row-desc">Powers Annie and your agents</p>
                   <div v-else-if="account.apps.length" class="ap-plugin-strip">
                     <button v-for="app in account.apps" :key="app.name" type="button" class="ap-plugin-chip" :data-plugin="app.name" @click="openPlugin(app.name)">
-                      <span class="ap-logo"><SvgIcon :name="app.icon || account.icon || 'puzzle-piece'" /></span>{{ app.displayName }}
+                      <span class="ap-logo"><SvgIcon :name="brandApp(app, account.id)" /></span>{{ app.displayName }}
                     </button>
                   </div>
                   <p v-else class="ap-row-desc">No plugin uses it yet.</p>
@@ -202,7 +213,7 @@
             <div class="ap-section-title" data-section="connect-ai"><h2>Connect your AI</h2></div>
             <div class="ap-list">
               <div v-for="service in shownAi" :key="service.id" class="ap-row" :data-service="service.providerId">
-                <span class="ap-logo"><SvgIcon :name="service.icon || 'connect'" /></span>
+                <span class="ap-logo"><SvgIcon :name="brandIcon(service.providerId, service.icon, 'connect')" /></span>
                 <div class="ap-row-body">
                   <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge connection">{{ connectionKind(service.connectionType) }}</span></div>
                   <p class="ap-row-desc">Powers Annie and your agents</p>
@@ -218,7 +229,7 @@
           <div class="ap-section-title"><h2>{{ accountRows(yourCards).length ? 'Connect another service' : 'Connect a service' }}</h2><span>{{ discover.length }} services AGNT can sign in to</span></div>
           <div v-if="discover.length" class="ap-list">
             <div v-for="service in shownDiscover" :key="service.id" class="ap-row" :data-service="service.providerId">
-              <span class="ap-logo"><SvgIcon :name="service.icon || 'connect'" /></span>
+              <span class="ap-logo"><SvgIcon :name="brandIcon(service.providerId, service.icon, 'connect')" /></span>
               <div class="ap-row-body">
                 <div class="ap-row-title"><strong>{{ service.name }}</strong><span class="ap-badge connection">{{ connectionKind(service.connectionType) }}</span></div>
                 <p v-if="service.suggested.length" class="ap-row-desc">Plugins for it: {{ service.suggested.map((s) => s.displayName).join(', ') }}</p>
@@ -270,7 +281,7 @@
               </div>
             </div>
             <div v-for="entry in mine" :key="entry.row.name" class="ap-row" :class="{ selected: selectedKey === entry.row.name }" :data-app="entry.row.name">
-              <span class="ap-logo"><SvgIcon :name="entry.row.icon || 'puzzle-piece'" /></span>
+              <span class="ap-logo"><SvgIcon :name="brandOf(entry.row)" /></span>
               <div class="ap-row-body">
                 <div class="ap-row-title">
                   <button type="button" class="ap-row-open" @click="openPlugin(entry.row.name)">{{ entry.row.displayName }}</button>
@@ -324,6 +335,9 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, inject } from 'vue';
+import ForYouView from './apps/ForYouView.vue';
+import { pluginIcon, brandIcon, brandApp } from '@/services/brandIcons.js';
+import { pluginProviders } from '@/services/appCards.js';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -365,7 +379,7 @@ const INSTALLED_FILTERS = [
 ];
 const ACCOUNT_FILTERS = [{ id: 'all', label: 'All' }, { id: 'oauth', label: 'Sign-ins' }, { id: 'apikey', label: 'API keys' }];
 const DISCOVER_SHOWN = 12;
-const TAB_LABELS = { installed: 'Installed', browse: 'Browse', accounts: 'Accounts & keys', triggers: 'Email & webhooks', mcp: 'MCP servers', mine: 'Built by me' };
+const TAB_LABELS = { foryou: 'For you', installed: 'Installed', browse: 'Browse', accounts: 'Accounts & keys', triggers: 'Email & webhooks', mcp: 'MCP servers', mine: 'Built by me' };
 
 const store = useStore();
 const root = ref(null);
@@ -373,7 +387,8 @@ const modal = ref(null);
 const detailView = ref(null);
 const buildMenuRoot = ref(null);
 const buildMenuOpen = ref(false);
-const tab = ref('installed');
+// For you is home: it walks a new user from connecting apps to what they unlock.
+const tab = ref('foryou');
 watch(() => props.startTab, (id) => { if (inAgntOne && ['triggers', 'mcp'].includes(id)) tab.value = id; }, { immediate: true });
 const queries = reactive({ installed: '', browse: '', accounts: '' });
 const filters = reactive({ installed: 'all', browse: 'all', accounts: 'all' });
@@ -439,6 +454,8 @@ const installedView = computed(() => {
 });
 
 const kindOf = (row) => pluginKind(row);
+const brandOf = (row) => pluginIcon(row, { providers: pluginProviders(row) });
+function browseKind(kind) { switchTab('browse'); kindFilter.value = kind || 'all'; }
 const kindFilter = ref('all');
 const kindCounts = computed(() => marketRows.value.reduce((acc, row) => { const id = kindOf(row).id; acc[id] = (acc[id] || 0) + 1; return acc; }, {}));
 const ofKind = computed(() => marketRows.value.filter((row) => kindFilter.value === 'all' || kindOf(row).id === kindFilter.value));
@@ -513,6 +530,7 @@ const forgeDraft = computed(() => {
 });
 
 const tabs = computed(() => [
+  { id: 'foryou', label: TAB_LABELS.foryou, count: null },
   { id: 'installed', label: TAB_LABELS.installed, count: installedRows.value.length },
   { id: 'browse', label: TAB_LABELS.browse, count: marketRows.value.length },
   { id: 'accounts', label: TAB_LABELS.accounts, count: accountRows(yourCards.value).length + (cards.value.models?.length || 0) },

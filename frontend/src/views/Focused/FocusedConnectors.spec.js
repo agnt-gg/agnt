@@ -75,13 +75,14 @@ describe('Focused shared Plugins page', () => {
   it('mounts the same page as Studio, with every Market package including no-auth ones', async () => {
     mountPage(); await flushPromises();
     expect(wrapper.findComponent(AppsSection).exists()).toBe(true);
-    expect(wrapper.findAll('[data-tab]').map((t) => t.attributes('data-tab'))).toEqual(['installed', 'browse', 'accounts', 'triggers', 'mcp', 'mine']); // + Email & webhooks, MCP servers (AGNT One)
+    expect(wrapper.findAll('[data-tab]').map((t) => t.attributes('data-tab'))).toEqual(['foryou', 'installed', 'browse', 'accounts', 'triggers', 'mcp', 'mine']); // For you first; + Email & webhooks, MCP servers (AGNT One)
     await tabButton('browse').trigger('click');
     expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
     expect(wrapper.findComponent(FocusedConnection).exists()).toBe(false);
   });
   it('Installed shows what you have; Browse search finds what you do not', async () => {
     getters['apps/installed'] = [gmail]; mountPage(); await flushPromises();
+    await tabButton('installed').trigger('click');
     expect(wrapper.findAll('[data-card]').map((c) => c.attributes('data-card'))).toEqual(['google']);
     expect(wrapper.find('[data-card="google"]').text()).toContain('Gmail');
     await tabButton('browse').trigger('click');

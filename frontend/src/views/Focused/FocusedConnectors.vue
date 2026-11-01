@@ -33,7 +33,7 @@
       @add-account="showIntegrations = true"
       @open-section="(section) => nav.go({ page: 'connectors', tab: section === 'mcp-servers' ? 'mcp' : 'triggers' })"
       @open-workflow="(id) => nav.go({ page: 'library', tab: 'workflows', item: id })"
-      @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
+      @try-plugin="(plugin) => nav.ask(plugin.prompt || `Use ${plugin.displayName} to `)"
     />
   </section>
 </template>

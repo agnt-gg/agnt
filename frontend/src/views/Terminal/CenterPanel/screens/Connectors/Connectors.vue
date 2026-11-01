@@ -1321,7 +1321,7 @@ export default {
     // active one; outside a frame there is no chat to seed, so just go there.
     const frameNav = inject('focusedNav', null);
     function tryPluginInChat(plugin) {
-      const text = `Use ${plugin.displayName} to `;
+      const text = plugin.prompt || `Use ${plugin.displayName} to `;
       if (frameNav?.ask) frameNav.ask(text);
       else emit('screen-change', 'ChatScreen');
     }

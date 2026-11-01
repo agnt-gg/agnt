@@ -5,7 +5,7 @@
        • a sign-in with no plugin (used through Custom API) -->
 <template>
   <div class="ap-row" :class="{ selected }" :data-card="card.id" :data-app="solo ? solo.name : null">
-    <span class="ap-logo"><SvgIcon :name="(solo && solo.icon) || card.icon || 'puzzle-piece'" /></span>
+    <span class="ap-logo"><SvgIcon :name="solo ? brandApp(solo, card.providerId) : brandIcon(card.providerId, card.icon, 'puzzle-piece')" /></span>
     <div class="ap-row-body">
       <div class="ap-row-title">
         <button type="button" class="ap-row-open" @click="openSelf">{{ solo ? solo.displayName : card.name }}</button>
@@ -17,7 +17,7 @@
       <p v-else-if="!card.apps.length" class="ap-row-desc">No plugin uses it. Agents can still reach it through Custom API.</p>
       <div v-if="card.apps.length > 1" class="ap-plugin-strip">
         <button v-for="app in card.apps" :key="app.name" type="button" class="ap-plugin-chip" :data-plugin="app.name" @click="emit('open-plugin', app.name)">
-          <span class="ap-logo"><SvgIcon :name="app.icon || card.icon || 'puzzle-piece'" /></span>{{ shortName(app.displayName) }}
+          <span class="ap-logo"><SvgIcon :name="brandApp(app, card.providerId)" /></span>{{ shortName(app.displayName) }}
         </button>
       </div>
       <div class="ap-row-meta">
@@ -43,6 +43,7 @@
 </template>
 
 <script setup>
+import { brandIcon, brandApp } from '@/services/brandIcons.js';
 import { computed } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';

@@ -21,7 +21,7 @@
         @open-widget="(id) => nav.go({ page: 'library', tab: 'widgets', item: id })"
         @open-app="(name) => nav.studio('PluginsScreen', { select: { kind: 'plugin', id: name } })"
         @open-ai-models="nav.go({ page: 'settings' })"
-        @try-plugin="(plugin) => nav.ask(`Use ${plugin.displayName} to `)"
+        @try-plugin="(plugin) => nav.ask(plugin.prompt || `Use ${plugin.displayName} to `)"
       />
     </template>
 

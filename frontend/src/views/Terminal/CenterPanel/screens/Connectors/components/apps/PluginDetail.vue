@@ -10,7 +10,7 @@
         <AppsIcon name="back" /> {{ groupCard.name }}
       </button>
       <div class="ap-identity">
-        <span class="ap-logo large"><SvgIcon :name="plugin.icon || 'puzzle-piece'" /></span>
+        <span class="ap-logo large"><SvgIcon :name="brandApp(plugin)" /></span>
         <div>
           <h2 ref="heading" class="ap-detail-name" tabindex="-1">{{ plugin.displayName }}</h2>
           <p class="ap-sub">{{ subline }}</p>
@@ -50,7 +50,7 @@
         <p v-if="!connections.length && plugin.installed" class="ap-hint">No sign-in needed. It works now.</p>
         <p v-else-if="!connections.length" class="ap-hint">If it needs a sign-in, you’ll connect it right after installing.</p>
         <div v-for="connection in connections" :key="connection.providerId" class="ap-account" :class="{ attention: plugin.installed && connection.status !== 'connected' }" :data-provider="connection.providerId">
-          <span class="ap-logo small"><SvgIcon :name="connection.icon" /></span>
+          <span class="ap-logo small"><SvgIcon :name="brandIcon(connection.providerId, connection.icon, 'connect')" /></span>
           <div><strong>{{ connection.name }}</strong><small>{{ connectionLine(connection) }}</small></div>
           <span v-if="connection.status === 'connected'" class="ap-connected"><AppsIcon name="check" /><span class="ap-sr-only">Connected</span></span>
           <button v-else-if="isModelKey(connection)" type="button" class="ap-btn small" data-action="ai-models" @click="emit('open-ai-models')">Open AI Models</button>
@@ -166,6 +166,7 @@
 </template>
 
 <script setup>
+import { brandIcon, brandApp } from '@/services/brandIcons.js';
 import { computed, ref } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';

@@ -6,7 +6,7 @@
   <article class="ap-account-detail" :data-account="card.providerId">
     <header class="ap-detail-head">
       <div class="ap-identity">
-        <span class="ap-logo large"><SvgIcon :name="card.icon || 'connect'" /></span>
+        <span class="ap-logo large"><SvgIcon :name="brandIcon(card.providerId, card.icon, 'connect')" /></span>
         <div>
           <h2 ref="heading" class="ap-detail-name" tabindex="-1">{{ card.name }}</h2>
           <p class="ap-sub">{{ kind }}<template v-if="plugins.length"> · turns on {{ plugins.length }} {{ plugins.length === 1 ? 'plugin' : 'plugins' }}</template></p>
@@ -29,7 +29,7 @@
         <div v-else class="ap-inside">
           <div v-for="plugin in plugins" :key="plugin.name" class="ap-inside-group">
             <button type="button" class="ap-account-plugin" :data-plugin="plugin.name" @click="emit('open-plugin', plugin.name)">
-              <span class="ap-logo small"><SvgIcon :name="plugin.icon || card.icon || 'puzzle-piece'" /></span>
+              <span class="ap-logo small"><SvgIcon :name="brandApp(plugin, card.providerId)" /></span>
               <span class="ap-inside-label"><strong>{{ plugin.displayName }}</strong><small>{{ plugin.line }}</small></span>
               <AppsIcon class="ap-inside-chevron" name="chevron" />
             </button>
@@ -43,7 +43,7 @@
         <div class="ap-inside">
           <div v-for="item in suggested" :key="item.name" class="ap-inside-group">
             <div class="ap-account-plugin">
-              <span class="ap-logo small"><SvgIcon :name="item.icon || card.icon || 'puzzle-piece'" /></span>
+              <span class="ap-logo small"><SvgIcon :name="brandApp(item, card.providerId)" /></span>
               <span class="ap-inside-label"><strong>{{ item.displayName }}</strong><small>{{ item.description }}</small></span>
               <span v-if="item.installed" class="ap-installed"><AppsIcon name="check" />Installed</span>
               <button v-else type="button" class="ap-btn small" data-action="install" :disabled="installBusy" @click="emit('install', item.name)">{{ installingName === item.name ? 'Checking…' : 'Install' }}</button>
@@ -61,6 +61,7 @@
 </template>
 
 <script setup>
+import { brandIcon, brandApp } from '@/services/brandIcons.js';
 import { computed, ref } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';
