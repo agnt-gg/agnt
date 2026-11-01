@@ -18,24 +18,31 @@ const lower = (v) => String(v || '').trim().toLowerCase();
 /** Families every new user is most likely to have, shown first in this order. */
 const POPULAR = ['google', 'slack', 'notion', 'microsoft365', 'hubspot', 'github', 'clickup'];
 
-/** Asks that become possible once a sign-in is connected. */
-export const ASKS = Object.freeze({
-  google: [{ text: 'Summarize my unread email from today', icon: 'gmail-color' }, { text: 'What’s on my calendar tomorrow?', icon: 'google-calendar' }, { text: 'Turn last week’s notes into a Google Doc', icon: 'google-docs' }],
-  slack: ['Post today’s summary in Slack', 'What did I miss in Slack today?'],
-  notion: ['Turn this chat into a Notion page', 'Find our onboarding doc in Notion'],
-  hubspot: ['List my open HubSpot deals closing this month'],
-  github: ['List my open GitHub pull requests'],
-  clickup: ['What’s due this week in ClickUp?'],
-  microsoft365: ['Summarize my unread Outlook email'],
+/**
+ * Default asks for a connected sign-in, used only when none of its plugins declares `examples`.
+ * Each is real work on the user's own data, the kind of thing that saves an hour the first time.
+ */
+export const DEFAULT_ASKS = Object.freeze({
+  google: [
+    { text: 'Draft replies to my most important unread emails', icon: 'gmail-color' },
+    { text: 'Plan my day from my calendar and inbox', icon: 'google-calendar' },
+    { text: 'Turn my latest meeting notes into a Google Doc with action items', icon: 'google-docs' },
+  ],
+  slack: [{ text: 'Summarize what I missed in Slack today and draft my replies' }],
+  notion: [{ text: 'Turn this week’s notes into a clean Notion page with next steps' }],
+  hubspot: [{ text: 'Which of my HubSpot deals are most likely to close this month, and what should I do next?' }],
+  github: [{ text: 'Summarize my open pull requests and what needs my review' }],
+  clickup: [{ text: 'Plan my week from my ClickUp tasks, most urgent first' }],
+  microsoft365: [{ text: 'Draft replies to my most important unread Outlook emails' }],
 });
 
-/** Utilities that work with nothing connected, and an ask for each. */
-export const NO_SETUP_ASKS = Object.freeze({
-  sentinel: 'Scan agnt.gg for security issues',
-  'agnt-autoresearch': 'Research the top AI agent tools',
-  'fs-watcher-plugin': 'Watch my Downloads folder for new PDFs',
-  'calculator-plugin': 'What’s 18% of $2,450?',
-});
+/** Asks that need nothing connected: what Annie does on her own, on the user's business. */
+export const CORE_ASKS = Object.freeze([
+  { text: 'Build a one-page website for my business', icon: 'web' },
+  { text: 'Research my top 3 competitors and compare them in a table', icon: 'table' },
+  { text: 'Turn my idea into a step-by-step launch plan', icon: 'magic' },
+  { text: 'Write a week of social posts for my business', icon: 'create' },
+]);
 
 /** The sign-ins a row needs (its tools' authProvider), model providers excluded. */
 export function needs(row, modelIds = new Set()) {
@@ -96,16 +103,25 @@ export function unlocks(id, items, connected = new Set()) {
   return list(items).filter((s) => s.requires.includes(id) && s.requires.every((r) => r === id || connected.has(r))).length;
 }
 
-/** Asks to show: those for connected sign-ins, then no-setup ones for utilities on the Market. */
-export function asks({ connected = new Set(), rows = [] } = {}) {
+/**
+ * Asks to show.
+ *   forApps  for each connected sign-in (popular first): the `examples` its plugins declare
+ *            (installed plugins first), else DEFAULT_ASKS for that sign-in.
+ *   noSetup  CORE_ASKS: Annie on her own, nothing to connect.
+ */
+export function asks({ connected = new Set(), rows = [], modelIds = new Set() } = {}) {
   const rank = (id) => { const i = POPULAR.indexOf(id); return i === -1 ? POPULAR.length : i; };
-  const forApps = [...connected].filter((id) => ASKS[id]).sort((a, b) => rank(a) - rank(b))
-    .flatMap((id) => list(ASKS[id]).map((ask) => (typeof ask === 'string' ? { text: ask } : ask))
-      .map((ask) => ({ text: ask.text, provider: id, icon: ask.icon || providerIcon(id) || 'puzzle-piece' })));
-  const byName = new Map(list(rows).map((r) => [r.name, r]));
-  const noSetup = Object.entries(NO_SETUP_ASKS).filter(([name]) => byName.has(name))
-    .map(([name, text]) => ({ text, plugin: name, displayName: byName.get(name).displayName, icon: pluginIcon(byName.get(name)) }));
-  return { forApps, noSetup: noSetup.slice(0, 3) };
+  const seen = new Set();
+  const once = (ask) => { const k = ask.text.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; };
+  const withExamples = list(rows).filter((r) => list(r.examples).length)
+    .sort((a, b) => Number(!!b.installed) - Number(!!a.installed));
+  const forApps = [...connected].sort((a, b) => rank(a) - rank(b)).flatMap((id) => {
+    const declared = withExamples.filter((r) => needs(r, modelIds).includes(id))
+      .flatMap((r) => list(r.examples).map((text) => ({ text, provider: id, plugin: r.name, displayName: r.displayName, icon: pluginIcon(r, { providers: [id] }) })));
+    const fallback = list(DEFAULT_ASKS[id]).map((ask) => ({ text: ask.text, provider: id, icon: ask.icon || providerIcon(id) || 'puzzle-piece' }));
+    return (declared.length ? declared : fallback).filter(once).slice(0, 3);
+  });
+  return { forApps, noSetup: CORE_ASKS.map((ask) => ({ ...ask })).filter(once) };
 }
 
 /** The one thing to do next: connect the top family, else add the first ready pack that needs a connection. */

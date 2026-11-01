@@ -29,7 +29,7 @@
     <section class="fy-sec">
       <header class="fy-sec-h"><span class="fy-n">1</span><h3>Try it now</h3><p>{{ asked.forApps.length ? 'Things Annie can do with what you connected.' : 'Start with something that needs no setup.' }}</p></header>
       <div class="fy-asks">
-        <button v-for="a in [...asked.forApps.slice(0, 6), ...asked.noSetup].slice(0, 6)" :key="a.text" type="button" class="fy-ask" data-action="ask" @click="$emit('ask', a)">
+        <button v-for="a in [...asked.forApps.slice(0, 6), ...asked.noSetup].slice(0, asked.forApps.length ? 6 : 4)" :key="a.text" type="button" class="fy-ask" data-action="ask" @click="$emit('ask', a)">
           <span class="fy-tile xs"><SvgIcon :name="a.icon" /></span><span class="fy-ask-q">“{{ a.text }}”</span><span class="fy-ask-go">Ask →</span>
         </button>
       </div>
@@ -109,7 +109,7 @@ const connectedFamilies = computed(() => allFamilies.value.filter((f) => f.conne
 const openFamilies = computed(() => allFamilies.value.filter((f) => !f.connected).slice(0, 7));
 const leadId = computed(() => (openFamilies.value[0]?.apps.length > 1 ? openFamilies.value[0].id : null));
 const items = computed(() => shelf({ rows: props.rows, connected: connected.value, modelIds: modelIds.value }));
-const asked = computed(() => asks({ connected: connected.value, rows: props.rows }));
+const asked = computed(() => asks({ connected: connected.value, rows: props.rows, modelIds: modelIds.value }));
 const step = computed(() => nextStep({ families: allFamilies.value, items: items.value, connected: connected.value }));
 const appCount = computed(() => props.rows.filter((r) => pluginKind(r).id === 'app').length);
 

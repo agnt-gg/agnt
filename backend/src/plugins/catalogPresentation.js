@@ -1,4 +1,4 @@
-import { PLUGIN_KINDS } from '../../plugins/lib/validate-core.js';
+import { PLUGIN_KINDS, checkPluginExamples } from '../../plugins/lib/validate-core.js';
 
 /** Display metadata only. Never expose agent prompts, workflow graphs, widget code or credentials in a catalog. */
 export function catalogPresentation(manifest = {}) {
@@ -21,5 +21,8 @@ export function catalogPresentation(manifest = {}) {
   // The store shelf (app / pack / utility), only when it is one of the three.
   const kind = String(manifest.kind || '').trim().toLowerCase();
   if (PLUGIN_KINDS.includes(kind)) output.kind = kind;
+  // The publisher's "Try it" asks, only when well-formed.
+  const { examples } = checkPluginExamples(manifest);
+  if (examples.length) output.examples = examples;
   return output;
 }

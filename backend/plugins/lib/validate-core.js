@@ -697,6 +697,32 @@ export function checkPluginKind(manifest) {
   return { errors: [], warnings: [], kind: raw.trim().toLowerCase(), declared: true };
 }
 
+// ---------------------------------------------------------------------------
+// Examples — what to ask once the plugin is in, shown on the Apps page as "Try it"
+// ---------------------------------------------------------------------------
+
+export const MAX_EXAMPLES = 5;
+export const MAX_EXAMPLE_LENGTH = 120;
+
+/**
+ * `manifest.examples`: up to MAX_EXAMPLES short asks a user can send as-is ("Summarize my unread
+ * email from today"). Optional. A wrong shape is an error; extra or overlong entries are errors too,
+ * so what a publisher wrote is exactly what users see.
+ * @returns {{ errors: string[], examples: string[] }}
+ */
+export function checkPluginExamples(manifest) {
+  const raw = manifest?.examples;
+  if (raw === undefined || raw === null) return { errors: [], examples: [] };
+  if (!Array.isArray(raw)) return { errors: ['manifest.examples must be an array of short asks'], examples: [] };
+  const errors = [];
+  if (raw.length > MAX_EXAMPLES) errors.push(`manifest.examples has ${raw.length} entries; at most ${MAX_EXAMPLES}`);
+  raw.forEach((entry, i) => {
+    if (typeof entry !== 'string' || !entry.trim()) errors.push(`manifest.examples[${i}] must be a non-empty string`);
+    else if (entry.trim().length > MAX_EXAMPLE_LENGTH) errors.push(`manifest.examples[${i}] is ${entry.trim().length} characters; at most ${MAX_EXAMPLE_LENGTH}`);
+  });
+  return { errors, examples: errors.length ? [] : raw.map((e) => e.trim()) };
+}
+
 /** The sign-ins a plugin's tools name (`authProvider`), lowercased, once each. */
 export function neededSignIns(manifest) {
   const tools = Array.isArray(manifest?.tools) ? manifest.tools : [];
@@ -788,6 +814,7 @@ export default {
   PLUGIN_KINDS,
   inferPluginKind,
   checkPluginKind,
+  checkPluginExamples,
   computeIntegrity,
   integrityMatches,
   computeDirIntegrity,

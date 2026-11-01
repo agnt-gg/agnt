@@ -81,7 +81,7 @@ describe('For you: connect your apps first, then what they unlock', () => {
     expect(wrapper.emitted('connect')[0][0]).toMatchObject({ providerId: 'google' });
     setup({ tab: 'foryou', available: [gmailApp, { ...calculator, name: 'calculator-plugin', kind: 'utility' }], connected: ['google'] }); await flushPromises();
     await wrapper.findAll('[data-action="ask"]')[0].trigger('click');
-    expect(wrapper.emitted('try-plugin')[0][0]).toMatchObject({ prompt: 'Summarize my unread email from today' });
+    expect(wrapper.emitted('try-plugin')[0][0]).toMatchObject({ prompt: 'Draft replies to my most important unread emails' });
   });
 });
 const inspectCalls = () => apiFetch.mock.calls.filter(([url]) => url.includes('/inspect/'));

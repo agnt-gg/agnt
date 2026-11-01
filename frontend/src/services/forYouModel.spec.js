@@ -61,12 +61,20 @@ describe('For you', () => {
     expect(unlocks('slack', items, none)).toBe(0);
     expect(unlocks('slack', items, new Set(['notion']))).toBe(1);
   });
-  it('asks: connected apps’ asks, plus no-setup asks for utilities on the Market', () => {
+  it('asks: a plugin’s own examples win; defaults fill in; no-setup asks are Annie on her own', () => {
     expect(asks({ connected: none, rows }).forApps).toEqual([]);
-    expect(asks({ connected: none, rows }).noSetup.map((a) => a.plugin)).toEqual(['sentinel', 'calculator-plugin']);
+    const noSetup = asks({ connected: none, rows }).noSetup.map((a) => a.text);
+    expect(noSetup).toContain('Build a one-page website for my business');
+    // Never AGNT's own site, never "AI agent tools".
+    for (const text of noSetup) expect(text).not.toMatch(/agnt\.gg|ai agent/i);
+    const withOwn = [...rows, { name: 'gmail-pro', displayName: 'Gmail Pro', kind: 'app', installed: true, examples: ['Clean up my newsletters'], tools: [tool('google')] }];
+    expect(asks({ connected: new Set(['google']), rows: withOwn }).forApps).toEqual([
+      expect.objectContaining({ text: 'Clean up my newsletters', plugin: 'gmail-pro', provider: 'google' }),
+    ]);
     // Each Google ask carries its own app's mark: email shows Gmail, not the Google G.
     expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar', 'google-docs']);
     expect(asks({ connected: new Set(['slack']), rows }).forApps[0]).toMatchObject({ provider: 'slack', icon: 'slack' });
+    for (const a of asks({ connected: new Set(['google', 'slack', 'github']), rows }).forApps) expect(a.text).not.toMatch(/agnt\.gg|ai agent/i);
   });
   it('next step: connect the lead family first; then add a ready pack that uses a connection', () => {
     const fams = families({ cards, rows, connected: none });

@@ -17,6 +17,12 @@ describe('Catalog presentation metadata', () => {
     expect(catalogPresentation({ kind: 'connector' })).toEqual({});
     expect(catalogPresentation({ kind: 42 })).toEqual({});
   });
+  it('passes a publisher\'s examples through only when well-formed', () => {
+    expect(catalogPresentation({ examples: [' Summarize my unread email from today '] })).toEqual({ examples: ['Summarize my unread email from today'] });
+    expect(catalogPresentation({ examples: 'not a list' })).toEqual({});
+    expect(catalogPresentation({ examples: ['ok', 42] })).toEqual({});
+    expect(catalogPresentation({ examples: Array(6).fill('ask') })).toEqual({});
+  });
   it('does not turn absent metadata into fabricated zero counts', () => {
     expect(catalogPresentation({})).toEqual({});
     expect(catalogPresentation({ agents: null })).toEqual({});

@@ -44,6 +44,7 @@ import {
   verifyArchive,
   checkPluginSignIns,
   checkPluginKind,
+  checkPluginExamples,
 } from '../lib/validate-core.js';
 import { fetchSharedSignInIds } from '../lib/shared-sign-ins.js';
 
@@ -175,6 +176,13 @@ async function buildPlugin(arg) {
   }
   for (const w of kindCheck.warnings) console.warn(`⚠️  ${w}`);
   console.log(`🗂️  Kind: ${kindCheck.kind}${kindCheck.declared ? '' : ' (inferred)'}`);
+  // Examples: the asks the Apps page offers as "Try it". Optional; a bad shape stops the build.
+  const exampleCheck = checkPluginExamples(manifest);
+  if (exampleCheck.errors.length) {
+    for (const e of exampleCheck.errors) console.error(`❌ ${e}`);
+    process.exit(1);
+  }
+  if (exampleCheck.examples.length) console.log(`💬 Examples: ${exampleCheck.examples.length}`);
   for (const kind of ['agents', 'workflows', 'skills', 'widgets']) {
     const arr = manifest[kind];
     if (Array.isArray(arr) && arr.length > 0) {
