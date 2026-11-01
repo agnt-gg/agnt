@@ -17,9 +17,13 @@ class YouTubeCaptionExtractor {
   constructor() {
     // yt-dlp runs in the tool sandbox on a hosted instance, which cannot see the data folder: keep its
     // cookies where it can read and refresh them.
-    this.cookiesPath = hostedToolBoundaryRequired() ? path.join(toolWorkDir('yt-dlp'), 'cookies.txt') : PathManager.getPath('cookies.txt');
     // Ensure cookies.txt exists in user data
     this.initCookies();
+  }
+
+  /** Resolved per call: on a hosted instance each account's yt-dlp runs in that account's own folder. */
+  get cookiesPath() {
+    return hostedToolBoundaryRequired() ? path.join(toolWorkDir('yt-dlp'), 'cookies.txt') : PathManager.getPath('cookies.txt');
   }
 
   async initCookies() {

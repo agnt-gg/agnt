@@ -5,8 +5,25 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { currentToolActor, hostedToolBoundaryRequired, issueToolToken } from './toolRunAuthority.js';
 import { createToolNetwork } from './toolNetwork.js';
+import { getWorkspaceRootSync } from '../../utils/workspaceRoot.js';
 
 export const TOOL_WORKSPACE = '/app/data/projects';
+/** Member folders: the only roots besides the install folder the launcher will mount. */
+const MEMBER_ROOT = /^\/app\/data\/workspaces\/[A-Za-z0-9_-]{1,80}$/;
+const isInside = (child, parent) => child === parent || child.startsWith(parent + '/');
+const refuseWorkspace = (message) => Object.assign(new Error(message), { code: 'tool_workspace_required' });
+
+/**
+ * The one folder a hosted tool run may see: the acting account's own workspace (the owner's is the
+ * install folder; a member's is /app/data/workspaces/<id>). The launcher mounts only this folder, so a
+ * member's code can never read the owner's files or another member's. Runs with no actor (internal
+ * helpers) get the install folder. Anything else fails closed.
+ */
+export function toolRootFor(actor, workspaceFor = getWorkspaceRootSync) {
+  const root = path.posix.resolve(String(workspaceFor(actor)).replace(/\\/g, '/'));
+  if (isInside(root, TOOL_WORKSPACE) || MEMBER_ROOT.test(root)) return root;
+  throw refuseWorkspace(`Hosted tools must execute inside the workspace: ${root} is not a folder the tool sandbox can mount`);
+}
 const LAUNCHER = '/usr/local/bin/agnt-tool-run';
 const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE'];
 
@@ -16,18 +33,21 @@ const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF
  * never reaches the code that reads it. Elsewhere this is just the temp folder.
  */
 export function toolWorkDir(...parts) {
-  const base = hostedToolBoundaryRequired() ? path.posix.join(TOOL_WORKSPACE, '.tool-work') : os.tmpdir();
+  const base = hostedToolBoundaryRequired() ? path.posix.join(toolRootFor(currentToolActor()), '.tool-work') : os.tmpdir();
   const dir = path.join(base, ...parts);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken } = {}) {
+export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken, workspaceFor = getWorkspaceRootSync, ensureDir = (dir) => fs.mkdirSync(dir, { recursive: true }) } = {}) {
   if (!hosted) return { command, args, options };
   if (!fs.existsSync(LAUNCHER)) throw Object.assign(new Error('Hosted tool sandbox is unavailable; execution refused'), { code: 'tool_sandbox_unavailable' });
-  const cwd = path.posix.resolve(options.cwd || TOOL_WORKSPACE);
-  if (cwd !== TOOL_WORKSPACE && !cwd.startsWith(TOOL_WORKSPACE + '/')) throw Object.assign(new Error('Hosted tools must execute inside the workspace'), { code: 'tool_workspace_required' });
-  const environment = { PATH: '/usr/local/bin:/usr/bin:/bin' };
+  const root = toolRootFor(actor, workspaceFor);
+  const cwd = path.posix.resolve(root, String(options.cwd || root).replace(/\\/g, '/'));
+  if (!isInside(cwd, root)) throw refuseWorkspace(`Hosted tools must execute inside the workspace (${root}); ${cwd} is outside it`);
+  ensureDir(root);
+  // The launcher (scripts/agnt-tool-run.py) re-validates this and mounts only this folder.
+  const environment = { PATH: '/usr/local/bin:/usr/bin:/bin', AGNT_TOOL_WORKSPACE: root };
   for (const key of SAFE_ENV) if (options.env?.[key] !== undefined) environment[key] = String(options.env[key]);
   // NEVER forward a caller-supplied bearer. This run gets a socket bound to
   // the authenticated actor; API credentials stay in the trusted broker.
