@@ -2,6 +2,43 @@ import { normalizeExecutionTelemetry, unavailableTelemetry, takeFailureTelemetry
 import { returnedOutcome, processReturnedReceipts, takeFailureReceipts } from './runAgentResult.js';
 import log from '../../utils/logger.js';
 import db from '../../models/database/index.js';
+import AGNT from '../../libs/agnt2.js';
+
+/*
+ * Agents as the AGNT API sees them for this caller.
+ *
+ * On a team instance every asset request is scoped to the team's workspace principal
+ * (TeamInstanceScope + ScopeApiMiddleware), so the team's agents are stored under `scope:…`, not the
+ * caller's own id. Reading rows by the caller's id found none of them: on bravo list_agents returned 0
+ * and run_agent refused Research Analyst while agnt_agents (which goes through the API) saw it.
+ * Going through the API applies the same scope, authorization and audit. Runs with no user token
+ * (internal) fall back to the caller's own rows.
+ */
+function agentApi(authToken) {
+  if (typeof authToken !== 'string' || !authToken) return null;
+  return new AGNT(authToken.toLowerCase().startsWith('bearer ') ? authToken.slice(7) : authToken).agents;
+}
+
+export async function findAccessibleAgent(agentId, { userId, authToken, api = agentApi(authToken) } = {}) {
+  if (api) {
+    try {
+      const agent = await api.get(agentId);
+      return agent?.id ? agent : null;
+    } catch (error) {
+      if ([403, 404].includes(error.response?.status)) return null;
+      throw error;
+    }
+  }
+  const { default: AgentModel } = await import('../../models/AgentModel.js');
+  const agent = await AgentModel.findOne(agentId);
+  return agent && agent.created_by === userId ? agent : null;
+}
+
+export async function listAccessibleAgents({ userId, authToken, api = agentApi(authToken) } = {}) {
+  if (api) return (await api.list()) || [];
+  const { default: AgentModel } = await import('../../models/AgentModel.js');
+  return AgentModel.findAllByUserId(userId);
+}
 
 export const AGENT_TOOLS = {
   generate_agent: {
@@ -364,24 +401,12 @@ export const AGENT_TOOLS = {
           });
         }
 
-        const result = await new Promise((resolve) => {
-          db.get('SELECT * FROM agents WHERE id = ? AND (created_by = ? OR is_shareable = 1)', [agentId, userId], (err, row) => {
-            if (err || !row) {
-              resolve({
-                success: false,
-                message: err ? err.message : 'Agent not found or access denied',
-              });
-            } else {
-              resolve({
-                success: true,
-                agent: JSON.parse(row.parameters || '{}'),
-                message: 'Agent loaded successfully',
-              });
-            }
-          });
-        });
-
-        return JSON.stringify(result);
+        // The agents table has neither is_shareable nor parameters: the old raw query failed with
+        // "no such column: is_shareable" on every call.
+        const agent = await findAccessibleAgent(agentId, { userId, authToken });
+        return JSON.stringify(agent
+          ? { success: true, agent, message: 'Agent loaded successfully' }
+          : { success: false, message: 'Agent not found or access denied' });
       } catch (error) {
         return JSON.stringify({
           success: false,
@@ -477,10 +502,7 @@ export const AGENT_TOOLS = {
           });
         }
 
-        // Use the AgentModel to get agents (which handles the proper database structure)
-        const AgentModel = (await import('../../models/AgentModel.js')).default;
-
-        const agents = await AgentModel.findAllByUserId(userId);
+        const agents = await listAccessibleAgents({ userId, authToken });
 
         // Filter by category if specified
         const filteredAgents = category ? agents.filter((agent) => agent.category === category) : agents;
@@ -495,10 +517,11 @@ export const AGENT_TOOLS = {
           model: agent.model,
           assignedTools: agent.assignedTools || [],
           assignedWorkflows: agent.assignedWorkflows || [],
-          lastActive: agent.last_active,
-          successRate: agent.success_rate,
-          createdAt: agent.created_at,
-          updatedAt: agent.updated_at,
+          // API rows are camelCase, model rows snake_case.
+          lastActive: agent.lastActive ?? agent.last_active,
+          successRate: agent.successRate ?? agent.success_rate,
+          createdAt: agent.createdAt ?? agent.created_at,
+          updatedAt: agent.updatedAt ?? agent.updated_at,
         }));
 
         return JSON.stringify({
@@ -573,8 +596,10 @@ export const AGENT_TOOLS = {
           import('../../models/AgentExecutionModel.js'),
         ]);
 
-        const agent = await AgentModel.findOne(agentId);
-        if (!agent || (agent.created_by && agent.created_by !== userId)) {
+        // Access is decided where the API decides it; the run uses the stored record.
+        const accessible = await findAccessibleAgent(agentId, { userId, authToken });
+        const agent = accessible ? await AgentModel.findOne(accessible.id) : null;
+        if (!agent) {
           return JSON.stringify({ success: false, error: 'Agent not found or unauthorized', message: 'Failed to run agent' });
         }
 
