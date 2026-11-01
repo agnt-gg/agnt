@@ -1,6 +1,7 @@
 {
   "name": "google-meet-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "kind": "app",
   "description": "Google Meet integration plugin for AGNT - Create instant meeting spaces, manage conferences, and retrieve recordings and transcripts.",
   "author": "AGNT Team",
   "icon": "video",

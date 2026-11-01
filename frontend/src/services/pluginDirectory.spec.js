@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  humanize, toolOperations, isTrigger, pluginInventory, compositionOf, isPack, hasTriggers,
+  humanize, toolOperations, isTrigger, pluginInventory, compositionOf, isPack, hasTriggers, pluginKind, PLUGIN_KINDS,
   declaredAccess, capabilityLabel, trustTier, integrityLabel, reviewNotices, pluginToolIds, agentAccess,
   matchesQuery, cardNeedsYou, installedSections, accountRows, connectionKind, builtByMe, priceLabel, signInReadiness,
   pluginNextStep,
@@ -154,6 +154,21 @@ describe('inventory', () => {
   it('a pack is a plugin that ships more than tools', () => {
     expect(isPack(pack)).toBe(true);
     expect(isPack(gmail)).toBe(false);
+  });
+
+  it('kind: the declared shelf wins; otherwise a sign-in is an app, shipped agents/workflows/skills/widgets a pack, else a utility', () => {
+    expect(PLUGIN_KINDS.map((k) => k.id)).toEqual(['app', 'pack', 'utility']);
+    expect(pluginKind({ kind: 'App', tools: [] }).id).toBe('app');
+    expect(pluginKind({ ...pack, kind: 'utility' }).id).toBe('utility');
+    expect(pluginKind({ tools: [{ schema: { authProvider: 'google' } }] }).id).toBe('app');
+    expect(pluginKind({ tools: [{ authProvider: 'clickup' }] }).id).toBe('app');
+    expect(pluginKind({ auth: [{ id: 'viggle' }] }).id).toBe('app');
+    expect(pluginKind({ agents: [{ slug: 'researcher' }], workflows: [{ slug: 'digest' }], tools: [{ type: 'search' }] }).id).toBe('pack');
+    // A sign-in outranks shipped assets unless the plugin says otherwise.
+    expect(pluginKind({ agents: [{ slug: 'researcher' }], tools: [{ authProvider: 'google' }] }).id).toBe('app');
+    expect(pluginKind({ tools: [{ type: 'calc' }] })).toMatchObject({ id: 'utility', one: 'Utility', label: 'Utilities' });
+    expect(pluginKind({ kind: 'connector' }).id).toBe('utility');
+    expect(pluginKind(null).id).toBe('utility');
   });
 });
 

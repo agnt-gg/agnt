@@ -1,6 +1,7 @@
 {
   "name": "photon-imessage-plugin",
   "version": "0.1.0",
+  "kind": "app",
   "description": "iMessage integration for AGNT via Photon Spectrum. Send and receive blue-bubble iMessages from workflows, with allowlist + pairing guardrails. Modeled on the Hermes Agent Photon pattern.",
   "author": "AGNT",
   "icon": "message-circle",

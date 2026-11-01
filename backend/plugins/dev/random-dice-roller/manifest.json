@@ -1,6 +1,7 @@
 {
   "name": "random-dice-roller",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "A utility plugin to simulate rolling dice (d6, d20, custom sides) for games and randomization tasks.",
   "author": "AGNT User",
   "icon": "dice",

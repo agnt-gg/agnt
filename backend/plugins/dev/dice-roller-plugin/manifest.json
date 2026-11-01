@@ -1,6 +1,7 @@
 {
   "name": "dice-roller-plugin",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "Rolls dice ranging from d1 to d20 with optional count and modifier.",
   "author": "AGNT User",
   "icon": "dice",

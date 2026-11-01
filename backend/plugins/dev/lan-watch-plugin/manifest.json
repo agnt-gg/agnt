@@ -1,6 +1,7 @@
 {
   "name": "lan-watch-plugin",
   "version": "1.0.0",
+  "kind": "utility",
   "description": "Watches your local network: logs every device joining and leaving (by MAC) and flags unknown devices. Pair with Text Me to get texted.",
   "author": "AGNT",
   "icon": "wifi",

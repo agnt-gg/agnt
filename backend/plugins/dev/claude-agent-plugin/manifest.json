@@ -1,6 +1,7 @@
 {
   "name": "claude-agent-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Autonomous Claude Agent powered by @anthropic-ai/claude-agent-sdk",
   "author": "AGNT Team",
   "icon": "claude",

@@ -1,6 +1,7 @@
 {
   "name": "unturf-ai-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Unturf AI integration plugin for AGNT - Free LLM and text-to-speech services without API keys",
   "author": "AGNT",
   "icon": "magic",

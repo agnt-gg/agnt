@@ -1,6 +1,7 @@
 {
   "name": "google-calendar-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "kind": "app",
   "description": "Google Calendar integration plugin for AGNT - Manage events, check availability, create Google Meet meetings, and trigger workflows on new or upcoming events.",
   "author": "AGNT Team",
   "icon": "calendar",

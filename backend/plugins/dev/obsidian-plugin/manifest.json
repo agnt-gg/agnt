@@ -1,6 +1,7 @@
 {
   "name": "obsidian-plugin",
   "version": "1.0.3",
+  "kind": "app",
   "description": "Comprehensive Obsidian Local REST API integration for AGNT. Read, write, patch, search, open notes, manage periodic notes, list tags, and execute Obsidian commands using the canonical AGNT obsidian API-key provider.",
   "author": "AGNT",
   "icon": "obsidian",

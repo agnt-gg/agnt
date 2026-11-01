@@ -138,6 +138,23 @@ export function compositionOf(inventory, { operations = false } = {}) {
 }
 
 export const isPack = (plugin) => ['agents', 'workflows', 'skills', 'widgets'].some((key) => list(plugin?.[key]).length > 0);
+
+/**
+ * The store's shelves. A plugin declares one in manifest.kind; one that predates the field gets the
+ * same inference as the validator (backend/plugins/lib/validate-core.js inferPluginKind): a sign-in
+ * makes an app, agents/workflows/skills/widgets a pack, anything else a utility.
+ */
+export const PLUGIN_KINDS = Object.freeze([
+  { id: 'app', label: 'Apps', one: 'App', detail: 'Connects AGNT to a service or app you use' },
+  { id: 'pack', label: 'Packs', one: 'Pack', detail: 'Agents, workflows and skills that do a job' },
+  { id: 'utility', label: 'Utilities', one: 'Utility', detail: 'Tools that work on their own' },
+]);
+const signsIn = (plugin) => list(plugin?.auth).length > 0 || list(plugin?.tools).some((tool) => tool?.schema?.authProvider || tool?.authProvider);
+export function pluginKind(plugin) {
+  const declared = lower(plugin?.kind);
+  const id = PLUGIN_KINDS.some((k) => k.id === declared) ? declared : signsIn(plugin) ? 'app' : isPack(plugin) ? 'pack' : 'utility';
+  return PLUGIN_KINDS.find((k) => k.id === id);
+}
 export const hasTriggers = (plugin) => list(plugin?.tools).some(isTrigger);
 
 function parsePermissions(value) {

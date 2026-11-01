@@ -1,6 +1,7 @@
 {
   "name": "zapier-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Zapier integration plugin for AGNT - Send data to Zapier webhooks and receive triggers from Zapier.",
   "author": "AGNT Team",
   "icon": "zapier",

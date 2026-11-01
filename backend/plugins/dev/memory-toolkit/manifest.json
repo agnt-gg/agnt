@@ -1,6 +1,7 @@
 {
   "name": "memory-toolkit",
   "version": "1.0.0",
+  "kind": "utility",
   "description": "Advanced memory system with knowledge graph, semantic search, entity extraction, auto-consolidation (dream), and graph crawling",
   "author": "AGNT Team",
   "icon": "graph",

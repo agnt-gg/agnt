@@ -1,6 +1,7 @@
 {
   "name": "stripe-plugin",
   "version": "1.0.1",
+  "kind": "app",
   "description": "Stripe integration plugin for AGNT - Create and send invoices with line items",
   "author": "AGNT",
   "icon": "stripe",

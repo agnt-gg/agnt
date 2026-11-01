@@ -2,6 +2,7 @@
   "name": "cua-toolkit",
   "displayName": "Cua Computer-Use Toolkit",
   "version": "0.5.0",
+  "kind": "utility",
   "description": "Background desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua, verified live against 0.19.3 — \"computer-use 2.0\"). Agents drive real Windows apps WITHOUT touching your mouse or stealing focus: input routes through the accessibility layer while the driver paints its own session-coloured cursor overlay. cua-act runs a full observe→reason→act→MEASURE loop using whatever AI provider/model you have selected in chat. Deterministic verify_state postconditions replace screenshot guesswork, invoke_menu resolves native menus instead of clicking blind, and paste_text reaches editors that expose no ValuePattern.",
   "author": "Annie (AGNT)",
   "icon": "terminal",

@@ -1,6 +1,7 @@
 {
   "name": "google-sheets-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
+  "kind": "app",
   "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
   "author": "AGNT Team",
   "icon": "table",

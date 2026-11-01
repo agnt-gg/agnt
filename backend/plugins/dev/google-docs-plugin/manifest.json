@@ -1,6 +1,7 @@
 {
   "name": "google-docs-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "kind": "app",
   "description": "Google Docs integration plugin for AGNT - Create documents (including from Markdown), read, append, template with placeholder replacement, and export to PDF/HTML/Markdown.",
   "author": "AGNT Team",
   "icon": "file-lines",

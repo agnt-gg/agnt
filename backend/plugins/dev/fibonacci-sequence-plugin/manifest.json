@@ -1,6 +1,7 @@
 {
   "name": "fibonacci-sequence-plugin",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "Provides utilities to calculate Fibonacci numbers and generate Fibonacci sequences.",
   "author": "AGNT User",
   "icon": "magic",

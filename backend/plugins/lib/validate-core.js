@@ -657,6 +657,46 @@ function secretFieldsIn(declaration) {
   return found;
 }
 
+// ---------------------------------------------------------------------------
+// Kind — what a plugin is, for the store's shelves
+// ---------------------------------------------------------------------------
+
+/**
+ * `manifest.kind`:
+ *   app     connects AGNT to an outside service or app you use (ClickUp, Gmail, Figma)
+ *   pack    ships agents, workflows, skills or widgets that do a job (Company Operator)
+ *   utility local tools that work on their own (calculator, file watcher)
+ */
+export const PLUGIN_KINDS = Object.freeze(['app', 'pack', 'utility']);
+const PACK_KEYS = ['agents', 'workflows', 'skills', 'widgets'];
+const nonEmpty = (value) => (Array.isArray(value) ? value.length > 0 : Boolean(value && typeof value === 'object' && Object.keys(value).length));
+
+/** A plugin's kind: the one it declares, else inferred (a sign-in makes an app; agents/workflows/skills/widgets a pack). */
+export function inferPluginKind(manifest) {
+  const declared = String(manifest?.kind || '').trim().toLowerCase();
+  if (PLUGIN_KINDS.includes(declared)) return declared;
+  if (neededSignIns(manifest).length || nonEmpty(manifest?.auth)) return 'app';
+  if (PACK_KEYS.some((key) => nonEmpty(manifest?.[key]))) return 'pack';
+  return 'utility';
+}
+
+/**
+ * Is `manifest.kind` usable? A value that is not one of PLUGIN_KINDS is an error (it would put the
+ * plugin on no shelf). A missing one is a warning: the store infers it, so older plugins still publish.
+ * @returns {{ errors: string[], warnings: string[], kind: string, declared: boolean }}
+ */
+export function checkPluginKind(manifest) {
+  const raw = manifest?.kind;
+  if (raw === undefined || raw === null || raw === '') {
+    const kind = inferPluginKind(manifest);
+    return { errors: [], warnings: [`manifest.kind is not set; treated as "${kind}". Declare one of ${PLUGIN_KINDS.join(', ')} so the store shelves it the way you mean.`], kind, declared: false };
+  }
+  if (typeof raw !== 'string' || !PLUGIN_KINDS.includes(raw.trim().toLowerCase())) {
+    return { errors: [`manifest.kind must be one of ${PLUGIN_KINDS.join(', ')} (got ${JSON.stringify(raw)})`], warnings: [], kind: inferPluginKind({ ...manifest, kind: undefined }), declared: false };
+  }
+  return { errors: [], warnings: [], kind: raw.trim().toLowerCase(), declared: true };
+}
+
 /** The sign-ins a plugin's tools name (`authProvider`), lowercased, once each. */
 export function neededSignIns(manifest) {
   const tools = Array.isArray(manifest?.tools) ? manifest.tools : [];
@@ -745,6 +785,9 @@ export default {
   normalizeAuthDeclaration,
   neededSignIns,
   checkPluginSignIns,
+  PLUGIN_KINDS,
+  inferPluginKind,
+  checkPluginKind,
   computeIntegrity,
   integrityMatches,
   computeDirIntegrity,

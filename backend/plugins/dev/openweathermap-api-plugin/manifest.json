@@ -1,6 +1,7 @@
 {
   "name": "openweathermap-api-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Tools for retrieving weather, forecasts, air pollution, and geocoding data from the OpenWeatherMap API.",
   "author": "AGNT User",
   "icon": "weather",

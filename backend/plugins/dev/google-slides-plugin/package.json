@@ -1,6 +1,6 @@
 {
   "name": "google-slides-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Google Slides integration plugin for AGNT",
   "type": "module",
   "main": "google-slides-api.js",

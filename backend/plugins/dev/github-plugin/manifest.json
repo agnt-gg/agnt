@@ -1,6 +1,7 @@
 {
   "name": "github-plugin",
   "version": "2.0.0",
+  "kind": "app",
   "description": "GitHub integration plugin for AGNT - Full repository lifecycle: repos, branches, files, issues, comments, pull requests, reviews, releases, GitHub Actions/CI, and search",
   "author": "AGNT",
   "icon": "github",

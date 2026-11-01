@@ -1,6 +1,7 @@
 {
   "name": "google-slides-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "kind": "app",
   "description": "Google Slides integration plugin for AGNT - Create and manage presentations",
   "author": "AGNT",
   "icon": "google-slides",

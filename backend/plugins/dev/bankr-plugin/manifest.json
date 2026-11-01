@@ -1,6 +1,7 @@
 {
   "name": "bankr-plugin",
   "version": "2.0.0",
+  "kind": "app",
   "description": "Bankr.bot integration for AGNT — AI-powered crypto trading, token launching, cross-chain swaps, Polymarket betting, and self-sustaining agent infrastructure across Base, Ethereum, Polygon, Unichain, and Solana.",
   "author": "AGNT Team",
   "icon": "bankr",

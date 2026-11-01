@@ -4,12 +4,12 @@
       "name": "google-sheets-plugin",
       "displayName": "Google Sheets",
       "icon": "table",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-sheets-plugin.agnt",
-      "size": 12965751,
+      "size": 12908232,
       "tags": [
         "google",
         "sheets",
@@ -34,22 +34,23 @@
           }
         }
       ],
-      "integrity": "sha256-UyEquJqTPvvJMGkJuh7+sLb8zIowJCY1oKJJ2LETxQs=",
+      "integrity": "sha256-8FfNJgT39xqddMU0hZ53D/1JybQr9YJZGyTuVA/k1XY=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "gmail-plugin",
       "displayName": "Gmail",
       "icon": "gmail",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Gmail integration plugin for AGNT - Send, reply, draft, read, organize, and manage attachments.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
-      "size": 12526709,
+      "size": 12480456,
       "tags": [
         "gmail",
         "email",
@@ -66,22 +67,23 @@
           }
         }
       ],
-      "integrity": "sha256-V5US+z6mAGkY3yEBx3pS8ufqr+KwVPOpTTyR2VFtA88=",
+      "integrity": "sha256-snTQZLflf4Ap06KKmxQnLjJt9obUCPjH9cG7zUP5OC8=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "google-drive-plugin",
       "displayName": "Google Drive",
       "icon": "google-drive",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
-      "size": 12532152,
+      "size": 12475914,
       "tags": [
         "google",
         "drive",
@@ -99,22 +101,23 @@
           }
         }
       ],
-      "integrity": "sha256-KMWqeXSUpwkpEBHabnvI3e2oWuri2wRZgowXBjqMdsQ=",
+      "integrity": "sha256-VPBKa3k58L6jwfvU9+ziuXa87j+eR+6LOIcB2LtqxGw=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "google-slides-plugin",
       "displayName": "Google Slides",
       "icon": "google-slides",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Slides integration plugin for AGNT - Create and manage presentations.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-slides-plugin.agnt",
-      "size": 12534607,
+      "size": 12478840,
       "tags": [
         "google",
         "slides",
@@ -131,7 +134,7 @@
           }
         }
       ],
-      "integrity": "sha256-BWIWhUr7dCddp3yoRrY/9xkfjT8CVNFzAAg5kd3gU2Y=",
+      "integrity": "sha256-WFYyneDsuT0/1VWrqa9uV8vHqO1zSGWsVpNeiYPSPFg=",
       "trustTier": "official",
       "declaredPermissions": [
         "network"
@@ -139,18 +142,19 @@
       "detectedCapabilities": [
         "network"
       ],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "calculator-plugin",
       "displayName": "Calculator",
       "icon": "calculator",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Provides arithmetic and scientific expression evaluation.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/calculator-plugin.agnt",
-      "size": 1876,
+      "size": 1889,
       "tags": [
         "calculator",
         "math",
@@ -167,7 +171,7 @@
           }
         }
       ],
-      "integrity": "sha256-GhTWXOZRTrYrprTCWDVGeMqiLzfbOpwtSjYyRxRXQaU=",
+      "integrity": "sha256-TYymqr9qVqNNWJCAxqtieAtmsYL0mAM7rXzBu1u8QcU=",
       "trustTier": "official",
       "declaredPermissions": [
         "dynamic-eval",
@@ -176,18 +180,19 @@
       "detectedCapabilities": [
         "filesystem",
         "dynamic-eval"
-      ]
+      ],
+      "kind": "utility"
     },
     {
       "name": "google-calendar-plugin",
       "displayName": "Google Calendar",
       "icon": "calendar",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Calendar integration plugin for AGNT - Manage events, check availability, create Google Meet meetings, and trigger workflows on new or upcoming events.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-calendar-plugin.agnt",
-      "size": 12967759,
+      "size": 12920612,
       "tags": [
         "google",
         "calendar",
@@ -220,22 +225,23 @@
           }
         }
       ],
-      "integrity": "sha256-E+JDwrT/Mu7gfaHLiGln5dPXYsGqqgl2tvA1K5djSB8=",
+      "integrity": "sha256-/0OYUDSCU+zFbn5tGZLBcfdGTroHOl9ke6EphGgcniM=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "google-docs-plugin",
       "displayName": "Google Docs",
       "icon": "file-lines",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Docs integration plugin for AGNT - Create documents (including from Markdown), read, append, template with placeholder replacement, and export to PDF/HTML/Markdown.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-docs-plugin.agnt",
-      "size": 12967110,
+      "size": 12919017,
       "tags": [
         "google",
         "docs",
@@ -254,22 +260,23 @@
           }
         }
       ],
-      "integrity": "sha256-jHr4YcdUT8pn60jSql+wVJ9QbRYjKp5LKEzuYmJhKTc=",
+      "integrity": "sha256-4vft/UZlvINl6/pP/ZAw6M3o/Kch//Ic3AGL62ONfKY=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     },
     {
       "name": "google-meet-plugin",
       "displayName": "Google Meet",
       "icon": "video",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Meet integration plugin for AGNT - Create instant meeting spaces, manage conferences, and retrieve recordings and transcripts.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-meet-plugin.agnt",
-      "size": 12963499,
+      "size": 12916082,
       "tags": [
         "google",
         "meet",
@@ -288,11 +295,12 @@
           }
         }
       ],
-      "integrity": "sha256-xtrXvcIu11FfombsOku6+l6Mwo1Hcd+lBtraMuJre/o=",
+      "integrity": "sha256-lwoUM5MehFS7cuZdFPkO74dAPYOkFZxeVTlO7sGXQEE=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": [],
-      "installByDefault": true
+      "installByDefault": true,
+      "kind": "app"
     }
   ]
 }

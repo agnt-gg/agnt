@@ -1,6 +1,7 @@
 {
   "name": "unsplash-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Unsplash integration plugin for AGNT - Search and download high-quality stock photos",
   "author": "AGNT",
   "icon": "unsplash",

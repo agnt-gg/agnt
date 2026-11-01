@@ -1,6 +1,7 @@
 {
   "name": "gmail-plugin",
-  "version": "1.1.0",
+  "version": "1.1.1",
+  "kind": "app",
   "description": "Gmail integration plugin for AGNT - Send, reply, draft, read, organize, and manage attachments",
   "author": "AGNT",
   "icon": "gmail",

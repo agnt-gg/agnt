@@ -1,6 +1,7 @@
 {
   "name": "fetch-tool-plugin",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "A generic fetch tool for making HTTP requests to external APIs or websites.",
   "author": "AGNT User",
   "icon": "api",

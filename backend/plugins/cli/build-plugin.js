@@ -43,6 +43,7 @@ import {
   computeIntegrity,
   verifyArchive,
   checkPluginSignIns,
+  checkPluginKind,
 } from '../lib/validate-core.js';
 import { fetchSharedSignInIds } from '../lib/shared-sign-ins.js';
 
@@ -166,6 +167,14 @@ async function buildPlugin(arg) {
     for (const e of signIns.errors) console.error(`❌ ${e}`);
     process.exit(1);
   }
+  // Kind: which store shelf it goes on. A bad value stops the build; a missing one is inferred and announced.
+  const kindCheck = checkPluginKind(manifest);
+  if (kindCheck.errors.length) {
+    for (const e of kindCheck.errors) console.error(`❌ ${e}`);
+    process.exit(1);
+  }
+  for (const w of kindCheck.warnings) console.warn(`⚠️  ${w}`);
+  console.log(`🗂️  Kind: ${kindCheck.kind}${kindCheck.declared ? '' : ' (inferred)'}`);
   for (const kind of ['agents', 'workflows', 'skills', 'widgets']) {
     const arr = manifest[kind];
     if (Array.isArray(arr) && arr.length > 0) {

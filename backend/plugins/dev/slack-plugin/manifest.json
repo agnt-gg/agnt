@@ -1,6 +1,7 @@
 {
   "name": "slack-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Slack integration plugin for AGNT - Send messages, receive messages, manage channels, and interact with Slack workspaces",
   "author": "AGNT",
   "icon": "slack",

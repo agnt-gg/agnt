@@ -1,6 +1,7 @@
 {
   "name": "youtube-plugin",
   "version": "1.0.3",
+  "kind": "app",
   "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions",
   "author": "AGNT",
   "icon": "youtube",

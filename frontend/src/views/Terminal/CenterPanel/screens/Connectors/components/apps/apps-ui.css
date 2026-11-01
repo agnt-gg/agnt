@@ -65,6 +65,10 @@
 /* How a service connects (Sign-in, API key): green. */
 .apps-studio .ap-badge.connection { background: rgba(var(--green-rgb), 0.14); color: var(--ap-ok); }
 .apps-studio .ap-badge.pack { background: rgba(var(--violet-rgb), 0.14); color: var(--text-primary); }
+/* Kind (manifest.kind): an App connects a service, a Pack does a job, a Utility stands alone. */
+.apps-studio .ap-badge.kind-app { background: rgba(var(--blue-rgb), 0.14); color: var(--text-primary); }
+.apps-studio .ap-badge.kind-pack { background: rgba(var(--violet-rgb), 0.14); color: var(--text-primary); }
+.apps-studio .ap-badge.kind-utility { background: var(--surface-active); color: var(--text-secondary); }
 .apps-studio .ap-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); font-weight: 600; white-space: nowrap; color: var(--text-tertiary); }
 .apps-studio .ap-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .apps-studio .ap-status.ok { color: var(--ap-ok); }

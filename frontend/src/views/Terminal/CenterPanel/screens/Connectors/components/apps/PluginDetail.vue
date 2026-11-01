@@ -18,7 +18,7 @@
       </div>
       <div class="ap-detail-actions">
         <span v-if="tier" class="ap-badge" :class="tier.id" v-tooltip="tier.detail">{{ tier.label }}</span>
-        <span v-if="pack" class="ap-badge pack">Capability pack</span>
+        <span class="ap-badge" :class="'kind-' + kind.id" v-tooltip="kind.detail">{{ kind.one }}</span>
         <span class="ap-grow"></span>
         <!-- The Forge is where you build your OWN plugin; it is never the way
              into one you installed. -->
@@ -170,7 +170,7 @@ import { computed, ref } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';
 import {
-  pluginInventory, declaredAccess, capabilityLabel, CAPABILITIES, trustTier, integrityLabel, isPack, priceLabel, pluginNextStep,
+  pluginInventory, declaredAccess, capabilityLabel, CAPABILITIES, trustTier, integrityLabel, pluginKind, priceLabel, pluginNextStep,
 } from '@/services/pluginDirectory.js';
 
 const OPS_SHOWN = 12;
@@ -202,7 +202,7 @@ const hasTools = computed(() => Array.isArray(props.plugin.tools) && props.plugi
 const access = computed(() => declaredAccess(props.plugin));
 const tier = computed(() => trustTier(props.plugin));
 const integrity = computed(() => (props.plugin.installed ? integrityLabel(props.plugin.integrityState) : ''));
-const pack = computed(() => isPack(props.plugin));
+const kind = computed(() => pluginKind(props.plugin));
 const price = computed(() => priceLabel(props.plugin));
 const pinned = computed(() => props.plugin.updatePolicy === 'pinned');
 const groupCard = computed(() => (props.card?.kind === 'account' && props.card.apps?.length > 1 ? props.card : null));

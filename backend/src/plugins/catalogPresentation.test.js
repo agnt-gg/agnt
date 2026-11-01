@@ -11,6 +11,12 @@ describe('Catalog presentation metadata', () => {
     const result = catalogPresentation({ agents: [{ payload: { name: 'Agent', systemPrompt: 'PRIVATE' } }], widgets: [{ name: 'Board', source_code: 'PRIVATE' }], workflows: [{ name: 'Flow', nodes: ['PRIVATE'] }], apiKey: 'PRIVATE' });
     expect(JSON.stringify(result)).not.toContain('PRIVATE');
   });
+  it('passes the store shelf (kind) through only when it is app, pack or utility', () => {
+    expect(catalogPresentation({ kind: 'app' })).toEqual({ kind: 'app' });
+    expect(catalogPresentation({ kind: ' Pack ' })).toEqual({ kind: 'pack' });
+    expect(catalogPresentation({ kind: 'connector' })).toEqual({});
+    expect(catalogPresentation({ kind: 42 })).toEqual({});
+  });
   it('does not turn absent metadata into fabricated zero counts', () => {
     expect(catalogPresentation({})).toEqual({});
     expect(catalogPresentation({ agents: null })).toEqual({});

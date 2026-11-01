@@ -1,6 +1,7 @@
 {
   "name": "google-drive-plugin",
-  "version": "1.0.2",
+  "version": "1.0.3",
+  "kind": "app",
   "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive",
   "author": "AGNT",
   "icon": "google-drive",

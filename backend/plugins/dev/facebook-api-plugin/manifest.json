@@ -1,6 +1,7 @@
 {
   "name": "facebook-api-plugin",
   "version": "1.0.1",
+  "kind": "app",
   "description": "Interact with the Facebook Graph API to post updates, fetch user/profile/page data, and manage Facebook content.",
   "author": "AGNT User",
   "icon": "api",

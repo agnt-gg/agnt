@@ -1,6 +1,7 @@
 {
   "name": "text-me-plugin",
   "version": "1.0.0",
+  "kind": "utility",
   "description": "Text yourself from a workflow: sends a message to the phone linked in Settings → Text Annie (mobile.agnt.gg). Each text counts against your monthly allowance.",
   "author": "AGNT",
   "icon": "message",

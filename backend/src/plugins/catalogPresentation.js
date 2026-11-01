@@ -1,3 +1,5 @@
+import { PLUGIN_KINDS } from '../../plugins/lib/validate-core.js';
+
 /** Display metadata only. Never expose agent prompts, workflow graphs, widget code or credentials in a catalog. */
 export function catalogPresentation(manifest = {}) {
   const output = {};
@@ -16,5 +18,8 @@ export function catalogPresentation(manifest = {}) {
   for (const field of ['category', 'license', 'permissions']) {
     if (manifest[field] != null) output[field] = manifest[field];
   }
+  // The store shelf (app / pack / utility), only when it is one of the three.
+  const kind = String(manifest.kind || '').trim().toLowerCase();
+  if (PLUGIN_KINDS.includes(kind)) output.kind = kind;
   return output;
 }

@@ -2053,7 +2053,7 @@ class PluginInstaller {
             icon: manifest.icon || metadata.icon || item.preview_image || 'custom',
             // Tools from manifest
             tools: manifest.tools || metadata.tools || [],
-            ...catalogPresentation(manifest),
+            ...catalogPresentation({ ...manifest, kind: manifest.kind || metadata.kind }),
             price: item.price ?? 0,
             marketplace_item_id: item.id,
             publisherId: item.publisher_id || undefined,

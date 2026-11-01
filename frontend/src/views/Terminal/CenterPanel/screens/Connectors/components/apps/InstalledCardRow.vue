@@ -9,7 +9,7 @@
     <div class="ap-row-body">
       <div class="ap-row-title">
         <button type="button" class="ap-row-open" @click="openSelf">{{ solo ? solo.displayName : card.name }}</button>
-        <span v-if="solo && soloIsPack" class="ap-badge pack">Capability pack</span>
+        <span v-if="solo && soloKind" class="ap-badge" :class="'kind-' + soloKind.id" v-tooltip="soloKind.detail">{{ soloKind.one }}</span>
         <span v-if="soloTier" class="ap-badge" :class="soloTier.id" v-tooltip="soloTier.detail">{{ soloTier.label }}</span>
         <span v-if="!card.apps.length" class="ap-badge connection">{{ kind }}</span>
       </div>
@@ -46,7 +46,7 @@
 import { computed } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsIcon from '../AppsIcon.vue';
-import { pluginInventory, compositionOf, isPack, trustTier, connectionKind, INVENTORY_GROUPS } from '@/services/pluginDirectory.js';
+import { pluginInventory, compositionOf, pluginKind, trustTier, connectionKind, INVENTORY_GROUPS } from '@/services/pluginDirectory.js';
 
 const props = defineProps({
   card: { type: Object, required: true },
@@ -59,7 +59,7 @@ const moreToInstall = computed(() => (props.card.suggested?.length || 0) > 0 && 
 
 const solo = computed(() => (props.card.apps.length === 1 ? props.card.apps[0] : null));
 const soloRow = computed(() => (solo.value ? props.rows.get(solo.value.name) || null : null));
-const soloIsPack = computed(() => !!soloRow.value && isPack(soloRow.value));
+const soloKind = computed(() => (soloRow.value ? pluginKind(soloRow.value) : null));
 const soloTier = computed(() => (soloRow.value ? trustTier(soloRow.value) : null));
 const kind = computed(() => connectionKind(props.card.connectionType));
 const selected = computed(() => props.selectedKey === props.card.id || props.card.apps.some((app) => app.name === props.selectedKey));

@@ -1,6 +1,7 @@
 {
   "name": "elevenlabs-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "ElevenLabs voice AI for AGNT - text-to-speech (32+ languages), speech-to-text transcription, and voice library browsing. Industry-leading AI voice quality for videos, podcasts, and voiceovers.",
   "author": "AGNT",
   "icon": "mic",

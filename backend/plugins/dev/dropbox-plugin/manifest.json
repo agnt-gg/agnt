@@ -1,6 +1,7 @@
 {
   "name": "dropbox-plugin",
   "version": "1.0.0",
+  "kind": "app",
   "description": "Dropbox integration plugin for AGNT - Manage files and folders in Dropbox",
   "author": "AGNT",
   "icon": "dropbox",

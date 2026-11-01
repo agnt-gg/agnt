@@ -1,6 +1,7 @@
 {
   "name": "calculator-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "kind": "utility",
   "description": "Provides arithmetic and scientific expression evaluation",
   "author": "AGNT User",
   "icon": "calculator",

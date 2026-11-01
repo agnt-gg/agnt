@@ -1,6 +1,7 @@
 {
   "name": "remotion-plugin",
   "version": "1.0.0",
+  "kind": "utility",
   "description": "Compose branded videos from AI clips using Remotion. Takes a shot-list of MP4s + brand config and renders a final MP4 with logos, text overlays, transitions, captions, and voiceover.",
   "author": "AGNT",
   "icon": "video",

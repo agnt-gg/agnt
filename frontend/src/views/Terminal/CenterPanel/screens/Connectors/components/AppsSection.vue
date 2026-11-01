@@ -109,6 +109,11 @@
           <div class="ap-toolbar">
             <label class="ap-search"><AppsIcon name="search" /><input v-model="queries.browse" type="search" placeholder="Search the Market" aria-label="Search the Market" /></label>
           </div>
+          <!-- Apps connect a service, Packs do a job, Utilities stand alone (manifest.kind). -->
+          <div class="ap-chips ap-toolbar" role="group" aria-label="Kind" data-testid="kind-filter">
+            <button type="button" class="ap-chip" data-kind="all" :aria-pressed="String(kindFilter === 'all')" @click="kindFilter = 'all'">All <span class="ap-count">{{ marketRows.length }}</span></button>
+            <button v-for="k in PLUGIN_KINDS" :key="k.id" type="button" class="ap-chip" :data-kind="k.id" :aria-pressed="String(kindFilter === k.id)" v-tooltip="k.detail" @click="kindFilter = k.id">{{ k.label }} <span class="ap-count">{{ kindCounts[k.id] || 0 }}</span></button>
+          </div>
           <div v-if="browseCategories.length > 1" class="ap-chips ap-toolbar" role="group" aria-label="Category">
             <button type="button" class="ap-chip" data-filter="all" :aria-pressed="String(filters.browse === 'all')" @click="filters.browse = 'all'">All</button>
             <button v-for="category in browseCategories" :key="category" type="button" class="ap-chip" :data-filter="category" :aria-pressed="String(filters.browse === category)" @click="filters.browse = category">{{ category }}</button>
@@ -128,7 +133,7 @@
               <div class="ap-row-body">
                 <div class="ap-row-title">
                   <button type="button" class="ap-row-open" @click="openPlugin(row.name)">{{ row.displayName }}</button>
-                  <span v-if="row.isPack" class="ap-badge pack">Capability pack</span>
+                  <span class="ap-badge" :class="'kind-' + kindOf(row).id" v-tooltip="kindOf(row).detail">{{ kindOf(row).one }}</span>
                   <span v-if="tierOf(row)" class="ap-badge" :class="tierOf(row).id" v-tooltip="tierOf(row).detail">{{ tierOf(row).label }}</span>
                 </div>
                 <p class="ap-row-desc">{{ row.description || 'No description yet.' }}</p>
@@ -269,7 +274,7 @@
               <div class="ap-row-body">
                 <div class="ap-row-title">
                   <button type="button" class="ap-row-open" @click="openPlugin(entry.row.name)">{{ entry.row.displayName }}</button>
-                  <span v-if="entry.row.isPack" class="ap-badge pack">Capability pack</span>
+                  <span class="ap-badge" :class="'kind-' + kindOf(entry.row).id" v-tooltip="kindOf(entry.row).detail">{{ kindOf(entry.row).one }}</span>
                 </div>
                 <p v-if="entry.row.description" class="ap-row-desc">{{ entry.row.description }}</p>
                 <div class="ap-row-meta"><span v-for="part in compositionFor(entry.row)" :key="part.key" class="ap-meta-item"><AppsIcon :name="part.icon" />{{ part.label }}</span><span v-if="entry.row.version" class="ap-meta-item">v{{ entry.row.version }}</span></div>
@@ -335,7 +340,7 @@ import { findAppCard, appDisplayName } from '@/services/appCards.js';
 import { studioCatalog, pluginConnections, installDisclosure, escapeDisclosure } from '@/services/studioApps.js';
 import {
   pluginInventory, compositionOf, trustTier, matchesQuery, reviewNotices, cardNeedsYou, installedSections, accountRows,
-  connectionKind, builtByMe, priceLabel, signInReadiness, agentAccess, hasTriggers, isPack, capabilityLabel,
+  connectionKind, builtByMe, priceLabel, signInReadiness, agentAccess, hasTriggers, capabilityLabel, pluginKind, PLUGIN_KINDS,
 } from '@/services/pluginDirectory.js';
 import { inspectPlugin, fetchPluginAssets, fetchUpdateStatus, requestUpdate, setUpdatePolicy, uninstallPlugin } from '@/services/pluginLifecycle.js';
 import { AI_PROVIDERS_WITH_API, providerLabel } from '@/store/app/aiProvider.js';
@@ -355,7 +360,8 @@ const emit = defineEmits([
 ]);
 
 const INSTALLED_FILTERS = [
-  { id: 'all', label: 'All' }, { id: 'attention', label: 'Needs you' }, { id: 'triggers', label: 'Has triggers' }, { id: 'packs', label: 'Capability packs' },
+  { id: 'all', label: 'All' }, { id: 'attention', label: 'Needs you' }, { id: 'triggers', label: 'Has triggers' },
+  { id: 'kind:app', label: 'Apps' }, { id: 'kind:pack', label: 'Packs' }, { id: 'kind:utility', label: 'Utilities' },
 ];
 const ACCOUNT_FILTERS = [{ id: 'all', label: 'All' }, { id: 'oauth', label: 'Sign-ins' }, { id: 'apikey', label: 'API keys' }];
 const DISCOVER_SHOWN = 12;
@@ -418,7 +424,7 @@ function cardMatches(card) {
   const rows = cardRows(card);
   if (filters.installed === 'attention' && !cardNeedsYou(card, notices.value)) return false;
   if (filters.installed === 'triggers' && !rows.some(hasTriggers)) return false;
-  if (filters.installed === 'packs' && !rows.some(isPack)) return false;
+  if (filters.installed.startsWith('kind:') && !rows.some((row) => kindOf(row).id === filters.installed.slice(5))) return false;
   if (!queries.installed.trim()) return true;
   return matchesQuery({ name: card.name, displayName: card.providerId || '', description: card.description }, queries.installed)
     || rows.some((row) => matchesQuery(row, queries.installed));
@@ -432,8 +438,12 @@ const installedView = computed(() => {
   ].filter((section) => section.cards.length);
 });
 
-const browseCategories = computed(() => [...new Set(marketRows.value.map((row) => row.category).filter(Boolean))].sort());
-const visibleMarket = computed(() => marketRows.value.filter((row) => (filters.browse === 'all' || row.category === filters.browse) && matchesQuery(row, queries.browse)));
+const kindOf = (row) => pluginKind(row);
+const kindFilter = ref('all');
+const kindCounts = computed(() => marketRows.value.reduce((acc, row) => { const id = kindOf(row).id; acc[id] = (acc[id] || 0) + 1; return acc; }, {}));
+const ofKind = computed(() => marketRows.value.filter((row) => kindFilter.value === 'all' || kindOf(row).id === kindFilter.value));
+const browseCategories = computed(() => [...new Set(ofKind.value.map((row) => row.category).filter(Boolean))].sort());
+const visibleMarket = computed(() => ofKind.value.filter((row) => (filters.browse === 'all' || row.category === filters.browse) && matchesQuery(row, queries.browse)));
 const compositionFor = (row) => compositionOf(pluginInventory(row));
 const tierOf = (row) => trustTier(row);
 function readyWith(row) {
@@ -563,6 +573,7 @@ function switchTab(id) {
 function clearFilters(which) {
   queries[which] = '';
   filters[which] = 'all';
+  if (which === 'browse') kindFilter.value = 'all';
 }
 function openForge(view) {
   buildMenuOpen.value = false;

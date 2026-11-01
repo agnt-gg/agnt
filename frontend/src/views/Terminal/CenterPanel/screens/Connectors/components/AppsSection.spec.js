@@ -21,7 +21,8 @@ const calendar = {
   tools: [tool('google-calendar-api', { title: 'Calendar API', authProvider: 'google' }), tool('google-calendar-trigger', { title: 'New event', category: 'trigger', authProvider: 'google' })],
 };
 const research = {
-  name: 'research', displayName: 'Research', category: 'research', version: '0.4.0',
+  // A pack that also signs in to Google: it declares its kind, as AGNT's packs do (else a sign-in reads as an app).
+  name: 'research', displayName: 'Research', category: 'research', version: '0.4.0', kind: 'pack',
   agents: [{ slug: 'researcher' }], tools: [tool('search', { title: 'Search', authProvider: 'google' })],
   widgets: [{ slug: 'board' }], skills: [{ slug: 'source-check' }], workflows: [{ slug: 'digest' }],
 };
@@ -135,14 +136,18 @@ describe('Installed: one card per thing you connected', () => {
     expect(wrapper.find('[data-app="calculator"]').text()).toContain('No sign-in needed');
     expect(wrapper.find('[data-testid="needs-you-count"]').text()).toBe('1');
   });
-  it('filters by Needs you, triggers and packs, and searches into operations', async () => {
+  it('filters by Needs you, triggers and kind (Apps / Packs / Utilities), and searches into operations', async () => {
     setup({ installed: [gmail, calendar, calculator, notion, research], available: [], connected: ['google'] }); await flushPromises();
     await wrapper.find('[data-filter="attention"]').trigger('click');
     expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card'))).toEqual(['notion']);
     await wrapper.find('[data-filter="triggers"]').trigger('click');
     expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card'))).toEqual(['google']);
-    await wrapper.find('[data-filter="packs"]').trigger('click');
+    await wrapper.find('[data-filter="kind:pack"]').trigger('click');
     expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card'))).toEqual(['google']);
+    await wrapper.find('[data-filter="kind:utility"]').trigger('click');
+    expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card'))).toEqual(['app:calculator']);
+    await wrapper.find('[data-filter="kind:app"]').trigger('click');
+    expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card')).sort()).toEqual(['google', 'notion']);
     await wrapper.find('[data-filter="all"]').trigger('click');
     await wrapper.find('input[type="search"]').setValue('reply to email');
     expect(wrapper.findAll('[data-card]').map((r) => r.attributes('data-card'))).toEqual(['google']);

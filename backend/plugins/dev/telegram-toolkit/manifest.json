@@ -1,6 +1,7 @@
 {
   "name": "telegram-toolkit",
   "version": "1.2.0",
+  "kind": "app",
   "description": "Telegram Bot API toolkit for AGNT - send messages/media and trigger workflows from incoming Telegram bot messages, commands, channel posts, and callback buttons.",
   "author": "AGNT User",
   "icon": "telegram",

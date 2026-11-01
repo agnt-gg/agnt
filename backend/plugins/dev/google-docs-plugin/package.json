@@ -1,6 +1,6 @@
 {
   "name": "google-docs-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Google Docs integration plugin for AGNT",
   "type": "module",
   "dependencies": {

@@ -1,6 +1,7 @@
 {
   "name": "bitcoin-price-checker",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "Retrieve the latest Bitcoin price in USD using the CoinGecko API.",
   "author": "AGNT User",
   "icon": "bitcoin",

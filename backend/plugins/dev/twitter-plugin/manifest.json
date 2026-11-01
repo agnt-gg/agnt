@@ -1,6 +1,7 @@
 {
   "name": "twitter-plugin",
   "version": "1.1.0",
+  "kind": "app",
   "description": "X (Twitter) integration plugin for AGNT - Post, quote, reply, search, fetch tweets/conversations, manage follows, and monitor mentions.",
   "author": "AGNT",
   "icon": "twitter",

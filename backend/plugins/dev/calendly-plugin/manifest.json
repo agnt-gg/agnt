@@ -1,6 +1,7 @@
 {
   "name": "calendly-plugin",
   "version": "1.1.0",
+  "kind": "app",
   "description": "Calendly scheduling automation for AGNT: actions plus a trigger for new Calendly bookings.",
   "author": "AGNT",
   "icon": "calendly",

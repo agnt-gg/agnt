@@ -1,6 +1,7 @@
 {
   "name": "list-files-plugin",
   "version": "1.0.1",
+  "kind": "utility",
   "description": "Lists files in the current directory and provides their metadata.",
   "author": "AGNT User",
   "icon": "code",
