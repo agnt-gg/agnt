@@ -50,6 +50,8 @@
  */
 
 import { spawn } from '../../../services/security/toolProcess.js';
+import { hostedToolBoundaryRequired } from '../../../services/security/toolRunAuthority.js';
+import { HOSTED_CDP_PORT, hostedBrowserPaths, clearStaleProfileLocks, openCdpBridge, readBridgedEndpoint } from './hostedCdpBridge.js';
 import { WebSocket } from 'ws';
 import fs from 'fs';
 import path from 'path';
@@ -572,12 +574,18 @@ async function launchBrowser({ log, browser, hidden = false }) {
   // one, so the reason it was launched headless is recorded before it can fail.
   const headlessHere = shouldRunHeadless();
 
-  const profilePath = path.join(PathManager.getUserDataPath(), PROFILE_DIR);
+  // Hosted: the browser runs in the tool sandbox, so its profile lives where the sandbox can write it
+  // and the server can read it, and its debugging port is reached through a bridge (hostedCdpBridge.js).
+  const hosted = hostedToolBoundaryRequired();
+  const hostedPaths = hosted ? hostedBrowserPaths() : null;
+  const profilePath = hosted ? hostedPaths.profilePath : path.join(PathManager.getUserDataPath(), PROFILE_DIR);
   fs.mkdirSync(profilePath, { recursive: true });
+  if (hosted) clearStaleProfileLocks(profilePath);
 
   // Before spawning: is one of ours already holding this profile? Launching on
-  // top of it cannot work, so recover it instead of failing forever.
-  const holder = await findProfileHolder(profilePath);
+  // top of it cannot work, so recover it instead of failing forever. (Hosted: no
+  // browser outlives the server, since sandboxed children die with it.)
+  const holder = hosted ? null : await findProfileHolder(profilePath);
   if (holder) {
     // Only adopt when it can honestly answer the request. Adopting a Chrome to
     // satisfy "open Brave" and calling it Brave is a wrong answer stated
@@ -642,8 +650,17 @@ async function launchBrowser({ log, browser, hidden = false }) {
   }
   log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${hidden ? 'hidden, ' : ''}${describeRuntime()}${presentation})`);
 
-  const child = spawn(executable, [
-    '--remote-debugging-port=0',
+  let bridge = null;
+  if (hosted) {
+    try { fs.rmSync(hostedPaths.socketPath, { force: true }); } catch { /* not there */ }
+    bridge = await openCdpBridge(hostedPaths.socketPath);
+  }
+  let child;
+  try {
+  child = spawn(executable, [
+    hosted ? `--remote-debugging-port=${HOSTED_CDP_PORT}` : '--remote-debugging-port=0',
+    // The sandbox's /dev/shm is tiny; Chromium falls back to /tmp instead of crashing renderers.
+    ...(hosted ? ['--disable-dev-shm-usage'] : []),
     `--user-data-dir=${profilePath}`,
     '--no-first-run',
     '--no-default-browser-check',
@@ -663,9 +680,17 @@ async function launchBrowser({ log, browser, hidden = false }) {
     // broken stream. The agent's own visible window keeps about:blank — an OS
     // window is self-evidently alive.
     hidden ? START_PAGE : 'about:blank',
-  ], { stdio: 'ignore', windowsHide: false });
+  ], hosted
+    // cwd pinned to the owner's folder: the sandbox refuses it for any other account's run.
+    ? { stdio: 'ignore', cwd: hostedPaths.root, env: { AGNT_TOOL_EXPOSE: `${HOSTED_CDP_PORT}=${hostedPaths.socketPath}` } }
+    : { stdio: 'ignore', windowsHide: false });
+  } catch (error) {
+    bridge?.close();
+    throw error;
+  }
 
   child.on('error', (err) => { log(`[Browser Control] browser failed to start: ${err.message}`); });
+  if (bridge) child.once('exit', () => bridge.close());
   // A browser must never be the reason a process cannot exit. The exit handler
   // below is what actually closes it; keeping a live handle on the event loop
   // as well would just stop AGNT shutting down cleanly.
@@ -683,6 +708,7 @@ async function launchBrowser({ log, browser, hidden = false }) {
     label,
     executable,
     headless: runtimeFlags.includes('--headless=new'),
+    bridge,
   };
   // Recorded now rather than after the port appears, so a browser that is
   // adopted mid-startup is still identifiable.
@@ -700,7 +726,8 @@ async function launchBrowser({ log, browser, hidden = false }) {
       session = null;
       throw new Error(describeEarlyExit({ label, code: child.exitCode, headless: headlessHere }));
     }
-    const endpoint = readEndpoint(profilePath);
+    // eslint-disable-next-line no-await-in-loop -- polling by design
+    const endpoint = bridge ? await readBridgedEndpoint(bridge.port) : readEndpoint(profilePath);
     if (endpoint) {
       session.cdpUrl = endpoint;
       if (runtimeFlags.includes('--headless=new')) {
@@ -721,6 +748,7 @@ async function launchBrowser({ log, browser, hidden = false }) {
 export function closeFallbackSurface() {
   const adopted = session?.adopted;
   const child = session?.child;
+  session?.bridge?.close();
   session = null;
   // An adopted browser has no child handle to signal. Forgetting it is the
   // honest limit of what this can do, and it is bounded: the next launch adopts

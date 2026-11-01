@@ -53,8 +53,13 @@ import { hostedToolBoundaryRequired } from './toolRunAuthority.js';
  * File tools (fs-read/fs-write) and SQL still run inside the server process, so they stay owner-only.
  */
 const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval']);
-/** Tools with no capability profile whose every process goes through the same sandbox. */
-const SANDBOXED_TOOLS = new Set(['browser']);
+/**
+ * Tools with no capability profile whose every process goes through the same sandbox. Empty on purpose:
+ * the launched browser is ONE per instance and keeps the owner's signed-in sites (shared cookies by
+ * design, see browserLanes.js). Sandboxing its process does not stop a member's tab from using the
+ * owner's sessions, so it stays owner-only until each account gets its own browser.
+ */
+const SANDBOXED_TOOLS = new Set();
 const sandboxed = () => hostedToolBoundaryRequired();
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';

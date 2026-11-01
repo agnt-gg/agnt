@@ -15,7 +15,9 @@ MEMBER_WORKSPACE = re.compile(r'/app/data/workspaces/[A-Za-z0-9_-]{1,80}')
 RUNTIME = ['/usr', '/lib', '/bin', '/sbin', '/etc/ssl', '/etc/fonts', '/etc/ca-certificates', '/etc/pki', '/etc/services', '/etc/protocols', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group']
 SAFE_ENV = {'LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE',
             # The run's temporary, instance-bound proxy key, never the user's session.
-            'AGNT_AUTH_TOKEN'}
+            'AGNT_AUTH_TOKEN',
+            # '<port>=<socket in the workspace>': sandbox-network.cjs exposes that loopback port.
+            'AGNT_TOOL_EXPOSE'}
 # /tmp survives between tool calls, as it did before the sandbox. It sits OUTSIDE
 # the workspace, so workload code can fill it but can never swap the directory
 # itself for a symlink to backend state.
@@ -88,6 +90,7 @@ def main():
     for source in ['/app/node_modules', '/app/package.json', '/app/backend/src', '/app/backend/package.json']:
         if os.path.exists(source):
             args += ['--ro-bind', source, source]
+    os.environ['AGNT_TOOL_WORKSPACE_MOUNTED'] = workspace
     args += ['--bind', workspace, workspace, '--proc', '/proc', '--dev', '/dev',
              '--bind', tool_tmp, '/tmp', '--tmpfs', '/var/tmp', '--dir', '/run',
              '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
@@ -95,7 +98,7 @@ def main():
              '--setenv', 'NODE_PATH', workspace + '/node_modules:/app/node_modules',
              '--setenv', 'NODE_ENV', 'production', '--setenv', 'USER_DATA_PATH', '/app/data',
              '--setenv', 'AGNT_TOOL_SANDBOX', '1', '--chdir', current]
-    for name in SAFE_ENV:
+    for name in SAFE_ENV | {'AGNT_TOOL_WORKSPACE_MOUNTED'}:
         if name in os.environ:
             args += ['--setenv', name, os.environ[name]]
     # Possession of this one Unix socket grants only this run's scoped API and

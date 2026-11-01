@@ -1,7 +1,9 @@
 import {CloudTeamClient} from '../services/CloudTeamClient.js';
 import {MEDIA_ROUTE_PREFIXES} from '../utils/mediaRoutes.js';
 import {requireAuthMedia, extractToken} from '../utils/authGuard.js';
-const machineApis=new Set(['plugins','mcp','npm','filesystem','local-file','local-preview','cluster','system','pairing']);
+// browser-agent: the launched browser is one per instance and holds the owner's signed-in sites, so
+// viewing or driving it is the owner's (or an admin's), never a member's.
+const machineApis=new Set(['plugins','mcp','npm','filesystem','local-file','local-preview','cluster','system','pairing','browser-agent']);
 
 // A browser loads these itself (<img>, <iframe>, relative URLs inside served HTML), and a browser
 // subresource can never carry an Authorization header: it carries the media cookie. Authenticating

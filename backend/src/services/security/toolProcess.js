@@ -25,7 +25,9 @@ export function toolRootFor(actor, workspaceFor = getWorkspaceRootSync) {
   throw refuseWorkspace(`Hosted tools must execute inside the workspace: ${root} is not a folder the tool sandbox can mount`);
 }
 const LAUNCHER = '/usr/local/bin/agnt-tool-run';
-const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE'];
+// AGNT_TOOL_EXPOSE: '<port>=<socket>' asks sandbox-network.cjs to expose one loopback port as a Unix
+// socket in the run's workspace (the launched browser's debugging port; see hostedCdpBridge.js).
+const SAFE_ENV = ['LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE', 'AGNT_TOOL_EXPOSE'];
 
 /**
  * A folder both the server and a sandboxed tool process see at the same path. On a hosted instance tool

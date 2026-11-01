@@ -85,6 +85,15 @@ describe('hosted operator boundary', () => {
     expect(await run(createHostedOperatorBoundary(asMember, admin), request('POST', '/api/plugins/requests/r1/approve'))).toEqual({ next: true });
   });
 
+  it('the shared browser (view, drive, sign in) is the owner\'s or an admin\'s, never a member\'s', async () => {
+    const asMember = (req, _res, next) => { req.user = { id: 'member-2' }; next(); };
+    const member = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'member', id: 't1' }]), access: vi.fn(async () => ({})) };
+    for (const [method, url] of [['POST', '/api/browser-agent/view'], ['POST', '/api/browser-agent/control'], ['POST', '/api/browser-agent/signin/start'], ['GET', '/api/browser-agent/sites']]) {
+      expect(await run(createHostedOperatorBoundary(asMember, member), request(method, url)), `${method} ${url}`).toMatchObject({ next: false, status: 403 });
+      expect(await run(createHostedOperatorBoundary(asOwner, member), request(method, url)), `${method} ${url}`).toEqual({ next: true });
+    }
+  });
+
   it('a non-owner media load is checked with the cookie credential it arrived with', async () => {
     const cloud = { request: vi.fn(async () => [{ tenantSlug: 'bravo', role: 'admin', id: 't1' }]), access: vi.fn(async () => ({})) };
     const media = (req, _res, next) => { req.user = { id: 'admin-2' }; next(); };
