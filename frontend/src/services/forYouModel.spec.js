@@ -3,14 +3,15 @@ import { families, shelf, unlocks, asks, nextStep } from './forYouModel.js';
 import { pluginIcon, providerIcon, SHIPPED_ICONS } from './brandIcons.js';
 
 const tool = (authProvider) => ({ type: 't', schema: authProvider ? { authProvider } : {} });
+const O = { trustTier: 'official' };
 const rows = [
-  { name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('google')] },
-  { name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('google')] },
-  { name: 'slack-plugin', displayName: 'Slack', kind: 'app', icon: 'slack', tools: [tool('slack')] },
+  { ...O, name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('google')] },
+  { ...O, name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('google')] },
+  { ...O, name: 'slack-plugin', displayName: 'Slack', kind: 'app', icon: 'slack', tools: [tool('slack')] },
   { name: 'inbox', displayName: 'Inbox Triage', kind: 'pack', trustTier: 'official', tools: [tool('google')] },
   { name: 'support', displayName: 'Support', kind: 'pack', trustTier: 'official', tools: [tool('slack'), tool('notion')] },
-  { name: 'calculator-plugin', displayName: 'Calculator', kind: 'utility', icon: 'calculator', tools: [tool()] },
-  { name: 'sentinel', displayName: 'Sentinel', kind: 'utility', icon: 'shield-halved', tools: [tool()] },
+  { ...O, name: 'calculator-plugin', displayName: 'Calculator', kind: 'utility', icon: 'calculator', tools: [tool()] },
+  { ...O, name: 'sentinel', displayName: 'Sentinel', kind: 'utility', icon: 'shield-halved', tools: [tool()] },
 ];
 const card = (id, name, extra = {}) => ({ id, kind: 'account', providerId: id, name, icon: '', status: 'connect', suggested: [], ...extra });
 const cards = { yours: [], discover: [card('google', 'Google'), card('slack', 'Slack'), card('notion', 'Notion'), card('dropbox', 'Dropbox')] };
@@ -67,7 +68,7 @@ describe('For you', () => {
     expect(noSetup).toContain('Build a one-page website for my business');
     // Never AGNT's own site, never "AI agent tools".
     for (const text of noSetup) expect(text).not.toMatch(/agnt\.gg|ai agent/i);
-    const withOwn = [...rows, { name: 'gmail-pro', displayName: 'Gmail Pro', kind: 'app', installed: true, examples: ['Clean up my newsletters'], tools: [tool('google')] }];
+    const withOwn = [...rows, { ...O, name: 'gmail-pro', displayName: 'Gmail Pro', kind: 'app', installed: true, examples: ['Clean up my newsletters'], tools: [tool('google')] }];
     expect(asks({ connected: new Set(['google']), rows: withOwn }).forApps).toEqual([
       expect.objectContaining({ text: 'Clean up my newsletters', plugin: 'gmail-pro', provider: 'google' }),
     ]);
@@ -75,6 +76,19 @@ describe('For you', () => {
     expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar', 'google-docs']);
     expect(asks({ connected: new Set(['slack']), rows }).forApps[0]).toMatchObject({ provider: 'slack', icon: 'slack' });
     for (const a of asks({ connected: new Set(['google', 'slack', 'github']), rows }).forApps) expect(a.text).not.toMatch(/agnt\.gg|ai agent/i);
+  });
+  it('a community plugin is never featured: not in the cards, the next step, the sign-ins or the asks', () => {
+    const thumb = { name: 'thumbgate-mcp-firewall', displayName: 'ThumbGate', kind: 'pack', trustTier: 'community', examples: ['Block risky tools'], tools: [tool('thumbgate')] };
+    const thumbFree = { ...thumb, name: 'thumbgate-free', tools: [tool()] };
+    const all = [...rows, thumb, thumbFree];
+    const on = new Set(['google', 'thumbgate']);
+    const items = shelf({ rows: all, connected: on });
+    expect(items.map((s) => s.row.name)).not.toContain('thumbgate-mcp-firewall');
+    expect(items.map((s) => s.row.name)).not.toContain('thumbgate-free');
+    const step = nextStep({ families: families({ cards, rows: all, connected: on }), items, connected: on });
+    expect(step?.item?.row?.trustTier).toBe('official');
+    expect(families({ cards: { yours: [card('thumbgate', 'ThumbGate')], discover: [] }, rows: all, connected: none }).map((f) => f.id)).not.toContain('thumbgate');
+    expect(asks({ connected: on, rows: all }).forApps.map((a) => a.text)).not.toContain('Block risky tools');
   });
   it('next step: connect the lead family first; then add a ready pack that uses a connection', () => {
     const fams = families({ cards, rows, connected: none });

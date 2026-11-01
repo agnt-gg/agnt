@@ -57,7 +57,8 @@ export function needs(row, modelIds = new Set()) {
 export function families({ cards = {}, rows = [], connected = new Set(), modelIds = new Set() } = {}) {
   // Only what anyone can get counts: a private plugin's sign-in (an admin tool) is not an app family.
   const usersOf = new Map();
-  const listed = (r) => r.onMarket === true || (!r.installed && r.onMarket !== false);
+  // Only official plugins make a sign-in worth featuring; a community plugin's sign-in is not.
+  const listed = (r) => isOfficial(r) && (r.onMarket === true || (!r.installed && r.onMarket !== false));
   for (const row of list(rows).filter(listed)) for (const id of needs(row, modelIds)) {
     if (!usersOf.has(id)) usersOf.set(id, []);
     usersOf.get(id).push(row);
@@ -82,10 +83,16 @@ export function families({ cards = {}, rows = [], connected = new Set(), modelId
   }).sort((a, b) => rank(a.id) - rank(b.id) || b.apps.length - a.apps.length || a.name.localeCompare(b.name));
 }
 
-/** Packs and utilities with what they need and whether it is all connected. Ready first, AGNT's first. */
+/**
+ * For you promotes only what AGNT publishes and vets (trust tier official). Community plugins are
+ * never featured here; they stay in Browse, labelled Community.
+ */
+export const isOfficial = (row) => lower(row?.trustTier) === 'official';
+
+/** Official packs and utilities with what they need and whether it is all connected. Ready first. */
 export function shelf({ rows = [], connected = new Set(), modelIds = new Set() } = {}) {
   return list(rows)
-    .filter((r) => ['pack', 'utility'].includes(pluginKind(r).id))
+    .filter((r) => isOfficial(r) && ['pack', 'utility'].includes(pluginKind(r).id))
     .map((r) => {
       const requires = needs(r, modelIds);
       const missing = requires.filter((id) => !connected.has(id));
@@ -113,7 +120,8 @@ export function asks({ connected = new Set(), rows = [], modelIds = new Set() } 
   const rank = (id) => { const i = POPULAR.indexOf(id); return i === -1 ? POPULAR.length : i; };
   const seen = new Set();
   const once = (ask) => { const k = ask.text.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; };
-  const withExamples = list(rows).filter((r) => list(r.examples).length)
+  // Suggestions are words we put in front of users: only from official plugins.
+  const withExamples = list(rows).filter((r) => isOfficial(r) && list(r.examples).length)
     .sort((a, b) => Number(!!b.installed) - Number(!!a.installed));
   const forApps = [...connected].sort((a, b) => rank(a) - rank(b)).flatMap((id) => {
     const declared = withExamples.filter((r) => needs(r, modelIds).includes(id))

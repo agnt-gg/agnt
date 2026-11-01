@@ -98,10 +98,10 @@ describe('A member asks the owner for a plugin', () => {
 });
 
 describe('For you: connect your apps first, then what they unlock', () => {
-  const calendar = { name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
-  const gmailApp = { name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('mail', { authProvider: 'google' })] };
+  const calendar = { trustTier: 'official', name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
+  const gmailApp = { trustTier: 'official', name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('mail', { authProvider: 'google' })] };
   it('is the page’s home, leads with Connect Google, and shows each app’s real brand icon', async () => {
-    setup({ tab: 'foryou', available: [gmailApp, calendar, { ...research, kind: 'pack' }, calculator] }); await flushPromises();
+    setup({ tab: 'foryou', available: [gmailApp, calendar, { ...research, kind: 'pack', trustTier: 'official' }, calculator] }); await flushPromises();
     expect(wrapper.find('[data-testid="for-you"]').exists()).toBe(true);
     expect(wrapper.find('[data-action="hero-connect"]').text()).toContain('Connect Google');
     const google = wrapper.find('[data-family="google"]');

@@ -89,7 +89,7 @@
 <script setup>
 import { computed } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { families as buildFamilies, shelf, unlocks, asks, nextStep } from '@/services/forYouModel.js';
+import { families as buildFamilies, shelf, unlocks, asks, nextStep, isOfficial } from '@/services/forYouModel.js';
 import { providerIcon } from '@/services/brandIcons.js';
 import { pluginKind } from '@/services/pluginDirectory.js';
 
@@ -115,7 +115,7 @@ const leadId = computed(() => (openFamilies.value[0]?.apps.length > 1 ? openFami
 const items = computed(() => shelf({ rows: props.rows, connected: connected.value, modelIds: modelIds.value }));
 const asked = computed(() => asks({ connected: connected.value, rows: props.rows, modelIds: modelIds.value }));
 const step = computed(() => nextStep({ families: allFamilies.value, items: items.value, connected: connected.value }));
-const appCount = computed(() => props.rows.filter((r) => pluginKind(r).id === 'app').length);
+const appCount = computed(() => props.rows.filter((r) => pluginKind(r).id === 'app' && isOfficial(r)).length);
 
 const byId = computed(() => new Map(allFamilies.value.map((f) => [f.id, f])));
 const nameFor = (id) => byId.value.get(id)?.name || id.charAt(0).toUpperCase() + id.slice(1);
