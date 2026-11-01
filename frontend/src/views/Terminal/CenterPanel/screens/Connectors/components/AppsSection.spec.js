@@ -71,7 +71,7 @@ describe('For you: connect your apps first, then what they unlock', () => {
     expect(wrapper.find('[data-testid="for-you"]').exists()).toBe(true);
     expect(wrapper.find('[data-action="hero-connect"]').text()).toContain('Connect Google');
     const google = wrapper.find('[data-family="google"]');
-    expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail', 'google-calendar']);
+    expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail-color', 'google-calendar']);
     // A pack that needs Google says so, and offers the connection.
     expect(wrapper.find('[data-pack="research"]').text()).toContain('Needs 1 app');
   });

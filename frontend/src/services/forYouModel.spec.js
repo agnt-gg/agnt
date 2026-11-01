@@ -35,6 +35,10 @@ describe('brand icons', () => {
 
 describe('For you', () => {
   const none = new Set();
+  it('a sign-in only a private (unlisted) plugin uses is not a family', () => {
+    const priv = [...rows, { name: 'agnt-site-analytics', kind: 'utility', installed: true, tools: [tool('agnt-analytics')] }];
+    expect(families({ cards: { yours: [card('agnt-analytics', 'AGNT Analytics (admin)')], discover: cards.discover }, rows: priv, connected: new Set(['agnt-analytics']) }).map((f) => f.id)).not.toContain('agnt-analytics');
+  });
   it('a connected credential nothing on the Market uses is not a family', () => {
     const fams = families({ cards: { yours: [card('escrow-key', 'Backup key', { status: 'ready' })], discover: cards.discover }, rows, connected: new Set(['escrow-key']) });
     expect(fams.map((f) => f.id)).not.toContain('escrow-key');
@@ -42,7 +46,7 @@ describe('For you', () => {
   it('families: only sign-ins something uses, Google first, with its apps and their brand icons', () => {
     const fams = families({ cards, rows, connected: none });
     expect(fams.map((f) => f.id)).toEqual(['google', 'slack', 'notion']);
-    expect(fams[0].apps.map((a) => a.icon)).toEqual(['gmail', 'google-calendar']);
+    expect(fams[0].apps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar']);
     expect(fams[0].icon).toBe('google');
   });
   it('shelf: a pack needs the sign-ins its tools declare; ready first', () => {
@@ -61,7 +65,7 @@ describe('For you', () => {
     expect(asks({ connected: none, rows }).forApps).toEqual([]);
     expect(asks({ connected: none, rows }).noSetup.map((a) => a.plugin)).toEqual(['sentinel', 'calculator-plugin']);
     // Each Google ask carries its own app's mark: email shows Gmail, not the Google G.
-    expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail', 'google-calendar', 'google-docs']);
+    expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar', 'google-docs']);
     expect(asks({ connected: new Set(['slack']), rows }).forApps[0]).toMatchObject({ provider: 'slack', icon: 'slack' });
   });
   it('next step: connect the lead family first; then add a ready pack that uses a connection', () => {

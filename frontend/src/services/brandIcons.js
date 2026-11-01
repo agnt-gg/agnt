@@ -11,7 +11,8 @@ export const SHIPPED_ICONS = new Set(Object.keys(files).map((path) => path.split
 
 /** Plugins whose manifest names a generic glyph but whose brand mark AGNT ships. */
 const PLUGIN_BRAND = Object.freeze({
-  'gmail-plugin': 'gmail',
+  // gmail-color is the Gmail "M" mark (rendered single-colour like every icon); gmail is a generic envelope.
+  'gmail-plugin': 'gmail-color',
   'google-calendar-plugin': 'google-calendar',
   'google-docs-plugin': 'google-docs',
   'google-sheets-plugin': 'google-sheets',

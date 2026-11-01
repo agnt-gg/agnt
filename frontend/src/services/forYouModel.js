@@ -20,7 +20,7 @@ const POPULAR = ['google', 'slack', 'notion', 'microsoft365', 'hubspot', 'github
 
 /** Asks that become possible once a sign-in is connected. */
 export const ASKS = Object.freeze({
-  google: [{ text: 'Summarize my unread email from today', icon: 'gmail' }, { text: 'What’s on my calendar tomorrow?', icon: 'google-calendar' }, { text: 'Turn last week’s notes into a Google Doc', icon: 'google-docs' }],
+  google: [{ text: 'Summarize my unread email from today', icon: 'gmail-color' }, { text: 'What’s on my calendar tomorrow?', icon: 'google-calendar' }, { text: 'Turn last week’s notes into a Google Doc', icon: 'google-docs' }],
   slack: ['Post today’s summary in Slack', 'What did I miss in Slack today?'],
   notion: ['Turn this chat into a Notion page', 'Find our onboarding doc in Notion'],
   hubspot: ['List my open HubSpot deals closing this month'],
@@ -48,8 +48,10 @@ export function needs(row, modelIds = new Set()) {
  * Popular ones first, Google leading.
  */
 export function families({ cards = {}, rows = [], connected = new Set(), modelIds = new Set() } = {}) {
+  // Only what anyone can get counts: a private plugin's sign-in (an admin tool) is not an app family.
   const usersOf = new Map();
-  for (const row of list(rows)) for (const id of needs(row, modelIds)) {
+  const listed = (r) => r.onMarket === true || (!r.installed && r.onMarket !== false);
+  for (const row of list(rows).filter(listed)) for (const id of needs(row, modelIds)) {
     if (!usersOf.has(id)) usersOf.set(id, []);
     usersOf.get(id).push(row);
   }
