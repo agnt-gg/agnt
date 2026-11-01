@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {withTeamExecution} from './authorization/TeamExecutionContext.js';
 import {TeamBrokerClient} from './authorization/TeamBrokerClient.js';
-import {SAFE_TEAM_NODES} from './authorization/TeamToolPolicy.js';
+import {teamNeeds} from './authorization/TeamToolPolicy.js';
 import {encrypt,decrypt} from '../utils/encryption.js';
 const refuse=(status,message,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
 export async function initializeNativeTeamExecution(repository){
@@ -40,8 +40,14 @@ export class NativeTeamExecution {
   if(!['agent','tool','workflow'].includes(asset.kind))refuse(400,'This resource is not executable');
   let definition;try{definition=JSON.parse(asset.content);}catch{refuse(400,'Executable definition must be JSON');}
   if(asset.kind==='tool'&&(definition.code||definition.config?.code||!['AI','ai',undefined].includes(definition.base)||!['AI','ai',undefined].includes(definition.config?.base)))refuse(403,'Code tools require an isolated worker');
-  if(asset.kind==='agent'&&(definition.assignedTools?.length||definition.assignedWorkflows?.length||definition.assignedSkills?.length))refuse(403,'Remove unapproved tool/workflow/skill dependencies before authorizing this agent');
-  if(asset.kind==='workflow'){if(!Array.isArray(definition.nodes)||definition.nodes.length>100||definition.nodes.some(node=>!SAFE_TEAM_NODES.has(node.type)||node.category==='custom'||node.code||node.base==='CODE_JS'||node.base==='CODE_PYTHON'))refuse(403,'Workflow contains operations not enabled for shared execution');}
+  // Workflows and skills an agent pulls in would run unapproved definitions; tools are checked below.
+  if(asset.kind==='agent'&&(definition.assignedWorkflows?.length||definition.assignedSkills?.length))refuse(403,'Remove unapproved workflow/skill dependencies before authorizing this agent');
+  if(asset.kind==='workflow'){
+   // Code steps would run in the instance owner's folder on a member's request: never shared.
+   if(!Array.isArray(definition.nodes)||definition.nodes.length>100||definition.nodes.some(node=>node.category==='custom'||node.code||node.base==='CODE_JS'||node.base==='CODE_PYTHON'))refuse(403,'Workflow contains operations not enabled for shared execution');
+  }
+  const {refused}=teamNeeds(asset.kind,definition);
+  if(refused.length)refuse(403,(asset.kind==='agent'?'This agent uses tools':'Workflow contains operations')+' not enabled for shared execution: '+refused.join(', '),{code:'team_tool_denied',refused});
   return definition;
  }
  async run(team,user,assetId,input,scope,authorization){
@@ -56,11 +62,16 @@ export class NativeTeamExecution {
   const asset=await this.repository.asset(team.id,user,assetId,binding.approved_revision);const definition=this.validate(asset);
   const runId=randomUUID();await this.repository.run('INSERT INTO team_native_runs(id,team_id,asset_id,revision,actor_id,principal_id,status) VALUES(?,?,?,?,?,?,?)',[runId,team.id,assetId,asset.revision,user,binding.principal_id,'running']);
   const broker=new TeamBrokerClient({teamId:team.id,tenantSlug:team.tenantSlug,workspaceId,authorization,accessRevision:permission.accessRevision,principalId:binding.principal_id,principalToken:decrypt(binding.principal_secret),connectionId:binding.connection_id});
-  const context={teamId:team.id,scopeId:scope.id,actorId:user,principalId:binding.principal_id,provider:binding.provider,broker,allowedTools:new Set()};
+  // The approved revision's own tools and nodes, each already checked by validate() (TeamToolPolicy).
+  const allowedTools=new Set(teamNeeds(asset.kind,definition).allowed);
+  const context={teamId:team.id,scopeId:scope.id,actorId:user,principalId:binding.principal_id,provider:binding.provider,broker,allowedTools};
   try{const result=await withTeamExecution(context,async()=>{
    if(asset.kind==='agent'){
     const {default:service}=await import('./ai/LlmExecutionService.js');
-    return service.executeWithTools({provider:binding.provider,model:binding.model,userId:scope.resourceOwnerId,systemPrompt:definition.systemPrompt||definition.system_prompt||'',messages:[{role:'user',content:typeof input==='string'?input:JSON.stringify(input??{})}],toolSchemas:[],maxToolRounds:1,context:{agentId:assetId}});
+    const {getAvailableToolSchemas}=await import('./orchestrator/tools.js');
+    // userId: null on purpose: only built-in, capability-profiled tools are team-runnable, never an account's plugins.
+    const toolSchemas=allowedTools.size?(await getAvailableToolSchemas({asyncEnabled:false,userId:null})).filter(schema=>allowedTools.has(schema.function?.name)):[];
+    return service.executeWithTools({provider:binding.provider,model:binding.model,userId:scope.resourceOwnerId,systemPrompt:definition.systemPrompt||definition.system_prompt||'',messages:[{role:'user',content:typeof input==='string'?input:JSON.stringify(input??{})}],toolSchemas,maxToolRounds:toolSchemas.length?10:1,context:{agentId:assetId}});
    }
    if(asset.kind==='tool'){
     if(typeof input==='string'){try{input=JSON.parse(input);}catch{input={input};}}

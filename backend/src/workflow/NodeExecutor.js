@@ -43,7 +43,9 @@ class NodeExecutor {
   async executeNodeWithActor(node, inputData) {
     const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');
     const {SAFE_TEAM_NODES}=await import('../services/authorization/TeamToolPolicy.js');
-    if(currentTeamExecution()&&!SAFE_TEAM_NODES.has(node.type))throw new Error('Node is not enabled for team execution: '+node.type);
+    // A team run may use the nodes its approved revision declares (NativeTeamExecution / TeamToolPolicy).
+    const team=currentTeamExecution();
+    if(team&&!SAFE_TEAM_NODES.has(node.type)&&!team.allowedTools?.has(node.type))throw new Error('Node is not enabled for team execution: '+node.type);
     const startTime = new Date();
     console.log(`Executing node: ${node.id} ${node.type} (${node.text})`);
 

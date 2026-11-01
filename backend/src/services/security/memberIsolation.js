@@ -64,8 +64,8 @@ const sandboxed = () => hostedToolBoundaryRequired();
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';
 
-/** Capabilities that reach the instance's own code, files or database. */
-const OWNER_ONLY = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'sql']);
+/** Capabilities that reach the instance's own code, files or database. Also bounds team runs (TeamToolPolicy). */
+export const OWNER_ONLY = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'sql']);
 
 /**
  * Is this caller a member of a shared instance who is NOT its owner?
