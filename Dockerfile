@@ -138,6 +138,15 @@ RUN apk add --no-cache \
     curl \
     jq
 
+# yt-dlp, pinned and checksum-verified: the YouTube tool's caption and audio paths run it, inside the
+# tool sandbox. YouTube needs a JS runtime; node is in the sandbox, and agnt-tool-run mounts this config.
+ARG YTDLP_VERSION=2026.10.26
+ARG YTDLP_SHA256=e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3
+RUN curl -fsSL -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
+    && echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c - \
+    && chmod 755 /usr/local/bin/yt-dlp \
+    && printf -- '--js-runtimes node\n' > /etc/yt-dlp.conf
+
 # Set Puppeteer to use installed Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

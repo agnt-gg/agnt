@@ -12,7 +12,9 @@ import sys
 
 PROJECTS = '/app/data/projects'
 MEMBER_WORKSPACE = re.compile(r'/app/data/workspaces/[A-Za-z0-9_-]{1,80}')
-RUNTIME = ['/usr', '/lib', '/bin', '/sbin', '/etc/ssl', '/etc/fonts', '/etc/ca-certificates', '/etc/pki', '/etc/services', '/etc/protocols', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group']
+RUNTIME = ['/usr', '/lib', '/bin', '/sbin', '/etc/ssl', '/etc/fonts', '/etc/ca-certificates', '/etc/pki', '/etc/services', '/etc/protocols', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group',
+           # yt-dlp's system config (the JS runtime YouTube needs); see the Dockerfile.
+           '/etc/yt-dlp.conf']
 SAFE_ENV = {'LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'AGNT_JS_EXECUTOR_CHILD', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE',
             # The run's temporary, instance-bound proxy key, never the user's session.
             'AGNT_AUTH_TOKEN',
