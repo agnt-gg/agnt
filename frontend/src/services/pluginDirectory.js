@@ -37,17 +37,23 @@ export function capabilityLabel(id) {
   return CAPABILITIES[id]?.label || `Uses ${titleFromSlug(id).toLowerCase() || 'an unknown capability'}`;
 }
 
-/** Trust tiers in the words Plugins.vue already uses; no backend jargon ("tofu") reaches the page. */
+/**
+ * Who a plugin comes from, in two words: Official (published by the AGNT account, which only
+ * AGNT can be) or Community (anyone else). Unverified and Unaudited are warnings on top of
+ * Community. No backend jargon ("tofu") reaches the page.
+ */
 export const TRUST_TIERS = Object.freeze({
-  official: { label: 'Official', detail: 'Built and maintained by AGNT' },
-  community: { label: 'Community', detail: 'Verified, and every capability is declared' },
+  official: { label: 'Official', detail: 'Published by AGNT' },
+  community: { label: 'Community', detail: 'Published by someone other than AGNT' },
   unverified: { label: 'Unverified', detail: 'Uses capabilities its author has not declared' },
   unaudited: { label: 'Unaudited', detail: 'Could not be scanned' },
 });
 
+/** Every plugin gets a label: one with no tier (or one this build does not know) is Community, never unlabelled. */
 export function trustTier(plugin) {
   const tier = lower(plugin?.trustTier);
-  return TRUST_TIERS[tier] ? { id: tier, ...TRUST_TIERS[tier] } : null;
+  const id = TRUST_TIERS[tier] ? tier : 'community';
+  return { id, ...TRUST_TIERS[id] };
 }
 
 export function integrityLabel(state) {

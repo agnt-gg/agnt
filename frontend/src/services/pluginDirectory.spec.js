@@ -183,8 +183,10 @@ describe('declared access and trust', () => {
   });
   it('trust tiers and integrity use plain words, unknown tiers are omitted', () => {
     expect(trustTier(discord)).toMatchObject({ id: 'official', label: 'Official' });
-    expect(trustTier({ trustTier: 'mystery' })).toBeNull();
-    expect(trustTier({})).toBeNull();
+    // Nothing is ever unlabelled: no tier, or one this build does not know, reads as Community.
+    expect(trustTier({ trustTier: 'mystery' })).toMatchObject({ id: 'community', label: 'Community', detail: 'Published by someone other than AGNT' });
+    expect(trustTier({})).toMatchObject({ id: 'community', label: 'Community' });
+    expect(trustTier(null)).toMatchObject({ id: 'community' });
     expect(integrityLabel('tofu')).not.toMatch(/tofu/i);
     expect(integrityLabel('none')).toBe('');
   });

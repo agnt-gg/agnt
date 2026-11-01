@@ -41,41 +41,6 @@
       "installByDefault": true
     },
     {
-      "name": "chucknorris-joke-plugin",
-      "displayName": "Chuck Norris Jokes",
-      "icon": "puzzle-piece",
-      "version": "1.0.0",
-      "description": "Fetch random Chuck Norris jokes from the public Chuck Norris API.",
-      "author": "AGNT User",
-      "homepage": "https://github.com/agnt-gg/agnt",
-      "downloadUrl": "file://marketplace-default/chucknorris-joke-plugin.agnt",
-      "size": 1660889,
-      "tags": [
-        "jokes",
-        "fun",
-        "chuck-norris",
-        "entertainment"
-      ],
-      "category": "entertainment",
-      "tools": [
-        {
-          "type": "chucknorris-get-joke",
-          "schema": {
-            "title": "Get Random Chuck Norris Joke",
-            "description": "Retrieves a random Chuck Norris joke, optionally filtered by category."
-          }
-        }
-      ],
-      "integrity": "sha256-MTYa169U0JljpahLveCdYOs8oDxzXQGAS7fGAbMJNIM=",
-      "trustTier": "official",
-      "declaredPermissions": [
-        "network"
-      ],
-      "detectedCapabilities": [
-        "network"
-      ]
-    },
-    {
       "name": "gmail-plugin",
       "displayName": "Gmail",
       "icon": "gmail",

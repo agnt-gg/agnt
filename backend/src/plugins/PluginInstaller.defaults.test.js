@@ -71,6 +71,6 @@ describe('default plugins', () => {
     expect(catalog.filter((p) => p.installByDefault).map((p) => p.name).sort()).toEqual(GOOGLE);
     for (const p of catalog) expect(fsSync.existsSync(path.join(plugins, 'marketplace-default', p.name + '.agnt')), p.name).toBe(true);
     // Everything the app ships besides the defaults is only there until AGNT holds its marketplace id.
-    expect(catalog.filter((p) => !p.installByDefault).map((p) => p.name).sort()).toEqual(['calculator-plugin', 'chucknorris-joke-plugin']);
+    expect(catalog.filter((p) => !p.installByDefault).map((p) => p.name).sort()).toEqual(['calculator-plugin']);
   });
 });

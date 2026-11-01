@@ -2060,7 +2060,9 @@ class PluginInstaller {
             // trust system W1/W2/W3: trust fields served by the marketplace API
             // (dedicated columns first, metadata JSON as fallback)
             integrity: item.integrity || metadata.integrity || undefined,
-            trustTier: item.trust_tier || metadata.trustTier || undefined,
+            // A listing the marketplace did not tier is someone else's: Community. Only AGNT's own
+            // publishes are 'official', and nothing here grants anything on 'community'.
+            trustTier: item.trust_tier || metadata.trustTier || 'community',
             declaredPermissions: safeParseArray(item.declared_permissions) || metadata.declaredPermissions || undefined,
             detectedCapabilities: safeParseArray(item.detected_capabilities) || metadata.detectedCapabilities || undefined,
             signature: item.signature || metadata.signature || undefined,
