@@ -429,8 +429,10 @@ class ExecutionsModule extends BaseModule {
     const response = await this.client.post(`/${this.resourceName}/activity`, params);
     return response.data;
   }
+  // There is no /executions/:id/logs route (every call answered 404). An execution's details carry its
+  // per-step logs and outputs.
   async getLogs(executionId) {
-    const response = await this.client.get(`/${this.resourceName}/${executionId}/logs`);
+    const response = await this.client.get(`/${this.resourceName}/${encodeURIComponent(executionId)}`);
     return response.data;
   }
   async getStats(workflowId) {

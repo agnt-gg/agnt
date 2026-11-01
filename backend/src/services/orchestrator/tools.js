@@ -161,6 +161,22 @@ const IMAGE_MIME_TYPES = {
  *                 | {ok: false, error: string, path?: string, hint?: string}>}
  */
 /**
+ * Start a workflow. One that is already running (or listening for its trigger) answers 409
+ * ALREADY_ACTIVE: that is the current state, not a failure, and is reported as such rather than as
+ * "Request failed with status code 409" (bravo, 2026-10-31: Dice Roll, running on its timer).
+ */
+export async function startWorkflow(workflows, workflowId) {
+  try {
+    return await workflows.activate(workflowId);
+  } catch (error) {
+    if (error.response?.status === 409 && error.response?.data?.code === 'ALREADY_ACTIVE') {
+      return { alreadyActive: true, workflowId, message: 'The workflow is already running (or listening for its trigger), so nothing new was started. Stop it first to restart it.' };
+    }
+    throw error;
+  }
+}
+
+/**
  * An image AGNT itself generated, named by its {{IMAGE_REF:id}} or by the path generate_image returned,
  * as a file in the image store; otherwise null. Only a file findImageFile resolves is ever returned, so a
  * crafted path cannot reach anything else.
@@ -2372,7 +2388,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!workflow_id) {
               return JSON.stringify({ success: false, error: "workflow_id is required for 'activate_workflow'." });
             }
-            result = await agnt.workflows.activate(workflow_id);
+            result = await startWorkflow(agnt.workflows, workflow_id);
             break;
 
           case 'deactivate_workflow':
@@ -2399,7 +2415,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             // (The old agnt.workflows.trigger() posted to /workflows/:id/trigger,
             // a route that does not exist and always 404'd.)
             {
-              const activation = await agnt.workflows.activate(workflow_id);
+              const activation = await startWorkflow(agnt.workflows, workflow_id);
               result = {
                 ...activation,
                 note:

@@ -216,7 +216,7 @@ function getOverview() {
 
   let out = `AGNT API Reference — Overview
 Base URL: http://localhost:${process.env.PORT || 3333}/api
-Auth: Bearer token — get from localStorage.getItem('token')
+Auth: widgets call through the agnt SDK (no token handling); server code sends process.env.AGNT_AUTH_TOKEN as the Bearer token (see below)
 
 ${BOILERPLATE}
 
