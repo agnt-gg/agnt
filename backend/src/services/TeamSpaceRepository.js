@@ -275,6 +275,44 @@ export class TeamSpaceRepository {
     });
   }
 
+  /**
+   * Change where a card shows: another teamspace, or private to its maker (My Space).
+   * `to` must already be authorized for the caller by the route (the cloud checks only
+   * the workspace in the URL). `personStays` is the ROUTE's answer to "is the assignee in
+   * the target teamspace": a server-only option, never read from the request body.
+   * Agents belong to one teamspace, so an agent assignee never travels; a card an
+   * agent is running on cannot move until the run ends.
+   */
+  moveTask(teamId, user, workspaceId, taskId, input = {}, { personStays = false } = {}) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      const member = await r.member(teamId, user, WRITERS);
+      await this.workspace(teamId, workspaceId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
+      if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== row.revision) fail(409, 'This card changed. Reload it before saving.', 'revision_conflict');
+      if (row.created_by !== user && !MANAGERS.includes(member.role)) fail(403, 'Only the person who made this card, or an admin, can move it');
+      if (typeof input.to !== 'string' || !input.to) fail(400, 'Pick where the card shows');
+      await this.workspace(teamId, input.to);
+      const toPrivate = input.private === true;
+      if (input.to === workspaceId && toPrivate === Boolean(row.private_to)) return { task: taskRow(row), moved: false, wasPrivate: Boolean(row.private_to) };
+      // Making a card private hides it from everyone else, so only its maker may.
+      if (toPrivate && row.created_by !== user) fail(403, 'Only the person who made this card can make it private');
+      if (row.agent_state === 'running') fail(409, 'An agent is working on this card. Move it when it finishes.', 'agent_running');
+      const keepPerson = row.assignee_kind === 'person' && personStays && (!toPrivate || row.assignee_id === user);
+      const at = now();
+      await r.run('UPDATE space_tasks SET workspace_id=?,private_to=?,assignee_kind=?,assignee_id=?,agent_state=NULL,source_message_id=NULL,revision=revision+1,updated_at=? WHERE id=? AND revision=?',
+        [input.to, toPrivate ? user : null, keepPerson ? 'person' : null, keepPerson ? row.assignee_id : null, at, taskId, row.revision]);
+      // The chat message it came from stays where it was said; it no longer points at the card.
+      if (row.source_message_id) await r.run('UPDATE space_messages SET task_id=NULL WHERE id=? AND task_id=?', [row.source_message_id, taskId]);
+      // Inbox rows about the card open it where it now lives.
+      await r.run("UPDATE inbox_items SET workspace_id=? WHERE team_id=? AND target_kind='task' AND target_id=?", [input.to, teamId, taskId]);
+      const unassigned = Boolean(row.assignee_kind) && !keepPerson;
+      await this.comment(taskId, 'system', user, toPrivate ? 'Made private.' : unassigned ? 'Moved here. Unassigned: the assignee is not in this teamspace.' : 'Moved here.');
+      await r.event(teamId, user, 'task.relocated', taskId);
+      return { task: taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId])), moved: true, wasPrivate: Boolean(row.private_to) };
+    });
+  }
+
   deleteTask(teamId, user, workspaceId, taskId) {
     const r = this.repository;
     return r.transaction(async () => {

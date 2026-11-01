@@ -147,7 +147,18 @@ async function list(ownerId) {
   return result;
 }
 
-export const nativeStore = Object.freeze({ read, write, customToolIds, list });
+/**
+ * Retire an item this owner has: the source half of a move. Soft delete, OWNER-CHECKED like
+ * every read here, so another owner's row is "not found". Only kinds a teamspace can move.
+ */
+async function remove(kind, id, ownerId) {
+  const changes = kind === 'agent' ? await AgentModel.delete(id, ownerId)
+    : kind === 'workflow' ? await WorkflowModel.delete(id, ownerId)
+    : refuse(400, 'That item cannot be moved');
+  if (!changes) refuse(404, 'Item not found');
+}
+
+export const nativeStore = Object.freeze({ read, write, customToolIds, list, remove });
 
 /**
  * Which connection a workflow node type needs, read from the tool library's own

@@ -14,7 +14,6 @@
         </div>
         <div class="row-gap">
           <button type="button" class="btn" @click="tryIt('')"><MkIcon name="chats" size="sm" />Chat</button>
-          <CopyToTeamButton v-if="!team" kind="agent" :id="String(agent.id)" :name="agent.name" />
           <button type="button" class="btn" @click="openFull"><MkIcon name="pen" size="sm" />Open full editor</button>
         </div>
       </div>
@@ -29,6 +28,7 @@
           </div>
           <label class="lbl">Runs with</label>
           <div class="banner" style="margin: 0"><MkIcon name="plug" size="sm" /><span>Your own connections. Nobody else can trigger it.</span></div>
+          <div style="margin-top: 14px"><CopyToTeamButton kind="agent" :id="String(agent.id)" :name="agent.name" /></div>
         </div>
         <div>
           <div class="sec-head" style="margin-top: 14px"><h3>Try it</h3></div>
@@ -51,7 +51,6 @@ import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 const props = defineProps({ agentId: { type: String, required: true } });
 const ctx = inject('teamCtx');
 const store = useStore();
-const team = computed(() => ctx.team.value);
 const agent = computed(() => (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === props.agentId) || null);
 const instructions = ref('');
 const draft = ref('');

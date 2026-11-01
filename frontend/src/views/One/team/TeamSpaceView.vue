@@ -75,10 +75,13 @@ async function loadCounts() {
     teamApi.tasks(ws).catch(() => null), teamApi.docs(ws).catch(() => null), teamApi.native(ws).catch(() => null), teamFiles.list(props.team.id, ws).catch(() => null),
   ]);
   for (const key of Object.keys(counts)) delete counts[key];
-  if (tasks) counts.board = tasks.filter((t) => t.status !== 'done').length;
-  if (native) { counts.agents = native.filter((i) => i.kind === 'agent').length; counts.routines = native.filter((i) => i.kind === 'workflow').length; }
+  // A count is shown only from a real list: an error body or an older server's shape is "cannot be read".
+  const list = (value) => (Array.isArray(value) ? value : null);
+  const [taskList, docList, nativeList, fileList] = [list(tasks), list(docs), list(native), list(files)];
+  if (taskList) counts.board = taskList.filter((t) => t.status !== 'done').length;
+  if (nativeList) { counts.agents = nativeList.filter((i) => i.kind === 'agent').length; counts.routines = nativeList.filter((i) => i.kind === 'workflow').length; }
   // Files holds uploads and the teamspace's docs.
-  if (files || docs) counts.files = (files?.length || 0) + (docs?.length || 0);
+  if (fileList || docList) counts.files = (fileList?.length || 0) + (docList?.length || 0);
 }
 const openTask = (id) => ctx.go({ view: 'space', space: props.space.id, tab: props.location.tab === 'chat' ? 'chat' : 'board', task: id });
 const openDoc = (id) => ctx.go({ view: 'doc', space: props.space.id, doc: id });

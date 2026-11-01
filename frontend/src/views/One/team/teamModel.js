@@ -108,6 +108,24 @@ export function spaceEmoji(space) {
   return SPACE_EMOJI.find(([pattern]) => pattern.test(name))?.[1] || '📁';
 }
 
+/** The teamspace a person's private (My Space) cards live in: the team's default one, else the first. */
+export const homeSpaceOf = (spaces = []) => spaces.find((s) => s.is_default) || spaces[0] || null;
+
+/** The "Visible to" value for "only you". Never a teamspace id (those are UUIDs). */
+export const PRIVATE_SCOPE = 'private';
+
+/**
+ * "Visible to" choices, the same everywhere an item can live in a teamspace:
+ * optionally "Only you" first, then every teamspace the caller can see (the
+ * server re-checks write access to the one picked).
+ */
+export function visibleToOptions(spaces = [], { includePrivate = false, privateLabel = 'Only you' } = {}) {
+  return [
+    ...(includePrivate ? [{ value: PRIVATE_SCOPE, label: privateLabel }] : []),
+    ...spaces.map((s) => ({ value: s.id, label: `${spaceEmoji(s)} ${s.name}` })),
+  ];
+}
+
 /** A person's avatar colour, stable for their id, from the mockup's palette. */
 const HUES = ['#e53d8f', '#2d64bd', '#157839', '#915d06', '#7d3de5', '#5c5c72'];
 export function avatarHue(id) {

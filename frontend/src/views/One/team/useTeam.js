@@ -139,6 +139,8 @@ export const teamApi = {
   createTask: (ws, input) => teamRequest(space(ws, '/tasks'), json('POST', input)),
   updateTask: (ws, id, input) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id)), json('PATCH', input)),
   deleteTask: (ws, id) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id)), { method: 'DELETE' }),
+  /** "Visible to": another teamspace (`to`), or private to you (`private`, in your home teamspace). */
+  moveTask: (ws, id, { to, private: isPrivate = false, expectedRevision }) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/move'), json('POST', { to, private: isPrivate, expectedRevision })),
   comment: (ws, id, body, mentions) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/comments'), json('POST', { body, mentions })),
   approve: (ws, id, input = {}) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/approve'), json('POST', input)),
   sendBack: (ws, id, note) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/send-back'), json('POST', { note })),
@@ -153,6 +155,8 @@ export const teamApi = {
   setSpaceMember: (ws, userId, member) => teamRequest(space(ws, '/members/' + encodeURIComponent(userId)), member ? json('PUT', {}) : { method: 'DELETE' }),
   native: (ws) => teamRequest(space(ws, '/native')),
   publish: (ws, kind, id) => teamRequest(space(ws, '/native/' + kind + '/' + encodeURIComponent(id) + '/publish'), json('POST', {})),
+  /** "Visible to" for a team agent or routine: it moves to teamspace `to` (owners and admins). */
+  moveNative: (ws, kind, id, to) => teamRequest(space(ws, '/native/' + kind + '/' + encodeURIComponent(id) + '/move'), json('POST', { to })),
   createSpace: (name) => teamRequest(path('/workspaces'), json('POST', { name })),
   markRead: (id) => teamRequest(path('/inbox/' + encodeURIComponent(id) + '/read'), json('POST', {})),
   markAllRead: () => teamRequest(path('/inbox/read-all'), json('POST', {})),

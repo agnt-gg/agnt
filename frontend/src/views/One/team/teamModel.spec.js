@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath } from './teamModel.js';
+import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE } from './teamModel.js';
+
+describe('visible to', () => {
+  const spaces = [{ id: 'ws-sales', name: 'Sales' }, { id: 'ws-gen', name: 'General', is_default: true }, { id: 'ws-x', name: 'Labs', emoji: '🧪' }];
+  it('lists every teamspace, with Only you first only when asked', () => {
+    expect(visibleToOptions(spaces)).toEqual([
+      { value: 'ws-sales', label: '💼 Sales' }, { value: 'ws-gen', label: '💬 General' }, { value: 'ws-x', label: '🧪 Labs' },
+    ]);
+    expect(visibleToOptions(spaces, { includePrivate: true, privateLabel: 'Only you (My Space)' })[0]).toEqual({ value: PRIVATE_SCOPE, label: 'Only you (My Space)' });
+    expect(visibleToOptions()).toEqual([]);
+  });
+  it('the private value can never collide with a teamspace, and My Space is the default teamspace', () => {
+    expect(spaces.map((s) => s.id)).not.toContain(PRIVATE_SCOPE);
+    expect(homeSpaceOf(spaces).id).toBe('ws-gen');
+    expect(homeSpaceOf([{ id: 'only' }]).id).toBe('only');
+    expect(homeSpaceOf([])).toBeNull();
+  });
+});
 
 describe('team location ↔ query', () => {
   it('round-trips every view', () => {

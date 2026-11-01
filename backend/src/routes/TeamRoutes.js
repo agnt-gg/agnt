@@ -152,6 +152,34 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     await repo.transaction(()=>repo.event(req.params.teamId,user,'items.copied_in',req.params.workspaceId));
     return result;
   }));
+  // The router guard checks the cloud capability for the workspace IN THE URL only. A move also
+  // writes into a second teamspace, so the destination gets the same cloud check before anything changes.
+  const canWriteIn=async(req,workspaceId)=>{
+    if(typeof workspaceId!=='string'||!workspaceId||workspaceId==='default')throw Object.assign(new Error('Pick a teamspace'),{status:400});
+    await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId)+'/access/resources.write');
+  };
+  // "Visible to" for a team agent or routine: it moves to another teamspace. Owners and admins, as for
+  // Publish. Through the same sanitized bundle path as Copy to team (installed as the destination's
+  // owner, so ownership is never rewritten in place), then the source is retired. Install first: a
+  // failure part-way leaves a duplicate, never a loss. The moved item is a draft there until published.
+  // Registered before /native/:kind/:id/:action, which would otherwise take "move" as an action.
+  router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/move',handler(async(repo,req,user)=>{
+    requireManager(req);
+    const {teamId,workspaceId,kind,id}=req.params;
+    if(!['agent','workflow'].includes(kind))throw Object.assign(new Error('That item cannot be moved'),{status:400});
+    const to=req.body?.to;
+    if(to===workspaceId)return {moved:false};
+    await canWriteIn(req,to);
+    const target=await repo.get('SELECT id FROM shared_workspaces WHERE id=? AND team_id=? AND archived_at IS NULL',[to,teamId]);
+    if(!target)throw Object.assign(new Error('Workspace not found'),{status:404});
+    const source=await nativeScope(repo,req);
+    const destination=await ensureSharedScope(databaseRepository(db),teamId,target.id);
+    const {bundle}=await buildBundle(nativeStore,source.resourceOwnerId,[{kind,id}],{includeDependencies:true,nodeProvider});
+    const result=await installBundle(nativeStore,destination.resourceOwnerId,bundle);
+    await nativeStore.remove(kind,id,source.resourceOwnerId);
+    await repo.transaction(()=>repo.event(teamId,user,'items.moved',target.id));
+    return {moved:true,to:target.id,installed:result.installed||[]};
+  }));
   router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/:action',handler(async(repo,req,user)=>{
     const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();const assetId=await resources.snapshot(req.params.teamId,user,scope,req.params.kind,req.params.id);const executor=new NativeTeamExecution(repo,cloud);
     if(req.params.action==='authorize'||req.params.action==='publish'){const hints=await resources.hints(scope,req.params.kind,req.params.id);return executor.bind(req.cloudTeam,user,req.headers.authorization,assetId,{connectionId:req.body?.connectionId,provider:req.body?.provider,model:req.body?.model,workspaceId:req.params.workspaceId,hints});}
@@ -279,6 +307,7 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     handler,
     realtime,
     spaceMembers,
+    canWriteIn,
     workspaceAgents:async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);},
     agentExecutor:(repo,req,user,agentId)=>async input=>{
       const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();

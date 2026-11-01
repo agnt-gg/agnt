@@ -114,6 +114,17 @@ export function createShareRouter({ getRepository, authenticate = authenticateTo
     return preview;
   }));
 
+  /**
+   * The teamspaces of a team that this person can see, for "Visible to" on a personal item.
+   * Asked of the team's own instance with the person's own token, so it answers with exactly the
+   * spaces the cloud lets them read (the instance filters on resources.read). Names and ids only.
+   */
+  router.get('/team/:teamId/spaces', handler(async req => {
+    const team = await teamFor(req);
+    const list = await instance(team, '/workspaces', req.headers.authorization);
+    return (Array.isArray(list) ? list : []).map(space => ({ id: space.id, name: space.name, emoji: space.emoji || null, is_default: Boolean(space.is_default) }));
+  }));
+
   router.post('/team/:teamId', handler(async (req, user) => {
     const items = parseItems(req.body?.items);
     const team = await teamFor(req);

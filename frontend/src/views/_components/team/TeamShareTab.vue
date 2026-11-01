@@ -10,6 +10,7 @@
     <label v-else>Team
       <CustomSelect v-model="teamId" :options="teams.map(t => ({ value: t.id, label: t.name }))" aria-label="Team" />
     </label>
+    <p v-if="targetProjectId && projectName" class="muted">Into the {{ projectName }} teamspace.</p>
     <label class="check"><input v-model="includeDependencies" type="checkbox" @change="loadPreview" /> Include what it uses (tools, workflows, skills, widgets)</label>
 
     <p v-if="loading" role="status">Checking what would be copied…</p>
@@ -49,13 +50,19 @@ const props = defineProps({
   kind: { type: String, required: true },
   id: { type: [String, Number], required: true },
   name: { type: String, default: 'This item' },
+  // Chosen in "Visible to": which team and teamspace to copy into. Without them, the team's default space.
+  presetTeamId: { type: String, default: '' },
+  presetProjectId: { type: String, default: '' },
+  projectName: { type: String, default: '' },
 });
 const emit = defineEmits(['close', 'copied']);
 const loading = ref(false), busy = ref(false), error = ref('');
 const teams = ref([]), teamId = ref(''), includeDependencies = ref(true), preview = ref(null), done = ref(null), links = ref([]);
 const itemRef = computed(() => props.kind + ':' + props.id);
 const currentTeam = computed(() => teams.value.find(t => t.id === teamId.value) || null);
-const existingLink = computed(() => links.value.find(link => link.teamId === teamId.value) || null);
+// The preset teamspace belongs to the preset team; picking another team copies into that team's default space.
+const targetProjectId = computed(() => (props.presetProjectId && teamId.value === props.presetTeamId ? props.presetProjectId : ''));
+const existingLink = computed(() => links.value.find(link => link.teamId === teamId.value && (!targetProjectId.value || link.projectId === targetProjectId.value)) || null);
 const needsText = needs => needs.map(n => providerName(n.provider) + (n.reason === 'model' ? ' models' : '')).join(', ');
 
 async function loadPreview() {
@@ -68,14 +75,15 @@ async function load() {
     const [list, copies] = await Promise.all([teamRequest(''), shareRequest('/links?items=' + encodeURIComponent(itemRef.value)).catch(() => [])]);
     links.value = Array.isArray(copies) ? copies : [];
     teams.value = (Array.isArray(list) ? list : []).filter(t => t.tenantUrl && t.role !== 'viewer');
-    teamId.value = links.value.find(link => link.stale)?.teamId || teams.value[0]?.id || '';
+    const preset = teams.value.find(t => t.id === props.presetTeamId)?.id;
+    teamId.value = preset || links.value.find(link => link.stale)?.teamId || teams.value[0]?.id || '';
   } catch (e) { error.value = e.message; } finally { loading.value = false; }
   if (teams.value.length) await loadPreview();
 }
 async function copy() {
   busy.value = true; error.value = '';
   try {
-    done.value = await shareRequest('/team/' + encodeURIComponent(teamId.value), { method: 'POST', body: JSON.stringify({ items: [itemRef.value], includeDependencies: includeDependencies.value }) });
+    done.value = await shareRequest('/team/' + encodeURIComponent(teamId.value), { method: 'POST', body: JSON.stringify({ items: [itemRef.value], includeDependencies: includeDependencies.value, ...(targetProjectId.value ? { projectId: targetProjectId.value } : {}) }) });
     emit('copied', done.value);
   } catch (e) { error.value = e.message; } finally { busy.value = false; }
 }

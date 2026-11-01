@@ -20,6 +20,8 @@ import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../service
  *   schedule(fn)                         runs agent work after the response (setImmediate in production)
  *   askAnnie({userId, authToken, prompt}) Annie's answer as the tagging person (TeamSpaceAnnie.runAnnieTurn)
  *   spaceMembers(req)                    ids of the people in req.params.workspaceId (default: the whole team)
+ *   canWriteIn(req, workspaceId)         throws unless the caller has resources.write in ANOTHER teamspace
+ *                                        (a move's destination). Fails closed when not supplied.
  */
 /** A card title from a chat message: the text with the @mentioned agents' names taken out. */
 export function cardTitle(body, agentNames) {
@@ -28,10 +30,14 @@ export function cardTitle(body, agentNames) {
   return title.replace(/^[\s,:;-]+/, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn), askAnnie = runAnnieTurn, spaceMembers = (req) => realtime.members(req.params.teamId, req.headers.authorization) }) {
+const refuseOtherSpaces = async () => { throw Object.assign(new Error('Moving between teamspaces is not available here'), { status: 403 }); };
+
+export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgents, agentExecutor, schedule = (fn) => setImmediate(fn), askAnnie = runAnnieTurn, spaceMembers = (req) => realtime.members(req.params.teamId, req.headers.authorization), canWriteIn = refuseOtherSpaces }) {
   const W = '/:teamId/workspaces/:workspaceId';
   const spacesOf = (repo) => new TeamSpaceRepository(repo);
   const signal = (req, kind, extra = {}) => realtime.space(req.params.teamId, req.headers.authorization, { workspaceId: req.params.workspaceId, kind, ...extra }, () => spaceMembers(req));
+  /** The same request, addressed to another teamspace: for its member list and its live signal. */
+  const inSpace = (req, workspaceId) => ({ params: { ...req.params, workspaceId }, headers: req.headers, cloudTeam: req.cloudTeam });
 
   async function checkPeople(req, ids) {
     if (!ids.length) return;
@@ -124,6 +130,25 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     if (assigneeChanged && task.assignee?.kind === 'agent' && task.status !== 'done') startAgent(repo, req, user, task, agentInput(task));
     signal(req, 'tasks', { taskId: task.id });
     if (assigneeChanged && task.assignee?.kind === 'person') realtime.inbox(req.params.teamId, [task.assignee.id]);
+    return task;
+  }));
+
+  // "Visible to": move the card to another teamspace, or make it private (My Space).
+  router.post(W + '/tasks/:taskId/move', handler(async (repo, req, user) => {
+    const { teamId, workspaceId, taskId } = req.params;
+    const to = typeof req.body?.to === 'string' ? req.body.to : '';
+    if (!to) throw Object.assign(new Error('Pick where the card shows'), { status: 400 });
+    // The guard above checked THIS teamspace only; the destination is checked with the cloud too.
+    if (to !== workspaceId) await canWriteIn(req, to);
+    const spaces = spacesOf(repo);
+    const current = await spaces.task(teamId, user, workspaceId, taskId);
+    const personStays = current.assignee?.kind === 'person' && (await spaceMembers(inSpace(req, to))).includes(current.assignee.id);
+    const { task, moved, wasPrivate } = await spaces.moveTask(teamId, user, workspaceId, taskId, { to, private: req.body?.private === true, expectedRevision: req.body?.expectedRevision }, { personStays });
+    if (moved) {
+      if (!wasPrivate) signal(req, 'tasks', { taskId });
+      if (!task.private) signal(inSpace(req, to), 'tasks', { taskId });
+      if (!task.private && task.assignee?.kind === 'person' && task.assignee.id !== user) realtime.inbox(teamId, [task.assignee.id]);
+    }
     return task;
   }));
 

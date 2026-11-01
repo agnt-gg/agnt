@@ -1,6 +1,6 @@
 import { computed } from 'vue';
 import { teamApi } from '@/views/One/team/useTeam.js';
-import { spaceEmoji } from '@/views/One/team/teamModel.js';
+import { spaceEmoji, homeSpaceOf } from '@/views/One/team/teamModel.js';
 
 /**
  * The approved mockup's frame, driven by the app's real routes and data:
@@ -84,10 +84,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     return (teamState.spaces || []).find((s) => s.id === space) || null;
   };
   /** Where private My Space cards live: the team's main workspace, visible to their owner only. */
-  const homeSpace = () => {
-    const spaces = teamState.spaces || [];
-    return spaces.find((s) => s.is_default) || spaces[0] || null;
-  };
+  const homeSpace = () => homeSpaceOf(teamState.spaces || []);
   async function create(kind) {
     if (kind === 'agent') return nav.go({ page: 'library', tab: 'agents', isNew: true });
     if (kind === 'routine') return nav.go({ page: 'scheduled', isNew: true });

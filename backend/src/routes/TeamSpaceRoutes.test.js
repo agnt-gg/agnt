@@ -114,6 +114,25 @@ describe('teamspace routes through the real team router', () => {
     expect(stale.body.code).toBe('revision_conflict');
   }));
 
+  it('visible to: a card moves only into a teamspace the cloud lets the mover write in', () => fixture(async ({ request, cloud, ws }) => {
+    const ops = (await request('/team/workspaces', 'POST', { name: 'Ops' }, 'owner')).body.id;
+    expect((await request(`/team/workspaces/${ops}/members/ana`, 'PUT', {}, 'owner')).status).toBe(200);
+    // ben may write in Sales (the URL) but is not in Ops (the destination): the destination is checked too.
+    const bens = (await request(`/team/workspaces/${ws}/tasks`, 'POST', { title: 'Ben card' }, 'ben')).body;
+    const refused = await request(`/team/workspaces/${ws}/tasks/${bens.id}/move`, 'POST', { to: ops, expectedRevision: 1 }, 'ben');
+    expect(refused.status).toBe(403);
+    expect((await request(`/team/workspaces/${ws}/tasks/${bens.id}`, 'GET', null, 'ben')).body.workspaceId).toBe(ws);
+    // ana is in both. Ben is not in Ops, so the card arrives unassigned.
+    const card = (await request(`/team/workspaces/${ws}/tasks`, 'POST', { title: 'Ship it', assignee: { kind: 'person', id: 'ben' } })).body;
+    const moved = await request(`/team/workspaces/${ws}/tasks/${card.id}/move`, 'POST', { to: ops, expectedRevision: 1 });
+    expect(moved.status).toBe(200);
+    expect(moved.body).toMatchObject({ workspaceId: ops, assignee: null });
+    expect(cloud.calls).toContain(`/team/instances/example/workspaces/${ops}/access/resources.write`);
+    expect((await request(`/team/workspaces/${ws}/tasks`)).body.map((t) => t.id)).not.toContain(card.id);
+    expect((await request(`/team/workspaces/${ops}/tasks`)).body.map((t) => t.id)).toContain(card.id);
+    expect((await request(`/team/workspaces/${ws}/tasks/${bens.id}/move`, 'POST', { expectedRevision: 1 }, 'ben')).status).toBe(400);
+  }));
+
   it('docs: made in a teamspace, hidden from the team library', () => fixture(async ({ request, ws }) => {
     const doc = (await request(`/team/workspaces/${ws}/docs`, 'POST', { name: 'Playbook', content: '# Hello' })).body;
     expect((await request(`/team/workspaces/${ws}/docs/${doc.id}`)).body.content).toBe('# Hello');

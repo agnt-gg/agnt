@@ -173,6 +173,89 @@ describe('private tasks', () => {
   });
 });
 
+// "Visible to": a card moves between teamspaces, or into its maker's My Space.
+describe('moving a card', () => {
+  it('moves to another teamspace with its thread, and is gone from the first board', async () => {
+    const sales = await workspace('sales');
+    const ops = await workspace('ops');
+    const card = await spaces.createTask(TEAM, 'ana', sales, { title: 'Ship it' });
+    await spaces.addComment(TEAM, 'ana', sales, card.id, { body: 'context' });
+    const { task, moved } = await spaces.moveTask(TEAM, 'ana', sales, card.id, { to: ops, expectedRevision: 1 });
+    expect(moved).toBe(true);
+    expect(task).toMatchObject({ workspaceId: ops, revision: 2, private: false });
+    expect(await spaces.tasks(TEAM, 'ana', sales)).toEqual([]);
+    expect((await spaces.task(TEAM, 'ben', ops, card.id)).comments.map((c) => c.body)).toEqual(['context', 'Moved here.']);
+  });
+
+  it('keeps a person only when the route says they are in the destination; never an agent', async () => {
+    const sales = await workspace('sales');
+    const ops = await workspace('ops');
+    const forBen = await spaces.createTask(TEAM, 'ana', sales, { title: 'a', assignee: { kind: 'person', id: 'ben' } });
+    expect((await spaces.moveTask(TEAM, 'ana', sales, forBen.id, { to: ops, expectedRevision: 1 }, { personStays: true })).task.assignee).toEqual({ kind: 'person', id: 'ben' });
+    const notThere = await spaces.createTask(TEAM, 'ana', sales, { title: 'b', assignee: { kind: 'person', id: 'ben' } });
+    expect((await spaces.moveTask(TEAM, 'ana', sales, notThere.id, { to: ops, expectedRevision: 1 })).task.assignee).toBeNull();
+    const forAgent = await spaces.createTask(TEAM, 'ana', sales, { title: 'c', assignee: { kind: 'agent', id: 'agent-1' } });
+    const moved = await spaces.moveTask(TEAM, 'ana', sales, forAgent.id, { to: ops, expectedRevision: 1 }, { personStays: true });
+    expect(moved.task.assignee).toBeNull();
+    expect((await spaces.task(TEAM, 'ana', ops, forAgent.id)).comments.at(-1).body).toMatch(/Unassigned/);
+  });
+
+  it('the body cannot vouch for the assignee: personStays is only a server option', async () => {
+    const sales = await workspace('sales');
+    const ops = await workspace('ops');
+    const card = await spaces.createTask(TEAM, 'ana', sales, { title: 'a', assignee: { kind: 'person', id: 'ben' } });
+    const { task } = await spaces.moveTask(TEAM, 'ana', sales, card.id, { to: ops, expectedRevision: 1, personStays: true });
+    expect(task.assignee).toBeNull();
+  });
+
+  it('only its maker makes a card private; then nobody else finds it', async () => {
+    const ws = await workspace('General');
+    const card = await spaces.createTask(TEAM, 'ana', ws, { title: 'Mine now', assignee: { kind: 'person', id: 'ben' } });
+    await expect(spaces.moveTask(TEAM, 'admin', ws, card.id, { to: ws, private: true, expectedRevision: 1 })).rejects.toMatchObject({ status: 403 });
+    const { task } = await spaces.moveTask(TEAM, 'ana', ws, card.id, { to: ws, private: true, expectedRevision: 1 }, { personStays: true });
+    expect(task).toMatchObject({ private: true, assignee: null });
+    await expect(spaces.task(TEAM, 'ben', ws, card.id)).rejects.toMatchObject({ status: 404 });
+    const back = await spaces.moveTask(TEAM, 'ana', ws, card.id, { to: ws, private: false, expectedRevision: 2 });
+    expect(back.task.private).toBe(false);
+    expect((await spaces.tasks(TEAM, 'ben', ws)).map((t) => t.id)).toEqual([card.id]);
+  });
+
+  it('the maker or an admin moves it; a member who did not make it, a viewer, or a stale revision cannot', async () => {
+    const sales = await workspace('sales');
+    const ops = await workspace('ops');
+    const card = await spaces.createTask(TEAM, 'ana', sales, { title: 'x' });
+    await expect(spaces.moveTask(TEAM, 'ben', sales, card.id, { to: ops, expectedRevision: 1 })).rejects.toMatchObject({ status: 403 });
+    await expect(spaces.moveTask(TEAM, 'vic', sales, card.id, { to: ops, expectedRevision: 1 })).rejects.toMatchObject({ status: 403 });
+    await expect(spaces.moveTask(TEAM, 'ana', sales, card.id, { to: ops, expectedRevision: 9 })).rejects.toMatchObject({ code: 'revision_conflict' });
+    expect((await spaces.moveTask(TEAM, 'admin', sales, card.id, { to: ops, expectedRevision: 1 })).task.workspaceId).toBe(ops);
+  });
+
+  it('never to another team\'s or an archived workspace, and not while an agent is running', async () => {
+    const sales = await workspace('sales');
+    const old = await workspace('old');
+    await base.run("INSERT INTO teams VALUES('team-2','Other','x','now')");
+    await base.run("INSERT INTO shared_workspaces(id,team_id,name,created_by) VALUES('foreign','team-2','F','x')");
+    await base.run('UPDATE shared_workspaces SET archived_at=CURRENT_TIMESTAMP WHERE id=?', [old]);
+    const card = await spaces.createTask(TEAM, 'ana', sales, { title: 'x' });
+    await expect(spaces.moveTask(TEAM, 'ana', sales, card.id, { to: 'foreign', expectedRevision: 1 })).rejects.toMatchObject({ status: 404 });
+    await expect(spaces.moveTask(TEAM, 'ana', sales, card.id, { to: old, expectedRevision: 1 })).rejects.toMatchObject({ status: 404 });
+    await base.run("UPDATE space_tasks SET agent_state='running' WHERE id=?", [card.id]);
+    const ops = await workspace('ops');
+    await expect(spaces.moveTask(TEAM, 'ana', sales, card.id, { to: ops, expectedRevision: 1 })).rejects.toMatchObject({ status: 409, code: 'agent_running' });
+  });
+
+  it('inbox rows follow the card; the source message stops pointing at it', async () => {
+    const sales = await workspace('sales');
+    const ops = await workspace('ops');
+    const message = await spaces.postMessage(TEAM, 'ana', sales, { body: 'do this' });
+    const card = await spaces.createTask(TEAM, 'ana', sales, { title: 'x', sourceMessageId: message.id, assignee: { kind: 'person', id: 'ben' } });
+    await spaces.moveTask(TEAM, 'ana', sales, card.id, { to: ops, expectedRevision: 1 }, { personStays: true });
+    expect((await spaces.inbox(TEAM, 'ben')).map((i) => i.workspaceId)).toEqual([ops]);
+    expect((await spaces.messages(TEAM, 'ana', sales))[0].taskId).toBeNull();
+    expect((await spaces.task(TEAM, 'ana', ops, card.id)).sourceMessageId).toBeNull();
+  });
+});
+
 describe('agent results wait for a person', () => {
   it('waiting → approval inbox → approve moves the card to done and resolves the inbox item', async () => {
     const ws = await workspace('sales');

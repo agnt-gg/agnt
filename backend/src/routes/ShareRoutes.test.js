@@ -38,6 +38,8 @@ async function fixture(run, { role = 'member', legacyTeam = false } = {}) {
   // The team instance, simulated: default project, install and export, each owner-scoped exactly like the real routes.
   const instance = vi.fn(async (team, path, _auth, options = {}) => {
     if (path === '/workspaces/default') return { id: 'general' };
+    // The instance lists only the spaces this person may read, with everything a teamspace row has.
+    if (path === '/workspaces') return [{ id: 'general', name: 'General', is_default: true, team_id: 'acme', created_by: 'owner', emoji: null }, { id: 'sales', name: 'Sales', is_default: false, team_id: 'acme', created_by: 'owner', emoji: '💼' }];
     if (path === '/workspaces/general/install') { const body = JSON.parse(options.body); return installBundle(tenant, 'scope:general', body.bundle, { replaces: body.replaces }); }
     if (path.startsWith('/workspaces/general/export')) return (await buildBundle(tenant, 'scope:general', decodeURIComponent(path.split('items=')[1]).split(',').map(s => ({ kind: s.split(':')[0], id: s.split(':')[1] })))).bundle;
     if (path === '/workspaces/general/native') return [...tenant.data].map(([key, row]) => ({ kind: key.split(':')[0], id: key.split(':')[1], name: row.value.name }));
@@ -58,6 +60,25 @@ async function fixture(run, { role = 'member', legacyTeam = false } = {}) {
     await new Promise((resolve, reject) => db.close(e => (e ? reject(e) : resolve())));
   }
 }
+
+describe('visible to: the teamspaces a personal item can go to', () => {
+  it('lists the team\'s teamspaces you can see, names and ids only', () => fixture(async ({ call, instance }) => {
+    const { status, body } = await call('/team/acme/spaces');
+    expect(status).toBe(200);
+    expect(body).toEqual([{ id: 'general', name: 'General', emoji: null, is_default: true }, { id: 'sales', name: 'Sales', emoji: '💼', is_default: false }]);
+    expect(instance).toHaveBeenCalledWith(expect.objectContaining({ id: 'acme' }), '/workspaces', 'Bearer t');
+  }));
+  it('a guest cannot add to the team, so is told no instead of shown where', () => fixture(async ({ call }) => {
+    expect((await call('/team/acme/spaces')).status).toBe(403);
+  }, { role: 'viewer' }));
+  it('a copy goes into the teamspace picked', () => fixture(async ({ call, instance }) => {
+    instance.mockImplementationOnce(async () => ({ installed: [] }));
+    const result = await call('/team/acme', 'POST', { items: ['agent:a1'], projectId: 'sales' });
+    expect(result.status).toBe(200);
+    expect(result.body.projectId).toBe('sales');
+    expect(instance).toHaveBeenCalledWith(expect.anything(), '/workspaces/sales/install', 'Bearer t', expect.objectContaining({ method: 'POST' }));
+  }));
+});
 
 describe('copy to team', () => {
   it('previews what would go, including what it needs and what was removed', () => fixture(async ({ call }) => {

@@ -18,7 +18,7 @@
           <span>Due</span>
           <input v-model="due" class="field" style="padding: 5px 9px; font-size: 13px" placeholder="e.g. Fri" aria-label="Due" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveDue" />
           <span>Visible to</span>
-          <span class="scope"><i class="fas fa-users" aria-hidden="true"></i>{{ spaceName }}</span>
+          <VisibleToSelect :model-value="scopeValue" :options="scopeOptions" :disabled="!canMove || busy" @change="move" />
           <template v-if="task.sourceMessageId"><span>From</span><button type="button" class="link" style="justify-self: start" @click="$emit('open-chat')">a message in {{ spaceName }}</button></template>
         </div>
 
@@ -63,8 +63,9 @@
 import { ref, computed, watch, inject, onMounted } from 'vue';
 import TeamAvatar from './TeamAvatar.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import VisibleToSelect from '@/views/_components/team/VisibleToSelect.vue';
 import { teamApi } from './useTeam.js';
-import { TASK_STATUSES, ago, nameOf, mentionsIn } from './teamModel.js';
+import { TASK_STATUSES, ago, nameOf, mentionsIn, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE } from './teamModel.js';
 
 const props = defineProps({
   workspaceId: { type: String, required: true },
@@ -84,7 +85,13 @@ const due = ref('');
 const draft = ref('');
 const busy = ref(false);
 const canWrite = computed(() => ctx.canWrite.value);
-const canDelete = computed(() => canWrite.value && (task.value?.createdBy === ctx.me.value || ['owner', 'admin'].includes(ctx.role.value)));
+const isMaker = computed(() => task.value?.createdBy === ctx.me.value);
+const canDelete = computed(() => canWrite.value && (isMaker.value || ['owner', 'admin'].includes(ctx.role.value)));
+// Who may change where a card shows: the same people who may delete it (the server enforces both).
+const canMove = canDelete;
+const scopeValue = computed(() => (task.value?.private ? PRIVATE_SCOPE : props.workspaceId));
+// "Only you" is offered to the card's maker only: making it private hides it from everyone else.
+const scopeOptions = computed(() => visibleToOptions(ctx.spaces.value || [], { includePrivate: isMaker.value || Boolean(task.value?.private), privateLabel: 'Only you (My Space)' }));
 const assigneeValue = computed(() => (task.value?.assignee ? task.value.assignee.kind + ':' + task.value.assignee.id : ''));
 const statusOptions = TASK_STATUSES.map((s) => ({ label: s.label, value: s.id }));
 const assigneeOptions = computed(() => [
@@ -150,6 +157,36 @@ async function comment() {
     draft.value = '';
     emit('changed');
   } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
+}
+/** "Visible to": move the card to another teamspace, or make it private in your My Space. */
+async function move(value) {
+  if (!task.value) return;
+  const toPrivate = value === PRIVATE_SCOPE;
+  const home = homeSpaceOf(ctx.spaces.value || []);
+  const to = toPrivate ? home?.id : value;
+  if (!to) return;
+  const where = toPrivate ? 'your My Space' : (ctx.spaces.value || []).find((s) => s.id === to)?.name || 'that teamspace';
+  const agentLeaves = task.value.assignee?.kind === 'agent';
+  const ok = await ctx.confirm({
+    title: toPrivate ? 'Make this card private?' : `Move this card to ${where}?`,
+    message: toPrivate ? 'Only you will see it, in My tasks. It leaves this board for everyone else.'
+      : `It leaves ${props.spaceName || 'this teamspace'} with its thread.${agentLeaves ? ' Its agent stays here, so it arrives unassigned.' : ''}`,
+    confirmText: toPrivate ? 'Make private' : 'Move',
+  });
+  if (!ok) return;
+  busy.value = true;
+  try {
+    const moved = await teamApi.moveTask(props.workspaceId, task.value.id, { to, private: toPrivate, expectedRevision: task.value.revision });
+    emit('changed');
+    ctx.toast(moved.private ? 'Private now. It is in My tasks.' : `Moved to ${where}.`);
+    if (moved.private) ctx.go({ view: 'mine' });
+    else ctx.go({ view: 'space', space: moved.workspaceId, tab: 'board', task: moved.id });
+  } catch (e) {
+    ctx.toast(e.code === 'revision_conflict' ? 'A teammate changed this card. Showing their version now.' : e.message);
+    await load();
+  } finally {
+    busy.value = false;
+  }
 }
 async function remove() {
   if (!(await ctx.confirm({ title: 'Delete this card?', message: 'It disappears from the board for everyone.', confirmText: 'Delete', danger: true }))) return;

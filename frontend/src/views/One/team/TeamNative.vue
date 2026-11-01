@@ -22,7 +22,8 @@
             <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label(item) }}</span>
             <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click.stop="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
             <span class="fill"></span>
-            <span class="scope team sm"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
+            <span v-if="canPublish" class="visible-to-host" @click.stop @keydown.stop><VisibleToSelect :model-value="workspaceId" :options="scopeOptions" :disabled="busy === item.id" @change="(to) => move(item, to)" /></span>
+            <span v-else class="scope team sm" v-tooltip="'Owners and admins choose where it shows'"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
           </div>
         </div>
       </div>
@@ -37,7 +38,8 @@
           <span class="r-text"><strong>{{ item.name }}</strong><small>{{ item.description || (item.status === 'published' ? 'Runs on the team’s connections' : 'Publish it to let it run for the team') }}</small></span>
           <span class="tag" :class="STATUS[item.status].tone">{{ STATUS[item.status].label(item) }}</span>
           <button v-if="canPublish && item.status !== 'published'" type="button" class="btn sm" :disabled="busy === item.id" @click.stop="publish(item)">{{ busy === item.id ? 'Publishing…' : 'Publish' }}</button>
-          <span class="scope team sm"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
+          <span v-if="canPublish" class="visible-to-host" @click.stop @keydown.stop><VisibleToSelect :model-value="workspaceId" :options="scopeOptions" :disabled="busy === item.id" @change="(to) => move(item, to)" /></span>
+          <span v-else class="scope team sm" v-tooltip="'Owners and admins choose where it shows'"><MkIcon name="users" size="sm" />{{ spaceName }}</span>
         </div>
       </li>
     </ul>
@@ -48,7 +50,9 @@
 import { ref, computed, watch, inject, onMounted } from 'vue';
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamAvatar from './TeamAvatar.vue';
+import VisibleToSelect from '@/views/_components/team/VisibleToSelect.vue';
 import { teamApi } from './useTeam.js';
+import { visibleToOptions } from './teamModel.js';
 
 const STATUS = Object.freeze({
   draft: { label: () => 'Draft', tone: '' },
@@ -64,6 +68,28 @@ const loading = ref(true);
 const busy = ref(null);
 const items = computed(() => all.value.filter((i) => i.kind === props.kind));
 const canPublish = computed(() => ['owner', 'admin'].includes(ctx.role.value));
+// A team agent or routine lives in exactly one teamspace (no "Only you": that is Copy to personal).
+const scopeOptions = computed(() => visibleToOptions(ctx.spaces.value || []));
+
+/** "Visible to": move it to another teamspace. It arrives as a draft there, to be published again. */
+async function move(item, to) {
+  const where = (ctx.spaces.value || []).find((s) => s.id === to)?.name || 'that teamspace';
+  const what = item.kind === 'agent' ? 'agent' : 'routine';
+  const ok = await ctx.confirm({
+    title: `Move ${item.name} to ${where}?`,
+    message: `It leaves ${props.spaceName || 'this teamspace'} and shows only in ${where}.${item.status === 'draft' ? '' : ` It arrives as a draft: publish it there before the team can run it.`}${item.kind === 'agent' ? ' Cards here that were assigned to it keep their history but lose the agent.' : ''}`,
+    confirmText: 'Move ' + what,
+  });
+  if (!ok) return;
+  busy.value = item.id;
+  try {
+    await teamApi.moveNative(props.workspaceId, item.kind, item.id, to);
+    ctx.toast(`${item.name} moved to ${where}.`);
+    await load();
+  } catch (e) {
+    ctx.toast(e.message);
+  } finally { busy.value = null; }
+}
 
 async function load() {
   try { all.value = await teamApi.native(props.workspaceId); } catch (e) { ctx.toast(e.message); } finally { loading.value = false; }
