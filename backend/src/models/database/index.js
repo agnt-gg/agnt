@@ -1675,6 +1675,23 @@ function runMigrations() {
       createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_prompt_state_updated
               ON conversation_prompt_state(updated_at)`);
 
+      // Migration: offloaded tool data survives a restart (2026-11-01).
+      // {{DATA_REF}} bytes lived only on the in-memory conversation context, so a
+      // restart mid-chat lost them while the reference stayed in the history.
+      // See services/orchestrator/dataRefStore.js.
+      db.run(`CREATE TABLE IF NOT EXISTS conversation_data_refs (
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        data_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        summary TEXT,
+        size INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (conversation_id, data_id)
+      )`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_data_refs_created
+              ON conversation_data_refs(created_at)`);
+
       // Migration: novelty gate in front of insight extraction (2026-08-01).
       // Keyed by the SHAPE of an execution's outcome, so a workflow that keeps
       // succeeding identically extracts once instead of once per run. See

@@ -92,6 +92,7 @@ import SkillModel from '../models/SkillModel.js';
 import { buildSkillsContext } from './SkillService.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled, deriveProjectSlug as deriveUnfirehoseProjectSlug } from './unfirehose/UnfirehoseLogger.js';
 import { saveBase64Image } from './ImageStorage.js';
+import { rememberDataRef } from './orchestrator/dataRefStore.js';
 import pathManager from '../utils/PathManager.js';
 import {
   sanitizeOrphanToolCalls,
@@ -439,6 +440,8 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
           // Generate and store summary
           const summary = generateDataSummary(obj, dataId);
           conversationContext.dataRefSummaries[dataId] = summary;
+          // Also kept on disk, so a restart does not lose it (dataRefStore.js).
+          rememberDataRef(conversationContext, dataId, obj, summary);
 
           offloadedData.push({
             id: dataId,
@@ -561,6 +564,7 @@ function compactMessageHistory(messages, conversationContext, threshold = 50000)
     conversationContext.preservedContent[dataId] = content;
     const summary = generateDataSummary(content, dataId);
     conversationContext.dataRefSummaries[dataId] = summary;
+    rememberDataRef(conversationContext, dataId, content, summary);
 
     const placeholderLines = [
       `[Offloaded historical data: ${dataId}] (${summary.type}, ${summary.size} chars, ${summary.lineCount} lines)`,

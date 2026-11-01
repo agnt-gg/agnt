@@ -21,7 +21,7 @@ export const RESET_GROUPS = Object.freeze([
     label: 'Chats and outputs',
     description: 'Every conversation, chat folder and generated output.',
     // conversation_roles after content_outputs: its rows reference them.
-    tables: ['conversation_logs', 'content_outputs', 'conversation_roles', 'groups', 'conversation_settings', 'conversation_prompt_state', 'codex_threads'],
+    tables: ['conversation_logs', 'content_outputs', 'conversation_roles', 'groups', 'conversation_settings', 'conversation_prompt_state', 'conversation_data_refs', 'codex_threads'],
   },
   {
     id: 'history',

@@ -1323,10 +1323,17 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
       const preserved = context?.preservedContent || {};
       const summaries = context?.dataRefSummaries || {};
+      // Refs live on the in-memory context; dataRefStore.js keeps them across a restart.
+      const { loadDataRef, listDataRefs } = await import('./dataRefStore.js');
 
       // --- list ---
       if (operation === 'list') {
-        const refs = Object.keys(preserved);
+        for (const stored of await listDataRefs(context?.conversationId, context?.userId)) {
+          if (preserved[stored.dataId] !== undefined) continue;
+          if (stored.summary && !summaries[stored.dataId]) summaries[stored.dataId] = stored.summary;
+          if (!summaries[stored.dataId]) summaries[stored.dataId] = { size: stored.size };
+        }
+        const refs = [...new Set([...Object.keys(preserved), ...Object.keys(summaries).filter((id) => /^data-/.test(id))])];
         if (refs.length === 0) {
           return JSON.stringify({ success: true, message: 'No offloaded data references in this conversation.', refs: [] });
         }
@@ -1343,7 +1350,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       if (!dataId) {
         return JSON.stringify({ success: false, error: 'dataId is required for this operation. Use operation="list" to see available refs.' });
       }
-      const data = preserved[dataId];
+      let data = preserved[dataId];
+      if (!data) {
+        const stored = await loadDataRef(context?.conversationId, context?.userId, dataId);
+        if (stored) {
+          data = stored.content;
+          // Back into memory for the rest of this conversation.
+          if (context?.preservedContent) context.preservedContent[dataId] = data;
+          if (stored.summary && context?.dataRefSummaries) context.dataRefSummaries[dataId] = stored.summary;
+        }
+      }
       if (!data) {
         const available = Object.keys(preserved);
         return JSON.stringify({
