@@ -360,7 +360,14 @@ export const TOOLS = {
       }
 
       return new Promise((resolve) => {
-        const nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env, cwd: workspaceCwd });
+        // A sandbox refusal (or a missing launcher) throws from spawn: report it as this tool's result.
+        let nodeProcess;
+        try {
+          nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env, cwd: workspaceCwd });
+        } catch (error) {
+          resolve(JSON.stringify({ success: false, error: error.message, ...(error.code ? { code: error.code } : {}) }));
+          return;
+        }
         let stdout = '';
         let stderr = '';
 
@@ -514,7 +521,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // (cmd.exe / sh), leaving the actual script orphaned on Windows and
         // potentially on POSIX too. We implement timeout ourselves below with a
         // platform-aware tree kill.
-        const childProcess = spawn(command, {
+        // A sandbox refusal (or a missing launcher) throws from spawn: report it as this tool's result.
+        let childProcess;
+        try {
+        childProcess = spawn(command, {
           shell: true,
           cwd: resolvedCwd,
           env,
@@ -524,6 +534,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           // the same fix as appending `</dev/null` manually.
           stdio: ['ignore', 'pipe', 'pipe'],
         });
+        } catch (error) {
+          resolve(JSON.stringify({ success: false, error: error.message, command, cwd: resolvedCwd, ...(error.code ? { code: error.code } : {}) }));
+          return;
+        }
 
         // Accumulate raw bytes, decode at the end. Per-chunk .toString() can
         // split a multi-byte UTF-8 sequence across chunk boundaries and drop
