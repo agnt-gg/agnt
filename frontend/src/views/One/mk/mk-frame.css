@@ -8,6 +8,10 @@
 .mk .mk-new-anchor { position: relative; }
 .mk.mk-chatlist-host { display: flex; flex: none; width: 240px; min-height: 0; border-right: 1px solid var(--line); }
 .mk.mk-chatlist-host .chat-list { flex: 1; border-right: 0; }
+/* The chat page's Saved Chats (Studio's OutputList): its own header, search and groups. */
+.one-chatlist-host { display: flex; flex-direction: column; flex: none; width: 300px; min-height: 0; border-right: 1px solid var(--line); overflow: hidden; }
+.one-chatlist-host > .output-list-container { flex: 1; min-height: 0; }
+.ui-one .one-chatlist-host + .one-main { border-left: 0; }
 .mk.mk-topbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .mk.mk-page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 .mk.mk-page > .content { flex: 1; min-width: 0; }
@@ -30,5 +34,5 @@
 .mk .av.is-system { background: var(--surface-active); color: var(--text-tertiary); }
 .mk .tc-docprev { white-space: pre-wrap; max-height: 260px; overflow: auto; }
 @media (max-width: 860px) {
-  .mk.mk-drawer-host, .mk.mk-chatlist-host { display: none; }
+  .mk.mk-drawer-host, .mk.mk-chatlist-host, .one-chatlist-host { display: none; }
 }

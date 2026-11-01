@@ -24,8 +24,10 @@
       @new-space="newTeamspace"
       @error="toast"
     />
-    <!-- The chat page's list, as in the mockup: chats waiting for your OK first. -->
-    <MkChatList v-if="!isMobile && onChatPage" :active-id="activeChatId" @open="openConversation" @new-chat="newChat" />
+    <!-- The chat page's list: Studio's Saved Chats (All / Unread / Groups, drag
+         into groups, search, multi-select), the same component as agnt-pro main.
+         It opens chats and starts new ones by route, exactly as it does there. -->
+    <div v-if="!isMobile && onChatPage" class="one-chatlist-host" data-testid="one-chat-list"><OutputList /></div>
 
     <!-- Chats: your chats only (Main chat, search, recents, right-click
          actions, account), as a drawer behind the rail's Chats icon. The rail
@@ -139,7 +141,7 @@ import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
 import MkRail from './mk/MkRail.vue';
 import MkDrawer from './mk/MkDrawer.vue';
-import MkChatList from './mk/MkChatList.vue';
+import OutputList from '@/views/Terminal/LeftPanel/types/ChatPanel/components/OutputList.vue';
 import MkTaskStrip from './mk/MkTaskStrip.vue';
 import MkIcon from './mk/MkIcon.vue';
 import { useMkFrame } from './mk/useMkFrame.js';
@@ -243,7 +245,7 @@ async function newTeamspace() {
 }
 
 // The approved mockup's frame: what is lit, the breadcrumbs, where each entry goes, New….
-const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeChatId, activeConversationId } = useMkFrame({
+const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeConversationId } = useMkFrame({
   store,
   page,
   location,
