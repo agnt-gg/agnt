@@ -134,6 +134,25 @@ export const executeLegacyFileOperation = async ({ operation, path: filePath, co
               await fs.rename(filePath, destination);
               result = { operation, path: filePath, destination, moved: true };
               break;
+            case 'delete': {
+              // Advertised in the schema but never implemented ("Unknown file operation: delete").
+              const target = path.resolve(filePath);
+              // Inside the hosted tool sandbox only the caller's own workspace is writable: the kernel bounds
+              // this. Everywhere else it is bounded here: inside the workspace, never the workspace itself.
+              if (process.env.AGNT_TOOL_SANDBOX !== '1') {
+                const { getWorkspaceRoot } = await import('../../utils/workspaceRoot.js');
+                const root = path.resolve(await getWorkspaceRoot(context?.userId));
+                const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+                if (fold(target) === fold(root) || !fold(target).startsWith(fold(root) + path.sep)) {
+                  return JSON.stringify({ success: false, error: `delete only removes files and folders inside the workspace (${root}).`, operation, path: filePath });
+                }
+              }
+              // lstat: a symlink is removed as a link, never followed.
+              const stat = await fs.lstat(target);
+              await fs.rm(target, { recursive: stat.isDirectory(), force: false });
+              result = { operation, path: filePath, deleted: true, type: stat.isDirectory() ? 'directory' : 'file' };
+              break;
+            }
             default:
               // This case should ideally not be reached if operation is validated by schema,
               // but as a fallback for unknown operations not being 'execute'.
