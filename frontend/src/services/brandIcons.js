@@ -26,6 +26,16 @@ const PLUGIN_BRAND = Object.freeze({
 /** Sign-in ids whose brand file has a different name. */
 const PROVIDER_BRAND = Object.freeze({ microsoft365: 'business-microsoft365', microsoft: 'microsoft', ga4: 'business-ga4' });
 
+/** Generic glyph names manifests use (Font Awesome / Lucide style) mapped to the nearest shipped icon. */
+const GLYPH = Object.freeze({
+  globe: 'web', wifi: 'web', search: 'web', flask: 'magic', 'flask-conical': 'magic', sparkles: 'magic', brain: 'agent',
+  'person-standing': 'agent', bolt: 'flow-2', hammer: 'create', 'pen-ruler': 'create', 'gauge-high': 'dashboard',
+  'building-shield': 'dashboard', wallet: 'finance', 'dollar-sign': 'finance', graph: 'database', mic: 'speaker',
+  gamepad: 'dice', 'scale-balanced': 'check', 'shield-check': 'check', 'shield-halved': 'check', 'shield-alt': 'check',
+  cube: 'grid', hexagon: 'grid', 'code-branch': 'code', message: 'chat', 'message-circle': 'chat', 'message-square': 'chat',
+  calendar: 'clock', 'file-lines': 'document',
+});
+const bare = (name) => String(name || '').replace(/^fa[srb]?\s+/, '').replace(/^fa-/, '').trim();
 const shipped = (name) => (typeof name === 'string' && SHIPPED_ICONS.has(name) ? name : null);
 
 /** The brand icon for a sign-in id (google, slack, notion, github…), or null. */
@@ -44,5 +54,7 @@ export function pluginIcon(plugin, { providers = [], fallback = 'puzzle-piece' }
   return shipped(PLUGIN_BRAND[name])
     || shipped(plugin?.icon)
     || providers.map((id) => providerIcon(id)).find(Boolean)
-    || fallback;
+    || shipped(GLYPH[bare(plugin?.icon)])
+    || shipped(bare(plugin?.icon))
+    || (String(plugin?.kind || '').toLowerCase() === 'pack' ? 'agent' : fallback);
 }

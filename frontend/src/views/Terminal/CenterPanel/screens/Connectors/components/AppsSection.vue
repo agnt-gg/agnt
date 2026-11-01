@@ -19,7 +19,7 @@
     <template v-if="!detailOnly">
     <header class="ap-head">
       <div class="ap-head-copy">
-        <h1>Plugins</h1>
+        <h1>{{ inAgntOne ? 'Apps' : 'Plugins' }}</h1>
         <p>A plugin can add tools, triggers, agents, workflows, skills and widgets. Sign in to a service once, and every plugin that uses it is ready.</p>
       </div>
       <div ref="buildMenuRoot" class="ap-head-actions">
@@ -455,7 +455,10 @@ const installedView = computed(() => {
 
 const kindOf = (row) => pluginKind(row);
 const brandOf = (row) => pluginIcon(row, { providers: pluginProviders(row) });
-function browseKind(kind) { switchTab('browse'); kindFilter.value = kind || 'all'; }
+function browseKind(kind) {
+  if (kind === 'accounts') return switchTab('accounts');
+  switchTab('browse'); kindFilter.value = kind || 'all';
+}
 const kindFilter = ref('all');
 const kindCounts = computed(() => marketRows.value.reduce((acc, row) => { const id = kindOf(row).id; acc[id] = (acc[id] || 0) + 1; return acc; }, {}));
 const ofKind = computed(() => marketRows.value.filter((row) => kindFilter.value === 'all' || kindOf(row).id === kindFilter.value));

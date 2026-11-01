@@ -20,7 +20,7 @@ const POPULAR = ['google', 'slack', 'notion', 'microsoft365', 'hubspot', 'github
 
 /** Asks that become possible once a sign-in is connected. */
 export const ASKS = Object.freeze({
-  google: ['Summarize my unread email from today', 'What’s on my calendar tomorrow?', 'Turn last week’s notes into a Google Doc'],
+  google: [{ text: 'Summarize my unread email from today', icon: 'gmail' }, { text: 'What’s on my calendar tomorrow?', icon: 'google-calendar' }, { text: 'Turn last week’s notes into a Google Doc', icon: 'google-docs' }],
   slack: ['Post today’s summary in Slack', 'What did I miss in Slack today?'],
   notion: ['Turn this chat into a Notion page', 'Find our onboarding doc in Notion'],
   hubspot: ['List my open HubSpot deals closing this month'],
@@ -43,8 +43,9 @@ export function needs(row, modelIds = new Set()) {
 }
 
 /**
- * Sign-in families: every connected account card, plus discover cards that at least one Market plugin
- * uses (a sign-in with nothing to unlock is noise). Popular ones first, Google leading.
+ * Sign-in families: account cards that at least one Market plugin uses, connected or not. A credential
+ * nothing on the Market uses (a custom API, an admin key) belongs on Accounts & keys, not here.
+ * Popular ones first, Google leading.
  */
 export function families({ cards = {}, rows = [], connected = new Set(), modelIds = new Set() } = {}) {
   const usersOf = new Map();
@@ -55,7 +56,7 @@ export function families({ cards = {}, rows = [], connected = new Set(), modelId
   const accounts = [...list(cards.yours), ...list(cards.discover)]
     .filter((card) => card.kind === 'account' && card.providerId && !modelIds.has(lower(card.providerId)))
     .filter((card, i, all) => all.findIndex((c) => c.providerId === card.providerId) === i)
-    .filter((card) => connected.has(lower(card.providerId)) || usersOf.has(lower(card.providerId)));
+    .filter((card) => usersOf.has(lower(card.providerId)));
   const rank = (id) => { const i = POPULAR.indexOf(id); return i === -1 ? POPULAR.length : i; };
   return accounts.map((card) => {
     const id = lower(card.providerId);
@@ -84,6 +85,7 @@ export function shelf({ rows = [], connected = new Set(), modelIds = new Set() }
     .sort((a, b) => Number(b.ready) - Number(a.ready)
       || Number(lower(b.row.trustTier) === 'official') - Number(lower(a.row.trustTier) === 'official')
       || b.requires.length - a.requires.length
+      || Number(b.kind.id === 'pack') - Number(a.kind.id === 'pack')
       || String(a.row.displayName).localeCompare(String(b.row.displayName)));
 }
 
@@ -94,7 +96,10 @@ export function unlocks(id, items, connected = new Set()) {
 
 /** Asks to show: those for connected sign-ins, then no-setup ones for utilities on the Market. */
 export function asks({ connected = new Set(), rows = [] } = {}) {
-  const forApps = [...connected].flatMap((id) => list(ASKS[id]).map((text) => ({ text, provider: id, icon: providerIcon(id) || 'puzzle-piece' })));
+  const rank = (id) => { const i = POPULAR.indexOf(id); return i === -1 ? POPULAR.length : i; };
+  const forApps = [...connected].filter((id) => ASKS[id]).sort((a, b) => rank(a) - rank(b))
+    .flatMap((id) => list(ASKS[id]).map((ask) => (typeof ask === 'string' ? { text: ask } : ask))
+      .map((ask) => ({ text: ask.text, provider: id, icon: ask.icon || providerIcon(id) || 'puzzle-piece' })));
   const byName = new Map(list(rows).map((r) => [r.name, r]));
   const noSetup = Object.entries(NO_SETUP_ASKS).filter(([name]) => byName.has(name))
     .map(([name, text]) => ({ text, plugin: name, displayName: byName.get(name).displayName, icon: pluginIcon(byName.get(name)) }));
@@ -104,6 +109,8 @@ export function asks({ connected = new Set(), rows = [] } = {}) {
 /** The one thing to do next: connect the top family, else add the first ready pack that needs a connection. */
 export function nextStep({ families: fams = [], items = [], connected = new Set() } = {}) {
   if (!connected.size) { const lead = fams.find((f) => !f.connected); return lead ? { type: 'connect', family: lead } : null; }
-  const pack = list(items).find((s) => s.ready && s.requires.length && !s.row.installed);
+  // Prefer a pack your connections made possible; else any ready pack you don't have yet.
+  const open = list(items).filter((s) => s.ready && !s.row.installed && s.kind.id === 'pack');
+  const pack = open.find((s) => s.requires.length) || open[0];
   return pack ? { type: 'install', item: pack } : null;
 }

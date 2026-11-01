@@ -24,6 +24,10 @@ describe('brand icons', () => {
   it('falls back to the sign-in’s brand, then the generic icon; never an unshipped name', () => {
     expect(pluginIcon({ name: 'x', icon: 'not-a-file' }, { providers: ['hubspot'] })).toBe('hubspot');
     expect(pluginIcon({ name: 'x', icon: '❄️' })).toBe('puzzle-piece');
+    // Generic glyph names map to the nearest shipped icon; a pack falls back to the agent mark.
+    expect(pluginIcon({ name: 'x', icon: 'fas fa-flask' })).toBe('magic');
+    expect(pluginIcon({ name: 'x', icon: 'globe' })).toBe('web');
+    expect(pluginIcon({ name: 'x', icon: 'nope', kind: 'pack' })).toBe('agent');
     expect(providerIcon('microsoft365')).toBe('business-microsoft365');
     expect(providerIcon('nope')).toBeNull();
   });
@@ -31,6 +35,10 @@ describe('brand icons', () => {
 
 describe('For you', () => {
   const none = new Set();
+  it('a connected credential nothing on the Market uses is not a family', () => {
+    const fams = families({ cards: { yours: [card('escrow-key', 'Backup key', { status: 'ready' })], discover: cards.discover }, rows, connected: new Set(['escrow-key']) });
+    expect(fams.map((f) => f.id)).not.toContain('escrow-key');
+  });
   it('families: only sign-ins something uses, Google first, with its apps and their brand icons', () => {
     const fams = families({ cards, rows, connected: none });
     expect(fams.map((f) => f.id)).toEqual(['google', 'slack', 'notion']);
@@ -52,7 +60,9 @@ describe('For you', () => {
   it('asks: connected apps’ asks, plus no-setup asks for utilities on the Market', () => {
     expect(asks({ connected: none, rows }).forApps).toEqual([]);
     expect(asks({ connected: none, rows }).noSetup.map((a) => a.plugin)).toEqual(['sentinel', 'calculator-plugin']);
-    expect(asks({ connected: new Set(['google']), rows }).forApps[0]).toMatchObject({ provider: 'google', icon: 'google' });
+    // Each Google ask carries its own app's mark: email shows Gmail, not the Google G.
+    expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail', 'google-calendar', 'google-docs']);
+    expect(asks({ connected: new Set(['slack']), rows }).forApps[0]).toMatchObject({ provider: 'slack', icon: 'slack' });
   });
   it('next step: connect the lead family first; then add a ready pack that uses a connection', () => {
     const fams = families({ cards, rows, connected: none });

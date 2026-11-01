@@ -39,7 +39,8 @@
     <section class="fy-sec" :style="{ order: connected.size ? 3 : 2 }">
       <header class="fy-sec-h"><span class="fy-n">{{ connected.size ? 3 : 2 }}</span><h3>{{ connected.size ? 'Connect more apps' : 'Connect your apps' }}</h3><p>One sign-in turns on every plugin that uses it.</p></header>
       <div v-if="connectedFamilies.length" class="fy-done">
-        <span v-for="f in connectedFamilies" :key="f.id" class="fy-chip ok"><span class="fy-tile xs"><SvgIcon :name="f.icon" /></span>{{ f.name }}</span>
+        <span v-for="f in connectedFamilies.slice(0, 10)" :key="f.id" class="fy-chip ok"><span class="fy-tile xs"><SvgIcon :name="f.icon" /></span>✓ {{ f.name }}</span>
+        <button v-if="connectedFamilies.length > 10" type="button" class="fy-chip more" @click="$emit('browse', 'accounts')">+{{ connectedFamilies.length - 10 }} more</button>
       </div>
       <div class="fy-fams">
         <article v-for="f in openFamilies" :key="f.id" class="fy-fam" :class="{ lead: f.id === leadId }" :data-family="f.id">
@@ -124,9 +125,13 @@ function unlockLabel(f) {
   return partOf ? `Part of ${partOf} pack${partOf > 1 ? 's' : ''}` : `${f.apps.length || 1} app${f.apps.length > 1 ? 's' : ''}`;
 }
 
-const readyNow = computed(() => items.value.filter((s) => s.ready && s.requires.length && !s.row.installed));
+const readyNow = computed(() => items.value.filter((s) => s.ready && !s.row.installed && s.kind.id === 'pack'));
+const connectedLabel = computed(() => {
+  const names = connectedFamilies.value.map((f) => f.name);
+  return names.length <= 3 ? names.join(', ') + ' connected' : `${names.length} apps connected`;
+});
 const headline = computed(() => connectedFamilies.value.length
-  ? `${connectedFamilies.value.map((f) => f.name).slice(0, 3).join(', ')} connected · ${readyNow.value.length} pack${readyNow.value.length === 1 ? '' : 's'} ready`
+  ? `${connectedLabel.value} · ${readyNow.value.length} pack${readyNow.value.length === 1 ? '' : 's'} ready to add`
   : 'Start with the apps you already use');
 const subline = computed(() => {
   if (!connectedFamilies.value.length) {
@@ -171,6 +176,7 @@ const subline = computed(() => {
 .fy-done { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .fy-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 99px; font-size: var(--font-size-sm); font-weight: 600; }
 .fy-chip.ok { background: rgba(var(--green-rgb), .14); color: var(--ap-ok); }
+.fy-chip.more { padding: 4px 12px; border: 1px solid var(--ap-border); background: transparent; color: var(--text-secondary); cursor: pointer; }
 .fy-fams { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .fy-fam { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--ap-border); border-radius: 14px; background: var(--ap-surface); }
 .fy-fam.lead { grid-column: span 2; grid-row: span 2; }
