@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAnalyzeImageSource } from './tools.js';
+import path from 'path';
+import { resolveAnalyzeImageSource, storedImageFor } from './tools.js';
 
 // Regression coverage for the analyze_image source-selection bug:
 // context.imageData (chat uploads) used to be checked FIRST and unconditionally,
@@ -27,6 +28,33 @@ function fakeReadFile(files) {
 // First test pays the one-time cost of importing tools.js, which transitively
 // pulls in DB init, the plugin registry and friends. Give it room.
 describe('resolveAnalyzeImageSource', { timeout: 30000 }, () => {
+  // Bravo, 2026-10-31: analyze_image could not open an image AGNT had just generated (ENOENT): on a
+  // hosted instance paths are read in the tool sandbox, which never sees the image store.
+  describe('images AGNT generated are read from the image store', () => {
+    const imagesDir = path.resolve('/data/images');
+    const stored = path.join(imagesDir, 'img-123.png');
+    const find = (id) => (id === 'img-123' ? stored : null);
+
+    it('by {{IMAGE_REF:id}} and by the path generate_image returned, never through the sandbox read', async () => {
+      for (const image of ['{{IMAGE_REF:img-123}}', stored]) {
+        const res = await resolveAnalyzeImageSource({
+          image,
+          findStoredImage: (r) => storedImageFor(r, { imagesDir, find }),
+          readStoredImage: async (file) => { expect(file).toBe(stored); return Buffer.from('GENERATED'); },
+          readFile: async () => { throw new Error('the sandbox read must not be used'); },
+        });
+        expect(res).toMatchObject({ ok: true, source: 'generated:img-123.png' });
+        expect(res.imageData).toBe(`data:image/png;base64,${Buffer.from('GENERATED').toString('base64')}`);
+      }
+    });
+
+    it('anything else in or around the store is not treated as a generated image', () => {
+      for (const other of [path.join(imagesDir, 'missing.png'), path.join(imagesDir, '..', 'agnt.db'), path.join(imagesDir, 'sub', 'img-123.png'), '{{IMAGE_REF:../agnt}}', '/etc/passwd', '']) {
+        expect(storedImageFor(other, { imagesDir, find }), other).toBeNull();
+      }
+    });
+  });
+
   describe('an explicit reference beats an active upload', () => {
     it('reads the file path even when an image was uploaded in the same turn', async () => {
       const res = await resolveAnalyzeImageSource({

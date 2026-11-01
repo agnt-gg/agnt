@@ -53,7 +53,7 @@ import ParameterResolver from '../../workflow/ParameterResolver.js';
 import { createPluginAi } from '../ai/pluginAi.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
-import { saveBase64Image } from '../ImageStorage.js';
+import { saveBase64Image, findImageFile, getImagesDir } from '../ImageStorage.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
@@ -159,10 +159,31 @@ const IMAGE_MIME_TYPES = {
  * @returns {Promise<{ok: true, imageData: string, source: string}
  *                 | {ok: false, error: string, path?: string, hint?: string}>}
  */
+/**
+ * An image AGNT itself generated, named by its {{IMAGE_REF:id}} or by the path generate_image returned,
+ * as a file in the image store; otherwise null. Only a file findImageFile resolves is ever returned, so a
+ * crafted path cannot reach anything else.
+ *
+ * Why: on a hosted instance a path is read inside the tool sandbox, which sees only the caller's
+ * workspace, never the image store, so analyze_image failed (ENOENT) on images generated a moment
+ * earlier (bravo, 2026-10-31).
+ */
+export function storedImageFor(requested, { imagesDir = getImagesDir(), find = findImageFile } = {}) {
+  if (typeof requested !== 'string' || !requested) return null;
+  const ref = requested.match(/^\{\{IMAGE_REF:([A-Za-z0-9_-]{1,128})\}\}$/)?.[1];
+  if (ref) return find(ref);
+  const resolved = path.resolve(requested);
+  if (path.dirname(resolved) !== path.resolve(imagesDir)) return null;
+  const file = find(path.basename(resolved).replace(/\.[A-Za-z0-9]+$/, ''));
+  return file && path.resolve(file) === resolved ? file : null;
+}
+
 export async function resolveAnalyzeImageSource({
   image,
   imageIndex,
   uploads = [],
+  findStoredImage = storedImageFor,
+  readStoredImage = (file) => fs.readFile(file),
   readFile = async (filename) => {
     if (!hostedToolBoundaryRequired()) return fs.readFile(filename);
     const { isolatedFileCall } = await import('../security/toolFiles.js');
@@ -184,6 +205,13 @@ export async function resolveAnalyzeImageSource({
   };
 
   const requested = typeof image === 'string' ? image.trim() : '';
+  const stored = findStoredImage(requested);
+  if (stored) {
+    const mimeType = IMAGE_MIME_TYPES[path.extname(stored).toLowerCase()] || 'image/png';
+    const fileBuffer = await readStoredImage(stored);
+    console.log(`[analyze_image] Read generated image from the image store: ${stored}`);
+    return { ok: true, imageData: `data:${mimeType};base64,${fileBuffer.toString('base64')}`, source: `generated:${path.basename(stored)}` };
+  }
   const isDataUri = requested.startsWith('data:image/');
   // A path needs a directory separator or a known image extension. A sentence
   // like "the uploaded image" satisfies neither and correctly falls through.
