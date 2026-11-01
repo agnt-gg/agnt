@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web scraping plugin for AGNT using Firecrawl API - Extract clean markdown or HTML from any webpage",
   "author": "AGNT",
   "icon": "fire",

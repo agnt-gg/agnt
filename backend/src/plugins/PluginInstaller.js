@@ -186,6 +186,8 @@ class PluginInstaller {
 
       // Install bundled .agnt plugins on first run
       await this.installBundledPlugins();
+      // The few catalog plugins every install starts with (the Google suite)
+      await this.installCatalogDefaults();
 
       // Get list of installed plugins
       const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
@@ -352,6 +354,70 @@ class PluginInstaller {
     } catch (error) {
       console.error('[PluginInstaller] Error installing bundled plugins:', error.message);
     }
+  }
+
+  /**
+   * Install the built-in catalog entries marked `installByDefault` (the Google suite), ONCE per
+   * plugin. Each goes through installFromMarketplace, so it is integrity-checked and recorded with
+   * the catalog's trust tier exactly like a user's own install. A plugin the user uninstalled, or
+   * one already seeded, is never installed again: `defaultsSeeded` in registry.json records it.
+   * Every other plugin lives on the marketplace and is installed only when the user picks it.
+   */
+  async installCatalogDefaults() {
+    let defaults = [];
+    try {
+      const catalog = JSON.parse(await fs.readFile(this.marketplacePath, 'utf-8'));
+      defaults = (catalog.plugins || []).filter((plugin) => plugin.installByDefault === true).map((plugin) => plugin.name);
+    } catch (error) {
+      console.warn('[PluginInstaller] No built-in catalog for default plugins:', error.message);
+      return { installed: [], failed: [] };
+    }
+    const registry = await this.readRegistryForDefaults();
+    const seeded = new Set(registry.defaultsSeeded);
+    const uninstalled = new Set(registry.userUninstalled);
+    const installed = [];
+    const failed = [];
+    for (const name of defaults) {
+      if (seeded.has(name) || uninstalled.has(name)) continue;
+      const present = await fs.access(path.join(this.pluginsDir, name, 'manifest.json')).then(() => true).catch(() => false);
+      if (!present) {
+        const result = await this.installFromMarketplace(name).catch((error) => ({ success: false, error: error.message }));
+        if (!result?.success) {
+          // Not marked seeded: the next start tries again (e.g. it was offline and the bundle was unreadable).
+          failed.push(name);
+          console.error(`[PluginInstaller] Default plugin ${name} did not install: ${result?.error}`);
+          continue;
+        }
+        installed.push(name);
+      }
+      await this.markDefaultSeeded(name);
+    }
+    if (installed.length || failed.length) console.log(`[PluginInstaller] Default plugins: ${installed.length} installed, ${failed.length} failed`);
+    return { installed, failed };
+  }
+
+  async readRegistryForDefaults() {
+    try {
+      const registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8')) || {};
+      return {
+        defaultsSeeded: Array.isArray(registry.defaultsSeeded) ? registry.defaultsSeeded : [],
+        userUninstalled: Array.isArray(registry.userUninstalled) ? registry.userUninstalled : [],
+      };
+    } catch {
+      return { defaultsSeeded: [], userUninstalled: [] };
+    }
+  }
+
+  async markDefaultSeeded(pluginName) {
+    let registry = { plugins: [] };
+    try {
+      registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8')) || registry;
+    } catch {}
+    if (!Array.isArray(registry.plugins)) registry.plugins = [];
+    if (!Array.isArray(registry.defaultsSeeded)) registry.defaultsSeeded = [];
+    if (registry.defaultsSeeded.includes(pluginName)) return;
+    registry.defaultsSeeded.push(pluginName);
+    await this.writeRegistryAtomic(registry);
   }
 
   /**

@@ -37,7 +37,11 @@ function archiveEntries(file) {
 describe('the installer ships no development-only plugin code', () => {
   it('no bundled plugin archive contains a self-test or fixtures folder', () => {
     const archives = fs.readdirSync(path.join(pluginsDir, 'marketplace-default')).filter((f) => f.endsWith('.agnt'));
-    expect(archives.length).toBeGreaterThan(10); // anti-vacuity: the catalogue is really being read
+    // Anti-vacuity: every catalogue entry's archive is really being read (the app now ships only a
+    // few; the rest are on the marketplace).
+    const catalogue = JSON.parse(fs.readFileSync(path.join(pluginsDir, 'marketplace.json'), 'utf8')).plugins;
+    expect(catalogue.length).toBeGreaterThan(0);
+    expect(archives.sort()).toEqual(catalogue.map((p) => p.name + '.agnt').sort());
     const offenders = archives.flatMap((archive) =>
       archiveEntries(path.join(pluginsDir, 'marketplace-default', archive)).filter((entry) => DEV_ONLY.test(entry)).map((entry) => `${archive}: ${entry}`));
     expect(offenders).toEqual([]);
