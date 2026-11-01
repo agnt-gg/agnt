@@ -125,17 +125,14 @@
               <button type="button" class="ap-chip" data-kind="all" :aria-pressed="String(kindFilter === 'all')" @click="kindFilter = 'all'">All <span class="ap-count">{{ marketRows.length }}</span></button>
               <button v-for="k in PLUGIN_KINDS" :key="k.id" type="button" class="ap-chip" :data-kind="k.id" :aria-pressed="String(kindFilter === k.id)" v-tooltip="k.detail" @click="kindFilter = k.id">{{ k.label }} <span class="ap-count">{{ kindCounts[k.id] || 0 }}</span></button>
             </div>
-            <span class="ap-grow"></span>
-            <label v-if="browseCategories.length > 1" class="ap-select"><span>Category</span>
-              <select v-model="filters.browse" data-testid="category-filter" aria-label="Category">
-                <option value="all">All</option>
-                <option v-for="category in browseCategories" :key="category" :value="category">{{ category }}</option>
-              </select></label>
-            <label class="ap-select"><span>Sort</span>
-              <select v-model="browseSort" data-testid="browse-sort" aria-label="Sort">
-                <option value="recommended">Recommended</option>
-                <option value="name">Name</option>
-              </select></label>
+            <select v-if="browseCategories.length > 1" v-model="filters.browse" class="ap-select" data-testid="category-filter" aria-label="Category">
+              <option value="all">All categories</option>
+              <option v-for="category in browseCategories" :key="category" :value="category">{{ category }}</option>
+            </select>
+            <select v-model="browseSort" class="ap-select" data-testid="browse-sort" aria-label="Sort">
+              <option value="recommended">Sort: Recommended</option>
+              <option value="name">Sort: Name</option>
+            </select>
           </div>
           <p v-if="loading && !marketRows.length" class="ap-empty" role="status">Loading the Market…</p>
           <div v-else-if="!visibleMarket.length" class="ap-empty">

@@ -78,11 +78,14 @@
 /* ── Toolbar, notices ────────────────────────────────────── */
 .apps-studio .ap-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
 .apps-studio .ap-search { position: relative; flex: 1; min-width: 200px; max-width: 420px; display: flex; align-items: center; }
-/* Browse: search, kind and the two dropdowns share one row; it wraps on narrow screens. */
-.apps-studio .ap-browse-bar .ap-search { max-width: 300px; }
-.apps-studio .ap-browse-bar .ap-grow { flex: 1; }
-.apps-studio .ap-select { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.apps-studio .ap-select select { height: 30px; padding: 0 26px 0 10px; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface); color: var(--text-primary); font: inherit; font-size: var(--font-size-sm); cursor: pointer; }
+/* Browse: search, kind and the two dropdowns share one row; it wraps only on narrow screens. */
+.apps-studio .ap-browse-bar { flex-wrap: nowrap; }
+.apps-studio .ap-browse-bar .ap-search { flex: 1 1 140px; min-width: 120px; max-width: 280px; }
+.apps-studio .ap-browse-bar .ap-chips { flex: none; flex-wrap: nowrap; }
+.apps-studio .ap-browse-bar .ap-select { margin-left: auto; }
+.apps-studio .ap-browse-bar .ap-select + .ap-select { margin-left: 0; }
+.apps-studio .ap-select { flex: none; height: 32px; max-width: 170px; padding: 0 8px; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface); color: var(--text-primary); font: inherit; font-size: var(--font-size-sm); cursor: pointer; }
+@media (max-width: 1100px) { .apps-studio .ap-browse-bar { flex-wrap: wrap; } }
 .apps-studio .ap-search .apps-ui-icon { position: absolute; left: 12px; width: 17px; height: 17px; color: var(--text-tertiary); pointer-events: none; }
 .apps-studio .ap-search input { width: 100%; min-height: 40px; padding: 0 var(--spacing-sm) 0 38px; border: 1px solid var(--border-strong); border-radius: var(--border-radius-md); background: var(--ap-surface); font-size: var(--font-size-sm); }
 .apps-studio .ap-search input::placeholder { color: var(--text-tertiary); }
