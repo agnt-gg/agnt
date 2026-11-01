@@ -11,7 +11,14 @@ describe('a conversation at its start screen', () => {
   it('is one nobody has spoken in: empty, or only the greeting', () => {
     expect(isUnstartedConversation([])).toBe(true);
     expect(isUnstartedConversation(undefined)).toBe(true);
-    expect(isUnstartedConversation([{ role: 'assistant', content: 'Hi!' }])).toBe(true);
+    expect(isUnstartedConversation([{ role: 'assistant', content: 'Hi!', isGreeting: true }])).toBe(true);
+    expect(isUnstartedConversation([{ role: 'assistant', content: '' }])).toBe(true);
+  });
+
+  it('a conversation AGNT started itself (a flagged triage issue) shows its transcript, not the home', () => {
+    const flagged = [{ id: 'msg-1', role: 'assistant', content: '**Found while:** …', metadata: ['Flagged by Annie'], toolCalls: [], contentParts: [] }];
+    expect(isUnstartedConversation(flagged)).toBe(false);
+    expect(isUnstartedConversation([{ role: 'assistant', content: '', toolCalls: [{ id: 't1' }] }])).toBe(false);
   });
 
   it('ends with the first message', () => {

@@ -13,8 +13,15 @@ import { isGreeting } from './providerGreeting.js';
 export function isUnstartedConversation(messages) {
   const list = Array.isArray(messages) ? messages : [];
   if (list.some((m) => m?.showProviderSetup)) return false;
-  return !list.some((m) => m?.role === 'user');
+  // Started once anyone has said something real. Not only the user: a conversation
+  // AGNT opens itself (a flagged issue, a scheduled report, a text) starts with an
+  // assistant message and no user turn, and used to open to the empty home.
+  return !list.some((m) => m?.role === 'user' || (m?.role === 'assistant' && !isGreeting(m) && hasContent(m)));
 }
+
+const hasContent = (m) => (typeof m.content === 'string' && m.content.trim() !== '')
+  || (Array.isArray(m.contentParts) && m.contentParts.length > 0)
+  || (Array.isArray(m.toolCalls) && m.toolCalls.length > 0);
 
 /**
  * The transcript AGNT One draws: without the welcome greeting, which One's
