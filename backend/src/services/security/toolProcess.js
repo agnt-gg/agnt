@@ -67,24 +67,32 @@ export function sandboxPlan(command, args = [], options = {}, { hosted = hostedT
   return { command: LAUNCHER, args: invocation, options: { ...options, shell: false, env: environment, cwd }, dispose: broker.close };
 }
 
-function trackedSpawn(plan) {
+/** A one-shot tool printing more than this over its life is runaway output, and is stopped. */
+export const DEFAULT_OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
+
+function trackedSpawn(plan, outputLimitBytes = DEFAULT_OUTPUT_LIMIT_BYTES) {
   try {
     const child = childProcess.spawn(plan.command, plan.args, plan.options);
     child.once('close', () => plan.dispose?.());
     child.once('error', () => plan.dispose?.());
     if (plan.dispose) {
       let bytes = 0;
-      const count = (chunk) => { bytes += chunk.length; if (bytes > 8 * 1024 * 1024) child.kill('SIGKILL'); };
+      const count = (chunk) => { bytes += chunk.length; if (bytes > outputLimitBytes) child.kill('SIGKILL'); };
       child.stdout?.on('data', count); child.stderr?.on('data', count);
     }
     return child;
   } catch (error) { plan.dispose?.(); throw error; }
 }
 
+/**
+ * options.outputLimitBytes: lifetime output cap on a hosted instance (default 8 MB). A long-lived server
+ * whose output is consumed as it streams (an MCP stdio session) passes a higher cap; it is never unbounded.
+ */
 export function spawn(command, args, options) {
   if (!Array.isArray(args)) { options = args || {}; args = []; }
-  const plan = sandboxPlan(command, args, options || {});
-  return trackedSpawn(plan);
+  const { outputLimitBytes, ...spawnOptions } = options || {};
+  const plan = sandboxPlan(command, args, spawnOptions);
+  return trackedSpawn(plan, outputLimitBytes);
 }
 export function spawnSync(command, args, options) {
   if (!Array.isArray(args)) { options = args || {}; args = []; }

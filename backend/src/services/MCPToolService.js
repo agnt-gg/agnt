@@ -23,10 +23,14 @@
  *     2. When the user saves an MCP config change (via MCPService → invalidate).
  *     3. When the user clicks "Refresh schemas" / "Test" on the MCP page.
  *
- * Tool execution — fully lazy:
- *   `executeTool()` spawns the relevant server, runs `initialize` + `callTool`,
- *   and closes the connection. One spawn per tool call. We don't pool — by
- *   design — so MCP servers only run when their tools are being used.
+ * Tool execution — lazy, short-lived sessions:
+ *   `executeTool()` spawns the relevant server on first use and keeps that
+ *   connection for MCP_SESSION_IDLE_MS after the last call, per account. A
+ *   server still only runs while its tools are being used, but a stateful one
+ *   keeps its state between the calls of one task. Spawning per call made the
+ *   Chrome DevTools server lose every page it opened before the next call
+ *   (bravo, 2026-10-31: "No page found"). Sessions close when idle, when a call
+ *   fails, when the MCP config changes, and beyond MAX_MCP_SESSIONS.
  *
  * Why namespaced rather than flat tool names?
  *   - Two MCP servers can legitimately expose tools with the same short name
@@ -48,8 +52,11 @@ import MCPDiscovery from '../tools/library/mcp/MCPDiscovery.js';
 import MCPClient from '../tools/library/mcp/MCPClient.js';
 import MCPOAuthService from './MCPOAuthService.js';
 import PathManager from '../utils/PathManager.js';
+import { currentToolActor } from './security/toolRunAuthority.js';
 
 const TOOL_NAME_PREFIX = 'mcp__';
+export const MCP_SESSION_IDLE_MS = Number(process.env.AGNT_MCP_SESSION_IDLE_MS) || 5 * 60 * 1000;
+export const MAX_MCP_SESSIONS = 8;
 // A healthy already-cached MCP server initializes in <500ms — but `npx -y
 // thing@latest` on first run can spend 10-20s downloading the package before
 // the actual process even starts. With a short cutoff those slow-first-run
@@ -91,6 +98,66 @@ class MCPToolService {
     this._cache = this._readCacheFromDisk() || this._emptyCache();
     // De-duplicates concurrent refreshSchemas() calls.
     this._refreshPromise = null;
+    /** `${account}\n${server config}` -> { ready: Promise<client>, timer, active, lastUsed } */
+    this._sessions = new Map();
+  }
+
+  /** One session per account and exact server config: accounts never share a server's state. */
+  _sessionKey(server) {
+    return `${currentToolActor() || ''}\n${JSON.stringify(server)}`;
+  }
+
+  async _session(server) {
+    const key = this._sessionKey(server);
+    let session = this._sessions.get(key);
+    // A server that exited (crashed, or killed) since the last call is replaced, not reused.
+    if (session?.settled && session.client.transport?.connected === false) {
+      this._closeSession(key, session);
+      session = null;
+    }
+    if (!session) {
+      this._evictBeyond(MAX_MCP_SESSIONS - 1);
+      const client = this._buildClient(server);
+      session = { client, ready: client.initialize().then(() => { session.settled = true; return client; }), settled: false, timer: null, active: 0, lastUsed: Date.now() };
+      this._sessions.set(key, session);
+      session.ready.catch(() => this._closeSession(key, session));
+    }
+    clearTimeout(session.timer);
+    session.active += 1;
+    try {
+      return { key, session, client: await session.ready };
+    } catch (error) {
+      session.active -= 1;
+      throw error;
+    }
+  }
+
+  _release(key, session) {
+    session.active -= 1;
+    session.lastUsed = Date.now();
+    if (session.active > 0 || this._sessions.get(key) !== session) return;
+    session.timer = setTimeout(() => this._closeSession(key, session), MCP_SESSION_IDLE_MS);
+    session.timer.unref?.();
+  }
+
+  _closeSession(key, session) {
+    clearTimeout(session.timer);
+    if (this._sessions.get(key) === session) this._sessions.delete(key);
+    session.client.close().catch(() => {});
+  }
+
+  /** Least recently used idle sessions go first; a session mid-call is never closed. */
+  _evictBeyond(limit) {
+    const idle = [...this._sessions].filter(([, s]) => s.active === 0).sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    while (this._sessions.size > limit && idle.length) {
+      const [key, session] = idle.shift();
+      this._closeSession(key, session);
+    }
+  }
+
+  /** Close every session (config changed, or shutdown). */
+  closeSessions() {
+    for (const [key, session] of [...this._sessions]) this._closeSession(key, session);
   }
 
   _emptyCache() {
@@ -417,10 +484,11 @@ class MCPToolService {
   }
 
   /**
-   * Execute an MCP tool by its namespaced name. Connection is short-lived by
-   * design — spawn → initialize → callTool → close. We deliberately do NOT
-   * pool: an MCP server should only be running while one of its tools is
-   * being used. The user's intent is "lazy spawn, no daemons."
+   * Execute an MCP tool by its namespaced name, on the account's session for
+   * that server (spawned on first use, closed after MCP_SESSION_IDLE_MS idle).
+   * Lazy, never a daemon: nothing runs until a tool is used, and nothing
+   * outlives a few idle minutes. A failed call closes the session, so the next
+   * call starts clean rather than reusing a broken server.
    */
   async executeTool(mcpName, args) {
     const resolved = await this.resolve(mcpName);
@@ -428,13 +496,14 @@ class MCPToolService {
       throw new Error(`MCP tool "${mcpName}" not found. The schema cache may be stale — try clicking Refresh on the MCP page.`);
     }
     const { server, originalToolName } = resolved;
-    const client = this._buildClient(server);
+    const { key, session, client } = await this._session(server);
     try {
-      await client.initialize();
-      const result = await client.callTool(originalToolName, args || {});
-      return result;
+      return await client.callTool(originalToolName, args || {});
+    } catch (error) {
+      this._closeSession(key, session);
+      throw error;
     } finally {
-      await client.close().catch(() => {});
+      this._release(key, session);
     }
   }
 
@@ -449,6 +518,8 @@ class MCPToolService {
    */
   invalidate() {
     console.log('[MCPToolService] Cache invalidated — refreshing in background');
+    // A changed config must not keep serving the old server.
+    this.closeSessions();
     this.refreshSchemas().catch((err) => {
       console.warn('[MCPToolService] Background refresh after invalidate failed:', err.message);
     });
@@ -458,4 +529,4 @@ class MCPToolService {
 const instance = new MCPToolService();
 
 export default instance;
-export { isMCPToolName, TOOL_NAME_PREFIX };
+export { isMCPToolName, TOOL_NAME_PREFIX, MCPToolService };

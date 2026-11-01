@@ -44,6 +44,9 @@ class STDIOTransport {
           cwd: this.cwd,
           env: { ...process.env, ...this.env },
           stdio: ['pipe', 'pipe', 'pipe'],
+          // A session streams many responses (DevTools snapshots, screenshots) and each is consumed as
+          // it arrives; the 8 MB one-shot cap would kill it mid-task. Still bounded.
+          outputLimitBytes: 512 * 1024 * 1024,
         };
 
         // On Windows, use shell mode for npm/npx to properly resolve the command
