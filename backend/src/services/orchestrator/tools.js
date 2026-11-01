@@ -54,6 +54,7 @@ import { createPluginAi } from '../ai/pluginAi.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
 import { saveBase64Image, findImageFile, getImagesDir } from '../ImageStorage.js';
+import { hiddenOnThisInstance, isMissingProgramError, notInstalledMessage } from './localCliTools.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
@@ -870,6 +871,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
     ) => {
       try {
         const status = await GrokBuildAuthManager.checkApiUsable();
+        if (status.cliUsable === false || isMissingProgramError(status.error)) {
+          return JSON.stringify({ success: false, error: notInstalledMessage('grok_exec') });
+        }
         if (!status.apiUsable && !GrokBuildAuthManager.getAccessToken()) {
           return JSON.stringify({
             success: false,
@@ -1048,6 +1052,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
     ) => {
       try {
         const auth = await CursorCliService.checkAuth();
+        if (!auth.loggedIn && isMissingProgramError(auth.error)) {
+          return JSON.stringify({ success: false, error: notInstalledMessage('cursor_exec') });
+        }
         if (!auth.loggedIn) {
           return JSON.stringify({
             success: false,
@@ -4931,6 +4938,8 @@ function injectAsyncParams(schema) {
 
   for (const schema of allSchemas) {
     if (schema.function && schema.function.name) {
+      // A tool whose program is not installed here is not offered (localCliTools.js).
+      if (hiddenOnThisInstance(schema.function.name)) continue;
       if (seenNames.has(schema.function.name)) {
         duplicateNames.add(schema.function.name);
         continue;
