@@ -102,6 +102,9 @@ describe('teamspace routes through the real team router', () => {
     expect((await request(`/team/workspaces/${ws}/messages`, 'POST', { body: 'hi' }, 'vic')).status).toBe(403);
     expect((await request(`/team/workspaces/${ws}/tasks`, 'GET', null, 'mallory')).status).toBe(404);
     expect((await request('/team/inbox', 'GET', null, 'mallory')).status).toBe(404);
+    // A reply Annie is still writing is behind the same check as the chat itself.
+    expect((await request(`/team/workspaces/${ws}/messages/live`, 'GET', null, 'mallory')).status).toBe(404);
+    expect((await request(`/team/workspaces/${ws}/messages/live`, 'GET', null, 'vic')).status).toBe(200);
   }));
 
   it('board: create, move with revision, conflict on a stale move', () => fixture(async ({ request, ws }) => {
@@ -278,7 +281,8 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
       workspaceAgents: async () => [{ id: 'proposal', name: 'Proposal Agent', kind: 'agent', status: 'published' }],
       agentExecutor: () => executor,
       schedule: (fn) => pending.push(fn()),
-      askAnnie: (input) => (annieCalls.push(input), annie(input)),
+      // A stub turn: whatever text the test supplies, streamed into the real reducing transport.
+      askAnnie: async (input) => { annieCalls.push(input); const text = await annie(input); input.transport.send('content_delta', { delta: text }); return input.transport.outcome(); },
     });
     app.use('/teams', router);
     const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -337,6 +341,10 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     expect(annieCalls[0].prompt).toMatch(/The request: @Annie draft a two-line follow-up to Globex/);
     const messages = (await request('/team/workspaces/ws/messages')).body;
     expect(messages.at(-1)).toMatchObject({ author: { kind: 'agent', id: 'annie' }, body: 'Hi Globex, following up on Tuesday.' });
+    // The full chat message is stored, so the teamspace renders it as the main chat would.
+    expect(messages.at(-1).message).toMatchObject({ content: 'Hi Globex, following up on Tuesday.', contentParts: [{ type: 'text', text: 'Hi Globex, following up on Tuesday.' }] });
+    // Nothing is left streaming once she has answered.
+    expect((await request('/team/workspaces/ws/messages/live')).body).toEqual([]);
     expect((await request('/team/workspaces/ws/tasks')).body).toEqual([]);
   }, async () => { throw new Error('no agent runs'); }, async () => 'Hi Globex, following up on Tuesday.'));
 

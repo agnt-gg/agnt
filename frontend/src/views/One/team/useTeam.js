@@ -131,6 +131,8 @@ const json = (method, body) => ({ method, body: JSON.stringify(body ?? {}) });
 
 export const teamApi = {
   messages: (ws) => teamRequest(space(ws, '/messages')),
+  /** Replies being written right now (Annie streaming), as full chat messages. */
+  liveMessages: (ws) => teamRequest(space(ws, '/messages/live')),
   postMessage: (ws, body, mentions, spaceName) => teamRequest(space(ws, '/messages'), json('POST', { body, mentions, spaceName })),
   deleteMessage: (ws, id) => teamRequest(space(ws, '/messages/' + encodeURIComponent(id)), { method: 'DELETE' }),
   /** The teamspace board, or with { private: true } the caller's own My Space cards in that workspace. */

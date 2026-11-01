@@ -68,12 +68,29 @@ export async function initializeTeamSpaces(repository) {
   // My Space tasks: a card only its owner sees. Added after the table shipped, so added in place.
   const columns = await repository.all('PRAGMA table_info(space_tasks)');
   if (!columns.some((c) => c.name === 'private_to')) await repository.run('ALTER TABLE space_tasks ADD COLUMN private_to TEXT');
+  // A reply's full chat message (text parts, tool calls, images), so the teamspace chat renders
+  // exactly what the main chat does. `body` stays the plain text for search, inbox and previews.
+  const messageColumns = await repository.all('PRAGMA table_info(space_messages)');
+  if (!messageColumns.some((c) => c.name === 'message_json')) await repository.run('ALTER TABLE space_messages ADD COLUMN message_json TEXT');
+}
+
+/** The largest stored chat message (tool results included); bigger ones keep their text only. */
+const MAX_MESSAGE_JSON = 512 * 1024;
+function messageJson(message) {
+  if (!message || typeof message !== 'object') return null;
+  const { content = '', contentParts = [], toolCalls = [], reasoning = '' } = message;
+  const json = JSON.stringify({ content, contentParts, toolCalls, reasoning });
+  return json.length <= MAX_MESSAGE_JSON ? json : JSON.stringify({ content, contentParts: [{ type: 'text', text: content }], toolCalls: [], reasoning: '' });
+}
+function parseMessageJson(json) {
+  if (!json) return null;
+  try { return JSON.parse(json); } catch { return null; }
 }
 
 const now = () => new Date().toISOString();
 
 function messageRow(row) {
-  return { id: row.id, workspaceId: row.workspace_id, author: { kind: row.author_kind, id: row.author_id }, body: row.body, mentions: JSON.parse(row.mentions_json || '[]'), taskId: row.task_id || null, createdAt: row.created_at };
+  return { id: row.id, workspaceId: row.workspace_id, author: { kind: row.author_kind, id: row.author_id }, body: row.body, mentions: JSON.parse(row.mentions_json || '[]'), taskId: row.task_id || null, createdAt: row.created_at, message: parseMessageJson(row.message_json) };
 }
 export function taskRow(row) {
   return {
@@ -159,17 +176,27 @@ export class TeamSpaceRepository {
     });
   }
 
-  /** An agent's message (its reply in chat). Called by the server only, never from a request body. */
-  postAgentMessage(teamId, workspaceId, agentId, body, taskId = null) {
+  /**
+   * An agent's message (its reply in chat). Called by the server only, never from a request body.
+   * `message` is the full chat message (contentParts, toolCalls) when the reply came from a chat turn.
+   */
+  postAgentMessage(teamId, workspaceId, agentId, body, taskId = null, message = null) {
     const r = this.repository;
     return r.transaction(async () => {
       await this.workspace(teamId, workspaceId);
       const id = randomUUID();
       const createdAt = now();
       const content = String(body).slice(0, MAX_BODY);
-      await r.run('INSERT INTO space_messages(id,team_id,workspace_id,author_kind,author_id,body,task_id,created_at) VALUES(?,?,?,?,?,?,?,?)', [id, teamId, workspaceId, 'agent', agentId, content, taskId, createdAt]);
-      return messageRow({ id, workspace_id: workspaceId, author_kind: 'agent', author_id: agentId, body: content, task_id: taskId, created_at: createdAt });
+      const json = messageJson(message);
+      await r.run('INSERT INTO space_messages(id,team_id,workspace_id,author_kind,author_id,body,task_id,created_at,message_json) VALUES(?,?,?,?,?,?,?,?,?)', [id, teamId, workspaceId, 'agent', agentId, content, taskId, createdAt, json]);
+      return messageRow({ id, workspace_id: workspaceId, author_kind: 'agent', author_id: agentId, body: content, task_id: taskId, created_at: createdAt, message_json: json });
     });
+  }
+
+  /** May this person read this teamspace's chat? Throws exactly as reading the messages would. */
+  canRead(teamId, user, workspaceId) {
+    const r = this.repository;
+    return r.transaction(async () => { await r.member(teamId, user); await this.workspace(teamId, workspaceId); return true; });
   }
 
   /** Authors delete their own messages; owners and admins may delete any. */

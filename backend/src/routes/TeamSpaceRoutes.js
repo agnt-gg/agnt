@@ -1,6 +1,6 @@
 import { TeamSpaceRepository, parseAssignee, parseMentions } from '../services/TeamSpaceRepository.js';
 import { runAgentOnTask } from '../services/TeamSpaceAgents.js';
-import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../services/TeamSpaceAnnie.js';
+import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn, liveReplies } from '../services/TeamSpaceAnnie.js';
 
 /**
  * Teamspace collaboration routes, mounted inside TeamRoutes' router so every
@@ -18,7 +18,8 @@ import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn } from '../service
  *   workspaceAgents(repo, req)           [{id, name, status}] native agents in the teamspace
  *   agentExecutor(repo, req, user, id)   (input) => run result, through NativeTeamExecution
  *   schedule(fn)                         runs agent work after the response (setImmediate in production)
- *   askAnnie({userId, authToken, prompt}) Annie's answer as the tagging person (TeamSpaceAnnie.runAnnieTurn)
+ *   askAnnie({userId, authToken, prompt, transport}) Annie's turn as the tagging person, streamed into
+ *                                        `transport` (TeamSpaceAnnie.runAnnieTurn)
  *   spaceMembers(req)                    ids of the people in req.params.workspaceId (default: the whole team)
  *   canWriteIn(req, workspaceId)         throws unless the caller has resources.write in ANOTHER teamspace
  *                                        (a move's destination). Fails closed when not supplied.
@@ -68,6 +69,12 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
 
   // ── Chat ────────────────────────────────────────────────────────────────
   router.get(W + '/messages', handler((repo, req, user) => spacesOf(repo).messages(req.params.teamId, user, req.params.workspaceId, { before: req.query.before })));
+  // Replies being written right now (Annie streaming), for the people who may read this chat.
+  // The realtime signal carries only ids; the content is fetched here, behind the same check.
+  router.get(W + '/messages/live', handler(async (repo, req, user) => {
+    await spacesOf(repo).canRead(req.params.teamId, user, req.params.workspaceId);
+    return liveReplies(req.params.teamId, req.params.workspaceId);
+  }));
 
   router.post(W + '/messages', handler(async (repo, req, user) => {
     const mentions = parseMentions(req.body?.mentions);
@@ -83,7 +90,11 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
       const names = new Map((await workspaceAgents(repo, req)).map((a) => [a.id, a.name]));
       const prompt = anniePrompt({ spaceName: req.body?.spaceName, message, history: history.filter((m) => m.id !== message.id), names });
       const authToken = req.headers.authorization;
-      schedule(() => answerInTeamChat({ spaces, teamId, workspaceId, prompt, ask: (p) => askAnnie({ userId: user, authToken, prompt: p }), changed: () => signal(req, 'messages') }));
+      schedule(() => answerInTeamChat({
+        spaces, teamId, workspaceId, prompt,
+        ask: (p, transport) => askAnnie({ userId: user, authToken, prompt: p, transport }),
+        changed: (extra = {}) => signal(req, 'messages', extra),
+      }));
     }
     // Each @agent gets a card made from the message and starts on it.
     for (const mention of mentions.filter((m) => m.kind === 'agent' && !isAnnie(m)).slice(0, 3)) {

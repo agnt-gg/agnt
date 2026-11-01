@@ -50,7 +50,8 @@ function baseRoutes() {
 
 function mountPage(location) {
   const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(async () => true), prompt: vi.fn(async () => null), openConversation: vi.fn(), chat: vi.fn(), openScreen: vi.fn() };
-  const store = createStore({ state: { userAuth: { user: { id: 'me' } } } });
+  // The chat renders through the main chat's MessageItem, which reads the agents list for @mention pills.
+  const store = createStore({ state: { userAuth: { user: { id: 'me' } } }, modules: { agents: { namespaced: true, state: () => ({ agents: [] }), getters: { allAgents: () => [] } } } });
   const wrapper = mount(OneTeamPage, { props: { location }, global: { plugins: [store], provide: { focusedNav: nav } } });
   mounted.push(wrapper);
   return { wrapper, nav };
@@ -102,13 +103,21 @@ describe('teamspace chat', () => {
     expect(sent.body.mentions).toEqual([{ kind: 'agent', id: 'annie' }]);
   });
 
-  it('renders message text as text, never HTML', async () => {
-    routes['/acme/workspaces/sales/messages'] = [{ id: 'm1', author: { kind: 'person', id: 'jess' }, body: '<img src=x onerror=alert(1)> hi @Jess', mentions: [], createdAt: new Date().toISOString() }];
+  it('renders messages like the main chat (markdown), and a teammate’s hostile HTML never runs', async () => {
+    routes['/acme/workspaces/sales/messages'] = [
+      { id: 'm1', author: { kind: 'person', id: 'jess' }, body: '<img src=x onerror=alert(1)><script>alert(2)</script> hi @Jess', mentions: [], createdAt: new Date().toISOString() },
+      { id: 'm2', author: { kind: 'agent', id: 'annie' }, body: 'Plan', mentions: [], createdAt: new Date().toISOString(), message: { content: '## Plan\n\n- **one**', contentParts: [{ type: 'text', text: '## Plan\n\n- **one**' }], toolCalls: [] } },
+    ];
     const { wrapper } = mountPage(loc({ view: 'space', space: 'sales', tab: 'chat' }));
     await flushPromises();
-    expect(wrapper.find('.msg-text img').exists()).toBe(false);
-    expect(wrapper.find('.msg-text').text()).toContain('<img src=x onerror=alert(1)>');
-    expect(wrapper.find('.mention').text()).toBe('@Jess');
+    const hostile = wrapper.find('[data-message="m1"]');
+    expect(hostile.find('[onerror]').exists()).toBe(false);
+    expect(hostile.find('script').exists()).toBe(false);
+    expect(hostile.text()).toContain('hi @Jess');
+    // Annie's reply renders as markdown, through the main chat's MessageItem.
+    const reply = wrapper.find('[data-message="m2"]');
+    expect(reply.find('h2').text()).toBe('Plan');
+    expect(reply.find('strong').text()).toBe('one');
   });
 });
 
