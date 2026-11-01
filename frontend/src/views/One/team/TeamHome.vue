@@ -144,7 +144,8 @@ const mentions = computed(() => ctx.inbox.value.filter((i) => i.kind === 'mentio
 // Plugin requests: the ones you decide, and your own once decided (until dismissed).
 const plugins = usePluginRequests();
 const pluginAsks = computed(() => (plugins.state.canDecide ? plugins.state.pending : []));
-const pluginOutcomes = computed(() => plugins.state.mine.filter((r) => r.status !== 'pending'));
+// Your own requests: waiting ones too, so asking never looks like nothing happened.
+const pluginOutcomes = computed(() => plugins.state.mine);
 const deciding = ref(null);
 async function decidePlugin(request, approve) {
   deciding.value = request.id;

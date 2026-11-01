@@ -24,7 +24,9 @@
              into one you installed. -->
         <button v-if="plugin.installed && builtByMe" type="button" class="ap-btn small" data-action="edit-in-forge" @click="emit('open-app')">Edit in the Forge</button>
         <!-- The lead action: the next thing to do (services/pluginDirectory pluginNextStep). -->
-        <button v-if="next.kind === 'install'" type="button" class="ap-btn primary" data-action="install" :disabled="installBusy" @click="emit('install')">
+        <!-- A member asked the owner for this plugin: say so instead of offering Install again. -->
+        <span v-if="next.kind === 'install' && requested" class="ap-status warn" data-testid="requested">Requested · waiting for the owner. You’ll see the answer on Home.</span>
+        <button v-else-if="next.kind === 'install'" type="button" class="ap-btn primary" data-action="install" :disabled="installBusy" @click="emit('install')">
           {{ installing ? 'Checking…' : price ? `Get · ${price}` : `Install ${plugin.displayName}` }}
         </button>
         <button v-else-if="next.kind === 'connect' || next.kind === 'reconnect'" type="button" class="ap-btn primary" data-action="next-connect" @click="emit(next.kind, next.connection)">
@@ -177,6 +179,8 @@ import {
 const OPS_SHOWN = 12;
 const props = defineProps({
   plugin: { type: Object, required: true },
+  // This member asked the owner to add it and is waiting for the answer.
+  requested: Boolean,
   assets: { type: Array, default: () => [] },
   assetsLoading: Boolean,
   assetsError: { type: String, default: '' },

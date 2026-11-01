@@ -51,6 +51,18 @@
 
     <p v-if="error" class="ap-notice error" role="alert">{{ error }} <button type="button" class="ap-link" @click="reload">Retry</button></p>
     <p v-if="notice" class="ap-notice" role="status">{{ notice }}</p>
+    <!-- The owner (or an allowed admin) decides members' plugin requests right here, not only on Home. -->
+    <section v-if="!detailOnly && requestsToDecide.length" class="ap-requests-card ap-requests" data-testid="plugin-requests-banner" role="status">
+      <AppsIcon name="shield" />
+      <div class="ap-requests-body">
+        <p><b>{{ requestsToDecide.length === 1 ? 'A teammate wants to add a plugin' : `${requestsToDecide.length} plugin requests are waiting` }}</b></p>
+        <div v-for="r in requestsToDecide.slice(0, 3)" :key="r.id" class="ap-request" :data-request="r.id">
+          <span>{{ requestName(r.pluginName) }}</span>
+          <button type="button" class="ap-btn small" :disabled="deciding === r.id" @click="decideRequest(r, false)">Decline</button>
+          <button type="button" class="ap-btn small primary" :disabled="deciding === r.id" @click="decideRequest(r, true)">{{ deciding === r.id ? 'Installing…' : 'Approve' }}</button>
+        </div>
+      </div>
+    </section>
 
     <div class="ap-layout" :class="{ 'has-detail': hasDetail }">
       <!-- plugins.catalog: the "Give Annie hands" mission (services/journey/missions.js) points here. -->
@@ -59,7 +71,7 @@
         <ForYouView
           v-if="tab === 'foryou'"
           :rows="catalog" :cards="cards" :connected-ids="connectedApps" :model-provider-ids="modelProviderIds"
-          :installing="installing || ''" :install-busy="!!installing"
+          :installing="installing || ''" :install-busy="!!installing" :requested-names="[...requestedNames]"
           @connect="(c) => emit('connect', c)"
           @install="(row) => install(row)"
           @open="openPlugin"
@@ -164,6 +176,7 @@
               <div class="ap-row-side">
                 <span class="ap-price">{{ priceLabel(row) || 'Free' }}</span>
                 <span v-if="row.installed" class="ap-installed"><AppsIcon name="check" />Installed</span>
+                <span v-else-if="requestedNames.has(row.name)" class="ap-status warn" data-testid="requested" v-tooltip="'You asked the owner to add this plugin. You’ll see the answer on Home.'">Requested · waiting for the owner</span>
                 <!-- Quiet in the list: every row offering a pink Install left
                      the page with no lead action. The detail's Install leads. -->
                 <button v-else type="button" class="ap-btn small" data-action="install" :disabled="!!installing" @click="install(row)">
@@ -315,6 +328,7 @@
         <button type="button" class="ap-btn quiet small ap-back" data-action="back" @click="closeDetail"><AppsIcon name="back" /> {{ backLabel || tabLabel }}</button>
         <PluginDetail
           v-if="selected" ref="detailView" :key="selected.name"
+          :requested="requestedNames.has(selected.name)"
           :plugin="selected" :assets="assets" :assets-loading="assetsLoading" :assets-error="assetsError"
           :connections="connections" :card="selectedCard" :notice="selectedNotice" :agents="selectedAgents"
           :model-provider-ids="modelProviderIds" :installing="installing === selected.name" :install-busy="!!installing"
@@ -344,6 +358,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, inject } from 'vue';
 import ForYouView from './apps/ForYouView.vue';
+import { usePluginRequests } from '@/composables/usePluginRequests.js';
 import { pluginIcon, brandIcon, brandApp } from '@/services/brandIcons.js';
 import { pluginProviders } from '@/services/appCards.js';
 import { useStore } from 'vuex';
@@ -417,6 +432,32 @@ const updateStatus = ref(null);
 const resolvedReviews = ref(new Set());
 let assetsRequest = 0;
 let alive = true;
+
+// ── Members' plugin requests (shared instance): what you asked for, and what you decide ──
+const pluginRequests = usePluginRequests();
+const frameNav = inject('focusedNav', null);
+const requestedNames = computed(() => new Set(pluginRequests.state.mine.filter((r) => r.status === 'pending').map((r) => r.pluginName)));
+const requestsToDecide = computed(() => (pluginRequests.state.canDecide ? pluginRequests.state.pending : []));
+const deciding = ref(null);
+const requestName = (name) => rowsByName.value.get(name)?.displayName || String(name).replace(/-plugin$/, '');
+/** A message the person sees wherever they are on the page: a toast in AGNT One, the notice line elsewhere. */
+function tell(text) {
+  notice.value = text;
+  if (frameNav?.toast) frameNav.toast(text);
+  else nextTick(() => root.value?.querySelector('.ap-notice')?.scrollIntoView?.({ block: 'nearest' }));
+}
+async function decideRequest(request, approve) {
+  deciding.value = request.id;
+  try {
+    await (approve ? pluginRequests.approve(request.id) : pluginRequests.decline(request.id));
+    if (approve) await reload();
+    tell(approve ? `${requestName(request.pluginName)} is added for your teammate.` : `Declined ${requestName(request.pluginName)}.`);
+  } catch (failure) {
+    error.value = failure.message || 'That request could not be decided.';
+  } finally {
+    deciding.value = null;
+  }
+}
 
 // ── Data ──────────────────────────────────────────────────────────────
 const { cards } = useAppCards('', { autoload: false });
@@ -768,8 +809,14 @@ async function install(app) {
     notice.value = installedNotice(app.name, app.displayName);
   } catch (failure) {
     // "Ask the owner" and "requested" are answers, not failures to retry: no Retry link.
-    if (failure.code === 'install_requested') notice.value = `Request sent. You’ll be told on Home when the owner decides about ${app.displayName}.`;
-    else if (failure.code === 'admin_install_required') notice.value = failure.message;
+    if (failure.code === 'install_requested') {
+      // Said where the person is looking (a toast in AGNT One), and kept on the plugin itself.
+      const already = /already asked/i.test(failure.message || '');
+      tell(already
+        ? `You already asked for ${app.displayName}. It’s waiting for the owner; you’ll see the answer on Home.`
+        : `Request sent. ${app.displayName} needs the owner’s OK on this shared instance; you’ll see the answer on Home.`);
+      quiet(pluginRequests.load());
+    } else if (failure.code === 'admin_install_required') tell(failure.message);
     else error.value = failure.message || 'Installation failed. Please retry.';
     console.error('[AppsSection] install:', failure);
   } finally {
@@ -913,6 +960,7 @@ function closeMenuOnOutsideClick(event) {
 onMounted(() => {
   document.addEventListener('mousedown', closeMenuOnOutsideClick);
   reload();
+  quiet(pluginRequests.load());
   if (!store.getters['agents/allAgents']?.length) quiet(store.dispatch('agents/fetchAgents'));
   if (!store.getters['skills/allSkills']?.length) quiet(store.dispatch('skills/fetchSkills'));
 });

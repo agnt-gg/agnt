@@ -75,6 +75,7 @@
           </div>
           <div class="fy-card-foot" @click.stop>
             <template v-if="s.row.installed"><span class="fy-state ok">✓ Added</span></template>
+            <template v-else-if="requested.has(s.row.name)"><span class="fy-state warn" data-testid="requested">Requested · waiting for the owner</span></template>
             <template v-else-if="s.ready"><span class="fy-state ok">● Ready</span><button type="button" class="ap-btn small" :data-install="s.row.name" :disabled="installBusy" @click="$emit('install', s.row)">{{ installing === s.row.name ? 'Adding…' : 'Add' }}</button></template>
             <template v-else><span class="fy-state warn">Needs {{ s.missing.length }} app{{ s.missing.length > 1 ? 's' : '' }}</span>
               <button type="button" class="ap-btn small" :data-connect="s.missing[0]" @click="connectId(s.missing[0])">Connect {{ nameFor(s.missing[0]) }}{{ s.missing.length > 1 ? ` (1 of ${s.missing.length})` : '' }}</button></template>
@@ -99,7 +100,10 @@ const props = defineProps({
   modelProviderIds: { type: Array, default: () => [] },
   installing: { type: String, default: '' },
   installBusy: Boolean,
+  // Plugins this member asked the owner for (still pending).
+  requestedNames: { type: Array, default: () => [] },
 });
+const requested = computed(() => new Set(props.requestedNames));
 const emit = defineEmits(['connect', 'install', 'open', 'ask', 'browse']);
 
 const modelIds = computed(() => new Set(props.modelProviderIds.map((id) => String(id).toLowerCase())));

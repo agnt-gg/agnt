@@ -7,6 +7,7 @@ import { apiFetch } from '@/utils/apiFetch.js';
 
 vi.mock('@/utils/apiFetch.js', () => ({ apiFetch: vi.fn() }));
 const confirm = vi.fn();
+import { _resetPluginRequests } from '@/composables/usePluginRequests.js';
 const modalStub = defineComponent({ setup(_, { expose }) { expose({ showModal: confirm }); return () => null; } });
 
 // Shapes from backend/plugins/dev manifests as /plugins/installed and /plugins/marketplace serve them.
@@ -37,6 +38,8 @@ const providers = [
 let wrapper;
 let replies;
 function setup(options = {}) {
+  // Plugin requests are a module-wide cache; each test starts with none.
+  _resetPluginRequests();
   const store = createStore({ modules: {
     apps: { namespaced: true, state: () => ({ installed: options.installed || [], available: options.available || [research, calculator], error: null }), getters: { installed: (s) => s.installed, available: (s) => s.available } },
     appAuth: { namespaced: true, state: () => ({ allProviders: providers, connectionHealth: { providers: options.health || [] } }), getters: { connectedApps: () => options.connected || [] } },
@@ -62,6 +65,37 @@ function setup(options = {}) {
 }
 const tab = (id) => wrapper.find(`[data-tab="${id}"]`);
 const detail = () => wrapper.find('.ap-detail');
+
+describe('A member asks the owner for a plugin', () => {
+  // The page reads its requests from GET /plugins/requests.
+  function stubRequests(body) {
+    const prev = global.fetch;
+    global.fetch = vi.fn(async (url) => (String(url).endsWith('/plugins/requests')
+      ? { ok: true, json: async () => ({ success: true, ...body }) }
+      : prev(url)));
+  }
+  it('Install that becomes a request says so, and the plugin then reads Requested instead of Install', async () => {
+    stubRequests({ canDecide: false, pending: [], mine: [] });
+    const { dispatch } = setup({ tab: 'browse', available: [calculator] }); await flushPromises();
+    dispatch.mockImplementation(async (action) => {
+      if (action === 'marketplace/installPlugin') throw Object.assign(new Error('Request sent to the owner.'), { code: 'install_requested' });
+      return [];
+    });
+    stubRequests({ canDecide: false, pending: [], mine: [{ id: 'r1', pluginName: 'calculator', status: 'pending', createdAt: new Date().toISOString() }] });
+    await wrapper.find('[data-listing="calculator"] [data-action="install"]').trigger('click');
+    await flushPromises(); await flushPromises();
+    expect(wrapper.find('.ap-notice').text()).toContain('needs the owner’s OK');
+    expect(wrapper.find('.ap-notice.error').exists()).toBe(false);
+    expect(wrapper.find('[data-listing="calculator"] [data-testid="requested"]').text()).toContain('waiting for the owner');
+    expect(wrapper.find('[data-listing="calculator"] [data-action="install"]').exists()).toBe(false);
+  });
+  it('the owner sees members’ requests on the Apps page and can approve them there', async () => {
+    stubRequests({ canDecide: true, pending: [{ id: 'r9', pluginName: 'calculator', requesterId: 'ana', status: 'pending' }], mine: [] });
+    setup({ tab: 'browse', available: [calculator] }); await flushPromises();
+    expect(wrapper.find('[data-testid="plugin-requests-banner"]').text()).toContain('A teammate wants to add a plugin');
+    expect(wrapper.find('[data-request="r9"]').text()).toContain('Calculator');
+  });
+});
 
 describe('For you: connect your apps first, then what they unlock', () => {
   const calendar = { name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
