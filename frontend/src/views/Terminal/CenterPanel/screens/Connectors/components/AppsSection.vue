@@ -117,17 +117,25 @@
 
         <!-- ── Browse ────────────────────────────────────────── -->
         <template v-else-if="tab === 'browse'">
-          <div class="ap-toolbar">
+          <!-- One row: search, the kind (Apps connect a service, Packs do a job, Utilities stand alone),
+               and category + sort as small dropdowns rather than a wall of pills. -->
+          <div class="ap-toolbar ap-browse-bar">
             <label class="ap-search"><AppsIcon name="search" /><input v-model="queries.browse" type="search" placeholder="Search the Market" aria-label="Search the Market" /></label>
-          </div>
-          <!-- Apps connect a service, Packs do a job, Utilities stand alone (manifest.kind). -->
-          <div class="ap-chips ap-toolbar" role="group" aria-label="Kind" data-testid="kind-filter">
-            <button type="button" class="ap-chip" data-kind="all" :aria-pressed="String(kindFilter === 'all')" @click="kindFilter = 'all'">All <span class="ap-count">{{ marketRows.length }}</span></button>
-            <button v-for="k in PLUGIN_KINDS" :key="k.id" type="button" class="ap-chip" :data-kind="k.id" :aria-pressed="String(kindFilter === k.id)" v-tooltip="k.detail" @click="kindFilter = k.id">{{ k.label }} <span class="ap-count">{{ kindCounts[k.id] || 0 }}</span></button>
-          </div>
-          <div v-if="browseCategories.length > 1" class="ap-chips ap-toolbar" role="group" aria-label="Category">
-            <button type="button" class="ap-chip" data-filter="all" :aria-pressed="String(filters.browse === 'all')" @click="filters.browse = 'all'">All</button>
-            <button v-for="category in browseCategories" :key="category" type="button" class="ap-chip" :data-filter="category" :aria-pressed="String(filters.browse === category)" @click="filters.browse = category">{{ category }}</button>
+            <div class="ap-chips" role="group" aria-label="Kind" data-testid="kind-filter">
+              <button type="button" class="ap-chip" data-kind="all" :aria-pressed="String(kindFilter === 'all')" @click="kindFilter = 'all'">All <span class="ap-count">{{ marketRows.length }}</span></button>
+              <button v-for="k in PLUGIN_KINDS" :key="k.id" type="button" class="ap-chip" :data-kind="k.id" :aria-pressed="String(kindFilter === k.id)" v-tooltip="k.detail" @click="kindFilter = k.id">{{ k.label }} <span class="ap-count">{{ kindCounts[k.id] || 0 }}</span></button>
+            </div>
+            <span class="ap-grow"></span>
+            <label v-if="browseCategories.length > 1" class="ap-select"><span>Category</span>
+              <select v-model="filters.browse" data-testid="category-filter" aria-label="Category">
+                <option value="all">All</option>
+                <option v-for="category in browseCategories" :key="category" :value="category">{{ category }}</option>
+              </select></label>
+            <label class="ap-select"><span>Sort</span>
+              <select v-model="browseSort" data-testid="browse-sort" aria-label="Sort">
+                <option value="recommended">Recommended</option>
+                <option value="name">Name</option>
+              </select></label>
           </div>
           <p v-if="loading && !marketRows.length" class="ap-empty" role="status">Loading the Market…</p>
           <div v-else-if="!visibleMarket.length" class="ap-empty">
@@ -138,8 +146,10 @@
               <button type="button" class="ap-btn primary" data-action="forge" @click="openForge('builder')">Build it in the Forge</button>
             </div>
           </div>
-          <div v-else class="ap-list">
-            <div v-for="row in visibleMarket" :key="row.name" class="ap-row" :class="{ selected: selectedKey === row.name }" :data-listing="row.name">
+          <template v-else v-for="group in browseGroups" :key="group.id">
+          <h3 v-if="browseGroups.length > 1" class="ap-group-label" :data-group="group.id">{{ group.label }} <span>{{ group.rows.length }}</span></h3>
+          <div class="ap-list">
+            <div v-for="row in group.rows" :key="row.name" class="ap-row" :class="{ selected: selectedKey === row.name }" :data-listing="row.name">
               <span class="ap-logo"><SvgIcon :name="brandOf(row)" /></span>
               <div class="ap-row-body">
                 <div class="ap-row-title">
@@ -165,6 +175,7 @@
               </div>
             </div>
           </div>
+          </template>
           <p class="ap-footnote">Agents, workflows and widgets have their own shelves. <button type="button" class="ap-link" data-testid="open-marketplace" @click="emit('open-market')">Open the full Marketplace</button></p>
         </template>
 
@@ -463,7 +474,18 @@ const kindFilter = ref('all');
 const kindCounts = computed(() => marketRows.value.reduce((acc, row) => { const id = kindOf(row).id; acc[id] = (acc[id] || 0) + 1; return acc; }, {}));
 const ofKind = computed(() => marketRows.value.filter((row) => kindFilter.value === 'all' || kindOf(row).id === kindFilter.value));
 const browseCategories = computed(() => [...new Set(ofKind.value.map((row) => row.category).filter(Boolean))].sort());
-const visibleMarket = computed(() => ofKind.value.filter((row) => (filters.browse === 'all' || row.category === filters.browse) && matchesQuery(row, queries.browse)));
+const browseSort = ref('recommended');
+// Recommended: AGNT's own first, then A–Z. Name: A–Z only.
+const byBrowseSort = (a, b) => (browseSort.value === 'recommended'
+  ? Number(String(b.trustTier).toLowerCase() === 'official') - Number(String(a.trustTier).toLowerCase() === 'official') : 0)
+  || a.displayName.localeCompare(b.displayName);
+const visibleMarket = computed(() => ofKind.value
+  .filter((row) => (filters.browse === 'all' || row.category === filters.browse) && matchesQuery(row, queries.browse))
+  .sort(byBrowseSort));
+// All: Apps first (connect what you use), then Packs, then Utilities. One kind: a single list.
+const browseGroups = computed(() => PLUGIN_KINDS
+  .map((k) => ({ id: k.id, label: k.label, rows: visibleMarket.value.filter((row) => kindOf(row).id === k.id) }))
+  .filter((group) => group.rows.length));
 const compositionFor = (row) => compositionOf(pluginInventory(row));
 const tierOf = (row) => trustTier(row);
 function readyWith(row) {

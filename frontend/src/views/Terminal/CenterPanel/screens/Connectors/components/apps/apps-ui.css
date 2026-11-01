@@ -78,6 +78,11 @@
 /* ── Toolbar, notices ────────────────────────────────────── */
 .apps-studio .ap-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
 .apps-studio .ap-search { position: relative; flex: 1; min-width: 200px; max-width: 420px; display: flex; align-items: center; }
+/* Browse: search, kind and the two dropdowns share one row; it wraps on narrow screens. */
+.apps-studio .ap-browse-bar .ap-search { max-width: 300px; }
+.apps-studio .ap-browse-bar .ap-grow { flex: 1; }
+.apps-studio .ap-select { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.apps-studio .ap-select select { height: 30px; padding: 0 26px 0 10px; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface); color: var(--text-primary); font: inherit; font-size: var(--font-size-sm); cursor: pointer; }
 .apps-studio .ap-search .apps-ui-icon { position: absolute; left: 12px; width: 17px; height: 17px; color: var(--text-tertiary); pointer-events: none; }
 .apps-studio .ap-search input { width: 100%; min-height: 40px; padding: 0 var(--spacing-sm) 0 38px; border: 1px solid var(--border-strong); border-radius: var(--border-radius-md); background: var(--ap-surface); font-size: var(--font-size-sm); }
 .apps-studio .ap-search input::placeholder { color: var(--text-tertiary); }

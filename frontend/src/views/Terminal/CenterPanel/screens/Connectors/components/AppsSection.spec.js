@@ -121,16 +121,31 @@ describe('Browse: the Market', () => {
   it('lists every Market plugin, including ones with no sign-in, and filters by name and by what is inside', async () => {
     setup({ available: [research, calculator, gmail] }); await flushPromises();
     await tab('browse').trigger('click');
-    expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['calculator', 'gmail-plugin', 'research']);
+    // All lists Apps first, then Packs, then Utilities, each under its own heading.
+    expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['gmail-plugin', 'research', 'calculator']);
+    expect(wrapper.findAll('[data-group]').map((h) => h.attributes('data-group'))).toEqual(['app', 'pack', 'utility']);
     expect(tab('browse').text()).toContain('3');
+    // Category is a dropdown, not a row of pills.
+    expect(wrapper.find('[aria-label="Category"][role="group"]').exists()).toBe(false);
     await wrapper.find('input[type="search"]').setValue('reply');
     expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['gmail-plugin']);
     await wrapper.find('input[type="search"]').setValue('nothing-matches');
     expect(wrapper.text()).toContain('Nothing on the Market matches');
     await wrapper.find('[data-action="clear"]').trigger('click');
     expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
-    await wrapper.find('[data-filter="Utility"]').trigger('click');
+    await wrapper.find('[data-testid="category-filter"]').setValue('Utility');
     expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['calculator']);
+    // One kind shows a single list, no headings.
+    await wrapper.find('[data-testid="category-filter"]').setValue('all');
+    await wrapper.find('[data-kind="app"]').trigger('click');
+    expect(wrapper.findAll('[data-group]')).toHaveLength(0);
+  });
+  it('Recommended puts AGNT\'s own first; Name is A–Z', async () => {
+    setup({ available: [{ ...gmail, name: 'zebra', displayName: 'Zebra', trustTier: 'official' }, { ...gmail, trustTier: 'community' }] }); await flushPromises();
+    await tab('browse').trigger('click');
+    expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['zebra', 'gmail-plugin']);
+    await wrapper.find('[data-testid="browse-sort"]').setValue('name');
+    expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['gmail-plugin', 'zebra']);
   });
   it('says when a listing is ready with a sign-in you already have', async () => {
     setup({ available: [gmail, notion], connected: ['google'] }); await flushPromises();
