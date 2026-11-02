@@ -1727,6 +1727,10 @@
   border-radius: 12px;
   overflow: hidden;
 }
+/* Appearance embeds Studio's ThemeSelector, which has no rows of its own: inset it like the rows. */
+.ui-focused .focused-theme-card {
+  padding: 16px 18px;
+}
 .ui-focused .focused-edit-row {
   display: flex;
   align-items: center;
