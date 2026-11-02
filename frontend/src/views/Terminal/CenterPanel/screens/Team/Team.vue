@@ -130,7 +130,9 @@ provide('focusedNav', {
 </script>
 
 <style scoped>
-.studio-team-page { height: 100%; min-height: 0; overflow: auto; }
+/* A flex child of the center panel: without min-width: 0 it grew to its widest child (the Library's
+   scrolling rail, 1,840px) and the page was laid out wider than the window and clipped. */
+.studio-team-page { flex: 1 1 0; min-width: 0; width: 100%; height: 100%; min-height: 0; overflow: auto; }
 .studio-team-page :deep(.mk) { background: transparent; }
 .studio-team-inline { min-height: 100%; }
 .studio-team-toast {
