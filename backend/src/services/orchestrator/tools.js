@@ -2724,6 +2724,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
         const tool = await response.json();
 
+        // A code tool (CODE_JS / CODE_PYTHON) has no prompt: run it through the one Tool Forge executor, which
+        // runs its code via execute-javascript / execute-python (the kernel tool sandbox on a hosted instance).
+        // This path only knew AI tools and refused every code tool for a missing 'parameters.instructions'.
+        if (tool && tool.base && String(tool.base).toUpperCase() !== 'AI') {
+          const output = await runCustomTool(tool, input_parameters || {}, context?.userId);
+          return JSON.stringify({ success: isCustomToolSuccess(output), tool_id, result: output });
+        }
+
         if (!tool || !tool.parameters || !tool.parameters.instructions) {
           console.error(`Invalid tool definition for ${tool_id}:`, tool);
           return JSON.stringify({

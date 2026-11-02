@@ -1448,6 +1448,8 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 Base path: `/api/contracts`
 
+> **Read-only.** Contracts are kept as evidence: `GET` routes still answer, but every write (`POST`, `PUT`, `PATCH`, `DELETE`) returns `410 { error: 'learning_lifecycle_required', replacement: '/api/learning' }`. Behaviour changes go through the Learning lifecycle (`/api/learning`). The write routes below are documented for history only.
+
 Contracts are refinement-type runtime invariants (PRD-091 Layer 5). They are either **authored** by the user/agent or **mined** by `InsightEngine` from successful executions ("output must be JSON", "step count ≤ 5", "response includes citation block"). At runtime, `ContractsService.check` evaluates whether evidence satisfies the contract; violations are counted on the contract row and feed into `FitnessScoreService` (contract cleanliness component).
 
 ### Contract shape
