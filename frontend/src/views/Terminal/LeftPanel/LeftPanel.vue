@@ -81,6 +81,7 @@ const ALL_LEFT_PANELS = [
   'MemoryPanel',
   'AutonomyPanel',
   'DashboardPanel',
+  'TeamPanel',
 ];
 let panelsPreloaded = false;
 const preloadPanels = () => {
