@@ -12,6 +12,21 @@ export function scopeApiAction(method,path){
  if(method==='GET'||method==='HEAD')return 'view';
  if(method==='DELETE')return 'delete';return 'edit';
 }
+/**
+ * A team member asked to run something that has not been published for the team.
+ *
+ * Members run a teamspace item through its PUBLISHED version with a team connection, never the
+ * instance owner's own connections (tenantOwnership.credentialUserId), so the item must be published
+ * first, and only owners and admins publish (NativeTeamExecution.bind). The message says who can do
+ * that; `canPublish` lets a client offer the button instead of the text.
+ */
+export function publishRequiredError(role){
+ const canPublish=['owner','admin'].includes(role);
+ return Object.assign(new Error(canPublish
+  ?'Publish this for the team first (Team → Projects → Publish), then run it there. Publishing approves this version and the team connection it uses.'
+  :'This has not been published for the team yet. Ask a team owner or admin to publish it in Team → Projects, then run it there.'),
+  {status:409,code:'publish_required',canPublish});
+}
 export function requireScopeApiRole(role,action){
  if(!['owner','admin','member','viewer'].includes(role))throw Object.assign(new Error('Team role required'),{status:403});
  if(action!=='view'&&role==='viewer')throw Object.assign(new Error('Workspace is read-only'),{status:403});

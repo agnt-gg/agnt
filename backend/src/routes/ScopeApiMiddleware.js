@@ -3,7 +3,7 @@ import {ResourceAuthorization} from '../services/authorization/ResourceAuthoriza
 import db,{dbReady} from '../models/database/index.js';
 import {databaseRepository,ensureSharedScope} from '../services/authorization/ScopeRepository.js';
 import {CloudTeamClient} from '../services/CloudTeamClient.js';
-import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole} from '../services/authorization/ScopeApiPolicy.js';
+import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole,publishRequiredError} from '../services/authorization/ScopeApiPolicy.js';
 import {withScopeRequest} from '../services/authorization/ScopeRequestContext.js';
 const repository=databaseRepository(db),cloud=new CloudTeamClient();
 export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWorkspace=async()=>null){return async(req,res,next)=>{
@@ -34,9 +34,9 @@ export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWor
   // personal execution path, which would reach for credentials the team does not have. The instance
   // OWNER is the exception: the workspace runs on the owner's own connections (credentialUserId),
   // so the owner runs anything directly, exactly as on a personal instance.
-  if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER)throw Object.assign(new Error('Publish this in Team → Projects, then run it from there'),{status:409,code:'publish_required'});
+  if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER)throw publishRequiredError(team.role);
   await repository.run('INSERT INTO scope_api_audit(scope_id,actor_id,action) VALUES(?,?,?)',[scope.id,context.actorId,req.method+' '+api]);
   req.user={...req.user,id:scope.resourceOwnerId,userId:scope.resourceOwnerId};
   return withScopeRequest(req,context,next);
- }catch(error){if(!error.status)console.error('[Scope API]',error.message);res.status(error.status||503).json({error:error.status?error.message:'Scope authority unavailable',...(error.status&&error.code?{code:error.code}:{})});}});
+ }catch(error){if(!error.status)console.error('[Scope API]',error.message);res.status(error.status||503).json({error:error.status?error.message:'Scope authority unavailable',...(error.status&&error.code?{code:error.code}:{}),...(error.status&&typeof error.canPublish==='boolean'?{canPublish:error.canPublish}:{})});}});
 };}

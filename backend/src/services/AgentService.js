@@ -8,6 +8,14 @@ import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSyn
 import { resolveRuntimeOptions } from './orchestrator/runtimeOptions.js';
 import { resolveAssignedToolNames } from './orchestrator/legacyToolAliases.js';
 import { trustedScopeRequest } from './authorization/ScopeRequestContext.js';
+import { databaseRepository } from './authorization/ScopeRepository.js';
+import { recordCreator } from './authorization/ResourceCreators.js';
+
+const isNonEmptyString = (value) => typeof value === 'string' && value.trim() !== '';
+const creatorRepository = databaseRepository(db);
+
+/** The status a saved agent gets when the caller sends none, as AgentImportService does. */
+export const DEFAULT_AGENT_STATUS = 'ACTIVE';
 
 /**
  * The agent's own provider/model wins — unless the caller pins one with
@@ -60,7 +68,18 @@ class AgentService {
   }
   async saveOrUpdateAgent(req, res) {
     try {
-      const { agent } = req.body;
+      // A missing body or field is the caller's mistake: say which, never a 500 from deep in a model.
+      const { agent } = req.body || {};
+      if (!agent || typeof agent !== 'object' || Array.isArray(agent)) {
+        return res.status(400).json({ error: 'Request body must be { agent: { ... } } with an agent object.' });
+      }
+      // PUT /agents/:id authorizes :id, so that is the agent it saves.
+      if (req.params?.id) {
+        if (agent.id && agent.id !== req.params.id) {
+          return res.status(400).json({ error: 'agent.id does not match the agent in the URL.' });
+        }
+        agent.id = req.params.id;
+      }
       const userId = req.user.userId;
       // The shared storage principal owns the record, but it is not a signed-in
       // person and has no UI settings. Defaults belong to the authenticated actor.
@@ -99,7 +118,23 @@ class AgentService {
         await applyUserDefaultProviderModel(agent, settingsUserId, 'cloned agent');
       }
 
+      // name and status are NOT NULL in the agents table. An edit that omits one keeps the stored
+      // value; a new agent needs a name and starts active.
+      const stored = isNewAgent ? null : existingAgent;
+      if (!isNonEmptyString(agent.name)) {
+        if (!isNonEmptyString(stored?.name)) return res.status(400).json({ error: 'Agent "name" is required.' });
+        agent.name = stored.name;
+      }
+      if (!isNonEmptyString(agent.status)) agent.status = stored?.status || DEFAULT_AGENT_STATUS;
+
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);
+
+      // In a teamspace the row belongs to the workspace principal; remember the teammate who made it,
+      // so they (and owners/admins) can delete it later (ApplicationAuthorization.teamResourcePolicy).
+      const scopeRequest = trustedScopeRequest(req);
+      if (isNewAgent && scopeRequest?.actorId) {
+        await recordCreator(creatorRepository, 'agents', agent.id, scopeRequest.actorId);
+      }
 
       // PRD-057: Flip is_user_modified flag for plugin-installed agents.
       // Skipped for brand-new agents (no source_plugin yet, harmless either way).

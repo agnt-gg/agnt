@@ -22,6 +22,7 @@ export class ResourceAuthorization {
   if(scope.kind==='personal'){if(scope.owner_user_id!==context.actorId)fail(404,'Resource not found');return resource;}
   if(!['team','workspace'].includes(scope.kind)||!scope.team_id||!this.authorizeTeam)fail(403,'Resource scope is unavailable');
   // The callback must verify current cloud membership AND workspace access, not a cached role.
-  await this.authorizeTeam(context,action,scope);return resource;
+  // It is told which resource too, so a rule can depend on it (e.g. its creator may delete it).
+  await this.authorizeTeam(context,action,scope,{table,id});return resource;
  }
 }

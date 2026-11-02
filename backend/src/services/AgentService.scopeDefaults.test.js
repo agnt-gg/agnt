@@ -1,6 +1,7 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
 vi.mock('./OrchestratorService.js',()=>({default:vi.fn()}));
-vi.mock('../models/database/index.js',()=>({default:{run:(_sql,_args,done)=>done()}}));
+// Called as sqlite3 calls it: `this` carries changes (databaseRepository reads it).
+vi.mock('../models/database/index.js',()=>({default:{run:(_sql,_args,done)=>done.call({changes:1},null),get:(_sql,_args,done)=>done(null,null)}}));
 vi.mock('../models/UserModel.js',()=>({default:{getUserSettings:vi.fn()}}));
 vi.mock('../models/AgentModel.js',()=>({default:{findOne:vi.fn(),createOrUpdate:vi.fn()}}));
 vi.mock('../utils/realtimeSync.js',()=>({broadcast:vi.fn(),broadcastToUser:vi.fn(),RealtimeEvents:{AGENT_CREATED:'created',AGENT_UPDATED:'updated'}}));

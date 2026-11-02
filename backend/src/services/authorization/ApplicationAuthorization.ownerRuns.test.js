@@ -16,9 +16,14 @@ it('the instance owner runs a workspace resource', async () => {
   await expect(teamResourcePolicy({ actorId: 'owner-1', scopeId: 'workspace:w' }, 'run', scope, teams('owner'))).resolves.toBeUndefined();
 });
 
-it('a member still may not run without a published version', async () => {
+it('a member still may not run without a published version, and is told who can publish', async () => {
   hosted();
-  await expect(teamResourcePolicy({ actorId: 'member-2', scopeId: 'workspace:w' }, 'run', scope, teams('member'))).rejects.toMatchObject({ status: 403 });
+  // Was a bare 403 "Shared execution requires a bound execution principal" here and a 409 on the
+  // workflow path: one refusal, one code, and the next step for this role (bravo smoke test, Nov 2026).
+  await expect(teamResourcePolicy({ actorId: 'member-2', scopeId: 'workspace:w' }, 'run', scope, teams('member')))
+    .rejects.toMatchObject({ status: 409, code: 'publish_required', canPublish: false, message: expect.stringMatching(/owner or admin/) });
+  await expect(teamResourcePolicy({ actorId: 'admin-3', scopeId: 'workspace:w' }, 'run', scope, teams('admin')))
+    .rejects.toMatchObject({ status: 409, code: 'publish_required', canPublish: true });
 });
 
 it('the owner exemption covers running only, not the workspace check', async () => {
