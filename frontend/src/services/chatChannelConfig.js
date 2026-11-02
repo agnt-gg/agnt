@@ -128,6 +128,7 @@ const SIDEBAR_DEFAULTS = {
     'save_widget',
     'load_widget',
     'list_widgets',
+    'delete_widget',
     'get_agnt_api',
     'mcp_client',
   ],
