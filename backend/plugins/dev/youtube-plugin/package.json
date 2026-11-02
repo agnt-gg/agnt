@@ -1,6 +1,6 @@
 {
   "name": "youtube-plugin",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "YouTube integration plugin for AGNT",
   "type": "module",
   "main": "youtube-api.js",

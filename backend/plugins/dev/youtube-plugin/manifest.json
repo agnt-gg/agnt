@@ -1,6 +1,6 @@
 {
   "name": "youtube-plugin",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "kind": "app",
   "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions",
   "author": "AGNT",
@@ -14,7 +14,7 @@
         "category": "action",
         "type": "youtube-api",
         "icon": "youtube",
-        "description": "Interact with the YouTube API to manage videos, comments, playlists, and more.",
+        "description": "YouTube: get the full transcript of any public video (GET_TRANSCRIPTION), search videos, read video details, and manage comments, playlists and subscriptions. Use GET_TRANSCRIPTION for what a video says: its web page has no transcript.",
         "authRequired": "oauth",
         "authProvider": "google",
         "parameters": {

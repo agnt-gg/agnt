@@ -16,6 +16,7 @@ import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
 import { SCRAPE_FORMATS } from '../scrape/localScrape.js';
+import { youtubeTranscriptHint } from '../scrape/youtubeTranscriptHint.js';
 import toolRegistry from './toolRegistry.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
@@ -1255,7 +1256,11 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // function: call .execute(). It runs in the user's own Chrome, so
         // scrapes run in parallel with no allowance and no per-page refusal,
         // and it returns the hosted API's body, typed failures included.
-        return JSON.stringify(await scrapeUtil.execute({ url, formats, mainContentOnly, waitForMs, pageRange, allowLocal }));
+        const result = await scrapeUtil.execute({ url, formats, mainContentOnly, waitForMs, pageRange, allowLocal });
+        // A YouTube page never holds the transcript; say which tool does. First key, because
+        // an oversized result is shortened in the middle and its start is always kept.
+        const transcriptHint = youtubeTranscriptHint(url);
+        return JSON.stringify(transcriptHint ? { transcriptHint, ...result } : result);
       } catch (error) {
         // scrapeUrl never throws; this only guards the JSON contract.
         return JSON.stringify(serviceFailure(error));

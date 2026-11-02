@@ -51,6 +51,25 @@ describe('web_scrape uses the local scraper', () => {
     expect(result).toEqual({ success: false, error: 'pdf_images_only', message: 'The PDF has no text layer.', url: 'https://x.test/scan.pdf' });
   });
 
+  // The regression: handed a YouTube link, the agent scraped the watch page, hit the bot wall,
+  // and called the video unwatchable while youtube_api GET_TRANSCRIPTION sat unloaded.
+  it('points a YouTube video at the transcript tool, first, whether the scrape worked or not', async () => {
+    const { TOOLS } = await import('./tools.js');
+    const url = 'https://www.youtube.com/watch?v=3199TC7Pt_o&list=PL5Y2vlXT60eRaQ3CtoC-zm_lRb7GtUfFw';
+    const worked = await TOOLS.web_scrape.execute({ url });
+    expect(Object.keys(JSON.parse(worked))[0]).toBe('transcriptHint');
+    expect(JSON.parse(worked)).toMatchObject({ ...page(url), transcriptHint: expect.stringContaining('GET_TRANSCRIPTION') });
+    scrape.mockResolvedValueOnce({ success: false, error: 'page_blocked', message: 'blocked', url });
+    const blocked = JSON.parse(await TOOLS.web_scrape.execute({ url }));
+    expect(blocked).toMatchObject({ success: false, error: 'page_blocked', transcriptHint: expect.stringContaining('videoId "3199TC7Pt_o"') });
+  });
+
+  it('adds nothing for a YouTube page that is not a single video', async () => {
+    const { TOOLS } = await import('./tools.js');
+    const url = 'https://www.youtube.com/@DaveShap';
+    expect(JSON.parse(await TOOLS.web_scrape.execute({ url }))).toEqual(page(url));
+  });
+
   it('asks the model for the URL only; every option is optional and formats are the hosted set', async () => {
     const { TOOLS } = await import('./tools.js');
     const { parameters } = TOOLS.web_scrape.schema.function;
