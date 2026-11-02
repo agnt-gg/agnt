@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import { defineComponent } from 'vue';
 import AppsSection from './AppsSection.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { apiFetch } from '@/utils/apiFetch.js';
 
 vi.mock('@/utils/apiFetch.js', () => ({ apiFetch: vi.fn() }));
@@ -64,6 +65,12 @@ function setup(options = {}) {
   return { store, dispatch };
 }
 const tab = (id) => wrapper.find(`[data-tab="${id}"]`);
+// The Browse dropdowns are the shared CustomSelect; choose as a user's click does, through update:modelValue.
+const dropdown = (testid) => wrapper.findAllComponents(CustomSelect).find((c) => c.attributes('data-testid') === testid);
+async function choose(testid, value) {
+  dropdown(testid).vm.$emit('update:modelValue', value);
+  await flushPromises();
+}
 const detail = () => wrapper.find('.ap-detail');
 
 describe('A member asks the owner for a plugin', () => {
@@ -167,10 +174,11 @@ describe('Browse: the Market', () => {
     expect(wrapper.text()).toContain('Nothing on the Market matches');
     await wrapper.find('[data-action="clear"]').trigger('click');
     expect(wrapper.findAll('[data-listing]')).toHaveLength(3);
-    await wrapper.find('[data-testid="category-filter"]').setValue('Utility');
+    expect(dropdown('category-filter').props('options').map((o) => o.label)).toEqual(['All categories', 'Productivity', 'Research', 'Utility']);
+    await choose('category-filter', 'Utility');
     expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['calculator']);
     // One kind shows a single list, no headings.
-    await wrapper.find('[data-testid="category-filter"]').setValue('all');
+    await choose('category-filter', 'all');
     await wrapper.find('[data-kind="app"]').trigger('click');
     expect(wrapper.findAll('[data-group]')).toHaveLength(0);
   });
@@ -178,7 +186,8 @@ describe('Browse: the Market', () => {
     setup({ available: [{ ...gmail, name: 'zebra', displayName: 'Zebra', trustTier: 'official' }, { ...gmail, trustTier: 'community' }] }); await flushPromises();
     await tab('browse').trigger('click');
     expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['zebra', 'gmail-plugin']);
-    await wrapper.find('[data-testid="browse-sort"]').setValue('name');
+    expect(dropdown('browse-sort').props('options').map((o) => o.value)).toEqual(['recommended', 'name']);
+    await choose('browse-sort', 'name');
     expect(wrapper.findAll('[data-listing]').map((r) => r.attributes('data-listing'))).toEqual(['gmail-plugin', 'zebra']);
   });
   it('says when a listing is ready with a sign-in you already have', async () => {

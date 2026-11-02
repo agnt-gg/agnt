@@ -97,7 +97,9 @@
 .apps-studio .ap-browse-bar .ap-chips { flex: none; flex-wrap: nowrap; }
 .apps-studio .ap-browse-bar .ap-select { margin-left: auto; }
 .apps-studio .ap-browse-bar .ap-select + .ap-select { margin-left: 0; }
-.apps-studio .ap-select { flex: none; height: 32px; max-width: 170px; padding: 0 8px; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface); color: var(--text-primary); font: inherit; font-size: var(--font-size-sm); cursor: pointer; }
+/* .ap-select is a CustomSelect: it draws its own border and fill, so this is layout only.
+   A fixed width keeps the row from shifting as the chosen label changes. */
+.apps-studio .ap-select { flex: none; width: 170px; font-size: var(--font-size-sm); }
 @media (max-width: 1100px) { .apps-studio .ap-browse-bar { flex-wrap: wrap; } }
 .apps-studio .ap-search .apps-ui-icon { position: absolute; left: 12px; width: 17px; height: 17px; color: var(--text-tertiary); pointer-events: none; }
 .apps-studio .ap-search input { width: 100%; min-height: 40px; padding: 0 var(--spacing-sm) 0 38px; border: 1px solid var(--border-strong); border-radius: var(--border-radius-md); background: var(--ap-surface); font-size: var(--font-size-sm); }

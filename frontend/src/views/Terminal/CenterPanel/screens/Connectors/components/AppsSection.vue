@@ -137,14 +137,8 @@
               <button type="button" class="ap-chip" data-kind="all" :aria-pressed="String(kindFilter === 'all')" @click="kindFilter = 'all'">All <span class="ap-count">{{ marketRows.length }}</span></button>
               <button v-for="k in PLUGIN_KINDS" :key="k.id" type="button" class="ap-chip" :data-kind="k.id" :aria-pressed="String(kindFilter === k.id)" v-tooltip="k.detail" @click="kindFilter = k.id">{{ k.label }} <span class="ap-count">{{ kindCounts[k.id] || 0 }}</span></button>
             </div>
-            <select v-if="browseCategories.length > 1" v-model="filters.browse" class="ap-select" data-testid="category-filter" aria-label="Category">
-              <option value="all">All categories</option>
-              <option v-for="category in browseCategories" :key="category" :value="category">{{ category }}</option>
-            </select>
-            <select v-model="browseSort" class="ap-select" data-testid="browse-sort" aria-label="Sort">
-              <option value="recommended">Sort: Recommended</option>
-              <option value="name">Sort: Name</option>
-            </select>
+            <CustomSelect v-if="browseCategories.length > 1" v-model="filters.browse" :options="categoryOptions" class="ap-select" data-testid="category-filter" aria-label="Category" />
+            <CustomSelect v-model="browseSort" :options="BROWSE_SORT_OPTIONS" class="ap-select" data-testid="browse-sort" aria-label="Sort" />
           </div>
           <p v-if="loading && !marketRows.length" class="ap-empty" role="status">Loading the Market…</p>
           <div v-else-if="!visibleMarket.length" class="ap-empty">
@@ -364,6 +358,7 @@ import { pluginProviders } from '@/services/appCards.js';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import EmailServer from './EmailServer.vue';
 import Webhooks from './Webhooks.vue';
 import McpServers from './McpServers.vue';
@@ -513,6 +508,8 @@ const kindCounts = computed(() => marketRows.value.reduce((acc, row) => { const 
 const ofKind = computed(() => marketRows.value.filter((row) => kindFilter.value === 'all' || kindOf(row).id === kindFilter.value));
 const browseCategories = computed(() => [...new Set(ofKind.value.map((row) => row.category).filter(Boolean))].sort());
 const browseSort = ref('recommended');
+const categoryOptions = computed(() => [{ label: 'All categories', value: 'all' }, ...browseCategories.value.map((category) => ({ label: category, value: category }))]);
+const BROWSE_SORT_OPTIONS = [{ label: 'Sort: Recommended', value: 'recommended' }, { label: 'Sort: Name', value: 'name' }];
 // Recommended: AGNT's own first, then A–Z. Name: A–Z only.
 const byBrowseSort = (a, b) => (browseSort.value === 'recommended'
   ? Number(String(b.trustTier).toLowerCase() === 'official') - Number(String(a.trustTier).toLowerCase() === 'official') : 0)
