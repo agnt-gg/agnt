@@ -13,7 +13,7 @@
     </div>
 
     <!-- Quick actions -->
-    <div class="panel-section">
+    <div class="panel-section quick" data-testid="quick-actions">
       <h4 class="section-title"><i class="fas fa-bolt"></i>Quick Actions</h4>
       <div class="action-buttons grid">
         <button v-for="n in NEW" :key="n.id" class="action-button" :data-nav="n.id" @click="pick(n.id)"><i :class="n.icon"></i>{{ n.label }}</button>
@@ -158,6 +158,12 @@ button.stat-card:hover, .stat-card.active { border-color: rgba(var(--green-rgb),
 /* Up top, so two columns keep it short; New teamspace spans both. */
 .action-buttons.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .action-buttons.grid .action-button.wide { grid-column: 1 / -1; }
+/* Quick Actions, compact: it sits at the top, so it takes as little height as it can. */
+.panel-section.quick { padding: 10px 12px; }
+.panel-section.quick .section-title { margin-bottom: 8px; }
+.panel-section.quick .action-buttons.grid { gap: 6px; }
+.panel-section.quick .action-button { padding: 5px 9px; gap: 6px; font-size: 0.8em; }
+.panel-section.quick .action-button i { width: 12px; font-size: 0.9em; }
 /* At a glance, compact: one row of four small tiles. */
 .stats-grid.compact { grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .stats-grid.compact .stat-card { padding: 8px 4px; }

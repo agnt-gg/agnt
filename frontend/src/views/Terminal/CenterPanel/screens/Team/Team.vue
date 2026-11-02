@@ -132,9 +132,13 @@ provide('focusedNav', {
 <style scoped>
 /* A flex child of the center panel: without min-width: 0 it grew to its widest child (the Library's
    scrolling rail, 1,840px) and the page was laid out wider than the window and clipped. */
-.studio-team-page { flex: 1 1 0; min-width: 0; width: 100%; height: 100%; min-height: 0; overflow: auto; }
+.studio-team-page { flex: 1 1 0; min-width: 0; width: 100%; height: 100%; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* The team page (.mk-page, flex: 1) fills the center panel exactly, so only its chat log scrolls and the
+   composer stays on screen. As a block parent let it grow to its content: the whole page scrolled and
+   the composer was cut off at the bottom. The inline Routines / Files pages scroll in their own box. */
+.studio-team-page > :deep(.mk-page) { flex: 1 1 0; min-height: 0; }
 .studio-team-page :deep(.mk) { background: transparent; }
-.studio-team-inline { min-height: 100%; }
+.studio-team-inline { flex: 1 1 0; min-height: 0; overflow: auto; }
 .studio-team-toast {
   position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
   padding: 8px 14px; border-radius: 10px; border: 1px solid var(--terminal-border-color);
