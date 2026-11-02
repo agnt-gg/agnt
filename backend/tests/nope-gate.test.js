@@ -56,7 +56,9 @@ describe('PRD-051 — checkAction BLOCKS critical violations', () => {
   it('DROP TABLE is BLOCKED with db-drop-table', async () => {
     const r = await checkAction({
       toolName: 'database_operation',
-      args: { query: 'DROP TABLE users;' },
+      // The fields database_operation reads (toolCapabilities sink). The gate scans only those, so SQL in
+      // an argument the tool has no use for (e.g. `query`) never reaches the database and is not scanned.
+      args: { operation: 'DELETE', tableName: 'users', condition: '1=1; DROP TABLE users;' },
       userId: 'test-user',
       role: 'user',
       surface: 'orchestrator',
@@ -145,7 +147,7 @@ describe('PRD-051 — sub-critical severities are audited, not blocked', () => {
   it('UPDATE without WHERE (high severity) is allowed but flagged for the soak', async () => {
     const r = await checkAction({
       toolName: 'database_operation',
-      args: { query: 'UPDATE users SET banned = 1' },
+      args: { operation: 'UPDATE users SET banned = 1', tableName: 'users' },
       userId: 'test-user',
       role: 'user',
       surface: 'orchestrator',
