@@ -4,7 +4,6 @@ import {ResourceAuthorization} from './ResourceAuthorization.js';
 import {CloudTeamClient} from '../CloudTeamClient.js';
 import {databaseRepository} from './ScopeRepository.js';
 import {creatorOf} from './ResourceCreators.js';
-import {publishRequiredError} from './ScopeApiPolicy.js';
 const repository=databaseRepository(db);
 const cloud=new CloudTeamClient();
 const isAdmin=role=>['owner','admin'].includes(role);
@@ -18,9 +17,8 @@ const isAdmin=role=>['owner','admin'].includes(role);
 export async function teamResourcePolicy(context,action,scope,teams=cloud,resource=null,creators=(table,id)=>creatorOf(repository,table,id)){
  if(!process.env.AGNT_TENANT_SLUG)throw Object.assign(new Error('Team resources require their cloud instance'),{status:403});
  const team=await teams.access(context.authorization,scope.team_id);
- // The instance owner runs the workspace on their own connections (credentialUserId);
- // a member's run still goes through a published version with approved connections.
- if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER)throw publishRequiredError(team.role);
+ // Editors run, as themselves (runActor.js); ScopeApiMiddleware applied the owner's run policy and the
+ // teamspace's connections.use before this request reached the route.
  if(context.scopeId!==scope.id)throw Object.assign(new Error('Select the resource workspace'),{status:403});
  if(action==='manage_access'&&!isAdmin(team.role))throw Object.assign(new Error('Team administrator required'),{status:403});
  if(action==='delete'&&!isAdmin(team.role)){
@@ -35,5 +33,5 @@ export function requireResourceAccess(table,action,idOf=req=>req.params.id){retu
   const resource=await applicationAuthorization.require(trustedScopeRequest(req)||{actorId:req.user?.userId||req.user?.id,authorization:req.headers.authorization},action,table,idOf(req));
   req.authorizedResource=resource;
   next();
- }catch(error){if(!error.status)console.error('[ResourceAuthorization]',error.message);res.status(error.status||500).json({error:error.status?error.message:'Unable to authorize resource',...(error.status&&error.code?{code:error.code}:{}),...(error.status&&typeof error.canPublish==='boolean'?{canPublish:error.canPublish}:{})});}
+ }catch(error){if(!error.status)console.error('[ResourceAuthorization]',error.message);res.status(error.status||500).json({error:error.status?error.message:'Unable to authorize resource',...(error.status&&error.code?{code:error.code}:{})});}
 };}

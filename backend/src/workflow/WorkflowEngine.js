@@ -13,6 +13,7 @@ import { createPluginAi } from '../services/ai/pluginAi.js';
 import runWorkflowAction from '../tools/library/controls/run-workflow.js';
 import { assertWorkflowShape } from './validateWorkflowShape.js';
 import { hostedWorkflowRunRefusal } from '../services/auth/tenantOwnership.js';
+import { runActorFor } from '../services/authorization/runActor.js';
 
 dotenv.config();
 
@@ -23,6 +24,11 @@ dotenv.config();
 const FINALIZED_EXECUTION_CACHE_LIMIT = 100;
 
 class WorkflowEngine extends EventEmitter {
+  /** Whose isolation, team policy and audit every node runs under. Data and credentials stay on userId. */
+  get runActor() {
+    return this.actorId || this.userId;
+  }
+
   constructor(workflow, workflowId, userId, isSubWorkflow = false, parentInputData = {}) {
     super();
 
@@ -42,6 +48,11 @@ class WorkflowEngine extends EventEmitter {
     };
     this.workflowId = workflowId;
     this.userId = userId;
+    // The person running it, when that is not userId (runActor.js): a sub-workflow inherits the actor of
+    // the node that started it; the workflow process sets it for a top-level run from who switched the
+    // workflow on (ProcessWorker). null = userId acts.
+    const inherited = runActorFor(userId);
+    this.actorId = inherited !== userId ? inherited : null;
     this.receivers = {};
     this.isListening = false;
     this.stopRequested = false;

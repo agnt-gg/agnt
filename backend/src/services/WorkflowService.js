@@ -12,6 +12,19 @@ import { verifiedPlan } from './auth/licence.js';
 import { credentialUserId } from './auth/tenantOwnership.js';
 import { isAutonomous } from './auth/planLimits.js';
 import { assertCanCreate, isPlanLimitError, planLimitResponse } from './auth/creationLimit.js';
+import { databaseRepository } from './authorization/ScopeRepository.js';
+import { recordTeamRunner } from './authorization/ResourceCreators.js';
+
+const runActors = databaseRepository(db);
+
+/**
+ * A teamspace workflow runs as the last person who switched it on or changed what it runs (runActor.js),
+ * on every trigger and after restarts. Changing it counts: a teammate's edit to a workflow the owner
+ * switched on must not then run as the owner. Nothing is recorded when no person is known.
+ */
+function recordWorkflowRunner(workflowId, userId) {
+  return recordTeamRunner(runActors, 'workflows', workflowId, userId);
+}
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -78,6 +91,7 @@ class WorkflowService {
 
       // Upsert the workflow changes
       await WorkflowModel.createOrUpdate(workflow.id, JSON.stringify(workflow), userId, workflow.isShareable);
+      await recordWorkflowRunner(workflow.id, userId);
 
       // PRD-057: mark plugin-installed workflows as user-modified on UI saves
       if (existingWorkflow) {
@@ -157,6 +171,7 @@ class WorkflowService {
       }
       const workflowData = JSON.stringify(workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
+      await recordWorkflowRunner(req.params.id, req.user.userId);
 
       // PRD-057: mark plugin-installed workflows as user-modified on UI updates
       await markWorkflowUserModified(req.params.id);
@@ -445,6 +460,7 @@ class WorkflowService {
         const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers?.authorization || ''))?.[1];
         await verifiedPlan(credentialUserId(req.user.userId), bearer ? { token: bearer } : {});
       }
+      await recordWorkflowRunner(req.params.id, req.user.userId);
       const result = await WorkflowProcessBridge.activateWorkflow(workflowData, req.user.userId);
 
       // ProcessManager reports two refusals by RESOLVING with an error-shaped

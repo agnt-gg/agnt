@@ -3,6 +3,7 @@ import db,{dbReady} from '../models/database/index.js';
 import {databaseRepository,ensureSharedScope} from '../services/authorization/ScopeRepository.js';
 import {NativeTeamResources} from '../services/NativeTeamResources.js';
 import {NativeTeamExecution,initializeNativeTeamExecution} from '../services/NativeTeamExecution.js';
+import {runAgentAsTeammate} from '../services/TeamDirectRun.js';
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
 import { TeamWorkspaceRepository, initializeTeamWorkspaces, DEFAULT_PROJECT_NAME, SPACE_ACCESS } from '../services/TeamWorkspaceRepository.js';
 import { CAPABILITIES, syncProjectAccess } from '../services/TeamAccess.js';
@@ -316,7 +317,13 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     agentExecutor:(repo,req,user,agentId)=>async input=>{
       const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();
       const assetId=await resources.snapshot(req.params.teamId,user,scope,'agent',agentId);
-      return new NativeTeamExecution(repo,cloud).run(req.cloudTeam,user,assetId,input,scope,req.headers.authorization);
+      try{return await new NativeTeamExecution(repo,cloud).run(req.cloudTeam,user,assetId,input,scope,req.headers.authorization);}
+      catch(error){
+        // Not published: it runs its current definition as the teammate who asked (TeamDirectRun), under the
+        // owner's run policy and in that teammate's sandbox, instead of telling them to find an admin.
+        if(error.code!=='publish_required')throw error;
+        return runAgentAsTeammate({team:req.cloudTeam,actorId:user,authorization:req.headers.authorization,scope,workspaceId:req.params.workspaceId,agentId,input,cloud});
+      }
     },
   });
   return router;

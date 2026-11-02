@@ -3,9 +3,14 @@ import {ResourceAuthorization} from '../services/authorization/ResourceAuthoriza
 import db,{dbReady} from '../models/database/index.js';
 import {databaseRepository,ensureSharedScope} from '../services/authorization/ScopeRepository.js';
 import {CloudTeamClient} from '../services/CloudTeamClient.js';
-import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole,publishRequiredError} from '../services/authorization/ScopeApiPolicy.js';
+import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole} from '../services/authorization/ScopeApiPolicy.js';
+import {policyRefusalMessage} from '../services/authorization/teamPolicy.js';
 import {withScopeRequest} from '../services/authorization/ScopeRequestContext.js';
+import {recordRunActor} from '../services/authorization/ResourceCreators.js';
 const repository=databaseRepository(db),cloud=new CloudTeamClient();
+// Teamspace items that can run without a request (a trigger, a restart, a schedule running a goal): they run as
+// the last person who changed or ran them (runActor.js; read by ProcessWorker and TaskOrchestrator).
+const RUN_AS_LAST_TOUCH=new Set(['workflows','goals']);
 export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWorkspace=async()=>null){return async(req,res,next)=>{
  const teamId=req.headers['x-agnt-team-id'];if(!teamId)return next();
  const api=req.path.split('/')[1];
@@ -28,15 +33,21 @@ export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWor
   const authorization=new ResourceAuthorization(repository,async(_context,_action,resourceScope)=>{if(resourceScope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});});
   for(const reference of assetApiReferences(req.path,req.body)){
     const existing=await repository.get(`SELECT id FROM "${reference.table}" WHERE id=?`,[reference.id]);
-    if(existing){const resolved=await authorization.require(context,action,reference.table,reference.id);if(resolved.scope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});}
+    if(existing){const resolved=await authorization.require(context,action,reference.table,reference.id);if(resolved.scope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});
+     // Whoever last changed or ran it is who it runs as when nobody is asking (schedules, triggers, restarts).
+     if((action==='edit'||action==='run')&&RUN_AS_LAST_TOUCH.has(reference.table))await recordRunActor(repository,reference.table,reference.id,context.actorId);}
   }
-  // Team runs go through a PUBLISHED version with a team connection (NativeTeamExecution), never the
-  // personal execution path, which would reach for credentials the team does not have. The instance
-  // OWNER is the exception: the workspace runs on the owner's own connections (credentialUserId),
-  // so the owner runs anything directly, exactly as on a personal instance.
-  if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER)throw publishRequiredError(team.role);
+  // Teammates run teamspace items directly, AS THEMSELVES: the run's actor is the member (runActor.js),
+  // so memberIsolation puts its code, shell and files in the kernel sandbox, refuses SQL and keeps
+  // unapproved plugins off, exactly as for that member's chat. It uses the teamspace's connections, which
+  // the owner decides: their team policy ("Run workflows and agents") and the member's connections.use
+  // in this teamspace (runs.execute was checked above). The owner runs anything, as on a personal instance.
+  if(action==='run'&&context.actorId!==process.env.AGNT_TENANT_OWNER){
+   if(team.policy?.permissions?.['workflows.run']===false)throw Object.assign(new Error(policyRefusalMessage('workflows.run')),{status:403,code:'team_policy_denied',permission:'workflows.run'});
+   await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(process.env.AGNT_TENANT_SLUG)+'/workspaces/'+encodeURIComponent(workspaceId)+'/access/connections.use');
+  }
   await repository.run('INSERT INTO scope_api_audit(scope_id,actor_id,action) VALUES(?,?,?)',[scope.id,context.actorId,req.method+' '+api]);
   req.user={...req.user,id:scope.resourceOwnerId,userId:scope.resourceOwnerId};
   return withScopeRequest(req,context,next);
- }catch(error){if(!error.status)console.error('[Scope API]',error.message);res.status(error.status||503).json({error:error.status?error.message:'Scope authority unavailable',...(error.status&&error.code?{code:error.code}:{}),...(error.status&&typeof error.canPublish==='boolean'?{canPublish:error.canPublish}:{})});}});
+ }catch(error){if(!error.status)console.error('[Scope API]',error.message);res.status(error.status||503).json({error:error.status?error.message:'Scope authority unavailable',...(error.status&&error.code?{code:error.code}:{}),...(error.status&&error.permission?{permission:error.permission}:{})});}});
 };}

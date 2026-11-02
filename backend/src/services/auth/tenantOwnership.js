@@ -168,9 +168,12 @@ export function tenantOwnerId() {
  * instance the workspace principal resolves to that owner. Anyone else is
  * returned unchanged.
  *
- * Safe because members cannot start runs directly (ScopeApiMiddleware keeps
- * the publish rule for them) and tool code runs sandboxed with a run-scoped
- * key, so no member ever handles the owner's secrets.
+ * Only credentials resolve this way, never WHO is running. A teammate's run
+ * acts as that teammate (authorization/runActor.js): memberIsolation sandboxes
+ * its code, shell and files and tool code gets a run-scoped key, so no member
+ * ever handles the owner's secrets. Whether teammates may use the workspace's
+ * connections at all is the owner's setting: their team policy ("Run workflows
+ * and agents") and each member's connections.use (ScopeApiMiddleware).
  */
 export function credentialUserId(userId) {
   if (typeof userId !== 'string' || !userId.startsWith('scope:') || !isTenantInstance()) return userId;

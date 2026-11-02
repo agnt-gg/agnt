@@ -1,5 +1,6 @@
 import ToolConfig from '../tools/ToolConfig.js';
-import { withToolActor } from '../services/security/toolRunAuthority.js';
+import { withToolActor, issueToolToken, TOOL_TOKEN_MAX_TTL_SECONDS } from '../services/security/toolRunAuthority.js';
+import { isNonOwnerMember } from '../services/security/memberIsolation.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import CustomToolExecutor from './CustomToolExecutor.js';
@@ -37,10 +38,14 @@ class NodeExecutor {
     this.customToolExecutor = new CustomToolExecutor(workflowEngine);
   }
   executeNode(node, inputData) {
-    return withToolActor(this.workflowEngine.userId, () => this.executeNodeWithActor(node, inputData));
+    // A teammate's run acts as that teammate (runActor.js), so memberIsolation sandboxes its code and
+    // files exactly as for their chat. Their run-scoped token lets a node's own tool calls prove it.
+    const actor = this.workflowEngine.runActor || this.workflowEngine.userId;
+    const authorization = isNonOwnerMember(actor) ? 'Bearer ' + issueToolToken(actor, { ttlSeconds: TOOL_TOKEN_MAX_TTL_SECONDS }) : null;
+    return withToolActor(actor, () => this.executeNodeWithActor(node, inputData, actor), authorization);
   }
 
-  async executeNodeWithActor(node, inputData) {
+  async executeNodeWithActor(node, inputData, actor = this.workflowEngine.userId) {
     const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');
     const {SAFE_TEAM_NODES}=await import('../services/authorization/TeamToolPolicy.js');
     // A team run may use the nodes its approved revision declares (NativeTeamExecution / TeamToolPolicy).
@@ -151,10 +156,13 @@ class NodeExecutor {
         let policyBlock = null;
         try {
           const security = await import('../services/security/nopeService.js');
+          // Judged by what it executes (customToolGateName): a model call, or code in the tool sandbox. Its
+          // own name has no capability profile, which refused every custom tool to every teammate.
+          const { customToolGateName } = await import('../services/security/customToolCapabilities.js');
           const gate = await security.checkAction({
-            toolName: node.type,
+            toolName: customToolGateName(enrichedNode.base),
             args: security.stripSensitiveParams(enrichedNode.parameters || enrichedNode),
-            userId: this.workflowEngine.userId,
+            userId: actor,
             role: 'workflow',
             surface: 'workflow',
             workflowPolicy: this.workflowEngine.workflow?.securityPolicy,
@@ -268,7 +276,7 @@ class NodeExecutor {
            const gate = await security.checkAction({
             toolName: node.type,
             args: security.selectWorkflowSecurityArgs(node.type, node.parameters, resolvedParams),
-            userId: this.workflowEngine.userId,
+            userId: actor,
             role: 'workflow',
             surface: 'workflow',
             workflowPolicy: this.workflowEngine.workflow?.securityPolicy,

@@ -16,14 +16,13 @@ it('the instance owner runs a workspace resource', async () => {
   await expect(teamResourcePolicy({ actorId: 'owner-1', scopeId: 'workspace:w' }, 'run', scope, teams('owner'))).resolves.toBeUndefined();
 });
 
-it('a member still may not run without a published version, and is told who can publish', async () => {
+it('members and admins run teamspace agents directly; viewers do not', async () => {
   hosted();
-  // Was a bare 403 "Shared execution requires a bound execution principal" here and a 409 on the
-  // workflow path: one refusal, one code, and the next step for this role (bravo smoke test, Nov 2026).
-  await expect(teamResourcePolicy({ actorId: 'member-2', scopeId: 'workspace:w' }, 'run', scope, teams('member')))
-    .rejects.toMatchObject({ status: 409, code: 'publish_required', canPublish: false, message: expect.stringMatching(/owner or admin/) });
-  await expect(teamResourcePolicy({ actorId: 'admin-3', scopeId: 'workspace:w' }, 'run', scope, teams('admin')))
-    .rejects.toMatchObject({ status: 409, code: 'publish_required', canPublish: true });
+  // Nov 2026: members could build agents but never run them. They run as themselves (runActor.js); the
+  // owner's run policy and connections.use were applied by ScopeApiMiddleware before the route.
+  await expect(teamResourcePolicy({ actorId: 'member-2', scopeId: 'workspace:w' }, 'run', scope, teams('member'))).resolves.toBeUndefined();
+  await expect(teamResourcePolicy({ actorId: 'admin-3', scopeId: 'workspace:w' }, 'run', scope, teams('admin'))).resolves.toBeUndefined();
+  await expect(teamResourcePolicy({ actorId: 'viewer-4', scopeId: 'workspace:w' }, 'run', scope, teams('viewer'))).rejects.toMatchObject({ status: 403 });
 });
 
 it('the owner exemption covers running only, not the workspace check', async () => {

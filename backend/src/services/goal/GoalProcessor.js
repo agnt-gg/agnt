@@ -1,4 +1,7 @@
 import GoalModel from '../../models/GoalModel.js';
+import db from '../../models/database/index.js';
+import { databaseRepository } from '../authorization/ScopeRepository.js';
+import { recordTeamRunner } from '../authorization/ResourceCreators.js';
 import TaskModel from '../../models/TaskModel.js';
 import { checklistOf } from './goalChecklist.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
@@ -95,6 +98,8 @@ class GoalProcessor {
       // Step 2: Create goal record
       console.log(`[GoalProcessor] Step 2: Creating goal record in database`);
       const goalId = await GoalModel.create(analysis.title, goalText, userId, analysis.priority, analysis.successCriteria);
+      // A teammate's goal runs as them, even from a schedule (TaskOrchestrator, runActor.js).
+      await recordTeamRunner(databaseRepository(db), 'goals', goalId, userId);
       console.log(`[GoalProcessor] Step 2 Complete: Created goal with ID: ${goalId}`);
 
       // Step 3: Create task breakdown

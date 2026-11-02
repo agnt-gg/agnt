@@ -1,7 +1,12 @@
 import { EventEmitter } from 'events';
 import WorkflowEngine from './WorkflowEngine.js';
 import WorkflowModel from '../models/WorkflowModel.js';
-import { dbRunWithRetry } from '../models/database/index.js';
+import db, { dbRunWithRetry } from '../models/database/index.js';
+import { databaseRepository } from '../services/authorization/ScopeRepository.js';
+import { runActorOf } from '../services/authorization/ResourceCreators.js';
+import { isWorkspacePrincipal } from '../services/authorization/runActor.js';
+
+const actors = databaseRepository(db);
 
 class ProcessWorker extends EventEmitter {
   constructor(processManager) {
@@ -26,6 +31,9 @@ class ProcessWorker extends EventEmitter {
 
       // Initialize Workflow Engine Listeners for this workflow
       engine = new WorkflowEngine(workflow, workflow.id, userId);
+      // A teamspace workflow runs as whoever switched it on (WorkflowService.activateWorkflow records it),
+      // on every trigger and after every restart, never silently as the workspace (= the owner).
+      if (isWorkspacePrincipal(userId)) engine.actorId = await runActorOf(actors, 'workflows', workflow.id);
       // 'restore' when the process is re-arming what was running before it
       // stopped; triggers use it to resume rather than start over.
       engine.activation = activation;

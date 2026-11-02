@@ -4,6 +4,7 @@ import { skillIdentity, isDefaultSkill } from '../../utils/skillTrust.js';
 import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from '../security/toolProcess.js';
 import { withToolActor, currentToolActor, hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
+import { runActorFor, runAuthorizationFor } from '../authorization/runActor.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -5393,14 +5394,18 @@ async function executeToolInner(toolName, args, authToken, context) {
  * receives them pre-resolved.
  */
 export function executeTool(toolName, args, authToken, context) {
-  return withToolActor(context?.userId, () => executeToolWithActor(toolName, args, authToken, context), authToken);
+  // The person running it (a teammate in a teamspace), not the workspace that owns the data: isolation,
+  // the owner's team policy and the membership check judge THEM. Data and credentials stay on context.userId.
+  const actor = runActorFor(context?.userId, context?.actorId);
+  const authorization = runAuthorizationFor(authToken, actor, context?.userId);
+  return withToolActor(actor, () => executeToolWithActor(toolName, args, authorization, context, actor), authorization);
 }
 
-async function executeToolWithActor(toolName, args, authToken, context) {
+async function executeToolWithActor(toolName, args, authToken, context, actor = context?.userId) {
   const {requireTeamTool}=await import('../authorization/TeamToolPolicy.js');
   requireTeamTool(toolName);
   let teamPermissions=null;
-  if(process.env.AGNT_TENANT_SLUG){const {requireHostedToolAuthority}=await import('../authorization/HostedToolAuthority.js');teamPermissions=await requireHostedToolAuthority(context?.userId,authToken);}
+  if(process.env.AGNT_TENANT_SLUG){const {requireHostedToolAuthority}=await import('../authorization/HostedToolAuthority.js');teamPermissions=await requireHostedToolAuthority(actor,authToken);}
   // CRITICAL: Resolve data references in arguments before gate + execution
   const resolvedArgs = resolveDataReferences(args, context);
 
@@ -5408,7 +5413,7 @@ async function executeToolWithActor(toolName, args, authToken, context) {
   // before AGNT's own guarantees, so a refusal names the owner's setting.
   if (process.env.AGNT_TENANT_SLUG) {
     const { teamPolicyRefusal } = await import('../authorization/teamPolicy.js');
-    const refusal = teamPolicyRefusal(toolName, context?.userId, teamPermissions);
+    const refusal = teamPolicyRefusal(toolName, actor, teamPermissions);
     if (refusal) {
       return JSON.stringify({
         success: false,
@@ -5423,7 +5428,7 @@ async function executeToolWithActor(toolName, args, authToken, context) {
   const gate = await checkAction({
     toolName,
     args: resolvedArgs,
-    userId: context?.userId,
+    userId: actor,
     role: context?.role,
     surface: 'orchestrator',
   });

@@ -1,6 +1,8 @@
 import { taskFailureReason, goalEvaluationPasses, taskEvaluationRejection } from './taskOutcome.js';
 import { parseNeedsInput } from './taskReview.js';
 import GoalModel from '../../models/GoalModel.js';
+import { databaseRepository } from '../authorization/ScopeRepository.js';
+import { asRecordedRunner } from '../authorization/ResourceCreators.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import AgentTaskMatcher from './AgentTaskMatcher.js';
@@ -1928,6 +1930,24 @@ Rules:
       console.error(`[AGI Loop] Resume-state resolution failed (starting fresh):`, error.message);
       return fresh;
     }
+  }
+}
+
+
+/**
+ * Goal work in a teamspace runs as the person who last created, edited or ran the goal there (runActor.js,
+ * recorded by GoalService and ScopeApiMiddleware), however it starts: a click, a resume, or a schedule with
+ * no request at all. Without this a teammate's goal ran its tools as the workspace, which acts for the owner.
+ * Both methods take (goalId, userId, ...) and every goal run goes through one of them.
+ */
+{
+  const goalRunners = databaseRepository(db);
+  for (const name of ['executeGoalTasks', 'executeGoalAutonomous']) {
+    const run = TaskOrchestrator[name];
+    if (typeof run !== 'function') throw new Error('TaskOrchestrator.' + name + ' is missing');
+    TaskOrchestrator[name] = function (goalId, userId, ...rest) {
+      return asRecordedRunner(goalRunners, 'goals', goalId, userId, () => run.call(this, goalId, userId, ...rest));
+    };
   }
 }
 
