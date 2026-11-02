@@ -1,4 +1,5 @@
 import ToolConfig from '../tools/ToolConfig.js';
+import { normalizeToolBase } from '../services/security/customToolCapabilities.js';
 import { withToolActor, issueToolToken, TOOL_TOKEN_MAX_TTL_SECONDS } from '../services/security/toolRunAuthority.js';
 import { isNonOwnerMember } from '../services/security/memberIsolation.js';
 import AuthManager from '../services/auth/AuthManager.js';
@@ -147,7 +148,7 @@ class NodeExecutor {
         // Merge the full tool definition with the node data
         const enrichedNode = {
           ...node,
-          base: fullToolDef?.base || node.base || 'AI',
+          base: normalizeToolBase(fullToolDef?.base || node.base || 'AI', fullToolDef?.code || node.code),
           code: fullToolDef?.code || node.code,
         };
 
@@ -160,7 +161,7 @@ class NodeExecutor {
           // own name has no capability profile, which refused every custom tool to every teammate.
           const { customToolGateName } = await import('../services/security/customToolCapabilities.js');
           const gate = await security.checkAction({
-            toolName: customToolGateName(enrichedNode.base),
+            toolName: customToolGateName(enrichedNode.base, enrichedNode.code),
             args: security.stripSensitiveParams(enrichedNode.parameters || enrichedNode),
             userId: actor,
             role: 'workflow',

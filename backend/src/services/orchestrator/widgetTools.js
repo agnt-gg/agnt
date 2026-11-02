@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { adoptPersonalWidgets } from '../authorization/adoptPersonalWidgets.js';
+import { databaseRepository } from '../authorization/ScopeRepository.js';
 import { assetOwnersFor } from '../authorization/teamAssetOwner.js';
 import db from '../../models/database/index.js';
 import { createLlmClient } from '../ai/LlmService.js';
@@ -147,6 +149,8 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
     // and GET /widget-definitions show what chat made. Every update and read is limited to these owners:
     // these tools used to update or load ANY widget by id, including another person's.
     const owners = userId ? await assetOwnersFor(userId) : [];
+    // Widgets this person made before the shared library move into it first (adoptPersonalWidgets.js).
+    if (owners.length > 1 && db) await adoptPersonalWidgets(databaseRepository(db), owners[0], owners[owners.length - 1]);
     const writeOwner = owners[owners.length - 1] || userId || 'anonymous';
     const ownerSql = owners.length ? `user_id IN (${owners.map(() => '?').join(',')})` : '0';
     const ownedWidget = (id) => new Promise((resolve, reject) => db.get(`SELECT * FROM widget_definitions WHERE id = ? AND ${ownerSql}`, [id, ...owners], (err, row) => (err ? reject(err) : resolve(row || null))));

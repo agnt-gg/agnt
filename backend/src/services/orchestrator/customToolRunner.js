@@ -1,4 +1,5 @@
 import CustomToolExecutor from '../../workflow/CustomToolExecutor.js';
+import { normalizeToolBase } from '../security/customToolCapabilities.js';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
 
 /**
@@ -50,18 +51,9 @@ function makeMinimalEngine(userId) {
  * through untouched) and injects them as `params` for code tools.
  */
 function toExecutableNode(tool, args) {
-  const rawBase = tool.base || tool.config?.base || 'AI';
-  const baseMap = {
-    javascript: 'CODE_JS',
-    js: 'CODE_JS',
-    code_js: 'CODE_JS',
-    python: 'CODE_PYTHON',
-    py: 'CODE_PYTHON',
-    code_python: 'CODE_PYTHON',
-    ai: 'AI',
-  };
   const code = tool.code || tool.config?.code || null;
-  const base = baseMap[String(rawBase).toLowerCase()] || (code ? 'CODE_JS' : 'AI');
+  // The one base map the security gate also uses (customToolCapabilities.js).
+  const base = normalizeToolBase(tool.base || tool.config?.base || 'AI', code);
 
   return {
     id: tool.id || null,

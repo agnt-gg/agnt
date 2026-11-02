@@ -7,6 +7,8 @@ import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole}
 import {policyRefusalMessage} from '../services/authorization/teamPolicy.js';
 import {withScopeRequest} from '../services/authorization/ScopeRequestContext.js';
 import {recordRunActor} from '../services/authorization/ResourceCreators.js';
+import {teamAssetOwnerFor} from '../services/authorization/teamAssetOwner.js';
+import {adoptPersonalWidgets} from '../services/authorization/adoptPersonalWidgets.js';
 const repository=databaseRepository(db),cloud=new CloudTeamClient();
 // Teamspace items that can run without a request (a trigger, a restart, a schedule running a goal): they run as
 // the last person who changed or ran them (runActor.js; read by ProcessWorker and TaskOrchestrator).
@@ -31,6 +33,9 @@ export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWor
   const scope=await ensureSharedScope(repository,teamId,workspaceId);
   const context={actorId:req.user.userId||req.user.id,teamId,workspaceId,scopeId:scope.id,resourceOwnerId:scope.resourceOwnerId,role:team.role,authorization:req.headers.authorization};
   const authorization=new ResourceAuthorization(repository,async(_context,_action,resourceScope)=>{if(resourceScope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});});
+  // Widgets this person made in their personal space join the team library first, so the Widgets page and
+  // the widget tools list the same widgets (adoptPersonalWidgets.js).
+  if(api==='widget-definitions'){const teamOwner=await teamAssetOwnerFor(context.actorId);if(teamOwner)await adoptPersonalWidgets(repository,context.actorId,teamOwner);}
   for(const reference of assetApiReferences(req.path,req.body)){
     const existing=await repository.get(`SELECT id FROM "${reference.table}" WHERE id=?`,[reference.id]);
     if(existing){const resolved=await authorization.require(context,action,reference.table,reference.id);if(resolved.scope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});

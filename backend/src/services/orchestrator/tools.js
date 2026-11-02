@@ -5441,7 +5441,7 @@ async function gateNameFor(toolName, userId) {
     const custom = await findCustomTool(toolName, userId);
     if (!custom) return toolName;
     const { customToolGateName } = await import('../security/customToolCapabilities.js');
-    return customToolGateName(custom.base);
+    return customToolGateName(custom.base || custom.config?.base, custom.code || custom.config?.code);
   } catch { return toolName; }
 }
 

@@ -1,4 +1,5 @@
-import { it, expect, afterEach } from 'vitest';
+import { it, expect, afterEach, vi } from 'vitest';
+vi.setConfig({ testTimeout: 20000 });
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +11,8 @@ import { isolatedUserDataFor, closeIsolatedUserData, usesIsolatedUserData } from
 const roots = [];
 const tempRoot = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-isolated-')); roots.push(dir); return dir; };
 const run = (db, sql, args = []) => new Promise((resolve, reject) => db.run(sql, args, (error) => (error ? reject(error) : resolve())));
-afterEach(async () => { await closeIsolatedUserData(); for (const dir of roots.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+// Windows keeps a just-closed SQLite file locked for a moment: retry the cleanup instead of failing on EBUSY.
+afterEach(async () => { await closeIsolatedUserData(); for (const dir of roots.splice(0)) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }, 20000);
 
 it('refuses to attach any other database, so the instance database is unreachable', async () => {
   const store = await isolatedUserDataFor('scope:w', { root: tempRoot() });

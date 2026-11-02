@@ -1,4 +1,5 @@
 import GenerateWithAiLlm from '../tools/library/actions/generate-with-ai-llm.js';
+import { normalizeToolBase } from '../services/security/customToolCapabilities.js';
 import ExecuteJavaScript from '../tools/library/utilities/execute-javascript.js';
 import ExecutePython from '../tools/library/utilities/execute-python.js';
 import { resolveAccountAi } from '../services/ai/accountAi.js';
@@ -36,7 +37,7 @@ class CustomToolExecutor {
   }
 
   async execute(node, inputData) {
-    const base = node.base || 'AI';
+    const base = normalizeToolBase(node.base || 'AI', node.code);
     console.log(`Executing tool with base type: ${base}`, node);
 
     switch (base) {
