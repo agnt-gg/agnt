@@ -54,10 +54,10 @@ const BOILERPLATE = `// -- AGNT API helper --
 //
 //   // Any /api/* endpoint
 //   const agents = await agnt.fetch('/api/agents');
-//   const created = await agnt.fetch('/api/agents', {
+//   const created = await agnt.fetch('/api/agents/save', {
 //     method: 'POST',
-//     body: { name: 'My Agent' }   // object or JSON.stringify(...) both work
-//   });
+//     body: { agent: { name: 'My Agent' } }   // object or JSON.stringify(...) both work
+//   });   // -> { message, agentId }
 //
 //   // User context (synchronous)
 //   console.log(agnt.user);   // { id, email, name } | null

@@ -9352,18 +9352,21 @@ Base path: `/api/workflows`
 - **Handler**: `WorkflowService.activateWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
-- **Description**: Activate a workflow so it begins listening for triggers (e.g., timer, webhook). This does **not** accept runtime `inputs` — it toggles the workflow's active state.
-- **Response**:
+- **Description**: Activate a workflow so it begins listening for triggers (e.g., timer, webhook). It runs the SAVED workflow; it does **not** accept runtime `inputs`, it toggles the workflow's active state.
+- **Response** (`200`): what the workflow process reports, for example:
 
 ```json
 {
-  "success": true,
-  "message": "Workflow activated successfully",
-  "workflowId": "workflow-id"
+  "message": "Workflow queued for execution"
 }
 ```
 
 - **Errors**:
+  - `404` — no such workflow for the caller.
+  - `409` `{ code: 'ALREADY_ACTIVE' }` — it is already running.
+  - `409` `{ code: 'publish_required', canPublish }` — in a team scope (`X-AGNT-Team-ID`), only the instance owner starts a workflow directly; everyone else runs its PUBLISHED version (see [Team Routes](#team-routes), "Running teamspace items"). `canPublish: true` for owners and admins, who can publish it; a member asks one of them.
+  - `403` `{ code: 'team_policy_denied', permission }` — the team owner has turned off a permission this workflow needs (`workflows.run`, `automations.schedule` or `triggers.external`).
+  - `403` `{ error: 'Upgrade required', code: 'PLAN_REQUIRED' | 'PLAN_LIMIT' }` — the plan does not include its triggers or automation.
   - `503` — the workflow process is not reachable, so the start could not be
     attempted. Retryable.
   - `500` — the start was attempted and failed.
@@ -9523,7 +9526,6 @@ Base path: `/api/workflows`
   - `versionB` (query, required): Second version number
 - **Description**: Get a diff between two workflow versions
 - **Validation**: Both `versionA` and `versionB` are required (returns 400 if either is missing)
-- **⚠️ Note**: This route may be shadowed by `/:workflowId/versions/:versionId` — see route-ordering issue above.
 - **Response**:
 
 ```json
@@ -9548,7 +9550,6 @@ Base path: `/api/workflows`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
 - **Description**: Get storage statistics for a workflow's version history
-- **⚠️ Note**: This route may be shadowed by `/:workflowId/versions/:versionId` — see route-ordering issue above.
 - **Response**:
 
 ```json

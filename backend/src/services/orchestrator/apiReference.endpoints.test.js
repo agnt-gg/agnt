@@ -44,6 +44,17 @@ describe('the real docs', () => {
     expect(team).toEqual(expect.arrayContaining(['GET /:teamId/assets', 'DELETE /:teamId/assets/:id', 'POST /:teamId/workspaces/:workspaceId/messages']));
     expect(files).toEqual(expect.arrayContaining(['GET /:teamId/:workspaceId/files', 'DELETE /:teamId/:workspaceId/content?path=<relative-path>']));
   });
+  // Second bravo retest: the helper still taught POST /api/agents with a flat { name } (no such route).
+  it("the overview's examples use routes and bodies that exist", () => {
+    const overview = getOverview();
+    expect(overview).not.toMatch(/agnt\.fetch\('\/api\/agents', \{/);
+    expect(overview).toContain("agnt.fetch('/api/agents/save'");
+    expect(overview).toContain('{ agent: { name:');
+    expect(overview).toContain('{ workflow: { name:');
+  });
+  it('no endpoint is still documented as shadowed by the fixed version routes', () => {
+    expect(DOCS).not.toMatch(/may be shadowed by `\/:workflowId\/versions\/:versionId`/);
+  });
   it('the overview shows them', () => {
     const overview = getOverview();
     expect(overview).toMatch(/── Team \(\/api\/teams\) ──\n {2}GET/);
