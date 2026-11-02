@@ -1,6 +1,6 @@
 import { getSessionUserId } from './sessionTokenCache.js';
 import { credentialUserId } from './tenantOwnership.js';
-import { verifiedPlan, PAID_PLANS } from './licence.js';
+import { verifiedPlan, PAID_PLANS, LOCAL_PLANS } from './licence.js';
 
 /**
  * What this install's user is entitled to, from a VERIFIED licence.
@@ -20,6 +20,14 @@ import { verifiedPlan, PAID_PLANS } from './licence.js';
  *   - Unknown is NOT paid. A paid capability needs proof.
  *   - Enforcement is ON. ENFORCE_PLAN_GATES=false turns it off for tests and
  *     development only; a missing setting means on.
+ *
+ * Two questions, never mixed:
+ *   - hasFeature / hasPaidPlan: PAID. Anything that costs AGNT money (hosted
+ *     services, relays, remote access, paid triggers) needs a paid plan.
+ *   - liftsFreeLimits: PAID OR TRIAL. The free plan's local limits
+ *     (planLimits.FREE_LIMITS: agents, workflows, automations, timers,
+ *     connections, history, scheduled goals) run on this machine and cost
+ *     nothing, so the referral trial lifts them too.
  */
 
 /** Features this module answers for. A typo should fail loudly in review, not deny or grant silently. */
@@ -89,17 +97,35 @@ export function requirePaidFeature(feature) {
 /** Test seam (kept for callers; the cache now lives in licence.js on disk). */
 export function __resetPlanEntitlementsForTests() {}
 
-/** Scheduling spends resources without a request present: require a proven paid plan
- * for the schedule OWNER, never whichever account authenticated most recently. */
-export async function canRunScheduledGoals(userId, { network = true } = {}) {
+/**
+ * Is this OWNER on a proven paid plan? For what costs AGNT money and has no
+ * request to carry a token (paid triggers at workflow admission).
+ * A team workspace has no plan of its own; it runs on the instance owner's.
+ */
+export async function hasPaidPlan(userId, { network = true } = {}) {
   if (!userId) return false;
   if (!isEnforcing()) return true;
-  // A team workspace has no plan of its own; it schedules on the instance owner's.
   return PAID_PLANS.has(await getPlanType({ userId: credentialUserId(userId), network }));
+}
+
+/**
+ * Are the free plan's local limits lifted for this OWNER: a proven paid plan
+ * or a running trial? Decided for the owner, never whichever account
+ * authenticated most recently.
+ */
+export async function liftsFreeLimits(userId, { network = true } = {}) {
+  if (!userId) return false;
+  if (!isEnforcing()) return true;
+  return LOCAL_PLANS.has(await getPlanType({ userId: credentialUserId(userId), network }));
+}
+
+/** Scheduled goals run local agents on the user's own keys: a local limit. */
+export async function canRunScheduledGoals(userId, options) {
+  return liftsFreeLimits(userId, options);
 }
 export async function requireScheduledGoals(req, res, next) {
   // Downgraded accounts must still be able to stop or remove existing jobs.
   if (req.method === 'DELETE' || (req.method === 'PATCH' && req.body?.enabled === false && Object.keys(req.body).every(k => k === 'enabled'))) return next();
   if (await canRunScheduledGoals(req.user?.userId || req.user?.id)) return next();
-  return res.status(403).json({ error: 'Upgrade required', requiredFeature: 'scheduledGoals', message: 'Scheduled goals require a paid plan.' });
+  return res.status(403).json({ error: 'Upgrade required', requiredFeature: 'scheduledGoals', message: 'Scheduled goals need AGNT Pro.' });
 }

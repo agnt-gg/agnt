@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { claimReferral, inviteLink, shareIntents, milestoneLabel } from './referralProgram.js';
+import { claimReferral, inviteLink, shareIntents, FRIEND_OFFER } from './referralProgram.js';
 
 describe('inviteLink', () => {
   it('points at the invite page, and never builds one from a bad code', () => {
@@ -47,10 +47,9 @@ describe('claimReferral', () => {
   });
 });
 
-describe('milestoneLabel', () => {
-  it('names each reward', () => {
-    expect(milestoneLabel({ reward: 'always_on', months: 1 })).toBe('1 month of Always-On');
-    expect(milestoneLabel({ reward: 'always_on', months: 3 })).toBe('3 months of Always-On');
-    expect(milestoneLabel({ reward: 'founding_member' })).toBe('Founding member');
+describe('FRIEND_OFFER', () => {
+  it('offers the 30-day trial, never free cloud', () => {
+    expect(FRIEND_OFFER).toMatch(/30 days of AGNT Pro/);
+    expect(FRIEND_OFFER).not.toMatch(/Cloud/i);
   });
 });

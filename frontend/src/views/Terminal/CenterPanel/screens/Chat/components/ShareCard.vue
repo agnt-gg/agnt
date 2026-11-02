@@ -3,7 +3,7 @@
   <div class="share-card">
     <i class="fas fa-share-alt share-card-icon" aria-hidden="true"></i>
     <span class="share-card-name">{{ target.name }}</span>
-    <span class="share-card-offer">Share it: anyone new who joins through your link gets a free month.</span>
+    <span class="share-card-offer">Share it: anyone new who joins through your link gets 30 days of AGNT Pro free.</span>
     <button type="button" class="share-card-button" @click="share">Share</button>
   </div>
 </template>

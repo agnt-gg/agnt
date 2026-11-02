@@ -4,6 +4,7 @@ import WorkflowService from '../services/WorkflowService.js';
 import WorkflowVersionService from '../services/WorkflowVersionService.js';
 import WorkflowModel from '../models/WorkflowModel.js';
 import { buildWorkflowEnvelope, parseWorkflowEnvelope, importWorkflow } from '../services/WorkflowImportService.js';
+import { isPlanLimitError, planLimitResponse } from '../services/auth/creationLimit.js';
 import { requireTeamWorkflowPermission } from '../services/authorization/teamPolicy.js';
 
 // On a shared instance the team owner decides what members may do (teamPolicy.js).
@@ -190,6 +191,7 @@ WorkflowRoutes.post('/import', authenticateToken, canBuild, async (req, res) => 
       missingToolTypes: result.missingToolTypes,
     });
   } catch (error) {
+    if (isPlanLimitError(error)) return res.status(403).json(planLimitResponse(error));
     console.error('[WorkflowRoutes] import error:', error);
     res.status(400).json({ error: error.message });
   }

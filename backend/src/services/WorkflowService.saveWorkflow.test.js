@@ -26,7 +26,8 @@ vi.mock('../workflow/WorkflowProcessBridge.js', () => ({
   default: { fetchWorkflowState, activateWorkflow: vi.fn(), deactivateWorkflow: vi.fn() },
 }));
 vi.mock('../models/database/index.js', () => ({
-  default: { run: dbRun },
+  // get: the free-plan creation count (auth/creationLimit.js); this account owns none.
+  default: { run: dbRun, get: (_sql, _params, done) => done(null, { n: 0 }) },
   dbRunWithRetry: vi.fn(async (fn) => fn()),
 }));
 vi.mock('../utils/realtimeSync.js', () => ({

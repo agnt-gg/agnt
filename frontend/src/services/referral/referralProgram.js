@@ -3,8 +3,9 @@
  *
  * The rules and their numbers live on api.agnt.gg (services/ReferralProgram.js
  * there): partners earn 30% of every payment for a customer's first 12 months,
- * everyone else earns a free month per paying friend, and an invited friend's
- * first month of Personal Cloud is free. The app reads those numbers from
+ * everyone else earns a free month per paying friend, and an invited friend
+ * gets a 30-day trial of AGNT Pro: the free plan's local limits lifted, no
+ * cloud or hosted services until they pay. The app reads those numbers from
  * /referrals/milestones rather than restating them.
  */
 import { API_CONFIG } from '@/tt.config.js';
@@ -18,7 +19,7 @@ export function inviteLink(code) {
 }
 
 /** The one line that tells a friend what they get. */
-export const FRIEND_OFFER = 'Join through my link and your first month of AGNT Cloud is free.';
+export const FRIEND_OFFER = 'Join through my link and get 30 days of AGNT Pro free.';
 
 /** Share intents for a URL. Plain links: nothing is sent anywhere until the user posts. */
 export function shareIntents(url, text) {
@@ -54,10 +55,3 @@ export async function claimReferral({ code, email, token, remoteUrl = API_CONFIG
   }
 }
 
-/** Reward labels, from the milestone shape the API returns. */
-export function milestoneLabel(milestone) {
-  if (!milestone) return '';
-  if (milestone.reward === 'always_on') return `${milestone.months} ${milestone.months === 1 ? 'month' : 'months'} of Always-On`;
-  if (milestone.reward === 'founding_member') return 'Founding member';
-  return String(milestone.reward || '');
-}

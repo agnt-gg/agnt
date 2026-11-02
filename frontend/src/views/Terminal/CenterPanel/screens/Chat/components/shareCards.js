@@ -4,7 +4,7 @@
 // so a successful create gets the same kind of inline card a Connect request
 // does (see connectCards.js). The card opens the one share sheet; the link it
 // makes carries the person's invite, so anyone new who joins through it gets a
-// free month and the sharer gets credit.
+// 30-day trial and the sharer gets credit.
 //
 // Tolerant by design: tool results are API responses whose exact nesting has
 // varied. If an id cannot be found, there is no card. A missing card costs a

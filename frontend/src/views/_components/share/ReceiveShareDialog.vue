@@ -20,7 +20,7 @@
           <p v-if="loading" role="status">Opening the link…</p>
           <template v-else-if="preview">
             <p><span v-if="preview.author">{{ preview.author }} shared this. </span>Adding it gives you your own copy to change and run; the original stays with whoever shared it.</p>
-            <p v-if="preview.ref" class="muted"><i class="fas fa-gift" aria-hidden="true"></i> New to AGNT? Adding this credits {{ preview.author || 'the person who shared it' }} as your referrer, and your first month of AGNT Cloud is free.</p>
+            <p v-if="preview.ref" class="muted"><i class="fas fa-gift" aria-hidden="true"></i> New to AGNT? Adding this credits {{ preview.author || 'the person who shared it' }} as your referrer, and you get 30 days of AGNT Pro free.</p>
             <ul class="rows" aria-label="What will be added">
               <li v-for="(item, index) in preview.items" :key="index">
                 <div class="who"><strong>{{ item.name }}</strong><span><i :class="kindIcon(item.kind)" aria-hidden="true"></i> {{ kindLabel(item.kind) }}</span></div>

@@ -2,6 +2,7 @@ import log from '../../utils/logger.js';
 import WorkflowModel from '../../models/WorkflowModel.js';
 import WorkflowVersionService from '../WorkflowVersionService.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
+import { assertCanCreate } from '../auth/creationLimit.js';
 import {
   calculateAutoLayout,
   layoutTopDown,
@@ -34,6 +35,8 @@ async function requireOwnWorkflow(workflowId, authToken, context) {
 
 async function saveWorkflow(workflowId, workflowState, userId) {
   try {
+    // A new workflow counts toward the free cap, exactly as in the editor.
+    if (!(await WorkflowModel.findOne(workflowId))) await assertCanCreate('workflow', userId);
     await WorkflowModel.createOrUpdate(workflowId, JSON.stringify(workflowState), userId, workflowState.isShareable || false);
 
     // Broadcast update to frontend

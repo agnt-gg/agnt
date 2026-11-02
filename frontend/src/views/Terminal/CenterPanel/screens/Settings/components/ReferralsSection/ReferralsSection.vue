@@ -31,7 +31,7 @@
             {{ linkCopied ? 'Copied!' : 'Copy' }}
           </button>
         </div>
-        <p class="help-text">Anyone who joins through your link gets their first month of AGNT Cloud free. Things you share from the app carry your link too.</p>
+        <p class="help-text">Anyone who joins through your link gets 30 days of AGNT Pro free. Things you share from the app carry your link too.</p>
         <div class="share-row" v-if="intents">
           <a :href="intents.x" target="_blank" rel="noopener" class="share-chip" @click.prevent="openExternal(intents.x)"><i class="fas fa-share-alt" aria-hidden="true"></i> Post on X</a>
           <a :href="intents.linkedin" target="_blank" rel="noopener" class="share-chip" @click.prevent="openExternal(intents.linkedin)"><i class="fas fa-share-alt" aria-hidden="true"></i> LinkedIn</a>

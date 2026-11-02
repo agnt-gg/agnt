@@ -16,6 +16,7 @@ import db from '../models/database/index.js';
 import AgentModel from '../models/AgentModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import { resolveRefList } from '../utils/pluginSlugResolver.js';
+import { assertCanCreate } from './auth/creationLimit.js';
 
 const FORMAT = 'agnt-agent';
 const FORMAT_VERSION = '1.0';
@@ -99,6 +100,8 @@ export function parseAgentEnvelope(envelope) {
  */
 export async function importAgent(payload, userId, options = {}) {
   if (!userId) throw new Error('importAgent requires a userId');
+  // A person importing makes a new agent; a plugin bringing its own does not count.
+  if (!options.sourcePlugin) await assertCanCreate('agent', userId);
 
   const ctx = options.resolveCtx || { bundleMap: new Map(), lookupInstalled: null };
 

@@ -1728,7 +1728,7 @@ export default {
       (code) => {
         if (typeof code !== 'string' || !code) return;
         claimReferral({ code, email: store.state.userAuth?.userEmail, token: store.state.userAuth?.token }).then((result) => {
-          if (result.claimed) addLine('[Marketplace] Invite applied: your first month of AGNT Cloud is free', 'success');
+          if (result.claimed) addLine('[Marketplace] Invite applied: you get 30 days of AGNT Pro free', 'success');
         });
       },
       { immediate: true }

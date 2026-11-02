@@ -11,6 +11,7 @@ import { normalizeWorkflowShape } from '../workflow/normalizeWorkflowShape.js';
 import { verifiedPlan } from './auth/licence.js';
 import { credentialUserId } from './auth/tenantOwnership.js';
 import { isAutonomous } from './auth/planLimits.js';
+import { assertCanCreate, isPlanLimitError, planLimitResponse } from './auth/creationLimit.js';
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -71,6 +72,9 @@ class WorkflowService {
 
       // Remove ‘status’ so we don't overwrite the DB column
       delete workflow.status;
+
+      // A new workflow counts toward the free cap; saving an existing one never does.
+      if (!existingWorkflow) await assertCanCreate('workflow', userId);
 
       // Upsert the workflow changes
       await WorkflowModel.createOrUpdate(workflow.id, JSON.stringify(workflow), userId, workflow.isShareable);
@@ -133,6 +137,7 @@ class WorkflowService {
         workflowId: workflow.id,
       });
     } catch (error) {
+      if (isPlanLimitError(error)) return res.status(403).json(planLimitResponse(error));
       console.error('Error saving workflow:', error);
       res.status(500).json({ error: 'Failed to save workflow', details: error.message });
     }
@@ -319,6 +324,7 @@ class WorkflowService {
     try {
       const workflow = await WorkflowModel.findOne(req.params.id, req.user.userId);
       if (!workflow) {
+        await assertCanCreate('workflow', req.user.userId);
         const newWorkflow = { name: req.body.name, nodes: [], edges: [] };
         await WorkflowModel.create(req.params.id, JSON.stringify(newWorkflow), req.user.userId);
         res.json({
@@ -335,6 +341,7 @@ class WorkflowService {
         });
       }
     } catch (error) {
+      if (isPlanLimitError(error)) return res.status(403).json(planLimitResponse(error));
       console.error('Error updating workflow name:', error);
       res.status(500).json({
         error: 'Failed to update workflow name',

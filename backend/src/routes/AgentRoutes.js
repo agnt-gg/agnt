@@ -5,6 +5,7 @@ import AgentModel from '../models/AgentModel.js';
 import { authenticateToken } from './Middleware.js';
 import AgentTaskMatcher from '../services/goal/AgentTaskMatcher.js';
 import { buildAgentEnvelope, parseAgentEnvelope, importAgent } from '../services/AgentImportService.js';
+import { isPlanLimitError, planLimitResponse } from '../services/auth/creationLimit.js';
 
 const AgentRoutes = express.Router();
 
@@ -44,6 +45,7 @@ AgentRoutes.post('/import', authenticateToken, async (req, res) => {
     const result = await importAgent(payload, req.user.userId);
     res.status(201).json({ success: true, agentId: result.id, missingRefs: result.missingRefs });
   } catch (error) {
+    if (isPlanLimitError(error)) return res.status(403).json(planLimitResponse(error));
     console.error('[AgentRoutes] import error:', error);
     res.status(400).json({ error: error.message });
   }

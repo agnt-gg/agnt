@@ -6,8 +6,10 @@
  * 2026-10-21 nothing here checked a plan: `requiresPro` only drew a [PRO]
  * badge, and the free plan ran unlimited automatic workflows at any interval.
  *
- * A free plan (anything a verified licence does not prove paid):
- *   - may not use paid triggers (`requiresPro`: webhook, email);
+ * Paid triggers (`requiresPro`: webhook, email) run through webhooks.agnt.gg
+ * and mail.agnt.gg, which cost AGNT money: a PAID plan only, never the trial.
+ * The rest are local limits, lifted by a paid plan or the referral trial
+ * (planEntitlements.liftsFreeLimits). Without either, a workflow:
  *   - may run timers daily or slower (planLimits.FREE_LIMITS.fastestTimer);
  *   - may have FREE_LIMITS.autonomousRoutines workflows live at once.
  * Workflows already live when these limits arrived get a grace period at
@@ -18,7 +20,7 @@
  * so it verifies the licence the main backend cached (licence.js), offline.
  */
 import { createRequire } from 'node:module';
-import { isEnforcing, canRunScheduledGoals } from '../services/auth/planEntitlements.js';
+import { isEnforcing, hasPaidPlan as ownerHasPaidPlan, liftsFreeLimits } from '../services/auth/planEntitlements.js';
 import { readCachedLicence, verifySignedLicence } from '../services/auth/licence.js';
 import { credentialUserId } from '../services/auth/tenantOwnership.js';
 import { FREE_LIMITS, isAutonomous, timerSchedulesIn, timerTooFastForFree } from '../services/auth/planLimits.js';
@@ -58,7 +60,8 @@ const refuse = (code, error, extra = {}) => ({ ok: false, code, error, ...extra 
 export async function admitWorkflow(workflow, userId, {
   restore = false,
   liveAutonomous = 0,
-  hasPaidPlan = (id) => canRunScheduledGoals(id, { network: false }),
+  hasPaidPlan = (id) => ownerHasPaidPlan(id, { network: false }),
+  liftsLimits = (id) => liftsFreeLimits(id, { network: false }),
   hasLicence = hasVerifiedLicence,
   inGrace = graceActive,
 } = {}) {
@@ -70,6 +73,7 @@ export async function admitWorkflow(workflow, userId, {
   if (triggers.length) {
     return refuse('PLAN_REQUIRED', `${triggers.join(' and ')} ${triggers.length > 1 ? 'need' : 'needs'} a paid AGNT plan.`, { triggers });
   }
+  if (await liftsLimits(userId)) return { ok: true };
   const tooFast = timerSchedulesIn(workflow).filter(timerTooFastForFree);
   if (tooFast.length) {
     return refuse('PLAN_LIMIT', `The free plan runs timers ${FREE_LIMITS.fastestTimer.toLowerCase()} or slower; "${tooFast[0]}" needs a paid AGNT plan.`, { limit: 'fastestTimer' });

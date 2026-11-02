@@ -20,6 +20,7 @@ import WorkflowModel from '../models/WorkflowModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import PluginManager from '../plugins/PluginManager.js';
 import { parseSlugRef } from '../utils/pluginSlugResolver.js';
+import { assertCanCreate } from './auth/creationLimit.js';
 
 const FORMAT = 'agnt-workflow';
 const FORMAT_VERSION = '1.0';
@@ -127,6 +128,8 @@ function applyImportRewrites(payload, newWorkflowId) {
  */
 export async function importWorkflow(payload, userId, options = {}) {
   if (!userId) throw new Error('importWorkflow requires a userId');
+  // A person importing makes a new workflow; a plugin bringing its own does not count.
+  if (!options.sourcePlugin) await assertCanCreate('workflow', userId);
 
   // Strip any plugin-namespaced node types for the bare name. Inside a bundle
   // the plugin-author may write `finance-pack/stock-quote` — but the running

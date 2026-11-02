@@ -26,7 +26,8 @@ vi.mock('../workflow/WorkflowProcessBridge.js', () => ({
 }));
 vi.mock('../utils/realtimeSync.js', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn(), RealtimeEvents: new Proxy({}, { get: (_t, k) => String(k) }) }));
 // markWorkflowUserModified (local to WorkflowService) writes through db.run.
-vi.mock('../models/database/index.js', () => ({ default: { run: vi.fn((_sql, _params, done) => done?.(null)), all: vi.fn(), get: vi.fn() } }));
+// get answers the free-plan creation count (auth/creationLimit.js): this account owns none.
+vi.mock('../models/database/index.js', () => ({ default: { run: vi.fn((_sql, _params, done) => done?.(null)), all: vi.fn(), get: vi.fn((_sql, _params, done) => done?.(null, { n: 0 })) } }));
 vi.mock('../models/WebhookModel.js', () => ({ default: {} }));
 vi.mock('../plugins/PluginManager.js', () => ({ default: {} }));
 vi.mock('../plugins/PluginInstaller.js', () => ({ default: {} }));

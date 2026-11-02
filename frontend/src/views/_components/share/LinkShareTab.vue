@@ -11,7 +11,7 @@
       </div>
       <p v-if="link.stale" class="warn"><i class="fas fa-history" aria-hidden="true"></i> Changed since this link was made. People with it get the earlier version.</p>
       <p v-if="created?.removed" class="warn"><i class="fas fa-shield-alt" aria-hidden="true"></i> {{ created.removed }} value{{ created.removed === 1 ? ' that looked like a credential or a file on this computer was' : 's that looked like credentials or files on this computer were' }} left out.</p>
-      <p class="muted offer"><i class="fas fa-gift" aria-hidden="true"></i> Anyone new who joins through this link gets their first month of AGNT Cloud free, and it counts toward your referral rewards.</p>
+      <p class="muted offer"><i class="fas fa-gift" aria-hidden="true"></i> Anyone new who joins through this link gets 30 days of AGNT Pro free, and it counts toward your referral rewards.</p>
       <div class="row">
         <a class="btn" :href="intents.x" target="_blank" rel="noopener noreferrer" @click.prevent="openExternal(intents.x)"><i class="fas fa-share-alt" aria-hidden="true"></i> Post on X</a>
         <a class="btn" :href="intents.linkedin" target="_blank" rel="noopener noreferrer" @click.prevent="openExternal(intents.linkedin)"><i class="fas fa-share-alt" aria-hidden="true"></i> LinkedIn</a>

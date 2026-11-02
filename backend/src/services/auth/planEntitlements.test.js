@@ -12,11 +12,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 let plan = null;
 vi.mock('./licence.js', () => ({
   PAID_PLANS: new Set(['personal', 'always_on', 'business', 'enterprise']),
+  LOCAL_PLANS: new Set(['personal', 'always_on', 'business', 'enterprise', 'trial']),
   verifiedPlan: vi.fn(async () => plan),
 }));
 vi.mock('./sessionTokenCache.js', () => ({ getSessionUserId: () => 'u1' }));
 
-const { isEnforcing, getPlanType, hasFeature, requirePaidFeature, canRunScheduledGoals, requireScheduledGoals } = await import('./planEntitlements.js');
+const { isEnforcing, getPlanType, hasFeature, hasPaidPlan, liftsFreeLimits, requirePaidFeature, canRunScheduledGoals, requireScheduledGoals } = await import('./planEntitlements.js');
 const { verifiedPlan } = await import('./licence.js');
 
 const res = () => {
@@ -114,8 +115,38 @@ describe('the HTTP guard', () => {
   });
 });
 
+// The referral free month: lifts LOCAL limits, never anything that costs money.
+describe('the trial', () => {
+  it('gets no paid feature: remote access, hosted services, paid triggers', async () => {
+    plan = 'trial';
+    for (const feature of ['remoteAccess', 'webhooks', 'emailServer', 'models', 'search', 'sandbox', 'mail', 'hostedWebhooks', 'mobile', 'cloudSync', 'apiAccess']) {
+      expect(await hasFeature(feature), feature).toBe(false);
+    }
+    expect(await hasPaidPlan('u1')).toBe(false);
+    const { next, r } = await guard('remoteAccess');
+    expect(next).not.toHaveBeenCalled();
+    expect(r.statusCode).toBe(403);
+  });
+  it('lifts the free plan local limits, scheduled goals included', async () => {
+    plan = 'trial';
+    expect(await liftsFreeLimits('u1')).toBe(true);
+    expect(await canRunScheduledGoals('u1')).toBe(true);
+  });
+  it('free and unknown lift nothing; paid lifts both', async () => {
+    for (const p of ['free', null]) {
+      plan = p;
+      expect(await liftsFreeLimits('u1'), String(p)).toBe(false);
+      expect(await hasPaidPlan('u1'), String(p)).toBe(false);
+    }
+    plan = 'personal';
+    expect(await liftsFreeLimits('u1')).toBe(true);
+    expect(await hasPaidPlan('u1')).toBe(true);
+    expect(await liftsFreeLimits(null)).toBe(false);
+  });
+});
+
 describe('scheduled goals', () => {
-  it('need a proven paid plan for the owner', async () => {
+  it('need a proven paid plan (or the trial) for the owner', async () => {
     plan = null;
     expect(await canRunScheduledGoals('u1')).toBe(false);
     plan = 'always_on';

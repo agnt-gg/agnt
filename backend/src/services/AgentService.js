@@ -10,6 +10,7 @@ import { resolveAssignedToolNames } from './orchestrator/legacyToolAliases.js';
 import { trustedScopeRequest } from './authorization/ScopeRequestContext.js';
 import { databaseRepository } from './authorization/ScopeRepository.js';
 import { recordCreator } from './authorization/ResourceCreators.js';
+import { assertCanCreate, isPlanLimitError, planLimitResponse } from './auth/creationLimit.js';
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim() !== '';
 const creatorRepository = databaseRepository(db);
@@ -126,6 +127,8 @@ class AgentService {
         agent.name = stored.name;
       }
       if (!isNonEmptyString(agent.status)) agent.status = stored?.status || DEFAULT_AGENT_STATUS;
+      // A new agent (or a copy of someone else's) counts toward the free cap; an edit never does.
+      if (isNewAgent) await assertCanCreate('agent', userId);
 
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);
 
@@ -162,6 +165,7 @@ class AgentService {
         agentId: agent.id,
       });
     } catch (error) {
+      if (isPlanLimitError(error)) return res.status(403).json(planLimitResponse(error));
       console.error('Error saving/updating agent:', error);
       res.status(500).json({ error: 'Failed to save/update agent', details: error.message });
     }

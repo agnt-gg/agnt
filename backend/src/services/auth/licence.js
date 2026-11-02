@@ -35,6 +35,16 @@ MCowBQYDK2VwAyEA+1T5wZnQ9vQhD/Sd9g+Cio5lQRFffehBpoAJhDhE+yM=
 -----END PUBLIC KEY-----`;
 
 export const PAID_PLANS = Object.freeze(new Set(['personal', 'always_on', 'business', 'enterprise']));
+/**
+ * The referral free month (a Stripe trial, card on file), as api.agnt.gg
+ * signs it (LicensedPlan.js there). It lifts the free plan's LOCAL limits only:
+ * things that run on this machine and cost AGNT nothing. It is NOT paid:
+ * paid features, hosted services and cloud never accept it. The server caps
+ * its expiry at the trial's end, so the unlock cannot outlive the trial.
+ */
+export const TRIAL_PLAN = 'trial';
+/** Plans that lift the free plan's local limits (planLimits.FREE_LIMITS). */
+export const LOCAL_PLANS = Object.freeze(new Set([...PAID_PLANS, TRIAL_PLAN]));
 const CLOCK_SKEW_S = 300;
 const FETCH_TIMEOUT_MS = 6000;
 /** Ask the server again this often even while the cached licence is valid. */
@@ -51,7 +61,7 @@ export function licenceSigningInput(license) {
 /**
  * @param {{license: object, signature: string}} signed
  * @param {{userId?: string, now?: number, key?: crypto.KeyObject}} [options]
- * @returns {{valid: true, planType: string, paid: boolean, userId: string, expiresAt: number, refreshBefore: number} | {valid: false, reason: string}}
+ * @returns {{valid: true, planType: string, paid: boolean, liftsLimits: boolean, userId: string, expiresAt: number, refreshBefore: number} | {valid: false, reason: string}}
  */
 export function verifySignedLicence(signed, { userId, now = Date.now(), key } = {}) {
   const license = signed?.license;
@@ -69,7 +79,7 @@ export function verifySignedLicence(signed, { userId, now = Date.now(), key } = 
   // A licence is someone's: a paid licence copied onto another account proves nothing.
   if (userId && String(license.userId) !== String(userId)) return { valid: false, reason: 'other_user' };
   const planType = license.planStatus === 'active' ? String(license.planType || 'free') : 'free';
-  return { valid: true, planType, paid: PAID_PLANS.has(planType), userId: String(license.userId), expiresAt: license.expiresAt, refreshBefore: license.refreshBefore };
+  return { valid: true, planType, paid: PAID_PLANS.has(planType), liftsLimits: LOCAL_PLANS.has(planType), userId: String(license.userId), expiresAt: license.expiresAt, refreshBefore: license.refreshBefore };
 }
 
 // ── cache ────────────────────────────────────────────────────────────────────

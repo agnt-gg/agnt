@@ -118,7 +118,7 @@ describe('screens only some accounts get', () => {
     expect(usePrompt).toHaveBeenCalledWith('What can you do for me?');
   });
 
-  it('tells an invited account about its free month, last', async () => {
+  it('tells an invited account about its 30-day trial, last', async () => {
     harnessImportStub.hasAnythingToImport.value = true;
     mountModal({ referralBalance: 250 });
     expect(wrapper.vm.steps).toEqual(['setup', 'import', 'referral']);
@@ -126,6 +126,8 @@ describe('screens only some accounts get', () => {
     expect(wrapper.find('[data-action="next"]').text()).toBe('Continue →');
     await wrapper.find('[data-action="next"]').trigger('click');
     expect(wrapper.find('.bonus-amount').text()).toBe('+250 pts');
+    expect(wrapper.find('.referral-step').text()).toContain('30 days');
+    expect(wrapper.find('.referral-step').text()).not.toMatch(/month of AGNT Cloud|cloud month is free/i);
     expect(wrapper.find('[data-action="next"]').text()).toBe('Start →');
   });
 });

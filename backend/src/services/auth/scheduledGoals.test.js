@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // holds a Personal licence, 'free' a free one, anyone else none at all.
 vi.mock('./licence.js', () => ({
   PAID_PLANS: new Set(['personal', 'always_on', 'business', 'enterprise']),
+  LOCAL_PLANS: new Set(['personal', 'always_on', 'business', 'enterprise', 'trial']),
   verifiedPlan: vi.fn(async (id) => (id === 'paid' ? 'personal' : id === 'free' ? 'free' : null)),
 }));
 vi.mock('./sessionTokenCache.js', () => ({ getSessionUserId: () => 'paid' }));

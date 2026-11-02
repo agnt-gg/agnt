@@ -4,9 +4,10 @@
  * Main backend only (it needs the session token, which lives in memory here).
  * When an account's session arrives, its signed licence is fetched and cached
  * (licence.js) for the workflow process to verify offline. If that licence
- * says free, the account's workflows with paid triggers are switched off:
+ * is not paid, the account's workflows with paid triggers are switched off:
  * that is what ends the "restored pending" state workflowAdmission allows at
- * boot, before anyone has logged in.
+ * boot, before anyone has logged in. If it does not lift the free limits
+ * either (free, or a trial that has ended), the automation limits are applied.
  */
 import { subscribe } from './sessionTokenCache.js';
 import { fetchLicence, hostedPlan, PAID_PLANS } from './licence.js';
@@ -92,8 +93,10 @@ export async function enforceForAccount(userId, deps) {
   if (plan && PAID_PLANS.has(plan)) return { valid: true, paid: true, planType: plan, source: 'hosted' };
   const verdict = await fetchLicence(userId);
   if (!verdict?.valid || verdict.paid) return verdict;
+  // Not paid: paid triggers stop, a trial included (they cost AGNT money).
   await stopPaidTriggerWorkflows(userId, deps);
-  await enforceFreeLimits(userId, deps);
+  // A running trial keeps its local automations; free (or a lapsed trial) does not.
+  if (!verdict.liftsLimits) await enforceFreeLimits(userId, deps);
   return verdict;
 }
 

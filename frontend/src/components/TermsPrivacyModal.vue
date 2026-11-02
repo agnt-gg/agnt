@@ -75,8 +75,8 @@
                 </p>
 
                 <h4>5. REFERRAL AND PARTNER PROGRAM</h4>
-                <p><strong>Invited customers:</strong> Someone who joins through your invite and has never had an AGNT Cloud subscription gets their first month of Personal Cloud free (card required; it renews unless cancelled).</p>
-                <p><strong>Referral credit:</strong> When a friend you referred pays their first invoice, you receive one month of Personal Cloud as account credit, up to 12 in any 12 months. Credit has no cash value.</p>
+                <p><strong>Invited customers:</strong> Someone who joins through your invite and has never had an AGNT subscription may start AGNT Pro with a 30-day free trial (card required; it renews unless cancelled). The trial lifts the free plan's limits on their own computer; cloud hosting and hosted services start with the first paid month.</p>
+                <p><strong>Referral credit:</strong> When a friend you referred pays their first invoice, you receive one month of AGNT Pro ($29) as account credit, up to 12 in any 12 months. Credit has no cash value.</p>
                 <p><strong>Partner commission:</strong> With Stripe Connect set up before a friend first pays, you earn 30% of each of their subscription payments for 12 months from that first payment, instead of the credit.</p>
                 <p><strong>Payout Terms:</strong></p>
                 <ul>

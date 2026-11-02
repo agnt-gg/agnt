@@ -94,7 +94,7 @@ export function createShareRouter({ getRepository, authenticate = authenticateTo
       res.json(await fn(req, userOf(req)));
     } catch (error) {
       if (!error.status) console.error('[Share]', error);
-      res.status(error.status || 500).json({ error: error.status ? error.message : 'Sharing failed', code: error.code, missing: error.missing });
+      res.status(error.status || 500).json({ error: error.status ? error.message : 'Sharing failed', code: error.code, missing: error.missing, ...(error.code === 'PLAN_LIMIT' ? { requiredFeature: error.limit } : {}) });
     }
   };
   const teamFor = async req => {

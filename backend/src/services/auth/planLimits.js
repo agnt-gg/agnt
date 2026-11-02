@@ -1,16 +1,26 @@
 /**
- * The free plan's limits, enforced by this backend (decided 2026-10-21):
+ * The free plan's limits, enforced by this backend:
  *
+ *   agents              3      agents you made (creationLimit.js)
+ *   workflows           3      workflows you made (creationLimit.js)
  *   autonomousRoutines  2      workflows that run on their own (any trigger) live at once
  *   fastestTimer        Daily  a free timer may fire daily or slower
  *   connections         5      connected accounts (OAuth or key); AI model keys do not count
  *   historyDays         7      run history shown
  *
- * Free is "build anything, run it yourself"; paid is "AGNT works while you are
- * away". A paid plan (verified licence, planEntitlements) has none of these.
- * Paid-only triggers (webhook, email) are separate: workflowAdmission.
+ * All of these are LOCAL: they run on the customer's machine and cost AGNT
+ * nothing. A paid plan or the referral trial lifts them
+ * (planEntitlements.liftsFreeLimits). Anything that costs AGNT money (paid
+ * triggers, hosted services, remote access, cloud) is gated separately on a
+ * PAID plan and the trial never reaches it.
+ *
+ * agents/workflows (2026-11-02): creating one past the cap is refused; nothing
+ * that already exists is deleted, hidden or stopped by them. Agents and
+ * workflows installed by a plugin do not count (creationLimit.js says why).
  */
 export const FREE_LIMITS = Object.freeze({
+  agents: 3,
+  workflows: 3,
   autonomousRoutines: 2,
   fastestTimer: 'Daily',
   connections: 5,

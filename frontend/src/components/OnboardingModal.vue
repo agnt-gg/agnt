@@ -23,13 +23,13 @@
         <!-- Referral bonus: only for someone who joined through an invite. -->
         <div v-else-if="currentStepId === 'referral'" class="step referral-step">
           <div class="celebration-icon">🎉</div>
-          <h2>Your first cloud month is free</h2>
-          <p class="subtitle">You joined through an invite, so your first month of AGNT Cloud is on us.</p>
+          <h2>30 days of AGNT Pro, free</h2>
+          <p class="subtitle">You joined through an invite, so you can try AGNT Pro free for 30 days.</p>
           <div class="bonus-display">
             <div class="bonus-amount">+{{ referralBalance }} pts</div>
             <p class="bonus-label">Referral Score</p>
           </div>
-          <p class="description">Start Personal Cloud any time and the first month is free. Invite your own friends and each one who becomes a paying customer earns you a free month too.</p>
+          <p class="description">Start AGNT Pro any time and your first 30 days are free: unlimited agents, workflows and automations on this computer. Cloud hosting starts with your first paid month. Invite your own friends and each one who becomes a paying customer earns you a free month.</p>
         </div>
 
         <div v-if="currentStepId !== 'setup'" class="modal-actions">

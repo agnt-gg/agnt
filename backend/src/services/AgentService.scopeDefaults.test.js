@@ -1,6 +1,7 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
 vi.mock('./OrchestratorService.js',()=>({default:vi.fn()}));
 // Called as sqlite3 calls it: `this` carries changes (databaseRepository reads it).
+// get answering null also reads as "owns none" for the free-plan creation count (auth/creationLimit.js).
 vi.mock('../models/database/index.js',()=>({default:{run:(_sql,_args,done)=>done.call({changes:1},null),get:(_sql,_args,done)=>done(null,null)}}));
 vi.mock('../models/UserModel.js',()=>({default:{getUserSettings:vi.fn()}}));
 vi.mock('../models/AgentModel.js',()=>({default:{findOne:vi.fn(),createOrUpdate:vi.fn()}}));

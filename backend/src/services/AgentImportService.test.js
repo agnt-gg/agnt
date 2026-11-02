@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../models/database/index.js', () => ({ default: { run: vi.fn() } }));
+// get: the free-plan creation count (auth/creationLimit.js); this account owns none.
+vi.mock('../models/database/index.js', () => ({ default: { run: vi.fn(), get: (_sql, _params, done) => done(null, { n: 0 }) } }));
 vi.mock('../models/AgentModel.js', () => ({ default: { createOrUpdate: vi.fn() } }));
 vi.mock('../utils/generateUUID.js', () => ({ default: () => 'new-agent-id' }));
 vi.mock('../utils/pluginSlugResolver.js', () => ({

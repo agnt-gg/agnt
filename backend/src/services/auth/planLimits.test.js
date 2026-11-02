@@ -21,8 +21,10 @@ const { enforceFreeLimits } = await import('./licenceEnforcer.js');
 const { assertCanConnect } = await import('./connectionLimit.js');
 const { graceActive, GRACE_DAYS } = await import('./planGrace.js');
 
-const free = { hasPaidPlan: async () => false, hasLicence: () => true, inGrace: () => false };
+const free = { hasPaidPlan: async () => false, liftsLimits: async () => false, hasLicence: () => true, inGrace: () => false };
 const paid = { hasPaidPlan: async () => true };
+// The referral trial: local limits lifted, nothing paid.
+const trial = { hasPaidPlan: async () => false, liftsLimits: async () => true, hasLicence: () => true, inGrace: () => false };
 const timer = (schedule) => ({ nodes: [{ type: 'trigger-timer', category: 'trigger', parameters: { schedule } }] });
 
 beforeEach(() => {
@@ -33,7 +35,7 @@ beforeEach(() => {
 
 describe('the limits', () => {
   it('are the decided numbers', () => {
-    expect(FREE_LIMITS).toEqual({ autonomousRoutines: 2, fastestTimer: 'Daily', connections: 5, historyDays: 7 });
+    expect(FREE_LIMITS).toEqual({ agents: 3, workflows: 3, autonomousRoutines: 2, fastestTimer: 'Daily', connections: 5, historyDays: 7 });
   });
   it('timers: daily or slower is free; faster, or unknown, is not', () => {
     for (const s of ['Daily', 'Weekly', 'Monthly']) expect(timerTooFastForFree(s), s).toBe(false);
@@ -71,6 +73,18 @@ describe('switching a workflow on (free)', () => {
   });
   it('a paid plan has no limits', async () => {
     expect(await admitWorkflow(timer('Every Minute'), 'u1', { ...paid, liveAutonomous: 50 })).toEqual({ ok: true });
+  });
+});
+
+describe('switching a workflow on (trial)', () => {
+  it('fast timers and any number of automations: allowed (they run on this machine)', async () => {
+    expect(await admitWorkflow(timer('Every Minute'), 'u1', { ...trial, liveAutonomous: 25 })).toEqual({ ok: true });
+  });
+  it('webhook and email triggers are refused: they run on AGNT infrastructure', async () => {
+    for (const type of ['webhook-listener', 'receive-email']) {
+      const workflow = { nodes: [{ type, category: 'trigger' }] };
+      expect(await admitWorkflow(workflow, 'u1', { ...trial, liveAutonomous: 0 }), type).toMatchObject({ ok: false, code: 'PLAN_REQUIRED', triggers: [type] });
+    }
   });
 });
 

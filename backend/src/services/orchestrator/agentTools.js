@@ -346,6 +346,11 @@ export const AGENT_TOOLS = {
           assignedWorkflows: list(agentState.assignedWorkflows) || list(agentState.workflows) || existing?.assignedWorkflows || [],
           status: agentState.status || existing?.status || 'active',
         };
+        // A new agent (or a copy) counts toward the free cap, exactly as in the editor.
+        if (!ownsExisting) {
+          const { assertCanCreate } = await import('../auth/creationLimit.js');
+          await assertCanCreate('agent', userId);
+        }
         // AgentService pulls in the whole orchestrator: load it only when a default model is needed.
         if (!ownsExisting && (!agent.provider || !agent.model)) {
           const { applyUserDefaultProviderModel } = await import('../AgentService.js');

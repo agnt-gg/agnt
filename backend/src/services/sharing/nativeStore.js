@@ -14,6 +14,7 @@ import WorkflowModel from '../../models/WorkflowModel.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import SkillModel from '../../models/SkillModel.js';
 import { notifyWidgetChanged } from '../../utils/widgetChangeNotifier.js';
+import { assertCanCreate } from '../auth/creationLimit.js';
 
 const parse = (value, fallback) => { if (value === null || value === undefined || value === '') return fallback; if (typeof value !== 'string') return value; try { return JSON.parse(value); } catch { return fallback; } };
 const get = (sql, args) => new Promise((resolve, reject) => db.get(sql, args, (error, row) => (error ? reject(error) : resolve(row || null))));
@@ -113,6 +114,11 @@ async function writeWorkspace(id, definition, ownerId) {
 const TOOL_DEFAULTS = { base: 'AI', category: 'custom', type: 'custom', icon: 'fas fa-wrench', description: '', parameters: {}, outputs: {} };
 
 async function write(kind, id, definition, ownerId) {
+  // Installing a shared agent or workflow makes a new one: the free cap applies
+  // (PlanLimitError carries status 403). Replacing one already there does not.
+  if ((kind === 'agent' || kind === 'workflow') && !(await (kind === 'agent' ? AgentModel : WorkflowModel).findOne(id))) {
+    await assertCanCreate(kind, ownerId);
+  }
   if (kind === 'agent') return AgentModel.createOrUpdate(id, { ...definition, status: 'active' }, ownerId);
   if (kind === 'workflow') return WorkflowModel.createOrUpdate(id, JSON.stringify({ ...definition, id }), ownerId, false);
   if (kind === 'tool') return CustomToolModel.createOrUpdate(id, { ...TOOL_DEFAULTS, ...definition, isShareable: false }, ownerId);
