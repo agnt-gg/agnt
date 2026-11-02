@@ -7,6 +7,9 @@
 .apps-studio {
   --ap-border: var(--terminal-border-color);
   --ap-surface: var(--color-darker-0);
+  /* In AGNT One the page's cards are the same colour as every other One page's cards (mk.css
+     --raised). --color-darker-0 is a 10% black wash: over a custom background the cards were
+     nearly see-through and hard to read. Studio keeps its own. */
   --ap-sunken: var(--color-darker-1);
   --ap-ok: var(--text-green);
   --ap-warn: var(--status-amber-text);
@@ -43,6 +46,7 @@
 .apps-studio .ap-count.warn { background: rgba(var(--yellow-rgb), 0.18); color: var(--ap-warn); }
 
 /* ── Buttons, chips, badges, status ───────────────────────── */
+.ui-one .apps-studio { --ap-surface: var(--color-dark-navy); }
 .apps-studio .ap-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--spacing-sm); min-height: 40px; padding: 0 var(--spacing-md); border: 1px solid var(--border-strong); border-radius: var(--border-radius-md); background: var(--ap-surface); font-size: var(--font-size-sm); font-weight: 600; white-space: nowrap; }
 .apps-studio .ap-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .apps-studio .ap-btn.primary { background: var(--fill-accent); border-color: var(--fill-accent); color: var(--on-fill-accent); }
