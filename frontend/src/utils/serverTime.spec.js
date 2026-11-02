@@ -14,8 +14,10 @@ describe('parseServerTime — the defect', () => {
 
   it('disagrees with the naive constructor whenever the machine is not on UTC', () => {
     // Proves the bug is real on this machine rather than asserting a tautology.
-    const offsetMinutes = new Date().getTimezoneOffset();
-    const naive = new Date(SQLITE_NAIVE).getTime();
+    // The offset is the fixture's own (July), not today's: across a DST change they differ by an hour.
+    const naiveDate = new Date(SQLITE_NAIVE);
+    const offsetMinutes = naiveDate.getTimezoneOffset();
+    const naive = naiveDate.getTime();
     if (offsetMinutes === 0) {
       expect(parseServerTime(SQLITE_NAIVE)).toBe(naive);
     } else {
