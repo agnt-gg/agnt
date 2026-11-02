@@ -52,6 +52,8 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // board already shows. The selected goal's detail opens INSIDE the screen
   // (Goals.vue `goal-detail-drawer`, which hosts RightPanel/GoalsPanel).
   GoalsScreen: { leftPanel: false, rightPanel: false, input: false },
+  // Team: the teamspace list is the screen's own navigation (One's drawer), so no side columns.
+  TeamScreen: { leftPanel: false, rightPanel: false, input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
   // Memory is a tab of the Agents row. Both sides render a MemoryPanel: left
   // filters the list, right shows the selected memory.

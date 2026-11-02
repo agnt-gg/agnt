@@ -92,6 +92,8 @@ const screenLoaders = [
   ['LearningScreen', () => import('./CenterPanel/screens/Learning/Learning.vue')],
   ['MemoryScreen', () => import('./CenterPanel/screens/Memory/Memory.vue')],
   ['WorkspaceScreen', () => import('./CenterPanel/screens/Workspace/Workspace.vue')],
+  // Studio's frame for teamspaces (One draws /team as its own page and never mounts this).
+  ['TeamScreen', () => import('./CenterPanel/screens/Team/Team.vue')],
 ];
 
 // Shallow-reactive screen registry — screens register as they load

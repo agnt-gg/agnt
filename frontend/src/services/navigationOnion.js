@@ -49,6 +49,14 @@ export function countUserConnections(connectedApps) {
  */
 export const UNLOCK_RULES = [
   {
+    // Teamspaces: on the rail as soon as the account is on a team (the canvas' own team request).
+    id: 'team',
+    needs: ['teams'],
+    when: (f) => count(f.teams) > 0,
+    title: 'Team',
+    message: 'Your teamspaces: Home, each teamspace\u2019s chat, board and files, and your own tasks.',
+  },
+  {
     id: 'apps',
     needs: ['connectedApps'],
     when: (f) => countUserConnections(f.connectedApps) > 0,

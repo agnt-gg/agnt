@@ -9,6 +9,7 @@
 export const TOUR_TARGETS = [
   // ── Sidebar: WORK ──────────────────────────────────────────────────────────
   { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Canvas)', safeToSimulate: true },
+  { id: 'sidebar.team',             screen: null, description: 'Sidebar button: Team (teamspaces, their chat, board and files, My tasks)', safeToSimulate: true },
   { id: 'sidebar.store',            screen: null, description: 'Sidebar button: Market (get more apps, agents, workflows, tools and widgets)', safeToSimulate: true },
 
   // ── Sidebar: PLAN ──────────────────────────────────────────────────────────

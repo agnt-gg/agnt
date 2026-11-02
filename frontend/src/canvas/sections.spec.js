@@ -158,18 +158,18 @@ describe('canvas sections registry', () => {
       for (const caption of new Set(MAIN_SECTIONS.map((s) => s.group))) expect(caption).toMatch(/^[A-Z]+$/);
     });
 
-    it('the rail reads as twelve plain nouns, in order', () => {
+    it('the rail reads as thirteen plain nouns, in order', () => {
       // The whole point of the grouping: cover the captions, read the rows
       // aloud, and a first-time user can say what each one holds. No verbs,
       // no engineering words (runs, traces, artifacts, library, plugins,
       // workspaces, connectors).
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
-        'Chat', 'Market',
+        'Chat', 'Team', 'Market',
         'Dashboard', 'Goals', 'Activity', 'Files',
         'Plugins', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
-        'chat', 'store',
+        'chat', 'team', 'store',
         'dashboard', 'goals', 'traces', 'artifacts',
         'apps', 'agents', 'workflows', 'tools', 'skills', 'widgets',
       ]);
