@@ -1,4 +1,5 @@
 import {CloudTeamClient} from '../services/CloudTeamClient.js';
+import {hostedToolBoundaryRequired} from '../services/security/toolRunAuthority.js';
 import {MEDIA_ROUTE_PREFIXES} from '../utils/mediaRoutes.js';
 import {requireAuthMedia, extractToken} from '../utils/authGuard.js';
 // browser-agent: the launched browser is one per instance and holds the owner's signed-in sites, so
@@ -23,6 +24,11 @@ function isMemberReadable(req){return MEDIA_METHODS.has(req.method)&&MEMBER_READ
 // refuses it unless the exact package (same version, same integrity) is already installed.
 function isMemberActivation(req){return req.method==='POST'&&req.path==='/plugins/install';}
 // A member removing a plugin THEY added: the route removes only their own account's install (PluginRoutes).
+// A teammate watching, steering and managing the sign-ins of THEIR OWN browser (memberBrowsers.js): every one of
+// these routes passes the caller as the actor and keys viewers and streams by the caller. The desktop sign-in
+// window, surface registration and the owner's browser stay owner-only.
+const MEMBER_BROWSER_ROUTES=[/^\/browser-agent\/view-capabilities$/,/^\/browser-agent\/view(\/[^/]+)?$/,/^\/browser-agent\/control(\/[^/]+)?$/,/^\/browser-agent\/sites(\/forget)?$/];
+function isMemberBrowserRoute(req){return hostedToolBoundaryRequired()&&MEMBER_BROWSER_ROUTES.some(pattern=>pattern.test(req.path));}
 function isMemberPluginRemoval(req){return req.method==='DELETE'&&/^\/plugins\/[^/]+$/.test(req.path);}
 // A member dismissing their own decided plugin request. Deciding one, and the policy, stay owner/admin.
 function isMemberRequestSeen(req){return req.method==='POST'&&/^\/plugins\/requests\/[^/]+\/seen$/.test(req.path);}
@@ -37,7 +43,7 @@ export function createHostedOperatorBoundary(authenticate,cloud=new CloudTeamCli
  if(!process.env.AGNT_TENANT_SLUG||!machineApis.has(req.path.split('/')[1]))return next();
  const media=isMediaRequest(req);
  return (media?authenticateMedia:authenticate)(req,res,async()=>{try{const user=req.user?.id||req.user?.userId;
- if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req)||isMemberActivation(req)||isMemberPluginRemoval(req)||isMemberRequestSeen(req))return next();
+ if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req)||isMemberActivation(req)||isMemberPluginRemoval(req)||isMemberBrowserRoute(req)||isMemberRequestSeen(req))return next();
  // The control plane is asked with the same credential the caller authenticated with.
  const authorization=req.headers.authorization||(media?'Bearer '+extractToken(req,{allowCookie:true,allowQuery:true}):undefined);
  const teams=await cloud.request(authorization,'');const team=teams.find(t=>t.tenantSlug===process.env.AGNT_TENANT_SLUG);

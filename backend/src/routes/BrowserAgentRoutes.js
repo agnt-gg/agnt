@@ -167,7 +167,7 @@ router.post('/view', authenticateToken, async (req, res) => {
       // screencast, so the stream is its window. Launching it visibly put a
       // second, redundant Chrome window on the host desktop — the first thing
       // reported when this endpoint shipped.
-      const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+      const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m), actor: req.user.id });
       if (lane) {
         // The conversation's own tab, opened now so the card has something
         // true to show; the agent's next verb drives this same tab.
@@ -309,7 +309,7 @@ router.get('/sites', authenticateToken, async (req, res) => {
   // The profile is the person's while a sign-in window is open; nothing reads it then.
   if (isSignInWindowOpen()) return res.json({ success: true, signingIn: true, sites: [] });
   try {
-    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m), actor: req.user.id });
     return res.json({ success: true, signingIn: false, sites: await readSites(cdpUrl) });
   } catch (err) {
     return res.status(503).json({ success: false, error: `Could not read the AGNT browser: ${err.message}` });
@@ -323,7 +323,7 @@ router.post('/sites/forget', authenticateToken, async (req, res) => {
   if (!SITE.test(site)) return res.status(400).json({ success: false, error: 'site is required.' });
   if (isSignInWindowOpen()) return res.status(409).json({ success: false, error: 'A sign-in window is open. Close it first.' });
   try {
-    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m), actor: req.user.id });
     const result = await forgetSite(cdpUrl, site);
     return res.json({ success: result.remaining === 0, ...result, sites: await readSites(cdpUrl) });
   } catch (err) {

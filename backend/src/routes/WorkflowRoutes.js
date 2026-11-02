@@ -27,6 +27,8 @@ WorkflowRoutes.put('/:id/name', authenticateToken, canBuild, WorkflowService.ren
 WorkflowRoutes.get('/:id/status', authenticateToken, WorkflowService.fetchWorkflowState);
 WorkflowRoutes.post('/:id/start', authenticateToken, canActivate, WorkflowService.activateWorkflow);
 WorkflowRoutes.post('/:id/stop', authenticateToken, WorkflowService.deactivateWorkflow);
+// Run once now, from the trigger node, without switching the workflow on ("Run now").
+WorkflowRoutes.post('/:id/run', authenticateToken, canActivate, (req, res) => WorkflowService.runWorkflowOnce(req, res));
 
 // ============================================================================
 // WORKFLOW VERSION CONTROL ROUTES

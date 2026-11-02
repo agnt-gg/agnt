@@ -54,6 +54,9 @@ class WorkflowEngine extends EventEmitter {
     const inherited = runActorFor(userId);
     this.actorId = inherited !== userId ? inherited : null;
     this.receivers = {};
+    // A one-shot run ("Run now", WorkflowService.runWorkflowOnce): runs once from its trigger node(s) and
+    // never changes the workflow's switched-on state.
+    this.oneShot = false;
     this.isListening = false;
     this.stopRequested = false;
     this.stopReason = null;
@@ -304,7 +307,12 @@ class WorkflowEngine extends EventEmitter {
       }
 
       let startNodes;
-      if (this.isSubWorkflow) {
+      if (this.oneShot) {
+        // Run now: start at the trigger node(s) whatever the input, no event has to match.
+        startNodes = this.workflow.nodes.filter((node) => node.category === 'trigger');
+        if (startNodes.length === 0) startNodes = this._findStartNodes();
+        if (startNodes.length === 0) throw new Error('This workflow has no node to start from');
+      } else if (this.isSubWorkflow) {
         startNodes = this._findStartNodes();
         if (startNodes.length === 0) {
           throw new Error('No valid start nodes found for sub-workflow');
@@ -604,6 +612,7 @@ class WorkflowEngine extends EventEmitter {
     return { success: true, message: 'Trigger queued for processing' };
   }
   async _updateWorkflowStatus(status) {
+    if (this.oneShot) return; // a one-shot run leaves the switched-on state alone
     try {
       await dbRunWithRetry(() => WorkflowModel.updateStatus(this.workflowId, status));
       // Emit statusChanged so ProcessWorker can broadcast to frontend

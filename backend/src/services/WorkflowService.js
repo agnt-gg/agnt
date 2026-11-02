@@ -14,6 +14,8 @@ import { isAutonomous } from './auth/planLimits.js';
 import { assertCanCreate, isPlanLimitError, planLimitResponse } from './auth/creationLimit.js';
 import { databaseRepository } from './authorization/ScopeRepository.js';
 import { recordTeamRunner } from './authorization/ResourceCreators.js';
+import { workflowTriggerProblems } from '../workflow/validateTriggers.js';
+import WorkflowEngine from '../workflow/WorkflowEngine.js';
 
 const runActors = databaseRepository(db);
 
@@ -454,6 +456,11 @@ class WorkflowService {
         return res.status(404).json({ error: 'Workflow not found' });
       }
       const workflowData = JSON.parse(workflow.workflow_data);
+      // A trigger its own schema rejects would arm and never fire, silently. Refuse it, naming the field.
+      const triggerProblems = await workflowTriggerProblems(workflowData);
+      if (triggerProblems.length) {
+        return res.status(400).json({ error: 'This workflow\'s trigger is not set up correctly, so it would never fire.', code: 'invalid_trigger', details: triggerProblems });
+      }
       // Paid triggers: refresh the owner's signed licence now, so the workflow
       // process (which verifies it offline) judges today's plan.
       if (isAutonomous(workflowData)) {
@@ -513,6 +520,31 @@ class WorkflowService {
    *
    * Same contract as start: a stop that did not happen must not answer 200.
    */
+  /**
+   * POST /:id/run — run the saved workflow once, now, from its trigger node(s), and answer with the result.
+   * "Run now": a workflow whose trigger is a timer, webhook or email no longer has to wait for its event to be
+   * tested. The optional body `{ input }` is what the trigger node passes on. Runs as the caller (runActor.js),
+   * leaves the workflow's switched-on state untouched, and is recorded like any other run.
+   */
+  async runWorkflowOnce(req, res) {
+    try {
+      const workflow = await WorkflowModel.findOne(req.params.id, req.user.userId);
+      if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+      const workflowData = JSON.parse(workflow.workflow_data);
+      workflowData.id = req.params.id;
+      const input = req.body?.input && typeof req.body.input === 'object' && !Array.isArray(req.body.input) ? req.body.input : {};
+      await recordWorkflowRunner(req.params.id, req.user.userId);
+      const engine = new WorkflowEngine(workflowData, req.params.id, req.user.userId);
+      engine.oneShot = true;
+      const result = await engine.processWorkflowTrigger({ ...input, manual: true }, { waitForCompletion: true });
+      if (result?.rejected) return res.status(409).json({ error: result.message, code: result.reason });
+      res.status(result?.success ? 200 : 422).json({ success: Boolean(result?.success), executionId: engine.currentExecutionId || null, outputs: result?.outputs || {}, errors: result?.errors || {} });
+    } catch (error) {
+      console.error(`Error running workflow ${req.params.id} once:`, error);
+      res.status(500).json({ error: 'Failed to run workflow', details: error.message });
+    }
+  }
+
   async deactivateWorkflow(req, res) {
     try {
       const result = await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
