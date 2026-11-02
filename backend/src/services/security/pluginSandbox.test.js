@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { runPluginInSandbox, stagePlugin } from './pluginSandbox.js';
+import { runPluginInSandbox, stagePlugin, sandboxedPluginModule } from './pluginSandbox.js';
 
 // A teammate's plugin call runs in a forked worker inside their sandbox, from a copy of the plugin in their
 // own folder (the plugin folder itself is outside the sandbox). Here the worker is forked without the
@@ -27,6 +27,14 @@ it('stages each plugin version once, and reports a plugin failure as an error', 
   const broken = tempRoot();
   fs.writeFileSync(path.join(broken, 'tool.js'), 'export default { execute() { throw new Error("plugin blew up"); } };');
   await expect(runPluginInSandbox({ pluginName: 'broken', pluginPath: broken, entryPoint: './tool.js' }, {}, {}, {}, { root, forkWorker: fork })).rejects.toThrow(/plugin blew up/);
+});
+
+// bravo, Nov 2026: a teammate's workflow plugin step failed "Invalid action for node type: calc-evaluate":
+// NodeExecutor calls module.default.execute, the sandboxed module only had module.execute.
+it('has the shape both chat (module.execute) and the workflow runner (module.default.execute) call', () => {
+  const module = sandboxedPluginModule({ pluginName: 'calculator-plugin', pluginPath: CALCULATOR, entryPoint: './calculator.js' });
+  expect(typeof module.execute).toBe('function');
+  expect(typeof module.default?.execute).toBe('function');
 });
 
 it('refuses an entry point outside the plugin folder', async () => {

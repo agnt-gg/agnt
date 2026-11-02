@@ -78,7 +78,11 @@ export function runPluginInSandbox({ pluginName, pluginPath, entryPoint }, param
   });
 }
 
-/** A module with the shape PluginManager.loadTool returns, whose execute runs in the sandbox. */
+/**
+ * A module with the shape PluginManager.loadTool returns, whose execute runs in the sandbox. Both shapes
+ * callers use: chat calls module.execute, the workflow runner calls module.default.execute (NodeExecutor).
+ */
 export function sandboxedPluginModule(spec) {
-  return { sandboxed: true, execute: (params, inputData, engine) => runPluginInSandbox(spec, params, inputData, engine) };
+  const execute = (params, inputData, engine) => runPluginInSandbox(spec, params, inputData, engine);
+  return { sandboxed: true, execute, default: { sandboxed: true, execute } };
 }
