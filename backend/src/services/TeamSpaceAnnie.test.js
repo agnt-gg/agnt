@@ -28,6 +28,11 @@ describe('Annie in a teamspace chat', () => {
     expect(prompt).toMatch(/Jess: Globex said yes/);
     expect(prompt).not.toMatch(/no headings/);
     expect(prompt.trim().endsWith('The request: @Annie sum up')).toBe(true);
+    // A huge earlier message is clipped as context; a huge request is sent whole.
+    const big = 'row,'.repeat(5000);
+    const withBig = anniePrompt({ message: { body: '@Annie rank these: ' + big }, history: [{ author: { kind: 'person', id: 'p1' }, body: big }], names: new Map() });
+    expect(withBig).toContain('(truncated)');
+    expect(withBig.endsWith(big)).toBe(true);
     expect(isAnnie({ kind: 'agent', id: 'annie' })).toBe(true);
     expect(isAnnie({ kind: 'person', id: 'annie' })).toBe(false);
   });

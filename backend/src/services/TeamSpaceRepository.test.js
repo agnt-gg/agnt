@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import sqlite3 from 'sqlite3';
 import { TeamRepository } from './TeamRepository.js';
 import { initializeTeamWorkspaces } from './TeamWorkspaceRepository.js';
-import { TeamSpaceRepository, initializeTeamSpaces, parseMentions } from './TeamSpaceRepository.js';
+import { TeamSpaceRepository, initializeTeamSpaces, parseMentions, MAX_MESSAGE } from './TeamSpaceRepository.js';
 
 /**
  * The repository is driven the way TeamRoutes drives it: `member` is the
@@ -53,6 +53,24 @@ describe('teamspace chat', () => {
     expect(await spaces.inbox(TEAM, 'ana')).toEqual([]);
   });
 
+  it('a pasted list or CSV well over 4,000 characters posts whole; the inbox shows an excerpt', async () => {
+    const ws = await workspace('sales');
+    const csv = 'rank,prospect\n' + Array.from({ length: 300 }, (_, i) => `"${i + 1}","Prospect ${i + 1} — a longer descriptive line"`).join('\n');
+    expect(csv.length).toBeGreaterThan(14000);
+    await spaces.postMessage(TEAM, 'ana', ws, { body: `@ben here i found this:\n\n${csv}`, mentions: [{ kind: 'person', id: 'ben' }] });
+    const [stored] = await spaces.messages(TEAM, 'ben', ws);
+    expect(stored.body.endsWith('a longer descriptive line"')).toBe(true);
+    const [note] = await spaces.inbox(TEAM, 'ben');
+    expect(note.summary.length).toBeLessThanOrEqual(280);
+    expect(note.summary.endsWith('…')).toBe(true);
+  });
+
+  it('a message over the limit says it is too long and by how much, not just "Invalid"', async () => {
+    const ws = await workspace('sales');
+    await expect(spaces.postMessage(TEAM, 'ana', ws, { body: 'x'.repeat(MAX_MESSAGE + 5) })).rejects.toMatchObject({ status: 400, message: 'This message is too long: 100,005 characters, and the limit is 100,000.' });
+    await expect(spaces.postMessage(TEAM, 'ana', ws, { body: '   ' })).rejects.toMatchObject({ status: 400, message: 'Invalid message' });
+  });
+
   it('a viewer reads but cannot post', async () => {
     const ws = await workspace('sales');
     await expect(spaces.postMessage(TEAM, 'vic', ws, { body: 'hi' })).rejects.toMatchObject({ status: 403 });
@@ -70,7 +88,7 @@ describe('teamspace chat', () => {
   it('refuses empty, oversized and malformed input', async () => {
     const ws = await workspace('sales');
     await expect(spaces.postMessage(TEAM, 'ana', ws, { body: '   ' })).rejects.toMatchObject({ status: 400 });
-    await expect(spaces.postMessage(TEAM, 'ana', ws, { body: 'x'.repeat(4001) })).rejects.toMatchObject({ status: 400 });
+    await expect(spaces.postMessage(TEAM, 'ana', ws, { body: 'x'.repeat(MAX_MESSAGE + 1) })).rejects.toMatchObject({ status: 400 });
     expect(() => parseMentions([{ kind: 'robot', id: 'x' }])).toThrow(/mentions|assignee/i);
     expect(() => parseMentions('ben')).toThrow();
     expect(parseMentions([{ kind: 'person', id: 'a' }, { kind: 'person', id: 'a' }])).toHaveLength(1);

@@ -20,14 +20,20 @@ export const TASK_STATUSES = Object.freeze(['todo', 'doing', 'review', 'done']);
 export const INBOX_KINDS = Object.freeze(['mention', 'assigned', 'approval', 'run', 'shared']);
 const WRITERS = ['owner', 'admin', 'member'];
 const MANAGERS = ['owner', 'admin'];
-const MAX_BODY = 4000;
+const MAX_BODY = 4000; // comments, and the plain-text copy of an agent's reply
+// A person's chat message: room to paste a list, a CSV or a document for Annie to work on.
+export const MAX_MESSAGE = 100000;
+// What an inbox notification shows of a message.
+const MAX_SUMMARY = 280;
+const excerpt = (value, max) => (value.length > max ? value.slice(0, max - 1).trimEnd() + '…' : value);
 const MAX_TITLE = 200;
 const MAX_DOC_BYTES = 200000;
 const PAGE = 200;
 
 function text(value, max, label, { optional = false } = {}) {
   if (optional && (value === undefined || value === null || value === '')) return '';
-  if (typeof value !== 'string' || !value.trim() || value.length > max) fail(400, `Invalid ${label}`);
+  if (typeof value === 'string' && value.length > max) fail(400, `This ${label} is too long: ${value.length.toLocaleString('en-US')} characters, and the limit is ${max.toLocaleString('en-US')}.`);
+  if (typeof value !== 'string' || !value.trim()) fail(400, `Invalid ${label}`);
   return value.trim();
 }
 
@@ -165,12 +171,12 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user, WRITERS);
       await this.workspace(teamId, workspaceId);
-      const content = text(body, MAX_BODY, 'message');
+      const content = text(body, MAX_MESSAGE, 'message');
       const list = parseMentions(mentions);
       const id = randomUUID();
       const createdAt = now();
       await r.run('INSERT INTO space_messages(id,team_id,workspace_id,author_kind,author_id,body,mentions_json,created_at) VALUES(?,?,?,?,?,?,?,?)', [id, teamId, workspaceId, 'person', user, content, JSON.stringify(list), createdAt]);
-      await this.notify(teamId, list.filter((m) => m.kind === 'person' && m.id !== user).map((m) => ({ userId: m.id, kind: 'mention', actor: { kind: 'person', id: user }, summary: content, workspaceId, target: { kind: 'message', id } })));
+      await this.notify(teamId, list.filter((m) => m.kind === 'person' && m.id !== user).map((m) => ({ userId: m.id, kind: 'mention', actor: { kind: 'person', id: user }, summary: excerpt(content, MAX_SUMMARY), workspaceId, target: { kind: 'message', id } })));
       await r.event(teamId, user, 'message.posted', workspaceId);
       return messageRow({ id, workspace_id: workspaceId, author_kind: 'person', author_id: user, body: content, mentions_json: JSON.stringify(list), created_at: createdAt });
     });

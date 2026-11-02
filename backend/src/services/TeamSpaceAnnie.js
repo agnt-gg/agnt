@@ -18,12 +18,15 @@ import { createAssistantMessage, applyStreamEvent } from './orchestrator/chatStr
 export const ANNIE_ID = 'annie';
 export const isAnnie = (mention) => mention?.kind === 'agent' && mention.id === ANNIE_ID;
 const MAX_CONTEXT = 20;
+// Earlier messages are context, so each is an excerpt; the request itself is always sent whole.
+const MAX_CONTEXT_LINE = 1500;
+const clip = (s) => (s.length > MAX_CONTEXT_LINE ? s.slice(0, MAX_CONTEXT_LINE) + ' … (truncated)' : s);
 const MAX_BODY_TEXT = 4000; // the plain-text copy (previews, inbox); the full message is kept apart
 
 /** The prompt: the request, with the recent teamspace chat as context. */
 export function anniePrompt({ spaceName, message, history = [], names = new Map() }) {
   const who = (author) => (author.kind === 'agent' ? (author.id === ANNIE_ID ? 'Annie' : names.get(author.id) || 'Agent') : names.get(author.id) || 'Teammate');
-  const recent = history.slice(-MAX_CONTEXT).map((m) => `${who(m.author)}: ${m.body}`).join('\n');
+  const recent = history.slice(-MAX_CONTEXT).map((m) => `${who(m.author)}: ${clip(String(m.body || ''))}`).join('\n');
   return [
     `You were @mentioned in the "${spaceName || 'team'}" teamspace chat. Reply as you would in a chat; everyone in that teamspace will read it. Use your tools when the request needs them.`,
     recent ? `Recent messages in that chat:\n${recent}` : '',
