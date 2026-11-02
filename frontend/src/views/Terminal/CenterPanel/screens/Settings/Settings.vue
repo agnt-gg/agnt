@@ -67,6 +67,9 @@
             <p class="content-subtitle">Customize your visual experience</p>
           </div>
           <div class="settings-grid">
+            <div class="settings-section full-width">
+              <UiModeSetting />
+            </div>
             <div class="settings-section lower-section full-width">
               <ThemeSelector />
             </div>
@@ -329,6 +332,7 @@ import FallbackProviders from '../Connectors/components/FallbackProviders.vue';
 import ChatBehaviorSettings from '../Connectors/components/ChatBehaviorSettings.vue';
 import ApiKeyManager from './components/ApiKeyManager/ApiKeyManager.vue';
 import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
+import UiModeSetting from '@/views/Focused/UiModeSetting.vue';
 import NavigationSettings from './components/NavigationSettings/NavigationSettings.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
 import UsageManager from './components/UsageManager/UsageManager.vue';
@@ -363,6 +367,7 @@ export default {
     ChatBehaviorSettings,
     ApiKeyManager,
     ThemeSelector,
+    UiModeSetting,
     NavigationSettings,
     BillingManager,
     UsageManager,

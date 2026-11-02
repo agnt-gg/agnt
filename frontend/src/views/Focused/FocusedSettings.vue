@@ -18,6 +18,8 @@
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
     <ConnectYourAi @api-key="nav.go({ page: 'connectors', tab: 'vault' })" />
+    <!-- AGNT One or Studio (custom pages, dashboard, goals, forges, Navigation settings). -->
+    <UiModeSetting />
     <!-- Appearance: Studio's own theme settings (themes, font, scale, custom background with its
          opacity and blur, greyscale), embedded rather than re-implemented, so both modes set the
          same preferences the same way. -->
@@ -144,6 +146,7 @@ defineProps({ section: { type: String, default: null } });
 import MembersSettings from '@/views/Terminal/CenterPanel/screens/Settings/components/MembersSettings.vue';
 import PluginPolicySettings from './PluginPolicySettings.vue';
 import TeamFilesAiSettings from './TeamFilesAiSettings.vue';
+import UiModeSetting from './UiModeSetting.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';

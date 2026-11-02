@@ -274,11 +274,11 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('More holds Activity, Members, Approvals and Find anything', async () => {
+    it('More holds Activity, Memories, Dashboard, Goals, Members, Approvals, Find anything and Studio', async () => {
       const w = mountShell();
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Members', 'Approvals', 'Find anythingCtrl K']);
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Members', 'Approvals', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
       await w.find('[data-testid="one-rail-activity"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);

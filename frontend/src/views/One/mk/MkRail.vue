@@ -51,9 +51,14 @@ const ITEMS = Object.freeze([
 ]);
 const MORE = Object.freeze([
   { id: 'activity', label: 'Activity', icon: 'activity' },
+  { id: 'memory', label: 'Memories', icon: 'doc' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'board' },
+  { id: 'goals', label: 'Goals', icon: 'task' },
   { id: 'members', label: 'Members', icon: 'users' },
   { id: 'approvals', label: 'Approvals', icon: 'approvals' },
   { id: 'find', label: 'Find anything', icon: 'find', hint: 'Ctrl K', sep: true },
+  // Studio: custom pages, every forge, the canvas and Navigation settings (services/uiMode.js).
+  { id: 'studio', label: 'Switch to Studio', icon: 'template', hint: 'Ctrl Shift S' },
 ]);
 const props = defineProps({ active: { type: String, default: null }, activeMore: { type: String, default: null }, badge: { type: Number, default: 0 }, userName: { type: String, default: '' } });
 const emit = defineEmits(['select']);

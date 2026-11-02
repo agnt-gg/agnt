@@ -26,11 +26,17 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (p === 'scheduled') return 'routines';
     if (p === 'connectors') return 'apps';
     if (p === 'market') return 'library';
-    if (p === 'activity') return 'more';
+    if (p === 'activity' || p === 'memory') return 'more';
+    if (!p && ['DashboardScreen', 'GoalsScreen'].includes(screenName.value)) return 'more';
     if (p === 'settings') return 'settings';
     return null;
   });
-  const mkActiveMore = computed(() => (page.value === 'activity' ? 'activity' : page.value === 'team' && loc().view === 'members' ? 'members' : null));
+  const MORE_SCREENS = { DashboardScreen: 'dashboard', GoalsScreen: 'goals' };
+  const mkActiveMore = computed(() => {
+    if (page.value === 'activity' || page.value === 'memory') return page.value;
+    if (page.value === 'team' && loc().view === 'members') return 'members';
+    return !page.value ? MORE_SCREENS[screenName.value] || null : null;
+  });
   const mkDrawerActive = computed(() => {
     if (page.value === 'team') {
       const { view, space } = loc();
@@ -57,6 +63,10 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (id === 'routines') return nav.go({ page: 'scheduled' });
     if (id === 'library') return team('library');
     if (id === 'activity') return nav.go({ page: 'activity' });
+    if (id === 'memory') return nav.go({ page: 'memory' });
+    if (id === 'dashboard') return nav.openScreen('DashboardScreen');
+    if (id === 'goals') return nav.openScreen('GoalsScreen');
+    if (id === 'studio') return store.dispatch('theme/setUiMode', 'studio');
     if (id === 'members') return team('members');
     if (id === 'settings') return nav.go({ page: 'settings' });
     if (id === 'find') return store.dispatch('shell/openJump');

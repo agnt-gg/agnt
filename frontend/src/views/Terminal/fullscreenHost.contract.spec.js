@@ -42,7 +42,8 @@ describe('app frames and fullscreen', () => {
   const frames = frameComponents();
 
   it('finds every frame Terminal can mount', () => {
-    expect(frames.map((f) => f.name).sort()).toEqual(['OneShell']);
+    // AGNT One and Studio (the layout choice, services/uiMode.js).
+    expect(frames.map((f) => f.name).sort()).toEqual(['CanvasScreen', 'OneShell']);
   });
 
   it.each(frames)('$name wraps its screen slot in a [data-fullscreen-host]', ({ file }) => {

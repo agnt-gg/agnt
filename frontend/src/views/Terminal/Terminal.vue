@@ -4,9 +4,9 @@
     <!-- The update banner is mounted once, in App.vue, so it also shows on the
          sign-in page. -->
 
-    <!-- The frame: AGNT One (views/One/OneShell.vue), the app's only one.
-         Every screen renders in its slot; a screen One has a page for is
-         that page, anything else renders in full with a way back. -->
+    <!-- The frame: AGNT One (views/One/OneShell.vue) or Studio (canvas/CanvasScreen.vue: the full
+         rail, toolbar, custom pages and panels). Same screens, same stores, same slot; the saved
+         layout (theme/uiMode, services/uiMode.js) decides which is around them. -->
     <!-- The auth boundary owns the whole shell, not just the center screen. -->
     <component v-if="!isAuthenticated" :is="signInComponent" @screen-change="changeScreen" />
     <component
@@ -49,8 +49,10 @@ import { useStore } from 'vuex';
 // Layout and common
 import TerminalLayout from '@/views/_components/layout/TerminalLayout.vue';
 
-// The frame: rail, one top bar, the chat.
+// The two frames: AGNT One (rail, one top bar, the chat) and Studio (everything).
 import OneShell from '@/views/One/OneShell.vue';
+import CanvasScreen from '@/canvas/CanvasScreen.vue';
+import { isUiModeToggleKey } from '@/services/uiMode.js';
 import { screenRoute, normalizeScreen, isNavigation } from './screenRoute.js';
 import { focusedLocation } from '@/views/Focused/focusedRoutes.js';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
@@ -126,11 +128,21 @@ export default {
     const signInComponent = screenComponents.SettingsScreen;
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
-    // markRaw: component definitions must not be made reactive. One entry:
-    // the map stays so a frame's contract (fullscreenHost.contract.spec.js)
-    // is checked the same way for whatever frame is listed here.
-    const frames = { one: markRaw(OneShell) };
-    const frameComponent = frames.one;
+    // markRaw: component definitions must not be made reactive. 'focused' is the saved name for One.
+    // Studio was unplugged on 2026-10-18 ("One is the app's only frame"); every Studio screen, its
+    // rail, custom pages and Navigation settings stayed in the code, so they come back as a choice.
+    const frames = { focused: markRaw(OneShell), studio: markRaw(CanvasScreen) };
+    const uiMode = computed(() => store.getters['theme/uiMode']);
+    const isOne = computed(() => uiMode.value !== 'studio');
+    const frameComponent = computed(() => (isOne.value ? frames.focused : frames.studio));
+
+    const onModeKey = (e) => {
+      if (!isAuthenticated.value || !isUiModeToggleKey(e)) return;
+      e.preventDefault();
+      store.dispatch('theme/toggleUiMode');
+    };
+    window.addEventListener('keydown', onModeKey);
+    onBeforeUnmount(() => window.removeEventListener('keydown', onModeKey));
 
     // AGNT One has no onboarding pages: a signed-in account lands in the chat,
     // already on AGNT Flash (aiProvider.applyIncludedModelDefault picks it when
@@ -161,7 +173,8 @@ export default {
     // underneath instead of the full screen: the page covers it, the
     // conversation keeps streaming, and the full screen never loads just to
     // be hidden.
-    const mountedScreen = computed(() => (focusedLocation(activeScreen.value, route.query) ? 'ChatScreen' : activeScreen.value));
+    // In Studio there are no One pages: the full screen always mounts.
+    const mountedScreen = computed(() => (isOne.value && focusedLocation(activeScreen.value, route.query) ? 'ChatScreen' : activeScreen.value));
 
     const isScreenReady = computed(() => !!screenComponents[mountedScreen.value]);
 

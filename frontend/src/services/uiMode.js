@@ -4,8 +4,8 @@
  * ONE APP, TWO SHELLS. Both modes render the same screens, stores, chat
  * pipeline, auth and theme. The mode decides only the FRAME around them:
  *
- *   focused — one input, recents, a library under your name (views/Focused).
- *   studio — the full canvas: rail, toolbar, panels, forges (canvas/).
+ *   focused — AGNT One (views/One): the rail, teamspaces, one top bar, the chat.
+ *   studio — the full canvas: rail, toolbar, custom pages, panels, forges (canvas/).
  *
  * The mode is presentation, not entitlement: it is unrelated to the billing
  * plan, and nothing a user can do is gated on it. Focused has its own page for
@@ -20,13 +20,10 @@
 export const UI_MODES = Object.freeze(['focused', 'studio']);
 
 /**
- * The mode an account gets before it has ever chosen.
- *
- * Studio, deliberately, until Focused covers every action the AGNT One demo
- * has. Flipping this is the Phase 6 launch decision, and it is one line so
- * that it stays a decision rather than a refactor.
+ * The mode an account gets before it has ever chosen: AGNT One, the frame everyone has had since
+ * One shipped (2026-10-18). Studio is one click away (Settings) or Ctrl+Shift+S.
  */
-export const DEFAULT_UI_MODE = 'studio';
+export const DEFAULT_UI_MODE = 'focused';
 
 /** The storage key, shared by theme.js (localStorage) and the sync schema. */
 export const UI_MODE_STORAGE_KEY = 'uiMode';
@@ -70,7 +67,7 @@ export function readStoredUiMode(storage = globalThis.localStorage) {
 
 /** Human labels, one place, so copy cannot drift between toggle and menu. */
 export const UI_MODE_LABELS = Object.freeze({
-  focused: 'Focused',
+  focused: 'AGNT One',
   studio: 'Studio',
 });
 
