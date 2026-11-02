@@ -76,6 +76,8 @@
    position:fixed descendant, which moved the drawer's right-click menu off
    the pointer. The layer has no children, so nothing inside is affected.
 
+   The chat page's list is Studio's own chat sidebar (.one-chat-sidebar, below).
+
    The desktop frame is now the mockup's (mk/): its rail, teamspace drawer and
    chat list are .mk-rail-host, .mk-drawer-host and .mk-chatlist-host, not
    .one-rail / .one-drawer. Listed here so they get the same glass; without
@@ -836,3 +838,21 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
   height: 15px;
   color: var(--text-tertiary);
 }
+
+/* The chat page's list: Studio's chat sidebar (ChatPanel), in a column padded like Studio's left
+   panel (LeftPanel .left-panel: 12px). Sits beside the drawer, before the sheet. */
+.ui-one .one-chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: none;
+  width: 300px;
+  min-height: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
+}
+.ui-one .one-chat-sidebar > * { flex: 1 1 0; min-height: 0; }
+body.custom-bg .ui-one .one-chat-sidebar { background: transparent; }
+.ui-one .one-chat-sidebar + .one-main { border-left: 0; }

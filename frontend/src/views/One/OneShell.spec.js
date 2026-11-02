@@ -87,6 +87,8 @@ function mountShell(screenName = 'ChatScreen', query = {}) {
     global: {
       provide: { isMobile: ref(false) },
       directives: { tooltip: {} },
+      // Studio's chat sidebar is covered by its own specs.
+      stubs: { ChatPanel: { name: 'ChatPanel', template: '<div class="chat-panel-stub" />' } },
     },
     attachTo: document.body,
   });
@@ -297,28 +299,16 @@ describe('OneShell', () => {
     it('the drawer is on every desktop page; the chat list is the chat page\'s own', () => {
       const chat = mountShell('ChatScreen');
       expect(chat.find('.drawer').exists()).toBe(true);
-      expect(chat.find('[data-testid="mk-chat-list"]').exists()).toBe(true);
-      // All / Unread / Groups, in One's own list.
-      expect(chat.findAll('[data-testid="mk-chat-list"] .cl-seg button').map((b) => b.attributes('data-view'))).toEqual(['all', 'unread', 'groups']);
+      // Studio's own chat sidebar, the same component as in Studio.
+      expect(chat.find('[data-testid="one-chat-sidebar"]').findComponent({ name: 'ChatPanel' }).exists()).toBe(true);
       expect(chat.find('.sidebar-stub').exists()).toBe(false);
       chat.unmount();
       const apps = mountShell('ConnectorsScreen');
       expect(apps.find('.drawer').exists()).toBe(true);
-      expect(apps.find('[data-testid="mk-chat-list"]').exists()).toBe(false);
+      expect(apps.find('[data-testid="one-chat-sidebar"]').exists()).toBe(false);
       apps.unmount();
     });
 
-    it('New chat in the chat list starts a new conversation', async () => {
-      const fresh = vi.fn();
-      window.addEventListener('trigger-new-chat', fresh);
-      const w = mountShell();
-      await w.find('[data-testid="mk-chat-list"] [data-action="new-chat"]').trigger('click');
-      await new Promise((r) => setTimeout(r, 0));
-      expect(push).toHaveBeenCalledWith('/chat');
-      expect(fresh).toHaveBeenCalledTimes(1);
-      window.removeEventListener('trigger-new-chat', fresh);
-      w.unmount();
-    });
 
     it('the top bar shows where you are', () => {
       const w = mountShell('ChatScreen');

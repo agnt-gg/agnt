@@ -26,7 +26,13 @@
     />
     <!-- The chat page's list, as in the mockup, with Studio's unread and groups: chats waiting
          for your OK first, then All / Unread / Groups. -->
-    <MkChatList v-if="!isMobile && onChatPage" :active-id="activeChatId" @open="openConversation" @new-chat="newChat" />
+    <!-- The chat page's list: Studio's own chat sidebar (LeftPanel ChatPanel → OutputList), the same
+         component, so search, the Main chat, groups and unread work identically in both layouts. It opens
+         a chat by routing to /chat?content-id=…, exactly as One does. Not under .mk, so it renders as in
+         Studio; mk-chatlist-host keeps the custom-background glass (one.css). -->
+    <div v-if="!isMobile && onChatPage" class="mk-chatlist-host one-chat-sidebar" data-testid="one-chat-sidebar">
+      <ChatPanel />
+    </div>
 
     <!-- Chats: your chats only (Main chat, search, recents, right-click
          actions, account), as a drawer behind the rail's Chats icon. The rail
@@ -140,7 +146,7 @@ import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
 import MkRail from './mk/MkRail.vue';
 import MkDrawer from './mk/MkDrawer.vue';
-import MkChatList from './mk/MkChatList.vue';
+import ChatPanel from '@/views/Terminal/LeftPanel/types/ChatPanel/ChatPanel.vue';
 import MkTaskStrip from './mk/MkTaskStrip.vue';
 import MkIcon from './mk/MkIcon.vue';
 import { useMkFrame } from './mk/useMkFrame.js';
@@ -244,7 +250,7 @@ async function newTeamspace() {
 }
 
 // The approved mockup's frame: what is lit, the breadcrumbs, where each entry goes, New….
-const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeChatId, activeConversationId } = useMkFrame({
+const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeConversationId } = useMkFrame({
   store,
   page,
   location,

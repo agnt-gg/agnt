@@ -65,7 +65,7 @@ describe('AGNT One under a custom background', () => {
     // panels went fully transparent over the wallpaper.
     ['the rail (MkRail)', 'body.custom-bg .ui-one .mk-rail-host::before'],
     ['the teamspace drawer (MkDrawer)', 'body.custom-bg .ui-one .mk-drawer-host::before'],
-    ['the chat list (MkChatList)', 'body.custom-bg .ui-one .mk-chatlist-host::before'],
+    ['the chat list (Studio\'s ChatPanel, in OneShell)', 'body.custom-bg .ui-one .mk-chatlist-host::before'],
   ])('%s paints Studio’s glass, once', (_name, selector) => {
     const rule = ruleFor(ONE_RULES, selector);
     expect(rule, selector).toBeTruthy();
@@ -88,7 +88,8 @@ describe('AGNT One under a custom background', () => {
   });
 
   it('the frame components really render those wrappers (a rename fails here, not on screen)', () => {
-    for (const [file, host] of [['MkRail.vue', 'mk-rail-host'], ['MkDrawer.vue', 'mk-drawer-host'], ['MkChatList.vue', 'mk-chatlist-host']]) {
+    expect(readFileSync(join(DIR, 'OneShell.vue'), 'utf8')).toMatch(/class="mk-chatlist-host one-chat-sidebar"/);
+    for (const [file, host] of [['MkRail.vue', 'mk-rail-host'], ['MkDrawer.vue', 'mk-drawer-host']]) {
       expect(readFileSync(join(DIR, 'mk', file), 'utf8'), file).toMatch(new RegExp(`<div class="mk ${host}"`));
     }
   });
