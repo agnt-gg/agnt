@@ -137,6 +137,12 @@ provide('focusedNav', {
    composer stays on screen. As a block parent let it grow to its content: the whole page scrolled and
    the composer was cut off at the bottom. The inline Routines / Files pages scroll in their own box. */
 .studio-team-page > :deep(.mk-page) { flex: 1 1 0; min-height: 0; }
+/* A teamspace's chat: One sizes it from the window (mk.css .chat-wrap: 100vh - its 48px top bar - 150px),
+   which in Studio's center panel is a few pixels off, so the page scrolled and clipped the composer.
+   Here the chat takes exactly the space left under the teamspace header and tabs; only its log scrolls. */
+.studio-team-page :deep(.content:has(> .page > .chat-wrap)) { display: flex; flex-direction: column; overflow: hidden; }
+.studio-team-page :deep(.page:has(> .chat-wrap)) { flex: 1 1 0; min-height: 0; height: auto; display: flex; flex-direction: column; }
+.studio-team-page :deep(.page > .chat-wrap) { flex: 1 1 0; min-height: 0; height: auto; padding-bottom: 12px; }
 .studio-team-page :deep(.mk) { background: transparent; }
 .studio-team-inline { flex: 1 1 0; min-height: 0; overflow: auto; }
 .studio-team-toast {
