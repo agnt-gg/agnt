@@ -59,7 +59,7 @@ describe('POST /workflows/save', () => {
     await WorkflowService.saveWorkflow({ body: { workflow: structuredClone(REACT_FLOW) }, user: { userId: 'u1' } }, res);
     expect(res.statusCode, JSON.stringify(res.body)).toBe(201);
     const saved = JSON.parse(stored.get('wf-1'));
-    expect(saved.nodes[0]).toEqual({ id: 'trigger-1', type: 'trigger-timer', text: 'Daily', x: 80, y: 220, parameters: { schedule: 'Daily' } });
+    expect(saved.nodes[0]).toEqual({ id: 'trigger-1', type: 'trigger-timer', text: 'Daily', x: 80, y: 220, parameters: { schedule: 'Daily' }, category: 'trigger' }); // armed: the engine only starts category 'trigger'
     expect(saved.edges[0].start.type).toBe('output');
   });
 });

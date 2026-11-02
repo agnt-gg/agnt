@@ -19,6 +19,11 @@ export async function pluginAccountBoundary(req, res, next) {
     if (isRestrictedInstance() && req.method !== 'GET' && userId !== tenantOwnerId()) {
       if (req.method === 'POST' && req.path === '/install') {
         req.memberActivationOnly = true;
+      } else if (req.method === 'DELETE' && /^\/[^/]+$/.test(req.path)) {
+        // The mirror of activation: a member switches OFF, for their own account, a plugin they switched on.
+        // PluginAccounts.assert below and the route (only plugins they added) bound it; the shared package is
+        // removed from disk only when nobody else uses it.
+        req.memberDeactivationOnly = true;
       } else if (isRequestAction(req)) {
         // Plugin requests and the install policy: each route checks the caller's
         // role itself (pluginRequestRoutes: owner, or admin when allowed).

@@ -455,7 +455,8 @@ class WorkflowService {
       if (!workflow) {
         return res.status(404).json({ error: 'Workflow not found' });
       }
-      const workflowData = JSON.parse(workflow.workflow_data);
+      // Older rows and imports may lack a trigger's category; read them as the engine will (normalizeWorkflowShape).
+      const workflowData = normalizeWorkflowShape(JSON.parse(workflow.workflow_data)).workflow;
       // A trigger its own schema rejects would arm and never fire, silently. Refuse it, naming the field.
       const triggerProblems = await workflowTriggerProblems(workflowData);
       if (triggerProblems.length) {

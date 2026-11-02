@@ -179,7 +179,7 @@ const REGISTRY = {
     'create_goal', 'delete_goal', 'evaluate_goal',
     'fetch_goal_tasks', 'get_evaluation_report', 'get_goal_details', 'get_goal_status', 'list_goals', 'pause_goal',
     'save_as_golden_standard', 'task_checkpoint', 'update_task_status',
-    'generate_widget', 'edit_widget_code', 'list_widgets', 'load_widget', 'save_widget', 'update_widget_config',
+    'generate_widget', 'edit_widget_code', 'list_widgets', 'load_widget', 'save_widget', 'update_widget_config', 'delete_widget',
     'list_tools', 'load_tool', 'save_tool', 'delete_tool', 'generate_tool_update',
     'set_background_image', 'clear_background_image',
   ].map((name) => [name, { capabilities: [], sink: [] }])),

@@ -75,9 +75,21 @@ function liftNode(node) {
     changed = true;
   }
 
+  // A trigger written by hand often leaves out category. The engine arms and starts only nodes whose
+  // category is 'trigger', so such a timer saved and started fine and never fired, and a generic-trigger
+  // was run as a missing tool ("Tool not found: generic-trigger"). Every trigger type is named trigger-*,
+  // apart from the built-in generic-trigger, webhook-listener and receive-* emails/messages.
+  // (Plugin triggers are only known at runtime: WorkflowEngine checks ToolConfig.triggers for those.)
+  if (isMissing(out.category) && typeof out.type === 'string' && TRIGGER_TYPE.test(out.type)) {
+    out.category = 'trigger';
+    changed = true;
+  }
+
   if (changed && !isPlainObject(out.parameters)) out.parameters = {};
   return { node: out, changed };
 }
+
+const TRIGGER_TYPE = /^(trigger-[a-z0-9-]+|generic-trigger|receive-[a-z0-9-]+|webhook-listener)$/;
 
 /** Column per node: its longest path from a node with no incoming edge. Cycle-safe. */
 function layoutColumns(nodes, edges) {

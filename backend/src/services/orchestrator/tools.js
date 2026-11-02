@@ -5,6 +5,7 @@ import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from '../security/toolProcess.js';
 import { withToolActor, currentToolActor, hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
 import { runActorFor, runAuthorizationFor } from '../authorization/runActor.js';
+import { assetOwnersFor } from '../authorization/teamAssetOwner.js';
 import { resolveToolCapabilities } from '../security/toolCapabilities.js';
 import { isPluginTool } from '../security/memberSafePlugins.js';
 import { randomUUID } from 'crypto';
@@ -325,12 +326,16 @@ export const TOOLS = {
               description:
                 "JavaScript code to execute in Node.js. Top-level await works. Use console.log() for output. For AGNT API calls, always define a fetchJSON() helper with process.env.AGNT_AUTH_TOKEN as Bearer token — never use localStorage (doesn't exist in Node.js).",
             },
+            timeoutSeconds: {
+              type: 'number',
+              description: 'Optional. How long the script may run before it is stopped, in seconds (default 30, max 600). Raise it for scripts that wait on slow calls such as sandbox_run or long API requests.',
+            },
           },
           required: ['code'],
         },
       },
     },
-    execute: async ({ code: codeString }, authToken) => {
+    execute: async ({ code: codeString, timeoutSeconds }, authToken) => {
       if (!codeString || typeof codeString !== 'string') {
         return JSON.stringify({ success: false, error: 'Invalid code provided. Code must be a non-empty string.' });
       }
@@ -362,11 +367,16 @@ export const TOOLS = {
         console.warn('[execute_javascript_code] Could not resolve workspace path:', e.message);
       }
 
+      // A script waiting on slow calls (several sandbox_run calls, each starting a cloud machine) passed the
+      // fixed 30s and was killed, reported only as "Process exited with code null". Callers choose up to 600s,
+      // and a timeout says that it was one.
+      const limitSeconds = Math.min(Math.max(Math.round(Number(timeoutSeconds) || 30), 1), 600);
+      const timeoutMs = limitSeconds * 1000;
       return new Promise((resolve) => {
         // A sandbox refusal (or a missing launcher) throws from spawn: report it as this tool's result.
         let nodeProcess;
         try {
-          nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env, cwd: workspaceCwd });
+          nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: timeoutMs, env, cwd: workspaceCwd });
         } catch (error) {
           resolve(JSON.stringify({ success: false, error: error.message, ...(error.code ? { code: error.code } : {}) }));
           return;
@@ -382,9 +392,11 @@ export const TOOLS = {
           stderr += data.toString();
         });
 
-        nodeProcess.on('close', (code) => {
+        nodeProcess.on('close', (code, signal) => {
           if (code === 0) {
             resolve(JSON.stringify({ success: true, stdout: stdout.trim(), stderr: stderr.trim() }));
+          } else if (code === null) {
+            resolve(JSON.stringify({ success: false, timedOut: signal === 'SIGTERM', stdout: stdout.trim(), stderr: (signal === 'SIGTERM' ? `Stopped after ${limitSeconds}s: the script ran past its time limit. Pass timeoutSeconds (up to 600) for longer scripts.` : `Stopped by signal ${signal}.`) + (stderr.trim() ? ' ' + stderr.trim() : '') }));
           } else {
             resolve(JSON.stringify({ success: false, stdout: stdout.trim(), stderr: `Process exited with code ${code}: ${stderr.trim()}` }));
           }
@@ -5353,15 +5365,7 @@ async function executeToolInner(toolName, args, authToken, context) {
     // name. Resolves by tool id first, then by unique `type` slug scoped to the
     // requesting user. Only the owner (or a shareable tool) can execute.
     try {
-      let customTool = null;
-      const byId = await CustomToolModel.findOne(toolName);
-      if (byId && (byId.is_shareable || byId.created_by === context?.userId)) {
-        customTool = byId;
-      }
-      if (!customTool && context?.userId) {
-        const owned = await CustomToolModel.findAllByUserId(context.userId);
-        customTool = owned.find((t) => t.type === toolName || t.type === registryToolName) || null;
-      }
+      const customTool = context?.userId ? await findCustomTool(toolName, context.userId, registryToolName) : null;
       if (customTool) {
         console.log(`[Orchestrator] Executing custom Tool Forge tool: ${customTool.id} (${customTool.type})`);
         const output = await runCustomTool(customTool, args, context?.userId);
@@ -5414,11 +5418,27 @@ async function executeToolInner(toolName, args, authToken, context) {
  * nothing else: a profiled built-in, a plugin tool or an MCP tool keeps its own name, so a custom tool can
  * never lend its profile to a tool that would actually run instead (custom tools resolve LAST).
  */
+/**
+ * A saved Tool Forge tool this caller may run, by id or type: their own, a shareable one, or, on a team
+ * instance, the team library's (teamAssetOwner.js). Chat saves tools through the REST API, which on a team
+ * instance stores them in the team library, so /tools/:name/execute must look there too, or a tool the
+ * caller just made is "not found" (and refused as unprofiled) there while chat runs it.
+ */
+async function findCustomTool(toolName, userId, alternateName = null) {
+  const owners = await assetOwnersFor(userId);
+  const byId = await CustomToolModel.findOne(toolName);
+  if (byId && (byId.is_shareable || owners.includes(byId.created_by))) return byId;
+  for (const owner of owners) {
+    const match = (await CustomToolModel.findAllByUserId(owner)).find((tool) => tool.type === toolName || (alternateName && tool.type === alternateName));
+    if (match) return match;
+  }
+  return null;
+}
+
 async function gateNameFor(toolName, userId) {
   if (resolveToolCapabilities(toolName, {}) || isPluginTool(toolName) || String(toolName).startsWith('mcp__') || !userId) return toolName;
   try {
-    const byId = await CustomToolModel.findOne(toolName);
-    const custom = byId && (byId.is_shareable || byId.created_by === userId) ? byId : (await CustomToolModel.findAllByUserId(userId)).find((tool) => tool.type === toolName) || null;
+    const custom = await findCustomTool(toolName, userId);
     if (!custom) return toolName;
     const { customToolGateName } = await import('../security/customToolCapabilities.js');
     return customToolGateName(custom.base);

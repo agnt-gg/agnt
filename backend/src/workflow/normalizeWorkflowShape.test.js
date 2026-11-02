@@ -25,7 +25,7 @@ describe('normalizeWorkflowShape', () => {
   it('THE REPORTED WORKFLOW: positions, parameters and edge ends land where the Forge reads them', () => {
     const { workflow, changed } = normalizeWorkflowShape(DAILY_BRIEFING);
     expect(changed).toBe(true);
-    expect(workflow.nodes[0]).toEqual({ id: 'trigger-1', type: 'trigger-timer', text: 'Daily', x: 80, y: 220, parameters: { schedule: 'Daily' } });
+    expect(workflow.nodes[0]).toEqual({ id: 'trigger-1', type: 'trigger-timer', text: 'Daily', x: 80, y: 220, parameters: { schedule: 'Daily' }, category: 'trigger' }); // armed: the engine only starts category 'trigger'
     expect(workflow.nodes[1]).toMatchObject({ x: 380, y: 220, parameters: { query: 'AI news' } });
     expect(workflow.edges[0]).toEqual({ id: 'e1', start: { id: 'trigger-1', type: 'output' }, end: { id: 'search-1', type: 'input' } });
   });

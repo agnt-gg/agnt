@@ -170,6 +170,7 @@ export const TOOL_GROUPS = {
     'save_widget',
     'load_widget',
     'list_widgets',
+    'delete_widget',
     'get_agnt_api',
   ],
   plugin_authoring: [
@@ -278,6 +279,7 @@ export const TOOL_GROUPS = {
     // widgets AND placing them — splitting those across trigger groups forced
     // agents through discover_tools (or worse, raw API calls) mid-task.
     'list_widgets',
+    'delete_widget',
     'generate_widget',
     'edit_widget_code',
     'save_widget',

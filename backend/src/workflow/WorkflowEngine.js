@@ -12,6 +12,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import { createPluginAi } from '../services/ai/pluginAi.js';
 import runWorkflowAction from '../tools/library/controls/run-workflow.js';
 import { assertWorkflowShape } from './validateWorkflowShape.js';
+import { normalizeWorkflowShape } from './normalizeWorkflowShape.js';
 import { hostedWorkflowRunRefusal } from '../services/auth/tenantOwnership.js';
 import { runActorFor } from '../services/authorization/runActor.js';
 
@@ -37,6 +38,12 @@ class WorkflowEngine extends EventEmitter {
     // with a message that names the node and the field, instead of the
     // TypeError this used to raise several lines below.
     assertWorkflowShape(workflow, `Workflow ${workflowId}`);
+    // Rows saved before trigger categories were inferred (normalizeWorkflowShape) still arm correctly.
+    workflow = normalizeWorkflowShape(workflow).workflow;
+    // Plugin triggers register at runtime; a node naming one is a trigger even without its category.
+    if (workflow.nodes?.some((node) => !node?.category && node?.type && ToolConfig.triggers?.[node.type])) {
+      workflow = { ...workflow, nodes: workflow.nodes.map((node) => (!node?.category && node?.type && ToolConfig.triggers?.[node.type] ? { ...node, category: 'trigger' } : node)) };
+    }
 
     // Both collections are iterated unconditionally (nodes in
     // _initializeNodeNameMapping, edges in _findStartNodes). A blank draft is

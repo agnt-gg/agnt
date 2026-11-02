@@ -28,7 +28,9 @@ export function requireOwnedGoal(param = 'id') {
   const middleware = async (req, res, next) => {
     try {
       const goal = await findOwnedGoal(req.params[param], req.user?.userId);
-      if (!goal) return res.status(404).json({ error: 'Goal not found' });
+      // A deleted goal is gone from every goal route (status, execute, evaluation...), not only GET /:id.
+      // ?includeDeleted=true still reads it, as the list allows.
+      if (!goal || (goal.deleted_at && req.query?.includeDeleted !== 'true')) return res.status(404).json({ error: 'Goal not found' });
       req.goal = goal;
       next();
     } catch (error) {

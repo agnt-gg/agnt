@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { assetOwnersFor } from '../authorization/teamAssetOwner.js';
 import db from '../../models/database/index.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
@@ -120,6 +121,18 @@ export function getWidgetToolSchemas() {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'delete_widget',
+        description: 'Delete a widget from your library by id (from list_widgets). Removes the definition; widgets placed on a canvas disappear from it.',
+        parameters: {
+          type: 'object',
+          properties: { widgetId: { type: 'string', description: 'The id of the widget to delete' } },
+          required: ['widgetId'],
+        },
+      },
+    },
   ];
 }
 
@@ -129,6 +142,14 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
 
   try {
     let result;
+    // Whose widgets these tools may touch: the caller's own and, on a team instance, the team library the
+    // REST API reads (teamAssetOwner.js). New widgets are saved to the team library there, so the Widgets page
+    // and GET /widget-definitions show what chat made. Every update and read is limited to these owners:
+    // these tools used to update or load ANY widget by id, including another person's.
+    const owners = userId ? await assetOwnersFor(userId) : [];
+    const writeOwner = owners[owners.length - 1] || userId || 'anonymous';
+    const ownerSql = owners.length ? `user_id IN (${owners.map(() => '?').join(',')})` : '0';
+    const ownedWidget = (id) => new Promise((resolve, reject) => db.get(`SELECT * FROM widget_definitions WHERE id = ? AND ${ownerSql}`, [id, ...owners], (err, row) => (err ? reject(err) : resolve(row || null))));
 
     switch (functionName) {
       case 'list_widgets': {
@@ -140,7 +161,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
           break;
         }
         const { default: WidgetDefinitionModel } = await import('../../models/WidgetDefinitionModel.js');
-        const rows = await WidgetDefinitionModel.findByUserId(userId);
+        const rows = (await Promise.all(owners.map((owner) => WidgetDefinitionModel.findByUserId(owner)))).flat();
         const category = typeof args?.category === 'string' ? args.category.toLowerCase() : null;
         const widgets = rows
           .filter((w) => !category || (w.category || 'custom').toLowerCase() === category)
@@ -207,8 +228,8 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             if (db && isExistingWidget) {
               await new Promise((resolve, reject) => {
                 db.run(
-                  'UPDATE widget_definitions SET source_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                  [updatedSource, existingId],
+                  `UPDATE widget_definitions SET source_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND ${ownerSql}`,
+                  [updatedSource, existingId, ...owners],
                   (err) => (err ? reject(err) : resolve())
                 );
               });
@@ -300,8 +321,8 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
               if (isExistingWidget) {
                 await new Promise((resolve, reject) => {
                   db.run(
-                    'UPDATE widget_definitions SET name = ?, description = ?, source_code = ?, widget_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                    [widgetData.name, widgetData.description, widgetData.source_code, widgetData.widget_type, existingId],
+                    `UPDATE widget_definitions SET name = ?, description = ?, source_code = ?, widget_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND ${ownerSql}`,
+                    [widgetData.name, widgetData.description, widgetData.source_code, widgetData.widget_type, existingId, ...owners],
                     (err) => (err ? reject(err) : resolve())
                   );
                 });
@@ -313,7 +334,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                       savedWidgetId,
-                      userId || 'anonymous',
+                      writeOwner,
                       widgetData.name,
                       widgetData.description,
                       'fas fa-puzzle-piece',
@@ -423,9 +444,9 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
               params.push(typeof value === 'object' ? JSON.stringify(value) : value);
             }
             setClauses.push('updated_at = CURRENT_TIMESTAMP');
-            params.push(existingId);
+            params.push(existingId, ...owners);
             await new Promise((resolve, reject) => {
-              db.run(`UPDATE widget_definitions SET ${setClauses.join(', ')} WHERE id = ?`, params, (err) => (err ? reject(err) : resolve()));
+              db.run(`UPDATE widget_definitions SET ${setClauses.join(', ')} WHERE id = ? AND ${ownerSql}`, params, (err) => (err ? reject(err) : resolve()));
             });
             notifyWidgetChanged({ widgetId: existingId, userId, action: 'updated', source: 'update_widget_config' });
           }
@@ -477,6 +498,13 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
 
         const validCategories = ['custom', 'dashboard', 'home', 'assets', 'system'];
         const widgetId = merged.id || `widget-def-${Date.now()}`;
+        if (merged.id) {
+          const exists = await new Promise((resolve) => db.get('SELECT user_id FROM widget_definitions WHERE id = ?', [merged.id], (err, row) => resolve(err ? null : row)));
+          if (exists && !owners.includes(exists.user_id)) {
+            result = { success: false, message: 'Widget not found' };
+            break;
+          }
+        }
         const sanitizedCategory = validCategories.includes(merged.category) ? merged.category : 'custom';
         const widgetData = { ...merged, id: widgetId, category: sanitizedCategory, updatedAt: new Date().toISOString() };
 
@@ -505,7 +533,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             query,
             [
               widgetId,
-              userId || 'anonymous',
+              writeOwner,
               widgetData.name || 'Untitled Widget',
               widgetData.description || '',
               widgetData.icon || 'fas fa-puzzle-piece',
@@ -540,16 +568,22 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
 
       case 'load_widget':
         if (args.widgetId && db) {
-          result = await new Promise((resolve) => {
-            db.get('SELECT * FROM widget_definitions WHERE id = ?', [args.widgetId], (err, row) => {
-              if (err || !row) resolve({ success: false, message: err ? err.message : 'Widget not found' });
-              else resolve({ success: true, widgetData: row, message: 'Widget loaded successfully' });
-            });
-          });
+          const row = await ownedWidget(args.widgetId);
+          result = row ? { success: true, widgetData: row, message: 'Widget loaded successfully' } : { success: false, message: 'Widget not found' };
         } else {
           result = { success: false, message: 'Widget ID required' };
         }
         break;
+
+      case 'delete_widget': {
+        // Generated widgets had no delete: a member could make one and never remove it (bravo retest).
+        if (!args?.widgetId) { result = { success: false, message: 'widgetId is required' }; break; }
+        const changes = await new Promise((resolve, reject) => db.run(`DELETE FROM widget_definitions WHERE id = ? AND ${ownerSql}`, [args.widgetId, ...owners], function done(err) { if (err) reject(err); else resolve(this.changes); }));
+        if (!changes) { result = { success: false, message: 'Widget not found' }; break; }
+        notifyWidgetChanged({ widgetId: args.widgetId, userId, action: 'deleted', source: 'delete_widget' });
+        result = { success: true, deleted: true, widgetId: args.widgetId, message: 'Widget deleted', frontendEvents: [{ type: 'widget-deleted', data: { widgetId: args.widgetId } }] };
+        break;
+      }
 
       default:
         result = { success: false, message: `Unknown function: ${functionName}` };

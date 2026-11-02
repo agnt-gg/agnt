@@ -9164,7 +9164,7 @@ Base path: `/api/workflows`
     "name": "Workflow Name",
     "description": "Workflow description",
     "nodes": [
-      { "id": "n1", "type": "generic-trigger", "text": "Start", "parameters": {} },
+      { "id": "n1", "type": "generic-trigger", "category": "trigger", "text": "Start", "parameters": {} },
       { "id": "n2", "type": "generate-with-ai-llm", "text": "Draft Reply", "parameters": { "prompt": "{{Start.output}}" } }
     ],
     "edges": [{ "id": "e1", "start": { "id": "n1" }, "end": { "id": "n2" } }]
@@ -9233,7 +9233,7 @@ Base path: `/api/workflows`
 {
   "workflow": {
     "name": "Updated Workflow Name",
-    "nodes": [{ "id": "n1", "type": "generic-trigger", "text": "Start", "parameters": {} }],
+    "nodes": [{ "id": "n1", "type": "generic-trigger", "category": "trigger", "text": "Start", "parameters": {} }],
     "edges": []
   }
 }
@@ -9366,12 +9366,36 @@ Base path: `/api/workflows`
 - **Errors**:
   - `404` — no such workflow for the caller.
   - `409` `{ code: 'ALREADY_ACTIVE' }` — it is already running.
+  - `400` `{ code: 'invalid_trigger', details }` — a trigger's parameters are not ones its type accepts (for example a timer `schedule` that is not one of its options). `details` names each node, field and the allowed values. A node whose `type` is a trigger (`trigger-*`, `generic-trigger`, `webhook-listener`, `receive-*`) is treated as one even without `"category": "trigger"`.
   - `403` `{ code: 'team_policy_denied', permission: 'workflows.run' }`, or a 403 for a missing `runs.execute` / `connections.use` — in a team scope (`X-AGNT-Team-ID`), the owner has not allowed this teammate to run here (see [Team Routes](#team-routes), "Running teamspace items"). Teammates' runs act as themselves, in the tool sandbox.
   - `403` `{ code: 'team_policy_denied', permission }` — the team owner has turned off a permission this workflow needs (`workflows.run`, `automations.schedule` or `triggers.external`).
   - `403` `{ error: 'Upgrade required', code: 'PLAN_REQUIRED' | 'PLAN_LIMIT' }` — the plan does not include its triggers or automation.
   - `503` — the workflow process is not reachable, so the start could not be
     attempted. Retryable.
   - `500` — the start was attempted and failed.
+
+### Run Workflow Now
+
+**POST** `/:id/run`
+
+- **Authentication**: Required
+- **Handler**: `WorkflowService.runWorkflowOnce`
+- **Parameters**:
+  - `id` (path): Workflow ID
+  - `input` (body, optional): an object. The trigger node passes it on as its output, so later nodes read it as the trigger's output.
+- **Description**: Run the SAVED workflow once, now, starting from its trigger node(s), whatever the trigger type (timer, webhook, email, `generic-trigger`), and answer when it finishes. It does **not** switch the workflow on: its switched-on state is left exactly as it was. Use it to test a workflow, or to fire a generic trigger by hand. In a team scope it runs as the caller, under the same rules as `/start`. Recorded as a normal run in `/executions`.
+- **Response** (`200` when every node succeeded, `422` when one failed):
+
+```json
+{
+  "success": true,
+  "executionId": "execution-id",
+  "outputs": { "n1": {}, "n2": { "result": 42 } },
+  "errors": {}
+}
+```
+
+- **Errors**: `404` no such workflow; `403` the team owner has not allowed this teammate to run here; `500` the run could not start.
 
 ### Deactivate Workflow (Stop)
 
