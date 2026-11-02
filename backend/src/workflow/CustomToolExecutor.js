@@ -160,23 +160,8 @@ class CustomToolExecutor {
     try {
       const { parameters, code } = node;
 
-      // Resolve all parameter values
-      const resolvedParams = {};
-      for (const [key, value] of Object.entries(parameters)) {
-        if (typeof value === 'object' && value !== null) {
-          // Extract the actual value from parameter objects
-          if (value.type === 'textarea' || value.type === 'text' || value.type === 'select' || value.type === 'number') {
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value.value || '');
-          } else if (value.value !== undefined) {
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value.value);
-          } else {
-            // If it's an object without a value property, try to resolve it as-is
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value);
-          }
-        } else {
-          resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value);
-        }
-      }
+      // Resolve all parameter values (resolveCodeParams keeps numbers and booleans as they are)
+      const resolvedParams = await this.resolveCodeParams(parameters);
 
       // Build code context with resolved parameters
       const codeWithContext = this.buildCodeContext(code, resolvedParams, inputData);
@@ -194,23 +179,8 @@ class CustomToolExecutor {
     try {
       const { parameters, code } = node;
 
-      // Resolve all parameter values
-      const resolvedParams = {};
-      for (const [key, value] of Object.entries(parameters)) {
-        if (typeof value === 'object' && value !== null) {
-          // Extract the actual value from parameter objects
-          if (value.type === 'textarea' || value.type === 'text' || value.type === 'select' || value.type === 'number') {
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value.value || '');
-          } else if (value.value !== undefined) {
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value.value);
-          } else {
-            // If it's an object without a value property, try to resolve it as-is
-            resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value);
-          }
-        } else {
-          resolvedParams[key] = await this.workflowEngine.parameterResolver.resolveTemplate(value);
-        }
-      }
+      // Resolve all parameter values (resolveCodeParams keeps numbers and booleans as they are)
+      const resolvedParams = await this.resolveCodeParams(parameters);
 
       // Build code context with resolved parameters (pass 'python' as language)
       const codeWithContext = this.buildCodeContext(code, resolvedParams, inputData, 'python');
@@ -222,6 +192,29 @@ class CustomToolExecutor {
       console.error('Error executing Python tool:', error);
       return { error: error.message };
     }
+  }
+
+  /**
+   * A code tool's parameters, as values its code can compute with. Only text goes through the workflow
+   * template resolver ({{Node.output}} references); it returns strings, so every number used to arrive as
+   * text: in Python "21" * 2 is "2121" (bravo retest, Nov 2026). Numbers, booleans and lists pass through;
+   * a parameter declared { type: 'number' } whose value resolves to numeric text becomes a number.
+   */
+  async resolveCodeParams(parameters = {}) {
+    const TEXT_TYPES = new Set(['textarea', 'text', 'select', 'number']);
+    const resolved = {};
+    for (const [key, value] of Object.entries(parameters || {})) {
+      let raw = value;
+      let declaredNumber = false;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        declaredNumber = value.type === 'number';
+        raw = value.value !== undefined ? value.value : (TEXT_TYPES.has(value.type) ? '' : value);
+      }
+      let out = typeof raw === 'string' ? await this.workflowEngine.parameterResolver.resolveTemplate(raw) : raw;
+      if (declaredNumber && typeof out === 'string' && out.trim() !== '' && Number.isFinite(Number(out))) out = Number(out);
+      resolved[key] = out;
+    }
+    return resolved;
   }
 
   buildCodeContext(code, resolvedParams, inputData, language = 'javascript') {
