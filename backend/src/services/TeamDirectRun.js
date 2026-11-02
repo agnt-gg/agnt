@@ -1,6 +1,7 @@
 import { withToolActor, issueToolToken, TOOL_TOKEN_MAX_TTL_SECONDS } from './security/toolRunAuthority.js';
 import { isNonOwnerMember } from './security/memberIsolation.js';
 import { policyRefusalMessage } from './authorization/teamPolicy.js';
+import { teamRunOutcome } from './ai/runOutcome.js';
 
 const refuse = (status, message, extra = {}) => { throw Object.assign(new Error(message), { status, ...extra }); };
 
@@ -44,5 +45,5 @@ export async function runAgentAsTeammate({ team, actorId, authorization, scope, 
     maxToolRounds: toolSchemas.length ? 10 : 1,
     context: { agentId, actorId },
   }), runAuthorization);
-  return { status: result?.success === false || result?.error ? 'failed' : 'completed', result };
+  return teamRunOutcome(result);
 }
