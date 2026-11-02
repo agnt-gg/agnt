@@ -119,6 +119,17 @@ provide('focusedNav', {
 <style scoped>
 .studio-team { display: flex; height: 100%; min-height: 0; overflow: hidden; }
 .studio-team-nav { flex: none; height: 100%; }
+/* In Studio the list is a sub-nav of the Team row, drawn like Studio's own rail (CanvasScreen
+   .cv-sb-*): Studio's top bar already has the space switcher and Ctrl+K search, so the list drops
+   its own; captions, the active row and borders use Studio's look, not One's. */
+.studio-team-nav :deep(.drawer-head),
+.studio-team-nav :deep(.find-btn) { display: none; }
+.studio-team-nav :deep(.drawer) { width: 216px; border-left: 0; border-right: 1px solid var(--terminal-border-color); background: transparent; padding-top: 10px; }
+.studio-team-nav :deep(.d-head) { font-size: 9px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.8; }
+.studio-team-nav :deep(.d-head svg) { display: none; }
+.studio-team-nav :deep(.d-item) { border: 1px solid transparent; border-radius: 8px; font-size: 13px; }
+.studio-team-nav :deep(.d-item.is-active) { color: var(--color-primary); border-color: rgba(var(--primary-rgb), 0.25); background: rgba(var(--primary-rgb), 0.06); }
+.studio-team-page :deep(.mk) { background: transparent; }
 .studio-team-page { flex: 1; min-width: 0; height: 100%; overflow: auto; }
 .studio-team-toast {
   position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
