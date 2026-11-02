@@ -10,8 +10,10 @@ Hosted instances only. Bearer authentication and a current cloud workspace capab
 
 | Method | Path | Capability | Behavior |
 |---|---|---|---|
+| GET | `/:teamId/:workspaceId/files` | `files.read` | List the teamspace's files (top level): `[{ name, bytes, modifiedAt }]`, newest first |
 | GET | `/:teamId/:workspaceId/content?path=<relative-path>` | `files.read` | Download a regular file as an attachment |
 | PUT | `/:teamId/:workspaceId/content?path=<relative-path>` | `files.write` | Write an `application/octet-stream` body, maximum 10 MiB |
+| DELETE | `/:teamId/:workspaceId/content?path=<relative-path>` | `files.write` | Delete a regular file: `{ deleted: true }`. Directories are refused (400) |
 
 Storage is private and partitioned by team, tenant and workspace. Absolute paths, traversal, links and drive-qualified paths are refused. These routes do not expose the desktop project directory. Missing files return 404; permission refusals return 403. This is distinct from approved execution permission.
 
@@ -460,21 +462,27 @@ Base path: `/api/agents`
 
 **POST** `/save`
 
-- **Authentication**: Required- **Description**: Create a new agent or update an existing one
-- **Body**:
+- **Authentication**: Required
+- **Description**: Create a new agent or update an existing one
+- **Body**: the agent wrapped in `agent`:
 
 ```json
 {
-  "id": "optional-agent-id",
-  "name": "Agent Name",
-  "description": "Agent description",
-  "systemPrompt": "Optional persona / directives",
-  "assignedTools": ["web_search", "web_scrape"],
-  "assignedSkills": ["skill-id-or-slug"],
-  "toolAccessMode": "restricted",
-  "config": {}
+  "agent": {
+    "id": "optional-agent-id",
+    "name": "Agent Name",
+    "description": "Agent description",
+    "status": "ACTIVE",
+    "systemPrompt": "Optional persona / directives",
+    "assignedTools": ["web_search", "web_scrape"],
+    "assignedSkills": ["skill-id-or-slug"],
+    "toolAccessMode": "restricted"
+  }
 }
 ```
+
+- `name` is required for a new agent; an edit that omits it keeps the stored name. `status` defaults to `"ACTIVE"` (an edit keeps the stored status). `assignedTools`/`assignedWorkflows` default to `[]`.
+- **Errors**: `400` when the body is not `{ agent: { ... } }`, when a new agent has no `name`, or (on `PUT /:id`) when `agent.id` differs from the URL.
 
 **`toolAccessMode`** (string, `"restricted"` | `"open"`, default `"restricted"`) controls the agent's runtime tool surface in chat:
 
@@ -533,7 +541,7 @@ Note: this endpoint returns the raw DB row plus parsed arrays — timestamps are
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Agent ID
-- **Description**: Same handler as `POST /save` — identical body fields (name, description, systemPrompt, assignedTools, assignedSkills, assignedWorkflows, toolAccessMode, provider, model, icon, category, status, creditLimit) and identical response:
+- **Description**: Same handler as `POST /save`: the same `{ agent: { ... } }` body (name, description, systemPrompt, assignedTools, assignedSkills, assignedWorkflows, toolAccessMode, provider, model, icon, category, status, creditLimit) and the same response. The agent saved is the one in the URL; `agent.id` may be omitted:
 
 ```json
 {
@@ -548,7 +556,8 @@ Note: this endpoint returns the raw DB row plus parsed arrays — timestamps are
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Agent ID- **Description**: Delete an agent by ID. Also deletes the agent's memories and broadcasts `AGENT_DELETED` to the user's connected clients.
+  - `id` (path): Agent ID
+- **Description**: Delete an agent by ID. Also deletes the agent's memories and broadcasts `AGENT_DELETED` to the user's connected clients. In a teamspace: an owner/admin, or the member who created the agent; otherwise `403`.
 - **Response**:
 
 ```json
@@ -4420,6 +4429,11 @@ Every route requires the normal authenticated session. Team lookups are membersh
 - Name: 1–180 characters. Kinds: markdown, text, html, csv, agent, workflow, tool, skill, widget, goal. Content is an inert UTF-8 definition/document, maximum 200 KB.
 - Existing asset requires its expected revision; mismatch returns 409 with no write. Each successful write creates a new immutable revision. No tool dispatch, credential binding, personal object mutation, or execution occurs.
 
+**DELETE** `/:teamId/assets/:id`
+- **Authentication**: Required
+- Owner/admin, or the member who created the asset (author of revision 1); anyone else gets 403. Deletes the asset and all its revisions and records an `asset.deleted` event. Returns `{ deleted: true, id }`.
+- The published copy of a teamspace item (pinned by a publish) returns 409: delete the item in its teamspace instead. Teamspace docs are deleted through their teamspace (404 here).
+
 **GET** `/:teamId/activity`
 - **Authentication**: Required
 - Team members only. Last 100 attributable team events, without asset body or invitation token.
@@ -4446,6 +4460,10 @@ Mentions and assignees are `{ kind: 'person' | 'agent', id }`. Task statuses: `t
 - **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/comments`: body `{ body, mentions? }`. Notifies the assignee, the creator and anyone mentioned (never the author). An @agent hands the card to that agent.
 - **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/approve`: body `{ saveAsDoc? }`. Only when an agent result is waiting (else 409 `not_waiting`). Moves the card to `done`; with `saveAsDoc` the result becomes a teamspace doc. Returns `{ task, doc }`.
 - **POST** `/:teamId/workspaces/:workspaceId/tasks/:taskId/send-back`: body `{ note? }`. The agent runs again with the note.
+
+**Running teamspace items (members).** In a team scope (`X-AGNT-Team-ID`), the instance owner runs agents and workflows directly, on their own connections. Everyone else runs the PUBLISHED version through `POST /:teamId/workspaces/:workspaceId/native/:kind/:id/run`, with a team connection; a direct run (`/workflows/:id/start`, `/agents/:id/chat`, ...) returns 409 `{ code: 'publish_required', canPublish }`. Owners and admins publish with `POST /:teamId/workspaces/:workspaceId/native/:kind/:id/publish` (`canPublish: true`); a member asks one of them.
+
+**Deleting in a teamspace.** Agents: an owner/admin, or the member who created the agent (recorded at creation; agents created before this was recorded are owner/admin only). Board cards, docs and library assets follow the same rule.
 
 **Agents on cards.** The agent's PUBLISHED revision runs through the same path as `/native/agent/:id/run` (team connection, recorded in `team_native_runs`), after the response. The card shows `agentState` `running`, then `waiting` with the result in its thread and an `approval` inbox item for the card's creator, or `blocked` with a plain reason (for example, not published yet). Nothing reaches `done` without a person.
 
@@ -5902,7 +5920,7 @@ Alternatively, the [Provider Health](#get-provider-health) endpoint returns stat
 **GET** `/provider-health`
 
 - **Authentication**: None
-- **Description**: Get cached provider health status for all configured providers. Returns the last-known status without making new API calls.
+- **Description**: The result of the last `POST /provider-health/check`, without making new API calls. Nothing runs that check on its own, so until someone calls it every provider reads `unknown`: that means "never checked", not "down". To learn whether providers work, call `POST /provider-health/check` (authenticated; it probes each provider with the caller's own credentials). Chat routing does not read this: it learns from real calls, per account (`providerHealth`).
 - **Response**:
 
 ```json
@@ -6076,7 +6094,7 @@ The `overall` field is one of: `healthy`, `degraded` (some unhealthy/degraded), 
 **GET** `/provider-health`
 
 - **Authentication**: None
-- **Description**: Current health status and summary for all providers
+- **Description**: The last explicit check's results; `unknown` until `POST /provider-health/check` runs (see [Get Provider Health](#get-provider-health) above)
 - **Response**:
 
 ```json
@@ -9135,36 +9153,34 @@ Base path: `/api/workflows`
 
 - **Authentication**: Required
 - **Handler**: `WorkflowService.saveWorkflow`
-- **Body**:
+- **Body**: the workflow wrapped in `workflow` (omit `id` to create one):
 
 ```json
 {
-  "name": "Workflow Name",
-  "description": "Workflow description",
-  "nodes": [],
-  "edges": [],
-  "config": {}
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true,
   "workflow": {
-    "id": "workflow-id",
+    "id": "optional-workflow-id",
     "name": "Workflow Name",
     "description": "Workflow description",
-    "status": "inactive",
-    "nodes": [],
-    "edges": [],
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
+    "nodes": [
+      { "id": "n1", "type": "generic-trigger", "text": "Start", "parameters": {} },
+      { "id": "n2", "type": "generate-with-ai-llm", "text": "Draft Reply", "parameters": { "prompt": "{{Start.output}}" } }
+    ],
+    "edges": [{ "id": "e1", "start": { "id": "n1" }, "end": { "id": "n2" } }]
   }
 }
 ```
+
+- **Node and edge rules** (`validateWorkflowShape`, what the engine dereferences): every node needs a unique non-empty `id`, a `type` (the tool or trigger to run) and a `text`, its display name, lowercased to resolve `{{Node Name.output}}` references. Every edge needs `start.id` and `end.id` naming declared nodes. Absent `nodes`/`edges` save as an empty draft.
+- **Response** (`201`):
+
+```json
+{
+  "message": "New workflow created",
+  "workflowId": "workflow-id"
+}
+```
+
+`message` is `"New workflow created"` or `"Workflow updated"`. **Errors**: `400` `Request body must be { workflow: { ... } } with a workflow object.`, or `400` `Workflow does not match the shape the workflow engine executes.` with `details` naming each node/edge and field.
 
 ### Analyze Dependencies
 
@@ -9209,34 +9225,24 @@ Base path: `/api/workflows`
 - **Handler**: `WorkflowService.updateWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
-- **Body**:
+- **Body**: the same `{ workflow: { ... } }` shape and node/edge rules as [Save Workflow](#save-workflow); a flat body is refused with `400`:
 
 ```json
 {
-  "name": "Updated Workflow Name",
-  "description": "Updated description",
-  "nodes": [],
-  "edges": [],
-  "config": {}
+  "workflow": {
+    "name": "Updated Workflow Name",
+    "nodes": [{ "id": "n1", "type": "generic-trigger", "text": "Start", "parameters": {} }],
+    "edges": []
+  }
 }
 ```
 
-- **Response**:
+- **Response** (`200`):
 
 ```json
 {
-  "success": true,
-  "workflow": {
-    "id": "workflow-id",
-    "name": "Updated Workflow Name",
-    "description": "Updated description",
-    "status": "inactive",
-    "nodes": [],
-    "edges": [],
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
-  }
+  "message": "Workflow updated",
+  "workflowId": "workflow-id"
 }
 ```
 
@@ -9387,7 +9393,7 @@ Base path: `/api/workflows`
 
 > These endpoints manage workflow version history, checkpoints, and comparisons.
 >
-> **⚠️ Known Route-Ordering Issue**: In the current `WorkflowRoutes.js`, the `/:workflowId/versions/:versionId` route is registered **before** `/:workflowId/versions/compare` and `/:workflowId/versions/stats`. Because Express matches top-down, requests to `/compare` or `/stats` may be caught by the `:versionId` parameter (with `versionId = "compare"` or `"stats"`). This should be fixed by moving `compare` and `stats` above the `:versionId` route, or by adding a regex constraint to `:versionId`.
+> `/:workflowId/versions/compare` and `/:workflowId/versions/stats` are registered before `/:workflowId/versions/:versionId`, so neither is taken as a version id.
 
 ### List Workflow Versions
 

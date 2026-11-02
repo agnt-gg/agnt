@@ -87,8 +87,8 @@ function apiFetch(url, options = {}) {
 //
 // const res = await apiFetch(API + '/workflows/save', {
 //   method: 'POST',
-//   body: JSON.stringify({ name: 'My Workflow', nodes: [], edges: [] })
-// });`;
+//   body: JSON.stringify({ workflow: { name: 'My Workflow', nodes: [], edges: [] } })
+// });   // -> 201 { message, workflowId }. Every node needs id, type and text (its display name).`;
 
 // Header prefixes to skip when parsing (not route sections)
 const SKIP_PREFIXES = [
@@ -115,6 +115,50 @@ function headerToKey(header) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '-');
+}
+
+const METHODS = 'GET|POST|PUT|DELETE|PATCH';
+// `**GET** `/path``, optionally a list item, optionally followed by ": what it does".
+const INLINE_ENDPOINT = new RegExp(`^\\s*(?:[-*]\\s+)?\\*\\*(${METHODS})\\*\\*\\s+\`([^\`]+)\`(?:\\s*[:\u2014-]\\s*(.*))?`);
+// `| GET | `/path` | ... | what it does |`
+const TABLE_ENDPOINT = new RegExp(`^\\|\\s*(${METHODS})\\s*\\|\\s*\`([^\`]+)\`\\s*\\|(.*)\\|\\s*$`);
+
+/**
+ * Every endpoint a section documents, in order, once each.
+ *
+ * The docs use three styles: a `### Heading` followed by `**METHOD** `path``, a bare (or bulleted)
+ * `**METHOD** `path`: description`, and a table row. Reading only the first made sections written in
+ * the others (Team, Workspace File) list zero endpoints in the overview, as if they had none.
+ */
+export function extractEndpoints(content) {
+  const endpoints = [];
+  const seen = new Set();
+  let heading = null;
+  let fenced = false;
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const headingMatch = line.match(/^###\s+(.+)$/);
+    if (headingMatch) { heading = headingMatch[1].trim(); continue; }
+    let method, route, label;
+    const inline = line.match(INLINE_ENDPOINT);
+    const table = inline ? null : line.match(TABLE_ENDPOINT);
+    if (inline) [, method, route, label] = inline;
+    else if (table) { [, method, route] = table; label = table[3].split('|').map((cell) => cell.trim()).filter(Boolean).pop(); }
+    else {
+      // A heading names only the endpoint directly beneath it (blank lines allowed), as before.
+      if (line.trim() !== '') heading = null;
+      continue;
+    }
+    label = (heading || label || '').replace(/\*\*/g, '').trim();
+    if (label.length > 80) label = label.slice(0, 77) + '...';
+    heading = null;
+    const key = `${method} ${route}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    endpoints.push({ method, path: route, label });
+  }
+  return endpoints;
 }
 
 /**
@@ -156,13 +200,9 @@ function parseSections() {
     const basePathMatch = content.match(/Base path:\s*`([^`]+)`/);
     const basePath = basePathMatch ? basePathMatch[1] : '';
 
-    // Extract endpoint overview lines: pair ### headings with **METHOD** `path`
-    const endpoints = [];
-    const epRegex = /###\s+(.+)\r?\n[\r\n]+\*\*(GET|POST|PUT|DELETE|PATCH)\*\*\s+`([^`]+)`/g;
-    let epMatch;
-    while ((epMatch = epRegex.exec(content)) !== null) {
-      endpoints.push(`${epMatch[2].padEnd(7)} ${epMatch[3].padEnd(30)} ${epMatch[1].trim()}`);
-    }
+    const endpoints = extractEndpoints(content).map(
+      ({ method, path: route, label }) => `${method.padEnd(7)} ${route.padEnd(30)} ${label}`.trimEnd()
+    );
 
     sections[key] = {
       title: name.replace(/\s+Routes?$/i, ''),
