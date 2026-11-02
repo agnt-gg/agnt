@@ -124,11 +124,16 @@ provide('focusedNav', {
    its own; captions, the active row and borders use Studio's look, not One's. */
 .studio-team-nav :deep(.drawer-head),
 .studio-team-nav :deep(.find-btn) { display: none; }
-.studio-team-nav :deep(.drawer) { width: 216px; border-left: 0; border-right: 1px solid var(--terminal-border-color); background: transparent; padding-top: 10px; }
+.studio-team-nav :deep(.drawer) { width: 196px; border-left: 0; border-right: 1px solid var(--terminal-border-color); background: transparent; padding-top: 8px; }
 .studio-team-nav :deep(.d-head) { font-size: 9px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.8; }
 .studio-team-nav :deep(.d-head svg) { display: none; }
-.studio-team-nav :deep(.d-item) { border: 1px solid transparent; border-radius: 8px; font-size: 13px; }
-.studio-team-nav :deep(.d-item.is-active) { color: var(--color-primary); border-color: rgba(var(--primary-rgb), 0.25); background: rgba(var(--primary-rgb), 0.06); }
+/* A child of the Team row: smaller than the rail, and selected with a quiet fill (the rail's bordered
+   pill marks Team itself). */
+.studio-team-nav :deep(.d-item) { min-height: 28px; padding-top: 4px; padding-bottom: 4px; border-radius: 7px; font-size: 12px; }
+.studio-team-nav :deep(.d-item svg) { width: 14px; height: 14px; }
+.studio-team-nav :deep(.d-item.is-active) { color: var(--text-primary); background: var(--surface-active); }
+.studio-team-nav :deep(.mk-new-anchor > .d-item) { color: var(--text-secondary) !important; font-weight: 400 !important; }
+.studio-team-nav :deep(.d-item > span:first-child) { filter: grayscale(1); opacity: 0.75; }
 .studio-team-page :deep(.mk) { background: transparent; }
 .studio-team-page { flex: 1; min-width: 0; height: 100%; overflow: auto; }
 .studio-team-toast {
