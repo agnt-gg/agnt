@@ -12,10 +12,18 @@
       </div>
     </div>
 
+    <!-- Quick actions -->
+    <div class="panel-section">
+      <h4 class="section-title"><i class="fas fa-bolt"></i>Quick Actions</h4>
+      <div class="action-buttons grid">
+        <button v-for="n in NEW" :key="n.id" class="action-button" :data-nav="n.id" @click="pick(n.id)"><i :class="n.icon"></i>{{ n.label }}</button>
+        <button v-if="team" class="action-button wide" data-nav="new-space" @click="$emit('panel-action', 'team-new-space')"><i class="fas fa-plus"></i>New teamspace</button>
+      </div>
+    </div>
     <!-- At a glance -->
     <div v-if="team" class="panel-section">
-      <h4 class="section-title"><i class="fas fa-chart-bar"></i>Team at a glance</h4>
-      <div class="stats-grid">
+      <h4 class="section-title"><i class="fas fa-chart-bar"></i>At a glance</h4>
+      <div class="stats-grid compact">
         <button class="stat-card" :class="{ active: active === 'home' }" data-nav="home" @click="go({ view: 'home' })">
           <div class="stat-value">{{ needsYou }}</div>
           <div class="stat-label">Needs you</div>
@@ -68,14 +76,6 @@
       <p class="note">This account is not on a team yet.</p>
     </div>
 
-    <!-- Quick actions -->
-    <div class="panel-section">
-      <h4 class="section-title"><i class="fas fa-bolt"></i>Quick Actions</h4>
-      <div class="action-buttons">
-        <button v-for="n in NEW" :key="n.id" class="action-button" :data-nav="n.id" @click="pick(n.id)"><i :class="n.icon"></i>{{ n.label }}</button>
-        <button v-if="team" class="action-button" data-nav="new-space" @click="$emit('panel-action', 'team-new-space')"><i class="fas fa-plus"></i>New teamspace</button>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -155,6 +155,14 @@ button.stat-card:hover, .stat-card.active { border-color: rgba(var(--green-rgb),
 .action-button { padding: 8px 16px; background: var(--color-darker-0); border: 1px solid var(--terminal-border-color); border-radius: 4px; color: var(--color-text); cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; font-size: 0.9em; width: 100%; font-family: inherit; }
 .action-button:hover { background: rgba(var(--green-rgb), 0.1); border-color: rgba(var(--green-rgb), 0.5); }
 .action-button i { width: 16px; text-align: center; }
+/* Up top, so two columns keep it short; New teamspace spans both. */
+.action-buttons.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.action-buttons.grid .action-button.wide { grid-column: 1 / -1; }
+/* At a glance, compact: one row of four small tiles. */
+.stats-grid.compact { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stats-grid.compact .stat-card { padding: 8px 4px; }
+.stats-grid.compact .stat-value { font-size: 1.25em; margin-bottom: 2px; }
+.stats-grid.compact .stat-label { font-size: 0.68em; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .note { margin: 0; color: var(--color-text-muted); font-size: 0.85em; }
 </style>

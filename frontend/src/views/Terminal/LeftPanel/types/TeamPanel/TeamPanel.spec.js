@@ -21,7 +21,10 @@ describe('TeamPanel: Activity-panel parts, not bare rows', () => {
     const w = mountPanel({ active: 'space:s2' });
     expect(w.find('.title').text()).toBe('/ Bravo');
     expect(w.findAll('.stat-value').map((n) => n.text())).toEqual(['1', '3', '2', '2']);
-    expect(w.findAll('.section-title').map((n) => n.text())).toEqual(['Team at a glance', 'My Space', 'Teamspaces', 'Quick Actions']);
+    // Quick Actions first, then a compact one-row At a glance.
+    expect(w.findAll('.section-title').map((n) => n.text())).toEqual(['Quick Actions', 'At a glance', 'My Space', 'Teamspaces']);
+    expect(w.find('.stats-grid').classes()).toContain('compact');
+    expect(w.find('[data-nav="new-space"]').classes()).toContain('wide');
     expect(w.find('[data-nav="mine-agents"] .filter-count').text()).toBe('2');
     expect(w.find('[data-nav="space:s2"] i').classes()).toContain('fa-briefcase');
     expect(w.find('[data-nav="space:s2"]').classes()).toContain('active');

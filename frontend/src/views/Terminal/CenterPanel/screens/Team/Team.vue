@@ -9,7 +9,13 @@
   >
     <template #default>
       <div class="studio-team-page" data-testid="studio-team">
-        <OneTeamPage :location="location" />
+        <!-- My routines / My files (and New routine, New agent) open here, in the center panel, with
+             One's own page components. .ui-focused is the scope focused.css styles them under. -->
+        <div v-if="inline" class="ui-focused studio-team-inline" :data-inline="inline.page">
+          <FocusedScheduled v-if="inline.page === 'scheduled'" :key="'s:' + (inline.item || '') + (inline.isNew ? ':new' : '')" :item="inline.item || null" :is-new="!!inline.isNew" />
+          <FocusedLibrary v-else :location="inline" />
+        </div>
+        <OneTeamPage v-else :location="location" />
       </div>
       <SimpleModal ref="modalRef" />
       <div v-if="toastText" class="studio-team-toast" role="status">{{ toastText }}</div>
@@ -18,12 +24,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, provide, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import OneTeamPage from '@/views/One/team/OneTeamPage.vue';
+import FocusedScheduled from '@/views/Focused/FocusedScheduled.vue';
+import FocusedLibrary from '@/views/Focused/FocusedLibrary.vue';
 import { useMkFrame } from '@/views/One/mk/useMkFrame.js';
 import { useTeam, teamApi } from '@/views/One/team/useTeam.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
@@ -43,10 +51,18 @@ function pushScreen(screen, opts = {}) {
   const target = screenRoute(screen, opts);
   if (target) router.push({ path: target.path, query: target.query }).catch(() => {});
 }
+// Pages the Team screen shows in its own center panel instead of leaving for a full screen
+// (in Studio, Routines would open Goals and My files the Files screen).
+const INLINE_PAGES = new Set(['scheduled', 'library']);
+const inline = ref(null);
 function go(loc) {
+  if (loc && INLINE_PAGES.has(loc.page)) { inline.value = { ...loc }; return; }
+  if (loc?.page === 'team') inline.value = null;
   const [screen, opts] = routeFor(loc);
   pushScreen(screen, opts);
 }
+// Arriving at /team from anywhere else (the rail, a link) shows the team page again.
+watch(() => route.fullPath, () => { inline.value = null; });
 const chat = () => router.push('/chat').catch(() => {});
 async function ask(text) {
   await router.push('/chat').catch(() => {});
@@ -77,7 +93,10 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
 const { mkDrawerActive, mkPick, create } = useMkFrame({
   store, page: computed(() => 'team'), location, screenName: computed(() => 'TeamScreen'), teamState: team.state, nav: { go, chat, ask, prompt, toast },
 });
-const activeRow = computed(() => mkDrawerActive.value || (location.value.view === 'home' || location.value.view === 'inbox' ? 'home' : null));
+const activeRow = computed(() => {
+  if (inline.value) return inline.value.page === 'scheduled' ? 'mine-routines' : inline.value.tab === 'files' ? 'mine-files' : null;
+  return mkDrawerActive.value || (location.value.view === 'home' || location.value.view === 'inbox' ? 'home' : null);
+});
 async function newTeamspace() {
   const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });
   if (!name || !name.trim()) return;
@@ -113,6 +132,7 @@ provide('focusedNav', {
 <style scoped>
 .studio-team-page { height: 100%; min-height: 0; overflow: auto; }
 .studio-team-page :deep(.mk) { background: transparent; }
+.studio-team-inline { min-height: 100%; }
 .studio-team-toast {
   position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
   padding: 8px 14px; border-radius: 10px; border: 1px solid var(--terminal-border-color);
