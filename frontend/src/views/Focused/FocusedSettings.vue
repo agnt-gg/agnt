@@ -17,13 +17,13 @@
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
     <ConnectYourAi @api-key="nav.go({ page: 'connectors', tab: 'vault' })" />
-    <section class="focused-edit-block">
+    <!-- Appearance: Studio's own theme settings (themes, font, scale, custom background with its
+         opacity and blur, greyscale), embedded rather than re-implemented, so both modes set the
+         same preferences the same way. -->
+    <section class="focused-edit-block" data-section="theme">
       <div class="focused-edit-block-head"><h3>Appearance</h3></div>
-      <div class="focused-edit-card">
-        <div class="focused-edit-row">
-          <span class="focused-edit-label">Theme</span>
-          <CustomSelect :model-value="currentTheme" :options="themeOptions" @update:model-value="setTheme" />
-        </div>
+      <div class="focused-edit-card focused-theme-card">
+        <ThemeSelector />
       </div>
     </section>
 
@@ -52,6 +52,10 @@
               @update:model-value="setModel"
             />
           </div>
+        </div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">More</span>
+          <button type="button" class="focused-btn" data-action="model-settings" @click="nav.studio('SettingsScreen', { section: 'providers' })">Fallback models and chat behaviour</button>
         </div>
       </div>
     </section>
@@ -145,15 +149,17 @@ import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ConnectYourAi from '@/views/_components/feature/ConnectYourAi.vue';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import UsageManager from '@/views/Terminal/CenterPanel/screens/Settings/components/UsageManager/UsageManager.vue';
+import ThemeSelector from '@/views/Terminal/CenterPanel/screens/Settings/components/ThemeSelector/ThemeSelector.vue';
 import { FOCUSED_PAGES, billingSummary } from './focusedModel.js';
 import { settingsDirectory } from '@/mobile/sectionDirectories.js';
-import { SUPPORTED_THEMES } from '@/store/app/theme.js';
 
 const store = useStore();
 const router = useRouter();
 const nav = inject('focusedNav');
-// Shown above already (Default model, Theme, Members, Billing, Usage, Sign out)
-// or not a setting any more in AGNT One (Navigation: the rail is fixed).
+// Shown in full above: Theme (Studio's ThemeSelector), Members, Usage. Default model and Billing
+// are summaries above with a link to the full section. 'general' is the sign-in form (Account
+// above). Navigation arranges Studio's sidebar; One's rail is fixed, so it changes nothing here.
+// Every other Studio settings section stays listed below and opens in full.
 const SHOWN_ABOVE = new Set(['providers', 'theme', 'members', 'billing', 'usage', 'general', 'navigation']);
 const moreSettings = settingsDirectory
   .map((group) => ({ label: group.label === 'General' ? 'Preferences' : group.label, items: group.items.filter((item) => !SHOWN_ABOVE.has(item.id)) }))
@@ -172,9 +178,6 @@ async function logOut() {
 }
 const page = FOCUSED_PAGES.settings;
 
-const themeOptions = SUPPORTED_THEMES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));
-const currentTheme = computed(() => store.getters['theme/currentTheme']);
-const setTheme = (t) => store.dispatch('theme/setTheme', t);
 
 const provider = computed(() => store.state.aiProvider?.selectedProvider || '');
 const model = computed(() => store.state.aiProvider?.selectedModel || '');

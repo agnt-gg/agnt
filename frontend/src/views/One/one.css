@@ -74,19 +74,33 @@
    The glass is a ::before layer, never the surface itself: any backdrop-filter
    (even blur(0px)) makes its element the containing block of every
    position:fixed descendant, which moved the drawer's right-click menu off
-   the pointer. The layer has no children, so nothing inside is affected. */
+   the pointer. The layer has no children, so nothing inside is affected.
+
+   The desktop frame is now the mockup's (mk/): its rail, teamspace drawer and
+   chat list are .mk-rail-host, .mk-drawer-host and .mk-chatlist-host, not
+   .one-rail / .one-drawer. Listed here so they get the same glass; without
+   them both left panels were fully transparent over a wallpaper. */
 body.custom-bg .ui-one .one-rail,
-body.custom-bg .ui-one:not(.is-compact) .one-drawer {
+body.custom-bg .ui-one:not(.is-compact) .one-drawer,
+body.custom-bg .ui-one .mk-rail-host,
+body.custom-bg .ui-one .mk-drawer-host,
+body.custom-bg .ui-one .mk-chatlist-host {
   position: relative;
 }
 body.custom-bg .ui-one .one-rail,
 body.custom-bg .ui-one .one-drawer,
-body.custom-bg .ui-one .one-main {
+body.custom-bg .ui-one .one-main,
+body.custom-bg .ui-one .mk-rail-host,
+body.custom-bg .ui-one .mk-drawer-host,
+body.custom-bg .ui-one .mk-chatlist-host {
   background: transparent;
 }
 body.custom-bg .ui-one .one-rail::before,
 body.custom-bg .ui-one:not(.is-compact) .one-drawer::before,
-body.custom-bg .ui-one .one-main::before {
+body.custom-bg .ui-one .one-main::before,
+body.custom-bg .ui-one .mk-rail-host::before,
+body.custom-bg .ui-one .mk-drawer-host::before,
+body.custom-bg .ui-one .mk-chatlist-host::before {
   content: '';
   position: absolute;
   inset: 0;

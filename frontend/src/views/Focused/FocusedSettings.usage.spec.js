@@ -20,7 +20,7 @@ describe('Focused Settings', () => {
     const w = mount(FocusedSettings, {
       global: {
         provide: { focusedNav: { studio: vi.fn(), toast: vi.fn(), confirm: vi.fn() } },
-        stubs: { UiModeSetting: true, CustomSelect: true, UpgradeModal: true, UsageManager: { name: 'UsageManager', template: '<div class="usage-stub" />' } },
+        stubs: { UiModeSetting: true, CustomSelect: true, UpgradeModal: true, ThemeSelector: { name: 'ThemeSelector', template: '<div class="theme-stub" />' }, UsageManager: { name: 'UsageManager', template: '<div class="usage-stub" />' } },
       },
     });
     await flushPromises();
@@ -28,6 +28,25 @@ describe('Focused Settings', () => {
     expect(heads).toContain('Usage');
     expect(heads.indexOf('Usage')).toBeGreaterThan(heads.indexOf('Billing'));
     expect(w.find('.focused-usage').findComponent({ name: 'UsageManager' }).exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('Appearance is Studio\'s full theme settings (backgrounds, opacity, blur, font, scale), not a theme dropdown', async () => {
+    const studio = vi.fn();
+    const w = mount(FocusedSettings, {
+      global: {
+        provide: { focusedNav: { studio, toast: vi.fn(), confirm: vi.fn() } },
+        stubs: { UiModeSetting: true, CustomSelect: true, UpgradeModal: true, UsageManager: true, ThemeSelector: { name: 'ThemeSelector', template: '<div class="theme-stub" />' } },
+      },
+    });
+    await flushPromises();
+    expect(w.find('[data-section="theme"]').findComponent({ name: 'ThemeSelector' }).exists()).toBe(true);
+    // The model's fallbacks and chat behaviour stay one click away.
+    await w.find('[data-action="model-settings"]').trigger('click');
+    expect(studio).toHaveBeenCalledWith('SettingsScreen', { section: 'providers' });
+    // Every other Studio section is listed and opens in full.
+    const listed = w.findAll('[data-settings-section]').map((b) => b.attributes('data-settings-section'));
+    for (const id of ['sounds', 'security', 'browser', 'backup', 'reset', 'about', 'phone-access', 'api-keys']) expect(listed, id).toContain(id);
     w.unmount();
   });
 });

@@ -61,6 +61,11 @@ describe('AGNT One under a custom background', () => {
     ['the rail', 'body.custom-bg .ui-one .one-rail::before'],
     ['the Chats drawer', 'body.custom-bg .ui-one:not(.is-compact) .one-drawer::before'],
     ['the sheet (top bar and every page)', 'body.custom-bg .ui-one .one-main::before'],
+    // The desktop frame is the mockup's now (mk/); its wrappers were missing and both left
+    // panels went fully transparent over the wallpaper.
+    ['the rail (MkRail)', 'body.custom-bg .ui-one .mk-rail-host::before'],
+    ['the teamspace drawer (MkDrawer)', 'body.custom-bg .ui-one .mk-drawer-host::before'],
+    ['the chat list (MkChatList)', 'body.custom-bg .ui-one .mk-chatlist-host::before'],
   ])('%s paints Studio’s glass, once', (_name, selector) => {
     const rule = ruleFor(ONE_RULES, selector);
     expect(rule, selector).toBeTruthy();
@@ -80,6 +85,12 @@ describe('AGNT One under a custom background', () => {
       return r.selectors.filter((s) => !/::(before|after)$/.test(s));
     });
     expect(offenders).toEqual([]);
+  });
+
+  it('the frame components really render those wrappers (a rename fails here, not on screen)', () => {
+    for (const [file, host] of [['MkRail.vue', 'mk-rail-host'], ['MkDrawer.vue', 'mk-drawer-host'], ['MkChatList.vue', 'mk-chatlist-host']]) {
+      expect(readFileSync(join(DIR, 'mk', file), 'utf8'), file).toMatch(new RegExp(`<div class="mk ${host}"`));
+    }
   });
 
   it('the panels of the screen inside the sheet add content only, so the wallpaper crosses one layer', () => {
