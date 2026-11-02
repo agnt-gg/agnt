@@ -8,7 +8,7 @@
     <div class="panel-header">
       <h2 class="title">/ {{ team ? titled(team.name) : 'Team' }}</h2>
       <div v-if="team" class="panel-stats">
-        <span class="stat-item" title="Members"><i class="fas fa-users"></i>{{ memberCount }}</span>
+        <span class="stat-item" v-tooltip="'Members'"><i class="fas fa-users"></i>{{ memberCount }}</span>
       </div>
     </div>
 
@@ -62,12 +62,12 @@
     <div v-if="team" class="panel-section">
       <h4 class="section-title">
         <i class="fas fa-layer-group"></i>Teamspaces
-        <button class="section-add" title="New teamspace" aria-label="New teamspace" @click="$emit('panel-action', 'team-new-space')"><i class="fas fa-plus"></i></button>
+        <button class="section-add" v-tooltip="'New teamspace'" aria-label="New teamspace" @click="$emit('panel-action', 'team-new-space')"><i class="fas fa-plus"></i></button>
       </h4>
       <div class="filter-list">
         <div v-for="s in spaces" :key="s.id" class="filter-item" :class="{ active: active === 'space:' + s.id }" :data-nav="'space:' + s.id" @click="go({ view: 'space', space: s.id })">
           <i :class="spaceIcon(s)"></i><span>{{ s.name }}</span>
-          <i v-if="s.access === 'invited'" class="fas fa-lock lock" title="Invite only"></i>
+          <i v-if="s.access === 'invited'" class="fas fa-lock lock" v-tooltip="'Invite only'" role="img" aria-label="Invite only"></i>
         </div>
         <p v-if="!spaces.length" class="note">No teamspaces yet. Add one with +.</p>
       </div>
