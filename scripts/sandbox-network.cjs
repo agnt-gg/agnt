@@ -37,6 +37,9 @@ function expose(spec){
  const [command,...args]=process.argv.slice(2);
  if(!command)throw Error('Missing tool command');
  const env={...process.env, HTTP_PROXY:'http://127.0.0.1:3128',HTTPS_PROXY:'http://127.0.0.1:3128',http_proxy:'http://127.0.0.1:3128',https_proxy:'http://127.0.0.1:3128',NO_PROXY:'localhost,127.0.0.1',no_proxy:'localhost,127.0.0.1',NODE_OPTIONS:'--require=/usr/local/lib/agnt/egress-fetch.cjs',PUPPETEER_EXECUTABLE_PATH:'/usr/local/bin/agnt-chromium'};
+ // The workload's own folder (a path, not a credential): file tools resolve paths against it
+ // (backend utils/workspaceRoot.js sandboxMountedRoot); without it a member's tools looked for the owner's.
+ env.AGNT_TOOL_ROOT=process.env.AGNT_TOOL_WORKSPACE_MOUNTED||'';
  delete env.NODE_CHANNEL_FD;delete env.NODE_CHANNEL_SERIALIZATION_MODE;delete env.AGNT_TOOL_EXPOSE;delete env.AGNT_TOOL_WORKSPACE_MOUNTED;
  const ipc=typeof process.send==='function';
  const child=spawn(command,args,{env,stdio:ipc?['inherit','inherit','inherit','ipc']:['inherit','inherit','inherit']});

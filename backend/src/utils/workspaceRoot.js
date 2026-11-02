@@ -152,12 +152,14 @@ export async function defaultRootFor(userId) {
  */
 /**
  * Inside the hosted tool sandbox the answer is fixed: the one folder the launcher mounted
- * (agnt-tool-run.py sets AGNT_TOOL_WORKSPACE_MOUNTED). The settings file and the acting user are not
+ * (agnt-tool-run.py sets AGNT_TOOL_WORKSPACE_MOUNTED; sandbox-network.cjs hands the workload a copy as
+ * AGNT_TOOL_ROOT). The settings file and the acting user are not
  * visible there, and the install folder is not mounted for a member, so resolving from settings sent a
  * member's file tools to a folder that does not exist in their sandbox.
  */
 export function sandboxMountedRoot(env = process.env) {
-  return env.AGNT_TOOL_SANDBOX === '1' && env.AGNT_TOOL_WORKSPACE_MOUNTED ? path.resolve(env.AGNT_TOOL_WORKSPACE_MOUNTED) : null;
+  const mounted = env.AGNT_TOOL_ROOT || env.AGNT_TOOL_WORKSPACE_MOUNTED;
+  return env.AGNT_TOOL_SANDBOX === '1' && mounted ? path.resolve(mounted) : null;
 }
 
 export function getWorkspaceRootSync(userId = currentToolActor()) {

@@ -3,7 +3,7 @@ import sqlite3 from 'sqlite3';
 import { createHash } from 'node:crypto';
 import { TeamRepository } from '../TeamRepository.js';
 import { initializeTeamWorkspaces } from '../TeamWorkspaceRepository.js';
-import { teamFoldersFor, teamFolderSource, teamMounts, setAiFileMode, aiFileMode, folderName } from './teamFolders.js';
+import { teamFoldersFor, teamFolderSource, teamMounts, setAiFileMode, aiFileMode, folderName, rememberCloudMembership } from './teamFolders.js';
 
 const SLUG = 'bravo';
 let repo;
@@ -53,6 +53,20 @@ describe('the teamspace Files a person\'s tools may use', () => {
   });
   it('someone on no team gets nothing', async () => {
     expect(await teamFoldersFor(repo, 'stranger', opts)).toEqual([]);
+  });
+  // Bravo: teams.db has the team and its teamspaces, but membership is the cloud's (no member rows).
+  it('on a cloud instance the owner gets every teamspace, and a member the role the cloud gave them', async () => {
+    await repo.run('DELETE FROM team_members');
+    const cloudOpts = { ...opts, owner: 'boss' };
+    expect((await teamFoldersFor(repo, 'boss', cloudOpts)).map((f) => [f.workspaceId, f.writable])).toEqual([['general', true], ['sales', true]]);
+    expect(await teamFoldersFor(repo, 'cara', cloudOpts)).toEqual([]);
+    rememberCloudMembership('cara', { teamId: 't1', role: 'viewer' });
+    made.add(teamFolderSource('t1', SLUG, 'general'));
+    expect((await teamFoldersFor(repo, 'cara', cloudOpts)).map((f) => [f.workspaceId, f.writable])).toEqual([['general', false]]);
+    rememberCloudMembership('cara', { teamId: 't1', role: 'member' });
+    expect((await teamFoldersFor(repo, 'cara', cloudOpts)).map((f) => [f.workspaceId, f.writable])).toEqual([['general', true]]);
+    rememberCloudMembership('cara', null);
+    expect(await teamFoldersFor(repo, 'cara', cloudOpts)).toEqual([]);
   });
   it('mount targets sit directly under <their folder>/Teamspaces, with names the launcher accepts', async () => {
     const mounts = teamMounts(await teamFoldersFor(repo, 'ana', opts), '/app/data/workspaces/ana');

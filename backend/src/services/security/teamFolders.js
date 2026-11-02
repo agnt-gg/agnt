@@ -57,13 +57,34 @@ export async function setAiFileMode(repo, teamId, user, mode) {
 }
 
 /**
+ * Team membership on a cloud instance is the cloud's: teams.db has the team and its teamspaces but no
+ * member rows (owner 'cloud-authority'). HostedToolAuthority asks the cloud about every member tool call
+ * and records the answer here; the instance owner is on every team of their own instance.
+ */
+const cloudMemberships = new Map(); // userId -> { teamId, role }
+export function rememberCloudMembership(userId, membership) {
+  if (!userId) return;
+  const before = JSON.stringify(cloudMemberships.get(userId) || null);
+  if (membership?.teamId && membership.role) cloudMemberships.set(userId, { teamId: membership.teamId, role: membership.role });
+  else cloudMemberships.delete(userId);
+  // A changed answer (joined, left, promoted) takes effect on the next tool call, not after the cache ages.
+  if (JSON.stringify(cloudMemberships.get(userId) || null) !== before) cache.delete(userId);
+}
+async function membershipsOf(repo, userId, owner) {
+  if (owner && userId === owner) return (await repo.all('SELECT id AS team_id FROM teams')).map((t) => ({ team_id: t.team_id, role: 'owner' }));
+  const cloud = cloudMemberships.get(userId);
+  if (cloud) return [{ team_id: cloud.teamId, role: cloud.role }];
+  return repo.all('SELECT team_id, role FROM team_members WHERE user_id=?', [userId]);
+}
+
+/**
  * The teamspace folders `userId` may use: [{ teamId, workspaceId, name, source, writable }].
  * A folder not created yet is created for someone who may write there (so the agent can put the first
  * file in an empty teamspace), and skipped for a reader.
  */
-export async function teamFoldersFor(repo, userId, { tenantSlug = process.env.AGNT_TENANT_SLUG, root = TEAM_FILES_ROOT, exists = (p) => fs.existsSync(p), create = (p) => fs.mkdirSync(p, { recursive: true, mode: 0o700 }) } = {}) {
+export async function teamFoldersFor(repo, userId, { tenantSlug = process.env.AGNT_TENANT_SLUG, owner = process.env.AGNT_TENANT_OWNER, root = TEAM_FILES_ROOT, exists = (p) => fs.existsSync(p), create = (p) => fs.mkdirSync(p, { recursive: true, mode: 0o700 }) } = {}) {
   if (!userId || !tenantSlug) return [];
-  const memberships = await repo.all('SELECT team_id, role FROM team_members WHERE user_id=?', [userId]);
+  const memberships = await membershipsOf(repo, userId, owner);
   const out = [];
   for (const { team_id: teamId, role } of memberships) {
     const mode = await aiFileMode(repo, teamId);
