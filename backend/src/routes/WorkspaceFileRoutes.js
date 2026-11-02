@@ -14,6 +14,7 @@ export function createWorkspaceFileRoutes({authenticate=authenticateToken,cloud=
  router.get('/:teamId/:workspaceId/files',handle(async(context,req,res)=>res.json(await service.list(context))));
  router.get('/:teamId/:workspaceId/content',handle(async(context,req,res)=>{const bytes=await service.read(context,req.query.path);res.set({'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="download"','X-Content-Type-Options':'nosniff'}).send(bytes);}));
  router.put('/:teamId/:workspaceId/content',express.raw({type:'application/octet-stream',limit:'10mb'}),handle(async(context,req,res)=>res.json(await service.write(context,req.query.path,req.body))));
+ router.delete('/:teamId/:workspaceId/content',handle(async(context,req,res)=>res.json(await service.remove(context,req.query.path))));
  return router;
 }
 export default createWorkspaceFileRoutes();

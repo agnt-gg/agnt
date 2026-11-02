@@ -220,6 +220,36 @@ export class TeamRepository {
       }
     })
   }
+  /**
+   * Delete a library asset and every revision of it. Owners and admins, or the member who created
+   * it (the author of revision 1), the rule teamspace docs and cards follow.
+   *
+   * A published teamspace item's approved snapshot is also a team_assets row; the run path pins it
+   * (team_native_resources, team_native_bindings), so it is refused here rather than orphaned. Such
+   * an item is removed in its teamspace. Teamspace docs have their own route and stay unreachable here.
+   */
+  removeAsset(teamId, userId, id) {
+    return this.transaction(async () => {
+      const member = await this.member(teamId, userId, ['owner', 'admin', 'member']);
+      const row = await this.get('SELECT id FROM team_assets WHERE team_id=? AND id=? AND id NOT IN (SELECT asset_id FROM space_docs)', [teamId, id]);
+      if (!row) fail(404, 'Asset not found');
+      if (member.role === 'member') {
+        const first = await this.get('SELECT author_id FROM team_asset_versions WHERE asset_id=? AND revision=1', [id]);
+        if (first?.author_id !== userId) fail(403, 'Only the person who created this, or a team owner or admin, can delete it');
+      }
+      for (const table of ['team_native_resources', 'team_native_bindings']) {
+        const pinned = await this.get(`SELECT 1 FROM ${table} WHERE asset_id=? LIMIT 1`, [id]).catch((error) => {
+          if (/no such table/.test(error.message)) return null;
+          throw error;
+        });
+        if (pinned) fail(409, 'This is the published copy of a teamspace item. Delete the item in its teamspace instead.');
+      }
+      await this.run('DELETE FROM team_asset_versions WHERE asset_id=?', [id]);
+      await this.run('DELETE FROM team_assets WHERE id=?', [id]);
+      await this.event(teamId, userId, 'asset.deleted', id);
+      return { deleted: true, id };
+    })
+  }
   history(teamId, userId) {
     return this.transaction(async () => {
       await this.member(teamId, userId);

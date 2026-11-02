@@ -117,6 +117,7 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   router.get('/:teamId/assets', handler((repo, req, user) => repo.assets(req.params.teamId, user)));
   router.get('/:teamId/assets/:id', handler((repo, req, user) => repo.asset(req.params.teamId, user, req.params.id, req.query.revision ? Number(req.query.revision) : undefined)));
   router.post('/:teamId/assets', handler((repo, req, user) => repo.save(req.params.teamId, user, req.body || {})));
+  router.delete('/:teamId/assets/:id', handler((repo, req, user) => repo.removeAsset(req.params.teamId, user, req.params.id)));
   router.post('/:teamId/assets/:id/authorize',(_req,res)=>res.status(410).json({error:'Library definitions must be installed in a cloud workspace before execution'}));
   router.post('/:teamId/assets/:id/run',(_req,res)=>res.status(410).json({error:'Library definitions cannot execute'}));
   router.get('/:teamId/activity', handler((repo, req, user) => repo.history(req.params.teamId, user)));

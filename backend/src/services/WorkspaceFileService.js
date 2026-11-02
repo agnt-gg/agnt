@@ -28,5 +28,7 @@ export class WorkspaceFileService{
   return files.sort((a,b)=>b.modifiedAt.localeCompare(a.modifiedAt));
  }
  async read(context,relative){await this.authorize(context,'files.read');const target=await this.resolve(context,relative);const stat=await fs.stat(target);if(!stat.isFile()||stat.size>this.maxBytes)deny(413,'File exceeds read limit');return fs.readFile(target);}
+ /** Delete one regular file. The same capability as writing it: whoever may overwrite a file may remove it. */
+ async remove(context,relative){await this.authorize(context,'files.write');const target=await this.resolve(context,relative);const entry=await fs.lstat(target);if(!entry.isFile())deny(400,'Only files can be deleted');await fs.unlink(target);return{deleted:true};}
  async write(context,relative,bytes){await this.authorize(context,'files.write');if(!Buffer.isBuffer(bytes)||bytes.length>this.maxBytes)deny(413,'File exceeds write limit');const target=await this.resolve(context,relative,{createRoot:true});const temporary=target+'.upload-'+randomUUID();try{await fs.writeFile(temporary,bytes,{flag:'wx',mode:0o600});await this.authorize(context,'files.write');await fs.rename(temporary,target);}catch(error){try{await fs.unlink(temporary);}catch(cleanup){if(cleanup.code!=='ENOENT')throw new AggregateError([error,cleanup],'Write cleanup failed');}throw error;}return{bytes:bytes.length};}
 }
