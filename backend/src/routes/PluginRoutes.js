@@ -1,4 +1,5 @@
 import express from 'express';
+import { isNonOwnerMember } from '../services/security/memberIsolation.js';
 import crypto from 'node:crypto';
 import { computeIntegrity, integrityMatches, checkPluginSignIns } from '../../plugins/lib/validate-core.js';
 import { fetchSharedSignInIds } from '../../plugins/lib/shared-sign-ins.js';
@@ -434,6 +435,11 @@ router.delete('/:name', requireAuthHeader, accountPluginMutation(async (req, res
     const mode = (req.query.mode || 'clean').toString();
 
     console.log(`[PluginRoutes] Uninstalling plugin: ${name} (mode=${mode})`);
+    // A teammate removes only a plugin THEY added. A plugin with no recorded installer (bundled, or the
+    // owner's from before per-account installs) would otherwise be uninstalled for everyone.
+    if (isNonOwnerMember(req.user.userId) && !(await PluginAccounts.owners(name)).includes(req.user.userId)) {
+      return res.status(403).json({ success: false, error: 'You can only remove plugins you added. Ask the instance owner to remove this one.' });
+    }
 
     // Walk + clean up the ecosystem assets first
     let assetResult = null;

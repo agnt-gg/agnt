@@ -416,8 +416,9 @@ class PluginManager {
   async loadTool(toolType, userId) {
     const ownedPlugin = this.toolToPlugin.get(toolType);
     if (ownedPlugin) await PluginAccounts.assert(ownedPlugin, userId);
-    // Check if already loaded
-    if (this.loadedTools.has(toolType)) {
+    // Check if already loaded (the owner's in-process module; a sandboxed teammate never uses this cache)
+    const { shouldSandboxPlugin: sandboxFirst } = await import('../services/security/pluginSandbox.js');
+    if (!sandboxFirst() && this.loadedTools.has(toolType)) {
       return this.loadedTools.get(toolType);
     }
 
@@ -442,6 +443,11 @@ class PluginManager {
     if (!toolDef || !toolDef.entryPoint) {
       throw new Error(`[PluginManager] Tool ${toolType} entry point not found in plugin ${pluginName}`);
     }
+
+    // A teammate on a hosted instance runs plugin code in the kernel tool sandbox, never inside this
+    // process (pluginSandbox.js). Not cached: the cache holds the owner's in-process module.
+    const { shouldSandboxPlugin, sandboxedPluginModule } = await import('../services/security/pluginSandbox.js');
+    if (shouldSandboxPlugin()) return sandboxedPluginModule({ pluginName, pluginPath: pluginData.path, entryPoint: toolDef.entryPoint });
 
     // Resolve to a file:// URL. On reload, this returns a shim that gives the
     // entire transitive intra-plugin import graph fresh URLs — necessary

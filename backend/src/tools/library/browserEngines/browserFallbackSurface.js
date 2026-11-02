@@ -50,7 +50,8 @@
  */
 
 import { spawn } from '../../../services/security/toolProcess.js';
-import { hostedToolBoundaryRequired } from '../../../services/security/toolRunAuthority.js';
+import { hostedToolBoundaryRequired, currentToolActor } from '../../../services/security/toolRunAuthority.js';
+import { isNonOwnerMember } from '../../../services/security/memberIsolation.js';
 import { HOSTED_CDP_PORT, hostedBrowserPaths, clearStaleProfileLocks, openCdpBridge, readBridgedEndpoint } from './hostedCdpBridge.js';
 import { WebSocket } from 'ws';
 import fs from 'fs';
@@ -460,7 +461,13 @@ export const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
  * Reused across calls: relaunching per step would throw away the page the last
  * step navigated to, which is the whole point of an interactive loop.
  */
-export async function ensureFallbackSurface({ log = console.log, browser = '', hidden = false } = {}) {
+export async function ensureFallbackSurface({ log = console.log, browser = '', hidden = false, actor = currentToolActor() } = {}) {
+  // A teammate on a hosted instance gets their OWN browser, in their sandbox, with their own logins
+  // (memberBrowsers.js). Everything below is the owner's single browser and is unchanged.
+  if (hostedToolBoundaryRequired() && isNonOwnerMember(actor)) {
+    const { ensureMemberBrowser } = await import('./memberBrowsers.js');
+    return ensureMemberBrowser(actor, { log, findBrowser });
+  }
   const wanted = String(browser || '').trim().toLowerCase();
 
   // A caller arriving mid-switch must not be handed the browser being closed.

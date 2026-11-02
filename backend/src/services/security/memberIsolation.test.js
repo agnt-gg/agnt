@@ -28,8 +28,12 @@ describe('memberIsolation', () => {
     }
   });
 
-  it('a member is refused everything that runs code, touches files or queries the database', () => {
+  // Without the hosted sandbox (desktop, or a container without the launcher) every one of these would run
+  // next to the instance's keys. The database step is the exception: it runs in an isolated per-owner file
+  // with ATTACH disabled (isolatedUserData.js), so a member may use it anywhere.
+  it('without the sandbox a member is refused everything that runs code or touches files', () => {
     businessTenant();
+    expect(memberRefusal('database-operation', { operation: 'select' }, 'member-2')).toBeNull();
     const refused = [
       ['execute_shell_command', { command: 'cat /app/data/secrets/ENCRYPTION_KEY' }],
       ['execute_javascript_code', { code: '1' }],
@@ -37,7 +41,6 @@ describe('memberIsolation', () => {
       ['read_file', { path: '/app/data/agnt.db' }],
       ['list_files', { path: '/app/data' }],
       ['write_file', { path: 'x', content: 'y' }],
-      ['database-operation', { operation: 'select' }],
       ['file_operations', { operation: 'copy', path: 'a', destination: 'b' }],
       ['file-system-operation', { operation: 'readFile', rootDirectory: '/app/data', path: 'secrets' }],
     ];
@@ -52,7 +55,9 @@ describe('memberIsolation', () => {
   // a member's tab would use the owner's sessions however its process is sandboxed. Owner-only.
   // 2026-11-02: file tools run in that sandbox too (toolFiles.isolatedFileCall), which mounts only the
   // member's own folder and the teamspace Files they may use; agnt.db is not in it. Files are a member's.
-  it('on a hosted instance a member runs code, shell and file tools in the sandbox; the shared browser and SQL stay owner-only', () => {
+  // 2026-11-02 (later): each teammate gets their OWN browser in their sandbox (memberBrowsers.js), and the
+  // database step runs in an isolated per-owner file, so neither is owner-only any more.
+  it('on a hosted instance a member runs code, shell, files, their own browser and the isolated database step', () => {
     businessTenant();
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
@@ -60,11 +65,12 @@ describe('memberIsolation', () => {
       for (const [tool, args] of [['execute_shell_command', { command: 'yt-dlp --version' }], ['execute_javascript_code', { code: '1' }]]) {
         expect(memberRefusal(tool, args, 'member-2'), tool).toBeNull();
       }
-      expect(memberRefusal('browser', { action: 'open' }, 'member-2')).not.toBeNull();
+      expect(memberRefusal('browser', { action: 'open' }, 'member-2')).toBeNull();
       for (const [tool, args] of [['read_file', { path: 'notes.md' }], ['write_file', { path: 'x', content: 'y' }], ['glob_files', { pattern: '**/*.csv' }], ['grep_files', { pattern: 'x' }], ['edit_file', { path: 'x' }], ['file_operations', { operation: 'copy', path: 'a' }]]) {
         expect(memberRefusal(tool, args, 'member-2'), tool).toBeNull();
       }
-      expect(memberRefusal('database-operation', { operation: 'select' }, 'member-2')).toMatch(/safety guarantee, not a setting/);
+      expect(memberRefusal('database-operation', { operation: 'select' }, 'member-2')).toBeNull();
+      expect(memberRefusal('codex_exec', {}, 'member-2')).not.toBeNull(); // the owner's own CLI sign-ins
     } finally { Object.defineProperty(process, 'platform', platform); }
   });
 

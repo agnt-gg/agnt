@@ -20,11 +20,13 @@ export const SAFE_TEAM_NODES=new Set(['generic-trigger','trigger-timer','stop-wo
  * Bravo, 2026-10-31: published workflows were limited to the five SAFE_TEAM_NODES and team runs started
  * with an empty tool allow-list, so web search, scraping, email and HTTP steps could never run.
  */
+/** Never in an approved team run: the owner-only set, plus starting other agents/goals outside the approved revision. */
+const TEAM_REFUSED=new Set([...OWNER_ONLY,'delegate']);
 export function teamRunnable(name){
  if(typeof name!=='string'||!name)return false;
  if(SAFE_TEAM_NODES.has(name))return true;
  const profile=resolveToolCapabilities(name,{});
- return Boolean(profile)&&!profile.capabilities.some(capability=>OWNER_ONLY.has(capability));
+ return Boolean(profile)&&!profile.capabilities.some(capability=>TEAM_REFUSED.has(capability));
 }
 
 /**

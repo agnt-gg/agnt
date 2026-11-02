@@ -1,6 +1,5 @@
 import CustomToolExecutor from '../../workflow/CustomToolExecutor.js';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
-import { credentialUserId } from '../auth/tenantOwnership.js';
 
 /**
  * Shared runner for user-authored Tool Forge tools (rows in the `tools` table,
@@ -113,8 +112,9 @@ export function mergedParameters(stored, args = {}) {
  *          result or { error }.
  */
 export async function runCustomTool(tool, args, userId) {
-  // A team workspace runs its custom tools as the instance owner (credentialUserId).
-  if(process.env.AGNT_TENANT_SLUG && credentialUserId(userId)!==process.env.AGNT_TENANT_OWNER){const {currentTeamExecution}=await import('../authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Hosted members must use approved shared execution');}
+  // Teammates run custom tools too: an AI tool is a model call, and a code tool runs through
+  // execute-javascript / execute-python, which on a hosted instance fork into the kernel tool sandbox as
+  // the acting teammate (toolProcess). The gate before this judged it by what it runs (customToolCapabilities).
   const node = toExecutableNode(tool, args);
   const engine = makeMinimalEngine(userId);
   const executor = new CustomToolExecutor(engine);

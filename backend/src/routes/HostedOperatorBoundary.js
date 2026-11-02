@@ -22,6 +22,8 @@ function isMemberReadable(req){return MEDIA_METHODS.has(req.method)&&MEMBER_READ
 // the machine: pluginAccountBoundary marks the request activation-only and the install route
 // refuses it unless the exact package (same version, same integrity) is already installed.
 function isMemberActivation(req){return req.method==='POST'&&req.path==='/plugins/install';}
+// A member removing a plugin THEY added: the route removes only their own account's install (PluginRoutes).
+function isMemberPluginRemoval(req){return req.method==='DELETE'&&/^\/plugins\/[^/]+$/.test(req.path);}
 // A member dismissing their own decided plugin request. Deciding one, and the policy, stay owner/admin.
 function isMemberRequestSeen(req){return req.method==='POST'&&/^\/plugins\/requests\/[^/]+\/seen$/.test(req.path);}
 function isMediaRequest(req){
@@ -35,7 +37,7 @@ export function createHostedOperatorBoundary(authenticate,cloud=new CloudTeamCli
  if(!process.env.AGNT_TENANT_SLUG||!machineApis.has(req.path.split('/')[1]))return next();
  const media=isMediaRequest(req);
  return (media?authenticateMedia:authenticate)(req,res,async()=>{try{const user=req.user?.id||req.user?.userId;
- if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req)||isMemberActivation(req)||isMemberRequestSeen(req))return next();
+ if(user===process.env.AGNT_TENANT_OWNER||isMemberReadable(req)||isMemberActivation(req)||isMemberPluginRemoval(req)||isMemberRequestSeen(req))return next();
  // The control plane is asked with the same credential the caller authenticated with.
  const authorization=req.headers.authorization||(media?'Bearer '+extractToken(req,{allowCookie:true,allowQuery:true}):undefined);
  const teams=await cloud.request(authorization,'');const team=teams.find(t=>t.tenantSlug===process.env.AGNT_TENANT_SLUG);

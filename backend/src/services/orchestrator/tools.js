@@ -5,6 +5,8 @@ import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from '../security/toolProcess.js';
 import { withToolActor, currentToolActor, hostedToolBoundaryRequired } from '../security/toolRunAuthority.js';
 import { runActorFor, runAuthorizationFor } from '../authorization/runActor.js';
+import { resolveToolCapabilities } from '../security/toolCapabilities.js';
+import { isPluginTool } from '../security/memberSafePlugins.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -2604,11 +2606,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!tool_definition) {
               return JSON.stringify({ success: false, error: "tool_definition (JSON string) is required for 'create_tool'." });
             }
-            try {
-              const parsedDefinition = JSON.parse(tool_definition);
-              result = await agnt.tools.create(parsedDefinition); // agnt2.js create handles wrapping if needed
-            } catch (e) {
-              return JSON.stringify({ success: false, error: `Invalid JSON in tool_definition: ${e.message}` });
+            {
+              // Parse and save separately: a server error used to be reported as "Invalid JSON".
+              let parsedDefinition;
+              try { parsedDefinition = typeof tool_definition === 'string' ? JSON.parse(tool_definition) : tool_definition; }
+              catch (e) { return JSON.stringify({ success: false, error: `Invalid JSON in tool_definition: ${e.message}` }); }
+              try { result = await agnt.tools.create(parsedDefinition); }
+              catch (e) { return JSON.stringify({ success: false, error: `Saving the tool failed: ${e.response?.data?.error || e.message}` }); }
             }
             break;
 
@@ -2630,11 +2634,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!tool_definition) {
               return JSON.stringify({ success: false, error: "tool_definition (JSON string) is required for 'update_tool'." });
             }
-            try {
-              const parsedUpdateDefinition = JSON.parse(tool_definition);
-              result = await agnt.tools.update(tool_id, parsedUpdateDefinition);
-            } catch (e) {
-              return JSON.stringify({ success: false, error: `Invalid JSON in tool_definition for update: ${e.message}` });
+            {
+              let parsedUpdateDefinition;
+              try { parsedUpdateDefinition = typeof tool_definition === 'string' ? JSON.parse(tool_definition) : tool_definition; }
+              catch (e) { return JSON.stringify({ success: false, error: `Invalid JSON in tool_definition for update: ${e.message}` }); }
+              try { result = await agnt.tools.update(tool_id, parsedUpdateDefinition); }
+              catch (e) {
+              return JSON.stringify({ success: false, error: `Updating the tool failed: ${e.response?.data?.error || e.message}` });
+              }
             }
             break;
 
@@ -5393,6 +5400,23 @@ async function executeToolInner(toolName, args, authToken, context) {
  * so the gate checks the REAL resolved arguments, and executeToolInner
  * receives them pre-resolved.
  */
+/**
+ * The name the security gate judges a call by. A saved Tool Forge tool has a user-chosen name with no
+ * capability profile, so it is judged by what it executes (customToolCapabilities). Only when the name is
+ * nothing else: a profiled built-in, a plugin tool or an MCP tool keeps its own name, so a custom tool can
+ * never lend its profile to a tool that would actually run instead (custom tools resolve LAST).
+ */
+async function gateNameFor(toolName, userId) {
+  if (resolveToolCapabilities(toolName, {}) || isPluginTool(toolName) || String(toolName).startsWith('mcp__') || !userId) return toolName;
+  try {
+    const byId = await CustomToolModel.findOne(toolName);
+    const custom = byId && (byId.is_shareable || byId.created_by === userId) ? byId : (await CustomToolModel.findAllByUserId(userId)).find((tool) => tool.type === toolName) || null;
+    if (!custom) return toolName;
+    const { customToolGateName } = await import('../security/customToolCapabilities.js');
+    return customToolGateName(custom.base);
+  } catch { return toolName; }
+}
+
 export function executeTool(toolName, args, authToken, context) {
   // The person running it (a teammate in a teamspace), not the workspace that owns the data: isolation,
   // the owner's team policy and the membership check judge THEM. Data and credentials stay on context.userId.
@@ -5426,7 +5450,7 @@ async function executeToolWithActor(toolName, args, authToken, context, actor = 
   }
 
   const gate = await checkAction({
-    toolName,
+    toolName: await gateNameFor(toolName, context?.userId),
     args: resolvedArgs,
     userId: actor,
     role: context?.role,

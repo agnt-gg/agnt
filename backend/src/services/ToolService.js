@@ -20,6 +20,18 @@ class CustomToolService {
         });
       }
 
+      // title, category, type, icon, description, parameters and outputs are NOT NULL in the tools table: a
+      // definition missing one crashed in SQLite (500, reported to the agent as "Invalid JSON"). Fill what has an
+      // obvious default; a tool still needs a name.
+      tool.title = typeof tool.title === 'string' && tool.title.trim() ? tool.title.trim() : (typeof tool.name === 'string' ? tool.name.trim() : '');
+      if (!tool.title) return res.status(400).json({ error: 'tool.title (or tool.name) is required.' });
+      tool.type = typeof tool.type === 'string' && tool.type.trim() ? tool.type.trim() : tool.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'custom-tool';
+      tool.category = tool.category || 'custom';
+      tool.icon = tool.icon || 'custom';
+      tool.description = typeof tool.description === 'string' ? tool.description : '';
+      if (!tool.parameters || typeof tool.parameters !== 'object') tool.parameters = {};
+      if (!tool.outputs || typeof tool.outputs !== 'object') tool.outputs = {};
+
       console.log('Received tool data:', tool);
 
       // If the tool doesn't exist, create a new tool

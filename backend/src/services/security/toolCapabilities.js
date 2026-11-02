@@ -171,6 +171,37 @@ const REGISTRY = {
   'hello-world': { capabilities: [], sink: [] },
   'data-transformer': { capabilities: [], sink: [] },
   'generate-with-ai-llm': { capabilities: [], sink: [] },
+
+  // Built-ins that act only through the AGNT API or a model call, as the caller: goals, widgets (their
+  // code renders in the browser's iframe sandbox, never on the server), Tool Forge definitions, agents,
+  // backgrounds. Unprofiled, every one of them was refused to every teammate (memberIsolation fails closed).
+  ...Object.fromEntries([
+    'create_goal', 'delete_goal', 'evaluate_goal',
+    'fetch_goal_tasks', 'get_evaluation_report', 'get_goal_details', 'get_goal_status', 'list_goals', 'pause_goal',
+    'save_as_golden_standard', 'task_checkpoint', 'update_task_status',
+    'generate_widget', 'edit_widget_code', 'list_widgets', 'load_widget', 'save_widget', 'update_widget_config',
+    'list_tools', 'load_tool', 'save_tool', 'delete_tool', 'generate_tool_update',
+    'set_background_image', 'clear_background_image',
+  ].map((name) => [name, { capabilities: [], sink: [] }])),
+  // Starting OTHER agents or goals: each of their own tool calls is gated as the caller, so a teammate may.
+  // 'delegate' keeps them out of an approved team run, which may run only what its published revision declares.
+  ...Object.fromEntries(['agnt_agent', 'create_and_run_goal', 'execute_goal', 'execute_goal_autonomous', 'resume_goal']
+    .map((name) => [name, { capabilities: ['delegate'], sink: [] }])),
+  // Running a Tool Forge tool: a model call, or its code through execute-javascript / execute-python,
+  // which run in the kernel tool sandbox on a hosted instance (customToolCapabilities.js).
+  run_tool: { capabilities: ['code-eval'], sink: [] },
+  execute_custom_agnt_tool: { capabilities: ['code-eval'], sink: [] },
+  // An MCP server is started through the tool sandbox, per acting account (STDIOTransport -> toolProcess).
+  mcp_client: { capabilities: ['shell'], sink: [] },
+  // The launched browser. On a hosted instance each teammate drives their OWN browser in their sandbox
+  // (memberBrowsers.js); anywhere else there is one browser holding the owner's logins.
+  ...Object.fromEntries(['browser', 'ai-browser-act', 'ai-browser-control', 'ai-browser-use'].map((name) => [name, { capabilities: ['browser'], sink: [] }])),
+};
+
+/** Names reach here as manifest types ('data-transformer') or LLM names ('data_transformer'): one tool, one profile. */
+const spellingsOf = (toolName) => {
+  const name = String(toolName || '');
+  return [...new Set([name, name.replace(/_/g, '-'), name.replace(/-/g, '_')])];
 };
 
 /**
@@ -210,7 +241,11 @@ function resolveDynamic(toolName, args) {
  * Null means "scan everything" — see the fail-closed note at the top.
  */
 export function resolveToolCapabilities(toolName, args = {}) {
-  return resolveDynamic(toolName, args) || REGISTRY[toolName] || null;
+  for (const name of spellingsOf(toolName)) {
+    const profile = resolveDynamic(name, args) || (Object.prototype.hasOwnProperty.call(REGISTRY, name) ? REGISTRY[name] : null);
+    if (profile) return profile;
+  }
+  return null;
 }
 
 /**

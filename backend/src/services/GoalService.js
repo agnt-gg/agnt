@@ -136,7 +136,8 @@ class GoalService {
       const { id } = req.params;
       const goal = await GoalModel.findOne(id);
 
-      if (!goal) {
+      // A deleted goal is gone from the list, so it is gone here too (unless asked for, as the list allows).
+      if (!goal || (goal.deleted_at && req.query?.includeDeleted !== 'true')) {
         return res.status(404).json({ error: 'Goal not found' });
       }
 

@@ -149,12 +149,12 @@
       "name": "calculator-plugin",
       "displayName": "Calculator",
       "icon": "calculator",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Provides arithmetic and scientific expression evaluation.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/calculator-plugin.agnt",
-      "size": 1889,
+      "size": 2721,
       "tags": [
         "calculator",
         "math",
@@ -171,16 +171,10 @@
           }
         }
       ],
-      "integrity": "sha256-TYymqr9qVqNNWJCAxqtieAtmsYL0mAM7rXzBu1u8QcU=",
+      "integrity": "sha256-3D1LWObP257uzyYiVGGCTvn8rtF6RVh+bHDhC44xwsg=",
       "trustTier": "official",
-      "declaredPermissions": [
-        "dynamic-eval",
-        "filesystem"
-      ],
-      "detectedCapabilities": [
-        "filesystem",
-        "dynamic-eval"
-      ],
+      "declaredPermissions": [],
+      "detectedCapabilities": [],
       "kind": "utility"
     },
     {

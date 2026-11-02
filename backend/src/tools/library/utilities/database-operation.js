@@ -1,6 +1,14 @@
 import BaseAction from '../BaseAction.js';
 import db from '../../../models/database/index.js';
 import { validateVirtualSql } from '../../../services/security/virtualSqlBoundary.js';
+import { usesIsolatedUserData, isolatedUserDataFor } from '../../../services/security/isolatedUserData.js';
+import { runActorFor } from '../../../services/authorization/runActor.js';
+
+/** The instance database, for the owner's own virtual tables. */
+const instanceStore = {
+  all: (sql, args) => new Promise((resolve, reject) => db.all(sql, args, (err, rows) => (err ? reject(err) : resolve(rows)))),
+  run: (sql, args) => new Promise((resolve, reject) => db.run(sql, args, function (err) { if (err) reject(err); else resolve(this); })),
+};
 
 class DatabaseOperation extends BaseAction {
   static schema = {
@@ -83,24 +91,31 @@ class DatabaseOperation extends BaseAction {
 
       const { operation, tableName, columns, values, condition } = params;
       const userId = workflowEngine.userId; // Assume this method exists to get the current user's ID
+      // A teamspace's tables, or anyone but the owner acting, live in an isolated per-owner database file
+      // (isolatedUserData.js), never the instance database. One operation object per call: this tool is a
+      // shared singleton, so the store must not be a field concurrent runs could overwrite.
+      const actor = runActorFor(userId);
+      const store = usesIsolatedUserData(userId, actor) ? await isolatedUserDataFor(userId, { instanceDb: db }) : instanceStore;
+      const op = Object.assign(Object.create(this), { store });
 
       let result;
 
       switch (operation.toUpperCase()) {
         case 'SELECT':
-          result = await this.select(userId, tableName, columns, condition);
+          result = await op.select(userId, tableName, columns, condition);
           return { success: true, result };
 
         case 'INSERT':
-          result = await this.insert(userId, tableName, columns, values);
-          return { success: true, affectedRows: result.changes };
+          result = await op.insert(userId, tableName, columns, values);
+          // insert() reports affectedRows (it read result.changes, which is undefined there).
+          return { success: true, affectedRows: result.affectedRows ?? result.changes };
 
         case 'UPDATE':
-          result = await this.update(userId, tableName, columns, values, condition);
+          result = await op.update(userId, tableName, columns, values, condition);
           return { success: true, affectedRows: result.affectedRows };
 
         case 'DELETE':
-          result = await this.delete(userId, tableName, condition, values);
+          result = await op.delete(userId, tableName, condition, values);
           return { success: true, affectedRows: result.affectedRows };
 
         default:
@@ -181,20 +196,10 @@ class DatabaseOperation extends BaseAction {
     }
   }
   runSelectQuery(sql, params) {
-    return new Promise((resolve, reject) => {
-      db.all(sql, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    return (this.store || instanceStore).all(sql, params);
   }
   runModifyQuery(sql, params) {
-    return new Promise((resolve, reject) => {
-      db.run(sql, params, function (err) {
-        if (err) reject(err);
-        else resolve(this);
-      });
-    });
+    return (this.store || instanceStore).run(sql, params);
   }
   // async insert(userId, tableName, columns, values) {
   //   try {

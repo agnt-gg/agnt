@@ -379,8 +379,11 @@ You have the above skills assigned. Follow the instructions defined in each skil
     try {
       const userId = req.user.userId;
       const { skill } = req.body;
-      if (!skill || !skill.name || !skill.description) {
-        return res.status(400).json({ error: 'name and description are required' });
+      if (!skill || typeof skill !== 'object') {
+        return res.status(400).json({ error: 'Request body must be { skill: { name, description, ... } } with a skill object.' });
+      }
+      if (!skill.name || !skill.description) {
+        return res.status(400).json({ error: 'skill.name and skill.description are required' });
       }
 
       const sanitizedName = SkillService.sanitizeName(skill.name);

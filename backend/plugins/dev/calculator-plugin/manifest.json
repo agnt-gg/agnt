@@ -1,6 +1,6 @@
 {
   "name": "calculator-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "utility",
   "description": "Provides arithmetic and scientific expression evaluation",
   "author": "AGNT User",
@@ -71,10 +71,7 @@
     }
   ],
   "permissions": {
-    "capabilities": [
-      "dynamic-eval",
-      "filesystem"
-    ],
+    "capabilities": [],
     "domains": []
   }
 }

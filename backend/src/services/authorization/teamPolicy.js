@@ -16,7 +16,7 @@
  * owner's setting when that is the reason.
  */
 import { isNonOwnerMember } from '../security/memberIsolation.js';
-import { isMemberSafePluginTool } from '../security/memberSafePlugins.js';
+import { isMemberSafePluginTool, isPluginTool } from '../security/memberSafePlugins.js';
 
 /** The owner's setting each permission appears as, for refusals. */
 export const PERMISSION_LABELS = Object.freeze({
@@ -50,7 +50,9 @@ const TOOL_PERMISSIONS = Object.freeze({
 /** Which owner setting governs this tool, or null when none does. */
 export function permissionForTool(toolName) {
   if (TOOL_PERMISSIONS[toolName]) return TOOL_PERMISSIONS[toolName];
-  if (isMemberSafePluginTool(toolName)) return 'extensions.use';
+  // Any plugin or MCP tool: it runs sandboxed for a teammate (pluginSandbox, toolProcess), and whether
+  // teammates may use extensions at all is the owner's setting.
+  if (isMemberSafePluginTool(toolName) || isPluginTool(toolName) || String(toolName).startsWith('mcp__')) return 'extensions.use';
   return null;
 }
 

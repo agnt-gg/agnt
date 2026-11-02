@@ -55,7 +55,8 @@ import { hostedToolBoundaryRequired } from './toolRunAuthority.js';
  * worker forked through the same launcher with only the caller's folder and the teamspace folders they
  * may use mounted (teamFolders.js). SQL still runs inside the server process, so it stays owner-only.
  */
-const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval', 'fs-read', 'fs-write']);
+// 'browser': each teammate gets their own browser in their sandbox (memberBrowsers.js), never the owner's.
+const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'browser']);
 /**
  * Tools with no capability profile whose every process goes through the same sandbox. Empty on purpose:
  * the launched browser is ONE per instance and keeps the owner's signed-in sites (shared cookies by
@@ -64,11 +65,19 @@ const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval', 'fs-read', 'fs-wri
  */
 const SANDBOXED_TOOLS = new Set();
 const sandboxed = () => hostedToolBoundaryRequired();
+/**
+ * Tools whose SQL never touches the instance database for a teammate: database-operation runs against an
+ * isolated per-owner database file with ATTACH disabled (isolatedUserData.js), so the worst a query can
+ * reach is that owner's own virtual tables.
+ */
+const ISOLATED_SQL_TOOLS = new Set(['database-operation', 'database_operation']);
+/** An MCP server's tools: the server process is started through the tool sandbox, per acting account. */
+const isMcpTool = (toolName) => typeof toolName === 'string' && toolName.startsWith('mcp__');
 
 export const MEMBER_ISOLATION_RULE = 'member-isolation';
 
 /** Capabilities that reach the instance's own code, files or database. Also bounds team runs (TeamToolPolicy). */
-export const OWNER_ONLY = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'sql']);
+export const OWNER_ONLY = new Set(['shell', 'code-eval', 'fs-read', 'fs-write', 'sql', 'browser']);
 
 /**
  * Is this caller a member of a shared instance who is NOT its owner?
@@ -104,11 +113,16 @@ export function memberRefusal(toolName, args, userId) {
   if (!profile) {
     if (isMemberSafePluginTool(toolName)) return null;
     if (sandboxed() && SANDBOXED_TOOLS.has(toolName)) return null;
+    // Unknown is sandboxed, not refused, wherever AGNT can sandbox it: a plugin tool runs in a kernel-sandboxed
+    // worker for anyone but the owner (pluginSandbox.js), an MCP tool in the actor's own sandboxed server.
+    if (sandboxed() && (isPluginTool(toolName) || isMcpTool(toolName))) return null;
     // A plugin is the owner's decision, not a guarantee: say who can turn it on and how.
     if (isPluginTool(toolName)) return PLUGIN_NOT_APPROVED(toolName);
     return `${toolName} has no declared capabilities, so it is not verified safe to run next to the credentials stored on this shared instance. ${GUARANTEE}`;
   }
-  const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability) && !(sandboxed() && SANDBOXED_CAPABILITIES.has(capability)));
+  const reached = profile.capabilities.filter((capability) => OWNER_ONLY.has(capability)
+    && !(sandboxed() && SANDBOXED_CAPABILITIES.has(capability))
+    && !(capability === 'sql' && ISOLATED_SQL_TOOLS.has(toolName)));
   if (reached.length === 0) return null;
   const runsCode = reached.some((capability) => capability === 'shell' || capability === 'code-eval');
   return runsCode
