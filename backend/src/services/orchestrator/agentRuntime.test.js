@@ -210,6 +210,34 @@ describe('a workflow/goal agent gets the whole prompt, not just its persona', ()
   });
 });
 
+// The chat strips provider-rejected tools after assembly (OrchestratorService),
+// and so does LlmExecutionService. The workflow agent node consumes this
+// runtime directly, so a Claude-Code agent in a workflow sent `mcp_client` and
+// Anthropic answered with its misleading "Third-party apps now draw from your
+// extra usage" 400 while the same agent worked in chat. The filter lives HERE
+// so every surface that runs a saved agent gets it.
+describe('a saved agent sends Claude Code only tools it accepts', () => {
+  const runtimeOn = (provider) =>
+    buildAgentRuntime({ agentId: AGENT_ID, userId: USER_ID, latestUserMessage: 'hi', provider });
+
+  it('anti-vacuity: the fixture really puts mcp_client on a non-restricted provider', async () => {
+    expect(namesOf((await runtimeOn('anthropic')).toolSchemas).has('mcp_client')).toBe(true);
+  });
+
+  it.each(['Claude-Code', 'claude-code'])('withholds mcp_client on %s', async (provider) => {
+    const { toolSchemas, context } = await runtimeOn(provider);
+    expect(namesOf(toolSchemas).has('mcp_client')).toBe(false);
+    // The prompt's block gates must read the surface that is actually sent.
+    expect(context.toolSchemas).toBe(toolSchemas);
+  });
+
+  it('keeps the rest of the agent\u2019s surface on Claude Code', async () => {
+    const names = namesOf((await runtimeOn('Claude-Code')).toolSchemas);
+    expect(names.has(CUSTOM_TOOL)).toBe(true);
+    expect(names.has('activate_skill')).toBe(true);
+  });
+});
+
 describe('the guard rails on buildAgentRuntime itself', () => {
   it('refuses a missing userId instead of quietly returning an amnesiac agent', async () => {
     await expect(buildAgentRuntime({ agentId: AGENT_ID, userId: null })).rejects.toThrow(/userId/);

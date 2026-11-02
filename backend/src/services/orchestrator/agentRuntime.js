@@ -3,6 +3,7 @@ export const getVirtualAgent = context => virtualAgents.get(context) || null;
 
 import { getChatConfig } from './chatConfigs.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
+import { stripProviderIncompatibleTools } from './providerToolCompat.js';
 
 /**
  * THE SINGLE ASSEMBLY PATH FOR A SAVED AGENT'S RUNTIME.
@@ -106,7 +107,16 @@ export async function buildAgentRuntime({
   // there). buildUnifiedSystemPrompt resolves its block gates from the
   // RESOLVED tool surface — build the prompt first and the image, async and
   // memory-recall blocks all gate off a surface that is still undefined.
-  const toolSchemas = await config.getToolSchemas(context);
+  // Provider-rejected tools are withheld HERE, not left to each consumer. The
+  // chat and LlmExecutionService filter after assembly; the agnt-agent
+  // workflow node sends this list as-is, so on Claude Code every workflow
+  // agent carried `mcp_client` and got Anthropic's misleading "extra usage"
+  // 400 while the same agent worked in chat. Filtering at the shared source
+  // makes parity structural. Idempotent, so downstream re-filtering is harmless.
+  const toolSchemas = stripProviderIncompatibleTools(
+    await config.getToolSchemas(context),
+    context.normalizedProvider || provider
+  );
   if (builtInAgent) {
     const names = new Set(toolSchemas.map(s => s.function?.name));
     const missing = (builtInAgent.assignedTools || []).filter(name => !names.has(name));
