@@ -50,7 +50,9 @@ describe('memberIsolation', () => {
   // every tool process runs in the kernel sandbox that holds no database, secrets or credentials.
   // Then, 2026-11-01: the launched browser is one per instance and holds the owner's signed-in sites, so
   // a member's tab would use the owner's sessions however its process is sandboxed. Owner-only.
-  it('on a hosted instance a member runs code and shell in the sandbox; the shared browser, files and SQL stay owner-only', () => {
+  // 2026-11-02: file tools run in that sandbox too (toolFiles.isolatedFileCall), which mounts only the
+  // member's own folder and the teamspace Files they may use; agnt.db is not in it. Files are a member's.
+  it('on a hosted instance a member runs code, shell and file tools in the sandbox; the shared browser and SQL stay owner-only', () => {
     businessTenant();
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
@@ -59,9 +61,10 @@ describe('memberIsolation', () => {
         expect(memberRefusal(tool, args, 'member-2'), tool).toBeNull();
       }
       expect(memberRefusal('browser', { action: 'open' }, 'member-2')).not.toBeNull();
-      for (const [tool, args] of [['read_file', { path: '/app/data/agnt.db' }], ['write_file', { path: 'x', content: 'y' }], ['database-operation', { operation: 'select' }]]) {
-        expect(memberRefusal(tool, args, 'member-2'), tool).toMatch(/safety guarantee, not a setting/);
+      for (const [tool, args] of [['read_file', { path: 'notes.md' }], ['write_file', { path: 'x', content: 'y' }], ['glob_files', { pattern: '**/*.csv' }], ['grep_files', { pattern: 'x' }], ['edit_file', { path: 'x' }], ['file_operations', { operation: 'copy', path: 'a' }]]) {
+        expect(memberRefusal(tool, args, 'member-2'), tool).toBeNull();
       }
+      expect(memberRefusal('database-operation', { operation: 'select' }, 'member-2')).toMatch(/safety guarantee, not a setting/);
     } finally { Object.defineProperty(process, 'platform', platform); }
   });
 

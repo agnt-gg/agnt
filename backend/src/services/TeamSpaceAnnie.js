@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createAssistantMessage, applyStreamEvent } from './orchestrator/chatStreamReducer.mirror.js';
+import { TEAM_FOLDER_DIR, folderName } from './security/teamFolders.js';
 
 /**
  * @Annie in a teamspace chat.
@@ -29,6 +30,8 @@ export function anniePrompt({ spaceName, message, history = [], names = new Map(
   const recent = history.slice(-MAX_CONTEXT).map((m) => `${who(m.author)}: ${clip(String(m.body || ''))}`).join('\n');
   return [
     `You were @mentioned in the "${spaceName || 'team'}" teamspace chat. Reply as you would in a chat; everyone in that teamspace will read it. Use your tools when the request needs them.`,
+    // Its Files are mounted in the tool sandbox (security/teamFolders.js) when the owner allows it.
+    `This teamspace's Files are in your file tools at "${TEAM_FOLDER_DIR}/${folderName(spaceName, 'Teamspace')}/" (list "${TEAM_FOLDER_DIR}" to see every teamspace you can use). Work on those files there, and save anything the team should have in that folder.`,
     recent ? `Recent messages in that chat:\n${recent}` : '',
     `The request: ${message.body}`,
   ].filter(Boolean).join('\n\n');

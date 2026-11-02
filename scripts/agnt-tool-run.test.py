@@ -54,6 +54,50 @@ for bad in ['/app/data', '/', '/etc', '/app/data/workspaces', '/app/data/workspa
 check('a member folder that is a symlink is refused', refused('/app/data/workspaces/linked', '/app/data/workspaces/linked'))
 check('a member folder that does not exist is refused', refused('/app/data/workspaces/member-9', '/app/data/workspaces/member-9'))
 
+# Teamspace Files mounted under <workspace>/Teamspaces/<name>.
+import json
+TEAM = '/app/data/workspace-files/' + 'a' * 64
+W = '/app/data/workspaces/member-2'
+T_REAL = {W + '/Teamspaces', W + '/Teamspaces/Sales', W + '/Teamspaces/Ops', TEAM, '/app/data/secrets'}
+T_LINKS = {W + '/Teamspaces/Linked': '/app/data/secrets'}
+t_isdir = lambda p: p in T_REAL or p in T_LINKS
+t_islink = lambda p: p in T_LINKS
+t_realpath = lambda p: T_LINKS.get(p, p)
+
+
+def mounts(items):
+    return launcher.team_mounts(json.dumps(items), W, realpath=t_realpath, isdir=t_isdir, islink=t_islink)
+
+
+def mount_refused(items):
+    try:
+        mounts(items)
+        return False
+    except launcher.Refused:
+        return True
+
+
+check('no team mounts adds nothing', launcher.team_mounts('', W) == [])
+check('a writable teamspace folder is a read-write bind', mounts([{'source': TEAM, 'target': W + '/Teamspaces/Sales', 'rw': True}]) == ['--bind', TEAM, W + '/Teamspaces/Sales'])
+check('a read-only teamspace folder is a read-only bind', mounts([{'source': TEAM, 'target': W + '/Teamspaces/Ops', 'rw': False}]) == ['--ro-bind', TEAM, W + '/Teamspaces/Ops'])
+for name, bad in [
+    ('a source outside workspace-files', {'source': '/app/data/secrets', 'target': W + '/Teamspaces/Sales', 'rw': True}),
+    ('the database as a source', {'source': '/app/data/agnt.db', 'target': W + '/Teamspaces/Sales', 'rw': True}),
+    ('a target outside Teamspaces', {'source': TEAM, 'target': W + '/Sales', 'rw': True}),
+    ('a nested target', {'source': TEAM, 'target': W + '/Teamspaces/Sales/x', 'rw': True}),
+    ('a dotted target', {'source': TEAM, 'target': W + '/Teamspaces/..', 'rw': True}),
+    ('a symlinked target', {'source': TEAM, 'target': W + '/Teamspaces/Linked', 'rw': True}),
+    ('a target that does not exist', {'source': TEAM, 'target': W + '/Teamspaces/Missing', 'rw': True}),
+    ('a mode that is not a boolean', {'source': TEAM, 'target': W + '/Teamspaces/Sales', 'rw': 'yes'}),
+]:
+    check('refuses ' + name, mount_refused([bad]))
+check('refuses the same target twice', mount_refused([{'source': TEAM, 'target': W + '/Teamspaces/Sales', 'rw': True}] * 2))
+try:
+    launcher.team_mounts('not json', W)
+    check('refuses non-JSON mounts', False)
+except launcher.Refused:
+    check('refuses non-JSON mounts', True)
+
 if failures:
     print('%d FAILED' % len(failures))
     sys.exit(1)

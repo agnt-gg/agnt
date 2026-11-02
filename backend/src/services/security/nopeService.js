@@ -42,6 +42,8 @@ import { resolveCredentialDecision, resolveViolationDecision } from './securityP
 import { buildSecurityAction } from './toolCapabilities.js';
 import { redactToolSecrets } from './redactToolSecrets.js';
 import { MEMBER_ISOLATION_RULE, memberRefusal } from './memberIsolation.js';
+import { hostedToolBoundaryRequired } from './toolRunAuthority.js';
+import { refreshTeamFolders } from './teamFolders.js';
 
 // ── Durable telemetry ───────────────────────────────────────────────────────
 
@@ -238,6 +240,9 @@ export function targetsOnlyAgntApi(args) {
 }
 
 export async function checkAction({ toolName, args, userId, role, surface, workflowPolicy }) {
+  // Which teamspace Files this caller's sandbox mounts is fixed when it starts; work it out now, while we
+  // can wait (toolProcess.sandboxPlan reads it synchronously). Hosted only; never throws.
+  if (userId && hostedToolBoundaryRequired()) await refreshTeamFolders(userId);
   // Before the policy lookup and OUTSIDE its fail-open catch: this is not a
   // pattern match that a policy may relax or a gate error may skip. A member
   // of a shared instance never reaches the owner's code, files or database.

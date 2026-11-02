@@ -1,6 +1,7 @@
 import { TeamSpaceRepository, parseAssignee, parseMentions } from '../services/TeamSpaceRepository.js';
 import { runAgentOnTask } from '../services/TeamSpaceAgents.js';
 import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn, liveReplies } from '../services/TeamSpaceAnnie.js';
+import { aiFileMode, setAiFileMode } from '../services/security/teamFolders.js';
 
 /**
  * Teamspace collaboration routes, mounted inside TeamRoutes' router so every
@@ -68,6 +69,16 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   const agentInput = (task, context) => [`Task: ${task.title}`, context ? `Context from the teamspace:\n${context}` : ''].filter(Boolean).join('\n\n');
 
   // ── Chat ────────────────────────────────────────────────────────────────
+  // "Team files with AI": may Annie and agents use teamspace Files (off / read / write). Everyone on the
+  // team may read it; only the team owner changes it.
+  router.get('/:teamId/ai-files', handler(async (repo, req, user) => {
+    const me = await repo.member(req.params.teamId, user);
+    return { mode: await aiFileMode(repo, req.params.teamId), canChange: me.role === 'owner' };
+  }));
+  router.put('/:teamId/ai-files', handler(async (repo, req, user) => {
+    await repo.member(req.params.teamId, user, ['owner']);
+    return { mode: await setAiFileMode(repo, req.params.teamId, user, req.body?.mode), canChange: true };
+  }));
   router.get(W + '/messages', handler((repo, req, user) => spacesOf(repo).messages(req.params.teamId, user, req.params.workspaceId, { before: req.query.before })));
   // Replies being written right now (Annie streaming), for the people who may read this chat.
   // The realtime signal carries only ids; the content is fetched here, behind the same check.

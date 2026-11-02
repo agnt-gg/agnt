@@ -1,21 +1,28 @@
 import { fileURLToPath } from 'node:url';
 import { fork } from './toolProcess.js';
 import { currentToolActor } from './toolRunAuthority.js';
+import { cachedTeamFolders } from './teamFolders.js';
 
 const workers = new Map();
 let nextRequest = 0;
 const LIMIT = 4;
 // Separate workers preserve each caller's read/edit observations without giving
 // the trusted backend any direct path through a symlink the workload can race.
+// A worker's mounts are fixed when it starts, so it is keyed by the actor AND their current team folders:
+// gaining or losing a teamspace (or a read/write change) starts a fresh worker with the right mounts.
 function workerFor(actor) {
-  if (workers.has(actor)) return workers.get(actor);
+  const signature = actor + '|' + cachedTeamFolders(actor).map((f) => `${f.source}:${f.folder}:${f.writable ? 'rw' : 'ro'}`).join(',');
+  const current = workers.get(actor);
+  if (current && current.signature === signature) return current;
+  if (current && current.pending.size === 0) { current.child.kill(); workers.delete(actor); }
+  else if (current) return current; // busy: finish its queue first; the next idle call restarts it
   if (workers.size >= LIMIT) {
     const idle = [...workers.values()].find((entry) => entry.pending.size === 0);
     if (!idle) throw new Error('Isolated file workers busy; retry this operation');
     idle.child.kill(); workers.delete(idle.actor);
   }
   const child = fork(fileURLToPath(new URL('./toolFileWorker.js', import.meta.url)), [], { env: {}, execArgv: ['--max-old-space-size=128'] });
-  const entry = { actor, child, pending: new Map(), idle: null };
+  const entry = { actor, signature, child, pending: new Map(), idle: null };
   const fail = (error) => {
     if (workers.get(actor) === entry) workers.delete(actor);
     clearTimeout(entry.idle);

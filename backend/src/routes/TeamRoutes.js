@@ -13,6 +13,7 @@ import { publicShareClient, publishLink, previewLink, receiveLink } from '../ser
 import { initializeTeamSpaces } from '../services/TeamSpaceRepository.js';
 import { createTeamSpaceRealtime } from '../services/TeamSpaceRealtime.js';
 import { mountTeamSpaceRoutes } from './TeamSpaceRoutes.js';
+import { useTeamRepository } from '../services/security/teamFolders.js';
 import sqlite3 from 'sqlite3';
 import pathManager from '../utils/PathManager.js';
 import {
@@ -29,6 +30,8 @@ export function getTeamRepository() {
   if (!repository) repository = new TeamRepository(new sqlite3.Database(pathManager.getDataPath('teams.db')));
   return repository
 }
+// The tool sandbox mounts the teamspace Files a caller may use; it reads who that is from this database.
+useTeamRepository(getTeamRepository);
 export function createTeamRouter(getRepository = getTeamRepository, authenticate = authenticateToken, cloud = new CloudTeamClient(), publicShare = publicShareClient()) {
   const router = express.Router();
   router.use(authenticate);

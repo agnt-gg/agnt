@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { currentToolActor, hostedToolBoundaryRequired, issueToolToken } from './toolRunAuthority.js';
 import { createToolNetwork } from './toolNetwork.js';
 import { getWorkspaceRootSync } from '../../utils/workspaceRoot.js';
+import { cachedTeamFolders, teamMounts } from './teamFolders.js';
 
 export const TOOL_WORKSPACE = '/app/data/projects';
 /** Member folders: the only roots besides the install folder the launcher will mount. */
@@ -41,7 +42,7 @@ export function toolWorkDir(...parts) {
   return dir;
 }
 
-export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken, workspaceFor = getWorkspaceRootSync, ensureDir = (dir) => fs.mkdirSync(dir, { recursive: true }) } = {}) {
+export function sandboxPlan(command, args = [], options = {}, { hosted = hostedToolBoundaryRequired(), actor = currentToolActor(), networkFactory = createToolNetwork, issueProxyKey = issueToolToken, workspaceFor = getWorkspaceRootSync, ensureDir = (dir) => fs.mkdirSync(dir, { recursive: true }), teamMountsFor = (who, root) => teamMounts(cachedTeamFolders(who), root) } = {}) {
   if (!hosted) return { command, args, options };
   if (!fs.existsSync(LAUNCHER)) throw Object.assign(new Error('Hosted tool sandbox is unavailable; execution refused'), { code: 'tool_sandbox_unavailable' });
   const root = toolRootFor(actor, workspaceFor);
@@ -50,6 +51,13 @@ export function sandboxPlan(command, args = [], options = {}, { hosted = hostedT
   ensureDir(root);
   // The launcher (scripts/agnt-tool-run.py) re-validates this and mounts only this folder.
   const environment = { PATH: '/usr/local/bin:/usr/bin:/bin', AGNT_TOOL_WORKSPACE: root };
+  // The teamspace Files this person may use, as <root>/Teamspaces/<name> (teamFolders.js). The launcher
+  // re-validates every source and target; the mount points are created here, inside the caller's folder.
+  const mounts = teamMountsFor(actor, root);
+  if (mounts.length) {
+    for (const mount of mounts) ensureDir(mount.target);
+    environment.AGNT_TOOL_TEAM_MOUNTS = JSON.stringify(mounts);
+  }
   for (const key of SAFE_ENV) if (options.env?.[key] !== undefined) environment[key] = String(options.env[key]);
   // NEVER forward a caller-supplied bearer. This run gets a socket bound to
   // the authenticated actor; API credentials stay in the trusted broker.

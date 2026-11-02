@@ -50,9 +50,12 @@ import { hostedToolBoundaryRequired } from './toolRunAuthority.js';
  * filtered egress, and a mount namespace holding only the runtime and the workspace. The database,
  * secrets and credential store are not in it, and toolProcess refuses to run anything if the sandbox is
  * missing. Code a member runs there cannot reach anyone's keys, so refusing it only broke members.
- * File tools (fs-read/fs-write) and SQL still run inside the server process, so they stay owner-only.
+ * File tools (fs-read/fs-write) run there too: every one of them (read/write/edit/list/glob/grep_file,
+ * file_operations, file-system-operation, image reads) goes through toolFiles.isolatedFileCall, a
+ * worker forked through the same launcher with only the caller's folder and the teamspace folders they
+ * may use mounted (teamFolders.js). SQL still runs inside the server process, so it stays owner-only.
  */
-const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval']);
+const SANDBOXED_CAPABILITIES = new Set(['shell', 'code-eval', 'fs-read', 'fs-write']);
 /**
  * Tools with no capability profile whose every process goes through the same sandbox. Empty on purpose:
  * the launched browser is ONE per instance and keeps the owner's signed-in sites (shared cookies by

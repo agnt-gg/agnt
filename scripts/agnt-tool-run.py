@@ -5,7 +5,13 @@ acting account's own (the owner's is the projects folder, a member's is
 /app/data/workspaces/<id>). So a member's code never sees the owner's files or
 another member's. The backend, its /proc entries, database, secrets and
 credential store never enter. No fallback to unsandboxed execution exists.
+
+Besides that workspace, the teamspace Files the caller may use (decided by the
+server, teamFolders.js) are mounted at <workspace>/Teamspaces/<name>. Each is
+re-checked here: the source must be a real teamspace files folder and the
+target a real folder directly under the workspace's Teamspaces folder.
 """
+import json
 import os
 import re
 import sys
@@ -25,6 +31,9 @@ SAFE_ENV = {'LANG', 'LC_ALL', 'TZ', 'TERM', 'PYTHONIOENCODING', 'PYTHONUTF8', 'A
 # itself for a symlink to backend state.
 # Each workspace gets its own /tmp, so one account's temp files never reach another's.
 TOOL_TMP_ROOT = '/app/data/.tool-tmp'
+TEAM_FILES = re.compile(r'/app/data/workspace-files/[0-9a-f]{64}')
+TEAM_FOLDER_NAME = re.compile(r'[A-Za-z0-9 _-][A-Za-z0-9 ._-]{0,59}')
+MAX_TEAM_MOUNTS = 50
 
 
 class Refused(Exception):
@@ -56,6 +65,40 @@ def resolve_workspace(requested, cwd, realpath=os.path.realpath, isdir=os.path.i
     if not inside(current, workspace):
         raise Refused('working directory must be inside the workspace')
     return workspace, current, tmp_key
+
+
+def team_mounts(raw, workspace, realpath=os.path.realpath, isdir=os.path.isdir, islink=os.path.islink):
+    """bwrap arguments for the teamspace folders, or Refused. `raw` is AGNT_TOOL_TEAM_MOUNTS (JSON)."""
+    if not raw:
+        return []
+    try:
+        mounts = json.loads(raw)
+    except ValueError:
+        raise Refused('team mounts must be JSON')
+    if not isinstance(mounts, list) or len(mounts) > MAX_TEAM_MOUNTS:
+        raise Refused('team mounts must be a short list')
+    parent = workspace + '/Teamspaces'
+    if mounts and (not isdir(parent) or islink(parent) or realpath(parent) != parent):
+        raise Refused('the Teamspaces folder must be a real directory')
+    args = []
+    seen = set()
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            raise Refused('a team mount must be an object')
+        source, target, rw = mount.get('source'), mount.get('target'), mount.get('rw')
+        if not isinstance(source, str) or not TEAM_FILES.fullmatch(source):
+            raise Refused('a team mount source must be a teamspace files folder')
+        if not isdir(source) or islink(source) or realpath(source) != source:
+            raise Refused('a team mount source must be a real directory')
+        if not isinstance(target, str) or os.path.dirname(target) != parent or not TEAM_FOLDER_NAME.fullmatch(os.path.basename(target)):
+            raise Refused('a team mount target must be a folder directly under Teamspaces')
+        if not isdir(target) or islink(target) or realpath(target) != target or target in seen:
+            raise Refused('a team mount target must be a real, unused directory')
+        if not isinstance(rw, bool):
+            raise Refused('a team mount must say read-only or read-write')
+        seen.add(target)
+        args += ['--bind' if rw else '--ro-bind', source, target]
+    return args
 
 
 def fail(message):
@@ -100,6 +143,11 @@ def main():
              '--setenv', 'NODE_PATH', workspace + '/node_modules:/app/node_modules',
              '--setenv', 'NODE_ENV', 'production', '--setenv', 'USER_DATA_PATH', '/app/data',
              '--setenv', 'AGNT_TOOL_SANDBOX', '1', '--chdir', current]
+    # After the workspace bind, so each teamspace folder overlays its mount point inside it.
+    try:
+        args += team_mounts(os.environ.get('AGNT_TOOL_TEAM_MOUNTS', ''), workspace)
+    except Refused as refused:
+        fail(str(refused))
     for name in SAFE_ENV | {'AGNT_TOOL_WORKSPACE_MOUNTED'}:
         if name in os.environ:
             args += ['--setenv', name, os.environ[name]]

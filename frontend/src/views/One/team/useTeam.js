@@ -131,6 +131,9 @@ const json = (method, body) => ({ method, body: JSON.stringify(body ?? {}) });
 
 export const teamApi = {
   messages: (ws) => teamRequest(space(ws, '/messages')),
+  /** "Team files with AI" (off / read / write): may Annie and agents use teamspace Files. */
+  aiFiles: () => teamRequest(path('/ai-files')),
+  setAiFiles: (mode) => teamRequest(path('/ai-files'), json('PUT', { mode })),
   /** Replies being written right now (Annie streaming), as full chat messages. */
   liveMessages: (ws) => teamRequest(space(ws, '/messages/live')),
   postMessage: (ws, body, mentions, spaceName) => teamRequest(space(ws, '/messages'), json('POST', { body, mentions, spaceName })),

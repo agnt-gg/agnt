@@ -150,7 +150,19 @@ export async function defaultRootFor(userId) {
  * The workspace root without touching the settings file. For synchronous callers (the tool sandbox
  * plans a launch synchronously). Never claims: an unclaimed install resolves as if unclaimed.
  */
+/**
+ * Inside the hosted tool sandbox the answer is fixed: the one folder the launcher mounted
+ * (agnt-tool-run.py sets AGNT_TOOL_WORKSPACE_MOUNTED). The settings file and the acting user are not
+ * visible there, and the install folder is not mounted for a member, so resolving from settings sent a
+ * member's file tools to a folder that does not exist in their sandbox.
+ */
+export function sandboxMountedRoot(env = process.env) {
+  return env.AGNT_TOOL_SANDBOX === '1' && env.AGNT_TOOL_WORKSPACE_MOUNTED ? path.resolve(env.AGNT_TOOL_WORKSPACE_MOUNTED) : null;
+}
+
 export function getWorkspaceRootSync(userId = currentToolActor()) {
+  const mounted = sandboxMountedRoot();
+  if (mounted) return mounted;
   userId = principalFor(userId);
   const settings = readSettingsSync();
   const owner = pinnedOwner();
@@ -162,6 +174,8 @@ export function getWorkspaceRootSync(userId = currentToolActor()) {
 
 /** Current workspace root for an account (default: the acting user, if any). */
 export async function getWorkspaceRoot(userId = currentToolActor()) {
+  const mounted = sandboxMountedRoot();
+  if (mounted) return mounted;
   userId = principalFor(userId);
   const owner = pinnedOwner();
   if (owner) {

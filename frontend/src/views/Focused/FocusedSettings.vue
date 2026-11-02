@@ -3,6 +3,7 @@
     <template v-if="section === 'members'">
       <button type="button" class="focused-page-back" @click="nav.go({ page: 'settings' })"><i class="fas fa-arrow-left" aria-hidden="true"></i>Settings</button>
       <MembersSettings @open-billing="nav.studio('SettingsScreen', { section: 'billing' })" @close="nav.go({ page: 'settings' })" />
+      <TeamFilesAiSettings />
       <PluginPolicySettings />
     </template>
     <template v-else>
@@ -142,6 +143,7 @@
 defineProps({ section: { type: String, default: null } });
 import MembersSettings from '@/views/Terminal/CenterPanel/screens/Settings/components/MembersSettings.vue';
 import PluginPolicySettings from './PluginPolicySettings.vue';
+import TeamFilesAiSettings from './TeamFilesAiSettings.vue';
 import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
