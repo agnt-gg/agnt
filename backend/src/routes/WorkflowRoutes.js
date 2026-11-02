@@ -58,23 +58,6 @@ WorkflowRoutes.get('/:workflowId/versions', authenticateToken, requireWorkflowOw
   }
 });
 
-// GET /api/workflows/:id/versions/:versionId - Get specific version
-WorkflowRoutes.get('/:workflowId/versions/:versionId', authenticateToken, requireWorkflowOwner, async (req, res) => {
-  try {
-    const { workflowId, versionId } = req.params;
-    const version = await WorkflowVersionService.getVersion(workflowId, parseInt(versionId));
-
-    if (!version) {
-      return res.status(404).json({ error: 'Version not found' });
-    }
-
-    res.json({ success: true, version });
-  } catch (error) {
-    console.error('[WorkflowVersionRoutes] Error getting version:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // POST /api/workflows/:id/revert - Revert to version
 WorkflowRoutes.post('/:workflowId/revert', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
@@ -154,6 +137,25 @@ WorkflowRoutes.get('/:workflowId/versions/stats', authenticateToken, requireWork
     res.json({ success: true, stats });
   } catch (error) {
     console.error('[WorkflowVersionRoutes] Error getting version stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/workflows/:id/versions/:versionId - Get specific version
+// Registered AFTER /versions/compare and /versions/stats: Express matches in order, and this
+// pattern would otherwise take "compare" and "stats" as a version id and answer 404.
+WorkflowRoutes.get('/:workflowId/versions/:versionId', authenticateToken, requireWorkflowOwner, async (req, res) => {
+  try {
+    const { workflowId, versionId } = req.params;
+    const version = await WorkflowVersionService.getVersion(workflowId, parseInt(versionId));
+
+    if (!version) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    res.json({ success: true, version });
+  } catch (error) {
+    console.error('[WorkflowVersionRoutes] Error getting version:', error);
     res.status(500).json({ error: error.message });
   }
 });
