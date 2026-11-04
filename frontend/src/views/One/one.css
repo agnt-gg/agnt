@@ -711,6 +711,13 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
   background: var(--surface-active);
   color: var(--text-primary);
 }
+/* On a phone, focused.css fills the user card with !important, and in light
+   themes with ink (its inverse bubble). Under One's ink text that drew ink on
+   ink: your own message was invisible. One's soft bubble holds there too. */
+.ui-one.ui-focused.is-compact .chat-screen-wrapper .message-wrapper.user .message-card {
+  background: var(--surface-active) !important;
+  color: var(--text-primary);
+}
 
 /* Tool steps, folded: one quiet pill per group. */
 .ui-one.ui-focused .steps-summary {
