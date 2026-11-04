@@ -618,35 +618,11 @@ router.post('/build-generated', authenticateToken, accountPluginMutation(async (
 
       const outputFile = path.join(distDir, `${pluginName}.agnt`);
 
-      // Get list of files to include
-      const filesToInclude = ['manifest.json'];
-      if (packageJson) filesToInclude.push('package.json');
-
-      // Add top-level .js files
-      const files = await fs.readdir(tempPluginDir);
-      for (const file of files) {
-        if (file.endsWith('.js')) {
-          filesToInclude.push(file);
-        }
-      }
-
-      // ecosystem assets: include ecosystem-asset directories so packs with agents,
-      // workflows, skills, widgets, or tools round-trip correctly through the
-      // regenerate → build flow.
-      for (const dir of ['agents', 'workflows', 'skills', 'widgets', 'tools']) {
-        try {
-          await fs.access(path.join(tempPluginDir, dir));
-          filesToInclude.push(dir);
-        } catch {}
-      }
-
-      // Add node_modules if exists
-      try {
-        await fs.access(path.join(tempPluginDir, 'node_modules'));
-        filesToInclude.push('node_modules');
-      } catch {
-        // No node_modules
-      }
+      // Pack everything in the temp folder. It holds exactly what the caller sent (manifest, package.json,
+      // every toolCode file: .mjs/.cjs entry points, lib/ helpers, data files, ecosystem-asset folders) plus
+      // what npm install added. Picking files by extension dropped a tool.mjs entry point, so the plugin
+      // installed without its code.
+      const filesToInclude = await fs.readdir(tempPluginDir);
 
       // Create tar.gz archive
       const tar = await import('tar');

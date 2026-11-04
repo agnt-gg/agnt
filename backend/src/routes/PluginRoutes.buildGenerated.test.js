@@ -65,6 +65,29 @@ describe('POST /plugins/build-generated', () => {
     expect(broadcastToUser).toHaveBeenCalledWith(owner, 'plugin:installed', expect.objectContaining({ name, version: '1.0.0', source: 'generated' }));
   });
 
+  it('packages every file it was given, not only top-level .js', async () => {
+    // A plugin built from its workspace folder sends every file. The route used to pack only top-level
+    // .js files, so a tool.mjs entry point (or a lib/ helper, or a data file) installed without its code.
+    const name = 'generated-' + randomUUID().slice(0, 8);
+    const response = await fetch(base + '/build-generated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-test-user': owner, Authorization: 'Bearer fixture' },
+      body: JSON.stringify({
+        manifest: { name, version: '1.0.0', tools: [{ type: 'probe', entryPoint: './tool.mjs' }] },
+        toolCode: { 'tool.mjs': 'export default {};', 'lib/helper.cjs': 'module.exports = 1;', 'data.json': '{"ok":true}' },
+        packageJson: { name, version: '1.0.0', type: 'module' },
+      }),
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    const tar = await import('tar');
+    const entries = [];
+    await tar.list({ file: body.outputFile, onentry: (entry) => entries.push(entry.path.replace(/\\/g, '/')) });
+    for (const file of ['manifest.json', 'package.json', 'tool.mjs', 'lib/helper.cjs', 'data.json']) {
+      expect(entries, file).toContain(`${name}/${file}`);
+    }
+  });
+
   it('does not broadcast when the install fails', async () => {
     broadcastToUser.mockClear();
     PluginInstaller.installFromFile.mockResolvedValueOnce({ success: false, error: 'fixture failure' });
