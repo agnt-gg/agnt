@@ -1419,14 +1419,31 @@ export async function listConnectionModels(id, { forceRefresh = false } = {}) {
 }
 
 export const VOICE_CREDENTIAL_SOURCE = Object.freeze({ PLATFORM: 'openai', CHATGPT: 'openai-codex' });
+/**
+ * The ChatGPT sign-in voice may use for `userId`: the same one chat uses. On a
+ * hosted team instance that is the member's own sign-in (their vault), else the
+ * owner's only when shared; elsewhere it is this install's. Reading the
+ * instance connection directly made a member's reconnect invisible to voice and
+ * lent them the owner's subscription unshared. Imported lazily:
+ * memberConnections imports this module.
+ */
+async function voiceSubscriptionConnection(userId) {
+  const { subscriptionConnectionFor } = await import('./memberConnections.js');
+  return subscriptionConnectionFor(userId, 'openai-codex');
+}
+
 export async function resolveVoiceCredentials(userId, dependencies = {}) {
-  const connection = dependencies.connection || getConnection('openai-codex');
+  const resolveConnection = dependencies.subscriptionConnection || voiceSubscriptionConnection;
+  let connection = dependencies.connection || null;
+  if (!connection) {
+    try { connection = await resolveConnection(userId); } catch (error) { console.warn(`[speech] ChatGPT sign-in lookup failed: ${error.message}`); }
+  }
   const isDisconnected = dependencies.isLocalProviderDisconnected || isLocalProviderDisconnected;
   const codexDisconnected = userId ? await isDisconnected(userId, 'openai-codex') : false;
   const candidates = [], seen = new Set();
   const add = candidate => { if (!seen.has(candidate.token)) { seen.add(candidate.token); candidates.push(candidate); } };
   // Resolve once: callers retain this snapshot for their fallback attempt.
-  try {
+  if (connection) try {
     const token = codexDisconnected ? '' : tokenText(await connection.ensureValidOAuthToken());
     if (token) {
       let accountId = null;

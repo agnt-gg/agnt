@@ -21,6 +21,11 @@ vi.mock('../auth/AuthManager.js', () => ({
   default: { getValidAccessToken: (...a) => getValidAccessToken(...a) },
 }));
 
+const subscriptionConnectionFor = vi.fn();
+vi.mock('./memberConnections.js', () => ({
+  subscriptionConnectionFor: (...a) => subscriptionConnectionFor(...a),
+}));
+
 
 const { resolveVoiceCredentials, isBorrowedCredential, VOICE_CREDENTIAL_SOURCE } = await import('./connectionRuntime.js');
 const disconnected = new Set();
@@ -39,6 +44,36 @@ beforeEach(() => {
   ensureValidOAuthToken.mockResolvedValue(null);
   getChatGptAccountId.mockReturnValue(null);
   disconnected.clear();
+});
+
+describe('voice uses the same ChatGPT sign-in as chat', () => {
+  /**
+   * Reported on bravo (2026-11-04): a team member reconnected ChatGPT and voice
+   * still failed. The reconnect went to the member's vault, which chat reads;
+   * voice read only the instance's (owner's) sign-in, revoked upstream.
+   */
+  const signIn = (token) => ({ ensureValidOAuthToken: async () => token, getChatGptAccountId: () => 'acct_member' });
+  const { connection: _instance, ...noInstance } = dependencies;
+
+  it('by default resolves the sign-in for THIS caller through memberConnections', async () => {
+    subscriptionConnectionFor.mockReset();
+    subscriptionConnectionFor.mockResolvedValue(signIn('eyJ.member.token'));
+    const chain = await resolveVoiceCredentials('member-2', noInstance);
+    expect(subscriptionConnectionFor).toHaveBeenCalledWith('member-2', 'openai-codex');
+    expect(chain[0]).toEqual({ token: 'eyJ.member.token', source: VOICE_CREDENTIAL_SOURCE.CHATGPT, accountId: 'acct_member' });
+  });
+
+  it('a member with no sign-in of their own and none shared gets no ChatGPT credential', async () => {
+    getValidAccessToken.mockResolvedValue('sk-team');
+    const chain = await resolveVoiceCredentials('member-2', { ...noInstance, subscriptionConnection: async () => null });
+    expect(chain.map((c) => c.source)).toEqual([VOICE_CREDENTIAL_SOURCE.PLATFORM]);
+  });
+
+  it('a failing sign-in lookup still leaves the platform key usable', async () => {
+    getValidAccessToken.mockResolvedValue('sk-platform');
+    const chain = await resolveVoiceCredentials('member-2', { ...noInstance, subscriptionConnection: async () => { throw new Error('vault unreachable'); } });
+    expect(chain.map((c) => c.token)).toEqual(['sk-platform']);
+  });
 });
 
 describe('a disconnect is per AGNT account', () => {
