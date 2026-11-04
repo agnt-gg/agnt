@@ -1,7 +1,7 @@
 <template>
   <div
     class="ui-one ui-focused"
-    :class="{ 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron, 'is-drawer-open': drawerShown }"
+    :class="{ 'is-compact': isMobile, 'is-borrowed': borrowed, 'has-window-bar': isElectron, 'is-drawer-open': drawerShown, 'is-chat-page': !isMobile && onChatPage }"
   >
     <!-- AGNT One: the app's only frame. A rail, one top bar, and the chat.
          `.ui-focused` on the root is deliberate: focused.css holds the measured

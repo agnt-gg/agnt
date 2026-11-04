@@ -29,6 +29,15 @@
 .mk .scope.mk-private { background: var(--raised); border: 1px solid var(--line); }
 .mk .av.is-system { background: var(--surface-active); color: var(--text-tertiary); }
 .mk .tc-docprev { white-space: pre-wrap; max-height: 260px; overflow: auto; }
+/* The chat list's host is deliberately not .mk (it is Studio's own list), so a
+   rule for .mk.mk-chatlist-host never applied, and must not: on a desktop that
+   list is the chat page's only list of chats. */
 @media (max-width: 860px) {
-  .mk.mk-drawer-host, .mk.mk-chatlist-host { display: none; }
+  .mk.mk-drawer-host { display: none; }
+}
+/* The chat page puts Studio's chat list beside the chat. With the teamspace
+   drawer as well, a 900px window left the chat 292px wide. The drawer gives
+   way first there: the rail still reaches everything it lists. */
+@media (max-width: 1100px) {
+  .ui-one.is-chat-page .mk.mk-drawer-host { display: none; }
 }
