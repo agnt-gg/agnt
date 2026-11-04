@@ -1,6 +1,6 @@
 ---
 name: agnt-plugin-builder
-description: "End-to-end workflow for creating, building, installing, and hot-reloading AGNT plugins entirely from chat. Use this skill whenever the user asks to 'build a plugin', 'create an AGNT plugin', 'add a new tool to AGNT', 'integrate X with AGNT' (where X is an API or service), 'make a plugin for [service]', or wants to extend AGNT with custom workflow nodes, triggers, or integrations. Also trigger when the user mentions editing, updating, rebuilding, or reinstalling an existing plugin, or says things like 'turn this API into an AGNT tool', 'wrap this endpoint as a plugin', or 'add [service] to my AGNT workflows'. Covers scaffolding the dev folder, writing manifest.json + ES-module tool code, running build-plugin.js, installing via /api/plugins/install-file, and reloading via /api/plugins/reload — all from a single chat session with zero manual terminal work."
+description: "End-to-end workflow for creating, building, installing, and hot-reloading AGNT plugins entirely from chat. Use this skill whenever the user asks to 'build a plugin', 'create an AGNT plugin', 'add a new tool to AGNT', 'integrate X with AGNT' (where X is an API or service), 'make a plugin for [service]', or wants to extend AGNT with custom workflow nodes, triggers, or integrations. Also trigger when the user mentions editing, updating, rebuilding, or reinstalling an existing plugin, or says things like 'turn this API into an AGNT tool', 'wrap this endpoint as a plugin', or 'add [service] to my AGNT workflows'. Covers scaffolding the plugin in the user's own workspace (<workspace>/plugins/<name>), writing manifest.json + ES-module tool code, building and installing it with /api/plugins/build-generated, and publishing it to the marketplace to share it — all from a single chat session with zero manual terminal work."
 allowed-tools: Read Write Edit Bash
 ---
 
@@ -10,23 +10,26 @@ End-to-end procedure for creating, building, installing, and hot-reloading AGNT 
 
 ## Why this skill exists
 
-AGNT plugins are self-contained tool bundles (`.agnt` files = gzipped tar archives) that extend AGNT with custom workflow nodes. The official process is well-documented but involves ~6 coordinated steps across the filesystem and HTTP API. This skill encodes the exact sequence so any request like *"build me a plugin that does X"* can be completed in one flow.
+AGNT plugins are self-contained tool bundles (`.agnt` files = gzipped tar archives) that extend AGNT with custom workflow nodes. The official process is well-documented but involves a few coordinated steps across the filesystem and HTTP API. This skill encodes the exact sequence so any request like *"build me a plugin that does X"* can be completed in one flow.
 
 ---
 
-## Canonical paths (Windows)
+## Where a plugin lives
 
-These paths are fixed on the user's machine. Use them verbatim.
+Every account has its own workspace, so no path here is fixed. Resolve `<workspace>` each time.
 
-| Purpose | Path |
+| Purpose | Where |
 |---|---|
-| Plugin dev folder (plugins MUST live here to build) | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\dev\<plugin-name>\` |
-| Build script | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\cli\build-plugin.js` |
-| Built `.agnt` output | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\plugin-builds\<plugin-name>.agnt` |
-| Installed runtime location | `C:\Users\Studio\AppData\Roaming\AGNT\plugins\installed\<plugin-name>\` |
+| Plugin source (the user's) | `<workspace>/plugins/<plugin-name>/` |
+| `<workspace>` | The path in your system prompt's **Workspace** section ("The user's workspace directory is: ..."). If that section is missing, read it: `GET /api/filesystem/settings` returns `workspaceRoot`. |
+| Build and install | `POST /api/plugins/build-generated` (works in every install; no AGNT source checkout needed) |
+| Installed copy | AGNT's user-data `plugins/installed/<plugin-name>/`. AGNT manages it: never edit it in place |
+| Share with others | Publish to the marketplace (Step 4) |
 | AGNT API base | `http://localhost:3333/api` |
 
-On macOS/Linux, swap the user-data path for `~/Library/Application Support/AGNT/...` or `~/.config/AGNT/...` respectively.
+**Never create a user's plugin in the AGNT repository's `backend/plugins/dev/`.** That folder is AGNT's own
+source tree: the staging area for the few plugins bundled with the app (see *Contributors* below). Most users
+run the packaged app and have no such folder, and a plugin put there belongs to AGNT's source, not to the user.
 
 ---
 
@@ -184,112 +187,108 @@ For auth-enabled tools and trigger skeletons, read `references/tool-templates.md
 
 ---
 
-## The 6-step build pipeline
+## The build pipeline
 
-This is the exact sequence to run for every new plugin. Each step is small and independently verifiable, so stop and debug at any step that fails rather than pushing through.
+Each step is small and independently verifiable, so stop and debug at any step that fails rather than pushing through.
 
-### Step 1 — Scaffold the plugin folder
+### Step 1 — Scaffold the plugin in the workspace
 
-Create the folder and write all three files using `file_operations`:
+Resolve `<workspace>` (see *Where a plugin lives*), then write the files with `file_operations` / `write_file`:
 
 ```
-mkdir → C:\Users\Studio\...\backend\plugins\dev\<plugin-name>
-write → manifest.json
-write → package.json
-write → <tool-name>.js
+<workspace>/plugins/<plugin-name>/manifest.json
+<workspace>/plugins/<plugin-name>/package.json
+<workspace>/plugins/<plugin-name>/<tool-name>.js
 ```
 
 Always write JSON with `JSON.stringify(obj, null, 2)` to guarantee valid syntax (no trailing commas, proper quoting).
+Keep only plugin files in this folder: everything in it is packaged. Notes, scripts and test fixtures go elsewhere.
+Files must be text (code, JSON, markdown); give the plugin an icon name rather than an image file.
 
-### Step 2 — Install dependencies (skip if none)
+### Step 2 — Build and install
 
-If the plugin has no npm deps, skip this step entirely — it saves ~30-60 seconds per build.
-
-Otherwise, from `execute_javascript_code`:
-
-```javascript
-const { execSync } = require('child_process');
-execSync('npm install --production', {
-  cwd: 'C:\\Users\\Studio\\...\\backend\\plugins\\dev\\<plugin-name>',
-  stdio: 'inherit'
-});
-```
-
-`--production` skips devDependencies, keeping the `.agnt` bundle small.
-
-### Step 3 — Build the `.agnt` package
-
-Run the official build script, passing **only the plugin name** (not a path — the script joins it to its internal `PLUGINS_DIR = <plugins>/dev`):
-
-```javascript
-execSync('node cli/build-plugin.js <plugin-name>', {
-  cwd: 'C:\\Users\\Studio\\...\\backend\\plugins',
-  stdio: 'inherit'
-});
-```
-
-Success produces `plugin-builds/<plugin-name>.agnt`. The build script validates the manifest, auto-fixes missing `"type": "module"`, runs `npm install` if needed, and gzipped-tars the folder.
-
-It also scans the source for capabilities and **refuses to build** a manifest
-without a structured `permissions` block. If the run stops on `manifest.json
-must contain structured permissions.capabilities and permissions.domains
-arrays`, add the block described above rather than working around it. To draft
-one from the source automatically — the script takes no arguments, it scans
-**every** plugin in `dev/` and writes one ready-to-paste block per plugin to
-`permissions-drafts/<plugin-name>.json`:
-
-```bash
-node cli/draft-permissions.js
-```
-
-### Step 4 — Install via the API
-
-Read the `.agnt` file as base64 and POST to `/api/plugins/install-file`:
+`POST /api/plugins/build-generated` takes the plugin's files, runs `npm install --production` when
+`package.json` lists dependencies, packages the `.agnt`, installs it and reloads every plugin process.
+Run it from `execute_javascript_code`:
 
 ```javascript
 const fs = require('fs');
-const buf = fs.readFileSync('C:\\Users\\Studio\\...\\plugin-builds\\<plugin-name>.agnt');
-const fileData = buf.toString('base64');
-
+const path = require('path');
 const API = 'http://localhost:3333/api';
-const res = await fetch(API + '/plugins/install-file', {
+const H = { Authorization: 'Bearer ' + process.env.AGNT_AUTH_TOKEN, 'Content-Type': 'application/json' };
+const { workspaceRoot } = await (await fetch(API + '/filesystem/settings', { headers: H })).json();
+const dir = path.join(workspaceRoot, 'plugins', '<plugin-name>');
+
+// Every file except manifest.json, package.json and node_modules, keyed by its path inside the folder.
+const SKIP = new Set(['node_modules', 'manifest.json', 'package.json', 'package-lock.json']);
+const toolCode = {};
+(function walk(rel) {
+  for (const entry of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+    const file = rel ? rel + '/' + entry.name : entry.name;
+    if (SKIP.has(file)) continue;
+    if (entry.isDirectory()) walk(file);
+    else toolCode[file] = fs.readFileSync(path.join(dir, file), 'utf8');
+  }
+})('');
+
+const res = await fetch(API + '/plugins/build-generated', {
   method: 'POST',
-  headers: {
-    'Authorization': 'Bearer ' + process.env.AGNT_AUTH_TOKEN,
-    'Content-Type': 'application/json'
-  },
+  headers: H,
   body: JSON.stringify({
-    name: '<plugin-name>',
-    fileName: '<plugin-name>.agnt',
-    fileData
-  })
+    manifest: JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')),
+    packageJson: JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')),
+    toolCode,
+    installAfterBuild: true,
+  }),
 });
-console.log(await res.json());
+console.log(await res.json()); // { success, installed, installResult, reloadStatus }
 ```
 
-This extracts the archive into the user-data plugins folder.
+The new tools are available to workflows, agents and the node picker straight away. No app restart.
 
-### Step 5 — Hot-reload the plugin registry
-
-```javascript
-await fetch(API + '/plugins/reload', {
-  method: 'POST',
-  headers: { 'Authorization': 'Bearer ' + process.env.AGNT_AUTH_TOKEN }
-});
-```
-
-New tools are immediately available to workflows, agents, and the node picker UI. No app restart required.
-
-### Step 6 — Verify
+### Step 3 — Verify
 
 ```javascript
-const { plugins } = await (await fetch(API + '/plugins/installed', {
-  headers: { 'Authorization': 'Bearer ' + process.env.AGNT_AUTH_TOKEN }
-})).json();
+const { plugins } = await (await fetch(API + '/plugins/installed', { headers: H })).json();
 // Confirm <plugin-name> appears with enabled: true and tools listed
 ```
 
 If the plugin shows up but the tool doesn't fire when used, inspect the AGNT backend console — it logs `[PluginManager]` errors at load time that usually reveal the issue (bad export, missing dep, path error).
+
+### Step 4 — Share it: publish to the marketplace
+
+Only when the plugin should be available to other people. This is what Plugins → Publish does:
+
+1. **Check the sign-ins.** Get the installed package, then ask whether it can be published:
+   ```javascript
+   const pkg = await (await fetch(API + '/plugins/installed/<plugin-name>/package', { headers: H })).json();
+   const check = await (await fetch(API + '/plugins/install-file/check-auth', { method: 'POST', headers: H, body: JSON.stringify({ fileData: pkg.data }) })).json();
+   // check.publishable must not be false; fix every sign-in it lists first (see Sign-ins below).
+   ```
+2. **First publish** of this plugin: `POST https://api.agnt.gg/marketplace/publish` with
+   `{ asset_type: 'plugin', asset_id: '<plugin-name>', asset_data: { manifest, packageData: pkg.data, size: pkg.size }, title, description, category, tags, price }`.
+3. **A new version** of a listing that exists: bump `version` in manifest.json and package.json, rebuild
+   (Step 2), then `POST https://api.agnt.gg/marketplace/items/<listingId>/version` with
+   `{ packageData, changelog }`. `/marketplace/publish` only creates, and answers 409 for an existing id.
+
+### Contributors: plugins bundled with AGNT
+
+Only when working on AGNT's own source. The few plugins that ship inside the app live in the AGNT
+repository's `backend/plugins/dev/` and are built with the CLI (it also accepts a path to any plugin folder):
+
+```bash
+node backend/plugins/cli/build-plugin.js <plugin-name>   # -> backend/plugins/plugin-builds/<plugin-name>.agnt
+```
+
+The CLI validates the manifest, auto-fixes a missing `"type": "module"`, runs `npm install` if needed, and
+scans the source for capabilities. It **refuses to build** a manifest without a structured `permissions` block;
+if the run stops on that error, add the block described above rather than working around it. To draft one from
+the source automatically (no arguments: it scans every plugin in `dev/` and writes one ready-to-paste block per
+plugin to `permissions-drafts/<plugin-name>.json`):
+
+```bash
+node backend/plugins/cli/draft-permissions.js
+```
 
 ---
 
@@ -395,11 +394,11 @@ Use the manual 6-step pipeline for anything non-trivial — you get full control
 
 ## Editing an existing plugin
 
-To modify an installed plugin, start from its source (which lives in `dev/`):
+To modify a plugin, start from its source in `<workspace>/plugins/<plugin-name>/`:
 
-1. Read the files from `<plugins>/dev/<plugin-name>/` (or fetch via `GET /api/plugins/installed/<name>/source` if only the installed copy exists).
+1. If that folder does not exist (the plugin came from the marketplace, or was built elsewhere), fetch the installed source with `GET /api/plugins/installed/<name>/source` and write it into that folder first.
 2. Edit in place.
-3. Re-run steps 3-6 (build → install → reload → verify). The install-file endpoint overwrites cleanly.
+3. Re-run Step 2 (build and install: it overwrites the installed copy cleanly) and Step 3 (verify). To ship the change to others, bump the version and publish it (Step 4).
 
 To remove a plugin: `DELETE /api/plugins/:name`, then `POST /api/plugins/reload`.
 
@@ -414,7 +413,7 @@ To remove a plugin: `DELETE /api/plugins/:name`, then `POST /api/plugins/reload`
 | Importing AuthManager into a tool | Don't: read `params.__auth.token`, which AGNT fills in for every tool with `authRequired` + `authProvider` |
 | A tool that writes, summarises or classifies calls OpenAI/Anthropic itself, or names an AI model (`claude-code`, `openai-codex`, `openai`...) as its `authProvider` | Give it no sign-in and call `await workflowEngine.ai.generate({ prompt, system, maxTokens })`, which runs on the user's selected AI. AI models are not sign-ins: a subscription has no token for a tool |
 | Sign-in shows `unresolved` / "Can't be published" | Declare it in `manifest.auth`, or use the shared sign-in's id. Never create a server sign-in for it |
-| Plugin folder outside `dev/` | Build script will fail — always create in `dev/` |
+| Plugin created in the AGNT repo's `backend/plugins/dev/` | That is AGNT's source tree, not the user's. Create it in `<workspace>/plugins/<plugin-name>/` and build it with Step 2 |
 | Bloated `.agnt` | Use `npm install --production` |
 | Tool `type` mismatch (manifest vs. `this.name`) | Keep them identical, kebab-case |
 | Invalid JSON in manifest | Always write via `JSON.stringify(obj, null, 2)` |

@@ -10,11 +10,16 @@ The plugin system allows tools to be loaded dynamically with their own isolated 
 - **Hot reload** - Install/uninstall without restarting
 - **Cross-platform** - Pure JS plugins work everywhere
 
+> **Building your own plugin?** It does not go in this folder. A user's plugin lives in their own
+> workspace, `<workspace>/plugins/<plugin-name>/`, and is built and installed from there (see
+> `backend/skills/agnt-plugin-builder/SKILL.md` and `docs/START-HERE-PLUGINS.md` in this folder). This folder is AGNT's
+> source tree: `dev/` holds only the plugins bundled with the app.
+
 ## Directory Structure
 
 ```
 backend/plugins/
-├── dev/                    # Plugin development workspace (SOURCE)
+├── dev/                    # Source of the plugins BUNDLED with AGNT (contributors only)
 │   └── my-plugin/
 │       ├── manifest.json
 │       ├── package.json
@@ -268,11 +273,13 @@ POST /api/plugins/reload
 ## Workflow: Dev to Distribution
 
 ```
+This is the path for a plugin bundled with AGNT. A user's own plugin is built from its workspace folder.
+
 1. Develop in dev/my-plugin/
        ↓
 2. node cli/build-plugin.js my-plugin
        ↓
-3. plugin-builds/my-plugin.agnt (commit to git)
+3. plugin-builds/my-plugin.agnt (generated: gitignored, never committed)
        ↓
 4. electron-builder packages app
        ↓
