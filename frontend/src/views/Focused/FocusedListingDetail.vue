@@ -22,6 +22,8 @@
               <button type="button" class="ap-btn primary" data-action="install" :disabled="installed || installing" @click="emit('install')">{{ installLabel }}</button>
             </div>
             <p v-if="listing.tagline" class="ap-hint ap-next-line">{{ listing.tagline }}</p>
+            <!-- Ratings and reviews live on the full Market screen, as from the plain listing view. -->
+            <button type="button" class="focused-link" data-action="reviews" @click="emit('details')">Reviews &amp; more details <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
           </header>
 
           <div class="ap-detail-body">
@@ -126,7 +128,7 @@ const props = defineProps({
   installed: { type: Boolean, default: false },
   installing: { type: Boolean, default: false },
 });
-const emit = defineEmits(['install', 'back']);
+const emit = defineEmits(['install', 'back', 'details']);
 
 const detail = computed(() => listingDetail(props.listing) || { groups: [], access: [], facts: [], itemCount: 0, known: false });
 const tier = computed(() => trustTier({ trustTier: props.listing.trust_tier }));

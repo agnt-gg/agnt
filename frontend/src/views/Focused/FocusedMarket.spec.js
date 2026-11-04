@@ -177,4 +177,15 @@ describe('an agent, workflow, tool or skill listing', () => {
     expect(nav.go).toHaveBeenCalledWith({ page: 'library', tab: 'agents' });
     w.unmount();
   });
+
+  // The plain listing view always linked to the full Market screen for ratings and reviews; this
+  // page replaced it for these kinds and dropped the link, leaving One no way to read reviews.
+  it('links to its reviews on the full Market screen', async () => {
+    const listing = { id: 'k1', asset_type: 'agent', title: 'Koder Kai', price: '0.00', metadata: JSON.stringify({ assignedTools: ['web_search'] }) };
+    getters['marketplace/shelfItems'] = [listing];
+    const w = mountMarket('k1');
+    await w.find('.focused-listing-detail [data-action="reviews"]').trigger('click');
+    expect(nav.studio).toHaveBeenCalledWith('MarketplaceScreen', { listing: expect.objectContaining({ id: 'k1' }) });
+    w.unmount();
+  });
 });

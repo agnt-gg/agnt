@@ -34,6 +34,7 @@
         :installing="String(installingId) === String(selectedItem.id)"
         @install="install(selectedItem)"
         @back="backFromListing()"
+        @details="nav.studio('MarketplaceScreen', { listing: selectedItem })"
       />
     </template>
 
