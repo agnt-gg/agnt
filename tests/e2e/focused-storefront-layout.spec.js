@@ -81,7 +81,8 @@ for (const width of [1440, 900, 390]) {
     await page.goto('/chat');
     await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
     await withStore(page, 'return store.dispatch("theme/setUiMode", "focused")');
-    const heading = page.locator('.focused-home-hero h1');
+    // One's home greeting (OneWelcome) replaced Focused's home hero.
+    const heading = page.locator('.one-welcome-title');
     await expect(heading).toBeVisible();
     const line = await heading.evaluate(el => {
       const range = document.createRange(); range.selectNodeContents(el);
@@ -90,19 +91,24 @@ for (const width of [1440, 900, 390]) {
     });
     expect(line.tops).toHaveLength(1);
     expect(line.width).toBeLessThanOrEqual(line.parentWidth);
-    if (width <= 800) await page.getByRole('button', { name: 'Open sidebar', exact: true }).click();
-    const recent = page.locator('.focused-recent').first();
+    // The chat keeps a usable column beside One's rail, drawer and chat list (it was 292px at 900px).
+    if (width > 800) expect(await page.locator('.one-main').evaluate(el => el.getBoundingClientRect().width), 'chat column').toBeGreaterThanOrEqual(480);
+    // A phone lists chats in One's drawer (FocusedSidebar's Recents); a desktop in Studio's chat list.
+    const phone = width <= 800;
+    if (phone) await page.getByRole('button', { name: 'Open chats', exact: true }).click();
+    const recent = phone ? page.locator('.focused-recent').first() : page.locator('[data-testid="one-chat-sidebar"] .output-item', { hasText: 'A deliberately long' }).first();
     await expect(recent).toBeVisible();
     // Selected, unread and working states must all preserve the same bounds.
-    const bounds = await recent.evaluate(el => {
+    const bounds = await recent.evaluate((el, phone) => {
       const result = [];
-      for (const classes of ['active', 'unread', 'working active']) {
-        el.className = `focused-recent ${classes}`;
-        const title = el.querySelector('.focused-recent-title'), row = el.getBoundingClientRect(), r = title.getBoundingClientRect();
+      const states = phone ? ['active', 'unread', 'working active'] : ['active', 'selected', 'streaming active'];
+      for (const classes of states) {
+        el.className = `${phone ? 'focused-recent' : 'output-item'} ${classes}`;
+        const title = el.querySelector(phone ? '.focused-recent-title' : '.output-preview'), row = el.getBoundingClientRect(), r = title.getBoundingClientRect();
         result.push({ classes, rowLeft: row.left, rowRight: row.right, titleLeft: r.left, titleRight: r.right, clipped: title.scrollWidth > title.clientWidth, overflow: getComputedStyle(title).textOverflow });
       }
       return result;
-    });
+    }, phone);
     for (const row of bounds) {
       expect(row.titleLeft).toBeGreaterThan(row.rowLeft);
       expect(row.titleRight).toBeLessThan(row.rowRight);
@@ -122,15 +128,17 @@ for (const width of [1440, 390]) {
     await withStore(page, 'return store.dispatch("theme/setUiMode", "focused")');
     await withStore(page, 'return store.dispatch("theme/setTheme", "light")');
     await expect(page.locator('.focused-market')).toBeVisible();
-    await expect(page.locator('.focused-market-card')).toHaveCount(3);
+    // The Market's cards are agnt.gg's (MarketListingCard, .mlc).
+    await expect(page.locator('.focused-market .mlc')).toHaveCount(3);
     await expect(page.locator('.focused-borrowed-bar')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('market-light.png'), fullPage: true });
     expect(await page.locator('.focused-market').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.getByRole('searchbox', { name: 'Search Market' }).fill('Weekly');
-    await expect(page.locator('.focused-market-card')).toHaveCount(1);
-    await page.locator('.focused-market-card-open').click();
+    await expect(page.locator('.focused-market .mlc')).toHaveCount(1);
+    await page.locator('.focused-market .mlc-title').click();
     await expect(page).toHaveURL(/item=w1/);
-    await expect(page.locator('.focused-market-detail h2')).toHaveText('Weekly report');
+    // A workflow's listing shows what it contains (FocusedListingDetail).
+    await expect(page.locator('.focused-listing-detail .ap-detail-name')).toHaveText('Weekly report');
     await page.getByRole('button', { name: 'Reviews & more details' }).click();
     await expect(page).toHaveURL(/item=w1.*studio=1/);
     await expect(page.locator('.focused-borrowed-bar')).toBeVisible();

@@ -36,14 +36,17 @@ for (const width of [1440, 900, 390]) {
         const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
         await store.dispatch('theme/setTheme', theme);
       }, theme);
-      // The sidebar is painted with the theme's own background, like Studio's rail.
+      // One's frame is painted with the theme's own background: the shell, and on a desktop the rail
+      // drawn clear over it, so rail and page read as one surface (One replaced Focused's sidebar).
       const colors = await page.evaluate(() => {
-        const shell = document.querySelector('.ui-focused');
+        const shell = document.querySelector('.ui-one');
         const background = document.createElement('span'); background.style.background = 'var(--color-background)'; shell.append(background);
-        const result = { sidebar: getComputedStyle(document.querySelector('.focused-sidebar')).backgroundColor, background: getComputedStyle(background).backgroundColor };
+        const rail = document.querySelector('.mk-rail-host');
+        const result = { shell: getComputedStyle(shell).backgroundColor, rail: rail ? getComputedStyle(rail).backgroundColor : null, background: getComputedStyle(background).backgroundColor };
         background.remove(); return result;
       });
-      expect(colors.sidebar, theme).toBe(colors.background);
+      expect(colors.shell, theme).toBe(colors.background);
+      if (width > 800) expect([colors.background, 'rgba(0, 0, 0, 0)'], `${theme} rail`).toContain(colors.rail);
     }
     // A different conversation gets a different TransitionGroup: outgoing
     // welcome/setup nodes cannot remain while the incoming one renders.
@@ -58,24 +61,30 @@ for (const width of [1440, 900, 390]) {
   });
 }
 
-// Studio is the reference: Focused's New button must compute to exactly what
-// Studio's New button computes to, theme by theme — not to a token we chose.
-test('Focused New buttons match Studio New buttons in every theme @ci', async ({ appPage: page }) => {
+// AGNT One gives every page one lead action: an ink pill, the colour of the text, like the composer's
+// send button (one.css "Buttons: one language on every page"). It used to copy Studio's green outline;
+// One replaced that deliberately. What must hold in every theme: it IS the ink pill, and it is readable.
+test('One New buttons are the readable ink pill in every theme @ci', async ({ appPage: page }) => {
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); });
   // Widgets is a library page whose Studio toolbar carries the New button.
   await page.goto('/widget-manager');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
   const store = (fn, arg) => page.evaluate(([body, value]) => new Function('store', 'value', body)(document.querySelector('#app').__vue_app__.config.globalProperties.$store, value), [fn, arg]);
-  const paint = selector => page.locator(selector).first().evaluate(el => { const c = getComputedStyle(el); return { color: c.color, background: c.backgroundColor, border: c.borderTopColor }; });
+  await store('return store.dispatch("theme/setUiMode", value)', 'focused');
   for (const theme of ['cyberpunk', 'dark', 'light', 'rose', 'midnight', 'ember', 'nord', 'hacker']) {
     await store('return store.dispatch("theme/setTheme", value)', theme);
-    await store('return store.dispatch("theme/setUiMode", value)', 'studio');
-    await page.locator('.wm-btn-create').first().waitFor();
-    const studio = await paint('.wm-btn-create');
-    await store('return store.dispatch("theme/setUiMode", value)', 'focused');
-    await page.locator('.ui-focused .focused-primary').first().waitFor();
-    const focused = await paint('.ui-focused .focused-primary');
-    expect(focused, theme).toEqual(studio);
+    await page.locator('.ui-one .focused-primary').first().waitFor();
+    const button = await page.locator('.ui-one .focused-primary').first().evaluate(el => {
+      const ink = document.createElement('span'); ink.style.color = 'var(--text-primary)'; el.parentElement.append(ink);
+      const c = getComputedStyle(el), expected = getComputedStyle(ink).color; ink.remove();
+      const rgb = css => css.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const lum = v => v.map(x => x / 255).map(x => x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4).reduce((s, x, i) => s + x * [.2126, .7152, .0722][i], 0);
+      const a = lum(rgb(c.color)), b = lum(rgb(c.backgroundColor));
+      return { background: c.backgroundColor, ink: expected, radius: parseFloat(c.borderTopLeftRadius), ratio: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) };
+    });
+    expect(button.background, `${theme} fill`).toBe(button.ink);
+    expect(button.radius, `${theme} pill`).toBeGreaterThanOrEqual(16);
+    expect(button.ratio, `${theme} label contrast`).toBeGreaterThanOrEqual(4.5);
   }
 });
 
@@ -92,13 +101,22 @@ test('Focused shows a custom agent image exactly as Studio resolves it @ci', asy
   await expect.poll(() => image.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
 });
 
-test('Focused log out ends the session and lands on sign-in @ci', async ({ appPage: page }) => {
+// On a desktop One has no account menu: Log out is in Settings (the rail's gear). On a phone it is
+// also in the chats drawer's account menu. Both must end the session.
+for (const width of [1440, 390]) test(`One log out ends the session and lands on sign-in at ${width}px @ci`, async ({ appPage: page }) => {
+  await page.setViewportSize({ width, height: 950 });
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); });
   await page.goto('/chat');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.dispatch('theme/setUiMode', 'focused'));
-  await page.locator('.focused-account').click();
-  await page.getByTestId('focused-logout').click();
+  if (width > 800) {
+    await page.getByTestId('one-rail-settings').click();
+    await page.locator('.ui-one').getByRole('button', { name: 'Log out', exact: true }).click();
+  } else {
+    await page.getByRole('button', { name: 'Open chats', exact: true }).click();
+    await page.locator('.focused-account').click();
+    await page.getByTestId('focused-logout').click();
+  }
   await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.getters['userAuth/isAuthenticated'])).toBe(false);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('token'))).toBeNull();
   await expect(page).toHaveURL(/\/settings/);
@@ -108,7 +126,10 @@ test('Focused log out ends the session and lands on sign-in @ci', async ({ appPa
 
 // Reported: a running chat in Focused's Recents looked exactly like an unread
 // one. It must pulse and say who is speaking, then fall back to unread when done.
-test('Focused Recents shows a running chat as working, with who is speaking @ci', async ({ appPage: page }) => {
+// In One those Recents are the phone's chats drawer (FocusedSidebar); a desktop
+// shows Studio's chat list, covered by the test after this one.
+test('One phone Recents show a running chat as working, with who is speaking @ci', async ({ appPage: page }) => {
+  await page.setViewportSize({ width: 390, height: 950 });
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'focused'); });
   await page.route('**/users/preferences**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   // The chat list, served by the backend, with the conversation unread
@@ -120,6 +141,7 @@ test('Focused Recents shows a running chat as working, with who is speaking @ci'
     : r.fallback());
   await page.goto('/chat');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+  await page.getByRole('button', { name: 'Open chats', exact: true }).click();
   const recent = page.locator('.focused-recent', { hasText: 'Background research' });
   await expect(recent).toHaveClass(/unread/);
 
@@ -146,4 +168,42 @@ test('Focused Recents shows a running chat as working, with who is speaking @ci'
   await expect(recent).not.toHaveClass(/working/);
   await expect(recent.locator('.focused-recent-status')).toHaveCount(0);
   await expect(recent).toHaveClass(/unread/);
+});
+
+// The same promise on a desktop, where One shows Studio's own chat list
+// (OneShell one-chat-sidebar -> OutputList): a running chat shows the
+// streaming mark instead of the unread dot and says who is speaking.
+test('One desktop chat list shows a running chat as working, with who is speaking @ci', async ({ appPage: page }) => {
+  await page.setViewportSize({ width: 1440, height: 950 });
+  await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'focused'); });
+  await page.route('**/users/preferences**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  const now = new Date(), earlier = new Date(now.getTime() - 60000);
+  const row = { id: 'out-live', title: 'Background research', content_type: 'conversation', updated_at: now.toISOString(), created_at: earlier.toISOString(), last_read_at: earlier.toISOString() };
+  await page.route(/\/api\/content-outputs(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ outputs: [row], totalCount: 1 }) })
+    : r.fallback());
+  await page.goto('/chat');
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+  const item = page.locator('[data-testid="one-chat-sidebar"] .output-item', { hasText: 'Background research' });
+  await expect(item.locator('.unread-dot')).toBeVisible();
+
+  await page.evaluate(() => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+    store.commit('chat/ENSURE_CONVERSATION', 'conv-live');
+    store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: 'conv-live', id: 'out-live' });
+    store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: 'conv-live', messages: [
+      { id: 'u', role: 'user', content: 'research this' },
+      { id: 'a', role: 'assistant', content: '', agentId: 'agent-sol', agentName: 'Sol' },
+    ] });
+    store.commit('chat/SCOPED_SET_STREAMING', { conversationId: 'conv-live', value: true });
+  });
+  await expect(item).toHaveClass(/streaming/);
+  await expect(item.locator('.streaming-indicator')).toBeVisible();
+  await expect(item.locator('.unread-dot')).toHaveCount(0);
+  await expect(item).toContainText('Sol speaking');
+
+  await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.commit('chat/SCOPED_SET_STREAMING', { conversationId: 'conv-live', value: false }));
+  await expect(item).not.toHaveClass(/streaming/);
+  await expect(item).not.toContainText('speaking');
+  await expect(item.locator('.unread-dot')).toBeVisible();
 });

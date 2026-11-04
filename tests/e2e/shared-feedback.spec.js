@@ -51,18 +51,34 @@ test('a free account with zero external providers gets AGNT connected, selected 
   await expect(page.locator('.ui-focused .selected-label').filter({ hasText: /^agnt-flash$/ }).first()).toBeVisible();
 });
 
-test('library shelves contain real ranked listings across every Focused asset tab and Market is directly below Plugins @ci', async ({ appPage: page }) => {
+// The Library's Market shelf shows agnt.gg's catalogue cards (MarketplaceShelf variant="catalogue" ->
+// MarketListingCard). One's desktop rail has no page list, so Market's place under Plugins is checked
+// where that list still is: the phone's chats drawer.
+test('library shelves contain real ranked listings across every One asset tab, and the phone drawer has Market directly below Plugins @ci', async ({ appPage: page }) => {
   await freeAccount(page);
-  await page.goto('/agents'); await ready(page); await mode(page, 'focused');
-  const navLabels = await page.locator('.focused-nav > button.focused-nav-row').allTextContents();
-  const pluginsIndex = navLabels.findIndex(text => text.trim() === 'Plugins');
-  expect(navLabels[pluginsIndex + 1].trim()).toBe('Market');
-  for (const [path, title] of [['/agents', 'agent'], ['/workflows', 'workflow'], ['/tools', 'tool'], ['/skills', 'skill'], ['/widget-manager', 'agent'], ['/artifacts', 'agent']]) {
+  for (const [path, title] of [['/agents', 'agent'], ['/workflows', 'workflow'], ['/tools', 'tool'], ['/skills', 'skill']]) {
     await page.goto(path); await ready(page); await mode(page, 'focused');
-    await expect(page.locator('.ms-row').filter({ hasText: `Top ${title} starter` }).first()).toBeVisible();
-    await expect(page.locator('.ms-row-get').first()).toContainText('Install');
+    const card = page.locator('.mlc').filter({ hasText: `Top ${title} starter` }).first();
+    await expect(card, path).toBeVisible();
+    // The card's own action: "Install", or for a template agent "Get template".
+    await expect(card.locator('.mlc-cta'), path).toHaveText(/Install|Get/);
   }
-  await page.getByRole('button', { name: 'Market', exact: true }).click();
+  // Market picks are the tab's own kind only (b9998e38b): Widgets, with no widget listings here,
+  // never borrows another kind's.
+  await page.goto('/widget-manager'); await ready(page); await mode(page, 'focused');
+  await expect(page.locator('.focused-page').first()).toBeVisible();
+  await expect(page.getByText(/Top (agent|workflow|tool|skill|plugin) starter/)).toHaveCount(0);
+  // Files is the exception (FocusedFiles fallback-to-all): the Market has no file kind, so it shows
+  // top picks as compact rows.
+  await page.goto('/artifacts'); await ready(page); await mode(page, 'focused');
+  await expect(page.locator('.ms-row').filter({ hasText: 'Top agent starter' }).first()).toBeVisible();
+  await expect(page.locator('.ms-row-get').first()).toContainText('Install');
+  await page.setViewportSize({ width: 390, height: 950 });
+  await page.getByRole('button', { name: 'Open chats', exact: true }).click();
+  const navLabels = (await page.locator('.focused-nav > button.focused-nav-row').allTextContents()).map(text => text.trim());
+  expect(navLabels).toContain('Plugins');
+  expect(navLabels[navLabels.indexOf('Plugins') + 1]).toBe('Market');
+  await page.locator('.focused-nav').getByRole('button', { name: 'Market', exact: true }).click();
   await expect(page).toHaveURL(/\/marketplace/);
 });
 
@@ -88,9 +104,13 @@ test('Studio has a working left chat-panel toggle and the legacy keys link opens
 test('business plugin marks fit their dashboard slots, including ViewBox-only SVGs @ci', async ({ appPage: page }) => {
   const icons = businessIcons;
   expect(icons.length).toBeGreaterThan(20);
+  // Owns its mode like every Studio test here: without it, a mode an earlier test synced to the
+  // shared account opened this one in AGNT One, and the Studio dashboard never drew its tool list.
+  await isolatePreferences(page);
+  await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('uiMode', 'studio'); });
   await page.route('**/tools/workflow-tools', r => r.fulfill(json({ actions: icons.map((icon, i) => ({ type: `plugin-${i}`, title: icon, icon, category: 'action' })), triggers: [], utilities: [], widgets: [], controls: [], custom: [] })));
   await page.goto('/dashboard'); await ready(page); await mode(page, 'studio');
-  await expect(page.locator('.tools-list .tool-icon svg')).toHaveCount(icons.length);
+  await expect(page.locator('.tools-list .tool-icon svg'), { message: (page.__consoleLogs || []).slice(-30).join('\n') }).toHaveCount(icons.length);
   for (const svg of await page.locator('.tools-list .tool-icon svg').all()) {
     const size = await svg.boundingBox();
     // Layout lands on sub-pixel positions (measured 14.00006); the defect was 300x150.
@@ -138,7 +158,15 @@ test('the Main chat is pinned once in both frames, beside new chat and the chat 
   await expect(page.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
   await expect(page.locator('.chat-library-toggle')).toBeVisible();
   await expect(page.locator('.left-panel-component input[placeholder="Search chats..."]')).toBeAttached();
+  // AGNT One on a desktop shows Studio's own chat list beside the chat.
   await mode(page, 'focused');
+  const oneList = page.locator('[data-testid="one-chat-sidebar"]');
+  await expect(oneList.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
+  await expect(oneList.locator('.new-chat-btn.header-new')).toBeVisible();
+  await expect(oneList.locator('input[placeholder="Search chats..."]')).toBeAttached();
+  // ...and on a phone, the chats drawer.
+  await page.setViewportSize({ width: 390, height: 950 });
+  await page.getByRole('button', { name: 'Open chats', exact: true }).click();
   await expect(page.locator('[data-testid="focused-main-chat"]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'New chat', exact: true }).first()).toBeVisible();
 });
