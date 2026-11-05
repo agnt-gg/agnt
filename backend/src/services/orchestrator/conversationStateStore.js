@@ -266,6 +266,35 @@ export async function loadStoredTranscript(conversationId, userId) {
   }
 }
 
+/**
+ * Give a forked conversation its source's prompt-prefix state.
+ *
+ * A fork shares its source's history up to the cut, so it should also share
+ * the frozen system sections and tool order: its first turn then sends the
+ * same bytes and reads the provider's cache. It also carries
+ * `_cacheRoundState`, which is what lets that first turn rehydrate the forked
+ * provider transcript (historyRehydration.canRehydrateFor) instead of
+ * replaying the client's lossy projection of it.
+ *
+ * The live in-memory context is preferred (it is current); the stored row is
+ * the fallback. A watermark beyond the cut (_evictedUnits) is safe to carry:
+ * contextManager clamps it to the history it is given.
+ *
+ * Scoped by user on both paths: state recorded for someone else is never
+ * copied, even if a caller forgot to prove ownership of `fromId`.
+ *
+ * @param {object|null} liveContext ConversationManager's context for fromId, if any
+ */
+export async function copyConversationState(fromId, toId, userId, liveContext = null) {
+  if (!userId) return false;
+  const live = liveContext && String(liveContext.userId) === String(userId) ? liveContext : null;
+  if (live) return saveConversationState(toId, userId, live);
+  const owner = await dbGet('SELECT user_id FROM conversation_prompt_state WHERE conversation_id = ?', [fromId]).catch(() => null);
+  if (!owner || (owner.user_id != null && String(owner.user_id) !== String(userId))) return false;
+  const stored = await loadConversationState(fromId);
+  return stored ? saveConversationState(toId, userId, stored) : false;
+}
+
 /** Drop rows for conversations that can no longer have a live cached prefix. */
 export async function pruneConversationState(maxAgeMs = STATE_MAX_AGE_MS) {
   const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
@@ -304,6 +333,7 @@ export function __resetConversationStateCache() {
 export default {
   saveConversationState,
   loadConversationState,
+  copyConversationState,
   loadStoredTranscript,
   pruneConversationState,
   serializeConversationState,

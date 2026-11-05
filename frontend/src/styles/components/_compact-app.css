@@ -285,9 +285,6 @@
  body .plugins-container .empty-state { padding:20px 8px; }
  body .node-based-tool #sidebar.closed { display:none; }
  body .node-based-tool #sidebar-wrapper.closed { display:none; }
- /* Chat on phones. The edit button floated into the text flow so the message
-    wraps around it instead of running under it. */
- .terminal-content.mobile-presentation .message-edit-btn { position: static !important; float: right; margin: -6px -6px 4px 8px; opacity: .7; }
  /* Jump-to-latest is a solid button; jump-to-top is dropped (the saved-chat
     list is the way back to the start of a long thread). */
  .terminal-content.mobile-presentation .chat-scroll-controls .tooltip-container:has(> [aria-label='Scroll to top']) { display: none; }

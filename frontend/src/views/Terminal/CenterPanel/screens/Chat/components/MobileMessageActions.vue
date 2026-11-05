@@ -3,7 +3,13 @@
     <div v-if="open" class="message-actions-backdrop" @click.self="close" @contextmenu.prevent>
       <section ref="menu" class="mobile-message-actions-sheet" role="dialog" aria-label="Message actions" aria-modal="true" @keydown.esc.stop="close" @keydown.tab="trapFocus">
         <button type="button" @click="copy">Copy message</button>
-        <button v-if="canEdit" type="button" @click="edit">Edit message</button>
+        <button
+          v-for="action in sheetActions"
+          :key="action.id"
+          type="button"
+          :class="{ 'danger-action': action.id === 'delete' && deleteArmed }"
+          @click="choose(action.id)"
+        >{{ sheetLabel(action.id) }}</button>
         <p v-if="error" role="alert">{{ error }}</p>
         <button type="button" class="cancel-action" @click="close">Cancel</button>
       </section>
@@ -12,10 +18,30 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
-const props = defineProps({ target: { default: null }, text: { type: String, default: '' }, canEdit: Boolean, disabled: Boolean });
-const emit = defineEmits(['edit']);
+/**
+ * `actions` is the message's own list (messageBranching.js#messageActions),
+ * so the sheet can never offer what the desktop row does not. Copy is done
+ * here, where a failure can be shown; every other choice is emitted as
+ * `action` with its id. Delete asks once more inside the sheet and is then
+ * emitted as 'delete-confirmed'.
+ */
+const props = defineProps({
+  target: { default: null },
+  text: { type: String, default: '' },
+  actions: { type: Array, default: () => [] },
+  deleteCount: { type: Number, default: 0 },
+  disabled: Boolean,
+});
+const emit = defineEmits(['action']);
+const SHEET_LABELS = { edit: 'Edit message', regenerate: 'Regenerate reply', fork: 'Fork from here', delete: 'Delete from here' };
+const sheetActions = computed(() => props.actions.filter((action) => action.id !== 'copy'));
+const deleteArmed = ref(false);
+const sheetLabel = (id) => {
+  if (id !== 'delete' || !deleteArmed.value) return SHEET_LABELS[id] || id;
+  return props.deleteCount > 1 ? `Tap again to delete ${props.deleteCount} messages` : 'Tap again to delete';
+};
 const open = ref(false);
 const error = ref('');
 const menu = ref(null);
@@ -24,7 +50,7 @@ let start;
 let restoreFocus;
 const compact = () => window.innerWidth <= 800;
 const cancelPress = () => { clearTimeout(timer); start = null; };
-function close() { cancelPress(); open.value = false; restoreFocus?.focus?.({ preventScroll: true }); }
+function close() { cancelPress(); open.value = false; deleteArmed.value = false; restoreFocus?.focus?.({ preventScroll: true }); }
 async function show() {
   cancelPress();
   error.value = '';
@@ -54,7 +80,11 @@ async function copy() {
   try { await navigator.clipboard.writeText(props.text); close(); }
   catch (cause) { error.value = 'Could not copy. Check clipboard access and try again.'; console.error('[message-copy]', cause); }
 }
-function edit() { close(); emit('edit'); }
+function choose(id) {
+  if (id === 'delete' && !deleteArmed.value) { deleteArmed.value = true; return; }
+  close();
+  emit('action', id === 'delete' ? 'delete-confirmed' : id);
+}
 function trapFocus(event) {
   const buttons = [...menu.value.querySelectorAll('button')];
   const first = buttons[0];
@@ -87,5 +117,6 @@ onBeforeUnmount(() => {
 .mobile-message-actions-sheet button { display: block; width: 100%; min-height: 48px; padding: 12px 16px; border: 0; border-radius: 9px; color: inherit; background: transparent; font: inherit; text-align: left; }
 .mobile-message-actions-sheet button:focus-visible, .mobile-message-actions-sheet button:hover { background: var(--color-darker-1); outline: 2px solid var(--color-green); }
 .mobile-message-actions-sheet .cancel-action { border-top: 1px solid var(--terminal-border-color); color: var(--color-text-muted); }
+.mobile-message-actions-sheet .danger-action { color: var(--color-red); }
 .mobile-message-actions-sheet p { padding: 0 16px; }
 </style>

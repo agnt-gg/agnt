@@ -167,9 +167,10 @@ function isReusable(span) {
  * The server prepends blocks (uploaded files, a turn marker) to the user
  * message it was sent with. The client keeps the user's own words, so the
  * stored message equals `<decoration>…\n\n<user text>` exactly. That, and only
- * that, is restored.
+ * that, is restored. Also how a branch action (delete, fork) finds the stored
+ * row for a message the client holds (transcriptBranching.js).
  */
-function isDecorationOf(storedContent, clientContent) {
+export function isDecorationOf(storedContent, clientContent) {
   if (storedContent === `${USER_STEER_HEADER}\n${clientContent}`) return true; // a steer sent as its own user turn (OpenAI shapes)
   return USER_DECORATION_HEADERS.some((header) => storedContent.startsWith(header))
     && storedContent.endsWith(`\n\n${clientContent}`);

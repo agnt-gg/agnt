@@ -277,8 +277,13 @@
                     @provider-connected="handleProviderConnected"
                     @agnt-resume="handleAgntResume"
                     :can-edit-reply="message.id === editableReplyMessageId"
+                    :branch-actions="messageBranchPlan.get(message.id)?.actions || NO_BRANCH_ACTIONS"
+                    :delete-count="messageBranchPlan.get(message.id)?.deleteCount || 0"
                     @edit-message="handleEditMessage"
                     @edit-reply="handleEditReply"
+                    @regenerate-message="handleRegenerateMessage"
+                    @fork-message="handleForkMessage"
+                    @delete-message="handleDeleteMessage"
                   />
                 </template>
               </TransitionGroup>
@@ -377,6 +382,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { isLocalReady } from '@/services/localModelsService.js';
 import { serializeTranscript } from '@/services/conversationTranscript.js';
 import { editableReplyId } from '@/services/assistantReplyEdit.js';
+import { branchPlan, regenerateSource, NO_BRANCH_ACTIONS } from '@/services/messageBranching.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
@@ -1571,8 +1577,12 @@ export default {
       if (!result?.ok) console.warn('[Chat] Reply edit refused:', result?.reason);
     };
 
-    // Edit & resend: truncate from edited message, re-add with new content, resend
-    const handleEditMessage = async ({ messageId, newContent }) => {
+    // Edit & resend: truncate from edited message, re-add with new content, resend.
+    // `files` carries an original message's attachment chips onto its resend
+    // (Regenerate). The file contents are not re-uploaded: on the same provider
+    // and model, history rehydration restores the stored copy of the message
+    // they were attached to (backend historyRehydration.js).
+    const handleEditMessage = async ({ messageId, newContent, files = null }) => {
       const convId = store.state.chat.activeConversationId;
       if (!convId || store.state.chat.isStreaming) return;
 
@@ -1585,6 +1595,7 @@ export default {
         role: 'user',
         content: newContent,
         timestamp: Date.now(),
+        ...(Array.isArray(files) && files.length ? { files } : {}),
       };
       store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId: convId, message: editedMessage });
 
@@ -1600,6 +1611,57 @@ export default {
         reasoningValue: store.state.aiProvider.reasoningValue,
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
       });
+    };
+
+    // Which of Regenerate / Fork / Delete each message offers, computed once per
+    // transcript change (messageBranching.js#branchPlan). Nothing while a turn
+    // is live: every branch action rewrites the transcript that turn writes to.
+    // Agent chats are not saved conversations, so they cannot be forked.
+    const messageBranchPlan = computed(() => {
+      const convId = store.state.chat.activeConversationId;
+      const conv = convId ? store.state.chat.conversations[convId] : null;
+      if (!conv || conv.isStreaming || conv.isReattaching || (conv._activeStreams || 0) > 0) return new Map();
+      return branchPlan(conv.messages, conv.agentId ? ['regenerate', 'delete'] : ['regenerate', 'fork', 'delete']);
+    });
+
+    // Regenerate a reply: resend the user message it answered, through the same
+    // truncate-and-resend path an edit uses. The server transcript is left
+    // alone until that turn rewrites it, so on the same model the retried turn
+    // rehydrates the stored copy of the message, attachments included.
+    const handleRegenerateMessage = async ({ messageId }) => {
+      const convId = store.state.chat.activeConversationId;
+      const conv = convId ? store.state.chat.conversations[convId] : null;
+      const source = conv ? regenerateSource(conv.messages, messageId) : null;
+      if (!source) return;
+      await handleEditMessage({ messageId: source.id, newContent: source.content, files: source.files || null });
+    };
+
+    const handleDeleteMessage = async ({ messageId }) => {
+      const result = await store.dispatch('chat/deleteFromMessage', {
+        conversationId: store.state.chat.activeConversationId,
+        messageId,
+      });
+      if (!result?.ok) console.warn('[Chat] Delete refused:', result?.reason);
+    };
+
+    // Fork into a new conversation and open it, the way the sidebar opens one.
+    const handleForkMessage = async ({ messageId }) => {
+      const result = await store.dispatch('chat/forkFromMessage', {
+        conversationId: store.state.chat.activeConversationId,
+        messageId,
+      });
+      if (!result?.ok) {
+        console.warn('[Chat] Fork refused:', result?.reason);
+        if (result?.reason === 'save-failed' || result?.reason === 'signed-out') {
+          await confirmModal.value?.showModal({
+            title: 'Could not fork this chat',
+            message: result.reason === 'signed-out' ? 'Sign in again, then try the fork once more.' : 'The new conversation could not be saved. Nothing was changed; try again.',
+            showCancel: false,
+          });
+        }
+        return;
+      }
+      await router.push({ path: '/chat', query: { 'content-id': result.outputId } }).catch(() => {});
     };
 
     /**
@@ -3031,6 +3093,11 @@ export default {
       handleEditMessage,
       handleEditReply,
       editableReplyMessageId,
+      messageBranchPlan,
+      NO_BRANCH_ACTIONS,
+      handleRegenerateMessage,
+      handleDeleteMessage,
+      handleForkMessage,
       handlePanelAction,
       inspectorProps,
       handleScreenChange,

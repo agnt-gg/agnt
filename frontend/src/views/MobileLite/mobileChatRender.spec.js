@@ -357,9 +357,10 @@ describe('controls reachable without hover', () => {
     }
   });
 
-  it('reveals the edit-message button on touch', () => {
-    const block = touchBlocks.find((b) => b.includes('message-edit-btn'));
-    expect(block, 'no @media (hover: none) rule for .message-edit-btn').toBeTruthy();
+  it('reveals the message actions (edit, copy, …) on touch', () => {
+    // The edit button lives in the action row now; the row is what hover hides.
+    const block = touchBlocks.find((b) => b.includes('message-actions'));
+    expect(block, 'no @media (hover: none) rule for .message-actions').toBeTruthy();
     expect(block).toMatch(/opacity:\s*0?\.?\d/);
   });
 });

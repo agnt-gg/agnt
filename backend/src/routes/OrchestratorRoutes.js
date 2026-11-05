@@ -11,6 +11,8 @@ import { handleCompaction } from '../services/orchestrator/compactionHandler.js'
 import { attachSubscriber, cancelRun, getRunStatus, listRunsForUser } from '../services/orchestrator/activeRuns.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import { replaceLastReplyText, replaceFinalResponse } from '../services/orchestrator/lastReplyEdit.js';
+import { parseCut, cutTranscript, finalResponseOf } from '../services/orchestrator/transcriptBranching.js';
+import { forkConversation } from '../services/orchestrator/conversationFork.js';
 import ContentOutputModel from '../models/ContentOutputModel.js';
 
 const router = express.Router();
@@ -204,6 +206,65 @@ router.patch('/conversations/:conversationId/last-reply', authenticateToken, asy
   } catch (error) {
     console.error('[OrchestratorRoutes] Failed to edit last reply:', error);
     res.status(500).json({ success: false, error: 'Failed to edit reply' });
+  }
+});
+
+// Mirror "delete this message and everything after it" into the persisted
+// transcript (the client has already cut its own copy and saved it). Without
+// it, a server-run turn — a sub-chat reporting back, a texted turn — would
+// re-project the deleted messages from this log. Same contract as last-reply:
+// every refusal is a 409 with a reason, and the client keeps its local cut.
+router.post('/conversations/:conversationId/truncate', authenticateToken, async (req, res) => {
+  const { conversationId } = req.params;
+  const userId = req.user?.id;
+  const cut = parseCut(req.body, ['before', 'through']);
+  if (!cut) return res.status(400).json({ success: false, error: 'a cut needs anchorText, sameTextAfter and mode (before|through)' });
+  if (getRunStatus(conversationId, userId).active) return res.status(409).json({ success: false, error: 'run-active' });
+
+  try {
+    const log = await ConversationLogModel.getByConversationId(conversationId, userId);
+    if (!log) return res.status(404).json({ success: false, error: 'Conversation not found' });
+
+    const result = cutTranscript(log.messages, cut);
+    if (!result.ok) return res.status(409).json({ success: false, error: result.reason });
+    if (result.messages.length === log.messages.length) return res.json({ success: true, unchanged: true });
+
+    const saved = await ConversationLogModel.replaceHistory({
+      conversationId,
+      full_history: JSON.stringify(result.messages),
+      final_response: finalResponseOf(result.messages),
+      expectedUpdatedAt: log.updatedAt,
+    });
+    if (!saved.updated) return res.status(409).json({ success: false, error: 'concurrent-write' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[OrchestratorRoutes] Failed to truncate conversation:', error);
+    res.status(500).json({ success: false, error: 'Failed to truncate conversation' });
+  }
+});
+
+// Fork: a new conversation holding this one's server state up to the cut —
+// provider transcript, prompt state, settings and data refs (see
+// conversationFork.js). The client writes the new sidebar row itself, from
+// its own transcript, under the returned conversationId.
+router.post('/conversations/:conversationId/fork', authenticateToken, async (req, res) => {
+  const { conversationId } = req.params;
+  const userId = req.user?.id;
+  const cut = parseCut(req.body, ['through', 'turn']);
+  if (!cut) return res.status(400).json({ success: false, error: 'a cut needs anchorText, sameTextAfter and mode (through|turn)' });
+
+  try {
+    const log = await ConversationLogModel.getByConversationId(conversationId, userId);
+    if (!log) return res.status(404).json({ success: false, error: 'Conversation not found' });
+
+    const result = cutTranscript(log.messages, cut);
+    if (!result.ok) return res.status(409).json({ success: false, error: result.reason });
+
+    const fork = await forkConversation({ sourceId: conversationId, userId, log, messages: result.messages });
+    res.json({ success: true, conversationId: fork.conversationId, copied: fork.copied });
+  } catch (error) {
+    console.error('[OrchestratorRoutes] Failed to fork conversation:', error);
+    res.status(500).json({ success: false, error: 'Failed to fork conversation' });
   }
 });
 

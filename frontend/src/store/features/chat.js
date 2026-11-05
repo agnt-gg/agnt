@@ -4,11 +4,12 @@ import { reconcileCompactedTranscript } from '../../../../backend/src/utils/comp
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
-import { reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
+import { reattachRun, cancelRun, fetchConversation, saveReplyEdit, truncateConversation, forkConversation } from '@/services/chatService.js';
+import { deleteCut, forkCut } from '@/services/messageBranching.js';
 import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
 import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
-import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
+import { serializeTranscript, parseTranscript, deriveTitle } from '@/services/conversationTranscript.js';
 import { applySteerToTranscript, repairLegacySteerReplayBlocks, mergeSteeredTranscripts, captureReplaySteers, restoreReplaySteers } from '@/services/steeredTranscript.js';
 import {
   anchorSuggestions,
@@ -3159,6 +3160,104 @@ export default {
         console.warn(`[Chat] Reply edit kept locally; server transcript not updated (${synced.status}: ${synced.error})`);
       }
       return { ok: true, serverSynced: synced.ok };
+    },
+
+    /**
+     * Delete a message and everything after it.
+     *
+     * Two copies hold the conversation and both are cut. The saved transcript
+     * is written now, not debounced, so a reload or another device cannot
+     * bring the deleted messages back. The provider log is cut too, or the
+     * next server-run turn (a sub-chat report, a texted turn) would re-project
+     * them from it. A server refusal keeps the local delete; the next typed
+     * turn rewrites the log from this copy anyway.
+     *
+     * @returns {Promise<{ ok: boolean, reason?: string, removed?: number, serverSynced?: boolean }>}
+     */
+    async deleteFromMessage({ commit, state, dispatch }, { conversationId, messageId } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv) return { ok: false, reason: 'no-conversation' };
+      if (conv.isStreaming || conv.isReattaching || (conv._activeStreams || 0) > 0) return { ok: false, reason: 'streaming' };
+      const plan = deleteCut(conv.messages, messageId);
+      if (!plan) return { ok: false, reason: 'not-found' };
+      if (plan.emptied) return { ok: false, reason: 'would-empty' };
+
+      commit('SCOPED_TRUNCATE_FROM', { conversationId: convId, messageId });
+      const saving = dispatch('autosaveConversation', { debounce: false, conversationId: convId });
+
+      const serverConvId = conv.conversationId && !String(conv.conversationId).startsWith('temp-') ? conv.conversationId : null;
+      let serverSynced = false;
+      if (serverConvId && plan.cut) {
+        const synced = await truncateConversation(serverConvId, plan.cut);
+        serverSynced = synced.ok;
+        if (!synced.ok) console.warn(`[Chat] Delete kept locally; server transcript not cut (${synced.status}: ${synced.error})`);
+      }
+      await saving;
+      return { ok: true, removed: plan.removed, serverSynced };
+    },
+
+    /**
+     * Fork a new conversation from a message: everything up to and including
+     * it, as a new saved conversation the caller then opens.
+     *
+     * The server forks its own state at the same point first (provider
+     * transcript, prompt state, settings, data refs) and names the new
+     * conversation, so the fork's first turn has the full context above the
+     * cut rather than this client's lossy copy of it. When the server cannot
+     * place the cut, the fork still happens from this transcript alone.
+     *
+     * @returns {Promise<{ ok: boolean, reason?: string, outputId?: string, conversationId?: string, contextCopied?: boolean }>}
+     */
+    async forkFromMessage({ state, dispatch, rootState }, { conversationId, messageId } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv) return { ok: false, reason: 'no-conversation' };
+      if (conv.agentId) return { ok: false, reason: 'agent-chat' }; // agent chats are not saved conversations
+      if (conv.isStreaming || conv.isReattaching || (conv._activeStreams || 0) > 0) return { ok: false, reason: 'streaming' };
+      const plan = forkCut(conv.messages, messageId);
+      if (!plan) return { ok: false, reason: 'not-found' };
+      const token = localStorage.getItem('token');
+      if (!token) return { ok: false, reason: 'signed-out' };
+
+      const sourceConvId = conv.conversationId && !String(conv.conversationId).startsWith('temp-') ? conv.conversationId : null;
+      let forkedId = null;
+      if (sourceConvId && plan.cut) {
+        const forked = await forkConversation(sourceConvId, plan.cut);
+        if (forked.ok && forked.conversationId) forkedId = forked.conversationId;
+        else console.warn(`[Chat] Fork carries this transcript only; server context not copied (${forked.status}: ${forked.error})`);
+      }
+      // A fork always gets an id of its own: never the source's, and never a
+      // temp- id, which the server would neither persist state nor bindings for.
+      const newConversationId = forkedId || crypto.randomUUID();
+
+      const sourceTitle = (rootState?.contentOutputs?.outputs || []).find((o) => o.id === conv.savedOutputId)?.title
+        || conv.savedOutputTitle
+        || deriveTitle(conv.messages);
+      const title = `Fork: ${sourceTitle}`;
+      const snapshotStartedAt = Date.now();
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            content: serializeTranscript({ conversationId: newConversationId, title, messages: plan.messages }),
+            contentType: 'conversation',
+            conversationId: newConversationId,
+            isShareable: false,
+            title,
+          }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        if (result.output) {
+          dispatch('contentOutputs/applyOutputMeta', { output: result.output, snapshotStartedAt }, { root: true });
+        }
+        return { ok: true, outputId: result.id, conversationId: newConversationId, contextCopied: !!forkedId };
+      } catch (error) {
+        console.error('[Chat] Fork could not be saved:', error);
+        return { ok: false, reason: 'save-failed' };
+      }
     },
 
     /**

@@ -3,7 +3,8 @@
 // 'tool:<id>', 'widget:<id>'). The orchestrator's rich Chat.vue continues to use
 // the legacy `chat` module; this module powers all five per-page panels.
 
-import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, saveReplyEdit } from '@/services/chatService.js';
+import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation, saveReplyEdit, truncateConversation } from '@/services/chatService.js';
+import { deleteCut } from '@/services/messageBranching.js';
 import { editableReplyId, closingText, applyReplyEdit } from '@/services/assistantReplyEdit.js';
 import { applySteerToTranscript, captureReplaySteers, restoreReplaySteers, repairLegacySteerReplayBlocks } from '@/services/steeredTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
@@ -1363,6 +1364,35 @@ export default {
         model,
         onFrontendEvent,
       });
+    },
+
+    /**
+     * Delete a message and everything after it. Both copies are cut, as in
+     * the main chat (chat.js deleteFromMessage): the saved transcript now,
+     * because workspace hydration adopts whichever copy says more, and the
+     * provider log, which that hydration falls back to.
+     *
+     * @returns {Promise<{ ok: boolean, reason?: string, removed?: number, serverSynced?: boolean }>}
+     */
+    async deleteFromMessage({ commit, dispatch, state }, { channelKey, messageId } = {}) {
+      const conv = channelKey ? state.conversations[channelKey] : null;
+      if (!conv) return { ok: false, reason: 'no-conversation' };
+      if (state.streamingChannels[channelKey]) return { ok: false, reason: 'streaming' };
+      const plan = deleteCut(conv.messages, messageId);
+      if (!plan) return { ok: false, reason: 'not-found' };
+      if (plan.emptied) return { ok: false, reason: 'would-empty' };
+
+      commit('TRUNCATE_FROM', { channelKey, messageId });
+      const saving = dispatch('saveChannelTranscript', { channelKey }).catch(() => { /* logged by saveTranscript */ });
+
+      let serverSynced = false;
+      if (conv.conversationId && plan.cut) {
+        const synced = await truncateConversation(conv.conversationId, plan.cut);
+        serverSynced = synced.ok;
+        if (!synced.ok) console.warn(`[chatUnified] Delete kept locally; server transcript not cut (${synced.status}: ${synced.error})`);
+      }
+      await saving;
+      return { ok: true, removed: plan.removed, serverSynced };
     },
 
     stopStream({ commit, state }, { channelKey }) {

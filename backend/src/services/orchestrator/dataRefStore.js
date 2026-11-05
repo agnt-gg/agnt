@@ -87,6 +87,29 @@ export async function listDataRefs(conversationId, userId) {
   }
 }
 
+/**
+ * Give a forked conversation its source's stored refs, so a {{DATA_REF}} in
+ * the history it inherited still resolves through query_data. Ages are kept:
+ * a copy does not extend a ref's life. Fails open, like every write here.
+ * @returns {Promise<number>} rows copied
+ */
+export async function copyDataRefs(fromId, toId, userId) {
+  if (!storable(fromId, userId) || !storable(toId, userId)) return 0;
+  try {
+    const result = await run(
+      `INSERT INTO conversation_data_refs (conversation_id, user_id, data_id, content, summary, size, created_at)
+       SELECT ?, user_id, data_id, content, summary, size, created_at
+       FROM conversation_data_refs WHERE conversation_id = ? AND user_id = ?
+       ON CONFLICT(conversation_id, data_id) DO NOTHING`,
+      [toId, fromId, userId],
+    );
+    return result?.changes || 0;
+  } catch (error) {
+    console.error('[DataRefs] Copy failed (non-critical):', error.message);
+    return 0;
+  }
+}
+
 export async function pruneDataRefs(maxAgeMs = REF_MAX_AGE_MS) {
   try {
     const result = await run('DELETE FROM conversation_data_refs WHERE created_at < ?', [new Date(Date.now() - maxAgeMs).toISOString()]);

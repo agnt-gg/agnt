@@ -12,7 +12,7 @@
       v-tooltip="message.agentName || ''"
     >{{ emojiAvatar }}</div>
     <img v-else-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
-    <MobileMessageActions :target="messageRef" :text="typeof message.content === 'string' ? message.content : ''" :can-edit="message.role === 'user' || isReplyEdit" :disabled="isEditing || !!status" @edit="startEditing" />
+    <MobileMessageActions :target="messageRef" :text="messageCopyText" :actions="actions" :delete-count="deleteCount" :disabled="isEditing || !!status" @action="runAction" />
     <div class="message-content">
       <div v-if="message.role === 'assistant'" class="compact-speaker"><span>a</span>{{ message.agentName || 'Annie' }}</div>
       <div class="message-card">
@@ -33,15 +33,6 @@
         </div>
 
         <template v-else>
-          <!-- Edit button: user messages, and the latest assistant reply when the parent allows it -->
-          <button
-            v-if="(message.role === 'user' || isReplyEdit) && !status"
-            class="message-edit-btn"
-            @click="startEditing"
-            v-tooltip="isReplyEdit ? 'Edit reply' : 'Edit & resend'"
-          >
-            <i class="fas fa-pen"></i>
-          </button>
 
           <div
             v-if="status"
@@ -312,7 +303,28 @@
           </div> </template
         ><!-- end v-else (non-editing mode) -->
       </div>
-      <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+      <div class="message-meta">
+        <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+        <!-- Message actions: Copy; Edit (user messages, and the latest reply when
+             the parent allows it); and whichever of Regenerate / Fork / Delete
+             the parent handles. Under the bubble, not on it: the card clips
+             its overflow and a short bubble is narrower than the row.
+             See messageBranching.js#messageActions. -->
+        <div v-if="actions.length && !isEditing" class="message-actions" :class="{ armed: deleteArmed }" role="toolbar" aria-label="Message actions">
+          <button
+            v-for="action in actions"
+            :key="action.id"
+            type="button"
+            :class="['message-action-btn', `message-${action.id}-btn`, { armed: action.id === 'delete' && deleteArmed }]"
+            :aria-label="actionLabel(action)"
+            v-tooltip="actionLabel(action)"
+            @click="runAction(action.id)"
+          >
+            <i :class="actionIcon(action)"></i>
+            <span v-if="action.id === 'delete' && deleteArmed" class="message-action-confirm">{{ deleteConfirmText }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- HTML Preview Modal - Teleported to body for fullscreen -->
@@ -479,6 +491,7 @@
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, inject } from 'vue';
 import { summarizeSteps } from '@/services/stepsSummary.js';
 import { closingText } from '@/services/assistantReplyEdit.js';
+import { messageActions, copyText, NO_BRANCH_ACTIONS } from '@/services/messageBranching.js';
 import { parseAgntNotice, stripAgntNotice } from '@/services/agntFlash.js';
 import { handoffsOf, handoffStatus } from '@/services/subChatLinks.js';
 import SubChatCard from './SubChatCard.vue';
@@ -729,8 +742,20 @@ export default {
       type: Boolean,
       default: false,
     },
+    // The branch actions ('regenerate' | 'fork' | 'delete') the parent handles
+    // for THIS message, from messageBranching.js#branchPlan. None by default:
+    // a surface that does not handle an action must never show it.
+    branchActions: {
+      type: Array,
+      default: () => NO_BRANCH_ACTIONS,
+    },
+    // How many messages "Delete from here" removes, for its confirmation.
+    deleteCount: {
+      type: Number,
+      default: 0,
+    },
   },
-  emits: ['toggle-tool', 'provider-connected', 'agnt-resume', 'open-html-preview', 'edit-message', 'edit-reply'],
+  emits: ['toggle-tool', 'provider-connected', 'agnt-resume', 'open-html-preview', 'edit-message', 'edit-reply', 'regenerate-message', 'fork-message', 'delete-message'],
   setup(props, { emit }) {
     // A workspace already has a canvas dedicated to live surfaces. Browser
     // calls render there as a Browser widget; standalone chat has no canvas
@@ -842,6 +867,75 @@ export default {
       const payload = { messageId: props.message.id, newContent: editText.value.trim() };
       emit(isReplyEdit.value ? 'edit-reply' : 'edit-message', payload);
     };
+
+    // ── Message actions (Copy / Edit / Regenerate / Fork / Delete) ─────────
+    const actions = computed(() => messageActions({
+      role: props.message.role,
+      canEdit: props.message.role === 'user' || isReplyEdit.value,
+      enabled: props.branchActions,
+      busy: !!props.status,
+      editLabel: isReplyEdit.value ? 'Edit reply' : 'Edit & resend',
+    }));
+    const messageCopyText = computed(() => copyText(props.message));
+
+    // Copy confirms in place: the icon becomes a check (or a warning) briefly.
+    const COPY_FEEDBACK_MS = 1200;
+    const copyState = ref(null); // null | 'copied' | 'failed'
+    let copyTimer = null;
+    const copyMessage = async () => {
+      clearTimeout(copyTimer);
+      try {
+        await navigator.clipboard.writeText(messageCopyText.value);
+        copyState.value = 'copied';
+      } catch (cause) {
+        console.error('[message-copy]', cause);
+        copyState.value = 'failed';
+      }
+      copyTimer = setTimeout(() => { copyState.value = null; }, COPY_FEEDBACK_MS);
+    };
+
+    // Delete is two clicks, in place: the first arms it and says how much goes,
+    // the second deletes. Arming lapses on its own, so a stray click is harmless.
+    const DELETE_ARM_MS = 3000;
+    const deleteArmed = ref(false);
+    let deleteTimer = null;
+    const disarmDelete = () => { clearTimeout(deleteTimer); deleteTimer = null; deleteArmed.value = false; };
+    const deleteConfirmText = computed(() => (props.deleteCount > 1 ? `Delete ${props.deleteCount}?` : 'Delete?'));
+    const requestDelete = () => {
+      if (!deleteArmed.value) {
+        deleteArmed.value = true;
+        deleteTimer = setTimeout(disarmDelete, DELETE_ARM_MS);
+        return;
+      }
+      disarmDelete();
+      emit('delete-message', { messageId: props.message.id });
+    };
+
+    const actionIcon = (action) => {
+      if (action.id === 'copy' && copyState.value === 'copied') return 'fas fa-check';
+      if (action.id === 'copy' && copyState.value === 'failed') return 'fas fa-exclamation-triangle';
+      return action.icon;
+    };
+    const actionLabel = (action) => {
+      if (action.id === 'copy' && copyState.value === 'copied') return 'Copied';
+      if (action.id === 'copy' && copyState.value === 'failed') return 'Could not copy';
+      if (action.id === 'delete' && deleteArmed.value) return 'Click again to delete this and everything after it';
+      return action.label;
+    };
+
+    /** One entry point for the desktop row and the phone sheet. */
+    const runAction = (id) => {
+      if (id !== 'delete') disarmDelete();
+      const payload = { messageId: props.message.id };
+      if (id === 'copy') copyMessage();
+      else if (id === 'edit') startEditing();
+      else if (id === 'regenerate') emit('regenerate-message', payload);
+      else if (id === 'fork') emit('fork-message', payload);
+      else if (id === 'delete') requestDelete();
+      // The phone sheet confirms delete itself, so it sends a confirmed id.
+      else if (id === 'delete-confirmed') { disarmDelete(); emit('delete-message', payload); }
+    };
+    onBeforeUnmount(() => { clearTimeout(copyTimer); clearTimeout(deleteTimer); });
 
     const handleEditKeydown = (e) => {
       // A reply is multi-paragraph markdown, so plain Enter must insert a
@@ -3273,6 +3367,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       cancelEditing,
       submitEdit,
       handleEditKeydown,
+      // Message actions
+      actions,
+      messageCopyText,
+      deleteArmed,
+      deleteConfirmText,
+      actionIcon,
+      actionLabel,
+      runAction,
       autoResizeEdit,
       serializeToolPayload,
       payloadKey,
@@ -3364,7 +3466,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
 <style scoped>
 @media (max-width: 800px) {
-  .message-wrapper .message-edit-btn { display: none !important; }
+  /* Phones act through the long-press sheet (MobileMessageActions). */
+  .message-wrapper .message-actions { display: none !important; }
   .message-wrapper:not(.editing) .message-text { -webkit-touch-callout: none; }
 }
 .message-avatar {
@@ -3737,9 +3840,23 @@ span.nodeLabel p {
 .message-time {
   font-size: 0.7em;
   color: var(--color-text-muted);
-  margin-top: 8px;
   display: block;
   padding: 0 4px;
+}
+
+/* The line under a bubble: its time, then its actions. A user bubble sits at
+   the right, so its actions sit under the bubble's right edge — by margin, not
+   space-between, so they stay there where the time is hidden (Focused). */
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 20px;
+}
+
+.message-wrapper.user .message-actions {
+  margin-left: auto;
 }
 
 .file-info {
@@ -5423,37 +5540,66 @@ span.nodeLabel p {
   position: relative;
 }
 
-.message-edit-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+/* Message actions. Hidden until the message is hovered (or a button in it
+   has focus, or a delete is armed); each icon is dim until pointed at. */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.message-wrapper:hover .message-actions,
+.message-actions:focus-within,
+.message-actions.armed {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.message-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   color: var(--color-med-navy);
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 4px;
+  font: inherit;
   font-size: 11px;
-  opacity: 0;
+  line-height: 1;
+  opacity: 0.6;
   transition:
     opacity 0.15s ease,
-    background 0.15s ease;
-  z-index: 1;
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.message-wrapper:hover .message-edit-btn {
-  opacity: 0.6;
-}
-
-@media (hover: none) {
-  .message-edit-btn {
-    opacity: 0.6;
-  }
-}
-
-.message-edit-btn:hover {
-  opacity: 1 !important;
+.message-action-btn:hover,
+.message-action-btn:focus-visible {
+  opacity: 1;
   background: var(--surface-active);
+}
+
+.message-action-btn.armed {
+  opacity: 1;
+  color: var(--color-red);
+  background: rgba(var(--red-rgb), 0.14);
+}
+
+.message-action-confirm {
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* When editing, user message stretches full width */

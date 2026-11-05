@@ -32,9 +32,13 @@
             :image-cache="imageCache"
             :data-cache="dataCache"
             :can-edit-reply="!isProcessing && message.id === editableReplyMessageId"
+            :branch-actions="messageBranchPlan.get(message.id)?.actions || NO_BRANCH_ACTIONS"
+            :delete-count="messageBranchPlan.get(message.id)?.deleteCount || 0"
             @toggle-tool="onToggleTool"
             @edit-message="onEditMessage"
             @edit-reply="onEditReply"
+            @regenerate-message="onRegenerateMessage"
+            @delete-message="onDeleteMessage"
           />
         </TransitionGroup>
 
@@ -205,6 +209,7 @@ import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 import { editableReplyId } from '@/services/assistantReplyEdit.js';
+import { branchPlan, regenerateSource, NO_BRANCH_ACTIONS } from '@/services/messageBranching.js';
 
 export default {
   name: 'UnifiedChatContainer',
@@ -357,6 +362,12 @@ export default {
     const editableReplyMessageId = computed(() =>
       editableReplyId(store.getters['chatUnified/getMessages'](props.channelKey)),
     );
+    // Regenerate / Delete per message (messageBranching.js#branchPlan), from the
+    // raw transcript for the same reason. Fork is main-chat only: a channel is
+    // one conversation with no list to fork into.
+    const messageBranchPlan = computed(() => (isProcessing.value
+      ? new Map()
+      : branchPlan(store.getters['chatUnified/getMessages'](props.channelKey), ['regenerate', 'delete'])));
     const isLoadingSuggestions = computed(() => store.getters['chatUnified/isLoadingSuggestions'](props.channelKey));
     const storedSuggestions = computed(() => store.getters['chatUnified/getSuggestions'](props.channelKey));
     const pendingSteer = computed(() => store.getters['chatUnified/pendingSteer'](props.channelKey));
@@ -645,6 +656,17 @@ export default {
       focusInput();
     };
 
+    // Regenerate: resend the user message the reply answered (the edit path).
+    const onRegenerateMessage = async ({ messageId }) => {
+      const source = regenerateSource(store.getters['chatUnified/getMessages'](props.channelKey), messageId);
+      if (source) await onEditMessage({ messageId: source.id, newContent: source.content });
+    };
+
+    const onDeleteMessage = async ({ messageId }) => {
+      const result = await store.dispatch('chatUnified/deleteFromMessage', { channelKey: props.channelKey, messageId });
+      if (!result?.ok) console.warn('[UnifiedChatContainer] Delete refused:', result?.reason);
+    };
+
     const onEditReply = async ({ messageId, newContent }) => {
       const result = await store.dispatch('chatUnified/editLastReply', {
         channelKey: props.channelKey,
@@ -821,6 +843,10 @@ export default {
       onEditMessage,
       onEditReply,
       editableReplyMessageId,
+      messageBranchPlan,
+      NO_BRANCH_ACTIONS,
+      onRegenerateMessage,
+      onDeleteMessage,
       executeSuggestion,
       getStatusFor,
       getRunningToolsFor,

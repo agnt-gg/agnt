@@ -341,6 +341,48 @@ export async function saveReplyEdit(conversationId, { previousText, content }) {
   }
 }
 
+async function postConversationAction(conversationId, action, body) {
+  if (!conversationId) return { ok: false, status: 0, error: 'no-conversation-id' };
+  try {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}/orchestrator/conversations/${encodeURIComponent(conversationId)}/${action}`,
+      {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+    const json = await response.json().catch(() => null);
+    if (response.ok) return { ok: true, status: response.status, ...(json || {}) };
+    return { ok: false, status: response.status, error: json?.error || response.statusText };
+  } catch (e) {
+    return { ok: false, status: 0, error: e?.message || String(e) };
+  }
+}
+
+/**
+ * Mirror "delete from this message" into the server transcript
+ * (conversation_logs), so a server-run turn cannot re-project what the user
+ * deleted. `cut` comes from messageBranching.deleteCut. A refusal never undoes
+ * the local delete.
+ *
+ * @returns {Promise<{ ok: boolean, status: number, error?: string }>}
+ */
+export function truncateConversation(conversationId, cut) {
+  return postConversationAction(conversationId, 'truncate', cut);
+}
+
+/**
+ * Fork the server's state for a conversation at `cut`
+ * (messageBranching.forkCut): provider transcript, prompt state, settings and
+ * data refs, under a new conversation id.
+ *
+ * @returns {Promise<{ ok: boolean, status: number, conversationId?: string, error?: string }>}
+ */
+export function forkConversation(conversationId, cut) {
+  return postConversationAction(conversationId, 'fork', cut);
+}
+
 /**
  * Parse a single `event: <name>\ndata: <json>` SSE block.
  * Returns null when the block is empty / malformed.
