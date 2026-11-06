@@ -37,7 +37,8 @@ export const WORKFLOW_QUICKSTARTS = [
     icon: 'fas fa-eye',
     description: 'Check a page on a schedule and report what it says now.',
     nodes: [
-      { key: 'timer', type: 'trigger-timer', name: 'Every Hour', params: { scheduleType: 'Interval', schedule: 'Hourly', fireOnStart: 'Yes' } },
+      // Daily: the free plan runs timers daily or slower, so this one runs on every plan.
+      { key: 'timer', type: 'trigger-timer', name: 'Every Day', params: { scheduleType: 'Interval', schedule: 'Daily', fireOnStart: 'Yes' } },
       { key: 'scrape', type: 'web-scrape', name: 'Read Page', params: { url: 'https://news.ycombinator.com' } },
       {
         key: 'summary',
@@ -110,13 +111,52 @@ export function quickstartAvailable(template, installedTypes) {
   return template.nodes.every((node) => installedTypes.has(node.type));
 }
 
+/**
+ * The titles of a template's nodes that need a paid plan, from the installed
+ * schemas (`schemasByType`: type -> schema). Empty when it runs on any plan.
+ */
+export function proNodeTitles(template, schemasByType) {
+  const titles = [];
+  for (const node of template.nodes) {
+    const schema = schemasByType.get(node.type);
+    if (schema?.requiresPro) titles.push(schema.title || node.name);
+  }
+  return [...new Set(titles)];
+}
+
 /** The name a {{Name.field}} reference must use for a node called `name`. */
 export const referenceName = (name) => String(name).replace(/\s+/g, '');
 
+/** Canvas grid and node size the designer snaps to (WorkflowDesigner gridSize / nodeHeight). */
+export const QUICKSTART_GRID = 16;
+export const QUICKSTART_NODE_HEIGHT = 48;
 /**
- * Left-to-right layout in canvas space. Returns [{ node, x, y }] where x/y are
- * the centre points createNode expects.
+ * Room between two stacked nodes. An edge leaves the right-hand output, turns
+ * across this gap and drops into the next node's left-hand input, so the gap
+ * holds its rounded corners (up to 30px on a trigger) with space either side.
  */
-export function layoutQuickstart(template, { startX = 200, stepX = 280, y = 240 } = {}) {
-  return template.nodes.map((node, index) => ({ node, x: startX + index * stepX, y }));
+export const QUICKSTART_GAP = 96;
+
+/**
+ * Top-down layout in canvas space: one column, trigger first, each step below
+ * the last. Returns [{ node, x, y }] where x/y are the centre points
+ * createNode expects; the step stays on the grid so nodes do not shift when
+ * they snap.
+ */
+export function layoutQuickstart(template, { x = 400, startY = 160, nodeHeight = QUICKSTART_NODE_HEIGHT, gap = QUICKSTART_GAP } = {}) {
+  const step = Math.ceil((nodeHeight + gap) / QUICKSTART_GRID) * QUICKSTART_GRID;
+  return template.nodes.map((node, index) => ({ node, x, y: startY + index * step }));
+}
+
+/** Clear space a node needs either side of it in the visible canvas. */
+export const GRAPH_SIDE_ROOM = 48;
+
+/**
+ * The tool palette floats over the canvas's left edge. When what it leaves
+ * visible cannot hold one node with room either side, a new graph would land
+ * underneath it.
+ */
+export function paletteCrowdsGraph(canvasWidth, coveredLeft, nodeWidth) {
+  if (!(canvasWidth > 0) || !(coveredLeft > 0)) return false;
+  return canvasWidth - coveredLeft < nodeWidth + 2 * GRAPH_SIDE_ROOM;
 }

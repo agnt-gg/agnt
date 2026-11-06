@@ -2,7 +2,7 @@
   <div class="node-based-tool">
     <!-- <div class="scanline-overlay"></div> -->
     <!-- <LoadingOverlay v-if="isLoading" /> -->
-    <ToolSidebar :mobile-open="mobilePaletteOpen" @mobile-close="mobilePaletteOpen = false" @add-node="addMobileNode"></ToolSidebar>
+    <ToolSidebar ref="toolSidebar" :mobile-open="mobilePaletteOpen" @mobile-close="mobilePaletteOpen = false" @add-node="addMobileNode"></ToolSidebar>
     <div class="canvas-state-controls">
       <Tooltip text="Rename" width="auto" position="bottom">
         <button type="button" id="workflow-name" @click="renameWorkflow">{{ workflowName }}</button>
@@ -85,14 +85,14 @@
     />
     <!-- Empty canvas: never a blank page. Only the cards take the pointer, so
          nodes can still be dragged in from the palette behind this. -->
-    <section v-if="!nodes.length && availableQuickstarts.length" class="wf-quickstarts" data-tour-id="workflows.quickstarts" aria-label="Start from a template">
+    <section v-if="!nodes.length && !isOpeningWorkflow && availableQuickstarts.length" class="wf-quickstarts" data-tour-id="workflows.quickstarts" aria-label="Start from a template">
       <h3>Start from a template</h3>
       <p v-if="compact">Or tap Add node, or describe the workflow to Annie.</p>
       <p v-else>Or drag a node in from the left, or describe the workflow to Annie.</p>
       <div class="wf-qs-grid">
-        <button v-for="template in availableQuickstarts" :key="template.id" type="button" class="wf-qs-card" @click="applyQuickstart(template)">
+        <button v-for="template in quickstartCards" :key="template.id" type="button" class="wf-qs-card" :class="{ 'is-locked': template.locked }" @click="chooseQuickstart(template)">
           <i :class="template.icon" aria-hidden="true"></i>
-          <strong>{{ template.name }}</strong>
+          <strong>{{ template.name }}<span v-if="template.locked" class="wf-qs-pro">Pro</span></strong>
           <small>{{ template.description }}</small>
         </button>
       </div>
@@ -172,7 +172,10 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
 import AgentChat from './components/AgentChat/AgentChat.vue';
-import { WORKFLOW_QUICKSTARTS, quickstartAvailable, layoutQuickstart } from './workflowQuickstarts.js';
+import { WORKFLOW_QUICKSTARTS, quickstartAvailable, layoutQuickstart, paletteCrowdsGraph, proNodeTitles } from './workflowQuickstarts.js';
+
+// ToolSidebar's open/close transition (div#sidebar-wrapper, 0.3s), plus a frame.
+const PALETTE_TRANSITION_MS = 320;
 import { isWorkflowOwner } from './workflowOwnership.js';
 import { DEFAULT_WORKFLOW_NAME, needsName } from './workflowNaming.js';
 
@@ -254,6 +257,18 @@ export default {
       }
       return WORKFLOW_QUICKSTARTS.filter((template) => quickstartAvailable(template, installed));
     },
+    /** The template cards, each marked when it needs a plan this account does not have. */
+    quickstartCards() {
+      const schemas = new Map();
+      for (const group of Object.values(this.backendTools || {})) {
+        if (Array.isArray(group)) for (const schema of group) if (schema?.type && !schemas.has(schema.type)) schemas.set(schema.type, schema);
+      }
+      const paid = (this.$store.getters['userAuth/planType'] || 'free') !== 'free';
+      return this.availableQuickstarts.map((template) => {
+        const proNodes = proNodeTitles(template, schemas);
+        return { ...template, proNodes, locked: !paid && proNodes.length > 0 };
+      });
+    },
     backendTools() {
       return this.$store.getters['tools/workflowTools'];
     },
@@ -330,6 +345,15 @@ export default {
      * Build a quickstart with the designer's own primitives so every node gets
      * the installed schema's defaults. Refuses to run over existing nodes.
      */
+    /** A template this plan cannot run opens the plans, saying why, instead of half-building it. */
+    chooseQuickstart(card) {
+      if (card.locked) {
+        this.upgradeReason = `${card.name} uses ${card.proNodes.join(' and ')}, included with paid AGNT plans.`;
+        this.upgradeOpen = true;
+        return;
+      }
+      this.applyQuickstart(card);
+    },
     applyQuickstart(template) {
       if (this.nodes.length) return;
       const schemas = new Map();
@@ -357,8 +381,20 @@ export default {
       this.workflowName = template.name;
       this.$nextTick(() => {
         this.updateEdges();
-        this.$refs.canvas?.centerGraph({ zoom: 1 });
+        // The column is taller than wide: fit it, never zooming in past 100%,
+        // once the palette has made room for it.
+        const center = () => this.$refs.canvas?.centerGraph({ fit: true });
+        if (this.makeRoomForGraph()) setTimeout(center, PALETTE_TRANSITION_MS);
+        else center();
       });
+    },
+    /** Close the palette when it would leave no room beside it for a node. True when it closed. */
+    makeRoomForGraph() {
+      const canvas = this.$refs.canvas;
+      const host = canvas?.$el?.getBoundingClientRect?.();
+      if (!host || this.compact) return false;
+      if (!paletteCrowdsGraph(host.width, canvas.coveredLeft?.(host) || 0, this.nodeWidth)) return false;
+      return this.$refs.toolSidebar?.collapse?.() === true;
     },
     addMobileNode(schema) {
       this.createNode(schema, 180, 80 + this.nodes.length * 140);
@@ -411,7 +447,7 @@ export default {
         console.log('🔍 WorkflowDesigner createNode - planType:', planType, 'isPro:', isPro);
 
         if (!isPro) {
-          this.showAlert('This feature requires a PRO subscription. Please upgrade to use Webhook and Email nodes.', {
+          this.showAlert(`${nodeData.title || 'This node'} is included with paid AGNT plans. Upgrade to use it.`, {
             showCancel: false,
           });
           return;
@@ -2523,6 +2559,9 @@ export default {
     const CUSTOM_TOOLS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     const isShareable = ref(false);
     const isLoading = ref(true);
+    // Opening a saved workflow: its canvas is empty only until its nodes arrive,
+    // so the templates stay hidden from the first render until the load settles.
+    const isOpeningWorkflow = ref(Boolean(route.query.id));
     const { proxy } = getCurrentInstance();
 
     // Expose properties for the Terminal WorkflowDesigner component
@@ -2554,6 +2593,7 @@ export default {
     };
 
     const loadWorkflow = async (id) => {
+      isOpeningWorkflow.value = true;
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -2670,7 +2710,10 @@ export default {
         }
       } catch (error) {
         console.error('Error loading workflow:', error);
+        isOpeningWorkflow.value = false;
         await proxy.showAlert(error.message || 'Failed to load workflow. Please try again.', { showCancel: false });
+      } finally {
+        isOpeningWorkflow.value = false;
       }
     };
 
@@ -2816,8 +2859,17 @@ export default {
       }
     );
 
+    // Nodes on the canvas end the opening, whichever path put them there.
+    watch(
+      () => nodes.value.length,
+      (count) => {
+        if (count) isOpeningWorkflow.value = false;
+      }
+    );
+
     return {
       compact, mobilePaletteOpen, mobileConnections, mobileFrom, mobileTo,
+      isOpeningWorkflow,
       loadWorkflow,
       handleWorkflowGeneratorRef,
       pollWorkflowStatusRef,
@@ -2889,8 +2941,22 @@ export default {
 }
 .wf-qs-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 240px));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 240px));
+  justify-content: center;
   gap: 12px;
+  width: 100%;
+  max-width: 492px;
+}
+/* The palette floats over the canvas's left edge: keep every card clear of it
+   (open: 16px inset + 288px panel; closed: the 48px rail). */
+@media (min-width: 801px) {
+  #sidebar-wrapper ~ .wf-quickstarts {
+    left: 304px;
+    padding: 0 16px;
+  }
+  #sidebar-wrapper.closed ~ .wf-quickstarts {
+    left: 64px;
+  }
 }
 .wf-qs-card {
   pointer-events: auto;
@@ -2921,6 +2987,17 @@ export default {
 .wf-qs-card strong {
   font-weight: 500;
   font-size: 13px;
+}
+.wf-qs-pro {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--terminal-border-color);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  vertical-align: 1px;
 }
 .wf-qs-card small {
   font-size: 11.5px;
@@ -3038,14 +3115,23 @@ body.cyberpunk .canvas-state-controls {
   cursor: pointer !important;
 }
 
+/* A text label, not one of the toolbar's 32px round icon buttons. */
 .canvas-state-controls button#workflow-name {
+  display: block;
+  width: auto;
+  height: auto;
   margin-right: 16px;
   padding: 2px 4px;
+  max-width: 220px;
+  overflow: hidden;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: inherit;
   font: inherit;
   font-size: var(--font-size-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
   opacity: 0.5;
 }
 

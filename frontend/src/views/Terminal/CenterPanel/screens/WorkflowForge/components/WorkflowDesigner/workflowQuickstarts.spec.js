@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { WORKFLOW_QUICKSTARTS, quickstartAvailable, referenceName, layoutQuickstart } from './workflowQuickstarts.js';
+import {
+  WORKFLOW_QUICKSTARTS,
+  quickstartAvailable,
+  referenceName,
+  layoutQuickstart,
+  QUICKSTART_GRID,
+  QUICKSTART_NODE_HEIGHT,
+  QUICKSTART_GAP,
+  paletteCrowdsGraph,
+  proNodeTitles,
+} from './workflowQuickstarts.js';
 
 // Output fields of the node types the templates use, read from the live
 // /api/tools/workflow-tools schemas when these templates were written.
@@ -65,13 +75,63 @@ describe('quickstart helpers', () => {
     expect(quickstartAvailable(daily, all)).toBe(false);
   });
 
-  it('lays nodes out left to right', () => {
-    const points = layoutQuickstart(WORKFLOW_QUICKSTARTS[0], { startX: 100, stepX: 50, y: 10 });
+  it('lays every template out top-down in one column, trigger first', () => {
+    const points = layoutQuickstart(WORKFLOW_QUICKSTARTS[0], { x: 100, startY: 16 });
     expect(points.map((p) => [p.x, p.y])).toEqual([
-      [100, 10],
-      [150, 10],
-      [200, 10],
-      [250, 10],
+      [100, 16],
+      [100, 160],
+      [100, 304],
+      [100, 448],
     ]);
+    expect(points[0].node.type).toBe('trigger-timer');
+  });
+
+  // The live catalogue gates these three behind a paid plan.
+  const SCHEMAS = new Map([
+    ['trigger-timer', { title: 'Timer Trigger' }],
+    ['web-search', { title: 'Web Search', requiresPro: true }],
+    ['receive-email', { title: 'Receive Email', requiresPro: true }],
+    ['send-email', { title: 'Send Email', requiresPro: true }],
+    ['web-scrape', { title: 'Web Scrape' }],
+    ['generate-with-ai-llm', { title: 'AI LLM Call' }],
+    ['markdown-preview', { title: 'Markdown Preview' }],
+  ]);
+
+  it('names the paid nodes a template needs, and none for one that runs on any plan', () => {
+    const byId = Object.fromEntries(WORKFLOW_QUICKSTARTS.map((t) => [t.id, t]));
+    expect(proNodeTitles(byId['daily-brief'], SCHEMAS)).toEqual(['Web Search']);
+    expect(proNodeTitles(byId['email-drafts'], SCHEMAS)).toEqual(['Receive Email']);
+    expect(proNodeTitles(byId['weekly-report'], SCHEMAS)).toEqual(['Web Search', 'Send Email']);
+    expect(proNodeTitles(byId['page-watch'], SCHEMAS)).toEqual([]);
+  });
+
+  it('at least one template runs on the free plan: no paid node, a timer no faster than daily', () => {
+    const free = WORKFLOW_QUICKSTARTS.filter((t) => proNodeTitles(t, SCHEMAS).length === 0);
+    expect(free.map((t) => t.id)).toContain('page-watch');
+    const timer = free.find((t) => t.id === 'page-watch').nodes.find((n) => n.type === 'trigger-timer');
+    expect(timer.params.schedule).toBe('Daily');
+  });
+
+  // Measured at 1440px in AGNT One: a 492px canvas with the open palette over
+  // its first 304px leaves 188px, less than one 288px node.
+  it('the open palette crowds a node only when the strip it leaves is too narrow', () => {
+    expect(paletteCrowdsGraph(492, 304, 288)).toBe(true);
+    expect(paletteCrowdsGraph(492, 64, 288)).toBe(false);
+    expect(paletteCrowdsGraph(1200, 304, 288)).toBe(false);
+    expect(paletteCrowdsGraph(492, 0, 288)).toBe(false);
+    expect(paletteCrowdsGraph(0, 304, 288)).toBe(false);
+  });
+
+  // Regression: the old left-to-right step (280) was narrower than a node (288),
+  // so neighbouring template nodes overlapped.
+  it('stacked nodes never overlap and keep room for the connecting edge', () => {
+    for (const template of WORKFLOW_QUICKSTARTS) {
+      const ys = layoutQuickstart(template).map((p) => p.y);
+      for (let i = 1; i < ys.length; i += 1) {
+        const gap = ys[i] - ys[i - 1] - QUICKSTART_NODE_HEIGHT;
+        expect(gap, template.id).toBeGreaterThanOrEqual(QUICKSTART_GAP);
+        expect((ys[i] - ys[i - 1]) % QUICKSTART_GRID, template.id).toBe(0);
+      }
+    }
   });
 });

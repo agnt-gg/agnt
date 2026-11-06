@@ -222,6 +222,13 @@ export default {
       localStorage.setItem('sidebarClosed', isClosed.value);
     };
 
+    /** Close the palette for this view only, leaving the saved preference alone. True when it closed. */
+    const collapse = () => {
+      if (compact.value || isClosed.value) return false;
+      isClosed.value = true;
+      return true;
+    };
+
     const formatSectionName = (name) => {
       return name.charAt(0).toUpperCase() + name.slice(1);
     };
@@ -271,6 +278,7 @@ export default {
       expandedSections,
       toggleSection,
       toggleSidebar,
+      collapse,
       formatSectionName,
       handleDragStart,
       searchQuery,
