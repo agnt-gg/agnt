@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorktree } from '../worktree.mjs';
 import { auditFootprint, buildBundle, changedFiles, classifyTier, redThenGreen } from './evidence.mjs';
 
-vi.setConfig({ testTimeout: 60_000 });
+// The git setup in beforeEach is as slow as a test under full-suite load.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe('auditFootprint', () => {
   it('passes when every changed file was declared', () => {
@@ -59,7 +60,7 @@ describe('classifyTier', () => {
 
 describe('against a real repo', () => {
   let root;
-  const git = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const git = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
   beforeEach(() => {
     root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-ev-')));

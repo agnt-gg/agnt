@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { collectChangedFiles, plan, resolveBase } from './test-impacted.mjs';
 
-vi.setConfig({ testTimeout: 60_000 });
+// The git setup in beforeEach is as slow as a test under full-suite load.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe('plan', () => {
   it('hands module files to `related`, split by side', () => {
@@ -71,7 +72,7 @@ describe('plan', () => {
 
 describe('collectChangedFiles', () => {
   let root;
-  const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
   beforeEach(() => {
     root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-impacted-')));

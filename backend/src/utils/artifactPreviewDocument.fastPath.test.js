@@ -5,13 +5,18 @@
  * decline. (The same property was checked against every HTML artifact in a
  * real workspace: 9.7k files, 4.7 GB.)
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { preparePreviewHTML, planWithFullParse, planPreviewDocument, withPreviewReporter, scanPreviewLandmarks } from './artifactPreviewDocument.js';
 
 const channel = 'abcdefghijklmnop1234';
 const documentURL = '/api/local-preview/C:/work/site/page.html';
 const optionSets = [{ documentURL, channel }, { channel }, { documentURL }];
 const reference = (source, options) => withPreviewReporter(planWithFullParse(source, options), options.channel ?? '');
+
+// The full parse loads its HTML parser on first use; pay that here, not inside the first test's 5s.
+beforeAll(() => {
+  planWithFullParse('<html><head></head><body></body></html>');
+});
 
 const SCANNABLE = {
   'a complete document': '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>x &lt; y</title></head><body><h1>Hi</h1><script>let a = 1 < 2; const s = "</div>";</script></body></html>',

@@ -27,10 +27,11 @@ import {
 
 // Real git on a real filesystem, on Windows, under a virus scanner. A single
 // create is ~1.5s here and the first one in a run pays a cold start on top.
-vi.setConfig({ testTimeout: 60_000 });
+// The git setup in beforeEach is as slow as a test under full-suite load.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 let root;
-const git = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const git = (args, cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const canary = (rel) => path.join(root, rel, 'canary.txt');
 
 beforeEach(() => {
@@ -233,7 +234,7 @@ describe('.gitignore contract', () => {
   it('ignores every linked directory when it is a symlink, not only a real one', () => {
     const probe = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-ignore-')));
     try {
-      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: probe, stdio: ['ignore', 'pipe', 'ignore'] });
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: probe, stdio: ['ignore', 'pipe', 'pipe'] });
       fs.copyFileSync(path.join(REPO_ROOT, '.gitignore'), path.join(probe, '.gitignore'));
 
       const target = path.join(probe, 'real-deps');

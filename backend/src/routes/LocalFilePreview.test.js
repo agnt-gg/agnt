@@ -7,7 +7,7 @@ import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import jwt from 'jsonwebtoken';
 import LocalFileRoutes, * as routes from './LocalFileRoutes.js';
-import { previewDocumentBase } from '../utils/artifactPreviewDocument.js';
+import { previewDocumentBase, planWithFullParse } from '../utils/artifactPreviewDocument.js';
 
 let server, base, root, previousSecret;
 const secret = 'isolated-preview-test';
@@ -15,6 +15,8 @@ const auth = () => ({ Authorization: `Bearer ${jwt.sign({id:'preview-test'}, sec
 const url = (name, preview = true) => `${base}/api/${preview?'local-preview':'local-file'}/${encodeURI(path.join(root,name).replaceAll('\\','/'))}`;
 let wrapper;
 beforeAll(async () => {
+  // The HTML parser loads on first use; pay that here, not inside the first test's 5s.
+  planWithFullParse('<html><head></head><body></body></html>');
   previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = secret;
   root = await fs.mkdtemp(path.join(os.tmpdir(),'agnt-preview-'));
