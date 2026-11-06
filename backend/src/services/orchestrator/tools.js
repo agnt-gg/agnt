@@ -67,9 +67,9 @@ import { augmentEnvPath } from '../../utils/envPath.js';
 import { coerceArgumentTypes, applyDeclaredDefaults } from '../../utils/argumentCoercion.js';
 import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
-import { serviceFailure } from '../agntServices.js';
+import { serviceFailure, serverNow } from '../agntServices.js';
 import { searchWeb } from '../search/searchRouter.js';
-import { sendMail } from '../agntMail.js';
+import { sendMail, defaultInbox, listInbound } from '../agntMail.js';
 import { runJob, summarizeJob } from '../agntSandbox.js';
 import { resolveAccountAi, resolveAccountImageProvider } from '../ai/accountAi.js';
 
@@ -2853,6 +2853,50 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       try {
         const result = await sendMail({ to, subject, text: isHtml ? String(body).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : body, html: isHtml ? body : undefined, actor: context?.userId });
         return JSON.stringify({ success: true, messageId: result.id, state: result.state, from: result.from, to, subject, ...(senderName ? { note: 'senderName is not applied; mail is sent from your agent inbox ' + result.from } : {}) });
+      } catch (error) {
+        return JSON.stringify(serviceFailure(error));
+      }
+    },
+  },
+  my_email_inbox: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'my_email_inbox',
+        description:
+          "Your own agent email address and the mail it has received. Use the address wherever an email is needed (signing up for a service in the browser, a contact form, giving it to someone), then call this again to read the verification code, magic link or reply that arrives. The address is yours alone; on a team, each person has their own. Included with AGNT Pro.",
+        parameters: {
+          type: 'object',
+          properties: {
+            since_minutes: {
+              type: 'number',
+              default: 60,
+              description: 'Only mail received in the last N minutes (default 60, up to 10080 = 7 days). Use 0 to get just the address.',
+            },
+            limit: {
+              type: 'number',
+              default: 10,
+              description: 'At most this many messages, newest first (default 10, max 25).',
+            },
+          },
+        },
+      },
+    },
+    execute: async ({ since_minutes = 60, limit = 10 } = {}, _authToken, context) => {
+      const actor = context?.userId;
+      try {
+        const inbox = await defaultInbox(actor);
+        const minutes = Math.min(Math.max(Number(since_minutes) || 0, 0), 10080);
+        if (minutes === 0) return JSON.stringify({ success: true, address: inbox.address, messages: [] });
+        const count = Math.min(Math.max(Number(limit) || 10, 1), 25);
+        const { messages } = await listInbound({ since: serverNow() - minutes * 60_000, limit: 25, actor });
+        const newest = messages.slice(-count).reverse().map((m) => ({
+          from: m.from,
+          subject: m.subject,
+          receivedAt: m.createdAt ? new Date(m.createdAt).toISOString() : null,
+          text: String(m.text || '').slice(0, 4000),
+        }));
+        return JSON.stringify({ success: true, address: inbox.address, messages: newest });
       } catch (error) {
         return JSON.stringify(serviceFailure(error));
       }

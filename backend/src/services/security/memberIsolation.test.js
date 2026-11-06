@@ -101,7 +101,7 @@ describe('memberIsolation', () => {
 
   it('a member keeps chat-side tools: web, memory, images, email, sub-chats', () => {
     businessTenant();
-    for (const tool of ['web_search', 'web_scrape', 'save_agent_memory', 'recall', 'generate_image', 'send_email', 'start_chat']) {
+    for (const tool of ['web_search', 'web_scrape', 'save_agent_memory', 'recall', 'generate_image', 'send_email', 'my_email_inbox', 'start_chat']) {
       expect(memberRefusal(tool, {}, 'member-2'), tool).toBeNull();
     }
   });

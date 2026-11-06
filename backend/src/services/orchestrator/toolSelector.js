@@ -214,6 +214,7 @@ export const TOOL_GROUPS = {
   ],
   email: [
     'send_email',
+    'my_email_inbox',
   ],
   texting: [
     'text_user',
@@ -342,7 +343,7 @@ export const GROUP_TRIGGERS = {
   artifact_code: /\b(artifacts?|files?|workspaces?|read\s+file|write\s+file|edit\s+file|code|html|markdown|grep|glob|search\s+(?:the\s+)?(?:code|files?|repo|codebase)|find\s+(?:the\s+)?files?)\b/i,
   goal_management: /\b(goals?|tasks?|progress|evaluate|golden\s*standards?)\b/i,
   media: /\b(images?|photos?|pictures?|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshots?|ocr)\b/i,
-  email: /\b(emails?|e-mails?|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
+  email: /\b(emails?|e-mails?|mail|inbox|compose|smtp|send\s+(?:a\s+)?(?:message|letter)|sign\s*-?\s*up|create\s+(?:an?\s+)?account|register\s+(?:for|an?\s+account)|verification|verify\s+(?:my|the|your)?\s*(?:email|account)|magic\s+link|otp|one[\s-]time\s+(?:code|password))\b/i,
   texting: /\b(text\s+(?:me|him|her|them|my\s+phone)|texts?\s+messages?|sms|imessage|remind(?:er|ers)?|ping\s+me|on\s+my\s+phone|let\s+me\s+know\s+(?:when|once|if))\b/i,
   memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
