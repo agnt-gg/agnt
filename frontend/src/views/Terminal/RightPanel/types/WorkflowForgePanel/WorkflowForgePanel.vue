@@ -40,7 +40,7 @@
       <IntegrationHealth />
       <div class="wf-sum-sec">
         <div class="wf-sum-hd">Last runs <span class="wf-sum-ln"></span><span class="wf-sum-n">{{ lastRuns.length }}</span></div>
-        <div v-if="!lastRuns.length" class="wf-sum-empty">No runs yet. ▶ in the toolbar runs it once.</div>
+        <div v-if="!lastRuns.length" class="wf-sum-empty">No runs yet. ▶ in the toolbar activates it.</div>
         <button v-for="r in lastRuns" :key="r.id" type="button" class="wf-run" @click="$emit('panel-action', 'navigate', { screen: 'TracesScreen', opts: { selectedExecutionId: r.id } })">
           <span class="wf-run-st" :class="'st-' + String(r.status || '').toLowerCase()">{{ r.status }}</span>
           <span class="wf-run-when">{{ relTime(r.started_at || r.startTime || r.created_at) }}</span>

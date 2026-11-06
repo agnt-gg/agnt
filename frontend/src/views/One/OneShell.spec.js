@@ -285,6 +285,12 @@ describe('OneShell', () => {
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-dashboard"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/dashboard');
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-goals"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0].path).toBe('/goals');
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-members"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'members' } });
       await w.find('[data-testid="one-rail-more"]').trigger('click');

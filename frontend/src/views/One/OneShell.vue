@@ -256,7 +256,7 @@ const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPi
   location,
   screenName: computed(() => props.screenName),
   teamState,
-  nav: { go, chat: () => backToChat(), ask: (text) => ask(text), prompt: (o) => prompt(o), toast: (t) => toast(t) },
+  nav: { go, openScreen: pushScreen, chat: () => backToChat(), ask: (text) => ask(text), prompt: (o) => prompt(o), toast: (t) => toast(t) },
 });
 
 // ── Going places: every move is a route push (Back works, links work) ─────

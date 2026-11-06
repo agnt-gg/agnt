@@ -4,7 +4,9 @@
     <!-- <LoadingOverlay v-if="isLoading" /> -->
     <ToolSidebar :mobile-open="mobilePaletteOpen" @mobile-close="mobilePaletteOpen = false" @add-node="addMobileNode"></ToolSidebar>
     <div class="canvas-state-controls">
-      <div id="workflow-name">{{ workflowName }}</div>
+      <Tooltip text="Rename" width="auto" position="bottom">
+        <button type="button" id="workflow-name" @click="renameWorkflow">{{ workflowName }}</button>
+      </Tooltip>
 
       <WorkflowGenerator
         @workflow-generated="handleWorkflowGenerator"
@@ -20,13 +22,14 @@
         @animation-state-changed="updateAnimationState"
         @workflow-started="handleWorkflowStarted"
         @workflow-error="handleWorkflowError"
+        @workflow-start-failed="handleWorkflowStartFailed"
         @workflow-stopped="handleWorkflowStopped"
         @workflow-id-set="setActiveWorkflowId"
         @workflow-status-update="handleWorkflowStatusUpdate"
       />
-      <Tooltip text="Save Workflow" width="auto" position="bottom">
-        <button id="save-workflow" @click="saveCanvasState(false, false)">
-          <i class="fas fa-save"></i>
+      <Tooltip :text="justSaved ? 'Saved' : 'Save Workflow'" width="auto" position="bottom">
+        <button id="save-workflow" :class="{ 'is-saved': justSaved }" @click="saveCanvasState(false, false)">
+          <i :class="justSaved ? 'fas fa-check' : 'fas fa-save'"></i>
         </button>
       </Tooltip>
       <WorkflowActionsMenu
@@ -144,6 +147,7 @@
     </div>
   </Teleport>
   <SimpleModal ref="modal" />
+  <UpgradeModal :open="upgradeOpen" :reason="upgradeReason" @close="upgradeOpen = false" />
 </template>
 
 <script>
@@ -165,10 +169,12 @@ import generateUUID from '@/views/_utils/generateUUID.js';
 import LoadingOverlay from '@/views/_components/utility/LoadingOverlay.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import UpgradeModal from '@/components/UpgradeModal.vue';
 import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
 import AgentChat from './components/AgentChat/AgentChat.vue';
 import { WORKFLOW_QUICKSTARTS, quickstartAvailable, layoutQuickstart } from './workflowQuickstarts.js';
 import { isWorkflowOwner } from './workflowOwnership.js';
+import { DEFAULT_WORKFLOW_NAME, needsName } from './workflowNaming.js';
 
 export default {
   name: 'WorkflowDesignerView',
@@ -181,6 +187,7 @@ export default {
     WorkflowActionsMenu,
     CanvasViewControls,
     LoadingOverlay,    SimpleModal,
+    UpgradeModal,
     SecurityLevelSlider,
     AgentChat,
     Tooltip,
@@ -224,6 +231,11 @@ export default {
       customTools: [],
       customToolsLastFetched: null,
       didPromptForNameOnce: false,
+      // The Save button shows a check for a moment instead of a dialog.
+      justSaved: false,
+      justSavedTimer: null,
+      upgradeOpen: false,
+      upgradeReason: '',
       currentNodeId: null, // Track current node to prevent unnecessary updates
       // Set while the user is dragging a node. Polled status updates rebuild
       // `this.nodes` with new object references, which drops Vue/Vue-Flow drag
@@ -296,8 +308,8 @@ export default {
       //    - user hasn't already been prompted
       //    - name is blank or still the default
       const activeWorkflow = localStorage.getItem('activeWorkflow');
-      const defaultName = 'My Workflow';
-      const isBrandNewWorkflow = !activeWorkflow && !this.didPromptForNameOnce && (!this.workflowName || this.workflowName === defaultName);
+      const defaultName = DEFAULT_WORKFLOW_NAME;
+      const isBrandNewWorkflow = !activeWorkflow && !this.didPromptForNameOnce && needsName(this.workflowName);
 
       // 2) Prompt only if it's brand-new and not prompted before
       if (isBrandNewWorkflow) {
@@ -312,7 +324,7 @@ export default {
       }
 
       // 3) Now simply call your existing save logic (no repeated prompt)
-      await this.saveCanvasState(false, false);
+      await this.saveCanvasState(false, false, { named: true });
     },
     /**
      * Build a quickstart with the designer's own primitives so every node gets
@@ -960,7 +972,7 @@ export default {
         this.isApplyingWorkflowSecurity = false;
       }
     },
-    async saveCanvasState(silent = false, isSharing = false) {
+    async saveCanvasState(silent = false, isSharing = false, { named = false } = {}) {
       this.deselectAllNodes();
       this.deselectAllEdges();
 
@@ -977,7 +989,7 @@ export default {
       }
 
       let newWorkflowName = this.workflowName;
-      if (!silent && !isSharing) {
+      if (!silent && !isSharing && !named && needsName(this.workflowName)) {
         newWorkflowName = await this.showPrompt('Save Workflow', 'Enter a name for your workflow:', this.workflowName, {
           confirmText: 'Save',
           cancelText: 'Cancel',
@@ -1113,14 +1125,12 @@ export default {
           }
           console.log('Workflow shared:', sharedId || serverState.id);
         } else {
-          // Not sharing; optionally show a save alert
-          if (!silent) {
-            await this.showAlert(`Workflow "${this.workflowName}" saved and privacy updated.`, { showCancel: false });
-          }
+          // Not sharing: the Save button confirms it, without a dialog to dismiss.
+          if (!silent) this.flashSaved();
         }
       } catch (error) {
         console.error(isSharing ? 'Error sharing workflow:' : 'Error saving workflow to database:', error);
-        await this.showAlert(null, `Workflow "${this.workflowName}" failed to ${isSharing ? 'share' : 'save'}. Please try again.`, {
+        await this.showAlert(`Workflow "${this.workflowName}" failed to ${isSharing ? 'share' : 'save'}. Please try again.`, {
           showCancel: false,
         });
       }
@@ -1612,7 +1622,35 @@ export default {
     },
     handleWorkflowError(error) {
       console.error('Workflow error:', error);
-      // Update the UI to show the general workflow error
+    },
+    /** ▶ was refused: say why, and offer the plans when an upgrade lifts it. */
+    async handleWorkflowStartFailed({ message, planLimit } = {}) {
+      const reason = message || 'The workflow could not start.';
+      if (!planLimit) {
+        await this.showAlert(reason, { title: 'Workflow not started', showCancel: false });
+        return;
+      }
+      const seePlans = await this.showConfirm('Upgrade to run this workflow', reason, { confirmText: 'See plans', cancelText: 'Not now' });
+      if (seePlans) {
+        this.upgradeReason = reason;
+        this.upgradeOpen = true;
+      }
+    },
+    flashSaved() {
+      clearTimeout(this.justSavedTimer);
+      this.justSaved = true;
+      this.justSavedTimer = setTimeout(() => {
+        this.justSaved = false;
+        this.justSavedTimer = null;
+      }, 2000);
+    },
+    async renameWorkflow() {
+      const name = await this.showPrompt('Rename workflow', 'Workflow name:', this.workflowName, { confirmText: 'Rename' });
+      const trimmed = name === null ? '' : String(name).trim();
+      if (!trimmed || trimmed === this.workflowName) return;
+      this.updateWorkflowName(trimmed);
+      // A workflow that already exists keeps its new name; a new one takes it on its first save.
+      if (this.activeWorkflowId || localStorage.getItem('activeWorkflow')) await this.saveCanvasState(true, false);
     },
     handleWorkflowStopped() {
       // Reset all nodes and edges to inactive state
@@ -2817,6 +2855,7 @@ export default {
   },
   beforeUnmount() {
     this.stopPolling();
+    clearTimeout(this.justSavedTimer);
     if (this.socket) {
       this.socket.disconnect();
     }
@@ -2999,14 +3038,29 @@ body.cyberpunk .canvas-state-controls {
   cursor: pointer !important;
 }
 
-div#workflow-name {
+.canvas-state-controls button#workflow-name {
   margin-right: 16px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: var(--font-size-sm);
   opacity: 0.5;
 }
 
-body.dark div#workflow-name {
+.canvas-state-controls button#workflow-name:hover,
+.canvas-state-controls button#workflow-name:focus-visible {
+  opacity: 0.85;
+  text-decoration: underline dotted;
+}
+
+body.dark .canvas-state-controls button#workflow-name {
   color: var(--color-med-navy);
+}
+
+.canvas-state-controls button#save-workflow.is-saved i {
+  color: var(--text-green);
 }
 
 /* button#workflow-magic-button {

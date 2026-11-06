@@ -49,4 +49,20 @@ describe('Focused Settings', () => {
     for (const id of ['sounds', 'security', 'browser', 'backup', 'reset', 'about', 'phone-access', 'api-keys']) expect(listed, id).toContain(id);
     w.unmount();
   });
+
+  it('"Use an API key instead" opens the AI provider keys, not the plugin key vault', async () => {
+    const studio = vi.fn();
+    const go = vi.fn();
+    const w = mount(FocusedSettings, {
+      global: {
+        provide: { focusedNav: { studio, go, toast: vi.fn(), confirm: vi.fn() } },
+        stubs: { UiModeSetting: true, CustomSelect: true, UpgradeModal: true, UsageManager: true, ThemeSelector: true },
+      },
+    });
+    await flushPromises();
+    w.findComponent({ name: 'ConnectYourAi' }).vm.$emit('api-key');
+    expect(studio).toHaveBeenCalledWith('SettingsScreen', { section: 'providers' });
+    expect(go).not.toHaveBeenCalled();
+    w.unmount();
+  });
 });

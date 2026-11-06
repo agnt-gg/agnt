@@ -17,7 +17,7 @@
     <!-- No banner above the settings: the plan's own row (Billing) offers the
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
-    <ConnectYourAi @api-key="nav.go({ page: 'connectors', tab: 'vault' })" />
+    <ConnectYourAi @api-key="nav.studio('SettingsScreen', { section: 'providers' })" />
     <!-- AGNT One or Studio (custom pages, dashboard, goals, forges, Navigation settings). -->
     <UiModeSetting />
     <!-- Appearance: Studio's own theme settings (themes, font, scale, custom background with its

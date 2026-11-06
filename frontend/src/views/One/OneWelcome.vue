@@ -69,7 +69,7 @@ function finishSetup({ ask } = {}) {
   saveOneFlags(account.value, { ...loadOneFlags(account.value), setup: true });
   setupDone.value = true;
   clearSetupRequest();
-  // The composer below is this chat's: type the request in, send nothing.
-  if (ask) window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text: ask, send: false } }));
+  // "Ask Annie" asks: the chat sends it, or types it in when it has no model yet.
+  if (ask) window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text: ask, send: true } }));
 }
 </script>

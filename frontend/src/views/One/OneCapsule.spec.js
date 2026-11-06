@@ -17,7 +17,7 @@ import { flagsKey } from './oneModel.js';
 const NO_PHONE = { phones: [], plan: { eligible: true } };
 const LINKED = { phones: [{ id: 'p1', state: 'active' }], plan: { eligible: true } };
 const mountCapsule = async () => {
-  const w = mount(OneCapsule, { attachTo: document.body });
+  const w = mount(OneCapsule, { attachTo: document.body, global: { directives: { tooltip: {} } } });
   await flushPromises();
   return w;
 };

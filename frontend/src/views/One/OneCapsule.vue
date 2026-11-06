@@ -10,6 +10,7 @@
       aria-haspopup="dialog"
       :aria-expanded="open ? 'true' : 'false'"
       :aria-label="summary.complete ? 'Getting started: all set' : `Getting started: ${summary.done} of ${summary.total} done`"
+      v-tooltip="open ? '' : 'Getting started'"
       @click="open = !open"
     >
       <span v-if="summary.complete" class="one-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path :d="CHECK" /></svg></span>

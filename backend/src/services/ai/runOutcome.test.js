@@ -1,5 +1,6 @@
 import { it, expect } from 'vitest';
-import { teamRunOutcome } from './runOutcome.js';
+import fs from 'fs';
+import { teamRunOutcome, unansweredReason } from './runOutcome.js';
 import { runAgentOnTask } from '../TeamSpaceAgents.js';
 
 // bravo, Nov 2026: a provider error (429 billing, 404 model) came back as the reply, flagged
@@ -14,6 +15,24 @@ it('real replies and existing failure shapes are unchanged', () => {
   expect(teamRunOutcome({ success: true, content: 'card ok' })).toEqual({ status: 'completed', result: { success: true, content: 'card ok' } });
   expect(teamRunOutcome({ success: false, error: 'boom' }).status).toBe('failed');
   expect(teamRunOutcome({ error: 'boom', recoveredFromError: true, recoveredError: 'x' }).result.error).toBe('boom');
+});
+
+it('a chat turn whose only reply is the provider error went unanswered, and says why', () => {
+  expect(unansweredReason({ ...providerError, toolCalls: [] })).toBe('429 Your account is not active');
+  expect(unansweredReason({ recoveredFromError: true })).toBe('Provider request failed');
+});
+
+it('a real reply, or a turn that went on to use tools, was answered', () => {
+  expect(unansweredReason({ responseMessage: { content: 'hi' }, toolCalls: [] })).toBeNull();
+  expect(unansweredReason({ ...providerError, toolCalls: [{ id: 't1' }] })).toBeNull();
+  expect(unansweredReason(null)).toBeNull();
+});
+
+it('the chat records an unanswered turn as a failed run with its reason', () => {
+  const orchestrator = fs.readFileSync(new URL('../OrchestratorService.js', import.meta.url), 'utf8');
+  expect(orchestrator).toMatch(/unansweredTurnError = unansweredReason\(_r0\);/);
+  expect(orchestrator).toMatch(/const finalStatus = streamErrorForLogging \|\| unansweredTurnError \? 'failed' : 'completed';/);
+  expect(orchestrator).toMatch(/streamErrorForLogging \? streamErrorForLogging\.message : unansweredTurnError,/);
 });
 
 it('on a card, the provider error is reported as a failure, never sent for approval', async () => {

@@ -26,6 +26,7 @@ import { composeChain } from './orchestrator/chainComposer.js';
 import { scheduleAutoTitle } from './orchestrator/conversationTitler.js';
 import { generateSuggestions, fallbackSuggestions } from './orchestrator/suggestions.js';
 import { providerHealth } from './ai/providerHealth.js';
+import { unansweredReason } from './ai/runOutcome.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { recordLlmCall } from './execution/LedgerRecorder.js';
@@ -1405,6 +1406,8 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
   const allToolCallsForLogging = [];
   let finalContentForLogging = '';
   let streamErrorForLogging = null;
+  // The model never answered: its refusal or error was the turn's only reply.
+  let unansweredTurnError = null;
   let segmentStopReason = 'response_ended';
 
   // Agent execution tracking
@@ -3390,6 +3393,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // error the caller can branch on, not as prose in the answer stream.
         streamErrorForLogging = { message: recoveredError || 'Provider request failed', details: String(recoveredError || '') };
         sendEvent('error', { error: recoveredError || 'Provider request failed', provider: normalizedProvider, model, recoverable: false });
+      } else {
+        // Shown as the reply below, but the run did not succeed.
+        unansweredTurnError = unansweredReason(_r0);
       }
       const extracted = runtime.model.fallback === 'none' || isLocalProvider(normalizedProvider) ? '' : extractDisplayText(responseMessage?.content);
       const scrubbed = scrubEmptyPlaceholder(extracted);
@@ -4232,7 +4238,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Finalize agent execution tracking
     if (agentExecutionId) {
       try {
-        const finalStatus = streamErrorForLogging ? 'failed' : 'completed';
+        const finalStatus = streamErrorForLogging || unansweredTurnError ? 'failed' : 'completed';
         const finalResponseText = typeof finalContentForLogging === 'string'
           ? finalContentForLogging
           : String(finalContentForLogging || '');
@@ -4313,7 +4319,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           finalResponseText,
           computeSeconds,
           toolCallsCount,
-          streamErrorForLogging ? streamErrorForLogging.message : null,
+          streamErrorForLogging ? streamErrorForLogging.message : unansweredTurnError,
           tokenUsageForDb,
           buildCacheTelemetry(finalStatus, tokenAccumulator, cacheRounds)
         );

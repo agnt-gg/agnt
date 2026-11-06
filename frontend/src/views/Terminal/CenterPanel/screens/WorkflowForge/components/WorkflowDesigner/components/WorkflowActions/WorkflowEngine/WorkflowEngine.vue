@@ -9,6 +9,7 @@
 <script>
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { startRefusal } from '../../../workflowStartRefusal.js';
 
 export default {
   name: 'WorkflowEngine',
@@ -148,7 +149,7 @@ export default {
           this.isAnimating = false;
           this.localWorkflowStatus = 'stopped';
           this.$emit('animation-state-changed', this.isAnimating);
-          this.$emit('workflow-error', error.message);
+          this.$emit('workflow-start-failed', { message: error.message, planLimit: !!error.planLimit });
         }
       } else {
         // Otherwise, do the normal "stop" logic
@@ -263,11 +264,12 @@ export default {
           body: JSON.stringify({ workflow: workflowWithResolvedMedia }),
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
           console.error('❌ Backend error response:', data);
-          throw new Error(data.error || `HTTP error! status: ${response.status}`);
+          const refusal = startRefusal(response.status, data);
+          throw Object.assign(new Error(refusal.message), { planLimit: refusal.planLimit });
         }
 
         console.log('✅ Workflow started successfully:', data);
@@ -289,7 +291,7 @@ export default {
       } catch (error) {
         console.error('❌ CRITICAL ERROR sending workflow:', error);
         console.error('❌ Error stack:', error.stack);
-        this.$emit('workflow-error', error.message);
+        // toggleWorkflow, the only caller, reports it once.
         throw error;
       }
     },
