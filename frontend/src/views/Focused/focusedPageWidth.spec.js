@@ -18,6 +18,18 @@ const sidebar = readFileSync(join(DIR, 'FocusedSidebar.vue'), 'utf8');
 /** [selector, body] for every rule in the file (no nesting in focused.css). */
 const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
 
+describe('Focused empty chat', () => {
+  // Regression: the home panel centred with overflow hidden, so a first-run
+  // setup taller than the window (991px at 1440x960) had its top cut off
+  // above the panel, with no way to scroll to it.
+  it('centres only while it fits, then starts at the top and scrolls', () => {
+    const home = rules.find(([selector]) => selector === '.ui-focused:not(.is-compact) .chat-screen-wrapper.focused-home .main-panel');
+    expect(home, 'desktop home panel rule').toBeTruthy();
+    expect(home[1]).toMatch(/justify-content:\s*safe center;/);
+    expect(home[1]).toMatch(/overflow-y:\s*auto;/);
+  });
+});
+
 describe('Focused page width', () => {
   it('is set once, from the shared variable, at the Plugins width', () => {
     expect(css).toMatch(/--focused-page-width:\s*1204px/);

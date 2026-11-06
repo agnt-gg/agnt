@@ -66,6 +66,22 @@ describe('ProviderLanes — showLanes', () => {
     expect(tileText(w)).not.toContain('Claude Code');
     expect(w.find('.lane-foot').exists()).toBe(true);
   });
+
+  // The setup card titles its key step itself; the lane's own title and note
+  // repeated it, word for word, right underneath.
+  it('can leave the lane titles to the page around it', () => {
+    const w = mountLanes({ showLanes: ['api'], headings: false });
+    expect(w.find('.lane-title').exists()).toBe(false);
+    expect(w.find('.lane-note').exists()).toBe(false);
+    expect(tileText(w)).toContain('OpenAI');
+  });
+
+  it('draws one-line tiles when dense, and the usual tiles otherwise', () => {
+    expect(mountLanes({ dense: true }).find('.provider-lanes--dense').exists()).toBe(true);
+    expect(mountLanes().find('.provider-lanes--dense').exists()).toBe(false);
+    // Measured: the regular 80px tiles made the first-run key step 991px tall.
+    expect(SOURCE).toMatch(/\.provider-lanes--dense \.provider-tile \{[^}]*min-height: 38px;/);
+  });
 });
 
 describe('ProviderLanes — the footer icon', () => {

@@ -1176,6 +1176,14 @@
 .ui-focused .chat-screen-wrapper.focused-home .main-panel {
   justify-content: center;
 }
+/* Centred only while it fits. Taller than the window (the first-run setup on a
+   short screen, or its API-key step anywhere), plain centring pushes the top
+   above the panel, where no scroll can reach it; `safe` starts it at the top
+   instead, and the panel scrolls to the rest. */
+.ui-focused:not(.is-compact) .chat-screen-wrapper.focused-home .main-panel {
+  justify-content: safe center;
+  overflow-y: auto;
+}
 .ui-focused .chat-screen-wrapper.focused-home .scrollable-content,
 .ui-focused .chat-screen-wrapper.focused-home .automation-interface {
   display: contents;

@@ -117,6 +117,8 @@
               :codex-status="codexStatus"
               :active-id="selectedProvider"
               :show-lanes="['api']"
+              :headings="false"
+              dense
               @connect="signIn"
               @submit-credential="saveApiKey"
             />

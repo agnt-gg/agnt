@@ -6,7 +6,7 @@
        options" in front of this list, a plan-vs-key fork inside it and "+N
        more" expanders on each lane — three different extra clicks between a
        new user and the AI they already pay for. -->
-  <div ref="rootEl" class="provider-lanes">
+  <div ref="rootEl" class="provider-lanes" :class="{ 'provider-lanes--dense': dense }">
     <!-- Onboarding only: a signed-in account always has AGNT Flash, so it is
          offered as an answer beside the user's own plans. The chat card is
          shown to signed-out users, who cannot use it. -->
@@ -34,11 +34,13 @@
     </section>
 
     <section v-for="lane in visibleLanes" :key="lane.key" class="lane" :class="`lane-${lane.key}`">
-      <p class="lane-title">
-        {{ lane.title }}
-        <span class="lane-chip" :class="lane.key">{{ lane.chip }}</span>
-      </p>
-      <p class="lane-note">{{ lane.note }}</p>
+      <template v-if="headings">
+        <p class="lane-title">
+          {{ lane.title }}
+          <span class="lane-chip" :class="lane.key">{{ lane.chip }}</span>
+        </p>
+        <p class="lane-note">{{ lane.note }}</p>
+      </template>
 
       <div class="provider-grid">
         <button
@@ -160,6 +162,10 @@ export default {
      * and uses this page for the API-key path only.
      */
     showLanes: { type: Array, default: () => ['subscription', 'api'] },
+    /** Each lane's title and note. Off where the page around it already says them. */
+    headings: { type: Boolean, default: true },
+    /** One-line tiles (icon beside the name), for a card that must fit one screen. */
+    dense: { type: Boolean, default: false },
   },
   emits: ['connect', 'submit-credential'],
   setup(props, { emit }) {
@@ -451,6 +457,73 @@ export default {
      be allowed to wrap instead of overflowing the border. */
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+
+/* ── dense: one-line tiles ──
+   The same tile, laid out as a row: the icon beside the name, 38px tall,
+   so fourteen providers take four short rows instead of three 80px ones. */
+.provider-lanes--dense {
+  max-width: none;
+  margin-top: 4px;
+}
+.provider-lanes--dense .lane {
+  margin-bottom: 12px;
+}
+.provider-lanes--dense .provider-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+}
+.provider-lanes--dense .provider-tile {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-width: 1px;
+  border-color: var(--terminal-border-color);
+  border-radius: 9px;
+}
+.provider-lanes--dense .provider-tile:hover {
+  transform: none;
+}
+.provider-lanes--dense .provider-tile.selected {
+  border-color: var(--color-primary);
+}
+.provider-lanes--dense .provider-tile.connected {
+  border-color: var(--color-green);
+}
+.provider-lanes--dense .provider-icon {
+  display: flex;
+  flex: none;
+}
+.provider-lanes--dense .provider-icon :deep(svg) {
+  width: 16px;
+  height: 16px;
+  margin-bottom: 0;
+}
+.provider-lanes--dense .provider-name {
+  margin-top: 0;
+  text-align: left;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+.provider-lanes--dense .provider-in-use {
+  top: -8px;
+  font-size: 0.62em;
+}
+.provider-lanes--dense .provider-drawer {
+  margin-top: 10px;
+  padding: 12px 14px;
+}
+.provider-lanes--dense .drawer-head {
+  margin-bottom: 10px;
+}
+.provider-lanes--dense .lane-foot {
+  margin-top: 0;
+  padding-top: 10px;
 }
 
 /* ── local footnote ── */
