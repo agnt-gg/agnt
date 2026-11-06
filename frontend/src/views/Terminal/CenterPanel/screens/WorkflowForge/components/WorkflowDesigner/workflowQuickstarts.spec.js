@@ -79,9 +79,9 @@ describe('quickstart helpers', () => {
     const points = layoutQuickstart(WORKFLOW_QUICKSTARTS[0], { x: 100, startY: 16 });
     expect(points.map((p) => [p.x, p.y])).toEqual([
       [100, 16],
-      [100, 160],
+      [100, 112],
+      [100, 208],
       [100, 304],
-      [100, 448],
     ]);
     expect(points[0].node.type).toBe('trigger-timer');
   });
@@ -130,6 +130,9 @@ describe('quickstart helpers', () => {
       for (let i = 1; i < ys.length; i += 1) {
         const gap = ys[i] - ys[i - 1] - QUICKSTART_NODE_HEIGHT;
         expect(gap, template.id).toBeGreaterThanOrEqual(QUICKSTART_GAP);
+        // Close together: a trigger's 30px connector corner fits in half the step, with no more room than that.
+        expect((ys[i] - ys[i - 1]) / 2, template.id).toBeGreaterThanOrEqual(30);
+        expect(gap, template.id).toBeLessThanOrEqual(48);
         expect((ys[i] - ys[i - 1]) % QUICKSTART_GRID, template.id).toBe(0);
       }
     }

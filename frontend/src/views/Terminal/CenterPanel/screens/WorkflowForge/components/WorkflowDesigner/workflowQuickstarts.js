@@ -131,11 +131,12 @@ export const referenceName = (name) => String(name).replace(/\s+/g, '');
 export const QUICKSTART_GRID = 16;
 export const QUICKSTART_NODE_HEIGHT = 48;
 /**
- * Room between two stacked nodes. An edge leaves the right-hand output, turns
- * across this gap and drops into the next node's left-hand input, so the gap
- * holds its rounded corners (up to 30px on a trigger) with space either side.
+ * Room between two stacked nodes: a little, not a lot. An edge leaves the
+ * right-hand output and crosses halfway between the two port centres, so it
+ * needs half the step (48px at this gap) for a trigger's 30px corner; 32px
+ * squashed the corners against the node edges.
  */
-export const QUICKSTART_GAP = 96;
+export const QUICKSTART_GAP = 48;
 
 /**
  * Top-down layout in canvas space: one column, trigger first, each step below
