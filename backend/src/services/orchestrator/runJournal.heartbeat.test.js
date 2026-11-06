@@ -21,7 +21,7 @@
  * Runs against a throwaway AGNT_HOME.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import fsp from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
@@ -235,17 +235,36 @@ describe('what the heartbeat must NOT do: churn', () => {
   it('leaves a run alone while its throttled write is still scheduled', async () => {
     // Two writers for one run is the situation the temp-path sequence makes
     // harmless; there is still no reason to cause it.
+    //
+    //
+    // On a fake clock, counting write ATTEMPTS. With real timers the test
+    // raced the 3s throttle: a loaded full-suite run stalled its 300ms wait
+    // past it, the throttle's own write landed, and it failed with correct
+    // code. Looking for a file was no good either: a heartbeat that wrongly
+    // wrote fired 145 writes at one target, and on Windows they can all lose
+    // the rename race, leaving no file, so a broken guard could still pass.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const writes = vi.spyOn(fsp, 'writeFile');
     const run = makeRun('hb-pending');
-    journal.journalRun(run); // schedules a write ~3s out
-    journal.startJournalHeartbeat(() => [run], { intervalMs: 20 });
+    try {
+      journal.journalRun(run); // schedules a write 3s out on the fake clock
+      journal.startJournalHeartbeat(() => [run], { intervalMs: 20 });
 
-    await new Promise((r) => setTimeout(r, 300)); // many cycles, throttle still pending
-    expect(await journalFor('hb-pending')).toBeUndefined();
+      vi.advanceTimersByTime(2900); // ~145 heartbeat cycles; the throttle cannot fire yet
+      expect(writes).not.toHaveBeenCalled();
 
-    // ...and the throttle still delivers on its own schedule.
-    // ~3s throttle, with headroom for a loaded parallel run.
-    const found = await until(() => journalFor('hb-pending'), { timeout: 10000, what: 'the throttled write' });
+      // ...and the throttle still delivers on its own schedule: one write.
+      // The heartbeat stops first, so only the throttle can write from here.
+      journal.stopJournalHeartbeat();
+      vi.advanceTimersByTime(200);
+    } finally {
+      journal.stopJournalHeartbeat();
+      vi.useRealTimers();
+    }
+    const found = await until(() => journalFor('hb-pending'), { what: 'the throttled write' });
     expect(found.events).toHaveLength(3);
+    expect(writes).toHaveBeenCalledTimes(1);
+    writes.mockRestore();
   }, 20000);
 
   it('ignores runs with nothing worth saving, and ended runs', async () => {
