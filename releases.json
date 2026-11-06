@@ -1,6 +1,39 @@
 {
   "releases": [
     {
+      "version": "0.6.8",
+      "date": "November 6, 2026",
+      "title": "AGNT One & Teamspaces — AGNT v0.6.8",
+      "type": "patch",
+      "features": [
+        { "name": "AGNT One is the app: one rail for every page, Home as your inbox, and Studio still there as a layout choice", "status": "new" },
+        { "name": "[Team] Teamspaces: invite-only spaces with their own chat, board, docs, tasks, files and activity", "status": "new" },
+        { "name": "[Team] Members work in a teamspace as themselves, with permissions the owner controls", "status": "new" },
+        { "name": "[Team] Members use their own Claude Code, ChatGPT or AI keys, or the ones the team shares", "status": "new" },
+        { "name": "[Team] Members ask for plugins they cannot add themselves, and the owner approves them from Home", "status": "new" },
+        { "name": "A new Plugins page: For you, Browse and Installed, with every app's real icon", "status": "new" },
+        { "name": "Annie shows her plan and waits for your go-ahead before doing real work", "status": "new" },
+        { "name": "Copy, regenerate, fork and delete on every message", "status": "new" },
+        { "name": "[Pro] Agents have their own email address and read the mail that arrives", "status": "new" },
+        { "name": "Build and edit plugins by hand in Plugin Forge, sign-ins included", "status": "new" },
+        { "name": "Workflows: run now, compare versions, and starter templates that read top to bottom", "status": "new" },
+        { "name": "The free plan includes 3 agents and 3 workflows", "status": "new" },
+        { "name": "First run: connect your AI, Google and your phone from one setup card that always fits on screen", "status": "updated" },
+        { "name": "Run a model on your computer: AGNT uses LM Studio, Ollama or llama.cpp when one is already running, and shows how to start one when none is", "status": "updated" },
+        { "name": "Gemini CLI is gone: Google stopped it for personal accounts on June 18, 2026. Use Antigravity or a Gemini API key instead", "status": "updated" },
+        { "name": "Cursor and Grok Build connect through their own sign-in", "status": "updated" },
+        { "name": "Goals work each task until it passes, and stop to ask you when a task needs you", "status": "updated" },
+        { "name": "Connect Google goes straight to Google", "status": "bug" },
+        { "name": "Chats stay fast while a long reply is streaming", "status": "bug" },
+        { "name": "Large previews open instantly", "status": "bug" },
+        { "name": "Tool results a chat refers to survive a restart", "status": "bug" },
+        { "name": "The chat stays usable in a narrow window, and your messages are readable on phones in light themes", "status": "bug" },
+        { "name": "YouTube transcripts work on cloud instances", "status": "bug" },
+        { "name": "Deleted agents and workflows stay deleted", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.7",
       "date": "October 9, 2026",
       "title": "AGNT Everywhere: Cloud, Phone & Teams — AGNT v0.6.7",
