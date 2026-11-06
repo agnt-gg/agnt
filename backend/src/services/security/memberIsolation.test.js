@@ -5,6 +5,8 @@ import { isMemberSafePluginEntry, setMemberSafePluginTools } from './memberSafeP
 
 const ENV = ['AGNT_TENANT_SLUG', 'AGNT_TENANT_OWNER', 'AGNT_TENANT_MEMBERS', 'AGNT_AUTH_MODE'];
 const saved = {};
+// These cases are a desktop install whatever machine runs them; the hosted case pins linux in its own test.
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
 
 function businessTenant() {
   process.env.AGNT_TENANT_SLUG = 'bravo';
@@ -13,8 +15,14 @@ function businessTenant() {
 }
 
 describe('memberIsolation', () => {
-  beforeEach(() => { setMemberSafePluginTools([]); for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; } });
-  afterEach(() => { for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+  beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    setMemberSafePluginTools([]); for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; }
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', realPlatform);
+    for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  });
 
   it('a desktop install has no members: nobody is refused anything', () => {
     expect(isNonOwnerMember('anyone')).toBe(false);

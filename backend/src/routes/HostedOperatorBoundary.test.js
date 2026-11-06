@@ -6,8 +6,10 @@ import { createHostedOperatorBoundary } from './HostedOperatorBoundary.js';
 // The browser loads those URLs itself and sends the media cookie, never a header.
 const OWNER = 'owner-1';
 let previous;
-beforeEach(() => { previous = { ...process.env }; process.env.AGNT_TENANT_SLUG = 'bravo'; process.env.AGNT_TENANT_OWNER = OWNER; });
-afterEach(() => { process.env = previous; });
+// The same rules whatever machine runs them; the teammate's-own-browser case is HostedOperatorBoundary.memberBrowser.test.js.
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+beforeEach(() => { Object.defineProperty(process, 'platform', { value: 'win32' }); previous = { ...process.env }; process.env.AGNT_TENANT_SLUG = 'bravo'; process.env.AGNT_TENANT_OWNER = OWNER; });
+afterEach(() => { Object.defineProperty(process, 'platform', realPlatform); process.env = previous; });
 
 function run(boundary, req) {
   return new Promise((resolve) => {
