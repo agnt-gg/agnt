@@ -127,7 +127,6 @@ export const GLOBAL_PREFS = Object.freeze({
   uiMode: str(8, ['focused', 'studio', 'simple']),
   localClaudeCodeDisconnected: bool(),
   localCodexDisconnected: bool(),
-  localGeminiCliDisconnected: bool(),
   localAntigravityDisconnected: bool(),
   localGrokBuildDisconnected: bool(),
   localCursorDisconnected: bool(),

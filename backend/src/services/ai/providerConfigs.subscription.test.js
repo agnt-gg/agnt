@@ -18,7 +18,6 @@ describe('isSubscriptionProvider', () => {
   it('flags CLI/OAuth seats', () => {
     expect(isSubscriptionProvider('claude-code')).toBe(true);
     expect(isSubscriptionProvider('openai-codex')).toBe(true);
-    expect(isSubscriptionProvider('gemini-cli')).toBe(true);
     expect(isSubscriptionProvider('antigravity')).toBe(true);
     expect(isSubscriptionProvider('kimi-code')).toBe(true);
   });
@@ -79,10 +78,8 @@ describe('notionalSeatCostPer1M — opportunity cost the router uses for seats',
   });
 
   it('free tiers are literally zero (real free, not a paid seat)', () => {
-    // Gemini CLI (60 req/min, 1000 req/day free) and Antigravity (Google
-    // DeepMind preview) genuinely have no paid seat behind them. Zero is a
+    // Antigravity (Google DeepMind preview) genuinely has no paid seat behind it. Zero is a
     // real number that wins comparisons — which is correct behaviour.
-    expect(notionalSeatCostPer1M('gemini-cli')).toBe(0);
     expect(notionalSeatCostPer1M('antigravity')).toBe(0);
   });
 

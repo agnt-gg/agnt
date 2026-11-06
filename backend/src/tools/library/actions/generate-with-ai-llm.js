@@ -1,7 +1,6 @@
 import { getConnection } from '../../../services/ai/connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
-const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 import {currentTeamExecution} from '../../../services/authorization/TeamExecutionContext.js';
 import BaseAction from '../BaseAction.js';
@@ -493,12 +492,6 @@ class GenerateWithAiLlm extends BaseAction {
         if (!codexStatus.available) throw new Error('OpenAI Codex is not connected. Use device login to connect.');
         credential = responseConnection.getAccessToken();
         if (!credential) throw new Error('OpenAI Codex token not found after login.');
-      } else if (normalizedProvider === 'gemini-cli') {
-        const gcStatus = await projectConnection.checkApiUsable();
-        // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107)
-        if (gcStatus?.deprecated) throw new Error(gcStatus.hint);
-        credential = await projectConnection.getAccessToken();
-        if (!credential) throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
       } else if (normalizedProvider === 'antigravity') {
         credential = await catalogConnection.getAccessToken();
         if (!credential) throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
@@ -620,7 +613,6 @@ class GenerateWithAiLlm extends BaseAction {
     'openai-codex': 'generateWithCodex',
     'kimi-code': 'generateWithKimiCode',
     chutes: 'generateWithChutes',
-    'gemini-cli': 'generateWithGoogleGateway',
     antigravity: 'generateWithGoogleGateway',
     // Local CLI transports: the client MUST come from createLlmClient, so they
     // use the managed helper with an explicit default model.
@@ -805,12 +797,11 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithGoogleGateway(params) {
-    // gemini-cli / antigravity authenticate against the cloudcode-pa OAuth
-    // gateway — a raw GoogleGenerativeAI(apiKey) client would call the wrong
-    // endpoint (generativelanguage). Delegate to createLlmClient, which returns
-    // the GeminiOAuthProxy / AntigravityOAuthProxy the orchestrator chat uses
-    // (or a plain GoogleGenAI client for gemini-cli in API-key mode). The proxy
-    // mirrors the SDK surface: models.generateContent → { text, usageMetadata }.
+    // antigravity authenticates against the cloudcode-pa OAuth gateway — a raw
+    // GoogleGenerativeAI(apiKey) client would call the wrong endpoint
+    // (generativelanguage). Delegate to createLlmClient, which returns the
+    // AntigravityOAuthProxy the orchestrator chat uses. The proxy mirrors the
+    // SDK surface: models.generateContent → { text, usageMetadata }.
     const provider = params.provider.toLowerCase();
     const client = await createLlmClient(provider, params.userId);
     const model = params.model || providerDefaultModel(provider);

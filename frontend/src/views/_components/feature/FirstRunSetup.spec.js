@@ -23,7 +23,6 @@ const plan = (id, name, icon) => ({ id, name, icon, categories: ['AI'], connecti
 const PROVIDERS = [
   plan('openai-codex', 'OpenAI Codex', 'openai'),
   plan('claude-code', 'Claude Code', 'claude'),
-  plan('gemini-cli', 'Gemini CLI', 'google'),
   plan('antigravity', 'Antigravity', 'antigravity'),
   plan('kimi-code', 'Kimi Code', 'kimi-code'),
   { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
@@ -90,7 +89,7 @@ describe('step 1: your AI', () => {
 
   it('lists the other plans below in the first-run order, and no API-key provider', async () => {
     await setup();
-    expect(wrapper.findAll('.frs-pill').map((p) => p.attributes('data-provider'))).toEqual(['gemini-cli', 'antigravity', 'kimi-code']);
+    expect(wrapper.findAll('.frs-pill').map((p) => p.attributes('data-provider'))).toEqual(['antigravity', 'kimi-code']);
   });
 
   it('signs in through the app\'s one AI pipeline', async () => {

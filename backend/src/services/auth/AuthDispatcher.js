@@ -1,7 +1,6 @@
 import { getConnection } from '../ai/connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
-const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 /**
  * AuthDispatcher — thin mapping layer from authScheme → auth manager + capabilities.
@@ -28,11 +27,6 @@ const AUTH_SCHEME_MAP = {
     manager: responseConnection,
     local: true,
     caps: ['status', 'disconnect', 'device-auth', 'refresh'],
-  },
-  'gemini-cli': {
-    manager: projectConnection,
-    local: true,
-    caps: ['status', 'connect-apikey', 'disconnect', 'refresh', 'oauth-loopback', 'set-auth-method', 'gcp-project'],
   },
   'antigravity': {
     manager: catalogConnection,

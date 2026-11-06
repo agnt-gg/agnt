@@ -548,7 +548,7 @@ const accountsView = computed(() => [
 ].filter((section) => section.rows.length));
 // AI providers to connect: their own short group above the services, the
 // plans people already pay for first (2026-10-23).
-const AI_FIRST = ['openai-codex', 'claude-code', 'gemini-cli', 'openai', 'anthropic', 'gemini', 'openrouter', 'grokai'];
+const AI_FIRST = ['openai-codex', 'claude-code', 'openai', 'anthropic', 'gemini', 'openrouter', 'grokai'];
 const AI_SHOWN = 6;
 const showAllAi = ref(false);
 const aiRank = (id) => (AI_FIRST.indexOf(id) === -1 ? AI_FIRST.length : AI_FIRST.indexOf(id));

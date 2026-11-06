@@ -1,6 +1,5 @@
 import { getConnection } from '../services/ai/connectionRuntime.js';
 const responseConnection = getConnection('openai-codex');
-const projectConnection = getConnection('gemini-cli');
 import express from 'express';
 import crypto from 'crypto';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
@@ -398,48 +397,6 @@ router.get('/:provider/models', async (req, res) => {
             success: false,
             error: 'Claude Code token not found.',
           });
-        }
-      }
-      // Gemini CLI: uses projectConnection (OAuth or manual API key)
-      // Only triggered for 'gemini-cli' — regular 'gemini' uses standard API key flow below
-      else if (providerLower === 'gemini-cli') {
-        const gcStatus = await projectConnection.checkApiUsable();
-        if (!gcStatus.available) {
-          return res.status(400).json({
-            success: false,
-            error: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
-          });
-        }
-        apiKey = await projectConnection.getAccessToken();
-        if (!apiKey) {
-          return res.status(400).json({
-            success: false,
-            error: 'Gemini CLI token not found.',
-          });
-        }
-
-        if (projectConnection.isUsingApiKey()) {
-          // API key → fetch models dynamically via the standard gemini provider service
-          const geminiService = providerServices['gemini'];
-          if (geminiService) {
-            const { category, useCache = 'true', format = 'names' } = req.query;
-            const options = { category, useCache: useCache === 'true' };
-            let models;
-            if (format === 'full') {
-              models = await geminiService.fetchModels(apiKey, options);
-            } else {
-              models = await geminiService.getModelNames(apiKey, options);
-            }
-            return res.json({
-              success: true, models, cached: geminiService.isCacheValid(), count: models.length,
-              ...provenanceFields(geminiService.lastListing),
-            });
-          }
-        } else {
-          // OAuth → the account's live entitlement list (retrieveUserQuota),
-          // or a clear "no license" error. See connectionRuntime.js.
-          const { status, body } = await listConnectionModels('gemini-cli');
-          return res.status(status).json(body);
         }
       }
       // Antigravity: OAuth-only gateway. Live fetchAvailableModels catalog,

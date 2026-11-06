@@ -858,117 +858,6 @@ export default {
       }
     }
 
-    async function connectGeminiCli(app) {
-      // Let user choose auth method explicitly
-      const method = await modalRef.value?.showModal({
-        title: 'Connect Gemini',
-        message: `<div style="text-align:left">
-          <p><strong>Choose your authentication method:</strong></p>
-          <p><strong>Login with Google</strong> — Use your Google account (AI Pro/Ultra subscription)</p>
-          <p><strong>API Key</strong> — Use a Gemini API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-color)">AI Studio</a> (recommended for higher rate limits)</p>
-        </div>`,
-        confirmText: 'Login with Google',
-        cancelText: 'Use API Key',
-        showCancel: true,
-        confirmClass: 'btn-primary',
-      });
-
-      if (method === true) {
-        // OAuth flow
-        await connectGeminiCliOAuth(app);
-      } else if (method === false) {
-        // API key flow
-        await connectGeminiCliApiKey(app);
-      }
-      // null = closed modal, do nothing
-    }
-
-    async function connectGeminiCliOAuth(app) {
-      try {
-        const data = await providerAuthService.startOAuth('gemini-cli');
-        if (!data.authUrl) throw new Error('No authUrl returned');
-
-        if (window.electron?.openExternalUrl) {
-          window.electron.openExternalUrl(data.authUrl);
-        } else {
-          window.open(data.authUrl, '_blank');
-        }
-
-        const confirmed = await modalRef.value?.showModal({
-          title: 'Gemini CLI Authentication',
-          message: `<div style="text-align:left">
-            <p>A browser window has opened for Google authentication.</p>
-            <p><strong>1.</strong> Sign in to your Google account</p>
-            <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
-            <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
-            <p style="margin-top:8px;opacity:0.7;font-size:0.9em"><strong>Workspace accounts:</strong> You may also need to set your Google Cloud Project in Settings.</p>
-          </div>`,
-          confirmText: 'I have signed in',
-          cancelText: 'Cancel',
-          showCancel: true,
-          confirmClass: 'btn-primary',
-        });
-        if (!confirmed) return;
-
-        const maxAttempts = 20;
-        for (let i = 0; i < maxAttempts; i++) {
-          const status = await providerAuthService.pollOAuthStatus('gemini-cli', data.sessionId);
-
-          if (status.status === 'success') {
-            localStorage.removeItem('Gemini_models');
-            localStorage.removeItem('Gemini-CLI_models');
-            await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-
-            const tierInfo = await providerAuthService.getStatus('gemini-cli').catch(() => ({}));
-            const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
-            await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
-            terminalLines.value.push(`[Connect] Gemini CLI connected via Google account${tierMsg}`);
-            nextTick(() => baseScreenRef.value?.scrollToBottom?.());
-            return;
-          }
-          if (status.status === 'error') {
-            await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
-            return;
-          }
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-        await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
-      } catch (error) {
-        console.warn('Gemini CLI OAuth failed:', error.message);
-        await showAlert('Connection Failed', `OAuth error: ${error.message}. Try using an API key instead.`);
-      }
-    }
-
-    async function connectGeminiCliApiKey(app) {
-      const apiKey = await modalRef.value?.showModal({
-        title: 'Connect Gemini with API Key',
-        message: `<div style="text-align:left">
-          <p>Paste your Gemini API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-color)">Google AI Studio</a>.</p>
-          <p style="opacity:0.7;font-size:0.9em">API keys with billing enabled have higher rate limits than OAuth.</p>
-        </div>`,
-        isPrompt: true,
-        inputType: 'password',
-        confirmText: 'Connect',
-        cancelText: 'Cancel',
-        confirmClass: 'btn-primary',
-      });
-      if (!apiKey) return;
-      try {
-        await providerAuthService.setAuthMethod('gemini-cli', 'api-key');
-        const respData = await providerAuthService.connect('gemini-cli', { apiKey });
-        if (respData.success) {
-          localStorage.removeItem('Gemini_models');
-          localStorage.removeItem('Gemini-CLI_models');
-          await showAlert('Success', 'Gemini CLI connected with API key.');
-          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-        } else {
-          await showAlert('Connection Failed', respData.error || 'Failed to save API key.');
-        }
-      } catch (manualError) {
-        await showAlert('Error', `Failed to connect Gemini CLI: ${manualError.message}`);
-      }
-    }
-
     async function connectAntigravityProvider(app) {
       try {
         const data = await providerAuthService.startOAuth('antigravity');
@@ -1187,8 +1076,6 @@ export default {
           disconnectLocalProvider(app, 'appAuth/disconnectClaudeCode');
         } else if (appId === 'openai-codex') {
           disconnectLocalProvider(app, 'appAuth/logoutCodex');
-        } else if (appId === 'gemini-cli') {
-          disconnectLocalProvider(app, 'appAuth/disconnectGeminiCli');
         } else if (appId === 'antigravity') {
           disconnectLocalProvider(app, 'appAuth/disconnectAntigravity');
         } else {
@@ -1198,8 +1085,6 @@ export default {
         connectCodexProvider(app);
       } else if (appId === 'claude-code') {
         connectClaudeCodeProvider(app);
-      } else if (appId === 'gemini-cli') {
-        connectGeminiCli(app);
       } else if (appId === 'antigravity') {
         connectAntigravityProvider(app);
       } else if (app.connectionType === 'oauth') {

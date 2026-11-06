@@ -62,7 +62,7 @@ describe('every relabelled provider, not just the first one', () => {
     });
 
   it('anti-vacuity: there is something to check', () => {
-    expect(relabelled.length).toBeGreaterThanOrEqual(5);
+    expect(relabelled.length).toBeGreaterThanOrEqual(4);
   });
 
   it('does not sweep in providers that were never relabelled', () => {
@@ -90,7 +90,7 @@ describe('every relabelled provider, not just the first one', () => {
   });
 
   it.each(relabelled)('$displayName drops the identifier hyphen from what is read', ({ key }) => {
-    // "Claude-Code" and "Gemini-CLI" are key spellings. On a screen offering a
+    // "Claude-Code" and "Grok-Build" are key spellings. On a screen offering a
     // subscription a hyphenated identifier reads as internal tooling.
     expect(providerLabel(key)).not.toMatch(/-/);
   });

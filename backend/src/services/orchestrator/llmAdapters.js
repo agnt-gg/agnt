@@ -37,7 +37,6 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
       return new AnthropicAdapter(client, model, lowerCaseProvider, options);
 
     case 'gemini':
-    case 'gemini-cli':
     case 'antigravity':
       return new GeminiAdapter(client, model, options);
 

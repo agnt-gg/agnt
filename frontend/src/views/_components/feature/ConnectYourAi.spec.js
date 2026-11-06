@@ -20,14 +20,13 @@ beforeEach(() => {
 });
 
 describe('Connect your AI', () => {
-  it('waits for the connected accounts, then offers ChatGPT, Claude and Gemini, in that order', async () => {
+  it('waits for the connected accounts, then offers ChatGPT and Claude, in that order', async () => {
     const w = mountCard();
     expect(w.find('[data-testid="connect-your-ai"]').exists()).toBe(false);
     await flushPromises();
     expect(w.findAll('[data-provider]').map((b) => [b.attributes('data-provider'), b.text()])).toEqual([
       ['openai-codex', 'Sign in with ChatGPT'],
       ['claude-code', 'Sign in with Claude'],
-      ['gemini-cli', 'Sign in with Gemini'],
     ]);
     await w.find('[data-provider="claude-code"]').trigger('click');
     expect(toggle).toHaveBeenCalledWith('claude-code');

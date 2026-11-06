@@ -352,28 +352,14 @@ describe('managed storage contracts', () => {
     delete f.env.OPENAI_API_KEY; expect(f.connection.getAccessToken()).toBe('sk-file');
     await f.connection.logout(); expect(JSON.parse(fs.readFileSync(path.join(f.home,'.codex/auth.json')))).toEqual({ unrelated: 1 });
   });
-  it.each(['gemini-cli','antigravity'])('retains the flat credential format and stored OAuth client for %s', async id => {
-    const f = managedFixture(id), directory = id === 'gemini-cli' ? '.gemini' : '.antigravity';
-    const filename = f.write(directory+'/oauth_creds.json', { access_token: 'old', refresh_token: 'old-refresh', expiry_date: 1, client_id: 'stored-client', client_secret: 'stored-public-secret', custom: true });
+  it('retains the flat credential format and stored OAuth client for antigravity', async () => {
+    const f = managedFixture('antigravity');
+    const filename = f.write('.antigravity/oauth_creds.json', { access_token: 'old', refresh_token: 'old-refresh', expiry_date: 1, client_id: 'stored-client', client_secret: 'stored-public-secret', custom: true });
     f.httpClient.post.mockResolvedValue({ data: { access_token: 'new', refresh_token: 'rotated', expires_in: 123 } });
     expect(await f.connection.getAccessToken()).toBe('new');
     const fields = Object.fromEntries(new URLSearchParams(f.httpClient.post.mock.calls[0][1]));
     expect(fields).toEqual({ client_id: 'stored-client', client_secret: 'stored-public-secret', grant_type: 'refresh_token', refresh_token: 'old-refresh' });
     expect(JSON.parse(fs.readFileSync(filename))).toMatchObject({ access_token: 'new', refresh_token: 'rotated', expiry_date: f.time.value + 123000, custom: true });
-  });
-  it('preserves CRLF when changing the stored project or API key', () => {
-    const f = managedFixture('gemini-cli'); const filename = f.write('.gemini/.env', 'OTHER=keep\r\nGEMINI_API_KEY=old\r\n');
-    f.connection.saveManualApiKey('new-key'); f.connection.saveGcpProject('new-project');
-    const result = fs.readFileSync(filename, 'utf8');
-    expect(result).toBe('OTHER=keep\r\nGEMINI_API_KEY=new-key\r\nGOOGLE_CLOUD_PROJECT=new-project\r\n');
-  });
-  it('keeps API-key precedence and preserves unrelated environment lines', async () => {
-    const f = managedFixture('gemini-cli'); f.write('.gemini/.env','OTHER=keep\nGEMINI_API_KEY=file-key\n');
-    f.write('.gemini/oauth_creds.json',{ access_token: 'oauth', expiry_date: f.time.value + 3600000 });
-    expect(await f.connection.getAccessToken()).toBe('file-key'); f.env.GEMINI_API_KEY='environment-key'; expect(await f.connection.getAccessToken()).toBe('environment-key');
-    delete f.env.GEMINI_API_KEY; f.connection.saveManualApiKey('new-key'); expect(await f.connection.getAccessToken()).toBe('new-key');
-    expect(f.connection.saveGcpProject('project\nINJECT=true').success).toBe(false);
-    await f.connection.logout(); expect(fs.readFileSync(path.join(f.home,'.gemini/.env'),'utf8')).toBe('OTHER=keep\n');
   });
   it('deduplicates refresh and prevents refresh from resurrecting a disconnected account', async () => {
     const f = managedFixture('antigravity'); f.write('.antigravity/oauth_creds.json',{ access_token:'old',refresh_token:'old-refresh',expiry_date:1 });
@@ -406,19 +392,19 @@ describe('managed sign-in contracts', () => {
     expect(JSON.parse(f.httpClient.post.mock.calls[0][1])).toMatchObject({state,code_verifier:state,redirect_uri:'https://console.anthropic.com/oauth/code/callback'});
     await expect(f.connection.exchangeCode(session.sessionId,'code',state)).rejects.toThrow('expired');
   });
-  it('runs a real loopback callback on port zero and saves the expected credential shape', async () => {
-    const f=managedFixture('gemini-cli'); f.httpClient.post.mockResolvedValue({data:{access_token:'loopback-token',refresh_token:'refresh',expires_in:3600}});
+  it('runs a real loopback callback and saves the expected credential shape', async () => {
+    const f=managedFixture('antigravity',{callbackPort:0}); f.httpClient.post.mockResolvedValue({data:{access_token:'loopback-token',refresh_token:'refresh',expires_in:3600}});
     const session=await f.connection.startOAuth(), url=new URL(session.authUrl), redirect=url.searchParams.get('redirect_uri');
     try {
-      expect(new URL(redirect).hostname).toBe('127.0.0.1');expect(new URL(redirect).port).not.toBe('0');
+      expect(new URL(redirect).hostname).toBe('localhost');expect(new URL(redirect).port).not.toBe('0');
       const response=await fetch(redirect+'?code=approved&state='+url.searchParams.get('state'),{redirect:'manual'});
       expect(response.status).toBe(302);expect(response.headers.get('location')).toContain('auth_success_gemini');await response.body?.cancel();
       expect(f.connection.getSessionStatus(session.sessionId)).toEqual({status:'success',error:null});
-      expect(JSON.parse(fs.readFileSync(path.join(f.home,'.gemini/oauth_creds.json')))).toMatchObject({access_token:'loopback-token',refresh_token:'refresh',expiry_date:f.time.value+3600000});
+      expect(JSON.parse(fs.readFileSync(path.join(f.home,'.antigravity/oauth_creds.json')))).toMatchObject({access_token:'loopback-token',refresh_token:'refresh',expiry_date:f.time.value+3600000});
     } finally { await f.connection.logout(); }
   });
   it('rejects a mismatched loopback state without token exchange', async () => {
-    const f=managedFixture('gemini-cli'),session=await f.connection.startOAuth(),url=new URL(session.authUrl);
+    const f=managedFixture('antigravity',{callbackPort:0}),session=await f.connection.startOAuth(),url=new URL(session.authUrl);
     try {const response=await fetch(url.searchParams.get('redirect_uri')+'?code=code&state=wrong',{redirect:'manual'});await response.body?.cancel();expect(response.status).toBe(302);expect(f.httpClient.post).not.toHaveBeenCalled();expect(f.connection.getSessionStatus(session.sessionId).status).toBe('error');}
     finally {await f.connection.logout();}
   });

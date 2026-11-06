@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { OAuth2Client } from 'google-auth-library';
 import xxhashWasm from 'xxhash-wasm';
-import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH } from '../../config/oauthClients.js';
+import { ANTIGRAVITY_OAUTH } from '../../config/oauthClients.js';
 import { getClientIdentity, getClientVersion, getCachedClientVersion } from './clientVersions.js';
 import { resolveDefaultModel } from './defaultModel.js';
 import { readSecretJson, clearSecretCache, secretStoreSupported } from '../auth/secretStore.js';
@@ -406,17 +406,6 @@ const connectionProfiles = {
     devicePollUrl: 'https://auth.openai.com/api/accounts/deviceauth/token', deviceVerifyUrl: 'https://auth.openai.com/codex/device',
     redirectUri: 'https://auth.openai.com/deviceauth/callback', flow: 'device-code-exchange', encoding: 'form', health: 'responses',
   },
-  'gemini-cli': {
-    name: 'Gemini CLI', directory: '.gemini', filename: 'oauth_creds.json', format: 'flat-snake', source: 'gemini-oauth-file',
-    apiKeyEnv: 'GEMINI_API_KEY', apiKeyFile: true, client: GEMINI_CLI_OAUTH,
-    authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth', tokenUrl: 'https://oauth2.googleapis.com/token',
-    scope: 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-    flow: 'loopback-pkce', callbackPath: '/oauth2callback', callbackHost: '127.0.0.1', callbackPort: 0, encoding: 'form', health: 'gateway',
-    projectEnv: ['GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT_ID'],
-    gateway: { base: 'https://cloudcode-pa.googleapis.com/v1internal', modelBase: 'https://cloudcode-pa.googleapis.com/v1internal',
-      metadata: { ide_type: 'GEMINI_CLI', platform: 'WINDOWS_AMD64', plugin_type: 'CLOUD_CODE' }, mode: 'HEALTH_CHECK',
-      requiresProject: true, upgradeTier: true, catalog: 'quota' },
-  },
   antigravity: {
     name: 'Antigravity', directory: '.antigravity', filename: 'oauth_creds.json', format: 'flat-snake', source: 'antigravity-oauth-file',
     keychain: ['Antigravity-credentials', 'Antigravity', 'antigravity'], keychainEnv: 'AGNT_ANTIGRAVITY_KEYCHAIN_SERVICE', keychainSource: 'antigravity-keychain', client: ANTIGRAVITY_OAUTH,
@@ -477,6 +466,8 @@ export function createManagedConnection(id, dependencies = {}) {
   const keychain = dependencies.readSecretJson || readSecretJson;
   const files = dependencies.files || defaultFiles;
   const readJsonFile = files.readJson, writeJsonFile = files.writeJson;
+  // Tests listen on a free port (0); the app always uses the profile's.
+  const callbackPort = dependencies.callbackPort ?? profile.callbackPort;
   const state = { health: null, refresh: null, deviceStart: null, sessions: new Map(), project: null, onboarded: false, tier: null, paidTier: null, cooldownUntil: 0, generation: 0 };
   let connection;
   function directory() {
@@ -745,7 +736,7 @@ export function createManagedConnection(id, dependencies = {}) {
     });
     session.server = server;
     try {
-      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(profile.callbackPort, '127.0.0.1', resolve); });
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(callbackPort, '127.0.0.1', resolve); });
       session.redirectUri = `http://${profile.callbackHost}:${server.address().port}${profile.callbackPath}`;
       const timer = setTimeout(() => { session.status = 'error'; session.error = 'OAuth timed out'; server.close(); }, 600000);
       timer.unref?.(); server.once('close', () => clearTimeout(timer));
@@ -753,7 +744,7 @@ export function createManagedConnection(id, dependencies = {}) {
       return { sessionId: session.id, authUrl: authorizationUrl(session, session.redirectUri) };
     } catch (error) {
       state.sessions.delete(session.id); server.close();
-      throw new Error(error.code === 'EADDRINUSE' ? `Port ${profile.callbackPort} is in use — close the other login attempt and retry.` : 'OAuth callback listener could not start');
+      throw new Error(error.code === 'EADDRINUSE' ? `Port ${callbackPort} is in use — close the other login attempt and retry.` : 'OAuth callback listener could not start');
     }
   }
   async function startDeviceAuth() {
@@ -978,7 +969,7 @@ export function getConnection(id) {
 async function buildGatewayHeaders(id, purpose) {
   const gateway = connectionProfiles[id]?.gateway;
   if (!gateway) throw new Error(`Connection ${id} has no gateway capability`);
-  if (!gateway.browserIdentity) return purpose === 'catalog' ? { 'User-Agent': `GeminiCLI/${await getClientVersion(id)} (${process.platform}; ${process.arch}; terminal)` } : {};
+  if (!gateway.browserIdentity) return {};
   const metadata = { 'Client-Metadata': JSON.stringify(gateway.clientMetadata) };
   if (purpose === 'control') return { 'User-Agent': 'google-api-nodejs-client/9.15.1', ...metadata };
   const version = await getClientVersion(id);
@@ -1383,7 +1374,7 @@ function formatGatewayError(error, name) {
   return upstream?.message ? `${name}: ${upstream.message}` : null;
 }
 
-export const CATALOG_CONNECTIONS = Object.freeze(['antigravity', 'gemini-cli']);
+export const CATALOG_CONNECTIONS = Object.freeze(['antigravity']);
 export async function listConnectionModels(id, { forceRefresh = false } = {}) {
   const profile = connectionProfiles[id];
   if (!profile?.gateway) return null;

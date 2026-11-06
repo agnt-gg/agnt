@@ -6,9 +6,6 @@
  */
 
 import express from 'express';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 import { getAuthEntry, getCapabilities, isLocalProvider } from '../services/auth/AuthDispatcher.js';
 import { discoverSessions } from '../services/auth/sessionDiscovery.js';
 import CodexCliService from '../services/ai/CodexCliService.js';
@@ -195,25 +192,6 @@ router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => 
         return res.json(result);
       } catch (error) {
         return res.status(500).json({ success: false, error: error.message || 'Failed to save token' });
-      }
-    }
-
-    // Gemini CLI: save API key
-    if (providerEntry.config.authScheme === 'gemini-cli') {
-      const { apiKey } = req.body || {};
-      if (!apiKey) {
-        return res.status(400).json({ success: false, error: 'Missing apiKey' });
-      }
-      try {
-        const result = providerEntry.manager.saveManualApiKey(apiKey);
-        if (result.success) {
-          await setLocalProviderDisconnected(req.user.id, providerId, false);
-          const status = await providerEntry.manager.checkApiUsable({ forceRefresh: true });
-          return res.json({ success: true, message: 'Gemini CLI connected successfully', apiUsable: status.apiUsable });
-        }
-        return res.status(400).json(result);
-      } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
       }
     }
 
@@ -417,7 +395,7 @@ router.post('/:providerId/auth/oauth/exchange', requireAuthHeader, async (req, r
   }
 });
 
-// ─────────────────────────── OAUTH STATUS (gemini-cli loopback) ───────────────────────────
+// ─────────────────────────── OAUTH STATUS (loopback) ───────────────────────────
 
 router.get('/:providerId/auth/oauth/status', requireAuthHeader, (req, res) => {
   const { providerEntry } = req;
@@ -488,51 +466,7 @@ router.get('/:providerId/auth/device/status', requireAuthHeader, async (req, res
   }
 });
 
-// ─────────────────────────── SET AUTH METHOD (gemini-cli) ───────────────────────────
-
-router.post('/:providerId/auth/set-auth-method', requireAuthHeader, async (req, res) => {
-  const { providerEntry } = req;
-
-  if (!providerEntry.caps.includes('set-auth-method')) {
-    return res.status(400).json({ success: false, error: 'set-auth-method not supported for this provider' });
-  }
-
-  try {
-    const { method } = req.body; // 'api-key' or 'oauth'
-    if (method === 'api-key') {
-      const credPath = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
-      if (fs.existsSync(credPath)) {
-        fs.unlinkSync(credPath);
-        console.log('[ProviderAuth] Removed OAuth creds to switch to API key mode');
-      }
-      providerEntry.manager._codeAssistProject = null;
-      providerEntry.manager._currentTier = null;
-      providerEntry.manager._paidTier = null;
-      providerEntry.manager._lastApiCheck = null;
-      providerEntry.manager._lastApiStatus = null;
-    } else if (method === 'oauth') {
-      const envPath = path.join(os.homedir(), '.gemini', '.env');
-      try {
-        let envContent = fs.readFileSync(envPath, 'utf8');
-        envContent = envContent.replace(/^GEMINI_API_KEY=.*\n?/m, '');
-        fs.writeFileSync(envPath, envContent, 'utf8');
-        console.log('[ProviderAuth] Removed API key from .env to switch to OAuth mode');
-      } catch {
-        // .env doesn't exist, that's fine
-      }
-      providerEntry.manager._lastApiCheck = null;
-      providerEntry.manager._lastApiStatus = null;
-    } else {
-      return res.status(400).json({ success: false, error: 'method must be "api-key" or "oauth"' });
-    }
-    const status = await providerEntry.manager.checkApiUsable({ forceRefresh: true });
-    res.json({ success: true, ...status });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ─────────────────────────── GCP PROJECT (gemini-cli) ───────────────────────────
+// ─────────────────────────── GCP PROJECT (antigravity) ───────────────────────────
 
 router.post('/:providerId/auth/gcp-project', requireAuthHeader, (req, res) => {
   const { providerEntry } = req;

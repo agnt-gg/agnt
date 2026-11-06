@@ -17,7 +17,7 @@
  * bot token, personal access token, app password). Pure-OAuth-only providers
  * with no PAT form (sign-in-with-apple, google-login flow, AWS multi-credential
  * pairs, MetaMask wallet) are intentionally omitted — their auth doesn't fit
- * a single env-var slot. CLI providers (openai-codex, claude-code, gemini-cli,
+ * a single env-var slot. CLI providers (openai-codex, claude-code,
  * kimi-code, grok-build, cursor-cli, ollama, lm-studio) are also omitted; they
  * read filesystem creds (or, for cursor-cli, the CLI owns the session outright).
  */

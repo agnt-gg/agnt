@@ -22,23 +22,10 @@ import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { PROVIDER_FETCH_ACTIONS, providerLabel, providerStoreName, resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
-import { getLocalStatus, startLmStudio, setupLocalModel, cancelLocalSetup, prepareLocalModel } from '@/services/localModelsService.js';
+import { getLocalStatus, prepareLocalModel } from '@/services/localModelsService.js';
 
 /** How long a browser sign-in may take before AGNT stops waiting for it. */
 export const SIGN_IN_WAIT_MS = 2 * 60 * 1000;
-/** How long AGNT waits for LM Studio to be installed after opening its download page. */
-export const LOCAL_INSTALL_WAIT_MS = 15 * 60 * 1000;
-const LOCAL_POLL_MS = 3000;
-/** Setup progress refresh, and how many failed status reads in a row end the wait. */
-const LOCAL_SETUP_POLL_MS = 1000;
-const LOCAL_SETUP_MAX_FAILED_POLLS = 30;
-const SETUP_DONE_PHASES = ['ready', 'error', 'cancelled'];
-
-/** 734003200 -> "700 MB", 2740937888 -> "2.6 GB". */
-export function formatBytes(bytes) {
-  const mb = bytes / 1024 ** 2;
-  return mb < 1024 ? `${Math.max(1, Math.round(mb))} MB` : `${(mb / 1024).toFixed(1)} GB`;
-}
 const POLL_INTERVAL_MS = 1500;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -187,7 +174,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return { status: 'error', error: 'Sign-in timed out. Please try again.' };
   };
 
-  /** Google sign-in that this computer's AGNT receives (Antigravity, Gemini CLI), in the user's browser. */
+  /** Google sign-in that this computer's AGNT receives (Antigravity), in the user's browser. */
   const connectLoopback = async (provider, click) => {
     const name = providerLabel(provider);
     try {
@@ -330,14 +317,9 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
   };
 
   // ── Run a model on this machine ──
-  // One click ends with a working local model. In order:
-  //   1. a local model is already usable (LM Studio, Ollama, llama.cpp, or
-  //      AGNT's own, which starts on first use): use it;
-  //   2. LM Studio is installed but stopped: start it;
-  //   3. otherwise AGNT downloads llama.cpp and the model that fits this
-  //      machine, and runs it (backend services/localModels);
-  //   4. where AGNT cannot run one itself (unsupported platform): LM Studio's
-  //      download page.
+  // AGNT uses a model server that is already running here (LM Studio, Ollama,
+  // a llama.cpp server). It never starts, installs or downloads one: when none
+  // is running, it says how to start one and checks again on request.
   const hasModels = (status) => (status?.models?.length || 0) > 0;
 
   /**
@@ -346,14 +328,8 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
    * about 23K, so switching straight away made the very first message fail
    * (2026-10-21). The backend reloads it with enough room first.
    */
-  const useLocalModels = async (provider, click, { managed = false } = {}) => {
-    // AGNT's own runner sizes its context itself, and LM Studio being open too
-    // must not swap its model for one of LM Studio's.
-    if (managed) {
-      await store.dispatch('aiProvider/fetchLocalModels', { forceRefresh: true }).catch(() => {});
-      return selectProvider(provider, click);
-    }
-    // A dialog left open by an earlier attempt (e.g. a slow start) is over.
+  const useLocalModels = async (provider, click) => {
+    // A dialog left open by an earlier attempt is over.
     if (modalRef.value?.isOpen) modalRef.value.confirm();
     const prepared = await waitWithDialog(
       { title: 'Getting the local model ready', message: '<p>Loading it with enough room for a conversation…</p><p>This closes by itself when it is ready.</p>' },
@@ -378,169 +354,34 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     return `AGNT could not get the local model ready${detail ? `: ${escapeHtml(detail)}` : ''}. AGNT is still using your current AI.`;
   };
 
-  const startLmStudioWithDialog = () =>
-    waitWithDialog(
-      { title: 'Starting LM Studio', message: '<p>Starting LM Studio\'s local server on this computer…</p><p>This closes by itself when it is ready.</p>' },
-      startLmStudio(),
-    );
-
-  const waitForInstall = async () => {
-    const deadline = Date.now() + LOCAL_INSTALL_WAIT_MS;
-    while (Date.now() < deadline) {
-      await sleep(LOCAL_POLL_MS);
-      const status = await getLocalStatus().catch(() => null);
-      if (status?.running || status?.installed) return status;
-    }
-    return null;
-  };
-
-  /** The old path, for machines AGNT cannot run a model on itself. */
-  const offerLmStudioDownload = async (provider, status) => {
-    const download = await modalRef.value.showModal({
-      title: 'Run AI on this computer',
-      message: `<div style="text-align:left">
-        <p>Local models run through <strong>LM Studio</strong>, a free app. It isn't installed on this computer yet.</p>
-        <p>Install it and download one model. AGNT will notice and connect on its own.</p>
-        <p style="font-size:12px;opacity:.8">Local models are private and free, but slower than AGNT Flash unless this computer has a strong GPU.</p>
-      </div>`,
-      confirmText: 'Download LM Studio',
-      cancelText: 'Not now',
-      showCancel: true,
-    });
-    if (!download) return null;
-    openInBrowser(status.downloadUrl || 'https://lmstudio.ai/download');
-    const found = await waitWithDialog(
-      { title: 'Waiting for LM Studio', message: '<p>Install LM Studio and open it once. This closes by itself when AGNT finds it.</p>' },
-      waitForInstall(),
-    );
-    return found ?? null;
-  };
-
-  /** "Download & run" confirmation, sized to this machine. */
-  const confirmManagedSetup = (managed, model) => {
-    const engineBytes = managed.engine.installed ? 0 : managed.engine.bytes || 0;
-    const total = (model.downloaded ? 0 : model.sizeBytes) + engineBytes;
-    const where = model.fit === 'gpu'
-      ? `runs fully on your ${escapeHtml(managed.hardware.gpu || 'GPU')}`
-      : 'runs on this computer (partly in system memory, so replies are slower)';
-    return modalRef.value.showModal({
-      title: 'Run AI on this computer',
-      message: `<div style="text-align:left">
-        <p><strong>${escapeHtml(model.name)}</strong> ${where}. ${escapeHtml(model.blurb || '')}</p>
-        <p>AGNT downloads it once and runs it here: private, free, and it works offline.</p>
-        <p style="font-size:12px;opacity:.8">Already use LM Studio or Ollama? Start it and AGNT uses it automatically.</p>
-      </div>`,
-      confirmText: total > 0 ? `Download & run (${formatBytes(total)})` : 'Run it',
-      cancelText: 'Not now',
-      showCancel: true,
-    });
-  };
-
-  const setupProgressHtml = (job, managed) => {
-    const model = managed.models.find((entry) => entry.id === job.modelId);
-    const name = escapeHtml(model?.name || job.modelId);
-    const percent = job.bytesTotal ? Math.floor((job.bytesDone / job.bytesTotal) * 100) : 0;
-    const bytes = job.bytesTotal ? `${formatBytes(job.bytesDone)} of ${formatBytes(job.bytesTotal)} (${percent}%)` : '';
-    const line = {
-      engine: `Downloading the AI engine for ${escapeHtml(managed.engine.label || 'this computer')}… ${bytes}`,
-      model: `Downloading ${name}… ${bytes}`,
-      starting: `Starting ${name} on this computer…`,
-    }[job.phase] || '';
-    return `<p>${line}</p><p style="font-size:12px;opacity:.8">Hide keeps it going in the background and switches to it when it is ready, unless you choose another AI first. Cancel stops it; a later try resumes the download.</p>`;
-  };
-
-  /**
-   * Poll setup progress into the open dialog until it ends. Resolves to the
-   * final status, or { unreachable: true } if the backend stopped answering
-   * (never null: null is waitWithDialog's "the user pressed Cancel").
-   */
-  const followSetup = async () => {
-    let failures = 0;
-    for (;;) {
-      const status = await getLocalStatus().catch(() => null);
-      failures = status ? 0 : failures + 1;
-      if (failures >= LOCAL_SETUP_MAX_FAILED_POLLS) return { unreachable: true };
-      const job = status?.managed?.job;
-      if (status && (!job || SETUP_DONE_PHASES.includes(job.phase))) return status;
-      if (job && modalRef.value?.isOpen) modalRef.value.message = setupProgressHtml(job, status.managed);
-      await sleep(LOCAL_SETUP_POLL_MS);
-    }
-  };
-
-  const runManagedSetup = async (provider, status, click) => {
-    const { managed } = status;
-    const busy = managed.job && !SETUP_DONE_PHASES.includes(managed.job.phase);
-    const model = managed.models.find((entry) => entry.id === (busy ? managed.job.modelId : managed.recommendedId));
-    if (!model) {
-      await showError('Not enough memory for a local model', 'This computer does not have enough memory to run a local AI model. AGNT Flash or a connected provider will work instead.');
-      return;
-    }
-    if (!busy) {
-      if (!(await confirmManagedSetup(managed, model))) return;
-      try {
-        await setupLocalModel(model.id);
-      } catch (error) {
-        await showError('Could not set up the local model', error.message);
-        return;
-      }
-    }
-    const final = await waitWithDialog(
-      { title: `Setting up ${model.name}`, message: '<p>Preparing…</p>' },
-      followSetup(),
-    );
-    if (final === null) {
-      // Cancel pressed: stop the download; the parts are kept for a resume.
-      await cancelLocalSetup().catch(() => {});
-      return;
-    }
-    if (final.unreachable) {
-      await showError('Lost contact with AGNT', 'The setup may still be running. Click "Run a model on this machine" again to see where it is.');
-      return;
-    }
-    const job = final?.managed?.job;
-    if (job?.phase === 'ready' && hasModels(final)) return useLocalModels(provider, click, { managed: true });
-    if (job?.phase === 'cancelled') return;
-    await showError('Local model setup failed', job?.error || 'The local model could not be set up.');
-  };
+  const LOCAL_HOW_TO = `<div style="text-align:left">
+      <p>AGNT uses a model that is already running on this computer. Start one of these with a model loaded, then click <strong>Check again</strong>:</p>
+      <ul>
+        <li><strong>LM Studio</strong>: load a model, then in the Developer tab turn on the local server (port 1234).</li>
+        <li><strong>Ollama</strong>: pull a model and keep Ollama running (port 11434).</li>
+        <li><strong>llama.cpp</strong>: run <code>llama-server -m your-model.gguf</code> (port 8080).</li>
+      </ul>
+      <p style="font-size:12px;opacity:.8">Give the model at least 32K tokens of context; one AGNT turn uses about 23K.</p>
+    </div>`;
 
   const connectLocal = async (provider, click) => {
-    let status;
-    try {
-      status = await getLocalStatus();
-    } catch (error) {
-      await showError('Could not check this computer', `AGNT could not look for local models: ${error.message}`);
-      return;
-    }
-    if (hasModels(status)) return useLocalModels(provider, click);
-
-    if (status.canStart) {
-      const started = await startLmStudioWithDialog();
-      if (started === null) return;
-      if (hasModels(started)) return useLocalModels(provider, click);
-      if (!started?.running) {
-        const why = started?.error === 'start_timeout'
-          ? 'LM Studio did not start its server in time.'
-          : started?.detail || 'LM Studio could not start its server.';
-        await showError('LM Studio did not start', `${why} Open LM Studio, go to the Developer tab and turn on the local server, then try again.`);
+    for (;;) {
+      let status;
+      try {
+        status = await getLocalStatus();
+      } catch (error) {
+        await showError('Could not check this computer', `AGNT could not look for local models: ${escapeHtml(error.message)}`);
         return;
       }
-      status = started;
-    }
-
-    if (status.managed?.supported) return runManagedSetup(provider, status, click);
-
-    if (status.running) {
-      await showError(
-        'Load a model in LM Studio',
-        'LM Studio is running, but it has no model yet. Open LM Studio, download a model (Qwen 3.5 4B is a good start), and click "Run a model on this machine" again.',
-      );
-      return;
-    }
-    if (!status.installed) {
-      const found = await offerLmStudioDownload(provider, status);
-      if (!found) return;
-      if (hasModels(found)) return useLocalModels(provider, click);
-      if (found.canStart || found.installed) return connectLocal(provider, click);
+      if (hasModels(status)) return useLocalModels(provider, click);
+      const again = await modalRef.value.showModal({
+        title: 'Connect a model on this computer',
+        message: LOCAL_HOW_TO,
+        confirmText: 'Check again',
+        cancelText: 'Close',
+        showCancel: true,
+      });
+      if (!again) return;
     }
   };
 
@@ -577,7 +418,7 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     if (id === 'claude-code') return connectClaudeCode(provider, click);
     if (isConnected(provider.id)) return selectProvider(provider, click);
     if (id === 'antigravity') return connectLoopback(provider, click);
-    // Everything else this computer signs in to itself (Gemini CLI, Cursor,
+    // Everything else this computer signs in to itself (Cursor,
     // Grok Build): AGNT's server has no sign-in for these, it answers 404.
     const local = await localCapabilities(id);
     if (local.includes('oauth-loopback')) return connectLoopback(provider, click);

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const config = vi.hoisted(() => ({ DEPLOYMENT_CONFIG: { DISABLE_LOCAL_LLM: false } }));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: 'http://local.test/api' }, DEPLOYMENT_CONFIG: config.DEPLOYMENT_CONFIG }));
 
-import { fetchLocalStatus, isLocalReady, getLocalStatus, setupLocalModel, resetLocalStatusCache } from './localModelsService.js';
+import { fetchLocalStatus, isLocalReady, getLocalStatus, prepareLocalModel, resetLocalStatusCache } from './localModelsService.js';
 
 const reply = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
 
@@ -50,17 +50,24 @@ describe('localModelsService', () => {
   });
 
   it('the connect flow gets the reason when something fails', async () => {
-    global.fetch = vi.fn(async () => reply({ error: 'too_big', message: 'Qwen 3.8 27B is too large for this computer.' }, false, 400));
-    await expect(setupLocalModel('qwen3.8-27b')).rejects.toMatchObject({ code: 'too_big', message: 'Qwen 3.8 27B is too large for this computer.' });
     global.fetch = vi.fn(async () => reply({}, false, 500));
     await expect(getLocalStatus()).rejects.toThrow('HTTP 500');
   });
 
-  it('setup posts the model id as JSON', async () => {
-    await setupLocalModel('qwen3.5-4b');
+  it('prepare returns a refusal as a value, and posts the model id as JSON', async () => {
+    global.fetch = vi.fn(async () => reply({ error: 'load_failed', model: 'qwen3-8b' }, false, 422));
+    expect(await prepareLocalModel('qwen3-8b')).toMatchObject({ error: 'load_failed' });
     const [url, init] = global.fetch.mock.calls[0];
-    expect(url).toBe('http://local.test/api/local-models/managed/setup');
+    expect(url).toBe('http://local.test/api/local-models/prepare');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ modelId: 'qwen3.5-4b' });
+    expect(JSON.parse(init.body)).toEqual({ model: 'qwen3-8b' });
+  });
+
+  // AGNT never starts LM Studio or downloads a model on its own.
+  it('offers no way to start a local server or download a model', async () => {
+    const service = await import('./localModelsService.js');
+    expect(service.startLmStudio).toBeUndefined();
+    expect(service.setupLocalModel).toBeUndefined();
+    expect(service.cancelLocalSetup).toBeUndefined();
   });
 });

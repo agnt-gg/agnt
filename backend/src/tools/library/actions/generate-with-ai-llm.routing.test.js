@@ -96,7 +96,6 @@ describe('workflow AI node provider routing', () => {
     expect((await routeOf('openai-codex')).method).toBe('generateWithCodex');
     expect((await routeOf('kimi-code')).method).toBe('generateWithKimiCode');
     expect((await routeOf('chutes')).method).toBe('generateWithChutes');
-    expect((await routeOf('gemini-cli')).method).toBe('generateWithGoogleGateway');
     expect((await routeOf('antigravity')).method).toBe('generateWithGoogleGateway');
 
     // The managed CLI transports keep their explicit provider + default model.

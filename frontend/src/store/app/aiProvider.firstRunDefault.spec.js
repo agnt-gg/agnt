@@ -18,7 +18,7 @@ import aiProviderStore, {
 const { applyIncludedModelDefault, useProvider, selectAgntFlash } = aiProviderStore.actions;
 
 const PROVIDERS = [
-  'AGNT', 'Anthropic', 'Antigravity', 'Claude-Code', 'Cursor', 'Gemini', 'Gemini-CLI',
+  'AGNT', 'Anthropic', 'Antigravity', 'Claude-Code', 'Cursor', 'Gemini',
   'Grok-Build', 'Kimi-Code', 'OpenAI', 'OpenAI-Codex',
 ];
 
@@ -26,7 +26,6 @@ const PROVIDERS = [
 const SEAT_MODELS = {
   'OpenAI-Codex': ['gpt-5.5', 'gpt-5-codex'],
   'Claude-Code': ['claude-opus-5'],
-  'Gemini-CLI': ['gemini-3-pro'],
   Antigravity: ['antigravity-default'],
   'Grok-Build': ['grok-4.5'],
   Cursor: ['auto'],
@@ -195,7 +194,7 @@ describe('applyIncludedModelDefault', () => {
 describe('providerStoreName', () => {
   it('maps every subscription seat to the name the store keys it by', () => {
     expect(FIRST_RUN_SUBSCRIPTION_ORDER.map(providerStoreName)).toEqual([
-      'OpenAI-Codex', 'Claude-Code', 'Gemini-CLI', 'Antigravity', 'Grok-Build', 'Cursor', 'Kimi-Code',
+      'OpenAI-Codex', 'Claude-Code', 'Antigravity', 'Grok-Build', 'Cursor', 'Kimi-Code',
     ]);
   });
 

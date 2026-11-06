@@ -57,7 +57,6 @@ describe('Given an account default whose provider differs only in case', () => {
     ['openai-codex', 'OpenAI-Codex', 'openai-codex'],
     ['OPENAI-CODEX', 'OpenAI-Codex', 'openai-codex'],
     ['OpenAI-Codex', 'OpenAI-Codex', 'openai-codex'],
-    ['gemini-cli', 'Gemini-CLI', 'gemini-cli'],
     ['claude-code', 'Claude-Code', 'claude-code'],
     ['anthropic', 'Anthropic', 'anthropic'],
     ['openai', 'OpenAI', 'openai'],

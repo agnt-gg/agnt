@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './oauthClients.js';
+import { ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './oauthClients.js';
 
 /**
  * Ship-gate for the third-party OAuth clients.
@@ -13,8 +13,8 @@ import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './
  * Deleting the committed backend/.env removed four PUBLIC Google OAuth client
  * identifiers along with the three real secrets it was carrying. The secrets
  * needed to go. The client identifiers did not — they are Google's own
- * published installed-app clients, and AGNT cannot sign in to Gemini CLI or
- * Antigravity without them.
+ * published installed-app clients, and AGNT cannot sign in to Antigravity
+ * without them.
  *
  * They were briefly blank between the removal commit and the commit that put
  * them back, and this gate was written during that window precisely so the
@@ -33,9 +33,8 @@ import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './
  * inside AGNT, on the reasoning that users who authenticated with the real CLI
  * keep working because their credential file carries its own client_id.
  *
- * That reasoning was checked against a real machine and does not hold. Both
- * ~/.gemini/oauth_creds.json and ~/.antigravity/oauth_creds.json on a live
- * install contained ONLY:
+ * That reasoning was checked against a real machine and does not hold. 
+ * ~/.antigravity/oauth_creds.json on a live install contained ONLY:
  *
  *     access_token, refresh_token, scope, token_type, id_token, expiry_date
  *
@@ -59,7 +58,7 @@ const SOURCE = fs.readFileSync(path.join(CONFIG_DIR, 'oauthClients.js'), 'utf8')
  * This gate must not consult process.env, and the first version of it did —
  * via the module's own `process.env.X || CONSTANT` fallback. It passed on the
  * machine it was written on and would have failed for every user, because a
- * developer box inherits GEMINI_CLI_CLIENT_ID and friends from the old
+ * developer box inherits ANTIGRAVITY_CLIENT_ID and friends from the old
  * backend/.env through dotenv, while a shipped app has no such variables. A
  * green suite would then have certified an app whose OAuth was broken.
  *
@@ -72,10 +71,6 @@ function literalConstant(name) {
 }
 
 const SHIPPED = {
-  GEMINI_CLI: {
-    CLIENT_ID: literalConstant('GEMINI_CLI_CLIENT_ID'),
-    CLIENT_SECRET: literalConstant('GEMINI_CLI_CLIENT_SECRET'),
-  },
   ANTIGRAVITY: {
     CLIENT_ID: literalConstant('ANTIGRAVITY_CLIENT_ID'),
     CLIENT_SECRET: literalConstant('ANTIGRAVITY_CLIENT_SECRET'),
@@ -87,15 +82,6 @@ describe('SHIP GATE: OAuth clients are present', () => {
     'backend/src/config/oauthClients.js — get them from `git show main:backend/.env`. ' +
     'Setting an environment variable is NOT sufficient: the shipped app has none.';
 
-  it('Gemini CLI client is present IN THE SHIPPED SOURCE', () => {
-    expect(
-      isOAuthClientConfigured(SHIPPED.GEMINI_CLI),
-      `GEMINI_CLI_CLIENT_ID / GEMINI_CLI_CLIENT_SECRET are empty. Gemini CLI ` +
-        `sign-in is broken, and already-connected users will be signed out at ` +
-        `their next hourly token refresh. ${FIX}`
-    ).toBe(true);
-  });
-
   it('Antigravity client is present IN THE SHIPPED SOURCE', () => {
     expect(
       isOAuthClientConfigured(SHIPPED.ANTIGRAVITY),
@@ -105,20 +91,10 @@ describe('SHIP GATE: OAuth clients are present', () => {
     ).toBe(true);
   });
 
-  it('the two clients are distinct', () => {
-    // Antigravity's extra scopes (cclog, experimentsandconfigs) are authorised
-    // only for its own client; reusing Gemini's returns HTTP 400 invalid_scope.
-    // A copy-paste slip here produces an error that looks nothing like its cause.
-    if (!isOAuthClientConfigured(SHIPPED.GEMINI_CLI) || !isOAuthClientConfigured(SHIPPED.ANTIGRAVITY)) return;
-
-    expect(SHIPPED.ANTIGRAVITY.CLIENT_ID).not.toBe(SHIPPED.GEMINI_CLI.CLIENT_ID);
-    expect(SHIPPED.ANTIGRAVITY.CLIENT_SECRET).not.toBe(SHIPPED.GEMINI_CLI.CLIENT_SECRET);
-  });
-
   it('the values look like Google OAuth clients, not placeholders', () => {
-    if (!isOAuthClientConfigured(SHIPPED.GEMINI_CLI) || !isOAuthClientConfigured(SHIPPED.ANTIGRAVITY)) return;
+    if (!isOAuthClientConfigured(SHIPPED.ANTIGRAVITY)) return;
 
-    for (const client of [SHIPPED.GEMINI_CLI, SHIPPED.ANTIGRAVITY]) {
+    for (const client of [SHIPPED.ANTIGRAVITY]) {
       expect(client.CLIENT_ID).toMatch(/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/);
       expect(client.CLIENT_SECRET.length).toBeGreaterThan(20);
       expect(client.CLIENT_SECRET).not.toMatch(/your|change|placeholder|example|here|xxx/i);
@@ -130,14 +106,13 @@ describe('SHIP GATE: OAuth clients are present', () => {
     // so a gate that read process.env would pass here and fail for every user.
     // Prove the gate reads literals: temporarily clearing the env must not
     // change what SHIPPED contains, because SHIPPED came from the source text.
-    const saved = process.env.GEMINI_CLI_CLIENT_ID;
-    delete process.env.GEMINI_CLI_CLIENT_ID;
-    expect(literalConstant('GEMINI_CLI_CLIENT_ID')).toBe(SHIPPED.GEMINI_CLI.CLIENT_ID);
-    if (saved !== undefined) process.env.GEMINI_CLI_CLIENT_ID = saved;
+    const saved = process.env.ANTIGRAVITY_CLIENT_ID;
+    delete process.env.ANTIGRAVITY_CLIENT_ID;
+    expect(literalConstant('ANTIGRAVITY_CLIENT_ID')).toBe(SHIPPED.ANTIGRAVITY.CLIENT_ID);
+    if (saved !== undefined) process.env.ANTIGRAVITY_CLIENT_ID = saved;
 
     // And the module-level export IS env-aware — which is why it is the wrong
     // thing to gate on, and the right thing for an operator override.
-    expect(GEMINI_CLI_OAUTH).toHaveProperty('CLIENT_ID');
     expect(ANTIGRAVITY_OAUTH).toHaveProperty('CLIENT_ID');
   });
 
@@ -145,13 +120,13 @@ describe('SHIP GATE: OAuth clients are present', () => {
     // For anyone who registers their own OAuth client.
     expect(
       fs.readFileSync(path.join(CONFIG_DIR, 'oauthClients.js'), 'utf8')
-    ).toMatch(/process\.env\.GEMINI_CLI_CLIENT_ID\s*\|\|/);
+    ).toMatch(/process\.env\.ANTIGRAVITY_CLIENT_ID\s*\|\|/);
   });
 });
 
 describe('shared runtime wiring', () => {
   const runtime = fs.readFileSync(path.join(SRC, 'services/ai/connectionRuntime.js'), 'utf8');
-  it.each(['GEMINI_CLI_OAUTH', 'ANTIGRAVITY_OAUTH'])('keeps %s in the explicit profiles', symbol => {
+  it.each(['ANTIGRAVITY_OAUTH'])('keeps %s in the explicit profiles', symbol => {
     expect(runtime).toContain('client: ' + symbol);
     expect(runtime).toContain("from '../../config/oauthClients.js'");
   });

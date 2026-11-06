@@ -27,7 +27,7 @@ import { recordLlmCall } from '../services/execution/LedgerRecorder.js';
  * apart: six of nineteen providers resolved differently depending on which
  * generator was invoked, and six of the ids named models their provider no
  * longer lists (groq mixtral-8x7b-32768, openai o1-preview, cerebras
- * llama-3.3-70b, openrouter z-ai/glm-4.5, gemini-cli gemini-pro, zai GLM-4.7),
+ * llama-3.3-70b, openrouter z-ai/glm-4.5, zai GLM-4.7),
  * so an unmodelled call produced a hard API error.
  *
  * The registry already tracks what each provider currently serves and is
@@ -307,7 +307,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       case 'cerebras':
       case 'deepseek':
       case 'gemini':
-      case 'gemini-cli':
       case 'antigravity':
       case 'grokai':
       case 'groq':

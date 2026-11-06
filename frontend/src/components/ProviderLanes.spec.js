@@ -17,7 +17,7 @@ const ai = (id, name, extra = {}) => ({ id, name, icon: id, categories: ['AI'], 
 const PROVIDERS = [
   ai('openai-codex', 'OpenAI Codex', { connectionType: 'oauth' }),
   ai('claude-code', 'Claude-Code', { connectionType: 'oauth' }),
-  ai('gemini-cli', 'Gemini-CLI', { connectionType: 'oauth' }),
+  ai('antigravity', 'Antigravity', { connectionType: 'oauth' }),
   ai('cursor-cli', 'Cursor', { connectionType: 'oauth' }),
   ai('grok-build', 'Grok-Build', { connectionType: 'oauth' }),
   ai('openai', 'OpenAI', { connectionType: 'apikey' }),
@@ -151,7 +151,7 @@ describe('ProviderLanes — the list', () => {
     expect(text).toContain('pay per token');
 
     // Our vocabulary stays out of the copy. Scoped to the headings and notes,
-    // because "Gemini CLI" is a product name a vendor chose and we render it.
+    // because "Antigravity CLI"-style names are a vendor's and we render them.
     const copy = [...wrapper.findAll('.lane-title'), ...wrapper.findAll('.lane-note')]
       .map((el) => el.text())
       .join(' ');
@@ -163,9 +163,11 @@ describe('ProviderLanes — the list', () => {
     // identifier like "Claude-Code" reads as internal tooling.
     const labels = tileText(mountLanes());
     expect(labels).toContain('Claude Code');
-    expect(labels).toContain('Gemini CLI');
+    expect(labels).toContain('Grok Build');
     expect(labels).not.toContain('Claude-Code');
-    expect(labels).not.toContain('Gemini-CLI');
+    expect(labels).not.toContain('Grok-Build');
+    // Gone: Google ended Gemini CLI for personal accounts (Antigravity replaces it).
+    expect(labels).not.toContain('Gemini CLI');
   });
 
   // A "+N more" expander was one more click between a user and the plan they
@@ -259,13 +261,13 @@ describe('ProviderLanes — one provider', () => {
 
   it('connects every provider that needs no typing in one click', async () => {
     const wrapper = mountLanes();
-    for (const label of ['ChatGPT', 'Claude Code', 'Gemini CLI', 'Cursor', 'Grok Build']) {
+    for (const label of ['ChatGPT', 'Claude Code', 'Antigravity', 'Cursor', 'Grok Build']) {
       await openTile(wrapper, label);
     }
     expect(wrapper.emitted('connect').map(([p]) => p.id)).toEqual([
       'openai-codex',
       'claude-code',
-      'gemini-cli',
+      'antigravity',
       'cursor-cli',
       'grok-build',
     ]);

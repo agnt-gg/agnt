@@ -113,7 +113,6 @@ const CASES = [
   ['gemini', 'gemini-2.5-flash', 'toolCall', 'gemini', GEMINI.toolCall],
   ['gemini', 'gemini-2.5-flash', 'snakeCaseUsage', 'gemini', GEMINI.snakeCaseUsage],
   ['gemini', 'gemini-2.5-flash', 'withThoughtSignature', 'gemini', GEMINI.withThoughtSignature],
-  ['gemini-cli', 'gemini-2.5-flash', 'plainText', 'gemini', GEMINI.plainText],
   ['antigravity', 'gemini-3.6-flash-low', 'plainText', 'gemini', GEMINI.plainText],
 ];
 

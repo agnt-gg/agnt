@@ -3,12 +3,7 @@
  *
  * WHAT THESE ARE
  * --------------
- * Google's own installed-app OAuth clients, published by Google in their own
- * open-source CLIs. The Gemini pair is verifiable directly:
- *
- *   https://github.com/google-gemini/gemini-cli
- *     packages/core/src/code_assist/oauth2.ts
- *     const OAUTH_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j…'
+ * Google's own installed-app OAuth client, published by Google with its CLI.
  *
  * They are NOT AGNT secrets and they are not ours. An installed/native
  * application cannot keep a secret — the binary ships to the user, so anyone
@@ -38,9 +33,8 @@
  *
  *     const clientId = data.client_id || OAUTH_CONFIG.CLIENT_ID;
  *
- * and the credential files AGNT writes — ~/.gemini/oauth_creds.json and
- * ~/.antigravity/oauth_creds.json — carry only tokens, no client_id (verified
- * on a live install). So an empty constant here does not merely block new
+ * and the credential file AGNT writes — ~/.antigravity/oauth_creds.json —
+ * carries only tokens, no client_id (verified on a live install). So an empty constant here does not merely block new
  * connections: it sends an empty client_id to Google's token endpoint and
  * breaks the hourly refresh, signing out ALREADY-CONNECTED users within the
  * hour. Antigravity has no client_id fallback in its own credential file at
@@ -51,13 +45,11 @@
  * credential is marked ownedByAgnt: false and is never refreshed here, so it
  * does not change this constant's role.)
  *
- * config/oauthClients.test.js is a ship gate that fails if either pair is
- * empty, malformed, or accidentally duplicated between the two providers.
+ * config/oauthClients.test.js is a ship gate that fails if the pair is empty
+ * or malformed.
  *
- * If they ever need recovering, they are Google's published values: the Gemini
- * pair is in google-gemini/gemini-cli (packages/core/src/code_assist/oauth2.ts)
- * and both pairs are in this repository's history at
- * `git show f346ff1:backend/.env`.
+ * If they ever need recovering, they are Google's published values, and in
+ * this repository's history at `git show f346ff1:backend/.env`.
  *
  * NOTE ON SECRET SCANNERS: these values match GitHub's `GOCSPX-` pattern and
  * will be flagged wherever they live — .env, .js, anywhere. Google's own
@@ -68,22 +60,9 @@
 
 /* eslint-disable no-inline-comments */
 
-/** Google's Gemini CLI installed-app client. */
-const GEMINI_CLI_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
-const GEMINI_CLI_CLIENT_SECRET = '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';
-
-/**
- * Antigravity's installed-app client — DISTINCT from Gemini CLI's.
- * The Gemini client is not authorised for Antigravity's extra scopes and
- * returns HTTP 400 invalid_scope, so these cannot be collapsed into one.
- */
+/** Antigravity's installed-app client. */
 const ANTIGRAVITY_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
 const ANTIGRAVITY_CLIENT_SECRET = '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';
-
-export const GEMINI_CLI_OAUTH = Object.freeze({
-  CLIENT_ID: process.env.GEMINI_CLI_CLIENT_ID || GEMINI_CLI_CLIENT_ID,
-  CLIENT_SECRET: process.env.GEMINI_CLI_CLIENT_SECRET || GEMINI_CLI_CLIENT_SECRET,
-});
 
 export const ANTIGRAVITY_OAUTH = Object.freeze({
   CLIENT_ID: process.env.ANTIGRAVITY_CLIENT_ID || ANTIGRAVITY_CLIENT_ID,

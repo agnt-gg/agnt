@@ -473,8 +473,7 @@ const PROVIDER_CONFIGS = [
       'gemini-2.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.3, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-2.5-flash-lite': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
       // Gemini 3 Pro (preview): $2 in / $12 out, cached reads $0.20 (≤200k tier)
-      // per ai.google.dev/gemini-api/docs/pricing, as of 2026-08-01. Also the
-      // notional rate for gemini-cli seat usage via PROVIDER_METADATA_FALLBACK.
+      // per ai.google.dev/gemini-api/docs/pricing, as of 2026-08-01. 
       'gemini-3-pro-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, inputCacheReadCostPer1M: 0.2, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-1.5-flash': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.075, outputCostPer1M: 0.3, inputCacheReadCostPer1M: 0.01875, supportsVision: true, supportsTools: true },
       'gemini-1.5-pro': { contextWindow: 2097152, maxOutputTokens: 8192, inputCostPer1M: 1.25, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.3125, supportsVision: true, supportsTools: true },
@@ -523,36 +522,6 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
-  // ─────────────────────────── GEMINI CLI ───────────────────────────
-  {
-    key: 'gemini-cli',
-    name: 'Gemini CLI',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-    sdkType: 'gemini',
-    authScheme: 'gemini-cli',
-    responseDataPath: 'models',
-    pagination: {
-      enabled: true,
-      pageSize: 100,
-      limitParam: 'pageSize',
-      cursorParam: 'pageToken',
-      hasMoreField: 'nextPageToken',
-    },
-    capabilities: {
-      text: { supportsStreaming: true, supportsTools: true },
-      vision: { supportsStreaming: true },
-    },
-    // OAuth mode lists the account's live entitlement (retrieveUserQuota, see
-    // connectionRuntime.js); API-key mode lists the public Gemini API.
-    // This is only the transient-failure fallback. Ids are the current set in
-    // Google's own CLI (packages/core/src/config/models.ts, 2026-09-30):
-    // LATEST/BASE flash, LATEST/BASE flash-lite, DEFAULT pro.
-    recommendedModels: ['gemini-3.8-flash', 'gemini-2.5-pro'],
-    fallbackModels: ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-pro'],
-    fallbackVisionModels: ['gemini-3.8-flash', 'gemini-2.5-pro'],
-    compat: {},
-    sdkOptions: {},
-  },
 
   // ─────────────────────────── ANTIGRAVITY ───────────────────────────
   // Google's unified gateway (folded Gemini CLI into Antigravity, I/O 2026).
@@ -1711,7 +1680,6 @@ export function buildBaseURLs() {
 const PROVIDER_METADATA_FALLBACK = {
   'openai-codex': 'openai',
   'claude-code': 'anthropic',
-  'gemini-cli': 'gemini',
   'antigravity': 'gemini',
   'grok-build': 'grokai',
   'cursor-cli': 'openai',
@@ -2398,7 +2366,6 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
  *                  header; inherits anthropic's metered prices via
  *                  PROVIDER_METADATA_FALLBACK.
  *   openai-codex - authScheme 'codex', ChatGPT session; inherits openai's.
- *   gemini-cli   - authScheme 'gemini-cli', Google account OAuth.
  *   antigravity  - subscription-included (already priced at 0).
  *   kimi-code    - subscription CLI (already priced null).
  *   grok-build   - authScheme 'grok-build', local `grok` CLI OIDC session
@@ -2438,8 +2405,7 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
  *                  cached tokens for all supported Gemini 2.5 and above
  *                  models." cloud.google.com/blog/products/ai-machine-learning/
  *                  vertex-ai-context-caching. Scoped to 2.5+ ids because the
- *                  citation is; older ids stay unknown. gemini-cli shares it
- *                  (same catalog, notional metered pricing).
+ *                  citation is; older ids stay unknown.
  *   cerebras 1.0x  "cached tokens ... billed at the standard input token rate"
  *                  inference-docs.cerebras.ai/capabilities/prompt-caching — the
  *                  discount is latency, not money.
@@ -2487,7 +2453,7 @@ export function getCacheEconomics(providerKey, modelId) {
   if (key === 'groq' && /^openai\/gpt-oss/.test(model)) {
     return { readMult: 0.5, write5mMult: 1.0, write1hMult: 1.0, known: true };
   }
-  if ((key === 'gemini' || key === 'gemini-cli') && /^gemini-(2\.5|[3-9])/.test(model)) {
+  if (key === 'gemini' && /^gemini-(2\.5|[3-9])/.test(model)) {
     return { readMult: 0.1, write5mMult: 1.0, write1hMult: 1.0, known: true };
   }
   if (key === 'cerebras') {
@@ -2514,7 +2480,6 @@ export function isCachedRateKnown(providerKey, modelId) {
 export const SUBSCRIPTION_PROVIDERS = new Set([
   'claude-code',
   'openai-codex',
-  'gemini-cli',
   'antigravity',
   'kimi-code',
   'grok-build',
@@ -2571,9 +2536,7 @@ export function isSubscriptionProvider(providerKey) {
  *   kimi-code   : ~2048 req/wk ($20 tier) at ~5k tok/turn
  *                 → $0.03-$0.10/M worst-case
  *                 moonshot.ai kimi-for-coding + apidog.com/blog/kimi-for-coding
- *   gemini-cli  : 1000 req/day free, no monetary quota
- *                 → literally $0 (real free tier, not a paid seat)
- *   antigravity : Google DeepMind free preview, same posture as gemini-cli
+ *   antigravity : Google DeepMind free preview
  *                 → literally $0
  *   cursor-cli  : $20 Cursor Pro seat, amortised across typical usage
  *                 → ~$0.50/M
@@ -2592,7 +2555,6 @@ export const SUBSCRIPTION_NOTIONAL_USD_PER_1M = new Map([
   ['claude-code', 0.60],
   ['openai-codex', 0.40],
   ['kimi-code', 0.10],
-  ['gemini-cli', 0.00],
   ['antigravity', 0.00],
   ['cursor-cli', 0.50],
   ['grok-build', null],
@@ -2888,7 +2850,7 @@ export function getReasoningControl(providerKey, modelId) {
     return null;
   }
 
-  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli' || lowerProvider === 'antigravity') {
+  if (lowerProvider === 'gemini' || lowerProvider === 'antigravity') {
     if (isGemini3ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {

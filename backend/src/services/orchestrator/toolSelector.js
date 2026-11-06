@@ -704,7 +704,7 @@ export const CHAT_COMPLETIONS_TOOL_COUNT_LIMIT = 128;
 
 const NATIVE_SCHEMA_PROVIDERS = new Set([
   'anthropic', 'claude-code',        // Anthropic tool blocks
-  'gemini', 'gemini-cli', 'antigravity', // Gemini functionDeclarations
+  'gemini', 'antigravity', // Gemini functionDeclarations
 ]);
 
 export function getToolCountLimit(provider, { usesResponsesApi = false } = {}) {

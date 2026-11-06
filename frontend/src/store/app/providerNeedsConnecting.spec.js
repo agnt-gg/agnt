@@ -15,7 +15,7 @@ describe('providerNeedsConnecting', () => {
 
   it('asks to connect a provider that is not in the connected list', () => {
     expect(providerNeedsConnecting('OpenAI', ['anthropic'])).toBe(true);
-    expect(providerNeedsConnecting('Gemini-CLI', [])).toBe(true);
+    expect(providerNeedsConnecting('Grok-Build', [])).toBe(true);
   });
 
   it('matches connected ids case-insensitively', () => {

@@ -1,14 +1,13 @@
 import { getConnection } from '../ai/connectionRuntime.js';
 const messageConnection = getConnection('claude-code');
 const responseConnection = getConnection('openai-codex');
-const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 
 /**
  * Resolving a subscription provider's access token, in one place.
  *
- * Four providers authenticate through a local OAuth flow rather than a stored
- * API key: claude-code, gemini-cli, antigravity and openai-codex. Every caller
+ * Three providers authenticate through a local OAuth flow rather than a stored
+ * API key: claude-code, antigravity and openai-codex. Every caller
  * that needs one of their tokens was doing the same four things by hand —
  * check the manager is connected, return a 400 with provider-specific wording
  * if not, then fetch the token — and ModelRoutes carried that ladder TWICE, in
@@ -25,10 +24,6 @@ const OAUTH_PROVIDERS = {
   'claude-code': {
     manager: messageConnection,
     notConnected: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
-  },
-  'gemini-cli': {
-    manager: projectConnection,
-    notConnected: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
   },
   antigravity: {
     manager: catalogConnection,

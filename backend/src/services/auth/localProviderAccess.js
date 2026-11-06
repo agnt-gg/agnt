@@ -11,7 +11,6 @@ const userModel = async () => (await import('../../models/UserModel.js')).defaul
 export const LOCAL_PROVIDER_ACCESS_KEYS = Object.freeze({
   'claude-code': 'localClaudeCodeDisconnected',
   'openai-codex': 'localCodexDisconnected',
-  'gemini-cli': 'localGeminiCliDisconnected',
   antigravity: 'localAntigravityDisconnected',
   'grok-build': 'localGrokBuildDisconnected',
   'cursor-cli': 'localCursorDisconnected',

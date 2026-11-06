@@ -60,9 +60,6 @@ const invalidate = (result) => {
   return result;
 };
 
-/** Start an installed LM Studio. Resolves to the new status (with `error` on failure). */
-export const startLmStudio = () => request('POST', 'start').then(invalidate);
-
 /**
  * Make a local model able to run a chat turn before switching to it (LM
  * Studio loads models with too little context by default). Resolves to
@@ -73,11 +70,6 @@ export const prepareLocalModel = (model) =>
   request('POST', 'prepare', model ? { model } : {})
     .catch((error) => (error.data?.error ? error.data : Promise.reject(error)))
     .then(invalidate);
-
-/** Begin AGNT's one-click setup (download + start). `modelId` defaults to the recommended model. */
-export const setupLocalModel = (modelId) => request('POST', 'managed/setup', modelId ? { modelId } : {}).then(invalidate);
-
-export const cancelLocalSetup = () => request('POST', 'managed/cancel').then(invalidate);
 
 /** Test hook: forget the shared status read. */
 export function resetLocalStatusCache() {

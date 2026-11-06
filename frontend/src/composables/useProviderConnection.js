@@ -225,10 +225,7 @@ export function useProviderConnection(modalRef) {
         const status = await providerAuthService.pollOAuthStatus(providerId, data.sessionId);
 
         if (status.status === 'success') {
-          // Force-refresh both Gemini variants so the newly-connected account's
-          // tier + model access is reflected immediately in dropdowns.
           try { await store.dispatch('aiProvider/hardRefreshProviderModels', { provider: 'Gemini' }); } catch { /* non-fatal */ }
-          try { await store.dispatch('aiProvider/hardRefreshProviderModels', { provider: 'Gemini-CLI' }); } catch { /* non-fatal */ }
           await store.dispatch('appAuth/fetchConnectedApps');
           await refreshHealth();
           await showAlert('Success', `${providerDetails.name} connected successfully.`);

@@ -107,7 +107,6 @@ const BUILT_IN_PROVIDERS = [
   { key: 'claude-code', displayName: 'Claude-Code' },
   { key: 'deepseek', displayName: 'DeepSeek' },
   { key: 'gemini', displayName: 'Gemini' },
-  { key: 'gemini-cli', displayName: 'Gemini-CLI' },
   { key: 'grokai', displayName: 'GrokAI' },
   { key: 'grok-build', displayName: 'Grok-Build' },
   { key: 'cursor-cli', displayName: 'Cursor' },
@@ -167,16 +166,14 @@ for (const p of BUILT_IN_PROVIDERS) {
  *
  * Why the rest: `displayName` is an identifier, so it is hyphenated the way a
  * key is, and the connect screen was rendering that hyphen at the user. Nobody
- * subscribes to "Claude-Code" or "Gemini-CLI" — they subscribe to Claude Code
- * and Gemini CLI. These are the SAME product, spelled the way its vendor spells
+ * subscribes to "Claude-Code" — they subscribe to Claude Code. These are the SAME product, spelled the way its vendor spells
  * it, and each stays distinct from the metered sibling beside it (Claude Code
- * vs Anthropic, Gemini CLI vs Gemini), which is the distinction the two lanes
+ * vs Anthropic), which is the distinction the two lanes
  * exist to draw.
  */
 const PROVIDER_LABEL_OVERRIDES = {
   'openai-codex': 'ChatGPT',
   'claude-code': 'Claude Code',
-  'gemini-cli': 'Gemini CLI',
   'grok-build': 'Grok Build',
   'kimi-code': 'Kimi Code',
 };
@@ -301,7 +298,6 @@ export function connectableAiProviders(providers, { codexStatus } = {}) {
 export const SUBSCRIPTION_PROVIDER_IDS = new Set([
   'claude-code',
   'openai-codex',
-  'gemini-cli',
   'antigravity',
   'kimi-code',
   'grok-build',
@@ -317,7 +313,6 @@ export const SUBSCRIPTION_PROVIDER_IDS = new Set([
 export const FIRST_RUN_SUBSCRIPTION_ORDER = Object.freeze([
   'openai-codex',
   'claude-code',
-  'gemini-cli',
   'antigravity',
   'grok-build',
   'cursor-cli',
@@ -354,8 +349,8 @@ export const PROVIDER_LANE_SIBLING = {
   openai: 'openai-codex',
   'claude-code': 'anthropic',
   anthropic: 'claude-code',
-  'gemini-cli': 'gemini',
-  gemini: 'gemini-cli',
+  antigravity: 'gemini',
+  gemini: 'antigravity',
 };
 
 /** Tiles shown per lane before the "+N more" expander. */
@@ -651,7 +646,7 @@ export function inferReasoningControl(providerKey, modelId) {
     return options ? buildReasoningControl('effort', options) : null;
   }
 
-  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli' || lowerProvider === 'antigravity') {
+  if (lowerProvider === 'gemini' || lowerProvider === 'antigravity') {
     if (isGemini3ReasoningModel(modelId) || isGemini25ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {
@@ -1551,7 +1546,7 @@ const aiProviderModule = {
 
       const revalidate = async () => {
         const token = localStorage.getItem('token');
-        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli' || providerLower === 'antigravity' || providerLower === 'grok-build' || providerLower === 'cursor-cli';
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'antigravity' || providerLower === 'grok-build' || providerLower === 'cursor-cli';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }

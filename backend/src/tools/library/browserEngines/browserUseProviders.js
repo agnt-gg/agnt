@@ -100,10 +100,6 @@ const ROUTING = {
     route: ROUTE.GATEWAY,
     reason: 'Codex talks to the ChatGPT backend Responses API, not /chat/completions.',
   },
-  'gemini-cli': {
-    route: ROUTE.GATEWAY,
-    reason: 'Gemini CLI OAuth only works against the Code Assist endpoint.',
-  },
   antigravity: {
     route: ROUTE.GATEWAY,
     reason: 'Antigravity OAuth only works against the Code Assist endpoint.',

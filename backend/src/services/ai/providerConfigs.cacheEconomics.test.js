@@ -45,7 +45,6 @@ describe('getCacheEconomics — the sourced table', () => {
     ['groq', 'openai/gpt-oss-120b', 0.5, true],
     ['gemini', 'gemini-2.5-flash', 0.1, true],
     ['gemini', 'gemini-3-flash-preview', 0.1, true],
-    ['gemini-cli', 'gemini-2.5-pro', 0.1, true],
   ])('%s / %s -> readMult %s, known %s', (provider, model, mult, known) => {
     const econ = getCacheEconomics(provider, model);
     expect(econ.readMult).toBe(mult);

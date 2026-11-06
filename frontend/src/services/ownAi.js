@@ -21,7 +21,6 @@ export const CONNECT_AI_HINT = 'ChatGPT, Claude or Gemini: the plan you already 
 export const SUBSCRIPTION_SIGN_INS = Object.freeze([
   { providerId: 'openai-codex', label: 'ChatGPT' },
   { providerId: 'claude-code', label: 'Claude' },
-  { providerId: 'gemini-cli', label: 'Gemini' },
 ]);
 
 export const hasOwnAi = (facts) => Number(facts?.aiModels) > 0;

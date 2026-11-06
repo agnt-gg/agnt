@@ -205,7 +205,6 @@ export function recentConversations(outputs, query = '', limit = 60, subChatIds 
 export const CLI_DISCONNECT_ACTIONS = Object.freeze({
   'claude-code': 'appAuth/disconnectClaudeCode',
   'openai-codex': 'appAuth/logoutCodex',
-  'gemini-cli': 'appAuth/disconnectGeminiCli',
   antigravity: 'appAuth/disconnectAntigravity',
   'grok-build': 'appAuth/disconnectGrokBuild',
   'cursor-cli': 'appAuth/disconnectCursor',
@@ -223,7 +222,6 @@ const LOGO_SLUGS = Object.freeze({
   anthropic: 'anthropic',
   'openai-codex': 'openai',
   gemini: 'googlegemini',
-  'gemini-cli': 'googlegemini',
   antigravity: 'google',
   'google-maps': 'googlemaps',
   grokai: 'x',

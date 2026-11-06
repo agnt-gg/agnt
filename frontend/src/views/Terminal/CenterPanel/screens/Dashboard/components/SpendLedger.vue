@@ -319,7 +319,6 @@ import { originLabel, mergeOriginRows } from '@/utils/originLabels';
 const PROVIDER_LABELS = {
   'claude-code': 'Claude Code',
   'openai-codex': 'Codex',
-  'gemini-cli': 'Gemini CLI',
   'kimi-code': 'Kimi Code',
   'cursor-cli': 'Cursor',
   antigravity: 'Antigravity',

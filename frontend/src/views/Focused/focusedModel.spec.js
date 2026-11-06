@@ -236,7 +236,7 @@ describe('connector logos', () => {
   });
 
   it('every CLI provider has a disconnect action', () => {
-    expect(Object.keys(CLI_DISCONNECT_ACTIONS).sort()).toEqual(['antigravity', 'claude-code', 'cursor-cli', 'gemini-cli', 'grok-build', 'openai-codex']);
+    expect(Object.keys(CLI_DISCONNECT_ACTIONS).sort()).toEqual(['antigravity', 'claude-code', 'cursor-cli', 'grok-build', 'openai-codex']);
   });
 });
 

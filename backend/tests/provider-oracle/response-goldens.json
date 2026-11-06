@@ -1093,39 +1093,6 @@
     },
     "model": "gemini-2.5-flash"
   },
-  "gemini-cli/plainText": {
-    "stream": {
-      "ok": true,
-      "content": "[The model returned an empty response.]",
-      "role": "assistant",
-      "toolCalls": [],
-      "usage": {
-        "input": 1200,
-        "output": 45,
-        "cachedRead": 1024
-      },
-      "recoveredFromError": true,
-      "hasReplayItems": false,
-      "thoughtSignatures": 0,
-      "deltas": ""
-    },
-    "nonStream": {
-      "ok": true,
-      "content": "[The model returned an empty response.]",
-      "role": "assistant",
-      "toolCalls": [],
-      "usage": {
-        "input": 1200,
-        "output": 45,
-        "cachedRead": 1024
-      },
-      "recoveredFromError": true,
-      "hasReplayItems": false,
-      "thoughtSignatures": 0,
-      "deltas": ""
-    },
-    "model": "gemini-2.5-flash"
-  },
   "antigravity/plainText": {
     "stream": {
       "ok": true,

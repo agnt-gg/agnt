@@ -31,7 +31,7 @@ export const BILLING = Object.freeze({ TEAM: 'team', MEMBER: 'member' });
 
 /** Signed in through this instance's own login: on a hosted instance, the owner's. */
 export const INSTANCE_LOGIN_PROVIDERS = Object.freeze(new Set([
-  'local', 'claude-code', 'openai-codex', 'grok-build', 'cursor-cli', 'gemini-cli', 'antigravity',
+  'local', 'claude-code', 'openai-codex', 'grok-build', 'cursor-cli', 'antigravity',
 ]));
 
 /** A member can sign in to these with their own account (memberConnections.js). */

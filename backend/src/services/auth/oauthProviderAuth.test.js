@@ -6,12 +6,11 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const claude = { checkApiUsable: vi.fn(), getAccessToken: vi.fn() };
-const geminiCli = { checkApiUsable: vi.fn(), getAccessToken: vi.fn() };
 const antigravity = { checkApiUsable: vi.fn(), getAccessToken: vi.fn() };
 const codex = { checkApiUsable: vi.fn(), getAccessToken: vi.fn(), getOAuthToken: vi.fn() };
 
 
-vi.mock('../ai/connectionRuntime.js', () => ({ getConnection: id => ({ 'claude-code': claude, 'gemini-cli': geminiCli, antigravity, 'openai-codex': codex })[id] }));
+vi.mock('../ai/connectionRuntime.js', () => ({ getConnection: id => ({ 'claude-code': claude, antigravity, 'openai-codex': codex })[id] }));
 
 const { resolveOAuthApiKey, isOAuthProvider, oauthProviderKeys } = await import('./oauthProviderAuth.js');
 
@@ -24,14 +23,14 @@ const { resolveOAuthApiKey, isOAuthProvider, oauthProviderKeys } = await import(
  * never gets, and nothing announces the difference.
  */
 beforeEach(() => {
-  for (const m of [claude, geminiCli, antigravity, codex]) {
+  for (const m of [claude, antigravity, codex]) {
     for (const fn of Object.values(m)) fn.mockReset();
   }
 });
 
 describe('resolveOAuthApiKey', () => {
-  it('covers exactly the four OAuth providers', () => {
-    expect(oauthProviderKeys().sort()).toEqual(['antigravity', 'claude-code', 'gemini-cli', 'openai-codex']);
+  it('covers exactly the three OAuth providers', () => {
+    expect(oauthProviderKeys().sort()).toEqual(['antigravity', 'claude-code', 'openai-codex']);
     expect(isOAuthProvider('claude-code')).toBe(true);
     expect(isOAuthProvider('CLAUDE-CODE')).toBe(true);
     // Key-based providers must NOT route through here.
@@ -50,10 +49,10 @@ describe('resolveOAuthApiKey', () => {
     // A disconnected provider is an expected state the caller turns into a
     // 400. Throwing would make every call site need a try/catch to render a
     // message it already knows.
-    geminiCli.checkApiUsable.mockResolvedValue({ available: false });
-    const r = await resolveOAuthApiKey('gemini-cli');
+    claude.checkApiUsable.mockResolvedValue({ available: false });
+    const r = await resolveOAuthApiKey('claude-code');
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/Gemini CLI is not connected/);
+    expect(r.error).toMatch(/Claude Code is not connected/);
   });
 
   it('passes forceRefresh through only when asked', async () => {

@@ -3,7 +3,6 @@ import { credentialUserId } from '../auth/tenantOwnership.js';
 import { isHostedMember, assertMemberCanUseProvider } from '../auth/memberAi.js';
 import { subscriptionConnectionFor, noSubscriptionMessage } from './memberConnections.js';
 import { getConnection } from './connectionRuntime.js';
-const projectConnection = getConnection('gemini-cli');
 const catalogConnection = getConnection('antigravity');
 import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -297,35 +296,8 @@ async function _createSpecialAuthClient(lowerCaseProvider, options, userId = nul
     });
   }
 
-  // Gemini CLI — uses Google OAuth or locally stored API key
-  if (lowerCaseProvider === 'gemini-cli') {
-    const token = await projectConnection.getAccessToken();
-    if (!token) {
-      throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
-    }
-    const config = getProviderConfig('gemini');
-    const sdkOpts = { ...(config?.sdkOptions || {}) };
-
-    if (projectConnection.isUsingApiKey()) {
-      // API key → passed as apiKey (sent as ?key= query param)
-      const GoogleGenAI = await loadGoogleGenAI();
-      return new GoogleGenAI({ apiKey: token, ...sdkOpts });
-    }
-
-    // OAuth → use GeminiOAuthProxy with the Code Assist endpoint,
-    // matching the real Gemini CLI (cloud-platform scope).
-    const oauth2Client = projectConnection.getOAuth2Client();
-    if (!oauth2Client) {
-      throw new Error('Gemini CLI OAuth credentials not found.');
-    }
-    // Ensure user is onboarded and get the Code Assist project ID
-    const projectId = await projectConnection.ensureOnboarded(oauth2Client);
-    return createGatewayClient('gemini-cli', oauth2Client, projectId);
-  }
-
   // Antigravity — Google's unified gateway (OAuth only, multi-vendor models).
-  // Same cloudcode-pa endpoint as gemini-cli OAuth, but Antigravity client
-  // identity + extra scopes unlock Gemini 3.x + Claude 4.6 + GPT-OSS.
+  // Its client identity and scopes unlock Gemini 3.x + Claude 4.6 + GPT-OSS.
   if (lowerCaseProvider === 'antigravity') {
     if (catalogConnection.isCoolingDown()) {
       throw Object.assign(

@@ -147,7 +147,7 @@ let testHome;
 beforeEach(() => { testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gateway-contract-')); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(testHome, { recursive: true, force: true }); });
 function account(id, request = vi.fn()) {
-  const dirname = id === 'antigravity' ? '.antigravity' : '.gemini';
+  const dirname = '.antigravity';
   fs.mkdirSync(path.join(testHome,dirname),{recursive:true});
   fs.writeFileSync(path.join(testHome,dirname,'oauth_creds.json'),JSON.stringify({access_token:'test-token',refresh_token:'refresh',expiry_date:Date.now()+3600000}));
   class Client {setCredentials(){}on(){}request(options){return request(options);}}
@@ -194,18 +194,7 @@ describe('shared gateway lifecycle',()=>{
     expect(connection.isCoolingDown()).toBe(true);expect(await connection.checkApiUsable()).toMatchObject({coolingDown:true});expect(httpClient.post).not.toHaveBeenCalled();
     await connection.logout();expect(await connection.checkApiUsable()).toMatchObject({available:false});expect(connection.isCoolingDown()).toBe(false);
   });
-  it('a 200 health response does not mask missing entitlement',async()=>{
-    const denied=Object.assign(Error('denied'),{response:{status:403,data:{error:{message:'You do not have a valid license (#3501)'}}}});
-    const request=scripted({':loadCodeAssist':{currentTier:{id:'standard-tier'},cloudaicompanionProject:'project-1'},':retrieveUserQuota':denied});
-    const {connection,httpClient}=account('gemini-cli',request);
-    expect(await connection.checkApiUsable()).toMatchObject({available:true,apiUsable:false,unlicensed:true,deprecated:true,apiStatus:403,entitledModels:[]});expect(httpClient.post).toHaveBeenCalledTimes(1);
-  });
-  it('a transient entitlement failure retains availability and licensed models use the discovery identity',async()=>{
-    const request=scripted({':loadCodeAssist':{currentTier:{id:'standard-tier'},cloudaicompanionProject:'project-1'},':retrieveUserQuota':()=>Error('offline')});
-    const {connection}=account('gemini-cli',request);expect(await connection.checkApiUsable()).toMatchObject({apiUsable:true,entitledModels:[]});
-    expect(request.mock.calls.at(-1)[0]).toMatchObject({url:'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',data:{project:'project-1'}});expect(request.mock.calls.at(-1)[0].headers['User-Agent']).toContain('GeminiCLI/test-version');
-  });
-  it.each(['gemini-cli','antigravity'])('builds the %s inference envelope and streams split UTF-8',async id=>{
+  it.each(['antigravity'])('builds the %s inference envelope and streams split UTF-8',async id=>{
     const packets=['data: {"response":{"candidates":[{"content":{"parts":[{"text":"héllo"}]}}]}}\n\n','data: [DONE]\n\n'];
     const request=vi.fn(async options=>options.responseType==='stream'?{data:Readable.from([...Buffer.from(packets.join(''))].map(byte=>Buffer.from([byte])))}:{data:{response:{candidates:[{content:{parts:[{text:'hello'},{functionCall:{name:'tool',args:{x:1}}}]}}]}}});
     const client=createGatewayClient(id,{request},'project-1'),params={model:'models/test-model',contents:[{role:'user',parts:[{text:'hi'}]}],config:{temperature:0,maxOutputTokens:64,topP:0,topK:1,thinkingConfig:{thinkingBudget:0},responseMimeType:'application/json',systemInstruction:'system',tools:[],toolConfig:{}}};
@@ -221,7 +210,7 @@ describe('shared gateway lifecycle',()=>{
   });
   it('cancels an underlying gateway stream when the consumer stops',async()=>{
     const source=Readable.from([Buffer.from('data: {"candidates":[]}\n\n'),Buffer.from('data: {"candidates":[]}\n\n')]);
-    const iterator=await createGatewayClient('gemini-cli',{request:async()=>({data:source})}).models.generateContentStream({model:'test',contents:[]});for await(const event of iterator){expect(event.text).toBe('');break;}expect(source.destroyed).toBe(true);
+    const iterator=await createGatewayClient('antigravity',{request:async()=>({data:source})}).models.generateContentStream({model:'test',contents:[]});for await(const event of iterator){expect(event.text).toBe('');break;}expect(source.destroyed).toBe(true);
   });
   it('catalog routing returns a cooldown without touching discovery or credentials',async()=>{
     const connection=getConnection('antigravity');vi.spyOn(connection,'isUsingApiKey').mockReturnValue(false);vi.spyOn(connection,'checkApiUsable').mockResolvedValue({available:true,coolingDown:true,retryAfterMs:10,hint:'wait'});const token=vi.spyOn(connection,'getAccessToken');

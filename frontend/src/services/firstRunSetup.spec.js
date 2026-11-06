@@ -44,8 +44,8 @@ describe('planTiles: 80% of the weight on the plans people already pay for', () 
   });
 
   it('never offers an API-key provider as a plan', () => {
-    const { hero, more } = planTiles([record('openai'), record('anthropic'), record('gemini-cli')]);
-    expect([...hero, ...more].map((p) => p.id)).toEqual(['gemini-cli']);
+    const { hero, more } = planTiles([record('openai'), record('anthropic'), record('antigravity')]);
+    expect([...hero, ...more].map((p) => p.id)).toEqual(['antigravity']);
   });
 
   // The shared list's rule: a ChatGPT whose own service says it is unusable is
@@ -53,7 +53,7 @@ describe('planTiles: 80% of the weight on the plans people already pay for', () 
   it('obeys the shared setup list, giving a hidden hero\'s card to the next plan', () => {
     const providers = FIRST_RUN_SUBSCRIPTION_ORDER.map(record);
     const { hero, more } = planTiles(providers, { codexStatus: { available: true, apiUsable: false } });
-    expect(hero.map((p) => p.id)).toEqual(['claude-code', 'gemini-cli']);
+    expect(hero.map((p) => p.id)).toEqual(['claude-code', 'antigravity']);
     expect(more.map((p) => p.id)).not.toContain('openai-codex');
     expect(planTiles(providers, { codexStatus: { available: true, apiUsable: true } }).hero[0].id).toBe('openai-codex');
   });

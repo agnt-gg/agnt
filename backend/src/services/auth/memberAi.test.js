@@ -51,9 +51,9 @@ describe("what a member may use of the owner's", () => {
   it('lets members use Claude Code and Codex (their own sign-in), other instance logins only when shared', () => {
     expect(() => assertMemberCanUseProvider('claude-code')).not.toThrow();
     expect(() => assertMemberCanUseProvider('openai-codex')).not.toThrow();
-    expect(() => assertMemberCanUseProvider('gemini-cli')).toThrow(/owner\u2019s sign-in/);
-    setSharedSubscriptions(['gemini-cli']);
-    expect(() => assertMemberCanUseProvider('gemini-cli')).not.toThrow();
+    expect(() => assertMemberCanUseProvider('antigravity')).toThrow(/owner\u2019s sign-in/);
+    setSharedSubscriptions(['antigravity']);
+    expect(() => assertMemberCanUseProvider('antigravity')).not.toThrow();
     expect(() => assertMemberCanUseProvider('my-custom-llm')).toThrow(/Custom providers/);
     expect(() => assertMemberCanUseProvider('agnt')).not.toThrow();
   });

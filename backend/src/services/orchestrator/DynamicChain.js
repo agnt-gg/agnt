@@ -190,7 +190,7 @@ export function selectEligible(candidates, intent = {}) {
  * not at zero. Marginal dollars are genuinely zero, and the LEDGER records
  * them as such (is_notional=1), but the ROUTER needs an OPPORTUNITY COST or
  * it will pile every turn onto a seat until its weekly quota burns out. A
- * seat that is truly free (gemini-cli, antigravity: unpaid tiers) stays at 0.
+ * seat that is truly free (antigravity: unpaid tier) stays at 0.
  * A seat with an UNKNOWN rate returns null and takes the unknown-cost path
  * (median of the pool) — the safe default that never re-introduces the
  * "$0 for seats" bug for a provider we merely forgot to price. See

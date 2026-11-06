@@ -1,6 +1,6 @@
 import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
- * The Google Gemini transport — gemini, gemini-cli and antigravity.
+ * The Google Gemini transport — gemini and antigravity.
  *
  * Distinct enough to need its own file: contents/parts instead of messages,
  * functionCall parts instead of tool_calls, synthesised tool ids, and thought
@@ -655,7 +655,7 @@ class GeminiAdapter extends BaseAdapter {
       const provider = context.provider || 'gemini';
 
       // Check if this model supports vision (uses metadata variant fallback so
-      // gemini-cli routing through Gemini adapter resolves to gemini metadata).
+      // antigravity routing through the Gemini adapter resolves to gemini metadata).
       const supportsVision = ProviderRegistry.supportsVision(provider, this.model);
 
       if (supportsVision) {

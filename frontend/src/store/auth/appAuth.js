@@ -30,7 +30,7 @@ const sessionIdentity = (ctx) => authSubject(ctx.rootState?.userAuth?.token ?? n
  * auth manager, so it belongs there and not here. Adding it would invent a
  * status probe that the backend answers with `local: false`.
  */
-export const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
+export const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'antigravity', 'grok-build', 'cursor-cli'];
 
 // Tell the local backend a provider changed so it can fan a Socket.IO
 // event out to every other connected client (other tabs / chat panels)
@@ -232,7 +232,7 @@ const actions = {
 
         // LANE 3 — local CLI providers via per-provider status probes. Started
         // now, awaited after the local lane: warm they take ~10 ms, but cold
-        // they took 923 ms (gemini-cli 887 ms) on 2026-09-30, and nothing about
+        // they took 923 ms on 2026-09-30, and nothing about
         // the local lane's answer depends on them.
         const statusPromise = Promise.allSettled(
           CLI_PROVIDER_IDS.map((id) => providerAuthService.getStatus(id)),
@@ -391,15 +391,6 @@ const actions = {
           localOnly: true,
         },
         {
-          id: 'gemini-cli',
-          name: 'Gemini CLI',
-          icon: 'google',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
-          localOnly: true,
-        },
-        {
           id: 'antigravity',
           name: 'Antigravity',
           icon: 'antigravity',
@@ -461,15 +452,6 @@ const actions = {
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
-          localOnly: true,
-        },
-        {
-          id: 'gemini-cli',
-          name: 'Gemini CLI',
-          icon: 'google',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
         },
         {
@@ -726,17 +708,6 @@ const actions = {
       throw error;
     }
   },
-  async disconnectGeminiCli({ commit, dispatch }) {
-    try {
-      const result = await providerAuthService.disconnect('gemini-cli');
-      commit('SET_CLI_PROVIDER_STATUS', { providerId: 'gemini-cli', status: { available: false, apiUsable: false, hint: 'Disconnected' } });
-      await dispatch('fetchConnectedApps', { forceRefresh: true });
-      return result;
-    } catch (error) {
-      console.error('Error disconnecting Gemini CLI:', error);
-      throw error;
-    }
-  },
   async disconnectAntigravity({ commit, dispatch }) {
     try {
       const result = await providerAuthService.disconnect('antigravity');
@@ -982,7 +953,6 @@ const getters = {
   codexDeviceSession: (state) => state.codexDeviceSession,
   claudeCodeStatus: (state) => state.cliProviderStatuses['claude-code'] || { available: false, apiUsable: false },
   claudeCodeSetupSession: (state) => state.claudeCodeSetupSession,
-  geminiCliStatus: (state) => state.cliProviderStatuses['gemini-cli'] || { available: false, apiUsable: false },
   antigravityStatus: (state) => state.cliProviderStatuses['antigravity'] || { available: false, apiUsable: false },
   claudeCodeNeedsReauth: (state) => {
     const s = state.cliProviderStatuses['claude-code'];
