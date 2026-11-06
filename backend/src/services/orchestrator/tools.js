@@ -2847,11 +2847,11 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ to, subject, body, isHtml = false, senderName }) => {
+    execute: async ({ to, subject, body, isHtml = false, senderName }, _authToken, context) => {
       console.log(`Tool call: send_email to: ${to}`);
       if (!to || !subject || !body) return JSON.stringify({ success: false, error: 'to, subject and body are required.' });
       try {
-        const result = await sendMail({ to, subject, text: isHtml ? String(body).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : body, html: isHtml ? body : undefined });
+        const result = await sendMail({ to, subject, text: isHtml ? String(body).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : body, html: isHtml ? body : undefined, actor: context?.userId });
         return JSON.stringify({ success: true, messageId: result.id, state: result.state, from: result.from, to, subject, ...(senderName ? { note: 'senderName is not applied; mail is sent from your agent inbox ' + result.from } : {}) });
       } catch (error) {
         return JSON.stringify(serviceFailure(error));

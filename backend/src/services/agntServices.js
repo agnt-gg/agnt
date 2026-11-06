@@ -19,6 +19,7 @@
  * that cannot reach the cloud to ask should not invent a denial.
  */
 import { authHeader, getSessionToken } from './auth/sessionTokenCache.js';
+import { credentialUserId } from './auth/tenantOwnership.js';
 import { hasFeature, isEnforcing } from './auth/planEntitlements.js';
 import { planDenialMessageFor } from './auth/planDenial.js';
 import crypto from 'crypto';
@@ -33,6 +34,17 @@ export const SERVICES = Object.freeze({
   // work runs here, on this instance's own models and credits.
   mobile: { base: 'https://mobile.agnt.gg/mobile/v1', feature: 'mobile', docs: 'https://mobile.agnt.gg/docs.html' },
 });
+
+/**
+ * The team member a hosted instance is acting for, or null for the owner (and
+ * always null on a desktop). Team plans pool QUOTA on the owner's account but
+ * never per-person things like inboxes, so a member's call names the member.
+ */
+export function memberActor(actor) {
+  if (!hostedInstanceSlug() || actor == null) return null;
+  const id = credentialUserId(String(actor)); // team-workspace work acts as the owner
+  return id && id !== process.env.AGNT_TENANT_OWNER ? String(id) : null;
+}
 
 /** This process's hosted-instance slug, or null on a desktop install. */
 export function hostedInstanceSlug() {
@@ -128,13 +140,20 @@ export async function serviceAllowed(service) {
  * to make: its own AGNT Flash trial balance and buying prepaid credit. The service
  * still authenticates and decides; only the local pre-emptive denial is skipped.
  */
-export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 12, planGate = true } = {}) {
+export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 12, planGate = true, actor } = {}) {
   const s = SERVICES[service];
   if (!s) throw new Error('unknown service: ' + service);
   if (planGate && !(await serviceAllowed(service))) throw proRequired(service);
-  if (!getSessionToken()) throw new ServiceError(service, 401, 'authentication_required', { message: 'Sign in to AGNT to use ' + service + '.' });
+  const member = memberActor(actor);
+  // Only the instance itself may say which member it acts for, so a member's
+  // call is signed with the instance key, never with whoever is signed in.
+  const instanceKey = member ? process.env.AGNT_INSTANCE_KEY : null;
+  if (member && !/^agnt_ik_[0-9a-f]{64}$/.test(instanceKey || '')) throw new ServiceError(service, 401, 'authentication_required', { message: 'This instance has no instance key, so it cannot act for team members. Restart it from the fleet.' });
+  if (!member && !getSessionToken()) throw new ServiceError(service, 401, 'authentication_required', { message: 'Sign in to AGNT to use ' + service + '.' });
 
-  const headers = { ...authHeader(), Accept: 'application/json' };
+  const headers = member
+    ? { Authorization: `Bearer ${instanceKey}`, 'X-AGNT-Actor': member, Accept: 'application/json' }
+    : { ...authHeader(), Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   // ONE key for the whole call, reused by every retry. A retry that minted a
   // fresh key would be a second billable operation rather than a retry — the
@@ -217,6 +236,8 @@ function backoffMs(attempt, retryAfter) {
 const SERVICE_MESSAGES = {
   endpoint_limit: () => 'Your plan\'s webhook endpoints are all in use. Stop a webhook workflow you no longer need, or add endpoints from Settings > Billing.',
   inbox_limit_reached: () => 'Your plan\'s inboxes are all in use. Remove one, or add inboxes from Settings > Billing.',
+  inbox_limit: () => 'Your plan\'s inboxes are all in use. Remove one, or add inboxes from Settings > Billing.',
+  actor_not_member: () => 'This person is not a member of this instance.',
   allowance_exhausted: (s) => `This month's included ${s} allowance is used up. It resets next month, or add credit from Settings > Billing.`,
   spending_not_authorized: (s) => `This ${s} call would cost beyond the included allowance and spending is off. Turn it on from Settings > Billing.`,
   authentication_required: () => 'Sign in to AGNT to use hosted services.',

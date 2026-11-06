@@ -114,7 +114,7 @@ AgntServicesRoutes.post('/models/top-up', authenticateToken, async (req, res) =>
 AgntServicesRoutes.get('/inbox', authenticateToken, async (req, res) => {
   try {
     if (!(await serviceAllowed('mail'))) return res.json({ pro: false, address: null });
-    const inbox = await defaultInbox();
+    const inbox = await defaultInbox(req.user?.id); // the signed-in person's own inbox
     const workflowId = typeof req.query.workflowId === 'string' && req.query.workflowId ? req.query.workflowId : null;
     res.json({ pro: true, address: workflowId ? workflowAddress(inbox.address, workflowId) : inbox.address, inboxAddress: inbox.address, inboxId: inbox.id });
   } catch (error) {

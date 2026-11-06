@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const INBOX = { id: 'inbox-1', address: 'operator-check@mail.agnt.gg' };
 const listInbound = vi.fn();
 vi.mock('../../services/agntMail.js', () => ({ listInbound: (...a) => listInbound(...a), releaseInboxReader: async () => true }));
-vi.mock('../../services/agntServices.js', () => ({ serviceFailure: (e) => ({ error: e.message }), hostedInstanceSlug: () => null, serverNow: () => Date.now() }));
+vi.mock('../../services/agntServices.js', () => ({ memberActor: () => null, serviceFailure: (e) => ({ error: e.message }), hostedInstanceSlug: () => null, serverNow: () => Date.now() }));
 vi.mock('../../models/TriggerCursorModel.js', () => ({ default: { get: async () => null, save: async () => {} } }));
 
 const engine = () => ({

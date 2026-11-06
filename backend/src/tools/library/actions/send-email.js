@@ -80,6 +80,7 @@ class SendEmail extends BaseAction {
         html: isHtml ? params.body : undefined,
         attachments: Array.isArray(attachments) ? attachments : undefined,
         workflowId: workflowEngine?.workflowId,
+        actor: workflowEngine?.runActor || workflowEngine?.userId, // sends from that person's own inbox
       });
       return this.formatOutput({ success: true, messageId: result.id, state: result.state, from: result.from, ...(result.via ? { via: result.via } : {}), error: null });
     } catch (error) {

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { listInbound, releaseInboxReader } from '../../services/agntMail.js';
 import { deliveredTag, workflowTag } from '../../services/mailAddressing.js';
-import { serviceFailure, hostedInstanceSlug, serverNow } from '../../services/agntServices.js';
+import { serviceFailure, hostedInstanceSlug, serverNow, memberActor } from '../../services/agntServices.js';
 import TriggerCursorModel from '../../models/TriggerCursorModel.js';
 
 // Where the inbox read position is stored (TriggerCursorModel).
@@ -48,6 +48,9 @@ class EmailReceiver extends EventEmitter {
     this.readerReleased = false;
     this.polling = false;
     this.lastDenial = 0;
+    // A hosted team instance: each member's workflows listen on that member's
+    // own inbox, with its own cursor. member id -> { since, persistedSince }.
+    this.memberCursors = new Map();
     this.pollingEnabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING !== 'true';
 
     if (this.pollingEnabled) {
@@ -72,16 +75,24 @@ class EmailReceiver extends EventEmitter {
     }
   }
 
-  /** Engines currently listening on the built-in inbox. */
-  _listeningWorkflows() {
-    const out = [];
+  /** Engines currently listening on the built-in inbox, by whose inbox: '' is the account holder's. */
+  _listeningGroups() {
+    const groups = new Map();
     for (const [workflowId, engine] of this.processManager.activeWorkflows) {
       if (!(engine.isListening || engine.isRunning)) continue;
       const nodes = engine.workflow?.nodes || engine.nodes || [];
       const usesBuiltIn = nodes.some((n) => n.type === 'receive-email' && (n.parameters?.emailConfig || 'Built-in Email') === 'Built-in Email');
-      if (usesBuiltIn) out.push(workflowId);
+      if (!usesBuiltIn) continue;
+      const person = memberActor(engine.runActor || engine.userId) ?? '';
+      if (!groups.has(person)) groups.set(person, []);
+      groups.get(person).push(workflowId);
     }
-    return out;
+    return groups;
+  }
+
+  /** The account holder's listening workflows (the only ones on a desktop). */
+  _listeningWorkflows() {
+    return this._listeningGroups().get('') || [];
   }
 
   /** Resume from the stored position; a first-ever start begins at now. */
@@ -147,7 +158,9 @@ class EmailReceiver extends EventEmitter {
     this.polling = true;
     try {
       await this._loadSince();
-      const workflowIds = this._listeningWorkflows();
+      const groups = this._listeningGroups();
+      for (const [member, ids] of groups) if (member) await this._pollMember(member, ids);
+      const workflowIds = groups.get('') || [];
       if (workflowIds.length === 0) {
         await this._skipUnwatchedMail(); // nobody listening: do not spend a request
         return;
@@ -157,56 +170,88 @@ class EmailReceiver extends EventEmitter {
       try {
         ({ inbox, messages } = await listInbound({ since: this.since }));
       } catch (error) {
-        const failure = serviceFailure(error);
-        if (Date.now() - this.lastDenial > 60000) {
-          console.error(`Local EmailReceiver: ${failure.message || failure.error}`);
-          this.lastDenial = Date.now();
-        }
+        this._logDenial(error);
         return;
       }
       if (!messages.length) return;
-      console.log(`Local EmailReceiver: ${messages.length} new message(s) on ${inbox.address}`);
-
-      // Send Email sends FROM this inbox, and every trigger listens ON it. Mail
-      // the inbox sent itself is therefore our own output, not an inbound event:
-      // a workflow that replies to the sender would otherwise mail itself and
-      // re-trigger once per poll, forever. It is skipped and the cursor moves
-      // past it, so it is never re-read either.
-      const ownAddress = addressOf(inbox.address);
-
-      let advanced = this.since;
-      for (const message of messages) {
-        if (ownAddress && addressOf(message.from) === ownAddress) {
-          advanced = Math.max(advanced, message.createdAt || advanced);
-          continue;
-        }
-        // Mail to a workflow's own subaddress goes to that workflow only; mail
-        // to the bare inbox goes to every listener.
-        const tag = deliveredTag(message);
-        const targets = tag ? workflowIds.filter((id) => workflowTag(id) === tag) : workflowIds;
-        if (targets.length === 0) {
-          // Addressed to a workflow that is not listening. Just after boot it
-          // may still be starting, so wait for it; after that it is mail for a
-          // stopped workflow and must not hold up everyone else's.
-          if (Date.now() - this.bootedAt < LISTENER_GRACE_MS) break;
-          console.log(`Local EmailReceiver: no listening workflow for ${tag}; skipping message ${message.id}`);
-          advanced = Math.max(advanced, message.createdAt || advanced);
-          continue;
-        }
-        let accepted = false;
-        for (const workflowId of targets) {
-          if (await this._triggerWorkflowByEmail(workflowId, message)) accepted = true;
-        }
-        if (!accepted) break; // engines not ready: leave the cursor here
-        advanced = Math.max(advanced, message.createdAt || advanced);
-      }
-      this.since = advanced;
+      this.since = await this._deliver(inbox, messages, this.since, workflowIds);
       await this._saveSince();
     } catch (error) {
       console.error('Local EmailReceiver: Error polling for inbound mail:', error);
     } finally {
       this.polling = false;
     }
+  }
+
+  _logDenial(error) {
+    const failure = serviceFailure(error);
+    if (Date.now() - this.lastDenial > 60000) {
+      console.error(`Local EmailReceiver: ${failure.message || failure.error}`);
+      this.lastDenial = Date.now();
+    }
+  }
+
+  /** One team member's inbox, delivered only to that member's workflows. */
+  async _pollMember(member, workflowIds) {
+    const source = `${CURSOR_SOURCE}:${member}`;
+    let cursor = this.memberCursors.get(member);
+    if (!cursor) {
+      const stored = await TriggerCursorModel.get(source).catch(() => null);
+      cursor = { since: stored ?? serverNow(), persistedSince: stored };
+      this.memberCursors.set(member, cursor);
+    }
+    let inbox, messages;
+    try {
+      ({ inbox, messages } = await listInbound({ since: cursor.since, actor: member }));
+    } catch (error) {
+      this._logDenial(error);
+      return;
+    }
+    if (messages.length) cursor.since = await this._deliver(inbox, messages, cursor.since, workflowIds);
+    if (cursor.since !== cursor.persistedSince) {
+      await TriggerCursorModel.save(source, cursor.since).then(() => { cursor.persistedSince = cursor.since; })
+        .catch((error) => console.error('Local EmailReceiver: could not save a member inbox cursor:', error.message));
+    }
+  }
+
+  /** Offer `messages` to `workflowIds`; returns how far the cursor may move. */
+  async _deliver(inbox, messages, since, workflowIds) {
+    console.log(`Local EmailReceiver: ${messages.length} new message(s) on ${inbox.address}`);
+
+    // Send Email sends FROM this inbox, and every trigger listens ON it. Mail
+    // the inbox sent itself is therefore our own output, not an inbound event:
+    // a workflow that replies to the sender would otherwise mail itself and
+    // re-trigger once per poll, forever. It is skipped and the cursor moves
+    // past it, so it is never re-read either.
+    const ownAddress = addressOf(inbox.address);
+
+    let advanced = since;
+    for (const message of messages) {
+      if (ownAddress && addressOf(message.from) === ownAddress) {
+        advanced = Math.max(advanced, message.createdAt || advanced);
+        continue;
+      }
+      // Mail to a workflow's own subaddress goes to that workflow only; mail
+      // to the bare inbox goes to every listener.
+      const tag = deliveredTag(message);
+      const targets = tag ? workflowIds.filter((id) => workflowTag(id) === tag) : workflowIds;
+      if (targets.length === 0) {
+        // Addressed to a workflow that is not listening. Just after boot it
+        // may still be starting, so wait for it; after that it is mail for a
+        // stopped workflow and must not hold up everyone else's.
+        if (Date.now() - this.bootedAt < LISTENER_GRACE_MS) break;
+        console.log(`Local EmailReceiver: no listening workflow for ${tag}; skipping message ${message.id}`);
+        advanced = Math.max(advanced, message.createdAt || advanced);
+        continue;
+      }
+      let accepted = false;
+      for (const workflowId of targets) {
+        if (await this._triggerWorkflowByEmail(workflowId, message)) accepted = true;
+      }
+      if (!accepted) break; // engines not ready: leave the cursor here
+      advanced = Math.max(advanced, message.createdAt || advanced);
+    }
+    return advanced;
   }
 
   async _triggerWorkflowByEmail(workflowId, message) {

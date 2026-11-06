@@ -1,36 +1,42 @@
 /**
- * The desktop's inbox on mail.agnt.gg.
+ * The agent inbox on mail.agnt.gg.
  *
- * One inbox per account, created the first time anything needs it and cached
- * for the life of the process. Its address is what the Receive Email trigger
- * shows and what Send Email sends from.
+ * One inbox per PERSON, created the first time anything needs it and cached
+ * for the life of the process. On a desktop that is the signed-in account; on
+ * a hosted team instance each member has their own (the team plan pools quota,
+ * never inboxes), and `actor` says whose. Its address is what the Receive Email
+ * trigger shows and what Send Email sends from.
  */
-import { callService, neverReached } from './agntServices.js';
+import { callService, neverReached, memberActor } from './agntServices.js';
 import { legacyMail } from './legacyRelay.js';
 
-let cachedInbox = null;
-let inFlight = null;
+const OWNER = '';
+/** @type {Map<string, object>} inbox by person ('' = the account holder) */
+const cachedInboxes = new Map();
+const inFlight = new Map();
 
-export async function defaultInbox() {
-  if (cachedInbox) return cachedInbox;
-  if (inFlight) return inFlight;
-  inFlight = (async () => {
-    const list = await callService('mail', '/inboxes');
+export async function defaultInbox(actor) {
+  const person = memberActor(actor) ?? OWNER;
+  if (cachedInboxes.has(person)) return cachedInboxes.get(person);
+  if (inFlight.has(person)) return inFlight.get(person);
+  const pending = (async () => {
+    const list = await callService('mail', '/inboxes', { actor });
     const active = (list.inboxes || []).filter((i) => i.state === 'active');
-    // Prefer the one this desktop made before; otherwise the oldest active one.
-    // Oldest active inbox is the desktop's; there is no name field, so age is the tie-breaker.
+    // The service lists only this person's inboxes. Oldest active first; there
+    // is no name field, so age is the tie-breaker.
     let inbox = active.sort((a, b) => (a.created_at || 0) - (b.created_at || 0))[0];
     if (!inbox) {
-      inbox = await callService('mail', '/inboxes', { method: 'POST', idempotent: true, body: {} });
+      inbox = await callService('mail', '/inboxes', { method: 'POST', idempotent: true, body: {}, actor });
     }
-    cachedInbox = inbox;
-    inFlight = null;
+    cachedInboxes.set(person, inbox);
+    inFlight.delete(person);
     return inbox;
   })().catch((error) => {
-    inFlight = null;
+    inFlight.delete(person);
     throw error;
   });
-  return inFlight;
+  inFlight.set(person, pending);
+  return pending;
 }
 
 /**
@@ -46,10 +52,10 @@ export async function releaseInboxReader() {
   return true;
 }
 
-/** Forget the cached inbox (sign-out, account switch). */
+/** Forget the cached inboxes (sign-out, account switch). */
 export function resetInboxCache() {
-  cachedInbox = null;
-  inFlight = null;
+  cachedInboxes.clear();
+  inFlight.clear();
 }
 
 /**
@@ -59,18 +65,19 @@ export function resetInboxCache() {
  * mean it was already accepted, and sending again would deliver it twice.
  * Attachments have no legacy path, so a message with them is never rerouted.
  */
-export async function sendMail({ to, subject, text, html, attachments, inReplyTo, workflowId }) {
+export async function sendMail({ to, subject, text, html, attachments, inReplyTo, workflowId, actor }) {
   const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
   try {
-    const inbox = await defaultInbox();
+    const inbox = await defaultInbox(actor);
     const body = { to, subject, text: text ?? '' };
     if (html) body.html = html;
     if (hasAttachments) body.attachments = attachments;
     if (inReplyTo) body.inReplyTo = inReplyTo;
-    const result = await callService('mail', `/inboxes/${inbox.id}/messages`, { method: 'POST', idempotent: true, body });
+    const result = await callService('mail', `/inboxes/${inbox.id}/messages`, { method: 'POST', idempotent: true, body, actor });
     return { ...result, from: inbox.address };
   } catch (error) {
-    if (!neverReached(error) || hasAttachments) throw error;
+    // The legacy relay has no per-member identity: a member's mail never takes it.
+    if (!neverReached(error) || hasAttachments || memberActor(actor)) throw error;
     console.warn(`agntMail: mail.agnt.gg unreachable (${error.detail?.causeCode}); sending through the legacy relay`);
     const result = await legacyMail.send({ to, subject, text, html, workflowId }).catch((legacyError) => {
       console.error(`agntMail: legacy relay also failed: ${legacyError.message}`);
@@ -89,12 +96,12 @@ export async function sendMail({ to, subject, text, html, attachments, inReplyTo
  * nothing newer than the watermark. Bodies are fetched per message because the
  * list carries only headers.
  */
-export async function listInbound({ since = 0, limit = 50 } = {}) {
-  const inbox = await defaultInbox();
+export async function listInbound({ since = 0, limit = 50, actor } = {}) {
+  const inbox = await defaultInbox(actor);
   const fresh = [];
   let cursor = '';
   for (let page = 0; page < 20 && fresh.length < limit; page++) {
-    const data = await callService('mail', `/inboxes/${inbox.id}/messages`, { query: cursor ? { cursor } : undefined });
+    const data = await callService('mail', `/inboxes/${inbox.id}/messages`, { query: cursor ? { cursor } : undefined, actor });
     const summaries = data.messages || [];
     for (const s of summaries) if ((s.createdAt || 0) > since) fresh.push(s);
     if (!data.nextCursor || summaries.length === 0) break;
@@ -103,7 +110,7 @@ export async function listInbound({ since = 0, limit = 50 } = {}) {
   fresh.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const messages = [];
   for (const s of fresh.slice(0, limit)) {
-    const detail = await callService('mail', `/inboxes/${inbox.id}/messages/${s.id}`);
+    const detail = await callService('mail', `/inboxes/${inbox.id}/messages/${s.id}`, { actor });
     messages.push({ ...s, ...detail });
   }
   return { inbox, messages };
