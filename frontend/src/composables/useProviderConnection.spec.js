@@ -63,6 +63,44 @@ const Harness = defineComponent({
   },
 });
 
+describe('useProviderConnection — an app sign-in', () => {
+  // Regression: Sign in with Google showed "Connect to Google / Connect your
+  // Google account to access Gmail, Drive..." with a Continue button first.
+  it('opens the vendor sign-in on the click, with no Continue dialog before it', async () => {
+    const google = { id: 'google', name: 'Google', connectionType: 'oauth', instructions: 'Connect your Google account to access Gmail, Drive, Calendar.' };
+    const store = createStore({
+      modules: {
+        appAuth: {
+          namespaced: true,
+          state: () => ({ allProviders: [google], connectedApps: [] }),
+          actions: { fetchAllProviders: vi.fn(), fetchConnectedApps: vi.fn(), checkConnectionHealthStream: vi.fn(), checkConnectionHealth: vi.fn() },
+        },
+      },
+    });
+    const showModal = vi.fn().mockResolvedValue(true);
+    let api;
+    const Probe = defineComponent({
+      setup() {
+        api = useProviderConnection(ref({ showModal }));
+        return () => h('div');
+      },
+    });
+    localStorage.setItem('token', 't');
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ authUrl: 'https://accounts.google.test/consent' }) });
+    const popup = { closed: false };
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+    const wrapper = mount(Probe, { global: { plugins: [store] } });
+    await flushPromises();
+    await api.handleProviderToggle('google');
+    await flushPromises();
+    expect(showModal).not.toHaveBeenCalled();
+    expect(open.mock.calls[0][0]).toBe('https://accounts.google.test/consent');
+    popup.closed = true;
+    open.mockRestore();
+    wrapper.unmount();
+  });
+});
+
 describe('useProviderConnection — oauth-callback postMessage handler', () => {
   let wrapper;
 

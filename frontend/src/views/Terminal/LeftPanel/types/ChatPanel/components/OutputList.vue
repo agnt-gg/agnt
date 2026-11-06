@@ -1717,8 +1717,8 @@ export default {
   align-items: center;
   padding: 0 0 12px 0;
   border-bottom: 1px solid var(--terminal-border-color-light);
+  margin-bottom: 12px;
   user-select: none;
-  /* margin-bottom: 16px; */
 }
 
 .panel-header .title {

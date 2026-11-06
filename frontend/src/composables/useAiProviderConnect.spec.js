@@ -7,6 +7,7 @@ const authService = vi.hoisted(() => ({
   startOAuth: vi.fn(),
   pollOAuthStatus: vi.fn(),
   exchangeOAuth: vi.fn(),
+  getCapabilities: vi.fn(),
 }));
 vi.mock('@/services/providerAuthService.js', () => ({ default: authService }));
 
@@ -89,6 +90,65 @@ describe('useAiProviderConnect — one click from a tile', () => {
     expect(global.fetch.mock.calls[0][0]).toMatch(/^https:\/\/remote\.test\/auth\/connect\/github\?origin=/);
     expect(modal.shown.map((o) => o.title)).toEqual(['Connection Error']);
     expect(modal.shown.some((o) => o.confirmText === 'Continue')).toBe(false);
+  });
+
+  // Regression: these tiles asked AGNT's server for an OAuth link, which has
+  // none for a CLI on this computer: "Failed to connect to Cursor: HTTP error!
+  // status: 404".
+  it.each([
+    ['cursor-cli', 'Cursor'],
+    ['grok-build', 'Grok Build'],
+  ])('signs %s in through its own CLI login on this computer, never AGNT\'s server', async (id, name) => {
+    authService.getCapabilities.mockResolvedValue({ local: true, capabilities: ['status', 'device-auth'] });
+    window.electron = { openExternalUrl: vi.fn() };
+    const store = fakeStore({
+      dispatch: {
+        'appAuth/startProviderDeviceAuth': async () => ({ success: true, sessionId: 's1', state: 'pending', deviceUrl: 'https://login.test/device', deviceCode: id === 'grok-build' ? 'ABCD-EFGH' : null }),
+        'appAuth/pollProviderDeviceAuth': async () => ({ success: true, state: 'success' }),
+      },
+    });
+    const { connect, modal, onSelected } = setup({ store });
+    await connect({ id, name, connectionType: 'oauth' });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(store.dispatch).toHaveBeenCalledWith('appAuth/startProviderDeviceAuth', id);
+    expect(store.dispatch).toHaveBeenCalledWith('appAuth/pollProviderDeviceAuth', expect.objectContaining({ providerId: id, sessionId: 's1' }));
+    // The waiting dialog closed itself; nothing asked the user to click anything.
+    expect(modal.shown.map((o) => o.title)).toEqual([`Sign in to ${name}`]);
+    expect(modal.confirm).toHaveBeenCalled();
+    expect(onSelected).toHaveBeenCalledOnce();
+    // A code to type is shown, with its page opened; a CLI that opens the browser itself is left to it.
+    if (id === 'grok-build') {
+      expect(modal.shown[0].message).toContain('ABCD-EFGH');
+      expect(window.electron.openExternalUrl).toHaveBeenCalledWith('https://login.test/device');
+    } else {
+      expect(window.electron.openExternalUrl).not.toHaveBeenCalled();
+    }
+    delete window.electron;
+  });
+
+  it('signs Gemini CLI in with Google in the user\'s browser, received on this computer', async () => {
+    authService.getCapabilities.mockResolvedValue({ local: true, capabilities: ['connect-apikey', 'oauth-loopback'] });
+    authService.startOAuth.mockResolvedValue({ authUrl: 'https://accounts.google.test/o', sessionId: 'g1' });
+    authService.pollOAuthStatus.mockResolvedValue({ status: 'success' });
+    window.electron = { openExternalUrl: vi.fn() };
+    const store = fakeStore();
+    const { connect, onSelected, modal } = setup({ store });
+    await connect({ id: 'gemini-cli', name: 'Gemini-CLI', connectionType: 'oauth' });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(authService.startOAuth).toHaveBeenCalledWith('gemini-cli');
+    expect(window.electron.openExternalUrl).toHaveBeenCalledWith('https://accounts.google.test/o');
+    expect(modal.shown.map((o) => o.title)).toEqual(['Sign in to Gemini CLI']);
+    expect(onSelected).toHaveBeenCalledOnce();
+    delete window.electron;
+  });
+
+  it('says why when a CLI login cannot start, instead of an HTTP error', async () => {
+    authService.getCapabilities.mockResolvedValue({ local: true, capabilities: ['device-auth'] });
+    const store = fakeStore({ dispatch: { 'appAuth/startProviderDeviceAuth': async () => ({ success: true, state: 'error', message: 'cursor-agent is not installed' }) } });
+    const { connect, modal } = setup({ store, modal: fakeModal({ answer: true }) });
+    await connect({ id: 'cursor-cli', name: 'Cursor', connectionType: 'oauth' });
+    expect(modal.shown.map((o) => [o.title, o.message])).toEqual([['Cursor sign-in did not start', 'cursor-agent is not installed']]);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('closes the Codex waiting dialog by itself when sign-in completes', async () => {

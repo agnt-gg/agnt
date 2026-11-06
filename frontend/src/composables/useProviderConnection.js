@@ -409,18 +409,8 @@ export function useProviderConnection(modalRef) {
 
   // ── remote provider flows (unchanged) ──────────────────────
 
+  // Straight to the vendor's sign-in: the button that called this was the ask.
   const connectOAuthApp = async (app) => {
-    if (app.instructions) {
-      const proceed = await modalRef.value.showModal({
-        title: `Connect to ${app.name}`,
-        message: app.instructions,
-        confirmText: 'Continue',
-        cancelText: 'Cancel',
-        confirmClass: 'btn-primary',
-      });
-      if (!proceed) return;
-    }
-
     try {
       const token = localStorage.getItem('token');
       const normalizedId = resolveProviderKey(app.id) || app.id;

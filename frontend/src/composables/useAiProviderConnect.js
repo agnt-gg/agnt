@@ -20,7 +20,7 @@
  */
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
-import { PROVIDER_FETCH_ACTIONS, providerStoreName, resolveProviderKey } from '@/store/app/aiProvider.js';
+import { PROVIDER_FETCH_ACTIONS, providerLabel, providerStoreName, resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
 import { getLocalStatus, startLmStudio, setupLocalModel, cancelLocalSetup, prepareLocalModel } from '@/services/localModelsService.js';
 
@@ -177,43 +177,96 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     }
   };
 
-  const pollAntigravity = async (sessionId) => {
+  const pollLoopback = async (providerId, sessionId) => {
     const deadline = Date.now() + SIGN_IN_WAIT_MS;
     while (Date.now() < deadline) {
-      const status = await providerAuthService.pollOAuthStatus('antigravity', sessionId);
+      const status = await providerAuthService.pollOAuthStatus(providerId, sessionId);
       if (status.status === 'success' || status.status === 'error') return status;
       await sleep(POLL_INTERVAL_MS);
     }
     return { status: 'error', error: 'Sign-in timed out. Please try again.' };
   };
 
-  const connectAntigravity = async (provider, click) => {
+  /** Google sign-in that this computer's AGNT receives (Antigravity, Gemini CLI), in the user's browser. */
+  const connectLoopback = async (provider, click) => {
+    const name = providerLabel(provider);
     try {
-      const data = await providerAuthService.startOAuth('antigravity');
+      const data = await providerAuthService.startOAuth(provider.id);
       if (!data.authUrl) throw new Error('No authUrl returned');
       openInBrowser(data.authUrl);
       const status = await waitWithDialog(
         {
-          title: 'Sign in to Antigravity',
+          title: `Sign in to ${escapeHtml(name)}`,
           message: `<div style="text-align:left">
             <p>A browser window opened for your Google account. Sign in and click <strong>Allow</strong>.</p>
             <p>This closes by itself once you are signed in.</p>
-            <p style="font-size:12px;opacity:.8">Unofficial integration: heavy automated use may trigger Google rate limits.</p>
+            ${provider.id === 'antigravity' ? '<p style="font-size:12px;opacity:.8">Unofficial integration: heavy automated use may trigger Google rate limits.</p>' : ''}
           </div>`,
         },
-        pollAntigravity(data.sessionId),
+        pollLoopback(provider.id, data.sessionId),
       );
       if (status === null) return;
       if (status.status !== 'success') {
         await showError('Connection Failed', status.error || 'Google sign-in failed.');
         return;
       }
-      localStorage.removeItem('Antigravity_models');
+      localStorage.removeItem(`${providerStoreName(provider.id)}_models`);
       await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
       await selectProvider(provider, click);
     } catch (error) {
-      console.warn('Antigravity OAuth failed:', error.message);
+      console.warn(`${name} OAuth failed:`, error.message);
       await showError('Connection Failed', `Sign-in error: ${error.message}`);
+    }
+  };
+
+  /**
+   * A CLI on this computer that signs in itself (Cursor, Grok Build): its own
+   * login opens the browser; a CLI that prints a code instead gets the code's
+   * page opened here. The dialog closes itself once the CLI is signed in.
+   */
+  const connectDevice = async (provider, click) => {
+    const name = providerLabel(provider);
+    try {
+      const session = await store.dispatch('appAuth/startProviderDeviceAuth', provider.id);
+      if (!session?.success || session.state === 'error') {
+        await showError(`${name} sign-in did not start`, escapeHtml(session?.message || session?.error || `${name} could not start its login on this computer.`));
+        return;
+      }
+      if (session.deviceCode && session.deviceUrl) openInBrowser(session.deviceUrl);
+      const code = session.deviceCode
+        ? `<p>Enter this code there:</p><p><code style="font-size:18px;letter-spacing:2px">${escapeHtml(session.deviceCode)}</code></p>`
+        : '';
+      const result = await waitWithDialog(
+        {
+          title: `Sign in to ${escapeHtml(name)}`,
+          message: `<div style="text-align:left">
+            <p>A browser window opened for your ${escapeHtml(name)} account. Sign in there.</p>
+            ${code}
+            <p>This closes by itself once you are signed in.</p>
+          </div>`,
+        },
+        store.dispatch('appAuth/pollProviderDeviceAuth', { providerId: provider.id, sessionId: session.sessionId, timeoutMs: SIGN_IN_WAIT_MS }),
+      );
+      if (result === null) return;
+      if (result?.state === 'success') {
+        localStorage.removeItem(`${providerStoreName(provider.id)}_models`);
+        await selectProvider(provider, click);
+        return;
+      }
+      await showError(`${name} not connected`, escapeHtml(result?.message || 'Sign-in was not completed.'));
+    } catch (error) {
+      console.error(`Error connecting ${name}:`, error);
+      await showError('Connection Error', `Failed to connect ${escapeHtml(name)}: ${escapeHtml(error.message)}`);
+    }
+  };
+
+  /** How a provider that runs on this computer signs in, from this computer's AGNT; [] for anything else. */
+  const localCapabilities = async (providerId) => {
+    try {
+      const result = await providerAuthService.getCapabilities(providerId);
+      return result?.local ? result.capabilities || [] : [];
+    } catch {
+      return [];
     }
   };
 
@@ -522,10 +575,13 @@ export function useAiProviderConnect(modalRef, { store, source, onSelected = () 
     // Local CLIs check their own sign-in first, so a connected seat is one click too.
     if (id === 'openai-codex') return connectCodex(provider, click);
     if (id === 'claude-code') return connectClaudeCode(provider, click);
-    if (id === 'antigravity') {
-      return isConnected(provider.id) ? selectProvider(provider, click) : connectAntigravity(provider, click);
-    }
     if (isConnected(provider.id)) return selectProvider(provider, click);
+    if (id === 'antigravity') return connectLoopback(provider, click);
+    // Everything else this computer signs in to itself (Gemini CLI, Cursor,
+    // Grok Build): AGNT's server has no sign-in for these, it answers 404.
+    const local = await localCapabilities(id);
+    if (local.includes('oauth-loopback')) return connectLoopback(provider, click);
+    if (local.includes('device-auth')) return connectDevice(provider, click);
 
     const connectionType = provider.connectionType || provider.connection_type;
     if (connectionType === 'oauth') return connectOAuth(provider);
