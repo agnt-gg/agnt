@@ -44,13 +44,13 @@ describe('OneWelcome', () => {
     w.unmount();
   });
 
-  it("Ask Annie sends the setup's request in one click", async () => {
+  it("Ask Annie types the setup's request into the composer to edit, never sends it", async () => {
     const heard = vi.fn();
     window.addEventListener('agnt:ask-annie', heard);
     const w = mount(OneWelcome);
     setup(w).vm.$emit('finish', { ask: 'What can you do for me?' });
     await nextTick();
-    expect(heard.mock.calls[0][0].detail).toEqual({ text: 'What can you do for me?', send: true });
+    expect(heard.mock.calls[0][0].detail).toEqual({ text: 'What can you do for me?', send: false });
     window.removeEventListener('agnt:ask-annie', heard);
     w.unmount();
   });
