@@ -4,27 +4,6 @@
      with the page: this view only emits. -->
 <template>
   <div class="fy" data-testid="for-you">
-    <!-- Hero: one next step. -->
-    <section class="fy-hero">
-      <div class="fy-hero-mark">
-        <template v-if="connectedFamilies.length">
-          <span v-for="f in connectedFamilies.slice(0, 4)" :key="f.id" class="fy-tile sm"><SvgIcon :name="f.icon" /></span>
-        </template>
-        <span v-else-if="step?.family" class="fy-tile lg"><SvgIcon :name="step.family.icon" /></span>
-      </div>
-      <div class="fy-hero-copy">
-        <h2>{{ headline }}</h2>
-        <p>{{ subline }}</p>
-      </div>
-      <div class="fy-hero-cta">
-        <button v-if="step?.type === 'connect'" type="button" class="ap-btn primary fy-big" data-action="hero-connect" @click="$emit('connect', step.family.card)">
-          <span class="fy-btn-ico"><SvgIcon :name="step.family.icon" /></span>Connect {{ step.family.name }}
-        </button>
-        <button v-else-if="step?.type === 'install'" type="button" class="ap-btn primary fy-big" data-action="hero-install" :disabled="installBusy" @click="$emit('install', step.item.row)">Add {{ step.item.row.displayName }}</button>
-        <button type="button" class="ap-link" data-action="more-apps" @click="$emit('browse', 'app')">{{ connectedFamilies.length ? 'Connect another app' : 'See all apps' }} →</button>
-      </div>
-    </section>
-
     <!-- 1. Try it: asks for what you connected, and asks that need nothing. -->
     <section class="fy-sec">
       <header class="fy-sec-h"><span class="fy-n">1</span><h3>Try it now</h3><p>{{ asked.forApps.length ? 'Things Annie can do with what you connected.' : 'Start with something that needs no setup.' }}</p></header>
@@ -89,7 +68,7 @@
 <script setup>
 import { computed } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { families as buildFamilies, shelf, unlocks, asks, nextStep, isOfficial } from '@/services/forYouModel.js';
+import { families as buildFamilies, shelf, unlocks, asks, isOfficial } from '@/services/forYouModel.js';
 import { providerIcon } from '@/services/brandIcons.js';
 import { pluginKind } from '@/services/pluginDirectory.js';
 
@@ -114,7 +93,6 @@ const openFamilies = computed(() => allFamilies.value.filter((f) => !f.connected
 const leadId = computed(() => (openFamilies.value[0]?.apps.length > 1 ? openFamilies.value[0].id : null));
 const items = computed(() => shelf({ rows: props.rows, connected: connected.value, modelIds: modelIds.value }));
 const asked = computed(() => asks({ connected: connected.value, rows: props.rows, modelIds: modelIds.value }));
-const step = computed(() => nextStep({ families: allFamilies.value, items: items.value, connected: connected.value }));
 const appCount = computed(() => props.rows.filter((r) => pluginKind(r).id === 'app' && isOfficial(r)).length);
 
 const byId = computed(() => new Map(allFamilies.value.map((f) => [f.id, f])));
@@ -129,38 +107,11 @@ function unlockLabel(f) {
   return partOf ? `Part of ${partOf} pack${partOf > 1 ? 's' : ''}` : `${f.apps.length || 1} app${f.apps.length > 1 ? 's' : ''}`;
 }
 
-const readyNow = computed(() => items.value.filter((s) => s.ready && !s.row.installed && s.kind.id === 'pack'));
-const connectedLabel = computed(() => {
-  const names = connectedFamilies.value.map((f) => f.name);
-  return names.length <= 3 ? names.join(', ') + ' connected' : `${names.length} apps connected`;
-});
-const headline = computed(() => connectedFamilies.value.length
-  ? `${connectedLabel.value} · ${readyNow.value.length} pack${readyNow.value.length === 1 ? '' : 's'} ready to add`
-  : 'Start with the apps you already use');
-const subline = computed(() => {
-  if (!connectedFamilies.value.length) {
-    const lead = step.value?.family;
-    return lead && lead.apps.length > 1
-      ? `One ${lead.name} sign-in covers ${lead.apps.slice(0, 3).map((a) => shortName(a.displayName, lead.name)).join(', ')}${lead.apps.length > 3 ? ` and ${lead.apps.length - 3} more` : ''}. Annie works in them for you and asks before anything is sent.`
-      : 'Connect once and Annie can work in your apps for you, asking before anything is sent.';
-  }
-  return step.value?.type === 'install' ? `Next: add ${step.value.item.row.displayName}. ${step.value.item.row.description || ''}` : 'Each app you connect unlocks more packs.';
-});
 </script>
 
 <style scoped>
 .fy { display: flex; flex-direction: column; gap: 28px; padding-bottom: 32px; }
-.fy-hero { order: 0; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; padding: 20px 22px; border: 1px solid var(--ap-border); border-radius: 16px; background: var(--ap-surface); }
-.fy-hero-mark { display: flex; gap: 6px; }
-.fy-hero-copy h2 { margin: 0 0 4px; font-size: var(--font-size-lg, 18px); color: var(--text-primary); }
-.fy-hero-copy p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
-.fy-hero-cta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.fy-big { height: 40px; padding: 0 18px; font-size: var(--font-size-md, 15px); display: inline-flex; align-items: center; gap: 8px; }
-/* The brand mark on the accent fill takes the fill's own ink. */
-.fy-btn-ico { display: inline-grid; place-items: center; width: 18px; height: 18px; }
-.fy-btn-ico :deep(svg) { width: 16px; height: 16px; }
-.fy-btn-ico :deep(svg path[fill]), .fy-btn-ico :deep(svg[fill]) { fill: var(--on-fill-accent); }
-.fy-sec:nth-of-type(2) { order: 1; }
+.fy-sec:nth-of-type(1) { order: 1; }
 .fy-sec-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .fy-sec-h h3 { margin: 0; font-size: var(--font-size-md, 16px); color: var(--text-primary); }
 .fy-sec-h p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
@@ -169,8 +120,6 @@ const subline = computed(() => {
 /* Brand tiles: the real mark on a neutral tile, in the theme's text colour (SvgIcon's contract). */
 .fy-tile { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; border: 1px solid var(--ap-border); background: var(--ap-sunken); }
 .fy-tile :deep(svg) { width: 22px; height: 22px; }
-.fy-tile.lg { width: 56px; height: 56px; border-radius: 15px; } .fy-tile.lg :deep(svg) { width: 30px; height: 30px; }
-.fy-tile.sm { width: 34px; height: 34px; } .fy-tile.sm :deep(svg) { width: 18px; height: 18px; }
 .fy-tile.xs { width: 24px; height: 24px; border-radius: 7px; } .fy-tile.xs :deep(svg) { width: 14px; height: 14px; }
 .fy-asks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .fy-ask { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--ap-border); border-radius: 12px; background: var(--ap-surface); text-align: left; color: var(--text-primary); cursor: pointer; }
@@ -208,7 +157,6 @@ const subline = computed(() => {
 .fy-state { font-size: var(--font-size-xs); font-weight: 600; }
 .fy-state.ok { color: var(--ap-ok); } .fy-state.warn { color: var(--ap-warn); }
 @media (max-width: 900px) {
-  .fy-hero { grid-template-columns: 1fr; } .fy-hero-cta { align-items: flex-start; }
   .fy-asks, .fy-fams, .fy-cards { grid-template-columns: 1fr; } .fy-fam.lead { grid-column: auto; grid-row: auto; }
 }
 </style>

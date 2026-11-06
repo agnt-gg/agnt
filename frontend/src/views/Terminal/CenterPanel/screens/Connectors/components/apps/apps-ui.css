@@ -37,8 +37,12 @@
 .apps-studio .ap-head h1 { font-size: var(--font-size-xxxl); font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; }
 .apps-studio .ap-head p { margin-top: var(--spacing-xs); color: var(--text-secondary); max-width: 640px; }
 .apps-studio .ap-head-actions { position: relative; display: flex; gap: var(--spacing-sm); flex: none; }
-.apps-studio .ap-tabs { display: flex; gap: var(--spacing-xs); border-bottom: 1px solid var(--ap-border); margin-bottom: var(--spacing-md); overflow-x: auto; }
-.apps-studio .ap-tab { position: relative; display: inline-flex; align-items: center; gap: var(--spacing-sm); min-height: 44px; padding: 0 var(--spacing-sm); border: 0; background: none; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+/* A narrow screen scrolls the strip sideways. Each tab keeps its label's width
+   (flex: none): left to shrink, seven tabs squeezed into 358px and their
+   labels ran over one another. */
+.apps-studio .ap-tabs { display: flex; gap: var(--spacing-xs); border-bottom: 1px solid var(--ap-border); margin-bottom: var(--spacing-md); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.apps-studio .ap-tabs::-webkit-scrollbar { display: none; }
+.apps-studio .ap-tab { position: relative; flex: none; display: inline-flex; align-items: center; gap: var(--spacing-sm); min-height: 44px; padding: 0 var(--spacing-sm); border: 0; background: none; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
 .apps-studio .ap-tab:hover { color: var(--text-primary); }
 .apps-studio .ap-tab[aria-selected='true'] { color: var(--text-primary); }
 .apps-studio .ap-tab[aria-selected='true']::after { content: ''; position: absolute; left: var(--spacing-xs); right: var(--spacing-xs); bottom: -1px; height: 2px; border-radius: 2px; background: var(--fill-accent); }

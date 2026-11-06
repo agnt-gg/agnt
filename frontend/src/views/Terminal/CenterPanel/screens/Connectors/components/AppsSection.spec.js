@@ -107,10 +107,12 @@ describe('A member asks the owner for a plugin', () => {
 describe('For you: connect your apps first, then what they unlock', () => {
   const calendar = { trustTier: 'official', name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
   const gmailApp = { trustTier: 'official', name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('mail', { authProvider: 'google' })] };
-  it('is the page’s home, leads with Connect Google, and shows each app’s real brand icon', async () => {
+  it('is the page’s home, leads with Google, and shows each app’s real brand icon', async () => {
     setup({ tab: 'foryou', available: [gmailApp, calendar, { ...research, kind: 'pack', trustTier: 'official' }, calculator] }); await flushPromises();
     expect(wrapper.find('[data-testid="for-you"]').exists()).toBe(true);
-    expect(wrapper.find('[data-action="hero-connect"]').text()).toContain('Connect Google');
+    // No banner above the sections: the first app card is the lead.
+    expect(wrapper.find('.fy-hero').exists()).toBe(false);
+    expect(wrapper.find('.fy-fam').attributes('data-family')).toBe('google');
     const google = wrapper.find('[data-family="google"]');
     expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail-color', 'google-calendar']);
     // A pack that needs Google says so, and offers the connection.
@@ -118,7 +120,7 @@ describe('For you: connect your apps first, then what they unlock', () => {
   });
   it('Connect hands the sign-in card to the host; an ask goes to chat with its words', async () => {
     setup({ tab: 'foryou', available: [gmailApp, calculator] }); await flushPromises();
-    await wrapper.find('[data-action="hero-connect"]').trigger('click');
+    await wrapper.find('[data-connect="google"]').trigger('click');
     expect(wrapper.emitted('connect')[0][0]).toMatchObject({ providerId: 'google' });
     setup({ tab: 'foryou', available: [gmailApp, { ...calculator, name: 'calculator-plugin', kind: 'utility' }], connected: ['google'] }); await flushPromises();
     await wrapper.findAll('[data-action="ask"]')[0].trigger('click');
