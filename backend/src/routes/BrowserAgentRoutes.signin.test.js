@@ -98,7 +98,9 @@ describe('sign-in card routes', () => {
   });
 
   it('Done ends the wait and the tool call returns signed in', async () => {
-    const { run } = waitingSignIn({ inspect: async () => ({ url: 'https://app.example.com/', login: null }) });
+    // The page stays a login wall until Done: a page that cleared by itself would end the wait on
+    // its own (outcome 'auto') and make Done a race. finish() reports the signed-in page.
+    const { run } = waitingSignIn();
     const { id } = await until(async () => (await get({ conversationId: CONVERSATION })).signIn);
     const answer = await post('done', { conversationId: CONVERSATION, id });
     expect(answer.status).toBe(200);
