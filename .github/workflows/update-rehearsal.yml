@@ -9,8 +9,9 @@ run-name: rehearsal ${{ github.ref_name }}
 # Runs on pushes to release-rehearsal/* branches only. Nothing is published,
 # tagged or uploaded to a release; main is untouched.
 #
-# Windows is rehearsed interactively (it installs on a click; Windows Sandbox,
-# per-user and per-machine) because a CI runner has no one to click.
+# Windows installs on a click, so its job drives the click itself over CDP
+# (rehearse-rollback-win.mjs): the forward update, the refusal of an unmarked
+# older version, and a marked rollback, end to end.
 
 on:
   push:
@@ -143,5 +144,95 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rehearsal-${{ matrix.kind }}-${{ matrix.arch }}
+          path: rehearsal-out
+          retention-days: 14
+
+  win-rollback:
+    name: win x64 (update + rollback)
+    runs-on: windows-2022
+    timeout-minutes: 75
+    env:
+      FEED: http://127.0.0.1:8787/updates/
+      ASSETS: http://127.0.0.1:8787/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python setuptools (native module builds)
+        run: python -m pip install setuptools wheel
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      # The same app built twice from THIS commit; only the version differs.
+      # The new build names the release it replaces, which is the only
+      # version a marked rollback may land on.
+      - name: Build 0.6.7-rc.1 (old)
+        shell: bash
+        run: >-
+          set -o pipefail;
+          npx electron-builder --win nsis --x64 --publish never
+          -c.directories.output=dist-old
+          -c.extraMetadata.version=0.6.7-rc.1
+          -c.extraMetadata.agntUpdate.feedBase=$FEED
+          -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+          2>&1 | tee build-old.log
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+
+      - name: Build 0.6.7-rc.2 (new, rolls back to rc.1)
+        shell: bash
+        run: >-
+          set -o pipefail;
+          npx electron-builder --win nsis --x64 --publish never
+          -c.directories.output=dist-new
+          -c.extraMetadata.version=0.6.7-rc.2
+          -c.extraMetadata.agntUpdate.feedBase=$FEED
+          -c.extraMetadata.agntUpdate.assetBase=$ASSETS
+          -c.extraMetadata.agntUpdate.rollbackTo=0.6.7-rc.1
+          2>&1 | tee build-new.log
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local
+
+      - name: Report why a build failed
+        if: failure()
+        run: |
+          node scripts/release/annotate-failure.mjs build-old.log "rc.1 build failed (win x64)"
+          node scripts/release/annotate-failure.mjs build-new.log "rc.2 build failed (win x64)"
+
+      - name: Verify native modules (old and new)
+        run: |
+          node scripts/release/verify-artifacts.mjs --platform win --arch x64 --dist dist-old
+          node scripts/release/verify-artifacts.mjs --platform win --arch x64 --dist dist-new
+
+      - name: Rehearse the update and the rollback
+        run: node scripts/release/rehearse-rollback-win.mjs --old dist-old --new dist-new --out rehearsal-out
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-win-x64
           path: rehearsal-out
           retention-days: 14
