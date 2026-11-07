@@ -231,11 +231,21 @@ describe('a container that ran with the compose placeholder as ENCRYPTION_KEY', 
   // to be able to read those rows once so the migration can move them.
   const PLACEHOLDER = 'CHANGE_ME_IN_PRODUCTION';
 
+  // PINNED ciphertexts, not fresh ones. decrypt() trial-decrypts the other
+  // keys first, and crypto-js strips padding without validating it, so a
+  // wrong key turns ~0.4% of RANDOM rows into short non-empty garbage that
+  // reads as success (the module documents the measurement). A fresh row per
+  // run made that a die roll per CI run — it returned 'g' on one and 'Ò«' on
+  // another. These rows are verified clean against the current key, the env
+  // legacy key and the shipped key, so the trial order is deterministic.
+  const ROW_065 = 'U2FsdGVkX18lDr+0rzSwHygCLDOZcByuHTtDkPTWT8kvk9ILGlIGOIrPLaSOGaQJ';
+  const ROW_066 = 'U2FsdGVkX1/Dv+DcdWTxL7XbXpAhD+c4/W/WqoVh0JLMITn24BF0Vk2MKtTPCKYY';
+
   it('reads a 0.6.5 row: unprefixed, written under the placeholder', async () => {
     const { decrypt, keyGenerationOf } = await load();
-    const row = CryptoJS.AES.encrypt('sk-stored-under-placeholder', PLACEHOLDER).toString();
-    expect(decrypt(row)).toBe('sk-stored-under-placeholder');
-    expect(keyGenerationOf(row)).toBe('legacy');
+    expect(CryptoJS.AES.decrypt(ROW_065, PLACEHOLDER).toString(CryptoJS.enc.Utf8), 'pinned row must be the placeholder row').toBe('sk-stored-under-placeholder');
+    expect(decrypt(ROW_065)).toBe('sk-stored-under-placeholder');
+    expect(keyGenerationOf(ROW_065)).toBe('legacy');
   });
 
   it('reads a 0.6.6 row: agnt.v2-prefixed, written under the placeholder', async () => {
@@ -244,7 +254,8 @@ describe('a container that ran with the compose placeholder as ENCRYPTION_KEY', 
     // prefixed ciphertext under a public string. The prefix says "current";
     // the install key (now generated) cannot open it.
     const { decrypt, keyGenerationOf, CIPHERTEXT_PREFIX } = await load();
-    const row = CIPHERTEXT_PREFIX + CryptoJS.AES.encrypt('oauth-refresh-under-placeholder', PLACEHOLDER).toString();
+    const row = CIPHERTEXT_PREFIX + ROW_066;
+    expect(CryptoJS.AES.decrypt(ROW_066, PLACEHOLDER).toString(CryptoJS.enc.Utf8), 'pinned row must be the placeholder row').toBe('oauth-refresh-under-placeholder');
     expect(decrypt(row)).toBe('oauth-refresh-under-placeholder');
     expect(keyGenerationOf(row), 'the migration must classify it as needing a move').toBe('legacy');
   });
