@@ -30,8 +30,10 @@ beforeAll(async () => {
   if(routes.LocalPreviewRoutes)app.use('/api/local-preview',routes.LocalPreviewRoutes);
   server=await new Promise(resolve=>{const instance=app.listen(0,'127.0.0.1',()=>resolve(instance));});
   base=`http://127.0.0.1:${server.address().port}`;
-});
-afterAll(async()=>{await new Promise(resolve=>server.close(resolve));await fs.rm(root,{recursive:true,force:true});if(previousSecret===undefined)delete process.env.JWT_SECRET;else process.env.JWT_SECRET=previousSecret;});
+// The parser's first load plus a server: seconds on an idle machine, past 10s under a full parallel suite.
+}, 60000);
+// A setup that timed out leaves no server or folder; the real failure is that timeout, not a second error here.
+afterAll(async()=>{if(server)await new Promise(resolve=>server.close(resolve));if(root)await fs.rm(root,{recursive:true,force:true});if(previousSecret===undefined)delete process.env.JWT_SECRET;else process.env.JWT_SECRET=previousSecret;});
 
 describe('saved artifact preview representation',()=>{
   it('uses the original browser URL rather than Express-normalized mount paths',async()=>{
