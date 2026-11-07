@@ -504,9 +504,15 @@ class WorkflowProcessBridge {
    * triggers waiting for an event are not "running"; an engine executing nodes
    * is. Rejects when the child cannot answer — the caller reports that as
    * unknown, never as zero.
+   *
+   * No child at all (not spawned yet, or between a restart's teardown and its
+   * respawn) is a real zero: there is no process for a workflow to run in.
+   * Until the first boot's plugin installs finish, that is the state, and an
+   * update offered then was refused as "can't tell".
    * @returns {Promise<{ running: number }>}
    */
   async busyReport() {
+    if (!this.workflowProcess) return { running: 0 };
     const result = await this.sendMessage('BUSY_REPORT', {}, 3000);
     const running = Number(result?.running);
     if (!Number.isFinite(running)) throw new Error('workflow process gave no running count');
