@@ -326,11 +326,14 @@ describe('who gets in', () => {
     simulateIssuer();
     const { socketIdentity } = await boot();
 
-    // The socket path reads the verdict the HTTP path cached for the same token.
-    await probe(issued(OWNER));
-    await probe(issued(STRANGER));
-    expect(socketIdentity.resolveSocketIdentity({ token: issued(OWNER) }).ok).toBe(true);
-    const refused = socketIdentity.resolveSocketIdentity({ token: issued(STRANGER) });
+    // The socket path reads the verdict the HTTP path cached for the same token. Each token is
+    // issued once: jwt.sign stamps the second, so a second issued() can be a different token.
+    const ownerToken = issued(OWNER);
+    const strangerToken = issued(STRANGER);
+    await probe(ownerToken);
+    await probe(strangerToken);
+    expect(socketIdentity.resolveSocketIdentity({ token: ownerToken }).ok).toBe(true);
+    const refused = socketIdentity.resolveSocketIdentity({ token: strangerToken });
     expect(refused.ok).toBe(false);
     expect(refused.reason).toBe('not_tenant_member');
 
