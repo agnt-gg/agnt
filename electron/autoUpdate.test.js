@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import {
+import { compareVersions,
   channelFor,
   feedUrlFor,
   updateSupport,
@@ -76,11 +76,11 @@ describe('who may update themselves', () => {
 });
 
 describe('how installs happen', () => {
-  it('never downloads without the pin check, never downgrades, never takes prereleases on its own', () => {
+  it('never downloads without the pin check, never takes prereleases on its own; older versions reach the pin', () => {
     for (const p of ['win32', 'darwin', 'linux']) {
       const policy = updatePolicy(p);
       expect(policy.autoDownload).toBe(false);
-      expect(policy.allowDowngrade).toBe(false);
+      expect(policy.allowDowngrade).toBe(true);
       expect(policy.allowPrerelease).toBe(false);
     }
   });
@@ -132,6 +132,44 @@ describe('the pin: only AGNT assets of exactly the announced version', () => {
   });
 });
 
+// ------------------------------------------------------------------ rollback
+describe('rollback: back to the release this build replaced, only when the feed says so', () => {
+  const ctx = { assetBase: ASSETS, currentVersion: '0.6.8', rollbackTo: '0.6.7' };
+  const rollback = (v) => ({ ...info(v), rollback: true });
+
+  it('a marked rollback to rollbackTo is accepted', () => {
+    expect(checkUpdateInfo(rollback('0.6.7'), ctx)).toEqual({ ok: true });
+  });
+  it('an older version without the mark is refused', () => {
+    expect(checkUpdateInfo(info('0.6.7'), ctx)).toEqual({ ok: false, reason: 'feed offers older 0.6.7 without a rollback' });
+    expect(checkUpdateInfo({ ...info('0.6.7'), rollback: 'true' }, ctx).ok).toBe(false);
+  });
+  it('anything older than rollbackTo is refused, marked or not', () => {
+    expect(checkUpdateInfo(rollback('0.6.6'), ctx)).toEqual({ ok: false, reason: 'rollback to 0.6.6 refused: this build rolls back only to 0.6.7' });
+    expect(checkUpdateInfo(rollback('0.5.9'), ctx).ok).toBe(false);
+  });
+  it('a build with no rollbackTo never goes back', () => {
+    expect(checkUpdateInfo(rollback('0.6.7'), { ...ctx, rollbackTo: undefined }).ok).toBe(false);
+  });
+  it('a rollback still has to pass the pin', () => {
+    expect(checkUpdateInfo({ ...rollback('0.6.7'), files: [{ url: 'https://evil.example/AGNT-0.6.7-win-x64.exe' }] }, ctx).ok).toBe(false);
+  });
+  it('newer versions are unaffected by the mark', () => {
+    expect(checkUpdateInfo(info('0.6.9'), ctx)).toEqual({ ok: true });
+    expect(checkUpdateInfo(rollback('0.6.9'), ctx)).toEqual({ ok: true });
+  });
+  it('a rehearsal build rolls back to its own previous candidate', () => {
+    expect(checkUpdateInfo(rollback('0.6.8-rc.1'), { assetBase: ASSETS, currentVersion: '0.6.8-rc.2', rollbackTo: '0.6.8-rc.1' })).toEqual({ ok: true });
+  });
+  it('compareVersions orders releases and prereleases by semver', () => {
+    expect(compareVersions('0.6.7', '0.6.8')).toBe(-1);
+    expect(compareVersions('0.6.10', '0.6.9')).toBe(1);
+    expect(compareVersions('0.6.8-rc.1', '0.6.8')).toBe(-1);
+    expect(compareVersions('0.6.8-rc.10', '0.6.8-rc.9')).toBe(1);
+    expect(compareVersions('0.6.8', '0.6.8')).toBe(0);
+  });
+});
+
 // ------------------------------------------------------------------ busy
 describe('never restart over running work', () => {
   it('idle is the only unconditional yes', () => {
@@ -174,7 +212,7 @@ describe('the post-restart check', () => {
 });
 
 // ------------------------------------------------------------------ wiring
-function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false } = {}) {
+function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false, rollbackTo } = {}) {
   const handlers = new Map();
   const listeners = new Map();
   const nativeListeners = new Map();
@@ -204,7 +242,7 @@ function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env
     platform,
     version,
     env,
-    config: { feedBase: FEED, assetBase: ASSETS },
+    config: { feedBase: FEED, assetBase: ASSETS, rollbackTo },
     getBusyReport: vi.fn(async () => (busy instanceof Error ? Promise.reject(busy) : busy)),
     handoffBackend,
     marker,
@@ -342,7 +380,7 @@ describe('wiring', () => {
     const stable = harness({ version: '0.6.7' });
     expect(stable.autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: 'https://agnt.gg/updates/stable/' });
     expect(stable.autoUpdater.autoDownload).toBe(false);
-    expect(stable.autoUpdater.allowDowngrade).toBe(false);
+    expect(stable.autoUpdater.allowDowngrade).toBe(true);
     const rc = harness({ version: '0.6.7-rc.1' });
     expect(rc.autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: 'https://agnt.gg/updates/rehearsal/' });
   });
@@ -357,6 +395,17 @@ describe('wiring', () => {
     expect(h.last()).toMatchObject({ phase: 'downloading', percent: 42 });
     h.emit('update-downloaded', { version: '0.6.8' });
     expect(h.last()).toMatchObject({ phase: 'ready', available: { version: '0.6.8' } });
+  });
+
+  it('a marked rollback downloads; the same version unmarked does not', () => {
+    const refused = harness({ version: '0.6.8', rollbackTo: '0.6.7' });
+    refused.emit('update-available', info('0.6.7'));
+    expect(refused.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(refused.last()).toMatchObject({ phase: 'error', error: { during: 'verify' } });
+    const h = harness({ version: '0.6.8', rollbackTo: '0.6.7' });
+    h.emit('update-available', { ...info('0.6.7'), rollback: true });
+    expect(h.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(h.last()).toMatchObject({ phase: 'downloading', available: { version: '0.6.7' } });
   });
 
   it('every PUSHED state says the build updates itself, not only the pulled one', () => {

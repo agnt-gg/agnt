@@ -9,7 +9,8 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "agntUpdate": {
     "feedBase": "https://agnt.gg/updates/",
-    "assetBase": "https://github.com/agnt-gg/agnt/releases/download/"
+    "assetBase": "https://github.com/agnt-gg/agnt/releases/download/",
+    "rollbackTo": "0.6.7"
   },
   "type": "module",
   "scripts": {

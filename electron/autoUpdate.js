@@ -30,9 +30,16 @@
  * EVERY file it names is  <assetBase>v<version>/AGNT-<version>-...  for exactly
  * the version the feed announced, and only then calls downloadUpdate(). A
  * compromised or misconfigured feed can at worst name a real AGNT release; it
- * cannot send an installer from anywhere else, cannot swap in AGNT-Lite (v0.6.6's
- * published feed did exactly that), and cannot downgrade (allowDowngrade stays
- * off). sha512 in the feed is then checked by electron-updater against the bytes.
+ * cannot send an installer from anywhere else and cannot swap in AGNT-Lite
+ * (v0.6.6's published feed did exactly that). sha512 in the feed is then checked
+ * by electron-updater against the bytes.
+ *
+ * ROLLBACK. A release that turns out bad is taken back by pointing the channel
+ * at the release before it with `rollback: true`. electron-updater is allowed
+ * to see older versions so that this can work, and the pin decides: an older
+ * version is installed only when the feed marks it a rollback AND it is exactly
+ * agntUpdate.rollbackTo, the release this build replaced, written into the
+ * build. Nothing else older is ever installed.
  *
  * Prerelease builds (0.6.7-rc.1) follow the `rehearsal` channel, everything else
  * `stable`. Semver orders 0.6.7-rc.1 < 0.6.7-rc.2 < 0.6.7, so a rehearsal
@@ -64,6 +71,24 @@
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
+/** -1, 0 or 1, by semver precedence (a prerelease sorts before its release). */
+export function compareVersions(a, b) {
+  const x = SEMVER.exec(String(a || '')), y = SEMVER.exec(String(b || ''));
+  if (!x || !y) throw new Error(`not semver: ${!x ? a : b}`);
+  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) < Number(y[i]) ? -1 : 1;
+  if (!x[4] || !y[4]) return x[4] === y[4] ? 0 : x[4] ? -1 : 1;
+  const p = x[4].split('.'), q = y[4].split('.');
+  for (let i = 0; i < Math.max(p.length, q.length); i++) {
+    if (p[i] === undefined) return -1;
+    if (q[i] === undefined) return 1;
+    const n = /^\d+$/.test(p[i]), m = /^\d+$/.test(q[i]);
+    if (n && m && Number(p[i]) !== Number(q[i])) return Number(p[i]) < Number(q[i]) ? -1 : 1;
+    if (n !== m) return n ? -1 : 1;
+    if (!n && p[i] !== q[i]) return p[i] < q[i] ? -1 : 1;
+  }
+  return 0;
+}
+
 /** 'rehearsal' for a prerelease build, 'stable' otherwise. */
 export function channelFor(version) {
   const m = SEMVER.exec(String(version || ''));
@@ -89,7 +114,9 @@ export function updatePolicy(platform) {
     autoDownload: false,
     // Windows alone waits for an explicit click — see the header.
     autoInstallOnAppQuit: platform !== 'win32',
-    allowDowngrade: false,
+    // Lets electron-updater report an older version at all; checkUpdateInfo
+    // installs one only as a marked rollback to agntUpdate.rollbackTo.
+    allowDowngrade: true,
     allowPrerelease: false,
   };
 }
@@ -110,7 +137,7 @@ export function feedUrlFor({ feedBase, version }) {
  * announced version, under the configured asset base.
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
-export function checkUpdateInfo(info, { assetBase, currentVersion }) {
+export function checkUpdateInfo(info, { assetBase, currentVersion, rollbackTo }) {
   const version = info?.version;
   const m = SEMVER.exec(String(version || ''));
   if (!m) return { ok: false, reason: `feed version "${version}" is not semver` };
@@ -119,6 +146,10 @@ export function checkUpdateInfo(info, { assetBase, currentVersion }) {
   // A prerelease build may only follow prereleases of its own line or the
   // release they lead to; a stable build never takes a prerelease.
   if (channelFor(currentVersion) === 'stable' && m[4]) return { ok: false, reason: `stable build offered prerelease ${version}` };
+  if (compareVersions(version, currentVersion) < 0) {
+    if (info.rollback !== true) return { ok: false, reason: `feed offers older ${version} without a rollback` };
+    if (version !== rollbackTo) return { ok: false, reason: `rollback to ${version} refused: this build rolls back only to ${rollbackTo || 'nothing'}` };
+  }
 
   const prefix = `${assetBase}v${version}/AGNT-${version}-`;
   const urls = [...(info.files || []).map((f) => f?.url), info.path].filter((u) => u !== undefined);
@@ -413,13 +444,13 @@ export function initAutoUpdate({
   });
 
   autoUpdater.on('update-available', (info) => {
-    const pin = checkUpdateInfo(info, { assetBase: config.assetBase, currentVersion: version });
+    const pin = checkUpdateInfo(info, { assetBase: config.assetBase, currentVersion: version, rollbackTo: config.rollbackTo });
     if (!pin.ok) {
       log(`[update] REFUSED ${info?.version}: ${pin.reason}`);
       state.set({ phase: 'error', error: { message: `Update refused: ${pin.reason}`, during: 'verify' } });
       return;
     }
-    log(`[update] ${info.version} available; downloading`);
+    log(`[update] ${info.version} available${info.rollback === true ? ' (rollback)' : ''}; downloading`);
     state.set({ phase: 'downloading', available: { version: info.version }, percent: 0, lastCheckedAt: new Date().toISOString() });
     downloading = autoUpdater.downloadUpdate().catch((err) => {
       log(`[update] download failed: ${err?.message || err}`);

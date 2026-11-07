@@ -42,6 +42,12 @@ describe('the app can find an update at all', () => {
     expect(pkg.agntUpdate?.feedBase).toBe('https://agnt.gg/updates/');
   });
 
+  it('rollbackTo is the release before this one, so a rollback lands where users came from', () => {
+    const releases = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'releases.json'), 'utf8')).releases;
+    expect(releases[0].version).toBe(pkg.version);
+    expect(pkg.agntUpdate?.rollbackTo).toBe(releases[1].version);
+  });
+
   it('ships electron-updater as a runtime dependency', () => {
     // A devDependency would be pruned out of the packaged app, and the import
     // in main.js would fail at launch on a user's machine and nowhere else.
