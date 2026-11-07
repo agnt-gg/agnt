@@ -111,7 +111,17 @@ export default async function notarizing(context) {
     // Apple accepted the app; only fetching its ticket failed. Fetch it again.
     if (/Failed to staple/i.test(error.message)) {
       console.warn(`[Notarize] Notarized, but stapling failed: ${error.message.split('\n')[0]}. Retrying.`);
-      await stapleWithRetry(appPath);
+      try {
+        await stapleWithRetry(appPath);
+      } catch (stapleError) {
+        // Apple ACCEPTED this app; only the ticket download kept failing
+        // (error 68 on every attempt, both runners, 2026-11-07). An unstapled
+        // app is still notarized — Gatekeeper fetches the ticket from Apple on
+        // first launch; only an offline first launch notices the difference.
+        console.warn(`[Notarize] Shipping without a stapled ticket: ${String(stapleError.message).split('\n')[0]}`);
+        console.warn('[Notarize] Notarization was accepted; Gatekeeper verifies it online.');
+        return;
+      }
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
       console.log(`[Notarize] ✅ Done in ${elapsed}s — notarized and stapled.`);
       return;

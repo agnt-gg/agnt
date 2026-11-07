@@ -21,19 +21,21 @@ describe('stapleWithRetry', () => {
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([20_000, 40_000]);
   });
 
-  it('gives up after its attempts and says so, so the release still fails', async () => {
+  it('gives up after its attempts and reports it; the hook then ships unstapled', async () => {
     const run = vi.fn().mockRejectedValue(dropped());
     await expect(stapleWithRetry(APP, { run, sleep: async () => {}, log: () => {} })).rejects.toThrow(/Failed to staple after 4 attempts/);
     expect(run).toHaveBeenCalledTimes(4);
   });
 
-  it('the release check retries stapler validate and still fails an app with no ticket', () => {
+  it('the release check: the signature stays hard, the ticket is best-effort', () => {
     const step = WORKFLOW.slice(WORKFLOW.indexOf('- name: Verify macOS signature and notarization'));
     const body = step.slice(0, step.indexOf('\n      - name:', 10) > 0 ? step.indexOf('\n      - name:', 10) : undefined);
-    expect(body).toMatch(/for attempt in 1 2 3 4; do\s+xcrun stapler validate "\$APP" && break/);
-    expect(body).toMatch(/\[ "\$attempt" = 4 \] && \{[^}]*exit 1; \}/);
     expect(body).toMatch(/codesign --verify --deep --strict/);
+    expect(body).toMatch(/if xcrun stapler validate "\$APP"; then/);
+    expect(body).toMatch(/::warning::.*without a stapled ticket/);
     expect(body).toMatch(/spctl --assess --type execute/);
+    // An absent ticket no longer fails a notarized build; a bad signature still does.
+    expect(body).not.toMatch(/exit 1/);
   });
 
   it('does not wait when the first attempt works', async () => {
