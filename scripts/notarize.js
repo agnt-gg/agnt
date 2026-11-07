@@ -14,14 +14,48 @@
 
 import { notarize } from '@electron/notarize';
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
+import { execFile } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageJson = JSON.parse(
   readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
 );
+
+/**
+ * Attach Apple's ticket to an app it has already notarized, retrying.
+ *
+ * Stapling only downloads the ticket and writes it into the bundle, so a retry
+ * is safe. On the Intel Mac runner the download lost its connection twice in a
+ * row (NSURLErrorDomain -1005) while Apple had accepted the app; one dropped
+ * connection failed the release. The workflow's stapler validate step still
+ * refuses an app without a ticket.
+ */
+export async function stapleWithRetry(appPath, {
+  attempts = 4,
+  delayMs = 20_000,
+  run = (cmd, args, cwd) => new Promise((resolve, reject) => {
+    execFile(cmd, args, { cwd }, (err, stdout, stderr) => (err ? reject(Object.assign(err, { output: `${stdout}${stderr}` })) : resolve(stdout)));
+  }),
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  log = console.log,
+} = {}) {
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await run('xcrun', ['stapler', 'staple', '-v', basename(appPath)], dirname(appPath));
+      log(`[Notarize] ✅ Ticket stapled (attempt ${attempt}/${attempts}).`);
+      return;
+    } catch (err) {
+      last = err;
+      log(`[Notarize] Staple attempt ${attempt}/${attempts} failed: ${String(err.output || err.message).trim().split('\n').pop()}`);
+      if (attempt < attempts) await sleep(delayMs * attempt);
+    }
+  }
+  throw new Error(`Failed to staple after ${attempts} attempts: ${last?.message || last}`);
+}
 
 export default async function notarizing(context) {
   const { electronPlatformName, appOutDir } = context;
@@ -74,6 +108,14 @@ export default async function notarizing(context) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
     console.log(`[Notarize] ✅ Done in ${elapsed}s — Apple has notarized the app!`);
   } catch (error) {
+    // Apple accepted the app; only fetching its ticket failed. Fetch it again.
+    if (/Failed to staple/i.test(error.message)) {
+      console.warn(`[Notarize] Notarized, but stapling failed: ${error.message.split('\n')[0]}. Retrying.`);
+      await stapleWithRetry(appPath);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      console.log(`[Notarize] ✅ Done in ${elapsed}s — notarized and stapled.`);
+      return;
+    }
     console.error('[Notarize] ❌ Notarization failed:', error.message);
     // In CI, fail the build if notarization fails
     if (process.env.CI) {
