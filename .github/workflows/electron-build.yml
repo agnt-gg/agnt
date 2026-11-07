@@ -189,13 +189,21 @@ jobs:
       - name: Verify native modules are ${{ matrix.platform }}-${{ matrix.arch }}
         run: node scripts/release/verify-artifacts.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --dist dist
 
+      # stapler validate asks Apple's ticket servers, and the connection from
+      # these runners drops now and then (exit 68, release dry runs 2026-11-07,
+      # with Apple reporting every service up). It retries; an app with no
+      # ticket fails every attempt.
       - name: Verify macOS signature and notarization
         if: runner.os == 'macOS' && env.AGNT_RELEASE == '1'
         shell: bash
         run: |
           APP=$(ls -d dist/mac*/AGNT.app | head -1)
           codesign --verify --deep --strict --verbose=2 "$APP"
-          xcrun stapler validate "$APP"
+          for attempt in 1 2 3 4; do
+            xcrun stapler validate "$APP" && break
+            [ "$attempt" = 4 ] && { echo "::error::stapler validate failed 4 times"; exit 1; }
+            sleep $((attempt * 20))
+          done
           spctl --assess --type execute --verbose "$APP"
 
       - name: Upload artifacts

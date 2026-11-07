@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { stapleWithRetry } from './notarize.js';
+
+const WORKFLOW = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.github', 'workflows', 'electron-build.yml'), 'utf8');
 
 const APP = '/Users/runner/work/agnt/agnt/dist/mac/AGNT.app';
 const dropped = () => Object.assign(new Error('Command failed: xcrun stapler staple'), { output: 'Error Domain=NSURLErrorDomain Code=-1005 "The network connection was lost."' });
@@ -20,6 +25,15 @@ describe('stapleWithRetry', () => {
     const run = vi.fn().mockRejectedValue(dropped());
     await expect(stapleWithRetry(APP, { run, sleep: async () => {}, log: () => {} })).rejects.toThrow(/Failed to staple after 4 attempts/);
     expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it('the release check retries stapler validate and still fails an app with no ticket', () => {
+    const step = WORKFLOW.slice(WORKFLOW.indexOf('- name: Verify macOS signature and notarization'));
+    const body = step.slice(0, step.indexOf('\n      - name:', 10) > 0 ? step.indexOf('\n      - name:', 10) : undefined);
+    expect(body).toMatch(/for attempt in 1 2 3 4; do\s+xcrun stapler validate "\$APP" && break/);
+    expect(body).toMatch(/\[ "\$attempt" = 4 \] && \{[^}]*exit 1; \}/);
+    expect(body).toMatch(/codesign --verify --deep --strict/);
+    expect(body).toMatch(/spctl --assess --type execute/);
   });
 
   it('does not wait when the first attempt works', async () => {
