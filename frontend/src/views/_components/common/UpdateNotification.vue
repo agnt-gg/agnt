@@ -5,8 +5,10 @@
     everything else: browser, Docker, deb/rpm and dev builds.
 
     The two states that ask for a decision (ready, notice) open a dialog with
-    the release notes; the transient ones stay a banner.
+    the release notes; the transient ones stay a banner. The dialog covers the
+    viewport, so it renders at <body> where no ancestor can cap its stacking.
   -->
+  <Teleport to="body">
   <Transition name="update-dialog-fade">
     <div v-if="isDialog" class="update-overlay" :data-testid="view === 'ready' ? 'update-ready' : 'update-notice'" @click.self="dismiss">
       <section ref="dialogElement" class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" @keydown="onDialogKeydown">
@@ -63,6 +65,7 @@
       </section>
     </div>
   </Transition>
+  </Teleport>
 
   <Transition name="slide-down">
     <!-- Downloading: informational only; there is nothing to click yet. -->

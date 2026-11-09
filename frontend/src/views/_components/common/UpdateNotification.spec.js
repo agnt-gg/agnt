@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount, flushPromises, config } from '@vue/test-utils';
+
+// The dialog teleports to <body>; render it in place so wrapper queries see it.
+config.global.stubs = { ...config.global.stubs, teleport: true };
 
 /**
  * The update banner has two jobs and must never mix them:
