@@ -36,15 +36,52 @@ export function requireControlToken(req, res, next) {
 // database at import time (see SystemRoutes.handoff.test.js for why).
 router.get('/storage', authenticateToken, async (req, res) => {
   try {
-    const [{ default: db }, { databaseSpaceStats }, { getLastStorageMaintenanceReport }] = await Promise.all([
+    const [{ default: db }, { databaseSpaceStats }, { getLastStorageMaintenanceReport }, { getCompactionState }] = await Promise.all([
       import('../models/database/index.js'),
       import('../services/storage/freePages.js'),
       import('../services/storage/StorageMaintenance.js'),
+      import('../services/storage/databaseCompaction.js'),
     ]);
-    res.json({ database: await databaseSpaceStats(db), lastMaintenance: getLastStorageMaintenanceReport() });
+    res.json({ database: await databaseSpaceStats(db), lastMaintenance: getLastStorageMaintenanceReport(), compaction: getCompactionState() });
   } catch (err) {
     console.warn('[System] storage statistics failed:', err.message);
     res.status(500).json({ error: 'Storage statistics are unavailable' });
+  }
+});
+
+/**
+ * Start the one-off database rebuild (services/storage/databaseCompaction.js).
+ * Writers wait while it runs, so it is refused while anything is in progress
+ * unless the caller passes { force: true }. Answers 202 at once; progress and
+ * the result are on GET /storage under `compaction`.
+ */
+router.post('/storage/compact', authenticateToken, async (req, res) => {
+  try {
+    const [{ default: db }, { isDataDirOwner }, { compactDatabase, getCompactionState }] = await Promise.all([
+      import('../models/database/index.js'),
+      import('../models/database/dataDirOwnership.js'),
+      import('../services/storage/databaseCompaction.js'),
+    ]);
+    if (!(await isDataDirOwner())) {
+      return res.status(409).json({ success: false, error: 'Another process owns this data directory' });
+    }
+    if (getCompactionState().running) {
+      return res.status(409).json({ success: false, error: 'A rebuild is already running' });
+    }
+    const busy = await RestartManager.busyReport();
+    const inProgress = busy.goals + busy.chats + busy.workflows + busy.tools > 0 || busy.unknown.length > 0;
+    if (inProgress && req.body?.force !== true) {
+      return res.status(409).json({ success: false, error: 'Work is in progress', busy });
+    }
+
+    res.status(202).json({ success: true, status: 'started' });
+    compactDatabase(db.filename).then((result) => {
+      const freedMb = Math.round((result.bytesFreed || 0) / 1048576);
+      console.log(`[System] database rebuild: ${result.status}${result.status === 'complete' ? `, ${freedMb} MB returned to the OS` : ''}${result.error ? ` (${result.error})` : ''}`);
+    });
+  } catch (err) {
+    console.warn('[System] database rebuild could not start:', err.message);
+    if (!res.headersSent) res.status(500).json({ success: false, error: 'The rebuild could not be started' });
   }
 });
 

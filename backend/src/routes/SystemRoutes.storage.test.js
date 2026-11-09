@@ -15,6 +15,7 @@ vi.mock('../models/database/index.js', () => ({ default: { fake: 'db' } }));
 const stats = vi.fn();
 vi.mock('../services/storage/freePages.js', () => ({ databaseSpaceStats: (...args) => stats(...args) }));
 vi.mock('../services/storage/StorageMaintenance.js', () => ({ getLastStorageMaintenanceReport: () => ({ status: 'complete', finishedAt: '2026-10-28T12:00:00.000Z' }) }));
+vi.mock('../services/storage/databaseCompaction.js', () => ({ getCompactionState: () => ({ running: false, last: null }) }));
 
 let server;
 let base;
@@ -40,6 +41,7 @@ describe('GET /api/system/storage', () => {
     expect(await res.json()).toEqual({
       database: { fileBytes: 1000, freeBytes: 100, autoVacuum: 2 },
       lastMaintenance: { status: 'complete', finishedAt: '2026-10-28T12:00:00.000Z' },
+      compaction: { running: false, last: null },
     });
     expect(stats).toHaveBeenCalledWith({ fake: 'db' });
   });
