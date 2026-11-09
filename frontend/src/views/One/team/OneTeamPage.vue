@@ -100,6 +100,7 @@ provide('teamCtx', {
   ask: (text) => nav.ask(text),
   openPage: (id) => nav.go({ page: id }),
   create: (kind) => nav.create?.(kind),
+  openMarket: (item = null) => nav.go({ page: 'market', item }),
   openLibrary: (tab, item, isNew = false) => nav.go({ page: 'library', tab, item, ...(isNew ? { isNew: true } : {}) }),
   teamSettings: () => nav.go({ page: 'settings', section: 'members' }),
   toast: (text) => nav.toast(text),

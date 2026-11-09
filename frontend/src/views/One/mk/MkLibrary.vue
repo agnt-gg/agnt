@@ -15,7 +15,7 @@
 
       <!-- Your assets of one kind. -->
       <template v-if="asset">
-        <ul v-if="!rows.length" class="list"><li class="empty">{{ loading[asset.id] ? 'Loading…' : `No ${asset.label.toLowerCase()} yet. Make one, or add one from the Market.` }}</li></ul>
+        <ul v-if="!rows.length" class="list"><li class="empty">{{ loading[asset.id] ? 'Loading…' : `No ${asset.label.toLowerCase()} yet. Make one, or add one ${marketShown ? 'from the picks below' : 'from the Market'}.` }}</li></ul>
         <div v-else class="cards">
           <div v-for="r in rows" :key="r.id" class="card clickable" role="button" tabindex="0" @click="ctx.openLibrary(asset.id, r.itemId)" @keydown.enter="ctx.openLibrary(asset.id, r.itemId)">
             <div class="card-top">
@@ -31,6 +31,18 @@
             </div>
           </div>
         </div>
+        <!-- Market picks of this kind under your own, so an empty or short list has examples to add in place. -->
+        <MarketplaceShelf
+          :key="'market:' + asset.id"
+          style="margin-top: 24px"
+          :asset-type="asset.noun"
+          variant="catalogue"
+          :dismissible="false"
+          :max-items="marketExpanded ? 60 : 6"
+          @availability="(shown) => (marketShown = shown)"
+          @browse="browseMarket"
+          @installed="() => fetchAsset(asset)"
+        />
       </template>
 
       <!-- The Market: agents, workflows, tools, skills and widgets from AGNT and makers. -->
@@ -63,6 +75,7 @@ import { computed, inject, onMounted, reactive, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { assetTypeLabel } from '@/composables/useMarketplaceCard';
 import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
@@ -90,6 +103,13 @@ const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const status = computed(() => store.getters['marketplace/shelfStatus']);
 const busy = computed(() => installingId.value !== null);
 const isInstalled = (l) => installedHere.value.has(String(l.id)) || (store.state.marketplace?.myInstalls || []).some((owned) => String(owned.marketplace_item_id || owned.id) === String(l.id));
+// A pick opens its listing; "Show all" shows more picks here.
+const marketShown = ref(false);
+const marketExpanded = ref(false);
+function browseMarket(listing) {
+  if (listing) ctx.openMarket(listing.asset_id || listing.id);
+  else marketExpanded.value = !marketExpanded.value;
+}
 const statusLabel = (s) => ({ listening: 'Running', running: 'Running', stopped: 'Stopped', error: 'Needs a look' })[s] || s;
 
 async function fetchAsset(assetTab) {
@@ -117,6 +137,7 @@ onMounted(() => {
   for (const t of LIBRARY_TABS.filter((x) => x.asset)) fetchAsset(libraryTab(t.asset));
 });
 watch(() => props.tab, (t) => {
+  marketExpanded.value = false;
   if (t === 'market') { store.dispatch('marketplace/fetchShelfItems', {}); store.dispatch('marketplace/fetchMyInstalls'); }
 }, { immediate: true });
 </script>
