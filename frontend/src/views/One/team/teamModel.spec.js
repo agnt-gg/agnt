@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE } from './teamModel.js';
+import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE, tasksNeedingMe, routinesNeedingALook } from './teamModel.js';
+
+describe('needs you', () => {
+  const task = (over) => ({ id: 't', status: 'todo', agentState: null, createdBy: 'jess', assignee: null, ...over });
+  it('lists open cards an agent stopped on that you made or own, not sent-back or done ones', () => {
+    const tasks = [
+      task({ id: 'mine-waiting', createdBy: 'me', agentState: 'waiting', status: 'review' }),
+      task({ id: 'assigned-blocked', assignee: { kind: 'person', id: 'me' }, agentState: 'blocked' }),
+      task({ id: 'someone-else', agentState: 'blocked' }),
+      task({ id: 'sent-back', createdBy: 'me', agentState: 'sent_back' }),
+      task({ id: 'running', createdBy: 'me', agentState: 'running' }),
+      task({ id: 'done', createdBy: 'me', agentState: 'waiting', status: 'done' }),
+    ];
+    expect(tasksNeedingMe(tasks, 'me').map((t) => t.id)).toEqual(['mine-waiting', 'assigned-blocked']);
+    expect(tasksNeedingMe(tasks, null)).toEqual([]);
+  });
+
+  it('flags a routine only while its newest run is a failure', () => {
+    const runs = [
+      { id: 'a1', routineId: 'a', status: 'failed', fired_at: '2026-01-01T09:00:00Z' },
+      { id: 'a2', routineId: 'a', status: 'completed', fired_at: '2026-01-02T09:00:00Z' },
+      { id: 'b1', routineId: 'b', status: 'completed', fired_at: '2026-01-01T09:00:00Z' },
+      { id: 'b2', routineId: 'b', status: 'failed', fired_at: '2026-01-02T09:00:00Z' },
+    ];
+    expect(routinesNeedingALook(runs).map((r) => r.id)).toEqual(['b2']);
+    expect(routinesNeedingALook()).toEqual([]);
+  });
+});
 
 describe('visible to', () => {
   const spaces = [{ id: 'ws-sales', name: 'Sales' }, { id: 'ws-gen', name: 'General', is_default: true }, { id: 'ws-x', name: 'Labs', emoji: '🧪' }];

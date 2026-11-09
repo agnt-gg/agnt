@@ -20,6 +20,11 @@ vi.mock('@/composables/useRealtimeSync.js', () => ({ getRealtimeSocket: () => nu
 vi.mock('@/views/_components/team/TeamMembers.vue', () => ({ default: { template: '<div data-testid="members"></div>', props: ['team'] } }));
 vi.mock('@/views/_components/team/team.css', () => ({}));
 vi.mock('@/tt.config.js', () => ({ API_CONFIG: { BASE_URL: 'http://api' } }));
+// Your apps, as the Apps page sees them.
+const appCards = { value: { yours: [], discover: [] } };
+vi.mock('@/composables/useAppCards.js', () => ({ useAppCards: () => ({ cards: appCards }) }));
+const signInCalls = [];
+vi.mock('@/views/Focused/useAppSignIn.js', () => ({ useAppSignIn: () => ({ busy: { value: false }, signIn: (card) => signInCalls.push(card.id) }) }));
 
 // Checkpoints (tasks in chat) are the person's own API, outside the team router.
 let checkpointsWaiting = [];
@@ -67,6 +72,8 @@ beforeEach(() => {
   _resetTeamState();
   _resetCheckpoints();
   checkpointsWaiting = [];
+  appCards.value = { yours: [], discover: [] };
+  signInCalls.length = 0;
   localStorage.setItem('token', 'header.' + btoa(JSON.stringify({ id: 'me' })) + '.sig');
 });
 
@@ -133,6 +140,36 @@ describe('Home is the inbox', () => {
     expect(panel.text()).not.toMatch(/\bApprove\b/); // Review, never Approve: the whole card is in the chat
     await panel.findAll('button').find((b) => b.text() === 'Review').trigger('click');
     expect(nav.openConversation).toHaveBeenCalledWith('out-1');
+  });
+
+  it('an app whose sign-in stopped working is in Needs you, and Reconnect starts the sign-in there', async () => {
+    appCards.value = { yours: [
+      { id: 'google', name: 'Google', status: 'reconnect', providerId: 'google', connectable: true, apps: [{ name: 'gmail', displayName: 'Gmail' }] },
+      { id: 'slack', name: 'Slack', status: 'ready', providerId: 'slack', connectable: true, apps: [] },
+    ], discover: [] };
+    const { wrapper } = mountPage(loc({ view: 'home' }));
+    await flushPromises();
+    const apps = wrapper.find('[data-testid="apps-to-connect"]');
+    expect(apps.text()).toContain('Google');
+    expect(apps.text()).toContain('Gmail can’t run until then');
+    expect(apps.text()).not.toContain('Slack');
+    expect(wrapper.find('[data-testid="home-inbox"] .tab.is-active').text()).toMatch(/^Needs you\s*1/);
+    await apps.find('button').trigger('click');
+    expect(signInCalls).toEqual(['google']);
+  });
+
+  it('a card an agent could not run, that you made, is in Needs you and opens on the board', async () => {
+    routes['/acme/workspaces/sales/tasks'] = [
+      { id: 't1', workspaceId: 'sales', title: 'Draft pricing', status: 'todo', agentState: 'blocked', createdBy: 'me', assignee: { kind: 'agent', id: 'proposal' } },
+      { id: 't2', workspaceId: 'sales', title: 'Jess only', status: 'todo', agentState: 'blocked', createdBy: 'jess', assignee: { kind: 'agent', id: 'proposal' } },
+    ];
+    const { wrapper, nav } = mountPage(loc({ view: 'home' }));
+    await flushPromises();
+    const stuck = wrapper.find('[data-testid="stuck-tasks"]');
+    expect(stuck.text()).toContain('Draft pricing');
+    expect(stuck.text()).not.toContain('Jess only');
+    await stuck.find('button').trigger('click');
+    expect(nav.go).toHaveBeenLastCalledWith(expect.objectContaining({ space: 'sales', tab: 'board', task: 't1' }));
   });
 
   it('an old inbox link opens Home', async () => {

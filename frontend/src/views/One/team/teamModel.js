@@ -267,6 +267,32 @@ export function runStats(runs = [], now = Date.now()) {
   return { last30: recent.length, finishedShare: ended.length ? Math.round((finished / ended.length) * 100) : null, weekly };
 }
 
+/**
+ * Routines whose latest run went wrong: one per routine, its newest run.
+ * A failure a later run already fixed is not shown.
+ */
+export function routinesNeedingALook(runs = []) {
+  const newest = new Map();
+  for (const run of runs) {
+    const key = run.routineId ?? run.routineName;
+    const seen = newest.get(key);
+    if (!seen || Date.parse(run.fired_at) > Date.parse(seen.fired_at)) newest.set(key, run);
+  }
+  return [...newest.values()].filter((run) => runTone(run.status).state === 'problem');
+}
+
+/**
+ * Open cards an agent has stopped on that are yours to unblock: it finished and
+ * needs approval, or it could not run. Yours means you made the card or it is
+ * assigned to you. Sent back is the agent's turn, so it is not listed.
+ */
+export function tasksNeedingMe(tasks = [], me) {
+  if (!me) return [];
+  return tasks.filter((task) => task.status !== 'done'
+    && ['waiting', 'blocked'].includes(task.agentState)
+    && (task.createdBy === me || (task.assignee?.kind === 'person' && task.assignee.id === me)));
+}
+
 /** The run Run-now must not race: the newest one, while it is still running or waiting for the person. */
 export function blockingRun(runs = []) {
   const newest = [...runs].sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at))[0];

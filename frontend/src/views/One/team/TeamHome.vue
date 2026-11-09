@@ -26,8 +26,25 @@
           <template v-if="tab === 'needs'">
             <div v-if="checkpointsWaiting.length" class="hm-sub">Waiting for your OK</div>
             <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
+            <div v-if="stuckTasks.length" class="hm-sub">Cards waiting on you</div>
+            <ul v-if="stuckTasks.length" class="list" data-testid="stuck-tasks"><li v-for="t in stuckTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
             <div v-if="runsWaiting.length" class="hm-sub">Routine runs to review</div>
             <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
+            <div v-if="brokenRoutines.length" class="hm-sub">Routines that need a look</div>
+            <ul v-if="brokenRoutines.length" class="list" data-testid="broken-routines"><li v-for="r in brokenRoutines" :key="r.id"><TeamRunRow :run="r" /></li></ul>
+            <div v-if="appsToConnect.length" class="hm-sub">Apps to reconnect</div>
+            <ul v-if="appsToConnect.length" class="list" data-testid="apps-to-connect">
+              <li v-for="card in appsToConnect" :key="card.id">
+                <div class="r" :data-app="card.id">
+                  <span class="r-icon"><SvgIcon v-if="card.icon" :name="card.icon" /><MkIcon v-else name="plug" size="sm" /></span>
+                  <span class="r-text">
+                    <strong>{{ card.name }}</strong>
+                    <small>{{ card.status === 'reconnect' ? 'Its sign-in stopped working' : 'Not connected yet' }}<template v-if="describeApps(card)"> · {{ describeApps(card) }} can’t run until then</template></small>
+                  </span>
+                  <button type="button" class="primary sm" :disabled="signIn.busy.value" @click="connectApp(card)">{{ card.status === 'reconnect' ? 'Reconnect' : 'Connect' }}</button>
+                </div>
+              </li>
+            </ul>
             <div v-if="pluginAsks.length" class="hm-sub">Plugin requests</div>
             <ul v-if="pluginAsks.length" class="list" data-testid="plugin-requests">
               <li v-for="r in pluginAsks" :key="r.id"><TeamPluginRequestRow :request="r" decider :busy="deciding === r.id" @approve="approvePlugin" @decline="declinePlugin" /></li>
@@ -70,14 +87,14 @@
             <div class="sec-head"><h3>My tasks</h3><button type="button" class="btn ghost sm" @click="ctx.go({ view: 'mine' })">All</button></div>
             <ul class="list">
               <li v-if="!myTasks.length" class="empty">{{ loading ? 'Loading…' : 'No open tasks assigned to you.' }}</li>
-              <li v-for="t in myTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" /></li>
+              <li v-for="t in myTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li>
             </ul>
           </div>
           <div>
             <div class="sec-head"><h3>Agents at work</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('activity')">Activity</button></div>
             <ul class="list">
               <li v-if="!agentTasks.length" class="empty">{{ loading ? 'Loading…' : 'No agent is working on a card.' }}</li>
-              <li v-for="t in agentTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id })" /></li>
+              <li v-for="t in agentTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li>
             </ul>
             <div class="sec-head"><h3>Your teamspaces</h3></div>
             <div class="cards" style="grid-template-columns: 1fr">
@@ -119,14 +136,23 @@ import TeamTaskRow from './TeamTaskRow.vue';
 import TeamCheckpointRow from './TeamCheckpointRow.vue';
 import TeamRunRow from './TeamRunRow.vue';
 import TeamPluginRequestRow from './TeamPluginRequestRow.vue';
+import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import { usePluginRequests } from '@/composables/usePluginRequests.js';
+import { useAppCards } from '@/composables/useAppCards.js';
+import { useAppSignIn } from '@/views/Focused/useAppSignIn.js';
+import { findAppCard, describeApps } from '@/services/appCards.js';
+import { cardNeedsYou } from '@/services/pluginDirectory.js';
+import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
+import { useStore } from 'vuex';
 import { teamApi } from './useTeam.js';
 import { roleLabel } from '@/utils/teamClient.js';
-import { partOfDay, spaceEmoji } from './teamModel.js';
+import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook } from './teamModel.js';
 
 const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
 const ctx = inject('teamCtx');
+const nav = inject('focusedNav');
+const store = useStore();
 const team = computed(() => ctx.team.value);
 const teams = computed(() => ctx.teams.value);
 const spaces = computed(() => ctx.spaces.value);
@@ -139,6 +165,21 @@ const checkpointsWaiting = computed(() => ctx.checkpoints.state.pending);
 const runs = computed(() => ctx.routineRuns.value);
 const runsLoaded = computed(() => ctx.routineRunsLoaded.value);
 const runsWaiting = computed(() => runs.value.filter((r) => r.status === 'needs_review'));
+const brokenRoutines = computed(() => routinesNeedingALook(runs.value));
+const stuckTasks = computed(() => tasksNeedingMe(tasks.value, ctx.me.value));
+const openTask = (t) => ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id });
+
+// Your apps whose sign-in is missing or failing: the same test the Apps page's "Needs you" uses.
+const { cards } = useAppCards();
+const appsToConnect = computed(() => (cards.value.yours || []).filter((card) => cardNeedsYou(card)));
+const signIn = useAppSignIn({ store, nav, findCard: (id) => findAppCard(cards.value, id) });
+const isModelProvider = (id) => AI_PROVIDERS_WITH_API.some((p) => p.toLowerCase() === String(id).toLowerCase());
+/** Starts the sign-in right here; model keys live in Settings, and a sign-in AGNT cannot start opens Apps. */
+function connectApp(card) {
+  if (card.providerId && isModelProvider(card.providerId)) return nav.go({ page: 'settings' });
+  if (!card.connectable || !card.providerId) return nav.go({ page: 'connectors', item: card.apps?.[0] ? `app:${card.apps[0].name}` : null });
+  return signIn.signIn(card);
+}
 const teamNeeds = computed(() => ctx.inbox.value.filter((i) => !i.read || (i.kind === 'approval' && i.state === 'pending')));
 const mentions = computed(() => ctx.inbox.value.filter((i) => i.kind === 'mention'));
 // Plugin requests: the ones you decide, and your own once decided (until dismissed).
@@ -157,7 +198,8 @@ async function decidePlugin(request, approve) {
 }
 const approvePlugin = (r) => decidePlugin(r, true);
 const declinePlugin = (r) => decidePlugin(r, false);
-const needCount = computed(() => checkpointsWaiting.value.length + runsWaiting.value.length + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
+const needCount = computed(() => checkpointsWaiting.value.length + stuckTasks.value.length + runsWaiting.value.length + brokenRoutines.value.length
+  + appsToConnect.value.length + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
 const myTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'person' && t.assignee.id === ctx.me.value));
 const agentTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'agent'));
 const openCount = (id) => tasks.value.filter((t) => t.workspaceId === id && t.status !== 'done').length;
