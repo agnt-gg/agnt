@@ -108,6 +108,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG } from '@/tt.config.js';
+import { fetchReleases as fetchReleaseFeed } from '@/services/releaseNotes.js';
 
 export default {
   name: 'ReleaseNotes',
@@ -146,13 +147,7 @@ export default {
 
     const fetchReleases = async () => {
       try {
-        // Hit the website's CORS-enabled endpoint directly — no local proxy.
-        // 15s timeout so a stuck remote can't hold a connection slot forever.
-        const response = await fetch('https://agnt.gg/api/releases', {
-          signal: AbortSignal.timeout(15000),
-        });
-        const data = await response.json();
-        releases.value = data.releases || [];
+        releases.value = await fetchReleaseFeed();
       } catch (error) {
         console.error('[ReleaseNotes] Error fetching releases:', error);
       } finally {

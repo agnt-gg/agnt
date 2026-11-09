@@ -54,10 +54,12 @@ function desktop(initial = {}) {
 }
 
 const text = (w) => w.text().replace(/\s+/g, ' ');
+// Any update surface at all: a banner state or the dialog.
+const anyUpdateUi = (w) => w.find('[data-testid^="update-"]').exists();
 
 beforeEach(() => {
   localStorage.clear();
-  globalThis.fetch = vi.fn(async () => ({ json: async () => ({}) }));
+  globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
 });
 afterEach(() => {
   electronMock = null;
@@ -68,11 +70,11 @@ describe('self-updating desktop build', () => {
     const d = desktop();
     const w = mount(UpdateNotification);
     await flushPromises();
-    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(anyUpdateUi(w)).toBe(false);
     expect(electronMock.checkForUpdates).not.toHaveBeenCalled();
     d.push({ phase: 'checking' });
     await flushPromises();
-    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(anyUpdateUi(w)).toBe(false);
   });
 
   it('starts from the state main already has (reload after a download)', async () => {
@@ -194,10 +196,10 @@ describe('self-updating desktop build', () => {
     const w = mount(UpdateNotification);
     await flushPromises();
     await w.find('.dismiss-btn').trigger('click');
-    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(anyUpdateUi(w)).toBe(false);
     d.push({ phase: 'ready', available: { version: '0.6.8' } });
     await flushPromises();
-    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(anyUpdateUi(w)).toBe(false);
     d.push({ phase: 'error', error: { message: 'offline', during: 'check' } });
     await flushPromises();
     expect(w.find('[data-testid="update-error"]').exists()).toBe(true);
@@ -238,7 +240,132 @@ describe('builds that do not update themselves', () => {
     desktop({ enabled: false, phase: 'disabled' });
     const w = mount(UpdateNotification);
     await flushPromises();
-    expect(w.find('.update-banner').exists()).toBe(false);
+    expect(anyUpdateUi(w)).toBe(false);
+  });
+});
+
+describe('release notes in the update dialog', () => {
+  const RELEASES_URL = 'https://agnt.gg/api/releases';
+  const release068 = {
+    version: '0.6.8',
+    date: 'November 7, 2026',
+    title: 'AGNT One & Teamspaces — AGNT v0.6.8',
+    features: [
+      { name: 'AGNT One is the app: one rail for every page', status: 'new' },
+      { name: '[Team] Teamspaces: invite-only spaces', status: 'new' },
+      { name: 'Copy, regenerate, fork and delete on every message', status: 'new' },
+      { name: 'A new Plugins page', status: 'new' },
+      { name: 'Workflows: run now and compare versions', status: 'new' },
+      { name: 'Run a model on your computer', status: 'updated' },
+      { name: 'Large previews open instantly', status: 'bug' },
+      { name: 'Chats stay fast while a long reply is streaming', status: 'bug' },
+    ],
+  };
+  const release067 = { version: '0.6.7', date: 'October 9, 2026', title: 'Older', features: [{ name: 'Something from the previous release', status: 'new' }] };
+
+  function feed(releases) {
+    globalThis.fetch = vi.fn(async (url) =>
+      String(url) === RELEASES_URL ? { ok: true, json: async () => ({ releases }) } : { ok: true, json: async () => ({}) },
+    );
+  }
+
+  async function openReady(extra = {}) {
+    const d = desktop({ phase: 'ready', available: { version: '0.6.8' }, ...extra });
+    const w = mount(UpdateNotification, { attachTo: document.body });
+    await flushPromises();
+    return { d, w };
+  }
+
+  it('shows the waiting version’s name, date and counts, newest features first', async () => {
+    feed([release068, release067]);
+    const { w } = await openReady();
+    expect(text(w)).toContain('AGNT v0.6.8');
+    expect(text(w)).toContain('AGNT One & Teamspaces');
+    expect(text(w)).toContain('v0.6.7 → v0.6.8 · November 7, 2026');
+    expect(w.findAll('.change-count').map((c) => [c.find('b').text(), c.find('span').text()])).toEqual([['5', 'New'], ['1', 'Improved'], ['2', 'Fixed']]);
+    const items = w.findAll('.change-group li');
+    expect(items).toHaveLength(4);
+    expect(items[0].find('strong').text()).toBe('AGNT One is the app');
+    expect(items[1].find('.plan-badge').text()).toBe('Team');
+    expect(text(w)).not.toContain('Large previews');
+    w.unmount();
+  });
+
+  it('Show all expands every group, and Show less collapses again', async () => {
+    feed([release068]);
+    const { w } = await openReady();
+    await w.find('.show-all-changes').trigger('click');
+    expect(w.findAll('.change-group li')).toHaveLength(8);
+    expect(w.findAll('.change-group h4').map((h) => h.text())).toEqual(['New', 'Improved', 'Fixed']);
+    expect(w.find('.show-all-changes').text()).toBe('Show less');
+    await w.find('.show-all-changes').trigger('click');
+    expect(w.findAll('.change-group li')).toHaveLength(4);
+    w.unmount();
+  });
+
+  it('a count tile opens the full list at that group', async () => {
+    feed([release068]);
+    const { w } = await openReady();
+    await w.findAll('.change-count')[2].trigger('click');
+    await flushPromises();
+    expect(w.find('[data-group="bug"]').text()).toContain('Large previews open instantly');
+    w.unmount();
+  });
+
+  it('never shows another version’s notes when the feed does not have this one yet', async () => {
+    feed([release067]);
+    const { w } = await openReady();
+    expect(w.find('[data-testid="update-ready"]').exists()).toBe(true);
+    expect(w.find('.change-list').exists()).toBe(false);
+    expect(text(w)).not.toContain('Something from the previous release');
+    expect(text(w)).toContain('v0.6.7 → v0.6.8');
+    w.unmount();
+  });
+
+  it('a failing feed still leaves a working update dialog', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { d, w } = await openReady();
+    expect(w.find('.change-list').exists()).toBe(false);
+    expect(warn).toHaveBeenCalledWith('[Update] release notes unavailable:', 'offline');
+    await w.find('.download-btn').trigger('click');
+    expect(d.api.install).toHaveBeenCalledWith({ force: false });
+    warn.mockRestore();
+    w.unmount();
+  });
+
+  it('Escape and a click on the backdrop are Later; a click inside is not', async () => {
+    feed([release068]);
+    let { w } = await openReady();
+    await w.find('.update-dialog').trigger('click');
+    expect(anyUpdateUi(w)).toBe(true);
+    await w.find('.update-dialog').trigger('keydown', { key: 'Escape' });
+    expect(anyUpdateUi(w)).toBe(false);
+    w.unmount();
+    ({ w } = await openReady());
+    await w.find('.update-overlay').trigger('click');
+    expect(anyUpdateUi(w)).toBe(false);
+    w.unmount();
+  });
+
+  it('moves focus to the primary action when it opens', async () => {
+    feed([release068]);
+    const { w } = await openReady();
+    expect(document.activeElement).toBe(w.find('.download-btn').element);
+    w.unmount();
+  });
+
+  it('the download notice shows the notes for the version on offer', async () => {
+    feed([{ ...release068, version: '9.9.9', title: 'Future — AGNT v9.9.9' }]);
+    desktop({ enabled: false, phase: 'disabled' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('[data-testid="update-notice"]').exists()).toBe(true);
+    expect(text(w)).toContain('Update available');
+    expect(text(w)).toContain('Future');
+    expect(w.findAll('.change-group li')).toHaveLength(4);
   });
 });
 

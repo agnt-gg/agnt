@@ -1,38 +1,72 @@
 <template>
-  <Transition name="slide-down">
-    <!--
-      Desktop builds that update themselves render ONLY from main's update state
-      (electron/autoUpdate.js). The agnt.gg "download it yourself" banner is for
-      everything else: browser, Docker, deb/rpm and dev builds.
-    -->
-    <div v-if="view === 'ready'" class="update-banner" data-testid="update-ready">
-      <div class="update-content">
-        <div class="update-icon">⬇️</div>
-        <div class="update-text">
-          <span class="update-title">Update Ready</span>
-          <span class="update-version">
-            <template v-if="blockedText">{{ blockedText }}</template>
-            <template v-else>v{{ state.currentVersion }} → v{{ state.available?.version }}</template>
-            <template v-if="state.needsPermission"> · Windows will ask for permission</template>
-          </span>
-        </div>
-      </div>
-      <div class="update-actions">
-        <button v-if="state.blocked" class="update-btn download-btn" :disabled="installing" @click="install(true)">
-          {{ installing ? 'Restarting…' : 'Restart anyway' }}
-        </button>
-        <button v-else-if="state.needsExplicitInstall" class="update-btn download-btn" :disabled="installing" @click="install(false)">
-          {{ installing ? 'Restarting…' : 'Restart to update' }}
-        </button>
-        <button v-else class="update-btn download-btn" :disabled="installing" @click="install(false)">
-          {{ installing ? 'Restarting…' : 'Restart now' }}
-        </button>
-        <button class="update-btn dismiss-btn" @click="dismiss">Later</button>
-      </div>
-    </div>
+  <!--
+    Desktop builds that update themselves render ONLY from main's update state
+    (electron/autoUpdate.js). The agnt.gg "download it yourself" notice is for
+    everything else: browser, Docker, deb/rpm and dev builds.
 
+    The two states that ask for a decision (ready, notice) open a dialog with
+    the release notes; the transient ones stay a banner.
+  -->
+  <Transition name="update-dialog-fade">
+    <div v-if="isDialog" class="update-overlay" :data-testid="view === 'ready' ? 'update-ready' : 'update-notice'" @click.self="dismiss">
+      <section ref="dialogElement" class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" @keydown="onDialogKeydown">
+        <button type="button" class="update-dialog-close" aria-label="Close" @click="dismiss">×</button>
+
+        <header class="update-dialog-head">
+          <div class="update-dialog-status" :class="{ 'is-waiting': !!blockedText }">{{ statusText }}</div>
+          <h2 id="update-dialog-title" class="update-dialog-title">AGNT v{{ targetVersion }}</h2>
+          <p v-if="releaseName" class="update-dialog-subtitle">{{ releaseName }}</p>
+          <p class="update-dialog-meta">
+            v{{ fromVersion }} → v{{ targetVersion }}<template v-if="release?.date"> · {{ release.date }}</template>
+            <template v-if="view === 'ready' && state.needsPermission"> · Windows will ask for permission</template>
+          </p>
+          <div v-if="changeGroups.length" class="change-counts">
+            <button v-for="group in changeGroups" :key="group.status" type="button" class="change-count" :class="'is-' + group.status" @click="showGroup(group.status)">
+              <b>{{ group.changes.length }}</b>
+              <span>{{ group.label }}</span>
+            </button>
+          </div>
+        </header>
+
+        <div v-if="changeGroups.length" ref="changeListElement" class="change-list">
+          <section v-for="group in visibleGroups" :key="group.status" class="change-group" :class="'is-' + group.status" :data-group="group.status">
+            <h4>{{ group.label }}</h4>
+            <ul>
+              <li v-for="(change, index) in group.changes" :key="index">
+                <span><strong v-if="change.lead">{{ change.lead }}</strong><template v-if="change.lead"> — </template>{{ change.rest }}</span>
+                <span v-if="change.plan" class="plan-badge">{{ change.plan }}</span>
+              </li>
+            </ul>
+          </section>
+          <button v-if="hasMoreChanges" type="button" class="show-all-changes" :aria-expanded="String(showAllChanges)" @click="showAllChanges = !showAllChanges">
+            {{ showAllChanges ? 'Show less' : `Show all ${totalChanges} changes` }}
+          </button>
+        </div>
+
+        <footer class="update-dialog-foot">
+          <p v-if="view === 'ready' && blockedText" class="update-dialog-warning">{{ blockedText }}</p>
+          <a v-else class="changelog-link" :href="CHANGELOG_URL" target="_blank" rel="noopener noreferrer">Release notes on agnt.gg ↗</a>
+          <button type="button" class="update-dialog-btn is-secondary dismiss-btn" @click="dismiss">Later</button>
+          <template v-if="view === 'ready'">
+            <button v-if="state.blocked" ref="primaryButton" type="button" class="update-dialog-btn is-primary download-btn" :disabled="installing" @click="install(true)">
+              {{ installing ? 'Restarting…' : 'Restart anyway' }}
+            </button>
+            <button v-else-if="state.needsExplicitInstall" ref="primaryButton" type="button" class="update-dialog-btn is-primary download-btn" :disabled="installing" @click="install(false)">
+              {{ installing ? 'Restarting…' : 'Restart to update' }}
+            </button>
+            <button v-else ref="primaryButton" type="button" class="update-dialog-btn is-primary download-btn" :disabled="installing" @click="install(false)">
+              {{ installing ? 'Restarting…' : 'Restart now' }}
+            </button>
+          </template>
+          <button v-else ref="primaryButton" type="button" class="update-dialog-btn is-primary download-btn" @click="openDownloads">Download</button>
+        </footer>
+      </section>
+    </div>
+  </Transition>
+
+  <Transition name="slide-down">
     <!-- Downloading: informational only; there is nothing to click yet. -->
-    <div v-else-if="view === 'downloading'" class="update-banner" data-testid="update-downloading">
+    <div v-if="view === 'downloading'" class="update-banner" data-testid="update-downloading">
       <div class="update-content">
         <div class="update-icon">⬇️</div>
         <div class="update-text">
@@ -93,27 +127,15 @@
       </div>
     </div>
 
-    <div v-else-if="view === 'notice'" class="update-banner" data-testid="update-notice">
-      <div class="update-content">
-        <div class="update-icon">🚀</div>
-        <div class="update-text">
-          <span class="update-title">Update Available</span>
-          <span class="update-version"> v{{ currentVersion }} → v{{ updateInfo.latestVersion }} </span>
-        </div>
-      </div>
-      <div class="update-actions">
-        <button class="update-btn download-btn" @click="openDownloads">Download</button>
-        <button class="update-btn dismiss-btn" @click="dismiss">Later</button>
-      </div>
-    </div>
   </Transition>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue';
 
 import { API_CONFIG } from '@/tt.config.js';
 import { useElectron } from '@/composables/useElectron';
+import { CHANGELOG_URL, fetchReleases, findRelease, groupChanges } from '@/services/releaseNotes.js';
 
 const { electron } = useElectron();
 // Vuex's injection key. Optional: specs mount this without a store.
@@ -165,6 +187,84 @@ const view = computed(() => {
   }
   return showNotice.value && updateInfo.value ? 'notice' : null;
 });
+
+// ── the dialog: what the waiting version changes ─────────────────────────────────────────
+const PREVIEW_CHANGES = 4;
+const release = ref(null); // the feed entry for exactly availableVersion, if the feed has it yet
+const showAllChanges = ref(false);
+const dialogElement = ref(null);
+const primaryButton = ref(null);
+const changeListElement = ref(null);
+let releasesRequest = null; // one feed request per mount; a failure clears it so a later version can retry
+let focusBeforeDialog = null;
+
+const isDialog = computed(() => view.value === 'ready' || view.value === 'notice');
+const targetVersion = computed(() => availableVersion.value || '');
+const fromVersion = computed(() => (selfUpdating.value ? state.value?.currentVersion : currentVersion.value) || '');
+const releaseName = computed(() => (release.value?.title || '').replace(/\s+—\s+AGNT v[\d.]+$/, ''));
+const statusText = computed(() => {
+  if (view.value === 'notice') return 'Update available';
+  return blockedText.value ? 'Waiting on running work' : 'Update ready';
+});
+const changeGroups = computed(() => groupChanges(release.value));
+const totalChanges = computed(() => changeGroups.value.reduce((sum, group) => sum + group.changes.length, 0));
+// Collapsed: the first few changes of the first group (New, when there is one).
+const visibleGroups = computed(() => {
+  if (showAllChanges.value || !changeGroups.value.length) return changeGroups.value;
+  const [first] = changeGroups.value;
+  return [{ ...first, changes: first.changes.slice(0, PREVIEW_CHANGES) }];
+});
+const hasMoreChanges = computed(() => totalChanges.value > Math.min(PREVIEW_CHANGES, changeGroups.value[0]?.changes.length ?? 0));
+
+async function loadRelease(version) {
+  release.value = null;
+  showAllChanges.value = false;
+  if (!version) return;
+  try {
+    releasesRequest ||= fetchReleases();
+    const releases = await releasesRequest;
+    if (availableVersion.value === version) release.value = findRelease(releases, version);
+  } catch (error) {
+    releasesRequest = null;
+    console.warn('[Update] release notes unavailable:', error?.message);
+  }
+}
+watch(availableVersion, loadRelease, { immediate: true });
+
+/** A count tile opens the full list at that group. */
+async function showGroup(status) {
+  showAllChanges.value = true;
+  await nextTick();
+  changeListElement.value?.querySelector(`[data-group="${status}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+}
+
+// Focus moves into the dialog when it opens and back where it was when it closes.
+watch(isDialog, async (open) => {
+  if (open) {
+    focusBeforeDialog = document.activeElement;
+    await nextTick();
+    primaryButton.value?.focus({ preventScroll: true });
+  } else if (focusBeforeDialog?.isConnected) {
+    focusBeforeDialog.focus({ preventScroll: true });
+    focusBeforeDialog = null;
+  }
+});
+
+/** Escape is Later; Tab cycles inside the dialog. */
+function onDialogKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    dismiss();
+    return;
+  }
+  if (event.key !== 'Tab' || !dialogElement.value) return;
+  const controls = [...dialogElement.value.querySelectorAll('button, a[href]')].filter((control) => !control.disabled);
+  if (!controls.length) return;
+  const index = controls.indexOf(document.activeElement);
+  const next = controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length];
+  event.preventDefault();
+  next.focus();
+}
 
 const LABELS = { goals: ['goal', 'goals'], chats: ['chat', 'chats'], workflows: ['workflow', 'workflows'], tools: ['tool run', 'tool runs'] };
 
@@ -381,33 +481,428 @@ defineExpose({
   border: none;
 }
 
-.download-btn {
+.update-banner .download-btn {
   background: var(--color-green, var(--color-green));
   color: var(--on-fill-success);
 }
 
-.download-btn:hover {
+.update-banner .download-btn:hover {
   background: #14d974;
   transform: translateY(-1px);
 }
 
-.download-btn:disabled,
-.download-btn:disabled:hover {
+.update-banner .download-btn:disabled,
+.update-banner .download-btn:disabled:hover {
   opacity: 0.6;
   cursor: default;
   transform: none;
   background: var(--color-green, var(--color-green));
 }
 
-.dismiss-btn {
+.update-banner .dismiss-btn {
   background: transparent;
   color: var(--fg-dim, rgba(255, 255, 255, 0.6));
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.dismiss-btn:hover {
+.update-banner .dismiss-btn:hover {
   background: var(--surface-active);
   color: var(--fg, #fff);
+}
+
+/* ── Update dialog: theme tokens only ── */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--scrim);
+}
+
+.update-dialog,
+.update-dialog * {
+  box-sizing: border-box;
+}
+
+.update-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  background: var(--color-popup);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-overlay);
+  font-family: var(--font-family-primary);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.update-dialog::before {
+  content: '';
+  flex: none;
+  height: 3px;
+  background: var(--gradient-brand);
+}
+
+.update-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.update-dialog-head {
+  display: grid;
+  gap: 6px;
+  padding: 22px 24px 20px;
+  background: var(--gradient-wash);
+}
+
+.update-dialog-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.update-dialog-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-green);
+  box-shadow: var(--glow-success);
+}
+
+.update-dialog-status.is-waiting::before {
+  background: var(--text-yellow);
+  box-shadow: none;
+}
+
+.update-dialog-title {
+  margin: 2px 0 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.update-dialog-subtitle {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.update-dialog-meta {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.change-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.change-count {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  font: inherit;
+  text-align: left;
+}
+
+.change-count b {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.change-count span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* The colour lives on a fill (the dot), never on text, so it reads in every theme. */
+.change-count span::before,
+.change-group h4::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--change-dot);
+}
+
+.is-new {
+  --change-dot: var(--text-green);
+}
+
+.is-updated {
+  --change-dot: var(--text-blue);
+}
+
+.is-bug {
+  --change-dot: var(--text-orange);
+}
+
+.change-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 24px 8px;
+  border-top: 1px solid var(--terminal-border-color);
+  scrollbar-width: thin;
+}
+
+.change-group {
+  padding-top: 16px;
+}
+
+.change-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.change-group ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-group li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 -10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.change-group li > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.change-group li strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.plan-badge {
+  flex: none;
+  margin-top: 2px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  color: var(--text-secondary);
+}
+
+.show-all-changes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 20px);
+  margin: 6px -10px 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.show-all-changes::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+
+.show-all-changes[aria-expanded='true']::after {
+  transform: rotate(-90deg);
+}
+
+.update-dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.changelog-link,
+.update-dialog-warning {
+  margin: 0 auto 0 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.changelog-link {
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.update-dialog-btn {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.update-dialog-btn.is-secondary {
+  border: 1px solid var(--terminal-border-color);
+  color: var(--text-secondary);
+}
+
+.update-dialog-btn.is-primary {
+  background: var(--fill-accent);
+  color: var(--on-fill-accent);
+}
+
+.update-dialog-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.update-dialog-close:hover,
+.change-count:hover,
+.show-all-changes:hover,
+.update-dialog-btn.is-secondary:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.change-group li:hover {
+  background: var(--surface-hover);
+}
+
+.changelog-link:hover {
+  color: var(--text-primary);
+}
+
+.update-dialog-close:focus-visible,
+.change-count:focus-visible,
+.show-all-changes:focus-visible,
+.update-dialog-btn:focus-visible,
+.changelog-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 560px) {
+  .update-overlay {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .update-dialog {
+    width: 100%;
+    max-height: calc(100vh - 56px);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .update-dialog::before {
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+
+  .update-dialog-head {
+    padding-top: 14px;
+  }
+
+  .update-dialog-title {
+    font-size: 22px;
+  }
+
+  .update-dialog-close {
+    top: 12px;
+    right: 8px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .change-count {
+    padding: 10px 12px;
+  }
+
+  .update-dialog-foot {
+    flex-wrap: wrap;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .changelog-link,
+  .update-dialog-warning {
+    flex-basis: 100%;
+  }
+
+  .update-dialog-btn {
+    flex: 1;
+    min-height: 44px;
+  }
+}
+
+.update-dialog-fade-enter-active,
+.update-dialog-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.update-dialog-fade-enter-from,
+.update-dialog-fade-leave-to {
+  opacity: 0;
 }
 
 /* Transition animations */
