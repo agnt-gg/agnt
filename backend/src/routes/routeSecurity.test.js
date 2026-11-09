@@ -100,8 +100,6 @@ const PUBLIC_ROUTES = new Map([
   ['ToolSchemaRoutes.js :: GET /metadata/:toolType', 'Display metadata for one node type.'],
   ['ModelRoutes.js :: GET /:provider/models', 'Model catalogue for a provider. Public vendor metadata.'],
   ['ModelRoutes.js :: GET /models', 'Aggregate model catalogue. Public vendor metadata.'],
-  ['ModelRoutes.js :: POST /models/refresh', 'Refresh the public model catalogue cache.'],
-  ['ModelRoutes.js :: POST /:provider/models/refresh', 'Refresh one provider catalogue cache.'],
   ['ModelRoutes.js :: GET /models/categories', 'Static model taxonomy.'],
   ['ModelRoutes.js :: GET /schema-version', 'Hash of the model-metadata schema, for client cache invalidation.'],
   ['ModelRoutes.js :: GET /:provider/metadata', 'Context windows and pricing. Public vendor facts.'],
@@ -113,7 +111,6 @@ const PUBLIC_ROUTES = new Map([
   // cached summary.
   ['CustomProviderRoutes.js :: GET /templates', 'Static starter templates for custom providers (Mistral, etc). Ships with the app.'],
   ['AdminClientVersionRoutes.js :: GET /client-versions', 'Upstream CLI version numbers read from public registries.'],
-  ['AdminClientVersionRoutes.js :: POST /client-versions/refresh', 'Refresh that public version cache.'],
 ]);
 
 /** Route modules to audit, mount path -> file. */

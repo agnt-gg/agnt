@@ -333,7 +333,7 @@ const providersWithKeyOptionalListing = getAllProviderConfigs()
 // ─────────────────────────── ROUTES ───────────────────────────
 
 // Generic endpoint for fetching models from any provider
-router.get('/:provider/models', async (req, res) => {
+async function listProviderModels(req, res) {
   try {
     const { provider } = req.params;
     // Resolve display names (e.g., "Z-AI" → "zai", "Grok AI" → "grokai")
@@ -505,10 +505,11 @@ router.get('/:provider/models', async (req, res) => {
       details: error.message,
     });
   }
-});
+}
+router.get('/:provider/models', listProviderModels);
 
 // Generic endpoint for refreshing models cache
-router.post('/:provider/models/refresh', async (req, res) => {
+async function refreshProviderModels(req, res) {
   try {
     const { provider } = req.params;
     const resolved = getProviderConfig(provider);
@@ -633,7 +634,8 @@ router.post('/:provider/models/refresh', async (req, res) => {
       details: error.message,
     });
   }
-});
+}
+router.post('/:provider/models/refresh', requireAuthHeader, refreshProviderModels);
 
 // ───────────────────────── SCHEMA VERSION ────────────────────────
 // Hash of the provider config surface the frontend depends on. Frontend
@@ -680,14 +682,14 @@ export async function prewarmCodexModels() {
 }
 
 // Legacy endpoint for OpenRouter (backward compatibility)
-router.get('/models', async (req, res) => {
+router.get('/models', (req, res) => {
   req.params.provider = 'openrouter';
-  return router.handle(req, res);
+  return listProviderModels(req, res);
 });
 
-router.post('/models/refresh', async (req, res) => {
+router.post('/models/refresh', requireAuthHeader, (req, res) => {
   req.params.provider = 'openrouter';
-  return router.handle(req, res);
+  return refreshProviderModels(req, res);
 });
 
 router.get('/models/categories', async (req, res) => {
