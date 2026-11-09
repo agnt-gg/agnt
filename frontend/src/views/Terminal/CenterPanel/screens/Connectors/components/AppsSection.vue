@@ -67,14 +67,11 @@
     <div class="ap-layout" :class="{ 'has-detail': hasDetail }">
       <!-- plugins.catalog: the "Give Annie hands" mission (services/journey/missions.js) points here. -->
       <section v-if="!detailOnly" class="ap-main" data-tour-id="plugins.catalog" :aria-label="tabLabel">
-        <!-- ── For you: connect your apps, then what they unlock ── -->
+        <!-- ── For you: things to try, then apps to connect ── -->
         <ForYouView
           v-if="tab === 'foryou'"
           :rows="catalog" :cards="cards" :connected-ids="connectedApps" :model-provider-ids="modelProviderIds"
-          :installing="installing || ''" :install-busy="!!installing" :requested-names="[...requestedNames]"
           @connect="(c) => emit('connect', c)"
-          @install="(row) => install(row)"
-          @open="openPlugin"
           @ask="(a) => emit('try-plugin', { name: a.plugin || a.provider, displayName: a.displayName || '', prompt: a.text })"
           @browse="browseKind"
         />

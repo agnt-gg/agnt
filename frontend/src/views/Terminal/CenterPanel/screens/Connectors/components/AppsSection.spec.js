@@ -104,7 +104,7 @@ describe('A member asks the owner for a plugin', () => {
   });
 });
 
-describe('For you: connect your apps first, then what they unlock', () => {
+describe('For you: things to try, then the apps to connect', () => {
   const calendar = { trustTier: 'official', name: 'google-calendar-plugin', displayName: 'Google Calendar', kind: 'app', icon: 'calendar', tools: [tool('cal', { authProvider: 'google' })] };
   const gmailApp = { trustTier: 'official', name: 'gmail-plugin', displayName: 'Gmail', kind: 'app', icon: 'gmail', tools: [tool('mail', { authProvider: 'google' })] };
   it('is the page’s home, leads with Google, and shows each app’s real brand icon', async () => {
@@ -115,8 +115,8 @@ describe('For you: connect your apps first, then what they unlock', () => {
     expect(wrapper.find('.fy-fam').attributes('data-family')).toBe('google');
     const google = wrapper.find('[data-family="google"]');
     expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail-color', 'google-calendar']);
-    // A pack that needs Google says so, and offers the connection.
-    expect(wrapper.find('[data-pack="research"]').text()).toContain('Needs 1 app');
+    // No pack shelf on For you.
+    expect(wrapper.find('[data-pack]').exists()).toBe(false);
   });
   it('Connect hands the sign-in card to the host; an ask goes to chat with its words', async () => {
     setup({ tab: 'foryou', available: [gmailApp, calculator] }); await flushPromises();
