@@ -120,6 +120,7 @@ export default {
           grokbuild: 'grok-ai',
           'cursor-cli': 'cursor',
           cursor: 'cursor',
+          cartesia: 'cartesia',
         };
 
         return {
