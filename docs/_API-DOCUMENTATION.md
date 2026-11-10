@@ -9966,7 +9966,7 @@ Administrative operations.
 
 **POST** `/client-versions/refresh`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Re-inspects all client versions
 - **Response**:
 
