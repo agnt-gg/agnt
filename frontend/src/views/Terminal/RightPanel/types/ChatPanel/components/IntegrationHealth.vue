@@ -53,12 +53,12 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
-import { encrypt } from '@/views/_utils/encryption.js';
 import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
 } from '@/utils/oauthMessageOrigin.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { isPluginSignIn, connectPluginSignIn, disconnectPluginSignIn, modalSignInUi } from '@/services/pluginSignIn.js';
 
 export default {
   name: 'IntegrationHealth',
@@ -185,6 +185,9 @@ export default {
       return refreshInFlight;
     };
 
+    // A plugin's own sign-in runs in this install (services/pluginSignIn.js), never through the remote.
+    const pluginSignInUi = modalSignInUi(modal, () => refreshHealth());
+
     const showAlert = async (title, message) => {
       await modal.value.showModal({
         title,
@@ -246,23 +249,30 @@ export default {
         };
       }
 
+      // The remote catalogue first (it needs a session), then the sign-ins installed
+      // plugins declare, which live in this install and need none.
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const providers = await response.json();
+          const remote = providers.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
+          if (remote) return remote;
+        } catch (error) {
+          console.error('Error fetching provider details:', error);
+        }
+      }
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          return null;
-        }
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const providers = await response.json();
-        return providers.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
-      } catch (error) {
-        console.error('Error fetching provider details:', error);
+        const { providers = [] } = await providerAuthService.listPluginProviders();
+        return providers.find((p) => String(p?.id || '').toLowerCase() === normalizedId) || null;
+      } catch {
         return null;
       }
     };
@@ -320,6 +330,7 @@ export default {
     };
 
     const connectOAuthApp = async (app) => {
+      if (isPluginSignIn(app)) return connectPluginSignIn(app, pluginSignInUi);
       // Show instructions before connecting
       if (app.instructions) {
         const proceed = await modal.value.showModal({
@@ -334,17 +345,9 @@ export default {
       }
 
       try {
-        const token = localStorage.getItem('token');
-        // Pass origin as query parameter for reliable Electron support
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/connect/${app.id}?origin=${encodeURIComponent(window.location.origin)}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
+        // appAuth asks the remote for the sign-in URL (with this page's origin); the popup is this panel's.
+        const authUrl = await store.dispatch('appAuth/requestOAuthUrl', app.id);
+        const data = { authUrl };
         if (data.authUrl) {
           // Open OAuth in popup window
           const width = 600;
@@ -392,23 +395,14 @@ export default {
       if (!confirmDisconnect) return;
 
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.success) {
-          await showAlert('Success', `Successfully disconnected from ${app.name}`);
+        // Both throw when the disconnect did not happen.
+        if (isPluginSignIn(app)) {
+          await disconnectPluginSignIn(app.id);
           await refreshHealth();
         } else {
-          throw new Error('Disconnection failed');
+          await store.dispatch('appAuth/disconnectApp', app.id);
         }
+        await showAlert('Success', `Successfully disconnected from ${app.name}`);
       } catch (error) {
         console.error(`Error disconnecting from ${app.name}:`, error);
         await showAlert('Disconnection Error', `Failed to disconnect from ${app.name}: ${error.message}`);
@@ -416,6 +410,7 @@ export default {
     };
 
     const promptApiKey = async (app) => {
+      if (isPluginSignIn(app)) return connectPluginSignIn(app, pluginSignInUi);
       // Use instructions as the message, or fall back to custom_prompt or default
       const promptMessage = app.instructions || app.custom_prompt || `Enter API Key for ${app.name}:`;
       const apiKey = await showPrompt(`Connect to ${app.name}`, promptMessage, '', {
@@ -433,29 +428,9 @@ export default {
 
     const saveApiKey = async (app, apiKey) => {
       try {
-        const token = localStorage.getItem('token');
-        const encryptedApiKey = encrypt(apiKey);
-
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ apiKey: encryptedApiKey }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          await showAlert('Success', `API key for ${app.name} saved successfully!`);
-          await refreshHealth();
-        } else {
-          throw new Error(result.message || 'Failed to save API key');
-        }
+        // appAuth encrypts, saves, refreshes and throws with the server's reason.
+        await store.dispatch('appAuth/saveApiKey', { providerId: app.id, apiKey });
+        await showAlert('Success', `API key for ${app.name} saved successfully!`);
       } catch (error) {
         console.error(`Error saving API key for ${app.name}:`, error);
         await showAlert('Error', `Failed to save API key for ${app.name}: ${error.message}`);

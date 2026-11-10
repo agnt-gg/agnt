@@ -442,6 +442,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import providerAuthService from '@/services/providerAuthService.js';
+import { isPluginSignIn, connectPluginSignIn, disconnectPluginSignIn, modalSignInUi } from '@/services/pluginSignIn.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { describeApps } from '@/services/appCards.js';
 import AppsSection from './components/AppsSection.vue';
@@ -637,6 +638,12 @@ export default {
     };
     const oauthSearch = ref('');
     const modalRef = ref(null);
+    // A plugin's own sign-in runs in this install (services/pluginSignIn.js), never through the remote.
+    const refreshAfterPluginSignIn = async () => {
+      await store.dispatch('appAuth/refreshAfterConnect');
+      store.dispatch('appAuth/checkConnectionHealth');
+    };
+    const pluginSignInUi = modalSignInUi(modalRef, refreshAfterPluginSignIn);
     const isLoadingProviders = ref(false);
 
     // New filtering state
@@ -716,6 +723,7 @@ export default {
     }
 
     async function connectOAuthApp(app) {
+      if (isPluginSignIn(app)) return connectPluginSignIn(app, pluginSignInUi);
       try {
         // The request lives in appAuth (shared with Focused); the popup is this screen's.
         const authUrl = await store.dispatch('appAuth/requestOAuthUrl', app.id);
@@ -763,8 +771,9 @@ export default {
       });
       if (!confirmDisconnect) return;
       try {
-        // appAuth disconnects (locally and remotely) and refreshes; it throws on failure.
-        const data = await store.dispatch('appAuth/disconnectApp', app.id);
+        // appAuth disconnects remote sign-ins and refreshes; a plugin's own is disconnected here.
+        // Both throw on failure.
+        const data = isPluginSignIn(app) ? await disconnectPlugin(app) : await store.dispatch('appAuth/disconnectApp', app.id);
         if (data.success) {
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
 
@@ -783,7 +792,14 @@ export default {
       }
     }
 
+    async function disconnectPlugin(app) {
+      const result = await disconnectPluginSignIn(app.id);
+      await refreshAfterPluginSignIn();
+      return { success: true, ...result };
+    }
+
     async function promptApiKey(app) {
+      if (isPluginSignIn(app)) return connectPluginSignIn(app, pluginSignInUi);
       // Use instructions as the message, or fall back to custom_prompt or default
       const promptMessage = app.instructions || app.custom_prompt || `Enter API Key for ${app.name}:`;
       const apiKey = await showPrompt(`Connect to ${app.name}`, promptMessage, '', {

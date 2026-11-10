@@ -10,11 +10,15 @@
  *
  * Errors are surfaced, never swallowed: `error` holds the last failure for a
  * page that shows it inline, and `nav.toast` reports it everywhere else.
+ *
+ * A plugin's own sign-in (services/pluginSignIn.js) exists only in this
+ * install, so every action below runs it locally instead of through appAuth.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { CLI_DISCONNECT_ACTIONS } from './focusedModel.js';
 import { describeApps } from '@/services/appCards.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { findPluginSignIn, connectPluginSignIn, savePluginApiKey, disconnectPluginSignIn } from '@/services/pluginSignIn.js';
 import { isTrustedOAuthMessageOrigin, hasOAuthMessagePayload } from '@/utils/oauthMessageOrigin.js';
 
 const POPUP = { width: 600, height: 700 };
@@ -43,8 +47,37 @@ export function useAppSignIn({ store, nav, findCard }) {
     return false;
   }
 
+  const pluginFor = (card) => findPluginSignIn(store.state.appAuth?.allProviders, card?.providerId);
+
+  async function refreshAfterSignIn() {
+    await store.dispatch('appAuth/refreshAfterConnect').catch((e) => console.warn('[sign-in] refresh failed:', e?.message || e));
+    await store.dispatch('appAuth/checkConnectionHealth').catch((e) => console.warn('[sign-in] health check failed:', e?.message || e));
+  }
+
+  // The plugin flows ask through this page's dialogs and report through its toast.
+  const pluginUi = {
+    prompt: ({ title, message, confirmText, secret }) => nav.prompt({ title, message, confirmText, secret, placeholder: '' }),
+    confirm: ({ title, message, confirmText }) => nav.confirm({ title, message, confirmText }),
+    done: (_title, message) => nav.toast(message),
+    error: (_title, message) => fail(message),
+    refresh: refreshAfterSignIn,
+  };
+
+  /** Connect or reconnect a plugin's own sign-in; resolves true once connected. */
+  async function signInPlugin(plugin) {
+    error.value = '';
+    busy.value = true;
+    try {
+      return await connectPluginSignIn(plugin, pluginUi);
+    } finally {
+      busy.value = false;
+    }
+  }
+
   /** OAuth: the provider's consent page in a popup; resolves once it closes. */
   async function signInWithPopup(card) {
+    const plugin = pluginFor(card);
+    if (plugin) return signInPlugin(plugin);
     error.value = '';
     busy.value = true;
     let authUrl;
@@ -91,8 +124,14 @@ export function useAppSignIn({ store, nav, findCard }) {
     error.value = '';
     busy.value = true;
     try {
-      await store.dispatch('appAuth/saveApiKey', { providerId: catalogueId(card), apiKey: trimmed });
-      await store.dispatch('appAuth/checkConnectionHealth').catch((e) => console.warn('[sign-in] health check failed:', e?.message || e));
+      const plugin = pluginFor(card);
+      if (plugin) {
+        await savePluginApiKey(plugin.id, trimmed);
+        await refreshAfterSignIn();
+      } else {
+        await store.dispatch('appAuth/saveApiKey', { providerId: catalogueId(card), apiKey: trimmed });
+        await store.dispatch('appAuth/checkConnectionHealth').catch((e) => console.warn('[sign-in] health check failed:', e?.message || e));
+      }
       nav.toast(`${card.name} connected.`);
       return true;
     } catch (e) {
@@ -104,6 +143,8 @@ export function useAppSignIn({ store, nav, findCard }) {
 
   /** One dialog for the key; cancelling it does nothing. */
   async function promptForKey(card) {
+    const plugin = pluginFor(card);
+    if (plugin) return signInPlugin(plugin);
     const key = await nav.prompt({
       title: `Connect ${card.name}`,
       message: `Paste your ${card.name} API key. It is stored in your AGNT vault.`,
@@ -116,6 +157,8 @@ export function useAppSignIn({ store, nav, findCard }) {
 
   /** Connect or reconnect, by how this card signs in. */
   function signIn(card) {
+    const plugin = pluginFor(card);
+    if (plugin) return signInPlugin(plugin);
     switch (card?.connectionType) {
       case 'oauth':
         return signInWithPopup(card);
@@ -143,10 +186,14 @@ export function useAppSignIn({ store, nav, findCard }) {
     busy.value = true;
     try {
       const cliAction = CLI_DISCONNECT_ACTIONS[card.providerId];
+      const plugin = pluginFor(card);
       if (cliAction) {
         const result = await store.dispatch(cliAction);
         if (result && result.success === false) throw new Error(result.error || 'Failed to disconnect.');
         await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+      } else if (plugin) {
+        await disconnectPluginSignIn(plugin.id);
+        await refreshAfterSignIn();
       } else {
         await store.dispatch('appAuth/disconnectApp', catalogueId(card));
       }

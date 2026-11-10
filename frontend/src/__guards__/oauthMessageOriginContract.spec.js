@@ -34,12 +34,7 @@
  * back and update this file.
  */
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FRONTEND_SRC = path.resolve(HERE, '..');
+import { stripComments, sourceFiles } from './sourceScan.js';
 
 /** The dangerous operation: redeeming a code against the current user. */
 const REDEEM = 'completeRemoteOAuthCallback';
@@ -57,80 +52,8 @@ const NOT_CALL_SITES = [
   'services/providerAuthService.spec.js',
 ];
 
-/**
- * Remove comments so that prose discussing these identifiers cannot vouch for
- * a file that never calls them — and so a commented-out guard reads as absent.
- *
- * String- and template-aware on purpose: a naive `//.*$` sweep truncates any
- * line containing a URL, which would silently delete real code from the text
- * being scanned and turn this guard into a source of false passes.
- */
-function stripComments(source) {
-  let out = '';
-  let i = 0;
-  const n = source.length;
-
-  while (i < n) {
-    const ch = source[i];
-    const next = source[i + 1];
-
-    if (ch === '/' && next === '/') {
-      while (i < n && source[i] !== '\n') i++;
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      i += 2;
-      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) i++;
-      i += 2;
-      continue;
-    }
-    if (ch === "'" || ch === '"' || ch === '`') {
-      const quote = ch;
-      out += ch;
-      i++;
-      while (i < n) {
-        if (source[i] === '\\') {
-          out += source[i] + (source[i + 1] ?? '');
-          i += 2;
-          continue;
-        }
-        out += source[i];
-        if (source[i] === quote) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      continue;
-    }
-
-    out += ch;
-    i++;
-  }
-
-  return out;
-}
-
-function walk(dir, found = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'dist') continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(full, found);
-    } else if (/\.(js|vue)$/.test(entry.name)) {
-      found.push(full);
-    }
-  }
-  return found;
-}
-
 function callSites() {
-  return walk(FRONTEND_SRC)
-    .map((full) => ({
-      rel: path.relative(FRONTEND_SRC, full).split(path.sep).join('/'),
-      code: stripComments(fs.readFileSync(full, 'utf8')),
-    }))
-    .filter(({ rel, code }) => !NOT_CALL_SITES.includes(rel) && code.includes(`${REDEEM}(`));
+  return sourceFiles().filter(({ rel, code }) => !NOT_CALL_SITES.includes(rel) && code.includes(`${REDEEM}(`));
 }
 
 describe('every OAuth code redemption is behind an origin check', () => {

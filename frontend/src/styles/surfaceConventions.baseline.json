@@ -78,8 +78,6 @@
   "views/Terminal/CenterPanel/screens/Settings/components/SoundsSettings/SoundsSettings.vue": 2,
   "views/Terminal/CenterPanel/screens/Settings/components/ThemeSelector/ThemeSelector.vue": 4,
   "views/Terminal/CenterPanel/screens/Settings/components/TourSettings/TourSettings.vue": 1,
-  "views/Terminal/CenterPanel/screens/Settings/components/_OauthManager/OauthManager.vue": 1,
-  "views/Terminal/CenterPanel/screens/Settings/components/_OauthManager/components/ToggleSwitch/ToggleSwitch.vue": 1,
   "views/Terminal/CenterPanel/screens/Skills/Skills.vue": 6,
   "views/Terminal/CenterPanel/screens/Tools/Tools.vue": 10,
   "views/Terminal/CenterPanel/screens/Traces/Traces.vue": 35,

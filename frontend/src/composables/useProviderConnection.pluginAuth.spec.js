@@ -1,6 +1,6 @@
 // Connections declared by plugin manifests (`auth`): they are connected through
 // this install's /api/providers/:id/auth/* routes, and a provider the remote
-// catalogue already defines keeps its remote flow.
+// catalogue already defines keeps its remote flow (appAuth's network actions).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -25,15 +25,21 @@ const PIPEDRIVE = { id: 'pipedrive', name: 'Pipedrive', connectionType: 'apikey'
 const GA4 = { id: 'ga4', name: 'Google Analytics', connectionType: 'oauth', pluginProvided: true, needsClientCredentials: true, redirectUri: 'http://localhost:3333/cb' };
 const REMOTE_ASANA = { id: 'asana', name: 'Asana', connectionType: 'apikey' };
 
-function setup(allProviders) {
+function setup(allProviders, connectedApps = []) {
   const showModal = vi.fn();
   let api;
+  const remote = {
+    saveApiKey: vi.fn(async () => ({ success: true })),
+    requestOAuthUrl: vi.fn(async () => 'https://idp/consent'),
+    disconnectApp: vi.fn(async () => ({ success: true })),
+    disconnectProvider: vi.fn(async () => ({ success: true })),
+  };
   const store = createStore({
     modules: {
       appAuth: {
         namespaced: true,
-        state: () => ({ allProviders, connectedApps: [] }),
-        actions: { fetchAllProviders: vi.fn(), fetchConnectedApps: vi.fn(), checkConnectionHealthStream: vi.fn(), checkConnectionHealth: vi.fn() },
+        state: () => ({ allProviders, connectedApps }),
+        actions: { fetchAllProviders: vi.fn(), fetchConnectedApps: vi.fn(), checkConnectionHealthStream: vi.fn(), checkConnectionHealth: vi.fn(), ...remote },
       },
     },
   });
@@ -46,7 +52,7 @@ function setup(allProviders) {
     }),
     { global: { plugins: [store] } }
   );
-  return { wrapper, showModal, toggle: (id) => api.handleProviderToggle(id) };
+  return { wrapper, showModal, remote, toggle: (id) => api.handleProviderToggle(id) };
 }
 
 let mounted;
@@ -73,14 +79,36 @@ describe('plugin-declared connections', () => {
 
   it('keeps the remote flow for an id the remote catalogue defines', async () => {
     providerAuthService.getCapabilities.mockResolvedValue({ plugin: true, capabilities: ['status', 'connect-apikey', 'disconnect'] });
-    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ success: true }) }));
-    const { wrapper, showModal, toggle } = setup([REMOTE_ASANA]);
+    const { wrapper, showModal, remote, toggle } = setup([REMOTE_ASANA]);
     mounted = wrapper;
     showModal.mockResolvedValueOnce('asana-key').mockResolvedValue(true);
     await toggle('asana');
     await flushPromises();
     expect(providerAuthService.connect).not.toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalledWith('https://api.agnt.gg/auth/apikeys/asana', expect.objectContaining({ method: 'POST' }));
+    expect(remote.saveApiKey).toHaveBeenCalledWith(expect.anything(), { providerId: 'asana', apiKey: 'asana-key' });
+  });
+
+  it('never sends a plugin sign-in to the remote, connecting or disconnecting', async () => {
+    providerAuthService.connect.mockResolvedValue({ success: true });
+    const connecting = setup([PIPEDRIVE]);
+    mounted = connecting.wrapper;
+    connecting.showModal.mockResolvedValueOnce('pd-token').mockResolvedValue(true);
+    await connecting.toggle('pipedrive');
+    await flushPromises();
+    expect(providerAuthService.connect).toHaveBeenCalledWith('pipedrive', { apiKey: 'pd-token' });
+    mounted.unmount();
+
+    const disconnecting = setup([PIPEDRIVE], ['pipedrive']);
+    mounted = disconnecting.wrapper;
+    disconnecting.showModal.mockResolvedValue(true);
+    await disconnecting.toggle('pipedrive');
+    await flushPromises();
+    expect(disconnecting.remote.disconnectProvider).toHaveBeenCalledWith(expect.anything(), 'pipedrive');
+    for (const { remote } of [connecting, disconnecting]) {
+      expect(remote.saveApiKey).not.toHaveBeenCalled();
+      expect(remote.requestOAuthUrl).not.toHaveBeenCalled();
+      expect(remote.disconnectApp).not.toHaveBeenCalled();
+    }
   });
 
   it('collects client credentials, then signs in and polls to success', async () => {

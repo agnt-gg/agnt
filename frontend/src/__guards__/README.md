@@ -11,6 +11,9 @@ next to any one component — because they have no single owner file.
 | `uiContracts.spec.js` | Font Awesome icons must resolve; no native `<select>` (use CustomSelect); no native `title=` (use v-tooltip, whose global registration is pinned) |
 | `apiAuthContract.spec.js` | Every frontend `fetch()` to a guarded backend route must carry the Authorization token |
 | `overlayStacking.spec.js` | Panel-hosted overlays must teleport to body; screen stacking-context isolation |
+| `remoteSignInContract.spec.js` | Only appAuth calls the remote's connect / API-key / disconnect routes, and every screen using them routes plugin sign-ins through `services/pluginSignIn.js` first |
+
+Shared helpers for reading source (`stripComments`, `sourceFiles`) live in `sourceScan.js`.
 
 Notes for authors:
 - Derive paths from `import.meta.url`; `src/` is `..` from here.

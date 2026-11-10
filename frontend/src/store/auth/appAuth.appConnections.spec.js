@@ -62,6 +62,28 @@ describe('appAuth app connections', () => {
     await expect(disconnectApp({ dispatch }, 'slack')).rejects.toThrow('Disconnection failed');
   });
 
+  it('saveApiKey surfaces the server\'s reason on an HTTP error, not just the status', async () => {
+    fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Unknown provider' }) });
+    await expect(saveApiKey({ dispatch }, { providerId: 'openai', apiKey: 'x' })).rejects.toThrow('Unknown provider');
+    fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => { throw new Error('not json'); } });
+    await expect(saveApiKey({ dispatch }, { providerId: 'openai', apiKey: 'x' })).rejects.toThrow('502');
+  });
+
+  // A plugin's own sign-in exists only in this install: the remote would answer
+  // 404. The screens route it through services/pluginSignIn.js; these refuse it
+  // for any screen that forgets, before a request leaves the app.
+  it('refuses to send a plugin sign-in to the remote, for all three actions', async () => {
+    const state = { allProviders: [{ id: 'slack', name: 'Slack' }, { id: 'docusign-esign', name: 'DocuSign', pluginProvided: true }] };
+    await expect(requestOAuthUrl({ state, dispatch }, 'docusign-esign')).rejects.toThrow('DocuSign signs in through its plugin on this computer');
+    await expect(saveApiKey({ state, dispatch }, { providerId: 'DocuSign-ESign', apiKey: 'k' })).rejects.toThrow('through its plugin');
+    await expect(disconnectApp({ state, dispatch }, 'docusign-esign')).rejects.toThrow('through its plugin');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+
+    fetch.mockResolvedValueOnce(ok({ authUrl: 'https://slack/consent' }));
+    await expect(requestOAuthUrl({ state, dispatch }, 'slack')).resolves.toBe('https://slack/consent');
+  });
+
   it('refreshAfterConnect re-reads connections and the catalogue', async () => {
     await refreshAfterConnect({ dispatch });
     expect(dispatch.mock.calls.map((c) => c[0])).toEqual(['fetchConnectedApps', 'fetchAllProviders']);

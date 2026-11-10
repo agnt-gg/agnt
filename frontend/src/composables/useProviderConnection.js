@@ -7,22 +7,12 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
-import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
-import { escapeHtml } from '@/utils/vizError.js';
+import { isPluginSignIn, connectPluginSignIn, modalSignInUi } from '@/services/pluginSignIn.js';
 import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
 } from '@/utils/oauthMessageOrigin.js';
-
-// The modal renders its message as HTML. Text a plugin author wrote is
-// untrusted, so it is escaped before it gets anywhere near it.
-function pluginConnectMessage(provider, lead) {
-  const parts = [`<p>${escapeHtml(lead)}</p>`];
-  if (provider.instructions) parts.push(`<p>${escapeHtml(provider.instructions)}</p>`);
-  if (provider.helpUrl) parts.push(`<p>Where to find it: <code>${escapeHtml(provider.helpUrl)}</code></p>`);
-  return `<div style="text-align:left">${parts.join('')}</div>`;
-}
 
 export function useProviderConnection(modalRef) {
   const store = useStore();
@@ -58,6 +48,8 @@ export function useProviderConnection(modalRef) {
     })();
     return refreshInFlight;
   };
+
+  const pluginSignInUi = modalSignInUi(modalRef, () => refreshHealth());
 
   const showAlert = async (title, message) => {
     await modalRef.value.showModal({
@@ -331,92 +323,15 @@ export function useProviderConnection(modalRef) {
     }
   };
 
-  // ── plugin-declared connections ──────────────────────────
-  // Stored in this install via /api/providers/:id/auth/*, never remotely.
-
-  const connectPluginApiKey = async (providerId, provider) => {
-    const label = provider.keyLabel || 'API key';
-    const apiKey = await showPrompt(
-      `Connect ${provider.name}`,
-      pluginConnectMessage(provider, `Paste your ${provider.name} ${label}.`),
-      '',
-      { confirmText: 'Connect', inputType: 'password' },
-    );
-    if (!apiKey) return;
-    try {
-      const result = await providerAuthService.connect(providerId, { apiKey });
-      if (!result?.success) throw new Error(result?.error || 'Failed to save');
-      await refreshHealth();
-      await showAlert('Connected', `${provider.name} is connected.`);
-    } catch (error) {
-      await showAlert('Connection Failed', error?.response?.data?.error || error.message);
-    }
-  };
-
-  const connectPluginOAuth = async (providerId, provider) => {
-    let client = {};
-    if (provider.needsClientCredentials) {
-      const clientId = await showPrompt(
-        `Connect ${provider.name}`,
-        pluginConnectMessage(
-          provider,
-          `Create an OAuth app in your ${provider.name} developer settings with this redirect URI, then paste its client ID: ${provider.redirectUri || ''}`,
-        ),
-        '',
-        { confirmText: 'Next' },
-      );
-      if (!clientId) return;
-      const clientSecret = await showPrompt(`Connect ${provider.name}`, 'Paste the client secret (leave empty for a public client).', '', {
-        confirmText: 'Sign in',
-        inputType: 'password',
-      });
-      if (clientSecret === null) return;
-      client = { clientId, clientSecret: clientSecret || undefined };
-    }
-    try {
-      const { authUrl, sessionId } = await providerAuthService.startPluginOAuth(providerId, client);
-      if (window.electron?.openExternalUrl) window.electron.openExternalUrl(authUrl);
-      else window.open(authUrl, '_blank', 'noopener');
-      const confirmed = await modalRef.value.showModal({
-        title: `${provider.name} sign-in`,
-        message: `<p>Finish signing in to ${escapeHtml(provider.name)} in your browser, then come back here.</p>`,
-        confirmText: 'I have signed in',
-        cancelText: 'Cancel',
-        showCancel: true,
-      });
-      if (!confirmed) return;
-      for (let attempt = 0; attempt < 20; attempt++) {
-        const status = await providerAuthService.pollPluginOAuthStatus(providerId, sessionId);
-        if (status.status === 'success') {
-          await refreshHealth();
-          await showAlert('Connected', `${provider.name} is connected.`);
-          return;
-        }
-        if (status.status === 'error') {
-          await showAlert('Connection Failed', status.error || 'Sign-in failed.');
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-      await showAlert('Connection Failed', 'Sign-in did not complete. Try again.');
-    } catch (error) {
-      await showAlert('Connection Failed', error?.response?.data?.error || error.message);
-    }
-  };
-
-  // ── remote provider flows (unchanged) ──────────────────────
+  // ── remote provider flows ──────────────────────────────────
+  // The network calls are appAuth's; this file owns only the dialogs.
 
   // Straight to the vendor's sign-in: the button that called this was the ask.
   const connectOAuthApp = async (app) => {
     try {
-      const token = localStorage.getItem('token');
       const normalizedId = resolveProviderKey(app.id) || app.id;
-      const response = await fetch(
-        `${API_CONFIG.REMOTE_URL}/auth/connect/${normalizedId}?origin=${encodeURIComponent(window.location.origin)}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
+      const authUrl = await store.dispatch('appAuth/requestOAuthUrl', normalizedId);
+      const data = { authUrl };
       if (data.authUrl) {
         const width = 600;
         const height = 700;
@@ -455,20 +370,10 @@ export function useProviderConnection(modalRef) {
     if (!confirmDisconnect) return;
 
     try {
-      const token = localStorage.getItem('token');
       const normalizedId = resolveProviderKey(app.id) || app.id;
-      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${normalizedId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      if (data.success) {
-        await showAlert('Success', `Successfully disconnected from ${app.name}`);
-        await refreshHealth();
-      } else {
-        throw new Error('Disconnection failed');
-      }
+      // appAuth disconnects, refreshes and throws when it did not work.
+      await store.dispatch('appAuth/disconnectApp', normalizedId);
+      await showAlert('Success', `Successfully disconnected from ${app.name}`);
     } catch (error) {
       console.error(`Error disconnecting from ${app.name}:`, error);
       await showAlert('Disconnection Error', `Failed to disconnect from ${app.name}: ${error.message}`);
@@ -489,26 +394,10 @@ export function useProviderConnection(modalRef) {
 
   const saveApiKey = async (app, apiKey) => {
     try {
-      const token = localStorage.getItem('token');
-      const encryptedApiKey = encrypt(apiKey);
       const normalizedId = resolveProviderKey(app.id) || app.id;
-      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${normalizedId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ apiKey: encryptedApiKey }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const detail = result.error || result.message || result.details || `HTTP ${response.status}`;
-        console.error(`[saveApiKey] ${app.name} (${normalizedId}) failed:`, { status: response.status, result });
-        throw new Error(detail);
-      }
-      if (result.success) {
-        await showAlert('Success', `API key for ${app.name} saved successfully!`);
-        await refreshHealth();
-      } else {
-        throw new Error(result.message || 'Failed to save API key');
-      }
+      // appAuth encrypts, saves, refreshes and throws with the server's reason.
+      await store.dispatch('appAuth/saveApiKey', { providerId: normalizedId, apiKey });
+      await showAlert('Success', `API key for ${app.name} saved successfully!`);
     } catch (error) {
       console.error(`Error saving API key for ${app.name}:`, error);
       await showAlert('Error', `Failed to save API key for ${app.name}: ${error.message}`);
@@ -528,17 +417,17 @@ export function useProviderConnection(modalRef) {
     const normalizedId = String(providerId || '').toLowerCase();
     const connected = isProviderConnected(providerId);
 
+    // A plugin's own sign-in lives in this install (services/pluginSignIn.js).
+    // An id the remote catalogue also knows is not one: it keeps the remote
+    // flow, where existing keys live.
+    if (isPluginSignIn(providerDetails)) {
+      if (connected) return disconnectProvider(normalizedId, providerDetails);
+      return connectPluginSignIn(providerDetails, pluginSignInUi);
+    }
+
     // Check if this is a local CLI provider via capabilities
     try {
       const capsResult = await providerAuthService.getCapabilities(normalizedId);
-      // Only when the plugin's definition is the one in use: an id the remote
-      // catalogue also knows keeps the remote flow, where existing keys live.
-      if (capsResult?.plugin && providerDetails.pluginProvided) {
-        if (connected) return disconnectProvider(normalizedId, providerDetails);
-        const caps = capsResult.capabilities || [];
-        if (caps.includes('oauth-plugin')) return connectPluginOAuth(normalizedId, providerDetails);
-        if (caps.includes('connect-apikey')) return connectPluginApiKey(normalizedId, providerDetails);
-      }
       if (capsResult?.local) {
         if (connected) {
           return disconnectProvider(normalizedId, providerDetails);

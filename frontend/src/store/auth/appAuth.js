@@ -7,6 +7,7 @@ import { encrypt } from '@/views/_utils/encryption.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from './licenseIdentity.js';
+import { findPluginSignIn } from '@/services/pluginSignIn.js';
 
 /**
  * Which account these caches describe. `withFreshness` treats a changed
@@ -45,6 +46,17 @@ function notifyLocalBackendProviderChanged(event, providerId) {
   ).catch((err) => {
     console.warn('[appAuth] notify-changed failed:', err?.message);
   });
+}
+
+/**
+ * A plugin's own sign-in exists only in this install, so the remote catalogue
+ * would answer 404 for it. Screens route those through services/pluginSignIn.js;
+ * this stops one that forgets with a sentence instead.
+ */
+function refuseRemoteForPluginSignIn(state, providerId) {
+  const plugin = findPluginSignIn(state?.allProviders, providerId);
+  if (!plugin) return;
+  throw new Error(`${plugin.name || providerId} signs in through its plugin on this computer, not through the AGNT server.`);
 }
 
 // In-flight fetchConnectedApps call, TAGGED WITH THE SUBJECT IT IS FETCHING FOR.
@@ -515,7 +527,8 @@ const actions = {
   // confirm); the calls and the refresh after them live here, once.
 
   /** Start OAuth for an app: returns the URL the popup opens. */
-  async requestOAuthUrl(_ctx, providerId) {
+  async requestOAuthUrl({ state }, providerId) {
+    refuseRemoteForPluginSignIn(state, providerId);
     const token = localStorage.getItem('token');
     const response = await fetch(
       `${API_CONFIG.REMOTE_URL}/auth/connect/${encodeURIComponent(providerId)}?origin=${encodeURIComponent(window.location.origin)}`,
@@ -534,15 +547,16 @@ const actions = {
   },
 
   /** Save an app's API key (encrypted in transit), then refresh. */
-  async saveApiKey({ dispatch }, { providerId, apiKey }) {
+  async saveApiKey({ state, dispatch }, { providerId, apiKey }) {
+    refuseRemoteForPluginSignIn(state, providerId);
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${encodeURIComponent(providerId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ apiKey: encrypt(apiKey) }),
     });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || result.message || result.details || `HTTP error! status: ${response.status}`);
     if (!result.success) throw new Error(result.message || 'Failed to save API key');
     await dispatch('fetchConnectedApps', { forceRefresh: true });
     dispatch('checkConnectionHealth');
@@ -550,7 +564,8 @@ const actions = {
   },
 
   /** Disconnect an OAuth/API-key app (locally and remotely), then refresh. */
-  async disconnectApp({ dispatch }, providerId) {
+  async disconnectApp({ state, dispatch }, providerId) {
+    refuseRemoteForPluginSignIn(state, providerId);
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${encodeURIComponent(providerId)}`, {
       method: 'POST',
