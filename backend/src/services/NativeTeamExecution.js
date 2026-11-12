@@ -4,6 +4,13 @@ import {TeamBrokerClient} from './authorization/TeamBrokerClient.js';
 import {teamNeeds} from './authorization/TeamToolPolicy.js';
 import {encrypt,decrypt} from '../utils/encryption.js';
 import {teamRunOutcome} from './ai/runOutcome.js';
+import {getModelCost} from './ai/providerConfigs.js';
+/** An agent run's cost at list prices from the tokens it reported, or null when it cannot be priced. */
+export function runCostUsd(kind,provider,model,result){
+ if(kind!=='agent'||!result?.usage)return null;
+ const cost=getModelCost(provider,model,Number(result.usage.inputTokens)||0,Number(result.usage.outputTokens)||0);
+ return cost?cost.totalCost:null;
+}
 const refuse=(status,message,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
 export async function initializeNativeTeamExecution(repository){
  await repository.run('CREATE TABLE IF NOT EXISTS team_native_bindings(asset_id TEXT PRIMARY KEY REFERENCES team_assets(id),team_id TEXT NOT NULL,principal_id TEXT NOT NULL,principal_secret TEXT NOT NULL,connection_id TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,approved_revision INTEGER NOT NULL,approved_by TEXT NOT NULL)');
@@ -88,7 +95,7 @@ export class NativeTeamExecution {
    return engine.processWorkflowTrigger(input||{},{waitForCompletion:true});
   });
   const outcome=teamRunOutcome(result);
-  await this.repository.run('UPDATE team_native_runs SET status=?,result_json=? WHERE id=?',[outcome.status,JSON.stringify(outcome.result),runId]);return {runId,...outcome};
+  await this.repository.run('UPDATE team_native_runs SET status=?,result_json=? WHERE id=?',[outcome.status,JSON.stringify(outcome.result),runId]);return {runId,...outcome,costUsd:runCostUsd(asset.kind,binding.provider,binding.model,result)};
   }catch(error){await this.repository.run('UPDATE team_native_runs SET status=?,error=? WHERE id=?',['failed',error.message,runId]);throw error;}
  }
 }

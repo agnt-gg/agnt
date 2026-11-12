@@ -481,6 +481,17 @@ describe('board flow: work limits, waiting cards, review history', () => {
     await expect(spaces.answerStop(TEAM, 'ben', ws, card.id, { answer: 'again' })).rejects.toMatchObject({ status: 409, code: 'not_stopped' });
   });
 
+  it('run cost: priced runs add up on the card, unpriced ones are counted, and the revision stays', async () => {
+    const ws = await workspace('sales');
+    const card = await agentCard(ws, 'Quote');
+    await spaces.addRunCost(TEAM, ws, card.id, 0.25);
+    await spaces.addRunCost(TEAM, ws, card.id, 0.5);
+    await spaces.addRunCost(TEAM, ws, card.id, null);
+    await spaces.addRunCost(TEAM, ws, card.id, Number.NaN);
+    const after = await spaces.task(TEAM, 'ana', ws, card.id);
+    expect(after).toMatchObject({ runCost: 0.75, runCostUnknown: 2, revision: card.revision });
+  });
+
   it('try again: only a stopped agent card, and it clears the stop', async () => {
     const ws = await workspace('sales');
     const card = await agentCard(ws, 'Draft');
@@ -499,7 +510,7 @@ describe('board flow: work limits, waiting cards, review history', () => {
     await initializeTeamSpaces(old);
     await initializeTeamSpaces(old); // idempotent
     const columns = (await old.all('PRAGMA table_info(space_tasks)')).map((c) => c.name);
-    for (const name of ['private_to', 'status_changed_at', 'agent_state_at', 'stop_reason', 'queued_input', 'send_back_count', 'approved_at', 'decision_json', 'checks_json', 'escalated_from', 'waits_on']) expect(columns).toContain(name);
+    for (const name of ['private_to', 'status_changed_at', 'agent_state_at', 'stop_reason', 'queued_input', 'send_back_count', 'approved_at', 'decision_json', 'checks_json', 'escalated_from', 'waits_on', 'run_cost', 'run_cost_unknown']) expect(columns).toContain(name);
     expect(await old.get('SELECT status_changed_at,send_back_count FROM space_tasks WHERE id=?', ['t1'])).toEqual({ status_changed_at: '2026-02-01T00:00:00.000Z', send_back_count: 0 });
     await new Promise((resolve) => oldDb.close(() => resolve()));
   });

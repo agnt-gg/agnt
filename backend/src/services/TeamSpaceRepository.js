@@ -109,6 +109,9 @@ export async function initializeTeamSpaces(repository) {
   await addTaskColumn('checks_json', 'TEXT');
   await addTaskColumn('escalated_from', 'TEXT');
   await addTaskColumn('waits_on', 'TEXT');
+  // What the agent runs on a card cost at list prices, rework included, and how many runs could not be priced.
+  await addTaskColumn('run_cost', 'REAL NOT NULL DEFAULT 0');
+  await addTaskColumn('run_cost_unknown', 'INTEGER NOT NULL DEFAULT 0');
   await repository.run('CREATE TABLE IF NOT EXISTS space_settings(workspace_id TEXT PRIMARY KEY REFERENCES shared_workspaces(id),lead_agent_id TEXT,lead_rules TEXT NOT NULL DEFAULT \'\',updated_by TEXT NOT NULL,updated_at TEXT NOT NULL)');
   await repository.run(`CREATE TABLE IF NOT EXISTS space_column_limits(workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id),status TEXT NOT NULL CHECK(status IN ('doing','review')),max_cards INTEGER NOT NULL CHECK(max_cards BETWEEN 1 AND ${MAX_COLUMN_LIMIT}),updated_by TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(workspace_id,status))`);
   // A reply's full chat message (text parts, tool calls, images), so the teamspace chat renders
@@ -156,6 +159,8 @@ export function taskRow(row) {
     escalatedFrom: row.escalated_from || null,
     waitsOn: row.waits_on || null,
     holdingUp: row.holding_up ?? undefined,
+    runCost: row.run_cost || 0,
+    runCostUnknown: row.run_cost_unknown || 0,
   };
 }
 function commentRow(row) {
@@ -686,6 +691,19 @@ export class TeamSpaceRepository {
       await this.comment(taskId, 'person', user, 'Try again.');
       return taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId]));
     });
+  }
+
+  /**
+   * Add one agent run's cost to its card. A run that could not be priced (no usage, or a model
+   * without prices) is counted instead, so a card's cost is never shown as smaller than it was.
+   * Not an edit, so the card's revision does not change.
+   */
+  async addRunCost(teamId, workspaceId, taskId, costUsd) {
+    const priced = typeof costUsd === 'number' && Number.isFinite(costUsd) && costUsd >= 0;
+    await this.repository.run(priced
+      ? 'UPDATE space_tasks SET run_cost=run_cost+? WHERE id=? AND team_id=? AND workspace_id=?'
+      : 'UPDATE space_tasks SET run_cost_unknown=run_cost_unknown+1 WHERE id=? AND team_id=? AND workspace_id=?',
+    priced ? [costUsd, taskId, teamId, workspaceId] : [taskId, teamId, workspaceId]);
   }
 
   /** Cards waiting for room, oldest first: the order agents take them in. */

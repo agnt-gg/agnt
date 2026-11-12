@@ -372,8 +372,14 @@ export function spaceFlow(tasks = [], limits = {}, now = Date.now()) {
   const since = now - 7 * DAY_MS;
   const reviewed = tasks.filter((t) => t.approvedAt && Date.parse(t.approvedAt) >= since);
   const firstTime = reviewed.filter((t) => !t.sendBackCount).length;
+  // Cost per accepted card, over the cards whose every run could be priced (rework included).
+  const priced = reviewed.filter((t) => !t.runCostUnknown);
   return {
     open: count((t) => t.status !== 'done'),
+    doing: count((t) => t.status === 'doing'),
+    review: count((t) => t.status === 'review'),
+    costPerAccepted: priced.length ? priced.reduce((sum, t) => sum + (t.runCost || 0), 0) / priced.length : null,
+    pricedCount: priced.length,
     working: count((t) => t.agentState === 'running'),
     stopped: count((t) => t.agentState === 'blocked'),
     toReview: count((t) => t.agentState === 'waiting'),
@@ -399,6 +405,32 @@ export function teamFlowLine(flow) {
     : flow.working ? { label: 'Flowing', tone: 'green' }
     : null;
   return { text, tag };
+}
+
+/** Dollars as the KPI shows them: two decimals, and never $0.00 for a cost that is not zero. */
+export function formatUsd(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '';
+  if (value > 0 && value < 0.01) return '<$0.01';
+  return '$' + value.toFixed(2);
+}
+
+/**
+ * What an agent is doing, in words, from the cards assigned to it: stopped first (a person is
+ * needed), then waiting for approval, working, waiting for room, and idle.
+ */
+export function agentStatus(agentId, tasks = []) {
+  const mine = tasks.filter((t) => t.status !== 'done' && t.assignee?.kind === 'agent' && String(t.assignee.id) === String(agentId));
+  const pick = (state) => mine.filter((t) => t.agentState === state);
+  const more = (list) => (list.length > 1 ? ` (+${list.length - 1} more)` : '');
+  const stopped = pick('blocked');
+  if (stopped.length) return { tone: 'stopped', label: `Stopped: ${stopped[0].stopReason || 'needs a look'}${more(stopped)}`, taskId: stopped[0].id };
+  const approval = pick('waiting');
+  if (approval.length) return { tone: 'approval', label: `Needs approval: “${approval[0].title}”${more(approval)}`, taskId: approval[0].id };
+  const working = pick('running');
+  if (working.length) return { tone: 'working', label: `${working[0].escalatedFrom ? 'Deciding on' : 'Working on'} “${working[0].title}”${more(working)}`, taskId: working[0].id };
+  const queued = pick('queued');
+  if (queued.length) return { tone: 'paused', label: `Waiting: ${queued[0].stopReason || 'no room yet'}${more(queued)}`, taskId: queued[0].id };
+  return { tone: 'idle', label: 'Idle: no card assigned', taskId: null };
 }
 
 /** The drawer's mark beside a teamspace: what has stopped there, or that it is at its work limit. */

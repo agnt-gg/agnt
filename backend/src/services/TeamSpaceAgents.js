@@ -86,6 +86,12 @@ function failureText(error) {
   return 'Something went wrong while I was working on this. The run was recorded; try assigning me again.';
 }
 
+/** Cost bookkeeping never stops a run: a failure to record it is logged, and the card carries on. */
+async function recordCost(spaces, teamId, workspaceId, taskId, costUsd) {
+  if (typeof spaces.addRunCost !== 'function') return;
+  try { await spaces.addRunCost(teamId, workspaceId, taskId, costUsd); } catch (error) { console.error('[Teamspaces] could not record a run cost:', error.message); }
+}
+
 /**
  * Run one agent on one card. Never throws: every outcome is written to the
  * card, so the board is the record of what happened. `started` means the card
@@ -100,6 +106,7 @@ export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agen
     if (!started) await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'running', status: 'doing', agentId, comment: 'On it.' });
     changed();
     const run = await execute(input);
+    await recordCost(spaces, teamId, workspaceId, taskId, run?.costUsd ?? null);
     if (run?.status === 'failed') throw Object.assign(new Error(typeof run?.result?.error === 'string' ? run.result.error : 'The run failed'), { status: 422 });
     const finish = readFinishLines(resultText(run));
     if (finish.decision) {
@@ -118,6 +125,9 @@ export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agen
     return { ok: true, text };
   } catch (error) {
     if (!error?.status) console.error('[Teamspaces] agent run failed:', error?.message || error);
+    // A refusal (an error with a status) happens before any model call and costs nothing.
+    // A run that broke without one may have spent tokens nobody can price now.
+    if (!error?.status) await recordCost(spaces, teamId, workspaceId, taskId, null);
     try {
       await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'blocked', status: 'todo', agentId, comment: failureText(error), reason: stopReason(error) });
       changed();

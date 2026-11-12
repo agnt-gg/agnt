@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFinishLines, runAgentOnTask, stopReason } from './TeamSpaceAgents.js';
+import { runCostUsd } from './NativeTeamExecution.js';
+import { getModelCost } from './ai/providerConfigs.js';
 
 describe('how an agent finishes a card', () => {
   it('reads checks with any dash or a colon, keeps the reasons, and leaves the rest as the reply', () => {
@@ -37,8 +39,35 @@ describe('how an agent finishes a card', () => {
   });
 });
 
+describe('what a run cost', () => {
+  it('prices an agent run from the tokens it reported, at list prices', () => {
+    const expected = getModelCost('openai', 'gpt-6-astra', 120000, 4000).totalCost;
+    expect(expected).toBeGreaterThan(0);
+    expect(runCostUsd('agent', 'openai', 'gpt-6-astra', { usage: { inputTokens: 120000, outputTokens: 4000 } })).toBe(expected);
+  });
+
+  it('cannot price a run without usage, a model without prices, or a non-agent run', () => {
+    expect(runCostUsd('agent', 'openai', 'gpt-6-astra', { content: 'no usage' })).toBeNull();
+    expect(runCostUsd('agent', 'openai', 'no-such-model', { usage: { inputTokens: 1, outputTokens: 1 } })).toBeNull();
+    expect(runCostUsd('workflow', 'openai', 'gpt-6-astra', { usage: { inputTokens: 1, outputTokens: 1 } })).toBeNull();
+  });
+});
+
 describe('runAgentOnTask outcomes', () => {
-  const spaces = () => ({ setAgentState: vi.fn(async () => ({})), requestApproval: vi.fn(async () => ({})) });
+  const spaces = () => ({ setAgentState: vi.fn(async () => ({})), requestApproval: vi.fn(async () => ({})), addRunCost: vi.fn(async () => {}) });
+
+  it('records each run\u2019s cost on its card; a refusal costs nothing; a run that broke counts as unpriced', async () => {
+    const s = spaces();
+    await runAgentOnTask({ ...base, spaces: s, execute: async () => ({ status: 'completed', costUsd: 0.12, result: { content: 'ok' } }) });
+    expect(s.addRunCost).toHaveBeenLastCalledWith('t', 'w', 'c', 0.12);
+    await runAgentOnTask({ ...base, spaces: s, execute: async () => { throw Object.assign(new Error('Publish first'), { status: 409, code: 'publish_required' }); } });
+    expect(s.addRunCost).toHaveBeenCalledTimes(1);
+    await runAgentOnTask({ ...base, spaces: s, execute: async () => { throw new Error('socket hang up'); } });
+    expect(s.addRunCost).toHaveBeenLastCalledWith('t', 'w', 'c', null);
+    // Recording a cost can fail without stopping the card.
+    const broken = { ...spaces(), addRunCost: vi.fn(async () => { throw new Error('disk full'); }) };
+    expect(await runAgentOnTask({ ...base, spaces: broken, execute: async () => ({ status: 'completed', costUsd: 1, result: { content: 'ok' } }) })).toMatchObject({ ok: true });
+  });
   const base = { teamId: 't', workspaceId: 'w', taskId: 'c', agentId: 'a', input: 'Task: x', started: true };
 
   it('a result with checks goes to Review with the checks, stripped from the reply', async () => {
