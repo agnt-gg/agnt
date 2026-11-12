@@ -103,7 +103,7 @@ function wipLabel(spaceId) {
 function costNote(spaceId) {
   const flow = flowOf(spaceId);
   const of = flow.reviewed > flow.pricedCount ? ` ${flow.pricedCount} of ${flow.reviewed} accepted cards could be priced.` : '';
-  return `Average model cost of the runs behind each card accepted in the last 7 days, rework included, at list prices.${of}`;
+  return `Average model cost of the runs behind each card accepted in the last 7 days, rework included, at list prices before any prompt-cache savings.${of}`;
 }
 const isLead = (spaceId, agentId) => leads.value[spaceId]?.leadAgentId === String(agentId);
 const leadOptions = (spaceId) => [{ label: 'No team lead', value: '' }, ...(bySpace.value[spaceId] || []).map((a) => ({ label: a.name, value: String(a.id) }))];

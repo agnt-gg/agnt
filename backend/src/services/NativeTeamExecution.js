@@ -5,7 +5,10 @@ import {teamNeeds} from './authorization/TeamToolPolicy.js';
 import {encrypt,decrypt} from '../utils/encryption.js';
 import {teamRunOutcome} from './ai/runOutcome.js';
 import {getModelCost} from './ai/providerConfigs.js';
-/** An agent run's cost at list prices from the tokens it reported, or null when it cannot be priced. */
+/**
+ * An agent run's cost at list prices from the tokens it reported, or null when it cannot be priced.
+ * The run reports total input without a cache split, so this is the cost before prompt-cache savings.
+ */
 export function runCostUsd(kind,provider,model,result){
  if(kind!=='agent'||!result?.usage)return null;
  const cost=getModelCost(provider,model,Number(result.usage.inputTokens)||0,Number(result.usage.outputTokens)||0);
