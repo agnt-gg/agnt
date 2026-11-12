@@ -103,6 +103,13 @@ export async function initializeTeamSpaces(repository) {
   await addTaskColumn('queued_input', 'TEXT');
   await addTaskColumn('send_back_count', 'INTEGER NOT NULL DEFAULT 0');
   await addTaskColumn('approved_at', 'TEXT');
+  // Stopping for a decision: the reason and choices, the checks an agent reports with its result,
+  // the agent a team lead is deciding for, and the card this one waits on.
+  await addTaskColumn('decision_json', 'TEXT');
+  await addTaskColumn('checks_json', 'TEXT');
+  await addTaskColumn('escalated_from', 'TEXT');
+  await addTaskColumn('waits_on', 'TEXT');
+  await repository.run('CREATE TABLE IF NOT EXISTS space_settings(workspace_id TEXT PRIMARY KEY REFERENCES shared_workspaces(id),lead_agent_id TEXT,lead_rules TEXT NOT NULL DEFAULT \'\',updated_by TEXT NOT NULL,updated_at TEXT NOT NULL)');
   await repository.run(`CREATE TABLE IF NOT EXISTS space_column_limits(workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id),status TEXT NOT NULL CHECK(status IN ('doing','review')),max_cards INTEGER NOT NULL CHECK(max_cards BETWEEN 1 AND ${MAX_COLUMN_LIMIT}),updated_by TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(workspace_id,status))`);
   // A reply's full chat message (text parts, tool calls, images), so the teamspace chat renders
   // exactly what the main chat does. `body` stays the plain text for search, inbox and previews.
@@ -122,6 +129,8 @@ function parseMessageJson(json) {
   if (!json) return null;
   try { return JSON.parse(json); } catch { return null; }
 }
+const parseJson = parseMessageJson;
+const brief = (row) => ({ id: row.id, title: row.title, status: row.status, workspaceId: row.workspace_id });
 
 const now = () => new Date().toISOString();
 
@@ -142,6 +151,11 @@ export function taskRow(row) {
     stopReason: row.stop_reason || null,
     sendBackCount: row.send_back_count || 0,
     approvedAt: row.approved_at || null,
+    decision: parseJson(row.decision_json),
+    checks: parseJson(row.checks_json) || [],
+    escalatedFrom: row.escalated_from || null,
+    waitsOn: row.waits_on || null,
+    holdingUp: row.holding_up ?? undefined,
   };
 }
 function commentRow(row) {
@@ -263,7 +277,8 @@ export class TeamSpaceRepository {
     return r.transaction(async () => {
       await r.member(teamId, user);
       await this.workspace(teamId, workspaceId);
-      const rows = await r.all(`SELECT t.*,(SELECT COUNT(*) FROM space_task_comments c WHERE c.task_id=t.id) AS comment_count
+      const rows = await r.all(`SELECT t.*,(SELECT COUNT(*) FROM space_task_comments c WHERE c.task_id=t.id) AS comment_count,
+        (SELECT COUNT(*) FROM space_tasks w WHERE w.waits_on=t.id AND w.deleted_at IS NULL AND w.status<>'done') AS holding_up
         FROM space_tasks t WHERE t.workspace_id=? AND t.team_id=? AND t.deleted_at IS NULL AND ${own ? 't.private_to=?' : 't.private_to IS NULL'} ORDER BY t.updated_at DESC LIMIT 500`,
       own ? [workspaceId, teamId, user] : [workspaceId, teamId]);
       return rows.map(taskRow);
@@ -277,7 +292,10 @@ export class TeamSpaceRepository {
       await this.workspace(teamId, workspaceId);
       const row = await this.taskIn(teamId, workspaceId, taskId, user);
       const comments = await r.all('SELECT * FROM space_task_comments WHERE task_id=? ORDER BY created_at LIMIT 500', [taskId]);
-      return { ...taskRow(row), comments: comments.map(commentRow) };
+      // What waits on this card, and what this card waits on.
+      const heldUp = await r.all("SELECT id,title,status,workspace_id FROM space_tasks WHERE waits_on=? AND team_id=? AND deleted_at IS NULL AND private_to IS NULL AND status<>'done' ORDER BY created_at LIMIT 50", [taskId, teamId]);
+      const waitsOn = row.waits_on ? await r.get('SELECT id,title,status,workspace_id FROM space_tasks WHERE id=? AND team_id=? AND deleted_at IS NULL', [row.waits_on, teamId]) : null;
+      return { ...taskRow(row), comments: comments.map(commentRow), heldUp: heldUp.map(brief), waitsOnTask: waitsOn ? brief(waitsOn) : null };
     });
   }
 
@@ -328,6 +346,7 @@ export class TeamSpaceRepository {
       if (!TASK_STATUSES.includes(status)) fail(400, 'Invalid status');
       const due = input.due === undefined ? row.due : text(input.due, 60, 'due date', { optional: true });
       const assignee = input.assignee === undefined ? (row.assignee_kind ? { kind: row.assignee_kind, id: row.assignee_id } : null) : parseAssignee(input.assignee);
+      const waitsOn = input.waitsOn === undefined ? row.waits_on : await this.dependency(teamId, workspaceId, taskId, input.waitsOn);
       if (row.private_to && assignee && !(assignee.kind === 'person' && assignee.id === user)) fail(400, 'A private task can only be assigned to you');
       const assigneeChanged = input.assignee !== undefined && (assignee?.kind !== (row.assignee_kind || undefined) || assignee?.id !== (row.assignee_id || undefined));
       const statusChanged = status !== row.status;
@@ -335,11 +354,12 @@ export class TeamSpaceRepository {
       // agent's run state: the person has taken the card over.
       const clearAgent = assigneeChanged || status === 'done' || (row.agent_state === 'queued' && statusChanged);
       const at = now();
-      await r.run('UPDATE space_tasks SET title=?,status=?,due=?,assignee_kind=?,assignee_id=?,agent_state=?,agent_state_at=?,stop_reason=?,queued_input=?,status_changed_at=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?',
+      await r.run('UPDATE space_tasks SET title=?,status=?,due=?,assignee_kind=?,assignee_id=?,agent_state=?,agent_state_at=?,stop_reason=?,queued_input=?,decision_json=?,escalated_from=?,status_changed_at=?,waits_on=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?',
         [title, status, due, assignee?.kind || null, assignee?.id || null,
           clearAgent ? null : row.agent_state, clearAgent && row.agent_state ? at : row.agent_state_at,
           clearAgent ? null : row.stop_reason, clearAgent ? null : row.queued_input,
-          statusChanged ? at : row.status_changed_at, at, taskId, row.revision]);
+          clearAgent ? null : row.decision_json, clearAgent ? null : row.escalated_from,
+          statusChanged ? at : row.status_changed_at, waitsOn, at, taskId, row.revision]);
       if (assigneeChanged) {
         await this.comment(taskId, 'system', user, assignee ? `Assigned to ${assignee.kind === 'agent' ? 'an agent' : 'a teammate'}.` : 'Unassigned.');
         if (assignee?.kind === 'person' && assignee.id !== user) await this.notify(teamId, [{ userId: assignee.id, kind: 'assigned', actor: { kind: 'person', id: user }, summary: title, workspaceId, target: { kind: 'task', id: taskId } }]);
@@ -374,7 +394,7 @@ export class TeamSpaceRepository {
       if (row.agent_state === 'running') fail(409, 'An agent is working on this card. Move it when it finishes.', 'agent_running');
       const keepPerson = row.assignee_kind === 'person' && personStays && (!toPrivate || row.assignee_id === user);
       const at = now();
-      await r.run('UPDATE space_tasks SET workspace_id=?,private_to=?,assignee_kind=?,assignee_id=?,agent_state=NULL,agent_state_at=?,stop_reason=NULL,queued_input=NULL,source_message_id=NULL,revision=revision+1,updated_at=? WHERE id=? AND revision=?',
+      await r.run('UPDATE space_tasks SET workspace_id=?,private_to=?,assignee_kind=?,assignee_id=?,agent_state=NULL,agent_state_at=?,stop_reason=NULL,queued_input=NULL,decision_json=NULL,escalated_from=NULL,waits_on=NULL,source_message_id=NULL,revision=revision+1,updated_at=? WHERE id=? AND revision=?',
         [input.to, toPrivate ? user : null, keepPerson ? 'person' : null, keepPerson ? row.assignee_id : null, row.agent_state ? at : row.agent_state_at, at, taskId, row.revision]);
       // The chat message it came from stays where it was said; it no longer points at the card.
       if (row.source_message_id) await r.run('UPDATE space_messages SET task_id=NULL WHERE id=? AND task_id=?', [row.source_message_id, taskId]);
@@ -430,14 +450,15 @@ export class TeamSpaceRepository {
    * The agent run lifecycle (TeamSpaceAgents).
    * `reason` says why an agent stopped, in words the board shows as "Stopped: <reason>".
    */
-  setAgentState(teamId, workspaceId, taskId, { state, status, result, comment, agentId, reason = null }) {
+  setAgentState(teamId, workspaceId, taskId, { state, status, result, comment, agentId, reason = null, decision = null, checks }) {
     const r = this.repository;
     return r.transaction(async () => {
       const row = await this.taskIn(teamId, workspaceId, taskId);
       const nextStatus = status || row.status;
       const at = now();
-      await r.run('UPDATE space_tasks SET agent_state=?,agent_state_at=?,stop_reason=?,queued_input=NULL,status=?,status_changed_at=?,result_text=COALESCE(?,result_text),revision=revision+1,updated_at=? WHERE id=?',
-        [state, at, reason ? String(reason).slice(0, 300) : null, nextStatus, nextStatus !== row.status ? at : row.status_changed_at,
+      await r.run('UPDATE space_tasks SET agent_state=?,agent_state_at=?,stop_reason=?,queued_input=NULL,decision_json=?,checks_json=COALESCE(?,checks_json),status=?,status_changed_at=?,result_text=COALESCE(?,result_text),revision=revision+1,updated_at=? WHERE id=?',
+        [state, at, reason ? String(reason).slice(0, 300) : null, decision ? JSON.stringify(decision) : null,
+          checks === undefined ? null : JSON.stringify(checks), nextStatus, nextStatus !== row.status ? at : row.status_changed_at,
           result === undefined ? null : String(result).slice(0, 100000), at, taskId]);
       if (comment) await this.comment(taskId, 'agent', agentId, comment);
       return taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId]));
@@ -546,10 +567,124 @@ export class TeamSpaceRepository {
         if (!alreadyWaiting) await this.comment(taskId, 'agent', agentId, `Waiting to start: ${reason}.`);
         return { started: false, task: taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId])) };
       }
-      await r.run("UPDATE space_tasks SET agent_state='running',agent_state_at=?,stop_reason=NULL,queued_input=NULL,status='doing',status_changed_at=?,revision=revision+1,updated_at=? WHERE id=?",
+      // A team lead deciding for another agent keeps the question it is answering.
+      await r.run("UPDATE space_tasks SET agent_state='running',agent_state_at=?,stop_reason=NULL,queued_input=NULL,decision_json=CASE WHEN escalated_from IS NULL THEN NULL ELSE decision_json END,checks_json=NULL,status='doing',status_changed_at=?,revision=revision+1,updated_at=? WHERE id=?",
         [at, row.status === 'doing' ? row.status_changed_at : at, at, taskId]);
       await this.comment(taskId, 'agent', agentId, 'On it.');
       return { started: true, task: taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId])) };
+    });
+  }
+
+  // ── Stops: the team lead decides first, then a person ──────────────────────────
+
+  /** A card this one may wait on: on the same board, live, not itself, and never in a loop. */
+  async dependency(teamId, workspaceId, taskId, value) {
+    if (value === null || value === '') return null;
+    if (typeof value !== 'string' || value.length > 100) fail(400, 'Pick a card to wait on');
+    if (value === taskId) fail(400, 'A card cannot wait on itself');
+    const target = await this.repository.get('SELECT id,waits_on FROM space_tasks WHERE id=? AND team_id=? AND workspace_id=? AND deleted_at IS NULL AND private_to IS NULL', [value, teamId, workspaceId]);
+    if (!target) fail(404, 'That card is not on this board');
+    let next = target.waits_on;
+    for (let hops = 0; next && hops < 50; hops++) {
+      if (next === taskId) fail(400, 'That would make these cards wait on each other');
+      next = (await this.repository.get('SELECT waits_on FROM space_tasks WHERE id=?', [next]))?.waits_on;
+    }
+    return target.id;
+  }
+
+  /** The teamspace's team lead (an agent that answers stops first) and its standing rules. */
+  async readSettings(workspaceId) {
+    const row = await this.repository.get('SELECT lead_agent_id,lead_rules FROM space_settings WHERE workspace_id=?', [workspaceId]);
+    return { leadAgentId: row?.lead_agent_id || null, leadRules: row?.lead_rules || '' };
+  }
+
+  lead(teamId, user, workspaceId) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      await r.member(teamId, user);
+      await this.workspace(teamId, workspaceId);
+      return this.readSettings(workspaceId);
+    });
+  }
+
+  /** Set the team lead and its rules; leaving `rules` out keeps them. */
+  setLead(teamId, user, workspaceId, { agentId, rules }) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      await r.member(teamId, user, MANAGERS);
+      await this.workspace(teamId, workspaceId);
+      if (agentId !== null && (typeof agentId !== 'string' || !agentId || agentId.length > 200)) fail(400, 'Pick an agent to lead the team');
+      const written = rules === undefined ? (await this.readSettings(workspaceId)).leadRules : text(rules, 1000, 'rules', { optional: true });
+      await r.run('INSERT INTO space_settings(workspace_id,lead_agent_id,lead_rules,updated_by,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET lead_agent_id=excluded.lead_agent_id,lead_rules=excluded.lead_rules,updated_by=excluded.updated_by,updated_at=excluded.updated_at',
+        [workspaceId, agentId, written, user, now()]);
+      await r.event(teamId, user, 'space.lead_changed', workspaceId);
+      return this.readSettings(workspaceId);
+    });
+  }
+
+  /** One card with its latest thread, for the steps after a run. */
+  async latestCard(teamId, workspaceId, taskId) {
+    const row = await this.taskIn(teamId, workspaceId, taskId);
+    const comments = await this.repository.all('SELECT * FROM space_task_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 12', [taskId]);
+    return { ...taskRow(row), comments: comments.reverse().map(commentRow) };
+  }
+
+  /** The team lead takes a stopped card, to decide for the agent that stopped. */
+  handToLead(teamId, workspaceId, taskId, { leadAgentId, fromAgentId }) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      await this.taskIn(teamId, workspaceId, taskId);
+      await r.run("UPDATE space_tasks SET assignee_kind='agent',assignee_id=?,escalated_from=?,revision=revision+1,updated_at=? WHERE id=?", [leadAgentId, fromAgentId, now(), taskId]);
+      await this.comment(taskId, 'system', fromAgentId, 'Asked the team lead to decide first.');
+      return taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId]));
+    });
+  }
+
+  /** The lead decided: the card goes back to the agent that stopped. Returns the card and the stop it answered. */
+  returnFromLead(teamId, workspaceId, taskId, { decision }) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      const row = await this.taskIn(teamId, workspaceId, taskId);
+      if (!row.escalated_from) fail(409, 'No team lead is deciding on this card', 'not_escalated');
+      const at = now();
+      await r.run("UPDATE space_tasks SET assignee_kind='agent',assignee_id=?,escalated_from=NULL,agent_state=NULL,agent_state_at=?,stop_reason=NULL,decision_json=NULL,revision=revision+1,updated_at=? WHERE id=?", [row.escalated_from, at, at, taskId]);
+      await this.comment(taskId, 'agent', row.assignee_id, `Decided: ${decision}`);
+      return { task: taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId])), stop: parseJson(row.decision_json) };
+    });
+  }
+
+  /**
+   * A person answers a stopped card: one of the choices it offered, or their own words. The card goes
+   * to the agent that first stopped (not a team lead who passed it on), which continues with the answer.
+   */
+  answerStop(teamId, user, workspaceId, taskId, { answer }) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      await r.member(teamId, user, WRITERS);
+      await this.workspace(teamId, workspaceId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
+      if (row.agent_state !== 'blocked' || !row.decision_json || row.assignee_kind !== 'agent') fail(409, 'Nothing on this card is waiting for a decision', 'not_stopped');
+      const content = text(answer, 1000, 'answer');
+      const at = now();
+      await r.run("UPDATE space_tasks SET assignee_kind='agent',assignee_id=?,escalated_from=NULL,agent_state=NULL,agent_state_at=?,stop_reason=NULL,decision_json=NULL,revision=revision+1,updated_at=? WHERE id=?", [row.escalated_from || row.assignee_id, at, at, taskId]);
+      await this.comment(taskId, 'person', user, `Decided: ${content}`);
+      await r.event(teamId, user, 'task.answered', taskId);
+      return { task: taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId])), stop: parseJson(row.decision_json), answer: content };
+    });
+  }
+
+  /** Try a card again with the agent that stopped on it (a run that failed, not a question). */
+  retryStop(teamId, user, workspaceId, taskId) {
+    const r = this.repository;
+    return r.transaction(async () => {
+      await r.member(teamId, user, WRITERS);
+      await this.workspace(teamId, workspaceId);
+      const row = await this.taskIn(teamId, workspaceId, taskId, user);
+      if (row.agent_state !== 'blocked' || row.assignee_kind !== 'agent') fail(409, 'Only a stopped agent card can be tried again', 'not_stopped');
+      const at = now();
+      await r.run('UPDATE space_tasks SET agent_state=NULL,agent_state_at=?,stop_reason=NULL,decision_json=NULL,revision=revision+1,updated_at=? WHERE id=?', [at, at, taskId]);
+      await this.comment(taskId, 'person', user, 'Try again.');
+      return taskRow(await r.get('SELECT * FROM space_tasks WHERE id=?', [taskId]));
     });
   }
 

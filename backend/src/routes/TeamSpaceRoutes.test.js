@@ -258,7 +258,7 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     await initializeTeamWorkspaces(repository); await initializeTeamSpaces(repository);
     await repository.run("INSERT INTO teams VALUES('team','T','owner','now')");
     await repository.run("INSERT INTO shared_workspaces(id,team_id,name,created_by) VALUES('ws','team','Sales','owner')");
-    const roles = new Map([['ana', 'member'], ['ben', 'member']]);
+    const roles = new Map([['ana', 'member'], ['ben', 'member'], ['owner', 'owner']]);
     const pending = [];
     const annieCalls = [];
     const app = express(); app.use(express.json());
@@ -278,8 +278,9 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     const realtime = { members: async () => [...roles.keys()], space: vi.fn(async () => {}), inbox: vi.fn() };
     mountTeamSpaceRoutes(router, {
       handler, realtime,
-      workspaceAgents: async () => [{ id: 'proposal', name: 'Proposal Agent', kind: 'agent', status: 'published' }],
-      agentExecutor: () => executor,
+      workspaceAgents: async () => [{ id: 'proposal', name: 'Proposal Agent', kind: 'agent', status: 'published' }, { id: 'lead', name: 'Sales Lead', kind: 'agent', status: 'published' }],
+      // The executor is told which agent runs, so a test can answer as the agent or as its lead.
+      agentExecutor: (_repo, _req, _user, agentId) => (input) => executor(input, agentId),
       schedule: (fn) => pending.push(fn()),
       // A stub turn: whatever text the test supplies, streamed into the real reducing transport.
       askAnnie: async (input) => { annieCalls.push(input); const text = await annie(input); input.transport.send('content_delta', { delta: text }); return input.transport.outcome(); },
@@ -393,6 +394,71 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
       expect(runs).toBe(2);
       expect((await request(`/team/workspaces/ws/tasks/${waiting.id}`)).body.agentState).toBe('waiting');
     }, async () => { runs++; return { status: 'completed', result: { content: 'ok' } }; });
+  });
+
+  it('a stop goes to the team lead first; its decision sends the agent on, and only that result asks for approval', () => {
+    const calls = [];
+    return agentFixture(async ({ request, settle }) => {
+      expect((await request('/team/workspaces/ws/lead', 'PUT', { agentId: 'lead', rules: 'Settle price gaps under 15%.' }, 'ana')).status).toBe(403);
+      expect((await request('/team/workspaces/ws/lead', 'PUT', { agentId: 'ghost' }, 'owner')).status).toBe(400);
+      expect((await request('/team/workspaces/ws/lead', 'PUT', { agentId: 'lead', rules: 'Settle price gaps under 15%.' }, 'owner')).body).toEqual({ leadAgentId: 'lead', leadRules: 'Settle price gaps under 15%.' });
+      const task = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'Quote for Contoso', assignee: { kind: 'agent', id: 'proposal' } })).body;
+      await settle();
+      expect(calls.map((c) => c.agentId)).toEqual(['proposal', 'lead', 'proposal']);
+      expect(calls[1].input).toMatch(/Why it stopped: prices disagree/);
+      expect(calls[1].input).toMatch(/Settle price gaps under 15%/);
+      expect(calls[2].input).toMatch(/Your team lead decided on what you stopped on \(prices disagree\):\nUse \$34/);
+      const detail = (await request(`/team/workspaces/ws/tasks/${task.id}`)).body;
+      expect(detail).toMatchObject({ status: 'review', agentState: 'waiting', assignee: { kind: 'agent', id: 'proposal' }, result: 'Quote at $34.', escalatedFrom: null });
+      expect(detail.checks).toEqual([{ label: 'Prices match', ok: true, detail: '' }]);
+      expect((await request('/team/inbox')).body.filter((i) => i.kind === 'approval').map((i) => i.state)).toEqual(['pending']);
+    }, async (input, agentId) => {
+      calls.push({ agentId, input });
+      if (agentId === 'lead') return { status: 'completed', result: { content: 'Use $34: the quote is signed.' } };
+      if (calls.length === 1) return { status: 'completed', result: { content: 'Two prices.\nDECISION NEEDED: prices disagree\nOPTION: Use $34\nOPTION: Use $38' } };
+      return { status: 'completed', result: { content: 'Quote at $34.\nCHECK: Prices match \u2014 passed' } };
+    });
+  });
+
+  it('when the lead cannot decide either, a person answers; the agent that first stopped carries on, and the answer can become a lead rule', () => {
+    const calls = [];
+    return agentFixture(async ({ request, settle }) => {
+      await request('/team/workspaces/ws/lead', 'PUT', { agentId: 'lead', rules: '' }, 'owner');
+      const task = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'Quote', assignee: { kind: 'agent', id: 'proposal' } }, 'owner')).body;
+      await settle();
+      let detail = (await request(`/team/workspaces/ws/tasks/${task.id}`)).body;
+      expect(detail).toMatchObject({ agentState: 'blocked', stopReason: 'only a person can change a signed price', assignee: { kind: 'agent', id: 'lead' }, escalatedFrom: 'proposal' });
+      expect(detail.decision.options).toEqual(['Keep $34', 'Use $38']);
+      expect((await request(`/team/workspaces/ws/tasks/${task.id}/answer`, 'POST', { answer: 'Keep $34', addRule: true }, 'ana')).status).toBe(403);
+      const answered = await request(`/team/workspaces/ws/tasks/${task.id}/answer`, 'POST', { answer: 'Keep $34', addRule: true }, 'owner');
+      expect(answered.status).toBe(200);
+      await settle();
+      expect(calls.map((c) => c.agentId)).toEqual(['proposal', 'lead', 'proposal']);
+      expect(calls[2].input).toMatch(/A person decided on what you stopped on \(only a person can change a signed price\): Keep \$34/);
+      detail = (await request(`/team/workspaces/ws/tasks/${task.id}`)).body;
+      expect(detail).toMatchObject({ status: 'review', agentState: 'waiting', assignee: { kind: 'agent', id: 'proposal' } });
+      expect((await request('/team/workspaces/ws/lead')).body.leadRules).toBe('- When only a person can change a signed price: Keep $34');
+      expect(detail.comments.map((c) => c.body)).toContain('Decided: Keep $34');
+    }, async (input, agentId) => {
+      calls.push({ agentId, input });
+      if (agentId === 'lead') return { status: 'completed', result: { content: 'DECISION NEEDED: only a person can change a signed price\nOPTION: Keep $34\nOPTION: Use $38' } };
+      if (calls.length === 1) return { status: 'completed', result: { content: 'DECISION NEEDED: prices disagree\nOPTION: Use $34' } };
+      return { status: 'completed', result: { content: 'Quote at $34.' } };
+    });
+  });
+
+  it('a stop with no team lead waits for a person; Try again reruns a failed card', () => {
+    let n = 0;
+    return agentFixture(async ({ request, settle }) => {
+      const task = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'Draft', assignee: { kind: 'agent', id: 'proposal' } })).body;
+      await settle();
+      expect((await request(`/team/workspaces/ws/tasks/${task.id}`)).body).toMatchObject({ agentState: 'blocked', stopReason: 'The run failed', decision: null });
+      // Answering is for questions; a failed run is tried again.
+      expect((await request(`/team/workspaces/ws/tasks/${task.id}/answer`, 'POST', { answer: 'x' })).status).toBe(409);
+      expect((await request(`/team/workspaces/ws/tasks/${task.id}/retry`, 'POST', {})).status).toBe(200);
+      await settle();
+      expect((await request(`/team/workspaces/ws/tasks/${task.id}`)).body).toMatchObject({ status: 'review', agentState: 'waiting' });
+    }, async () => (++n === 1 ? { status: 'failed', result: { error: 'The run failed' } } : { status: 'completed', result: { content: 'ok' } }));
   });
 
   it('sending a result back runs the agent again with the note', () => agentFixture(async ({ request, settle }) => {

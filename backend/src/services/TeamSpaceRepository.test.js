@@ -425,6 +425,70 @@ describe('board flow: work limits, waiting cards, review history', () => {
     expect(await spaces.waitingCards(TEAM, ws)).toEqual([]);
   });
 
+  it('waits on: same board only, never itself or a loop; the held-up card counts and lists what waits on it', async () => {
+    const ws = await workspace('sales');
+    const other = await workspace('ops');
+    const quote = await spaces.createTask(TEAM, 'ana', ws, { title: 'Quote' });
+    const send = await spaces.createTask(TEAM, 'ana', ws, { title: 'Send quote' });
+    const forecast = await spaces.createTask(TEAM, 'ana', ws, { title: 'Forecast' });
+    const elsewhere = await spaces.createTask(TEAM, 'ana', other, { title: 'Elsewhere' });
+    await spaces.updateTask(TEAM, 'ana', ws, send.id, { waitsOn: quote.id, expectedRevision: send.revision });
+    await spaces.updateTask(TEAM, 'ana', ws, forecast.id, { waitsOn: send.id, expectedRevision: forecast.revision });
+    await expect(spaces.updateTask(TEAM, 'ana', ws, quote.id, { waitsOn: quote.id, expectedRevision: quote.revision })).rejects.toMatchObject({ status: 400 });
+    await expect(spaces.updateTask(TEAM, 'ana', ws, quote.id, { waitsOn: forecast.id, expectedRevision: quote.revision })).rejects.toMatchObject({ status: 400, message: 'That would make these cards wait on each other' });
+    await expect(spaces.updateTask(TEAM, 'ana', ws, quote.id, { waitsOn: elsewhere.id, expectedRevision: quote.revision })).rejects.toMatchObject({ status: 404 });
+    const board = await spaces.tasks(TEAM, 'ana', ws);
+    expect(board.find((t) => t.id === quote.id).holdingUp).toBe(1);
+    const detail = await spaces.task(TEAM, 'ana', ws, quote.id);
+    expect(detail.heldUp.map((c) => c.title)).toEqual(['Send quote']);
+    expect((await spaces.task(TEAM, 'ana', ws, send.id)).waitsOnTask).toMatchObject({ id: quote.id, title: 'Quote' });
+    const cleared = (await spaces.updateTask(TEAM, 'ana', ws, send.id, { waitsOn: null, expectedRevision: (await spaces.task(TEAM, 'ana', ws, send.id)).revision })).task;
+    expect(cleared.waitsOn).toBeNull();
+  });
+
+  it('the team lead: set, change and remove it; its rules stay', async () => {
+    const ws = await workspace('sales');
+    expect(await spaces.lead(TEAM, 'vic', ws)).toEqual({ leadAgentId: null, leadRules: '' });
+    await expect(spaces.setLead(TEAM, 'ana', ws, { agentId: 'lead-1', rules: 'x' })).rejects.toMatchObject({ status: 403 });
+    expect(await spaces.setLead(TEAM, 'admin', ws, { agentId: 'lead-1', rules: 'Settle price gaps under 15%.' })).toEqual({ leadAgentId: 'lead-1', leadRules: 'Settle price gaps under 15%.' });
+    // Changing only the lead keeps the rules; removing the lead keeps them too.
+    expect(await spaces.setLead(TEAM, 'owner', ws, { agentId: 'lead-2' })).toEqual({ leadAgentId: 'lead-2', leadRules: 'Settle price gaps under 15%.' });
+    expect(await spaces.setLead(TEAM, 'owner', ws, { agentId: null })).toEqual({ leadAgentId: null, leadRules: 'Settle price gaps under 15%.' });
+  });
+
+  it('a stop: the lead takes it for the agent, its decision hands it back; a person\u2019s answer goes to the agent that first stopped', async () => {
+    const ws = await workspace('sales');
+    const card = await agentCard(ws, 'Quote');
+    const stop = { reason: 'prices disagree', options: ['Use $34', 'Use $38'] };
+    await spaces.setAgentState(TEAM, ws, card.id, { state: 'blocked', status: 'todo', agentId: 'agent-1', comment: 'Two prices.', reason: stop.reason, decision: stop });
+    const handed = await spaces.handToLead(TEAM, ws, card.id, { leadAgentId: 'lead-1', fromAgentId: 'agent-1' });
+    expect(handed).toMatchObject({ assignee: { kind: 'agent', id: 'lead-1' }, escalatedFrom: 'agent-1', decision: stop });
+    const back = await spaces.returnFromLead(TEAM, ws, card.id, { decision: 'Use $34: the quote is signed.' });
+    expect(back.stop).toEqual(stop);
+    expect(back.task).toMatchObject({ assignee: { kind: 'agent', id: 'agent-1' }, escalatedFrom: null, agentState: null, decision: null });
+    const thread = (await spaces.task(TEAM, 'ana', ws, card.id)).comments.map((c) => [c.author.kind, c.body]);
+    expect(thread).toContainEqual(['system', 'Asked the team lead to decide first.']);
+    expect(thread).toContainEqual(['agent', 'Decided: Use $34: the quote is signed.']);
+
+    // The lead could not decide either: the person answers, and the card goes to the agent that first stopped.
+    await spaces.setAgentState(TEAM, ws, card.id, { state: 'blocked', status: 'todo', agentId: 'agent-1', reason: stop.reason, decision: stop });
+    await spaces.handToLead(TEAM, ws, card.id, { leadAgentId: 'lead-1', fromAgentId: 'agent-1' });
+    await spaces.setAgentState(TEAM, ws, card.id, { state: 'blocked', status: 'todo', agentId: 'lead-1', reason: 'only a person can change a signed price', decision: { reason: 'only a person can change a signed price', options: ['Keep $34'] } });
+    await expect(spaces.answerStop(TEAM, 'vic', ws, card.id, { answer: 'Keep $34' })).rejects.toMatchObject({ status: 403 });
+    const answered = await spaces.answerStop(TEAM, 'ben', ws, card.id, { answer: 'Keep $34' });
+    expect(answered.task).toMatchObject({ assignee: { kind: 'agent', id: 'agent-1' }, escalatedFrom: null, agentState: null });
+    expect(answered.stop.reason).toBe('only a person can change a signed price');
+    await expect(spaces.answerStop(TEAM, 'ben', ws, card.id, { answer: 'again' })).rejects.toMatchObject({ status: 409, code: 'not_stopped' });
+  });
+
+  it('try again: only a stopped agent card, and it clears the stop', async () => {
+    const ws = await workspace('sales');
+    const card = await agentCard(ws, 'Draft');
+    await expect(spaces.retryStop(TEAM, 'ana', ws, card.id)).rejects.toMatchObject({ status: 409 });
+    await spaces.setAgentState(TEAM, ws, card.id, { state: 'blocked', status: 'todo', agentId: 'agent-1', reason: 'the run failed' });
+    expect(await spaces.retryStop(TEAM, 'ana', ws, card.id)).toMatchObject({ agentState: null, stopReason: null });
+  });
+
   it('upgrades an existing board in place: new columns added, column time backfilled from the last update', async () => {
     const oldDb = new sqlite3.Database(':memory:');
     const old = new TeamRepository(oldDb);
@@ -435,7 +499,7 @@ describe('board flow: work limits, waiting cards, review history', () => {
     await initializeTeamSpaces(old);
     await initializeTeamSpaces(old); // idempotent
     const columns = (await old.all('PRAGMA table_info(space_tasks)')).map((c) => c.name);
-    for (const name of ['private_to', 'status_changed_at', 'agent_state_at', 'stop_reason', 'queued_input', 'send_back_count', 'approved_at']) expect(columns).toContain(name);
+    for (const name of ['private_to', 'status_changed_at', 'agent_state_at', 'stop_reason', 'queued_input', 'send_back_count', 'approved_at', 'decision_json', 'checks_json', 'escalated_from', 'waits_on']) expect(columns).toContain(name);
     expect(await old.get('SELECT status_changed_at,send_back_count FROM space_tasks WHERE id=?', ['t1'])).toEqual({ status_changed_at: '2026-02-01T00:00:00.000Z', send_back_count: 0 });
     await new Promise((resolve) => oldDb.close(() => resolve()));
   });

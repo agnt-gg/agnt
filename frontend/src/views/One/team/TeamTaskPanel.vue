@@ -19,10 +19,52 @@
           <input v-model="due" class="field" style="padding: 5px 9px; font-size: 13px" placeholder="e.g. Fri" aria-label="Due" :readonly="!canWrite" @keydown.enter="$event.target.blur()" @blur="saveDue" />
           <span>Visible to</span>
           <VisibleToSelect :model-value="scopeValue" :options="scopeOptions" :disabled="!canMove || busy" @change="move" />
+          <template v-if="!task.private">
+            <span>Waits on</span>
+            <CustomSelect :model-value="task.waitsOn || ''" :options="waitsOnOptions" :disabled="!canWrite || busy" aria-label="Waits on" data-testid="waits-on" @update:model-value="(value) => (value || null) !== (task.waitsOn || null) && save({ waitsOn: value || null })" />
+          </template>
           <template v-if="task.sourceMessageId"><span>From</span><button type="button" class="link" style="justify-self: start" @click="$emit('open-chat')">a message in {{ spaceName }}</button></template>
         </div>
 
         <div v-if="task.agentState === 'running'" class="banner"><span class="pulse"></span>{{ who(task.assignee) }} is working on this.</div>
+        <div v-if="task.agentState === 'queued'" class="banner">Waiting to start: {{ task.stopReason || 'no room yet' }}. It starts on its own when there is room.</div>
+        <section v-if="task.agentState === 'blocked'" class="stop-box" data-testid="stop-box" aria-label="Why it stopped">
+          <b><span class="stop-dot" aria-hidden="true"></span>{{ who(task.assignee) }} {{ task.decision ? 'stopped and needs a decision' : 'stopped' }}</b>
+          <p>{{ sentence(task.stopReason || 'the run stopped') }}</p>
+          <small>{{ stoppedSince }}<template v-if="heldUp.length"> · holding up {{ plural(heldUp.length, 'card') }}</template><template v-if="task.escalatedFrom"> · {{ who({ kind: 'agent', id: task.escalatedFrom }) }} asked first, then the team lead</template></small>
+        </section>
+        <template v-if="task.agentState === 'blocked' && ladder.length">
+          <div class="mk-label section-label">What has been tried</div>
+          <ol class="ladder" data-testid="ladder">
+            <li v-for="step in ladder" :key="step.id"><span class="ladder-mark" aria-hidden="true">✓</span><span>{{ step.text }}</span><time>{{ step.when }}</time></li>
+            <li class="is-now"><span class="ladder-mark" aria-hidden="true">›</span><span><b>Now with you.</b></span><time></time></li>
+          </ol>
+        </template>
+        <template v-if="task.agentState === 'blocked' && canWrite">
+          <div class="mk-label section-label">{{ task.decision ? 'Your decision' : 'What to do' }}</div>
+          <div v-if="task.decision" class="choices">
+            <button v-for="(option, index) in task.decision.options" :key="option" type="button" :class="index === 0 ? 'primary' : 'btn'" :disabled="busy" @click="answer(option)">{{ option }}</button>
+            <form class="own-answer" @submit.prevent="answer(ownAnswer)">
+              <input v-model="ownAnswer" class="field" placeholder="Or answer in your own words" aria-label="Your answer" />
+              <button type="submit" class="btn" :disabled="busy || !ownAnswer.trim()">Send answer</button>
+            </form>
+            <label v-if="canAddRule" class="rule"><input v-model="addRule" type="checkbox" /><span>Let {{ leadName }} decide this from now on<small>Your answer becomes one of its rules. You can change them on the Agents page.</small></span></label>
+          </div>
+          <div v-else class="choices">
+            <button type="button" class="primary" :disabled="busy" @click="retry">Try again</button>
+            <button type="button" class="btn" :disabled="busy" @click="takeIt">Take it myself</button>
+          </div>
+        </template>
+        <template v-if="task.checks?.length && ['blocked', 'waiting', null].includes(task.agentState)">
+          <div class="mk-label section-label">Checks the agent reports</div>
+          <ul class="checks" data-testid="checks">
+            <li v-for="check in task.checks" :key="check.label" :class="check.ok === true ? 'is-ok' : check.ok === false ? 'is-bad' : 'is-unknown'">
+              <span class="check-mark" aria-hidden="true">{{ check.ok === true ? '✓' : check.ok === false ? '✕' : '?' }}</span>
+              <span>{{ check.label }}<small v-if="check.detail">{{ check.detail }}</small></span>
+              <span class="check-verdict">{{ check.ok === true ? 'passed' : check.ok === false ? 'failed' : 'no verdict' }}</span>
+            </li>
+          </ul>
+        </template>
         <div v-if="task.agentState === 'waiting'" class="approve-box">
           <b>{{ who(task.assignee) }}</b> finished and needs a person to approve.
           <div v-if="task.result" class="tc-docprev">{{ task.result }}</div>
@@ -37,6 +79,12 @@
           <div class="tc-docprev">{{ task.result }}</div>
         </div>
 
+        <template v-if="heldUp.length">
+          <div class="mk-label section-label">Also held up</div>
+          <ul class="list held-up" data-testid="held-up">
+            <li v-for="c in heldUp" :key="c.id"><button type="button" class="r" @click="ctx.go({ view: 'space', space: c.workspaceId, tab: 'board', task: c.id })"><span class="r-text"><strong>{{ c.title }}</strong><small>Waits for this card</small></span></button></li>
+          </ul>
+        </template>
         <div class="divider"></div>
         <div class="mk-label">Thread</div>
         <p v-if="!task.comments.length" class="mk-muted">No comments yet. @mention an agent here to hand it this card.</p>
@@ -65,7 +113,7 @@ import TeamAvatar from './TeamAvatar.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import VisibleToSelect from '@/views/_components/team/VisibleToSelect.vue';
 import { teamApi } from './useTeam.js';
-import { TASK_STATUSES, ago, nameOf, mentionsIn, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE } from './teamModel.js';
+import { TASK_STATUSES, ago, nameOf, mentionsIn, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE, plural } from './teamModel.js';
 
 const props = defineProps({
   workspaceId: { type: String, required: true },
@@ -79,6 +127,10 @@ const ctx = inject('teamCtx');
 const spaceMemberIds = inject('spaceMemberIds', computed(() => null));
 
 const task = ref(null);
+const boardTasks = ref([]);
+const lead = ref({ leadAgentId: null, leadRules: '' });
+const ownAnswer = ref('');
+const addRule = ref(false);
 const error = ref('');
 const title = ref('');
 const due = ref('');
@@ -100,11 +152,43 @@ const assigneeOptions = computed(() => [
   ...props.agents.map((a) => ({ label: 'Agent: ' + a.name + (a.status === 'draft' ? ' (not published)' : ''), value: 'agent:' + a.id })),
 ]);
 const who = (ref_) => nameOf(ref_, { people: ctx.people.value, agents: props.agents, me: ctx.me.value });
+const sentence = (value) => { const text = String(value).trim(); return text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? '' : '.'); };
+const heldUp = computed(() => task.value?.heldUp || []);
+const stoppedSince = computed(() => {
+  const since = ago(task.value?.agentStateAt);
+  return !since ? 'Stopped' : since === 'just now' ? 'Stopped just now' : `Stopped ${since} ago`;
+});
+// The cards this one may wait on: open cards on this board, plus the current choice.
+const waitsOnOptions = computed(() => [
+  { label: 'Nothing', value: '' },
+  ...boardTasks.value.filter((t) => t.id !== task.value?.id && (t.status !== 'done' || t.id === task.value?.waitsOn)).map((t) => ({ label: t.title, value: t.id })),
+]);
+// What happened since a person last touched the card: the agent's and the team lead's steps.
+const ladder = computed(() => {
+  const comments = task.value?.comments || [];
+  let start = 0;
+  comments.forEach((c, index) => { if (c.author.kind === 'person') start = index + 1; });
+  return comments.slice(start).slice(-6).map((c) => ({
+    id: c.id,
+    text: (c.author.kind === 'agent' ? who(c.author) + ': ' : '') + String(c.body).split('\n')[0].slice(0, 160),
+    when: ago(c.createdAt),
+  }));
+});
+const canAddRule = computed(() => Boolean(lead.value.leadAgentId) && ['owner', 'admin'].includes(ctx.role.value));
+const leadName = computed(() => (lead.value.leadAgentId ? who({ kind: 'agent', id: lead.value.leadAgentId }) : 'the team lead'));
 
 async function load() {
   try {
     const next = await teamApi.task(props.workspaceId, props.taskId);
     task.value = next;
+    if (!next.private) {
+      // The board (for Waits on) and the team lead (for answers that become rules). The card shows
+      // without them; if one fails to load, that control is the only thing missing.
+      const [board, settings] = await Promise.allSettled([teamApi.tasks(props.workspaceId), teamApi.lead(props.workspaceId)]);
+      boardTasks.value = board.status === 'fulfilled' && Array.isArray(board.value) ? board.value : [];
+      if (settings.status === 'fulfilled' && settings.value) lead.value = settings.value;
+      else if (settings.status === 'rejected') console.warn('[team] could not load the team lead:', settings.reason?.message);
+    }
     title.value = next.title;
     due.value = next.due;
     error.value = '';
@@ -148,6 +232,23 @@ async function sendBack() {
   busy.value = true;
   try { await teamApi.sendBack(props.workspaceId, task.value.id, note); emit('changed'); } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
 }
+async function answer(choice) {
+  const text = String(choice || '').trim();
+  if (!text || busy.value) return;
+  busy.value = true;
+  try {
+    await teamApi.answer(props.workspaceId, task.value.id, text, { addRule: addRule.value && canAddRule.value });
+    ctx.toast(addRule.value && canAddRule.value ? `Sent. ${leadName.value} decides this from now on.` : 'Sent. The agent carries on with your answer.');
+    ownAnswer.value = '';
+    addRule.value = false;
+    emit('changed');
+  } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
+}
+async function retry() {
+  busy.value = true;
+  try { await teamApi.retry(props.workspaceId, task.value.id); ctx.toast('Trying again.'); emit('changed'); } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
+}
+function takeIt() { save({ assignee: { kind: 'person', id: ctx.me.value } }); }
 async function comment() {
   const body = draft.value.trim();
   if (!body || busy.value) return;
@@ -193,10 +294,43 @@ async function remove() {
   try { await teamApi.deleteTask(props.workspaceId, task.value.id); emit('changed'); emit('close'); } catch (e) { ctx.toast(e.message); }
 }
 
-watch(() => props.taskId, load);
+watch(() => props.taskId, () => { ownAnswer.value = ''; addRule.value = false; load(); });
 watch(() => ctx.version.value, () => {
   const signal = ctx.lastSignal.value;
   if (!signal || signal.taskId === props.taskId || (signal.workspaceId === props.workspaceId && signal.kind === 'tasks')) load();
 });
 onMounted(load);
 </script>
+
+<style scoped>
+/* A stopped card: why, what was tried, the choices. Colours follow the board's tags (mk.css). */
+.stop-box { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid rgba(var(--orange-rgb), 0.45); border-radius: 12px; background: rgba(var(--orange-rgb), 0.07); font-size: 13.5px; line-height: 1.45; }
+.stop-box b { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-primary); }
+.stop-box p { margin: 6px 0; color: var(--text-primary); }
+.stop-box small { font-size: 12.5px; color: var(--text-secondary); }
+.stop-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--amber-text); }
+.section-label { margin: 16px 0 6px; }
+.ladder { list-style: none; margin: 0; padding: 0; }
+.ladder li { position: relative; display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; padding: 0 0 12px; font-size: 13.5px; line-height: 1.4; color: var(--text-primary); }
+.ladder li:not(:last-child)::before { content: ''; position: absolute; left: 9.5px; top: 21px; bottom: 2px; width: 1px; background: var(--line); }
+.ladder li:last-child { padding-bottom: 0; }
+.ladder-mark { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: rgba(var(--green-rgb), 0.14); color: var(--green-text); font-size: 11px; font-weight: 700; }
+.ladder li.is-now .ladder-mark { background: var(--pink); color: var(--on-fill-brand); }
+.ladder time { font-size: 11.5px; color: var(--text-tertiary); padding-top: 2px; }
+.choices { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.choices > .primary, .choices > .btn { justify-content: center; width: 100%; min-height: 36px; }
+.own-answer { display: flex; gap: 8px; }
+.own-answer .field { flex: 1; min-width: 0; }
+.rule { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px dashed var(--line); border-radius: 10px; font-size: 13px; color: var(--text-primary); cursor: pointer; }
+.rule input { margin: 2px 0 0; accent-color: var(--pink); }
+.rule small { display: block; margin-top: 2px; font-size: 12px; color: var(--text-tertiary); }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 13.5px; color: var(--text-primary); border-bottom: 1px solid var(--line-light); }
+.checks li:last-child { border-bottom: 0; }
+.checks li small { display: block; font-size: 12px; color: var(--text-secondary); }
+.check-mark { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--surface-active); color: var(--text-tertiary); }
+.is-ok .check-mark { background: rgba(var(--green-rgb), 0.16); color: var(--green-text); }
+.is-bad .check-mark { background: rgba(var(--orange-rgb), 0.16); color: var(--amber-text); }
+.check-verdict { margin-left: auto; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
+.held-up .r { padding: 8px 12px; }
+</style>

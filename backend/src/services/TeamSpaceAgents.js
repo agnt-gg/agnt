@@ -27,6 +27,47 @@ export function resultText(run) {
   try { return JSON.stringify(result ?? {}, null, 2).slice(0, 4000); } catch { return 'The run finished without text output.'; }
 }
 
+/**
+ * How an agent finishes a card, given to it with every card (TeamSpaceRoutes.agentInput): the
+ * checks it ran, and how to stop and ask when it cannot finish without a person's decision.
+ */
+export const FINISH_INSTRUCTIONS = [
+  'When you finish:',
+  '- List the checks you ran, one per line: "CHECK: <what you checked> — passed" or "CHECK: <what you checked> — failed: <why>".',
+  '- If you cannot finish without a person\'s decision, stop and end with "DECISION NEEDED: <one line saying why>" and up to three lines "OPTION: <a choice they can pick>".',
+].join('\n');
+
+const MAX_CHECKS = 10;
+const MAX_OPTIONS = 3;
+
+function parseCheck(body) {
+  // "<what> — passed" or "<what> — failed: <why>": a dash (any width) or a colon before the verdict.
+  const match = body.match(/^(.*?)\s*[—–:-]\s*(passed|failed)\b[\s:—–-]*(.*)$/i);
+  if (!match) return { label: body.trim().slice(0, 160), ok: null, detail: '' };
+  return { label: match[1].trim().slice(0, 160), ok: match[2].toLowerCase() === 'passed', detail: match[3].trim().replace(/^\((.*)\)$/, '$1').slice(0, 200) };
+}
+
+/**
+ * Split a reply into what a person reads and what the board acts on: CHECK lines become the card's
+ * checks; a DECISION NEEDED line (with its OPTION lines) stops the card for a decision.
+ */
+export function readFinishLines(reply) {
+  const checks = [];
+  const options = [];
+  const kept = [];
+  let reason = null;
+  for (const line of String(reply ?? '').split(/\r?\n/)) {
+    const check = line.match(/^\s*(?:[-*]\s*)?CHECK:\s*(.+)$/i);
+    const stop = line.match(/^\s*(?:[-*]\s*)?DECISION NEEDED:\s*(.+)$/i);
+    const option = line.match(/^\s*(?:[-*]\s*)?OPTION:\s*(.+)$/i);
+    if (check) { if (checks.length < MAX_CHECKS) checks.push(parseCheck(check[1])); }
+    else if (stop) reason = stop[1].trim().slice(0, 300);
+    else if (option) { if (options.length < MAX_OPTIONS) options.push(option[1].trim().slice(0, 200)); }
+    else kept.push(line);
+  }
+  return { text: kept.join('\n').trim(), checks, decision: reason ? { reason, options } : null };
+}
+
 // The short form the board shows on the card as "Stopped: <reason>"; the thread keeps the full text.
 const STOP_REASONS = Object.freeze({
   publish_required: 'not published here yet',
@@ -49,15 +90,29 @@ function failureText(error) {
  * Run one agent on one card. Never throws: every outcome is written to the
  * card, so the board is the record of what happened. `started` means the card
  * was already moved to In progress (TeamSpaceRepository.startAgentRun).
+ *
+ * An agent that asks for a decision stops the card (`stopped`). A team lead deciding for another
+ * agent (`decides`) hands its answer back (`decided`) instead of asking for approval: the agent it
+ * decided for carries on, and that agent's result is what a person approves.
  */
-export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agentId, input, execute, changed = () => {}, started = false }) {
+export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agentId, input, execute, changed = () => {}, started = false, decides = false }) {
   try {
     if (!started) await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'running', status: 'doing', agentId, comment: 'On it.' });
     changed();
     const run = await execute(input);
     if (run?.status === 'failed') throw Object.assign(new Error(typeof run?.result?.error === 'string' ? run.result.error : 'The run failed'), { status: 422 });
-    const text = resultText(run);
-    await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'waiting', status: 'review', result: text, agentId, comment: text });
+    const finish = readFinishLines(resultText(run));
+    if (finish.decision) {
+      await spaces.setAgentState(teamId, workspaceId, taskId, {
+        state: 'blocked', status: 'todo', agentId, comment: finish.text || finish.decision.reason,
+        reason: finish.decision.reason, decision: finish.decision, checks: finish.checks,
+      });
+      changed();
+      return { ok: false, stopped: true, decision: finish.decision, text: finish.text };
+    }
+    const text = finish.text || 'The run finished without text output.';
+    if (decides) return { ok: true, decided: true, text };
+    await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'waiting', status: 'review', result: text, agentId, comment: text, checks: finish.checks });
     await spaces.requestApproval(teamId, workspaceId, taskId, agentId);
     changed();
     return { ok: true, text };

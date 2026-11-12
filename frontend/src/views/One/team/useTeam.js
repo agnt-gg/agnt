@@ -149,6 +149,13 @@ export const teamApi = {
   comment: (ws, id, body, mentions) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/comments'), json('POST', { body, mentions })),
   approve: (ws, id, input = {}) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/approve'), json('POST', input)),
   sendBack: (ws, id, note) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/send-back'), json('POST', { note })),
+  /** Answer a stopped card: one of its options or your own words; `addRule` also gives it to the team lead as a rule. */
+  answer: (ws, id, answer, { addRule = false } = {}) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/answer'), json('POST', { answer, addRule })),
+  /** Run a card whose run failed again, with the same agent. */
+  retry: (ws, id) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/retry'), json('POST', {})),
+  /** The teamspace's team lead and its standing rules: { leadAgentId, leadRules }. */
+  lead: (ws) => teamRequest(space(ws, '/lead')),
+  setLead: (ws, agentId, rules) => teamRequest(space(ws, '/lead'), json('PUT', rules === undefined ? { agentId } : { agentId, rules })),
   /** Work limits on In progress and Review: { doing, review }, null where none is set. */
   limits: (ws) => teamRequest(space(ws, '/limits')),
   /** Set a column's work limit (1 to 99), or remove it with `max: null`. */

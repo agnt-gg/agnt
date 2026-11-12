@@ -1,5 +1,5 @@
 import { TeamSpaceRepository, parseAssignee, parseMentions } from '../services/TeamSpaceRepository.js';
-import { runAgentOnTask } from '../services/TeamSpaceAgents.js';
+import { runAgentOnTask, FINISH_INSTRUCTIONS } from '../services/TeamSpaceAgents.js';
 import { isAnnie, anniePrompt, answerInTeamChat, runAnnieTurn, liveReplies } from '../services/TeamSpaceAnnie.js';
 import { aiFileMode, setAiFileMode } from '../services/security/teamFolders.js';
 
@@ -71,9 +71,39 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     const execute = agentExecutor(repo, req, user, agentId);
     schedule(() => runAgentOnTask({
       spaces, teamId, workspaceId, taskId: task.id, agentId, input, execute, started: true,
+      // A card the team lead holds for another agent is a decision, not a result to approve.
+      decides: Boolean(current.escalatedFrom),
       changed: () => { signal(req, 'tasks', { taskId: task.id }); realtime.inbox(teamId, [task.createdBy]); },
-    }).then(() => pullWaiting(repo, req, user)).catch((error) => console.warn('[Teamspaces] could not start waiting cards:', error.message)));
+    }).then((outcome) => afterRun(repo, req, user, task.id, agentId, outcome))
+      .then(() => pullWaiting(repo, req, user))
+      .catch((error) => console.warn('[Teamspaces] could not continue after a run:', error.message)));
     return current;
+  }
+
+  /**
+   * After a run: an agent that stopped for a decision goes to the team lead first; a lead that
+   * decided hands the card back to the agent it decided for, which carries on. A lead that also
+   * needs a person leaves the card stopped, and the person's answer goes to the agent that first stopped.
+   */
+  async function afterRun(repo, req, user, taskId, agentId, outcome) {
+    const { teamId, workspaceId } = req.params;
+    const spaces = spacesOf(repo);
+    if (outcome?.decided) {
+      const { task, stop } = await spaces.returnFromLead(teamId, workspaceId, taskId, { decision: outcome.text.slice(0, 2000) });
+      signal(req, 'tasks', { taskId });
+      await startAgent(repo, req, user, task, agentInput(task, `Your team lead decided on what you stopped on${stop?.reason ? ` (${stop.reason})` : ''}:\n${outcome.text}\n\nCarry on with the task.`));
+      return;
+    }
+    if (!outcome?.stopped) return;
+    const card = await spaces.latestCard(teamId, workspaceId, taskId);
+    if (card.escalatedFrom) return;
+    const { leadAgentId, leadRules } = await spaces.readSettings(workspaceId);
+    if (!leadAgentId || leadAgentId === agentId) return;
+    const agents = new Map((await workspaceAgents(repo, req)).filter((a) => a.kind === 'agent').map((a) => [a.id, a]));
+    if (!agents.has(leadAgentId)) return;
+    const handed = await spaces.handToLead(teamId, workspaceId, taskId, { leadAgentId, fromAgentId: agentId });
+    signal(req, 'tasks', { taskId });
+    await startAgent(repo, req, user, handed, leadInput(handed, outcome, agents.get(agentId)?.name, leadRules));
   }
 
   /** Room may have opened: start waiting cards oldest first while the limits allow. */
@@ -85,7 +115,18 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     }
   }
   const pullWaitingLater = (repo, req, user) => schedule(() => pullWaiting(repo, req, user).catch((error) => console.warn('[Teamspaces] could not start waiting cards:', error.message)));
-  const agentInput = (task, context) => [`Task: ${task.title}`, context ? `Context from the teamspace:\n${context}` : ''].filter(Boolean).join('\n\n');
+  const agentInput = (task, context) => [`Task: ${task.title}`, context ? `Context from the teamspace:\n${context}` : '', FINISH_INSTRUCTIONS].filter(Boolean).join('\n\n');
+  /** What a team lead is given when an agent stops: the question, the agent's options, and the lead's standing rules. */
+  const leadInput = (task, outcome, agentName, rules) => [
+    `You lead this team. ${agentName || 'An agent'} stopped on a card and needs a decision before it can carry on.`,
+    `Card: ${task.title}`,
+    `Why it stopped: ${outcome.decision.reason}`,
+    outcome.decision.options.length ? `Its options:\n${outcome.decision.options.map((option) => '- ' + option).join('\n')}` : '',
+    outcome.text ? `What it said:\n${outcome.text}` : '',
+    rules ? `Your standing rules:\n${rules}` : '',
+    'If your rules or the facts let you decide, reply with the decision and one line of reasoning; the agent carries on with it.',
+    'If only a person can decide, end with "DECISION NEEDED: <one line saying why>" and up to three lines "OPTION: <a choice they can pick>".',
+  ].filter(Boolean).join('\n\n');
 
   // ── Chat ────────────────────────────────────────────────────────────────
   // "Team files with AI": may Annie and agents use teamspace Files (off / read / write). Everyone on the
@@ -241,6 +282,49 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   });
   router.post(W + '/tasks/:taskId/approve', decide(true));
   router.post(W + '/tasks/:taskId/send-back', decide(false));
+
+  // A person answers a stopped card: a choice it offered, or their own words. With addRule, the
+  // answer is also added to the team lead's rules, so the lead settles it next time.
+  router.post(W + '/tasks/:taskId/answer', handler(async (repo, req, user) => {
+    const { teamId, workspaceId, taskId } = req.params;
+    const spaces = spacesOf(repo);
+    let rules = null;
+    if (req.body?.addRule === true) {
+      await repo.member(teamId, user, ['owner', 'admin']);
+      const settings = await spaces.readSettings(workspaceId);
+      if (!settings.leadAgentId) throw Object.assign(new Error('This teamspace has no team lead to give the rule to'), { status: 400 });
+      const current = await spaces.task(teamId, user, workspaceId, taskId);
+      const answer = String(req.body?.answer ?? '').trim();
+      rules = [settings.leadRules, `- When ${current.stopReason || 'this happens'}: ${answer}`].filter(Boolean).join('\n');
+      if (rules.length > 1000) throw Object.assign(new Error('The team lead\u2019s rules are full. Shorten them on the Agents page first.'), { status: 400 });
+    }
+    const { task, stop, answer } = await spaces.answerStop(teamId, user, workspaceId, taskId, { answer: req.body?.answer });
+    if (rules !== null) {
+      const settings = await spaces.readSettings(workspaceId);
+      await spaces.setLead(teamId, user, workspaceId, { agentId: settings.leadAgentId, rules });
+    }
+    const current = await startAgent(repo, req, user, task, agentInput(task, `A person decided on what you stopped on${stop?.reason ? ` (${stop.reason})` : ''}: ${answer}\n\nCarry on with the task.`));
+    signal(req, 'tasks', { taskId });
+    return current;
+  }));
+
+  // Try a stopped card again with its agent.
+  router.post(W + '/tasks/:taskId/retry', handler(async (repo, req, user) => {
+    const task = await spacesOf(repo).retryStop(req.params.teamId, user, req.params.workspaceId, req.params.taskId);
+    const current = await startAgent(repo, req, user, task, agentInput(task, 'Trying again after the run stopped.'));
+    signal(req, 'tasks', { taskId: task.id });
+    return current;
+  }));
+
+  // The team lead: an agent of this teamspace that answers stops first, and its standing rules.
+  router.get(W + '/lead', handler((repo, req, user) => spacesOf(repo).lead(req.params.teamId, user, req.params.workspaceId)));
+  router.put(W + '/lead', handler(async (repo, req, user) => {
+    const agentId = req.body?.agentId ?? null;
+    if (agentId !== null) await checkAgents(repo, req, [String(agentId)]);
+    const settings = await spacesOf(repo).setLead(req.params.teamId, user, req.params.workspaceId, { agentId, rules: req.body?.rules });
+    signal(req, 'tasks');
+    return settings;
+  }));
 
   // Work limits on In progress and Review: { doing, review }, null where none is set.
   router.get(W + '/limits', handler((repo, req, user) => spacesOf(repo).limits(req.params.teamId, user, req.params.workspaceId)));
