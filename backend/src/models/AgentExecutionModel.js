@@ -107,6 +107,28 @@ class AgentExecutionModel {
   }
 
   /**
+   * Re-stamp a run with the provider/model that ACTUALLY served it.
+   *
+   * `create` records the requested (primary) provider. When the turn fails
+   * over to a fallback tier, the trace would otherwise keep naming the primary
+   * even though it never produced the answer — observed 2026-10-06, five
+   * Claude-Code -> Grok-Build failovers all traced as Claude-Code.
+   */
+  static setServedProvider(id, provider, model) {
+    if (!id || !provider) return Promise.resolve(0);
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE agent_executions SET provider = ?, model = ? WHERE id = ?`,
+        [provider, model ?? null, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  /**
    * Update an agent execution record
    * @param {object} [tokenUsage] - Optional token usage { inputTokens, outputTokens, totalTokens, estimatedCost, cacheReadTokens, cacheCreationTokens }
    */
