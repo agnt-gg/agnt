@@ -21,6 +21,7 @@
         @dismiss="dismiss"
         @keep="keep"
         @undo="undo"
+        @spread="spread"
         @accept-insights="acceptInsights"
         @reject-insights="rejectInsights"
         @stop="stopRequested = true"
@@ -35,6 +36,7 @@ import LearningBoard from './LearningBoard.vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { learningPanelRoute } from './learningPanelRoute.js';
+import { startTrials, refusedSentence } from './startTrials.js';
 import { useEscalationQueue } from '@/composables/useEscalationQueue.js';
 
 const store = useStore();
@@ -55,8 +57,21 @@ async function refresh() {
   catch (e) { if (e.name !== 'AbortError') error.value = e.message; }
   finally { busy.value = false; }
 }
-async function mutate(path, body) { if (busy.value || disposed) return; busy.value = true; error.value = ''; controller = new AbortController(); try { await request(path, body); snapshot.value = await request(''); } catch (e) { if (e.name !== 'AbortError') error.value = ({ insufficient_baseline: 'More known baseline calls are needed before starting this trial.', stale_finding: 'Evidence changed. Refresh and review the latest proposal.', stale_trial: 'This trial changed. Refresh before continuing.', learning_paused: 'Resume learning before activating a change.' }[e.message] || e.message); } finally { busy.value = false; } }
-const approve = item => mutate('/findings/' + item.id + '/approve', { revision: item.revision, candidateHash: item.candidate_hash, durationDays: 7, minimumSamples: 20 });
+const REASONS = { insufficient_baseline: 'More known baseline calls are needed before starting this trial.', stale_finding: 'Evidence changed. Refresh and review the latest proposal.', stale_trial: 'This trial changed. Refresh before continuing.', learning_paused: 'Resume learning before activating a change.', overlapping_trial: 'A trial for this tool is already running.' };
+async function mutate(path, body) { if (busy.value || disposed) return; busy.value = true; error.value = ''; controller = new AbortController(); try { await request(path, body); snapshot.value = await request(''); } catch (e) { if (e.name !== 'AbortError') error.value = REASONS[e.message] || e.message; } finally { busy.value = false; } }
+const trialBody = item => ({ revision: item.revision, candidateHash: item.candidate_hash, durationDays: 7, minimumSamples: 20 });
+const approve = item => mutate('/findings/' + item.id + '/approve', trialBody(item));
+/** A kept fix, tried on other tools with the same problem: one trial each, started one at a time. */
+async function spread(findings) {
+  if (busy.value || disposed || !findings?.length) return;
+  busy.value = true; error.value = ''; controller = new AbortController();
+  try {
+    const outcome = await startTrials(findings, (finding) => request('/findings/' + finding.id + '/approve', trialBody(finding)), (e) => REASONS[e.message] || e.message);
+    snapshot.value = await request('');
+    error.value = refusedSentence(outcome);
+  } catch (e) { if (e.name !== 'AbortError') error.value = e.message; }
+  finally { busy.value = false; }
+}
 const dismiss = item => mutate('/findings/' + item.id + '/dismiss', { revision: item.revision });
 const keep = item => mutate('/trials/' + item.id + '/keep', { revision: item.revision, candidateHash: item.candidate_hash });
 const undo = item => mutate('/trials/' + item.id + '/undo', { revision: item.revision });

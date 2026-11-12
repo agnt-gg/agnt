@@ -34,8 +34,13 @@
         </article>
         <article v-for="finding in detected" :key="finding.id" class="learning-card" :class="{chosen:isSelected('finding',finding)}" @click="select('finding',finding)">
           <div class="card-top"><span class="kind-tag">RECURRING PROBLEM</span><span class="outcome-tag">{{ finding.candidate ? 'Fix available' : 'Evidence only' }}</span></div>
-          <h3>{{ title(finding.capability,finding.error_kind) }}</h3><p>{{ finding.occurrences }} failures across {{ finding.independent_runs }} independent runs. Repeated evidence is grouped here, not saved as another memory.</p>
-          <div class="proposed-fix" v-if="finding.candidate"><span class="fix-symbol">↳</span><div><b>Try one retry after a transient read failure.</b><small>Read-only tools only. No new authority.</small></div></div>
+          <h3>{{ title(finding.capability,finding.error_kind) }}</h3>
+          <dl class="one-page" data-testid="one-page">
+            <dt>What happened</dt><dd>{{ onePage(finding).happened }}</dd>
+            <dt>Why it keeps happening</dt><dd>{{ onePage(finding).why }}</dd>
+            <dt>What we’ll try</dt><dd>{{ onePage(finding).tryText }}</dd>
+            <dt>How we’ll know</dt><dd>{{ onePage(finding).know }}</dd>
+          </dl>
           <footer><span>{{ finding.candidate ? '7-day trial · measurable · reversible' : 'No supported automatic change yet' }}</span><button @click.stop="select('finding',finding)">See evidence →</button></footer>
         </article>
       </template>
@@ -53,6 +58,12 @@
           <div class="card-top"><span class="kind-tag">ACTIVE POLICY</span><span class="outcome-tag supported">Version {{ policy.version }}</span></div>
           <h3>{{ title(policy.capability,policy.error_kind) }}</h3><p>Supported by a measured trial and kept by you. Future matching calls use this bounded decision.</p>
           <div class="policy-rule"><span>WHEN</span> {{ policy.capability }} reports {{ policy.error_kind }}<br><span>THEN</span> retry once, read-only</div>
+          <div v-if="sameProblemElsewhere(policy, data.findings).length" class="spread" data-testid="spread" @click.stop>
+            <strong>The same problem shows up with other tools</strong>
+            <p>{{ elsewhereSentence(policy) }}</p>
+            <button class="btn btn-quiet" :disabled="busy" @click="$emit('spread', sameProblemElsewhere(policy, data.findings))">Test this fix on {{ sameProblemElsewhere(policy, data.findings).length === 1 ? 'it' : 'those ' + sameProblemElsewhere(policy, data.findings).length }}</button>
+            <small>Each gets its own 7-day trial and undo. Nothing changes for a tool until its trial passes and you keep it.</small>
+          </div>
           <footer><span>Activated {{ date(policy.activated_at) }}</span><button @click.stop="selectPolicy(policy)">View receipt →</button></footer>
         </article>
         <details class="history" v-if="closed.length"><summary>{{ closed.length }} closed {{ closed.length===1?'trial':'trials' }}</summary><p v-for="trial in closed" :key="trial.id">{{ trial.candidate.when.capability }} · {{ trial.state==='reverted'?'Reverted':verdictLabel(trial.result?.verdict) }}</p></details>
@@ -64,7 +75,7 @@
 <script setup>
 import {computed,ref,watch} from 'vue';
 import EscalationQueue from './EscalationQueue.vue';
-import {title,date,percent,daysLeft,trialProgress as progressOf,verdictLabel} from './learningFormat.js';
+import {title,date,percent,daysLeft,trialProgress as progressOf,verdictLabel,onePage,sameProblemElsewhere} from './learningFormat.js';
 const props=defineProps({
   data:{type:Object,required:true},
   /** The escalation queue: insights waiting for the user's yes or no. */
@@ -76,7 +87,9 @@ const props=defineProps({
   selectedKey:{type:String,default:''},
   initialView:{type:String,default:''},
 });
-const emit=defineEmits(['approve','dismiss','keep','undo','pause','refresh','select','accept-insights','reject-insights','stop']);
+const emit=defineEmits(['approve','dismiss','keep','undo','pause','refresh','select','accept-insights','reject-insights','stop','spread']);
+/** "read_file (9 times) and list_files (4 times)": which other tools have the problem a kept fix solved. */
+function elsewhereSentence(policy){const list=sameProblemElsewhere(policy,props.data.findings).map(f=>`${f.capability} (${f.occurrences} ${f.occurrences===1?'time':'times'})`);const names=list.length>1?list.slice(0,-1).join(', ')+' and '+list.at(-1):list[0];return `${names} ${list.length===1?'has':'have'} reported ${String(policy.error_kind).replaceAll('_',' ')} failures too.`;}
 const tabs=[{id:'waiting',label:'Waiting for you'},{id:'attention',label:'Needs attention'},{id:'watching',label:'Being tested'},{id:'learned',label:'Learned'}];
 // Open where there is something to do: the queue when it has anything in it.
 // Once the user picks a tab, their choice sticks.
@@ -255,6 +268,15 @@ button.tab-button:last-child { border-radius: 0 8px 0 0; }
 .trial-meta { display: flex; justify-content: space-between; font-size: 0.85em; color: var(--color-light-med-navy); margin-bottom: 16px; }
 .policy-rule { font-family: var(--font-family-mono, monospace); font-size: 0.85em; line-height: 2; margin: 0 0 16px; }
 .policy-rule span { color: var(--text-green); margin-right: 12px; }
+/* A recurring problem on one page (problem, cause, change, check). */
+.one-page { display: grid; grid-template-columns: minmax(150px, 190px) 1fr; gap: 10px 18px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--terminal-border-color); border-radius: 12px; font-size: 0.92em; line-height: 1.5; }
+.one-page dt { color: var(--color-light-med-navy); font-weight: 500; }
+.one-page dd { margin: 0; color: var(--color-text); }
+/* A kept fix, offered to other tools with the same problem. */
+.spread { margin: 0 0 16px; padding: 14px 16px; border: 1px dashed rgba(var(--green-rgb), 0.45); border-radius: 12px; cursor: default; }
+.spread strong { display: block; margin-bottom: 4px; font-weight: 500; }
+.spread p { margin: 0 0 10px; }
+.spread small { display: block; margin-top: 8px; color: var(--color-light-med-navy); }
 .history { font-size: 0.85em; color: var(--color-light-med-navy); line-height: 1.7; }
 .history summary { cursor: pointer; }
 
@@ -269,6 +291,8 @@ button.tab-button:last-child { border-radius: 0 8px 0 0; }
   .privacy { display: none; }
 }
 @media (max-width: 700px) {
+  .one-page { grid-template-columns: 1fr; gap: 4px; }
+  .one-page dd { margin-bottom: 8px; }
   .learning-header { flex-direction: column; }
   .learning-summary { gap: 16px; }
   .tab-button { padding: 8px 10px; font-size: 0.9em; }
