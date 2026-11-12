@@ -135,7 +135,8 @@ describe('Home is the inbox', () => {
     await flushPromises();
     const panel = wrapper.find('[data-testid="home-inbox"]');
     expect(panel.find('.tab.is-active').text()).toMatch(/^Needs you/);
-    expect(panel.text()).toContain('Waiting for your OK');
+    expect(panel.text()).toContain('Ready for your review');
+    expect(panel.text()).toContain('Your OK');
     expect(panel.text()).toContain('Send the January price notice');
     expect(panel.text()).not.toMatch(/\bApprove\b/); // Review, never Approve: the whole card is in the chat
     await panel.findAll('button').find((b) => b.text() === 'Review').trigger('click');
@@ -189,6 +190,57 @@ describe('Home is the inbox', () => {
     expect(calls.some((c) => c.method === 'POST' && c.path === '/acme/inbox/i1/read')).toBe(true);
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'team', view: 'space', space: 'sales', tab: 'board', task: 't1' });
     expect(wrapper.find('.unread').exists()).toBe(false);
+  });
+});
+
+describe('Home shows flow', () => {
+  const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
+
+  it('the status line counts what is stopped on you, what is working and which team is at its limit, and lists stopped cards by what they hold up', async () => {
+    routes['/acme/workspaces'] = [SPACE, { id: 'ops', name: 'Ops' }];
+    routes['/acme/workspaces/sales/tasks'] = [
+      { id: 's1', workspaceId: 'sales', title: 'Small stop', status: 'todo', agentState: 'blocked', stopReason: 'needs a login', agentStateAt: ago(90), createdBy: 'me', assignee: { kind: 'agent', id: 'proposal' }, holdingUp: 0 },
+      { id: 's2', workspaceId: 'sales', title: 'Big stop', status: 'todo', agentState: 'blocked', stopReason: 'prices disagree', agentStateAt: ago(10), createdBy: 'me', assignee: { kind: 'agent', id: 'proposal' }, holdingUp: 2 },
+      { id: 'w1', workspaceId: 'sales', title: 'Running', status: 'doing', agentState: 'running', createdBy: 'jess', assignee: { kind: 'agent', id: 'proposal' } },
+    ];
+    routes['/acme/workspaces/ops/tasks'] = [
+      { id: 'o1', workspaceId: 'ops', title: 'Ops review', status: 'review', agentState: 'waiting', createdBy: 'jess', assignee: { kind: 'agent', id: 'x' } },
+    ];
+    routes['/acme/workspaces/ops/limits'] = { doing: null, review: 1 };
+    const { wrapper } = mountPage(loc({ view: 'home' }));
+    await flushPromises();
+    const stats = wrapper.findAll('[data-testid="flow-status"] button').map((b) => b.text());
+    expect(stats).toEqual(['2 stopped until you answer', '1 working', '1 team at its work limit']);
+    const stopped = wrapper.find('[data-testid="stuck-tasks"]').findAll('li').map((li) => li.text());
+    expect(stopped[0]).toContain('Big stop');
+    expect(stopped[0]).toContain('holding up 2 cards');
+    expect(stopped[0]).toContain('Stopped: prices disagree');
+    expect(stopped[1]).toContain('Small stop');
+    const teams = wrapper.find('[data-testid="teams-at-work"]').text();
+    expect(teams).toContain('1 working · 2 stopped');
+    expect(teams).toContain('At its limit');
+  });
+
+  it('an agent result appears once, under Ready for your review, with its checks; the sitting approves it', async () => {
+    const waiting = { id: 'r1', workspaceId: 'sales', title: 'Pricing copy', status: 'review', agentState: 'waiting', createdBy: 'me', assignee: { kind: 'agent', id: 'proposal' }, checks: [{ label: 'Totals add up', ok: true, detail: '' }], result: 'Three sections' };
+    routes['/acme/workspaces/sales/tasks'] = [waiting];
+    routes['/acme/workspaces/sales/tasks/r1'] = { ...waiting, comments: [] };
+    routes['POST /acme/workspaces/sales/tasks/r1/approve'] = { task: { ...waiting, agentState: null, status: 'done' }, doc: null };
+    routes['/acme/inbox'] = [{ id: 'i1', kind: 'approval', state: 'pending', actor: { kind: 'agent', id: 'proposal' }, summary: 'Pricing copy', workspaceId: 'sales', target: { kind: 'task', id: 'r1' }, read: false, createdAt: new Date().toISOString() }];
+    const { wrapper } = mountPage(loc({ view: 'home' }));
+    await flushPromises();
+    const review = wrapper.find('[data-testid="review-tasks"]');
+    expect(review.text()).toContain('Pricing copy');
+    expect(review.text()).toContain('1 of 1 check passed');
+    // Listed once: the approval inbox item for the same card is not repeated below.
+    expect(wrapper.find('[data-testid="home-inbox"]').text().match(/Pricing copy/g)).toHaveLength(1);
+    await wrapper.find('[data-testid="review-sitting-open"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sitting-result"]').text()).toBe('Three sections');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    await flushPromises();
+    expect(calls.some((c) => c.method === 'POST' && c.path === '/acme/workspaces/sales/tasks/r1/approve')).toBe(true);
+    expect(wrapper.find('[data-testid="sitting-summary"]').text()).toBe('1 approved.');
   });
 });
 

@@ -31,6 +31,10 @@ const state = reactive({
   members: [],
   spaces: [],
   inbox: [],
+  // Every teamspace's board and work limits, by workspace id: Home's status line, Teams at work and
+  // the drawer's marks all read these.
+  boards: {},
+  limits: {},
   version: 0, // bumped on every realtime signal; pages refetch what they show
   lastSignal: null,
 });
@@ -65,6 +69,8 @@ function bindRealtime() {
     state.version++;
     // Someone was added to or removed from a teamspace: the drawer's list of spaces may have changed.
     if (signal.kind === 'people') loadSpaces().catch((error) => console.warn('[team] spaces:', error.message));
+    // A card or a limit changed: only that teamspace's board is read again.
+    if (signal.kind === 'tasks' && signal.workspaceId) loadBoard(signal.workspaceId);
   });
   socket.on('team:inbox', (signal) => {
     if (signal?.teamId !== state.team?.id) return;
@@ -86,6 +92,32 @@ async function loadSpaces() {
   state.spaces = await teamRequest('/' + state.team.id + '/workspaces');
 }
 
+const boardsLoading = new Map();
+const hidden = (error) => [403, 404].includes(error?.status);
+/** One teamspace's board and limits. Concurrent calls for the same board share one request. */
+function loadBoard(workspaceId) {
+  if (!state.team) return Promise.resolve();
+  if (boardsLoading.has(workspaceId)) return boardsLoading.get(workspaceId);
+  const job = Promise.allSettled([teamRequest(space(workspaceId, '/tasks')), teamRequest(space(workspaceId, '/limits'))])
+    .then(([tasks, limits]) => {
+      if (tasks.status === 'fulfilled' && Array.isArray(tasks.value)) state.boards[workspaceId] = tasks.value;
+      else if (tasks.status === 'rejected' && !hidden(tasks.reason)) console.warn('[team] board:', tasks.reason?.message);
+      if (limits.status === 'fulfilled' && limits.value) state.limits[workspaceId] = limits.value;
+      else if (limits.status === 'rejected' && !hidden(limits.reason)) console.warn('[team] limits:', limits.reason?.message);
+    })
+    .finally(() => boardsLoading.delete(workspaceId));
+  boardsLoading.set(workspaceId, job);
+  return job;
+}
+/** Every teamspace's board; boards of teamspaces no longer listed are dropped. */
+async function loadBoards() {
+  if (!state.team) return;
+  const ids = new Set(state.spaces.map((s) => s.id));
+  for (const id of Object.keys(state.boards)) if (!ids.has(id)) delete state.boards[id];
+  for (const id of Object.keys(state.limits)) if (!ids.has(id)) delete state.limits[id];
+  await Promise.all([...ids].map(loadBoard));
+}
+
 async function load(store, { force = false } = {}) {
   if (state.loading || (state.loaded && !force)) return;
   state.loading = true;
@@ -105,6 +137,7 @@ async function load(store, { force = false } = {}) {
         loadInbox(),
       ]);
       state.members = toPeople(members, state.me);
+      loadBoards();
     }
     state.loaded = true;
   } catch (error) {
@@ -119,6 +152,7 @@ async function load(store, { force = false } = {}) {
       if (document.visibilityState !== 'visible' || !state.team) return;
       bindRealtime();
       loadInbox();
+      loadBoards();
       state.version++;
     }, POLL_MS);
   }
@@ -206,6 +240,8 @@ export function useTeam(store) {
     reload: () => load(store, { force: true }),
     loadInbox,
     loadSpaces,
+    loadBoards,
+    loadBoard,
     /** Optimistic local inbox update after marking read; the server stays the authority. */
     markLocalRead(ids) { for (const item of state.inbox) if (!ids || ids.includes(item.id)) item.read = true; },
   };
@@ -213,7 +249,8 @@ export function useTeam(store) {
 
 /** For tests: reset the shared state. */
 export function _resetTeamState() {
-  Object.assign(state, { loaded: false, loading: false, error: '', team: null, teams: [], me: null, members: [], spaces: [], inbox: [], version: 0, lastSignal: null });
+  Object.assign(state, { loaded: false, loading: false, error: '', team: null, teams: [], me: null, members: [], spaces: [], inbox: [], boards: {}, limits: {}, version: 0, lastSignal: null });
+  boardsLoading.clear();
   socketBound = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }

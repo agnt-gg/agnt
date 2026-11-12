@@ -41,7 +41,7 @@
             <button v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" data-testid="new-teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
           </div>
           <button v-for="s in spaces" :key="s.id" type="button" class="d-item" :class="{ 'is-active': active === 'space:' + s.id }" @click="$emit('go', { view: 'space', space: s.id })">
-            <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}
+            <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}<span v-if="marks[s.id]" class="space-mark" :data-testid="`space-mark-${s.id}`">{{ marks[s.id] }}</span>
           </button>
           <p v-if="!spaces.length" class="d-note">No teamspaces yet. Add one with +.</p>
         </template>
@@ -67,6 +67,8 @@ const props = defineProps({
   spaces: { type: Array, default: () => [] },
   active: { type: String, default: null },
   counts: { type: Object, default: () => ({}) },
+  // Beside a teamspace: what has stopped there, or that it is at its work limit (teamModel.spaceMark).
+  marks: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['go', 'pick', 'find', 'new-space', 'error']);
 const menu = ref(null);
@@ -87,3 +89,8 @@ const onDown = (e) => { if (menu.value && !e.target.closest?.('.ws-menu, .ws-btn
 onMounted(() => document.addEventListener('mousedown', onDown));
 onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 </script>
+
+<style scoped>
+/* A teamspace with stopped work, or at its work limit, says so beside its name. */
+.space-mark { margin-left: auto; padding: 1px 6px; border-radius: 6px; background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
+</style>

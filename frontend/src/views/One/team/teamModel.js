@@ -361,3 +361,64 @@ export function columnLoad(count, max) {
   if (!max) return { count, max: null, full: false, over: false, toFree: 0, label: String(count) };
   return { count, max, full: count >= max, over: count > max, toFree: Math.max(0, count - max + 1), label: `${count} of ${max}` };
 }
+
+/**
+ * One teamspace's flow from its board: what its agents are doing, what has stopped, whether a
+ * column is at its work limit, and how often results were accepted first time (last 7 days).
+ */
+export function spaceFlow(tasks = [], limits = {}, now = Date.now()) {
+  const count = (test) => tasks.filter(test).length;
+  const fullColumns = ['doing', 'review'].filter((status) => columnLoad(count((t) => t.status === status), limits?.[status]).full);
+  const since = now - 7 * DAY_MS;
+  const reviewed = tasks.filter((t) => t.approvedAt && Date.parse(t.approvedAt) >= since);
+  const firstTime = reviewed.filter((t) => !t.sendBackCount).length;
+  return {
+    open: count((t) => t.status !== 'done'),
+    working: count((t) => t.agentState === 'running'),
+    stopped: count((t) => t.agentState === 'blocked'),
+    toReview: count((t) => t.agentState === 'waiting'),
+    waitingForRoom: count((t) => t.agentState === 'queued'),
+    fullColumns,
+    atLimit: fullColumns.length > 0,
+    reviewed: reviewed.length,
+    firstTimeRate: reviewed.length ? Math.round((firstTime / reviewed.length) * 100) : null,
+  };
+}
+
+/** A team's line in Teams at work, and its tag: stopped and full columns first, quiet last. */
+export function teamFlowLine(flow) {
+  const parts = [];
+  if (flow.working) parts.push(`${flow.working} working`);
+  if (flow.stopped) parts.push(`${flow.stopped} stopped`);
+  if (flow.toReview) parts.push(`${flow.toReview} to review`);
+  if (flow.waitingForRoom) parts.push(`${flow.waitingForRoom} waiting for room`);
+  if (flow.firstTimeRate !== null) parts.push(`${flow.firstTimeRate}% accepted first time`);
+  const text = parts.join(' · ') || (flow.open ? `${plural(flow.open, 'open card')}, none with an agent` : 'Nothing in flight');
+  const tag = flow.stopped ? { label: `${flow.stopped} stopped`, tone: 'amber' }
+    : flow.atLimit ? { label: 'At its limit', tone: 'amber' }
+    : flow.working ? { label: 'Flowing', tone: 'green' }
+    : null;
+  return { text, tag };
+}
+
+/** The drawer's mark beside a teamspace: what has stopped there, or that it is at its work limit. */
+export function spaceMark(flow) {
+  if (flow?.stopped) return `${flow.stopped} stopped`;
+  if (flow?.atLimit) return 'At limit';
+  return '';
+}
+
+/** Stopped cards in the order to answer them: the ones holding up the most work, then the longest stopped. */
+export function byWhatTheyHoldUp(tasks = []) {
+  return [...tasks].sort((a, b) => (b.holdingUp || 0) - (a.holdingUp || 0)
+    || Date.parse(a.agentStateAt || a.updatedAt || 0) - Date.parse(b.agentStateAt || b.updatedAt || 0));
+}
+
+/** "3 of 3 checks passed", or the first check that failed, for a result waiting for review. */
+export function checksSummary(checks = []) {
+  const judged = checks.filter((c) => c.ok !== null && c.ok !== undefined);
+  if (!judged.length) return null;
+  const failed = judged.filter((c) => c.ok === false);
+  if (!failed.length) return { label: `${judged.length} of ${judged.length} ${judged.length === 1 ? 'check' : 'checks'} passed`, tone: 'green' };
+  return { label: `${failed.length === 1 ? '1 check' : `${failed.length} checks`} failed: ${failed[0].label}`, tone: 'amber' };
+}

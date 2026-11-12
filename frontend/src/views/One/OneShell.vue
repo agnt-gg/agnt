@@ -18,6 +18,7 @@
       :spaces="teamState.spaces"
       :active="mkDrawerActive"
       :counts="mkCounts"
+      :marks="spaceMarks"
       @go="(loc) => go({ page: 'team', ...loc })"
       @pick="mkPick"
       @find="store.dispatch('shell/openJump')"
@@ -153,6 +154,7 @@ import { useMkFrame } from './mk/useMkFrame.js';
 import './mk/mk.css';
 import './mk/mk-frame.css';
 import { useTeam, teamApi } from './team/useTeam.js';
+import { spaceFlow, spaceMark } from './team/teamModel.js';
 import { useCheckpoints } from '@/composables/useCheckpoints.js';
 
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
@@ -230,6 +232,10 @@ const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChat
 // ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
 const team = useTeam(store);
 const teamState = team.state;
+// The drawer's andon: each teamspace with stopped work, or at its work limit, from the shared boards.
+const spaceMarks = computed(() => Object.fromEntries(teamState.spaces
+  .map((s) => [s.id, spaceMark(spaceFlow(teamState.boards[s.id] || [], teamState.limits[s.id] || {}))])
+  .filter(([, mark]) => mark)));
 const onTeamspace = computed(() => page.value === 'team' && ['space', 'doc'].includes(String(route.query.view || '')));
 const teamUnread = team.unread;
 // Home is the inbox: its badge is everything waiting on you, team items and checkpoints alike.

@@ -2,7 +2,13 @@
   <div class="content">
     <div class="page">
       <h1 class="greet">Good {{ partOfDay() }}{{ firstName ? ', ' + firstName : '' }}.</h1>
-      <p class="lead">{{ lead }}</p>
+      <!-- In a team, a status line: what has stopped, what is working, which team is at its limit. Each count goes to its list. -->
+      <div v-if="team" class="flow-status" data-testid="flow-status">
+        <button v-for="s in status" :key="s.id" type="button" class="flow-stat" :class="'is-' + s.tone" @click="goTo(s.target)">
+          <span v-if="s.tone === 'working'" class="pulse" aria-hidden="true"></span><span v-else class="flow-dot" aria-hidden="true"></span>{{ s.label }}
+        </button>
+      </div>
+      <p v-else class="lead">{{ lead }}</p>
       <div class="chips">
         <button type="button" class="chip" @click="ctx.ask('')"><MkIcon name="chats" />Ask Annie</button>
         <button type="button" class="chip" @click="ctx.create('task')"><MkIcon name="task" />New task</button>
@@ -20,20 +26,16 @@
             </button>
           </nav>
           <span class="fill"></span>
+          <button v-if="reviewTasks.length" type="button" class="primary sm" data-testid="review-sitting-open" @click="sitting = [...reviewTasks]">Review {{ reviewTasks.length === 1 ? 'the agent result' : `${reviewTasks.length} agent results` }}</button>
           <button v-if="team" type="button" class="btn ghost sm" :disabled="!ctx.unread.value" @click="readAll"><MkIcon name="check" size="xs" />Mark all read</button>
         </div>
         <div class="hm-inbox-b">
           <template v-if="tab === 'needs'">
-            <div v-if="checkpointsWaiting.length" class="hm-sub">Waiting for your OK</div>
-            <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
-            <div v-if="stuckTasks.length" class="hm-sub">Cards waiting on you</div>
-            <ul v-if="stuckTasks.length" class="list" data-testid="stuck-tasks"><li v-for="t in stuckTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
-            <div v-if="runsWaiting.length" class="hm-sub">Routine runs to review</div>
-            <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
-            <div v-if="brokenRoutines.length" class="hm-sub">Routines that need a look</div>
-            <ul v-if="brokenRoutines.length" class="list" data-testid="broken-routines"><li v-for="r in brokenRoutines" :key="r.id"><TeamRunRow :run="r" /></li></ul>
-            <div v-if="appsToConnect.length" class="hm-sub">Apps to reconnect</div>
-            <ul v-if="appsToConnect.length" class="list" data-testid="apps-to-connect">
+            <div ref="stoppedRef" class="flow-group" data-group="stopped">
+              <div v-if="stoppedCount" class="hm-sub">Stopped until you answer<span v-if="stoppedTasks.length > 1" class="hm-sub-note">sorted by what they hold up</span></div>
+              <ul v-if="stoppedTasks.length" class="list" data-testid="stuck-tasks"><li v-for="t in stoppedTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
+              <ul v-if="brokenRoutines.length" class="list" data-testid="broken-routines"><li v-for="r in brokenRoutines" :key="r.id"><TeamRunRow :run="r" /></li></ul>
+              <ul v-if="appsToConnect.length" class="list" data-testid="apps-to-connect">
               <li v-for="card in appsToConnect" :key="card.id">
                 <div class="r" :data-app="card.id">
                   <span class="r-icon"><SvgIcon v-if="card.icon" :name="card.icon" /><MkIcon v-else name="plug" size="sm" /></span>
@@ -44,7 +46,12 @@
                   <button type="button" class="primary sm" :disabled="signIn.busy.value" @click="connectApp(card)">{{ card.status === 'reconnect' ? 'Reconnect' : 'Connect' }}</button>
                 </div>
               </li>
-            </ul>
+              </ul>
+            </div>
+            <div v-if="readyCount" class="hm-sub">Ready for your review</div>
+            <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
+            <ul v-if="reviewTasks.length" class="list" data-testid="review-tasks"><li v-for="t in reviewTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
+            <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
             <div v-if="pluginAsks.length" class="hm-sub">Plugin requests</div>
             <ul v-if="pluginAsks.length" class="list" data-testid="plugin-requests">
               <li v-for="r in pluginAsks" :key="r.id"><TeamPluginRequestRow :request="r" decider :busy="deciding === r.id" @approve="approvePlugin" @decline="declinePlugin" /></li>
@@ -90,22 +97,18 @@
               <li v-for="t in myTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li>
             </ul>
           </div>
-          <div>
-            <div class="sec-head"><h3>Agents at work</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('activity')">Activity</button></div>
-            <ul class="list">
-              <li v-if="!agentTasks.length" class="empty">{{ loading ? 'Loading…' : 'No agent is working on a card.' }}</li>
-              <li v-for="t in agentTasks.slice(0, 6)" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li>
+          <div ref="teamsRef">
+            <div class="sec-head"><h3>Teams at work</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('activity')">Activity</button></div>
+            <ul class="list" data-testid="teams-at-work">
+              <li v-if="!teamRows.length" class="empty">{{ loading ? 'Loading…' : 'No teamspaces yet.' }}</li>
+              <li v-for="row in teamRows" :key="row.space.id">
+                <button type="button" class="r" :data-space="row.space.id" @click="ctx.go({ view: 'space', space: row.space.id, tab: 'board' })">
+                  <span class="r-icon" aria-hidden="true">{{ spaceEmoji(row.space) }}</span>
+                  <span class="r-text"><strong>{{ row.space.name }}</strong><small>{{ row.line.text }}</small></span>
+                  <span v-if="row.line.tag" class="tag" :class="row.line.tag.tone">{{ row.line.tag.label }}</span>
+                </button>
+              </li>
             </ul>
-            <div class="sec-head"><h3>Your teamspaces</h3></div>
-            <div class="cards" style="grid-template-columns: 1fr">
-              <button v-for="s in spaces" :key="s.id" type="button" class="card" @click="ctx.go({ view: 'space', space: s.id, tab: 'board' })">
-                <div class="card-top">
-                  <span class="space-icon" style="width: 34px; height: 34px; font-size: 16px; border-radius: 10px">{{ spaceEmoji(s) }}</span>
-                  <div style="flex: 1"><h4>{{ s.name }}</h4><p>{{ openCount(s.id) }} open</p></div>
-                  <span class="stack"><TeamAvatar v-for="p in ctx.people.value.slice(0, 4)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span>
-                </div>
-              </button>
-            </div>
           </div>
         </div>
       </template>
@@ -124,18 +127,19 @@
         </ul>
       </template>
     </div>
+    <TeamReviewSitting v-if="sitting" :tasks="sitting" @changed="ctx.loadBoards()" @close="closeSitting" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, inject, onMounted } from 'vue';
+import { ref, computed, watch, inject, onMounted, nextTick } from 'vue';
 import TeamInboxRow from './TeamInboxRow.vue';
-import TeamAvatar from './TeamAvatar.vue';
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import TeamTaskRow from './TeamTaskRow.vue';
 import TeamCheckpointRow from './TeamCheckpointRow.vue';
 import TeamRunRow from './TeamRunRow.vue';
 import TeamPluginRequestRow from './TeamPluginRequestRow.vue';
+import TeamReviewSitting from './TeamReviewSitting.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import { usePluginRequests } from '@/composables/usePluginRequests.js';
 import { useAppCards } from '@/composables/useAppCards.js';
@@ -146,7 +150,7 @@ import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import { useStore } from 'vuex';
 import { teamApi } from './useTeam.js';
 import { roleLabel } from '@/utils/teamClient.js';
-import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook } from './teamModel.js';
+import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook, spaceFlow, teamFlowLine, byWhatTheyHoldUp, plural } from './teamModel.js';
 
 const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
@@ -158,15 +162,22 @@ const teams = computed(() => ctx.teams.value);
 const spaces = computed(() => ctx.spaces.value);
 const firstName = computed(() => ctx.people.value.find((p) => p.isMe)?.first || '');
 const tab = ref(TABS.some((t) => t.id === props.initialTab) ? props.initialTab : 'needs');
-const tasks = ref([]);
+// Every teamspace's board, from the shared team state (the drawer reads the same boards).
+const tasks = computed(() => spaces.value.flatMap((s) => ctx.boards.value[s.id] || []));
 const loading = ref(true);
+const sitting = ref(null);
+const stoppedRef = ref(null);
+const teamsRef = ref(null);
 
 const checkpointsWaiting = computed(() => ctx.checkpoints.state.pending);
 const runs = computed(() => ctx.routineRuns.value);
 const runsLoaded = computed(() => ctx.routineRunsLoaded.value);
 const runsWaiting = computed(() => runs.value.filter((r) => r.status === 'needs_review'));
 const brokenRoutines = computed(() => routinesNeedingALook(runs.value));
-const stuckTasks = computed(() => tasksNeedingMe(tasks.value, ctx.me.value));
+// Yours: you made the card or it is assigned to you. Stopped ones first, by what they hold up.
+const cardsNeedingMe = computed(() => tasksNeedingMe(tasks.value, ctx.me.value));
+const stoppedTasks = computed(() => byWhatTheyHoldUp(cardsNeedingMe.value.filter((t) => t.agentState === 'blocked')));
+const reviewTasks = computed(() => cardsNeedingMe.value.filter((t) => t.agentState === 'waiting'));
 const openTask = (t) => ctx.go({ view: 'space', space: t.workspaceId, tab: 'board', task: t.id });
 
 // Your apps whose sign-in is missing or failing: the same test the Apps page's "Needs you" uses.
@@ -180,7 +191,10 @@ function connectApp(card) {
   if (!card.connectable || !card.providerId) return nav.go({ page: 'connectors', item: card.apps?.[0] ? `app:${card.apps[0].name}` : null });
   return signIn.signIn(card);
 }
-const teamNeeds = computed(() => ctx.inbox.value.filter((i) => !i.read || (i.kind === 'approval' && i.state === 'pending')));
+// An approval for a card already listed under Ready for your review is not listed twice.
+const reviewIds = computed(() => new Set(reviewTasks.value.map((t) => t.id)));
+const teamNeeds = computed(() => ctx.inbox.value.filter((i) => (!i.read || (i.kind === 'approval' && i.state === 'pending'))
+  && !(i.kind === 'approval' && i.target?.kind === 'task' && reviewIds.value.has(i.target.id))));
 const mentions = computed(() => ctx.inbox.value.filter((i) => i.kind === 'mention'));
 // Plugin requests: the ones you decide, and your own once decided (until dismissed).
 const plugins = usePluginRequests();
@@ -198,31 +212,70 @@ async function decidePlugin(request, approve) {
 }
 const approvePlugin = (r) => decidePlugin(r, true);
 const declinePlugin = (r) => decidePlugin(r, false);
-const needCount = computed(() => checkpointsWaiting.value.length + stuckTasks.value.length + runsWaiting.value.length + brokenRoutines.value.length
-  + appsToConnect.value.length + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
+const stoppedCount = computed(() => stoppedTasks.value.length + brokenRoutines.value.length + appsToConnect.value.length);
+const readyCount = computed(() => checkpointsWaiting.value.length + reviewTasks.value.length + runsWaiting.value.length);
+const needCount = computed(() => stoppedCount.value + readyCount.value + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
 const myTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'person' && t.assignee.id === ctx.me.value));
-const agentTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'agent'));
-const openCount = (id) => tasks.value.filter((t) => t.workspaceId === id && t.status !== 'done').length;
-/** The mockup's sentence: "7 things need you, 4 tasks on your plate and 2 agent jobs in flight." */
+
+// Teams at work: one line per teamspace this person can see, from its board and its work limits.
+const teamRows = computed(() => spaces.value
+  .filter((s) => ctx.boards.value[s.id])
+  .map((s) => {
+    const flow = spaceFlow(ctx.boards.value[s.id], ctx.limits.value[s.id] || {});
+    return { space: s, flow, line: teamFlowLine(flow) };
+  }));
+// The status line: an andon board for the whole team. Calm when nothing has stopped.
+const status = computed(() => {
+  const stopped = stoppedTasks.value.length;
+  const apps = appsToConnect.value.length;
+  const working = teamRows.value.reduce((sum, row) => sum + row.flow.working, 0);
+  const atLimit = teamRows.value.filter((row) => row.flow.atLimit).length;
+  return [
+    { id: 'stopped', tone: stopped ? 'alert' : 'calm', target: 'stopped', label: stopped ? `${stopped} stopped until you answer` : 'Nothing stopped on you' },
+    apps && { id: 'apps', tone: 'warn', target: 'stopped', label: `${plural(apps, 'app')} to reconnect` },
+    { id: 'working', tone: 'working', target: 'teams', label: `${working} working` },
+    atLimit && { id: 'limit', tone: 'warn', target: 'teams', label: atLimit === 1 ? '1 team at its work limit' : `${atLimit} teams at their work limit` },
+  ].filter(Boolean);
+});
+async function goTo(target) {
+  if (target === 'stopped') tab.value = 'needs';
+  // After the tab switch renders, so the list is there to scroll to.
+  await nextTick();
+  (target === 'stopped' ? stoppedRef.value : teamsRef.value)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+}
+function closeSitting() {
+  sitting.value = null;
+  ctx.loadBoards();
+}
+/** Outside a team there is no status line: one sentence instead. */
 const lead = computed(() => {
   const n = needCount.value;
-  const need = n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you, ` : 'Nothing needs you, ';
-  if (!team.value) return `${need.replace(/, $/, '.')} This is your personal space; everything here is private to you.`;
-  const plate = myTasks.value.length, jobs = agentTasks.value.length;
-  return `${need}${plate} ${plate === 1 ? 'task' : 'tasks'} on your plate and ${jobs} agent ${jobs === 1 ? 'job' : 'jobs'} in flight.`;
+  return `${n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you.` : 'Nothing needs you.'} This is your personal space; everything here is private to you.`;
 });
 
 async function readAll() {
   try { await teamApi.markAllRead(); ctx.markLocalRead(null); } catch (e) { ctx.toast(e.message); }
 }
-/** Every teamspace's board, read through its own authorized route. A space you cannot read is skipped. */
+/** Every teamspace's board, from the shared team state. */
 async function load() {
-  if (!team.value) { loading.value = false; return; }
-  const lists = await Promise.all(spaces.value.map((s) => teamApi.tasks(s.id).catch(() => [])));
-  tasks.value = lists.flat();
+  if (team.value) await ctx.loadBoards();
   loading.value = false;
 }
 watch(() => props.initialTab, (value) => { if (TABS.some((t) => t.id === value)) tab.value = value; });
-watch(() => [ctx.version.value, spaces.value.length, team.value?.id], () => { load(); plugins.load(); });
+watch(() => [spaces.value.length, team.value?.id], load);
+watch(() => ctx.version.value, () => plugins.load());
 onMounted(() => { load(); ctx.checkpoints.loadPending(); ctx.loadRoutineRuns(); plugins.load(); });
 </script>
+
+<style scoped>
+/* The status line under the greeting; tones follow the board's tags (mk.css). */
+.flow-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 16px; }
+.flow-stat { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--text-primary); font-size: 14px; }
+.flow-stat:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.flow-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--green-text); }
+.flow-stat.is-alert { border-color: rgba(var(--pink-rgb), 0.35); background: rgba(var(--pink-rgb), 0.06); }
+.flow-stat.is-alert .flow-dot { background: var(--pink); }
+.flow-stat.is-warn { border-color: rgba(var(--orange-rgb), 0.4); background: rgba(var(--orange-rgb), 0.07); }
+.flow-stat.is-warn .flow-dot { background: var(--amber-text); }
+.hm-sub-note { margin-left: 8px; text-transform: none; letter-spacing: 0; font-size: 12px; }
+</style>

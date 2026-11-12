@@ -20,6 +20,14 @@ describe('drawer: Teamspaces +', () => {
     expect(wrapper.text()).toContain('No teamspaces yet. Add one with +.');
   });
 
+  it('a teamspace with stopped work, or at its limit, says so beside its name; a calm one shows nothing', () => {
+    const spaces = [{ id: 'sales', name: 'Sales' }, { id: 'ops', name: 'Ops' }, { id: 'mkt', name: 'Marketing' }];
+    const wrapper = mountDrawer({ team: team('member'), teams: [team('member')], spaces, marks: { sales: '1 stopped', ops: 'At limit' } });
+    expect(wrapper.get('[data-testid="space-mark-sales"]').text()).toBe('1 stopped');
+    expect(wrapper.get('[data-testid="space-mark-ops"]').text()).toBe('At limit');
+    expect(wrapper.find('[data-testid="space-mark-mkt"]').exists()).toBe(false);
+  });
+
   it('personal workspace has no Teamspaces group, so no +', () => {
     const wrapper = mountDrawer({ team: null, teams: [], spaces: [] });
     expect(wrapper.find('[data-testid="new-teamspace"]').exists()).toBe(false);

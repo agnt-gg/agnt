@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cardStateLine, timeInColumn, reviewOutcome, nextUpTaskId, columnLoad, agentStateLabel } from './teamModel.js';
+import { cardStateLine, timeInColumn, reviewOutcome, nextUpTaskId, columnLoad, agentStateLabel, spaceFlow, teamFlowLine, spaceMark, byWhatTheyHoldUp, checksSummary } from './teamModel.js';
 
 const NOW = Date.parse('2026-11-02T12:00:00.000Z');
 const hoursAgo = (h) => new Date(NOW - h * 3600e3).toISOString();
@@ -37,6 +37,40 @@ describe('flow on the board: what a card says about its agent', () => {
     ];
     expect(nextUpTaskId(tasks)).toBe('early');
     expect(nextUpTaskId([{ id: 'x', agentState: 'blocked' }])).toBeNull();
+  });
+
+  it('a teamspace\u2019s flow: working, stopped, waiting for room, full columns, first-time acceptance over 7 days', () => {
+    const tasks = [
+      { status: 'doing', agentState: 'running' },
+      { status: 'todo', agentState: 'blocked' },
+      { status: 'todo', agentState: 'queued' },
+      { status: 'review', agentState: 'waiting' },
+      { status: 'review', agentState: 'waiting' },
+      { status: 'done', approvedAt: hoursAgo(5), sendBackCount: 0 },
+      { status: 'done', approvedAt: hoursAgo(30), sendBackCount: 2 },
+      { status: 'done', approvedAt: hoursAgo(24 * 9), sendBackCount: 0 },
+    ];
+    const flow = spaceFlow(tasks, { doing: 3, review: 2 }, NOW);
+    expect(flow).toMatchObject({ open: 5, working: 1, stopped: 1, toReview: 2, waitingForRoom: 1, fullColumns: ['review'], atLimit: true, reviewed: 2, firstTimeRate: 50 });
+    expect(teamFlowLine(flow)).toEqual({ text: '1 working · 1 stopped · 2 to review · 1 waiting for room · 50% accepted first time', tag: { label: '1 stopped', tone: 'amber' } });
+    expect(spaceMark(flow)).toBe('1 stopped');
+    const quiet = spaceFlow([{ status: 'todo' }], {}, NOW);
+    expect(teamFlowLine(quiet)).toEqual({ text: '1 open card, none with an agent', tag: null });
+    expect(spaceMark(quiet)).toBe('');
+    expect(spaceMark(spaceFlow([{ status: 'doing' }], { doing: 1 }, NOW))).toBe('At limit');
+  });
+
+  it('stopped cards: most held up first, then the longest stopped; checks summarised for review', () => {
+    const cards = [
+      { id: 'new', holdingUp: 0, agentStateAt: hoursAgo(1) },
+      { id: 'old', holdingUp: 0, agentStateAt: hoursAgo(9) },
+      { id: 'blocking', holdingUp: 3, agentStateAt: hoursAgo(1) },
+    ];
+    expect(byWhatTheyHoldUp(cards).map((c) => c.id)).toEqual(['blocking', 'old', 'new']);
+    expect(checksSummary([{ label: 'A', ok: true }, { label: 'B', ok: true }])).toEqual({ label: '2 of 2 checks passed', tone: 'green' });
+    expect(checksSummary([{ label: 'A', ok: true }, { label: 'Totals add up', ok: false }])).toEqual({ label: '1 check failed: Totals add up', tone: 'amber' });
+    expect(checksSummary([{ label: 'A', ok: null }])).toBeNull();
+    expect(checksSummary([])).toBeNull();
   });
 
   it('a column against its limit: full at the limit, over past it, and how many must leave', () => {
