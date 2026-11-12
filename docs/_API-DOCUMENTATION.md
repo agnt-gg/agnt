@@ -3807,6 +3807,16 @@ Base path: `/api/goals`
 ]
 ```
 
+### Objectives
+
+The few outcomes a person's goals serve. Each goal in the list above carries `objective_id` (null when it serves none).
+
+- **GET** `/objectives`: live objectives, oldest first: `[{ id, title, target, current, goals, done, createdAt, updatedAt }]`. `goals` counts the goals that serve one; `done` counts those that are completed or validated.
+- **POST** `/objectives`: body `{ title, target?, current? }` (each at most 120 characters). Returns the objective.
+- **PUT** `/objectives/:objectiveId`: body with any of `title`, `target`, `current`. Returns the objective.
+- **DELETE** `/objectives/:objectiveId`: retires it. Its goals are unlinked and kept.
+- **PUT** `/:id/objective`: body `{ objectiveId }`, or `null` to unlink. Returns `{ goalId, objectiveId }`.
+
 ### Create Goal
 
 **POST** `/create`

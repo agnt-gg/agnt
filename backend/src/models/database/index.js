@@ -1,5 +1,6 @@
 import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
 import { initializeLearningSchema } from './learningSchema.js';
+import { initializeGoalObjectives } from './goalObjectives.js';
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -2574,6 +2575,7 @@ const dbReady = skipSchemaInit
   .then(async () => {
     await initializeGoalLifecycleVersions(db);
     await initializeLearningSchema(db);
+    await initializeGoalObjectives(db);
     console.log('All indexes ready');
   })
   .then(async () => {

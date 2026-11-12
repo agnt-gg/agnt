@@ -45,7 +45,19 @@
           </div>
         </div>
 
-        <div v-else-if="!mobileView" class="kanban-board fade-in" @click.self="deselectGoal">
+        <GoalObjectivesStrip
+          v-if="!mobileView && !selectedGoalId"
+          :objectives="objectives"
+          :unlinked="unlinkedGoals"
+          :active="objectiveFilter"
+          @filter="(id) => (objectiveFilter = id)"
+          @create="createObjective"
+          @update="updateObjective"
+          @retire="retireObjective"
+        />
+        <div v-if="!mobileView && !selectedGoalId && objectiveError" class="objective-error" role="alert">{{ objectiveError }}</div>
+
+        <div v-if="!mobileView && !selectedGoalId && !(isLoading && (!allGoals || allGoals.length === 0))" class="kanban-board fade-in" @click.self="deselectGoal">
           <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']" :data-stage="column.id">
             <div class="column-header" :style="{ borderTopColor: column.color }">
               <div class="column-heading">
@@ -72,6 +84,8 @@
                   :goal="element"
                   :isSelected="selectedGoalId === element.id"
                   :liveIteration="getLiveIteration(element.id)"
+                  :objectives="objectives"
+                  @set-objective="setGoalObjective"
                   @click="handleGoalClick"
                   @pause="pauseGoal"
                   @resume="resumeGoal"
@@ -135,6 +149,13 @@
                   </Tooltip>
                 </div>
                 <input v-model="goalTitle" type="text" class="text-input" placeholder="Auto-generated if blank" :disabled="isCreatingGoal" />
+
+                <template v-if="objectives.length">
+                  <div class="label-row">
+                    <label class="modal-label">Serves <span class="optional">(optional)</span></label>
+                  </div>
+                  <CustomSelect v-model="newGoalObjective" :options="[{ label: 'No objective', value: '' }, ...objectives.map((o) => ({ label: o.title, value: o.id }))]" aria-label="Objective this goal serves" />
+                </template>
 
                 <div class="label-row">
                   <label class="modal-label">Success criteria <span class="optional">(optional)</span></label>
@@ -336,6 +357,8 @@ import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
 // The centre review workspace uses the same goal/checklist helpers as the inspector.
 
 import { GOAL_COLUMNS, getGoalStage, matchesGoalFilter } from './goalBoard.js';
+import GoalObjectivesStrip from './components/GoalObjectivesStrip.vue';
+import { objectivesApi, matchesObjective, unlinkedCount } from './goalObjectives.js';
 
 // Schedule options — mirrors the Timer Trigger tool's UX (Interval or
 // Specific Time + Days) so users see the same vocabulary they already know
@@ -382,7 +405,7 @@ const COMMON_TZ = [
 
 export default {
   name: 'GoalsScreen',
-  components: { MobileCollection,
+  components: { MobileCollection, GoalObjectivesStrip,
     CustomSelect,
     BaseScreen,
     GoalCard,
@@ -498,6 +521,31 @@ export default {
     let ageInterval = null;
 
     const allGoals = computed(() => store.getters['goals/allGoals']);
+
+    // Objectives: the few outcomes the goals serve. Each one filters the board.
+    const objectives = ref([]);
+    const objectiveFilter = ref(null);
+    const objectiveError = ref('');
+    const newGoalObjective = ref('');
+    const unlinkedGoals = computed(() => unlinkedCount(allGoals.value || [], objectives.value));
+    const loadObjectives = async () => {
+      try { objectives.value = await objectivesApi.list(); objectiveError.value = ''; } catch (error) { objectiveError.value = error.message; }
+    };
+    const objectiveAction = async (run) => {
+      try { await run(); await loadObjectives(); } catch (error) { objectiveError.value = error.message; }
+    };
+    const createObjective = (input) => objectiveAction(() => objectivesApi.create(input));
+    const updateObjective = (id, input) => objectiveAction(() => objectivesApi.update(id, input));
+    const retireObjective = (id) => objectiveAction(async () => {
+      await objectivesApi.retire(id);
+      if (objectiveFilter.value === id) objectiveFilter.value = null;
+      // The server unlinked its goals; the board says so at once.
+      for (const goal of allGoals.value || []) if (goal.objective_id === id) store.commit('goals/UPDATE_GOAL', { id: goal.id, objective_id: null });
+    });
+    const setGoalObjective = (goal, objectiveId) => objectiveAction(async () => {
+      await objectivesApi.link(goal.id, objectiveId);
+      store.commit('goals/UPDATE_GOAL', { id: goal.id, objective_id: objectiveId });
+    });
     const isLoading = computed(() => store.getters['goals/isLoading']);
 
     const getLiveIteration = (goalId) => store.getters['goals/getLiveIteration'](goalId);
@@ -523,6 +571,8 @@ export default {
           return activeFilters.value.some((filter) => matchesGoalFilter(g, filter));
         });
       }
+
+      if (objectiveFilter.value) goals = goals.filter((g) => matchesObjective(g, objectiveFilter.value, objectives.value));
 
       const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
       const sortFns = {
@@ -568,6 +618,7 @@ export default {
 
     const initializeScreen = () => {
       terminalLines.value.push('Loading goals...');
+      loadObjectives();
       if (route.query?.new === '1') showCreateModal.value = true;
       store
         .dispatch('goals/fetchGoals')
@@ -643,6 +694,7 @@ export default {
 
     const resetCreateModal = () => {
       goalInput.value = '';
+      newGoalObjective.value = '';
       newGoalPriority.value = 'medium';
       maxIterations.value = 50;
       goalTitle.value = '';
@@ -670,6 +722,10 @@ export default {
           title: goalTitle.value.trim() || undefined,
           successCriteria: goalSuccessCriteria.value.trim() || undefined,
         });
+
+        if (newGoalObjective.value && newGoal?.id) {
+          await setGoalObjective(newGoal, newGoalObjective.value);
+        }
 
         if (wantsSchedule() && newGoal?.id) {
           const cron = computedCron.value;
@@ -871,6 +927,15 @@ export default {
       formatCronPreview,
       toggleSpecificDay,
       wantsSchedule,
+      objectives,
+      objectiveFilter,
+      objectiveError,
+      unlinkedGoals,
+      newGoalObjective,
+      createObjective,
+      updateObjective,
+      retireObjective,
+      setGoalObjective,
     };
   },
 };
@@ -889,6 +954,12 @@ export default {
 body[data-page='terminal-goals'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
+}
+
+.objective-error {
+  margin: -6px 0 10px;
+  font-size: var(--font-size-sm);
+  color: var(--color-red);
 }
 
 .kanban-board {

@@ -68,6 +68,7 @@ const GOAL_ROUTES = [
   ['GET', `/goals/${goalId}/evaluation`],
   ['POST', `/goals/${goalId}/golden-standard`],
   ['DELETE', `/goals/${goalId}`],
+  ['PUT', `/goals/${goalId}/objective`],
   ['POST', `/skillforge/analyze/${goalId}`],
   ['POST', `/skillforge/evolve/${goalId}`],
 ];
@@ -98,6 +99,30 @@ describe('the owner', () => {
     expect(created.status).toBe(201);
     expect((await call(alice, 'GET', `/schedules/target/goal/${goalId}`)).body.schedules).toHaveLength(1);
     expect((await call(bob, 'GET', `/schedules/target/goal/${goalId}`)).body.schedules).toEqual([]);
+  });
+});
+
+describe('objectives', () => {
+  it('list, change, retire and link objectives', async () => {
+    const created = await call(alice, 'POST', '/goals/objectives', { title: 'Grow trial sign-ups 20%', target: '+20% by Dec 31', current: '+12%' });
+    expect(created.status).toBe(200);
+    expect(created.body).toMatchObject({ title: 'Grow trial sign-ups 20%', target: '+20% by Dec 31', current: '+12%', goals: 0, done: 0 });
+    const id = created.body.id;
+    expect((await call(bob, 'GET', '/goals/objectives')).body).toEqual([]);
+    expect(await call(bob, 'PUT', `/goals/objectives/${id}`, { title: 'Mine now' })).toEqual({ status: 404, body: { error: 'Objective not found' } });
+    expect(await call(bob, 'DELETE', `/goals/objectives/${id}`)).toEqual({ status: 404, body: { error: 'Objective not found' } });
+    const bobGoal = randomUUID();
+    await run('INSERT INTO goals (id, user_id, title, description, status) VALUES (?, ?, ?, ?, ?)', [bobGoal, bob, "Bob's goal", 'Work', 'paused']);
+    expect(await call(bob, 'PUT', `/goals/${bobGoal}/objective`, { objectiveId: id })).toEqual({ status: 404, body: { error: 'Objective not found' } });
+
+    expect((await call(alice, 'PUT', `/goals/${goalId}/objective`, { objectiveId: id })).body).toEqual({ goalId, objectiveId: id });
+    expect((await call(alice, 'GET', '/goals/objectives')).body).toEqual([expect.objectContaining({ id, goals: 1, done: 0 })]);
+    expect((await call(alice, 'PUT', `/goals/objectives/${id}`, { current: '+14%' })).body).toMatchObject({ current: '+14%', title: 'Grow trial sign-ups 20%' });
+    expect((await call(alice, 'POST', '/goals/objectives', { title: '   ' })).status).toBe(400);
+    // Retiring it unlinks the goal; the goal itself stays.
+    expect((await call(alice, 'DELETE', `/goals/objectives/${id}`)).body).toEqual({ success: true });
+    expect(await get('SELECT objective_id, user_id FROM goals WHERE id = ?', [goalId])).toEqual({ objective_id: null, user_id: alice });
+    expect((await call(alice, 'GET', '/goals/objectives')).body).toEqual([]);
   });
 });
 

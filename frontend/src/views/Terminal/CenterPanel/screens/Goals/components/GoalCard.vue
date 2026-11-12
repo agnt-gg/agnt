@@ -11,6 +11,12 @@
 
       <div class="goal-title">{{ goal.title }}</div>
 
+      <!-- What this goal serves: one of the board's objectives, or none. -->
+      <div v-if="objectives.length" class="goal-serves" :class="{ 'is-none': !servesTitle(goal, objectives) }" data-testid="goal-serves" @click.stop>
+        <span class="goal-serves-label">Serves</span>
+        <CustomSelect class="goal-serves-select" :model-value="goal.objective_id && servesTitle(goal, objectives) ? goal.objective_id : ''" :options="objectiveOptions" :aria-label="`Objective for ${goal.title}`" @update:model-value="(value) => value !== (goal.objective_id || '') && $emit('set-objective', goal, value || null)" />
+      </div>
+
       <div class="status-chip" :class="goal.status">
         <i :class="getStatusIcon(goal.status)"></i>
         {{ formatStatus(goal.status) }}
@@ -96,6 +102,8 @@ import ShareButton from '@/views/_components/share/ShareButton.vue';
 import { serverAge } from '@/utils/serverTime.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import { getGoalColumn } from '../goalBoard.js';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import { servesTitle } from '../goalObjectives.js';
 
 const AGING_THRESHOLDS = {
   warning: 24 * 60 * 60 * 1000,
@@ -107,17 +115,20 @@ const TERMINAL_STATUSES = ['completed', 'validated', 'failed', 'error', 'stopped
 
 export default {
   name: 'GoalCard',
-  components: { Tooltip, BaseButton, ShareButton },
+  components: { Tooltip, BaseButton, ShareButton, CustomSelect },
   props: {
     goal: { type: Object, required: true },
     isSelected: { type: Boolean, default: false },
     liveIteration: { type: Object, default: null },
     showAge: { type: Boolean, default: true },
+    // The board's objectives; the card shows what it serves only when there are some.
+    objectives: { type: Array, default: () => [] },
   },
-  emits: ['click', 'pause', 'resume', 'delete', 'schedule'],
+  emits: ['click', 'pause', 'resume', 'delete', 'schedule', 'set-objective'],
   setup(props) {
     const store = useStore();
     const boardColumn = computed(() => getGoalColumn(props.goal));
+    const objectiveOptions = computed(() => [{ label: 'No objective', value: '' }, ...props.objectives.map((o) => ({ label: o.title, value: o.id }))]);
     const priority = computed(() => (props.goal.priority || 'medium').toLowerCase());
     const scheduleCount = computed(() => {
       const fn = store.getters['schedules/schedulesForGoal'];
@@ -205,6 +216,8 @@ export default {
     };
 
     return {
+      objectiveOptions,
+      servesTitle,
       boardColumn,
       priority,
       scheduleCount,
@@ -320,6 +333,19 @@ export default {
 .priority-dot.low {
   background: var(--color-blue);
 }
+
+/* What the goal serves: a quiet line under the title; unlinked goals read in a lighter tone. */
+.goal-serves {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.8em;
+  color: var(--text-secondary);
+}
+.goal-serves.is-none { color: var(--text-tertiary); }
+.goal-serves-label { flex: none; }
+.goal-serves-select { flex: 1; min-width: 0; }
 
 .goal-title {
   font-weight: 600;
