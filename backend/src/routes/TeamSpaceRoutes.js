@@ -57,15 +57,34 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     return checkAgents(repo, req, list.filter((m) => m.kind === 'agent').map((m) => m.id));
   }
 
-  /** Hand a card to an agent after the response: the HTTP request never waits for a model. */
-  function startAgent(repo, req, user, task, input) {
+  /**
+   * Hand a card to an agent after the response: the HTTP request never waits for a model. When a
+   * column with a work limit is full the card waits in To do instead, and starts when room opens
+   * (pullWaiting). Returns the card as it now stands.
+   */
+  async function startAgent(repo, req, user, task, input) {
     const { teamId, workspaceId } = req.params;
-    const execute = agentExecutor(repo, req, user, task.assignee.id);
+    const spaces = spacesOf(repo);
+    const agentId = task.assignee.id;
+    const { started, task: current } = await spaces.startAgentRun(teamId, workspaceId, task.id, { agentId, input });
+    if (!started) return current;
+    const execute = agentExecutor(repo, req, user, agentId);
     schedule(() => runAgentOnTask({
-      spaces: spacesOf(repo), teamId, workspaceId, taskId: task.id, agentId: task.assignee.id, input, execute,
+      spaces, teamId, workspaceId, taskId: task.id, agentId, input, execute, started: true,
       changed: () => { signal(req, 'tasks', { taskId: task.id }); realtime.inbox(teamId, [task.createdBy]); },
-    }));
+    }).then(() => pullWaiting(repo, req, user)).catch((error) => console.warn('[Teamspaces] could not start waiting cards:', error.message)));
+    return current;
   }
+
+  /** Room may have opened: start waiting cards oldest first while the limits allow. */
+  async function pullWaiting(repo, req, user) {
+    const { teamId, workspaceId } = req.params;
+    for (const card of await spacesOf(repo).waitingCards(teamId, workspaceId)) {
+      const current = await startAgent(repo, req, user, card, card.queuedInput);
+      if (current.agentState === 'queued') break;
+    }
+  }
+  const pullWaitingLater = (repo, req, user) => schedule(() => pullWaiting(repo, req, user).catch((error) => console.warn('[Teamspaces] could not start waiting cards:', error.message)));
   const agentInput = (task, context) => [`Task: ${task.title}`, context ? `Context from the teamspace:\n${context}` : ''].filter(Boolean).join('\n\n');
 
   // ── Chat ────────────────────────────────────────────────────────────────
@@ -112,7 +131,7 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
       const title = cardTitle(message.body, [...agents.values()].map((a) => a.name)) || 'Request from chat';
       const task = await spaces.createTask(teamId, user, workspaceId, { title, assignee: mention, sourceMessageId: message.id });
       await spaces.postAgentMessage(teamId, workspaceId, mention.id, 'Got it. I made a card for this and I am starting now.', task.id);
-      startAgent(repo, req, user, task, agentInput(task, message.body));
+      await startAgent(repo, req, user, task, agentInput(task, message.body));
     }
     signal(req, 'messages');
     realtime.inbox(teamId, mentions.filter((m) => m.kind === 'person').map((m) => m.id));
@@ -133,8 +152,8 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   router.post(W + '/tasks', handler(async (repo, req, user) => {
     const assignee = parseAssignee(req.body?.assignee);
     if (assignee) await checkTargets(repo, req, [assignee]);
-    const task = await spacesOf(repo).createTask(req.params.teamId, user, req.params.workspaceId, req.body || {});
-    if (task.assignee?.kind === 'agent') startAgent(repo, req, user, task, agentInput(task));
+    let task = await spacesOf(repo).createTask(req.params.teamId, user, req.params.workspaceId, req.body || {});
+    if (task.assignee?.kind === 'agent') task = await startAgent(repo, req, user, task, agentInput(task));
     // A private card is nobody else's business: no teamspace signal for it.
     if (task.private) return task;
     signal(req, 'tasks', { taskId: task.id });
@@ -148,8 +167,12 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
       const assignee = parseAssignee(input.assignee);
       if (assignee) await checkTargets(repo, req, [assignee]);
     }
-    const { task, assigneeChanged } = await spacesOf(repo).updateTask(req.params.teamId, user, req.params.workspaceId, req.params.taskId, input);
-    if (assigneeChanged && task.assignee?.kind === 'agent' && task.status !== 'done') startAgent(repo, req, user, task, agentInput(task));
+    const updated = await spacesOf(repo).updateTask(req.params.teamId, user, req.params.workspaceId, req.params.taskId, input);
+    let { task } = updated;
+    const { assigneeChanged } = updated;
+    if (assigneeChanged && task.assignee?.kind === 'agent' && task.status !== 'done') task = await startAgent(repo, req, user, task, agentInput(task));
+    // A card leaving a column, or changing hands, can make room for a waiting one.
+    pullWaitingLater(repo, req, user);
     signal(req, 'tasks', { taskId: task.id });
     if (assigneeChanged && task.assignee?.kind === 'person') realtime.inbox(req.params.teamId, [task.assignee.id]);
     return task;
@@ -167,6 +190,7 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     const personStays = current.assignee?.kind === 'person' && (await spaceMembers(inSpace(req, to))).includes(current.assignee.id);
     const { task, moved, wasPrivate } = await spaces.moveTask(teamId, user, workspaceId, taskId, { to, private: req.body?.private === true, expectedRevision: req.body?.expectedRevision }, { personStays });
     if (moved) {
+      pullWaitingLater(repo, req, user);
       if (!wasPrivate) signal(req, 'tasks', { taskId });
       if (!task.private) signal(inSpace(req, to), 'tasks', { taskId });
       if (!task.private && task.assignee?.kind === 'person' && task.assignee.id !== user) realtime.inbox(teamId, [task.assignee.id]);
@@ -176,6 +200,7 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
 
   router.delete(W + '/tasks/:taskId', handler(async (repo, req, user) => {
     const result = await spacesOf(repo).deleteTask(req.params.teamId, user, req.params.workspaceId, req.params.taskId);
+    pullWaitingLater(repo, req, user);
     signal(req, 'tasks', { taskId: req.params.taskId });
     return result;
   }));
@@ -191,7 +216,7 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
     if (agentMention) {
       const current = await spaces.task(teamId, user, workspaceId, taskId);
       const { task } = await spaces.updateTask(teamId, user, workspaceId, taskId, { assignee: agentMention, expectedRevision: current.revision });
-      startAgent(repo, req, user, task, agentInput(task, comment.body));
+      await startAgent(repo, req, user, task, agentInput(task, comment.body));
     }
     signal(req, 'tasks', { taskId });
     realtime.inbox(teamId, mentions.filter((m) => m.kind === 'person').map((m) => m.id));
@@ -199,14 +224,16 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   }));
 
   const decide = (approve) => handler(async (repo, req, user) => {
-    const task = await spacesOf(repo).decide(req.params.teamId, user, req.params.workspaceId, req.params.taskId, { approve, note: req.body?.note });
+    let task = await spacesOf(repo).decide(req.params.teamId, user, req.params.workspaceId, req.params.taskId, { approve, note: req.body?.note });
     // Approved with "save as doc": the result becomes a teamspace doc, linked from the card's thread.
     let doc = null;
     if (approve && req.body?.saveAsDoc && task.result) {
       doc = await spacesOf(repo).createDoc(req.params.teamId, user, req.params.workspaceId, { name: task.title, content: task.result });
     }
     // Sent back: the agent takes the card again with the note.
-    if (!approve && task.assignee?.kind === 'agent') startAgent(repo, req, user, task, agentInput(task, `Your previous result was sent back${req.body?.note ? ': ' + req.body.note : '.'}\n\nPrevious result:\n${task.result || ''}`));
+    if (!approve && task.assignee?.kind === 'agent') task = await startAgent(repo, req, user, task, agentInput(task, `Your previous result was sent back${req.body?.note ? ': ' + req.body.note : '.'}\n\nPrevious result:\n${task.result || ''}`));
+    // A decided card leaves Review: a card waiting for room may start now.
+    pullWaitingLater(repo, req, user);
     signal(req, 'tasks', { taskId: task.id });
     if (doc) signal(req, 'docs', { docId: doc.id });
     realtime.inbox(req.params.teamId, [user]);
@@ -214,6 +241,16 @@ export function mountTeamSpaceRoutes(router, { handler, realtime, workspaceAgent
   });
   router.post(W + '/tasks/:taskId/approve', decide(true));
   router.post(W + '/tasks/:taskId/send-back', decide(false));
+
+  // Work limits on In progress and Review: { doing, review }, null where none is set.
+  router.get(W + '/limits', handler((repo, req, user) => spacesOf(repo).limits(req.params.teamId, user, req.params.workspaceId)));
+  router.put(W + '/limits', handler(async (repo, req, user) => {
+    const limits = await spacesOf(repo).setLimit(req.params.teamId, user, req.params.workspaceId, { status: req.body?.status, max: req.body?.max ?? null });
+    // A raised or removed limit can make room at once.
+    pullWaitingLater(repo, req, user);
+    signal(req, 'tasks');
+    return limits;
+  }));
 
   // ── Docs ────────────────────────────────────────────────────────────────
   router.get(W + '/docs', handler((repo, req, user) => spacesOf(repo).docs(req.params.teamId, user, req.params.workspaceId)));

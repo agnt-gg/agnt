@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import sqlite3 from 'sqlite3';
 import { TeamRepository } from './TeamRepository.js';
 import { initializeTeamWorkspaces } from './TeamWorkspaceRepository.js';
-import { TeamSpaceRepository, initializeTeamSpaces, parseMentions, MAX_MESSAGE } from './TeamSpaceRepository.js';
+import { TeamSpaceRepository, initializeTeamSpaces, parseMentions, MAX_MESSAGE, columnBlockingStart } from './TeamSpaceRepository.js';
 
 /**
  * The repository is driven the way TeamRoutes drives it: `member` is the
@@ -327,6 +327,117 @@ describe('teamspace docs', () => {
     await spaces.deleteDoc(TEAM, 'ana', ws, doc.id);
     expect(await spaces.docs(TEAM, 'ana', ws)).toEqual([]);
     expect((await base.get('SELECT COUNT(*) AS n FROM team_asset_versions WHERE asset_id=?', [doc.id])).n).toBe(1);
+  });
+});
+
+describe('board flow: work limits, waiting cards, review history', () => {
+  const agentCard = (ws, title) => spaces.createTask(TEAM, 'ana', ws, { title, assignee: { kind: 'agent', id: 'agent-1' } });
+  const toReview = (ws, id) => spaces.setAgentState(TEAM, ws, id, { state: 'waiting', status: 'review', result: 'draft', agentId: 'agent-1' });
+
+  it('names the full column that holds a start, In progress before Review', () => {
+    expect(columnBlockingStart({ doing: 9, review: 9 }, { doing: null, review: null })).toBeNull();
+    expect(columnBlockingStart({ doing: 2, review: 0 }, { doing: 2, review: 1 })).toBe('In progress');
+    expect(columnBlockingStart({ doing: 1, review: 1 }, { doing: 2, review: 1 })).toBe('Review');
+    expect(columnBlockingStart({ doing: 1, review: 0 }, { doing: 2, review: 1 })).toBeNull();
+  });
+
+  it('work limits: set and remove; other columns and out-of-range values are refused', async () => {
+    const ws = await workspace('sales');
+    expect(await spaces.limits(TEAM, 'vic', ws)).toEqual({ doing: null, review: null });
+    expect(await spaces.setLimit(TEAM, 'ana', ws, { status: 'review', max: 2 })).toEqual({ doing: null, review: 2 });
+    expect(await spaces.setLimit(TEAM, 'ben', ws, { status: 'review', max: 3 })).toEqual({ doing: null, review: 3 });
+    await expect(spaces.setLimit(TEAM, 'vic', ws, { status: 'doing', max: 2 })).rejects.toMatchObject({ status: 403 });
+    await expect(spaces.setLimit(TEAM, 'ana', ws, { status: 'todo', max: 2 })).rejects.toMatchObject({ status: 400 });
+    for (const max of [0, 100, 2.5, '3']) await expect(spaces.setLimit(TEAM, 'ana', ws, { status: 'doing', max })).rejects.toMatchObject({ status: 400 });
+    expect(await spaces.setLimit(TEAM, 'ana', ws, { status: 'review', max: null })).toEqual({ doing: null, review: null });
+  });
+
+  it('a full Review makes an agent card wait in To do with the reason, keeping its place; room lets it start', async () => {
+    const ws = await workspace('sales');
+    await spaces.setLimit(TEAM, 'ana', ws, { status: 'review', max: 1 });
+    const first = await agentCard(ws, 'First');
+    expect((await spaces.startAgentRun(TEAM, ws, first.id, { agentId: 'agent-1', input: 'Task: First' })).started).toBe(true);
+    await toReview(ws, first.id);
+
+    const second = await agentCard(ws, 'Second');
+    const waiting = await spaces.startAgentRun(TEAM, ws, second.id, { agentId: 'agent-1', input: 'Task: Second\n\nContext' });
+    expect(waiting.started).toBe(false);
+    expect(waiting.task).toMatchObject({ status: 'todo', agentState: 'queued', stopReason: 'Review is full' });
+    // Asking again keeps its place in the queue and says it only once.
+    const again = await spaces.startAgentRun(TEAM, ws, second.id, { agentId: 'agent-1', input: 'Task: Second\n\nContext' });
+    expect(again.task.agentStateAt).toBe(waiting.task.agentStateAt);
+    const third = await agentCard(ws, 'Third');
+    await spaces.startAgentRun(TEAM, ws, third.id, { agentId: 'agent-1', input: 'Task: Third' });
+    expect((await spaces.waitingCards(TEAM, ws)).map((c) => [c.title, c.queuedInput])).toEqual([['Second', 'Task: Second\n\nContext'], ['Third', 'Task: Third']]);
+    const comments = (await spaces.task(TEAM, 'ana', ws, second.id)).comments.map((c) => c.body);
+    expect(comments.filter((body) => body === 'Waiting to start: Review is full.')).toHaveLength(1);
+
+    await spaces.decide(TEAM, 'ana', ws, first.id, { approve: true });
+    const started = await spaces.startAgentRun(TEAM, ws, second.id, { agentId: 'agent-1', input: 'Task: Second\n\nContext' });
+    expect(started.started).toBe(true);
+    expect(started.task).toMatchObject({ status: 'doing', agentState: 'running', stopReason: null });
+    expect((await spaces.waitingCards(TEAM, ws)).map((c) => c.title)).toEqual(['Third']);
+  });
+
+  it('an In progress limit counts the cards already started, not the one starting', async () => {
+    const ws = await workspace('sales');
+    await spaces.setLimit(TEAM, 'ana', ws, { status: 'doing', max: 1 });
+    const one = await agentCard(ws, 'One');
+    expect((await spaces.startAgentRun(TEAM, ws, one.id, { agentId: 'agent-1', input: '' })).started).toBe(true);
+    // Starting the same card again (a send-back) never counts the card against itself.
+    expect((await spaces.startAgentRun(TEAM, ws, one.id, { agentId: 'agent-1', input: '' })).started).toBe(true);
+    const two = await agentCard(ws, 'Two');
+    expect((await spaces.startAgentRun(TEAM, ws, two.id, { agentId: 'agent-1', input: '' })).task.stopReason).toBe('In progress is full');
+  });
+
+  it('records review history: sent back counts up, approval stamps the time, moves stamp the column time', async () => {
+    const ws = await workspace('sales');
+    const card = await agentCard(ws, 'Proposal');
+    expect(card).toMatchObject({ sendBackCount: 0, approvedAt: null, stopReason: null });
+    expect(card.statusChangedAt).toBe(card.createdAt);
+    await toReview(ws, card.id);
+    const sentBack = await spaces.decide(TEAM, 'ana', ws, card.id, { approve: false, note: 'shorter' });
+    expect(sentBack).toMatchObject({ status: 'doing', agentState: 'sent_back', sendBackCount: 1, approvedAt: null });
+    await toReview(ws, card.id);
+    const approved = await spaces.decide(TEAM, 'ana', ws, card.id, { approve: true });
+    expect(approved).toMatchObject({ status: 'done', sendBackCount: 1 });
+    expect(approved.approvedAt).toBeTruthy();
+    expect(approved.statusChangedAt).toBe(approved.approvedAt);
+    // A title edit is not a move: the column time stays.
+    const renamed = (await spaces.updateTask(TEAM, 'ana', ws, card.id, { title: 'Proposal v2', expectedRevision: approved.revision })).task;
+    expect(renamed.statusChangedAt).toBe(approved.statusChangedAt);
+  });
+
+  it('a stopped card carries its reason until someone takes it over; moving a waiting card by hand clears the wait', async () => {
+    const ws = await workspace('sales');
+    const card = await agentCard(ws, 'Quote');
+    const stopped = await spaces.setAgentState(TEAM, ws, card.id, { state: 'blocked', status: 'todo', agentId: 'agent-1', comment: 'full text', reason: 'prices disagree' });
+    expect(stopped).toMatchObject({ agentState: 'blocked', stopReason: 'prices disagree' });
+    const taken = (await spaces.updateTask(TEAM, 'ana', ws, card.id, { assignee: { kind: 'person', id: 'ana' }, expectedRevision: stopped.revision })).task;
+    expect(taken).toMatchObject({ agentState: null, stopReason: null });
+
+    await spaces.setLimit(TEAM, 'ana', ws, { status: 'doing', max: 1 });
+    const busy = await agentCard(ws, 'Busy');
+    await spaces.startAgentRun(TEAM, ws, busy.id, { agentId: 'agent-1', input: '' });
+    const queued = (await spaces.startAgentRun(TEAM, ws, (await agentCard(ws, 'Later')).id, { agentId: 'agent-1', input: 'x' })).task;
+    const moved = (await spaces.updateTask(TEAM, 'ana', ws, queued.id, { status: 'doing', expectedRevision: queued.revision })).task;
+    expect(moved).toMatchObject({ status: 'doing', agentState: null, stopReason: null });
+    expect(await spaces.waitingCards(TEAM, ws)).toEqual([]);
+  });
+
+  it('upgrades an existing board in place: new columns added, column time backfilled from the last update', async () => {
+    const oldDb = new sqlite3.Database(':memory:');
+    const old = new TeamRepository(oldDb);
+    await old.ready;
+    await initializeTeamWorkspaces(old);
+    await old.run("CREATE TABLE space_tasks(id TEXT PRIMARY KEY,team_id TEXT NOT NULL,workspace_id TEXT NOT NULL,title TEXT NOT NULL,status TEXT NOT NULL,assignee_kind TEXT,assignee_id TEXT,due TEXT NOT NULL DEFAULT '',created_by TEXT NOT NULL,source_message_id TEXT,agent_state TEXT,result_text TEXT,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT)");
+    await old.run("INSERT INTO space_tasks(id,team_id,workspace_id,title,status,created_by,created_at,updated_at) VALUES('t1','team','ws','Old card','review','ana','2026-01-01T00:00:00.000Z','2026-02-01T00:00:00.000Z')");
+    await initializeTeamSpaces(old);
+    await initializeTeamSpaces(old); // idempotent
+    const columns = (await old.all('PRAGMA table_info(space_tasks)')).map((c) => c.name);
+    for (const name of ['private_to', 'status_changed_at', 'agent_state_at', 'stop_reason', 'queued_input', 'send_back_count', 'approved_at']) expect(columns).toContain(name);
+    expect(await old.get('SELECT status_changed_at,send_back_count FROM space_tasks WHERE id=?', ['t1'])).toEqual({ status_changed_at: '2026-02-01T00:00:00.000Z', send_back_count: 0 });
+    await new Promise((resolve) => oldDb.close(() => resolve()));
   });
 });
 

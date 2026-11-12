@@ -290,7 +290,9 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
       const response = await fetch(`http://127.0.0.1:${server.address().port}/teams${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + user }, ...(body ? { body: JSON.stringify(body) } : {}) });
       return { status: response.status, body: await response.json() };
     };
-    try { await run({ request, settle: () => Promise.all(pending.splice(0)), realtime, annieCalls }); } finally {
+    // Drain until quiet: a finished run can start a waiting card, which schedules its own run.
+    const settle = async () => { while (pending.length) await Promise.all(pending.splice(0)); };
+    try { await run({ request, settle, realtime, annieCalls }); } finally {
       await new Promise((resolve) => server.close(resolve));
       await new Promise((resolve) => db.close(() => resolve()));
     }
@@ -353,6 +355,45 @@ describe('agents on cards (stubbed executor, real routes and repository)', () =>
     await settle();
     expect((await request('/team/workspaces/ws/messages')).body.at(-1).body).toMatch(/could not answer/);
   }, async () => { throw new Error('no agent runs'); }, async () => { throw new Error('model down'); }));
+
+  it('a full Review holds the next agent card in To do; approving makes room and it starts with its own input', () => {
+    const inputs = [];
+    return agentFixture(async ({ request, settle }) => {
+      expect((await request('/team/workspaces/ws/limits', 'PUT', { status: 'review', max: 1 })).body).toEqual({ doing: null, review: 1 });
+      expect((await request('/team/workspaces/ws/limits', 'PUT', { status: 'review', max: 1 }, 'vic')).status).toBe(404);
+      const first = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'First', assignee: { kind: 'agent', id: 'proposal' } })).body;
+      await settle();
+      expect((await request(`/team/workspaces/ws/tasks/${first.id}`)).body).toMatchObject({ status: 'review', agentState: 'waiting' });
+
+      const second = await request('/team/workspaces/ws/tasks', 'POST', { title: 'Second', assignee: { kind: 'agent', id: 'proposal' } });
+      expect(second.body).toMatchObject({ status: 'todo', agentState: 'queued', stopReason: 'Review is full' });
+      await settle();
+      expect(inputs).toHaveLength(1);
+
+      await request(`/team/workspaces/ws/tasks/${first.id}/approve`, 'POST', {});
+      await settle();
+      expect(inputs).toHaveLength(2);
+      expect(inputs[1]).toMatch(/Task: Second/);
+      expect((await request(`/team/workspaces/ws/tasks/${second.body.id}`)).body).toMatchObject({ status: 'review', agentState: 'waiting', stopReason: null });
+      expect((await request('/team/workspaces/ws/limits')).body).toEqual({ doing: null, review: 1 });
+    }, async (input) => { inputs.push(input); return { status: 'completed', result: { content: 'done: ' + input.split('\n')[0] } }; });
+  });
+
+  it('raising a limit starts the cards that were waiting for room', () => {
+    let runs = 0;
+    return agentFixture(async ({ request, settle }) => {
+      await request('/team/workspaces/ws/limits', 'PUT', { status: 'doing', max: 1 });
+      await request('/team/workspaces/ws/limits', 'PUT', { status: 'review', max: 1 });
+      await request('/team/workspaces/ws/tasks', 'POST', { title: 'A', assignee: { kind: 'agent', id: 'proposal' } });
+      await settle();
+      const waiting = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'B', assignee: { kind: 'agent', id: 'proposal' } })).body;
+      expect(waiting.agentState).toBe('queued');
+      await request('/team/workspaces/ws/limits', 'PUT', { status: 'review', max: null });
+      await settle();
+      expect(runs).toBe(2);
+      expect((await request(`/team/workspaces/ws/tasks/${waiting.id}`)).body.agentState).toBe('waiting');
+    }, async () => { runs++; return { status: 'completed', result: { content: 'ok' } }; });
+  });
 
   it('sending a result back runs the agent again with the note', () => agentFixture(async ({ request, settle }) => {
     const task = (await request('/team/workspaces/ws/tasks', 'POST', { title: 'Draft', assignee: { kind: 'agent', id: 'proposal' } })).body;

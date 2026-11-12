@@ -27,6 +27,18 @@ export function resultText(run) {
   try { return JSON.stringify(result ?? {}, null, 2).slice(0, 4000); } catch { return 'The run finished without text output.'; }
 }
 
+// The short form the board shows on the card as "Stopped: <reason>"; the thread keeps the full text.
+const STOP_REASONS = Object.freeze({
+  publish_required: 'not published here yet',
+  connection_required: 'no model connection',
+});
+
+export function stopReason(error) {
+  if (error?.code && STOP_REASONS[error.code]) return STOP_REASONS[error.code];
+  if (error?.status && error.status < 500 && error.message) return error.message.slice(0, 120);
+  return 'the run failed';
+}
+
 function failureText(error) {
   if (error?.code && FRIENDLY_FAILURES[error.code]) return FRIENDLY_FAILURES[error.code];
   if (error?.status && error.status < 500 && error.message) return `I could not run: ${error.message}`;
@@ -35,11 +47,12 @@ function failureText(error) {
 
 /**
  * Run one agent on one card. Never throws: every outcome is written to the
- * card, so the board is the record of what happened.
+ * card, so the board is the record of what happened. `started` means the card
+ * was already moved to In progress (TeamSpaceRepository.startAgentRun).
  */
-export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agentId, input, execute, changed = () => {} }) {
+export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agentId, input, execute, changed = () => {}, started = false }) {
   try {
-    await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'running', status: 'doing', agentId, comment: 'On it.' });
+    if (!started) await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'running', status: 'doing', agentId, comment: 'On it.' });
     changed();
     const run = await execute(input);
     if (run?.status === 'failed') throw Object.assign(new Error(typeof run?.result?.error === 'string' ? run.result.error : 'The run failed'), { status: 422 });
@@ -51,7 +64,7 @@ export async function runAgentOnTask({ spaces, teamId, workspaceId, taskId, agen
   } catch (error) {
     if (!error?.status) console.error('[Teamspaces] agent run failed:', error?.message || error);
     try {
-      await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'blocked', status: 'todo', agentId, comment: failureText(error) });
+      await spaces.setAgentState(teamId, workspaceId, taskId, { state: 'blocked', status: 'todo', agentId, comment: failureText(error), reason: stopReason(error) });
       changed();
     } catch (recordError) {
       // The card itself is gone (deleted mid-run). Nothing left to annotate.

@@ -308,5 +308,56 @@ export function sparkPath(points = [], width = 110, height = 34) {
 
 /** Card label for an agent's state. */
 export function agentStateLabel(state) {
-  return { running: 'Working…', waiting: 'Needs approval', blocked: 'Blocked', sent_back: 'Sent back' }[state] || '';
+  return { running: 'Working…', waiting: 'Needs approval', blocked: 'Blocked', sent_back: 'Sent back', queued: 'Waiting' }[state] || '';
+}
+
+// ── Flow on the board ──
+
+const DAY_MS = 86400e3;
+
+/**
+ * The line a card shows for its agent, in words: why it stopped, why it waits, or that it needs
+ * an approval. `tone` is the tag colour (mk.css: pink, amber, blue). Working cards show a pulse
+ * instead, and cards with no agent state show nothing.
+ */
+export function cardStateLine(task = {}) {
+  switch (task.agentState) {
+    case 'blocked': return { label: `Stopped: ${task.stopReason || 'needs a look'}`, tone: 'amber' };
+    case 'queued': return { label: `Waiting: ${task.stopReason || 'no room yet'}`, tone: 'blue' };
+    case 'waiting': return { label: 'Needs approval', tone: 'pink' };
+    case 'sent_back': return { label: 'Sent back', tone: 'amber' };
+    default: return null;
+  }
+}
+
+/** How long a card has sat in its column ("2d"), and whether a day has passed, which shows in amber. */
+export function timeInColumn(task = {}, now = Date.now()) {
+  const since = task.statusChangedAt || task.updatedAt;
+  const label = ago(since, now);
+  if (!label) return null;
+  return { label, warn: now - Date.parse(since) >= DAY_MS };
+}
+
+/** "Accepted first time" or "Sent back 2×" once a card's result is approved; nothing for cards nobody reviewed. */
+export function reviewOutcome(task = {}) {
+  if (!task.approvedAt) return null;
+  const times = task.sendBackCount || 0;
+  return times ? { label: `Sent back ${times}×`, tone: 'amber' } : { label: 'Accepted first time', tone: 'green' };
+}
+
+/** The card agents take next when room opens: the one that has waited longest. */
+export function nextUpTaskId(tasks = []) {
+  const waiting = tasks.filter((t) => t.agentState === 'queued');
+  waiting.sort((a, b) => Date.parse(a.agentStateAt || a.updatedAt) - Date.parse(b.agentStateAt || b.updatedAt));
+  return waiting[0]?.id || null;
+}
+
+/**
+ * A column measured against its work limit. Full means agents wait (the server holds new starts
+ * at the limit); over means it holds more than the limit, after a lowered limit or a card dragged
+ * in by hand. `toFree` is how many cards must leave before agents start again.
+ */
+export function columnLoad(count, max) {
+  if (!max) return { count, max: null, full: false, over: false, toFree: 0, label: String(count) };
+  return { count, max, full: count >= max, over: count > max, toFree: Math.max(0, count - max + 1), label: `${count} of ${max}` };
 }

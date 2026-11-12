@@ -149,6 +149,10 @@ export const teamApi = {
   comment: (ws, id, body, mentions) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/comments'), json('POST', { body, mentions })),
   approve: (ws, id, input = {}) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/approve'), json('POST', input)),
   sendBack: (ws, id, note) => teamRequest(space(ws, '/tasks/' + encodeURIComponent(id) + '/send-back'), json('POST', { note })),
+  /** Work limits on In progress and Review: { doing, review }, null where none is set. */
+  limits: (ws) => teamRequest(space(ws, '/limits')),
+  /** Set a column's work limit (1 to 99), or remove it with `max: null`. */
+  setLimit: (ws, status, max) => teamRequest(space(ws, '/limits'), json('PUT', { status, max })),
   docs: (ws) => teamRequest(space(ws, '/docs')),
   doc: (ws, id) => teamRequest(space(ws, '/docs/' + encodeURIComponent(id))),
   createDoc: (ws, name, content = '') => teamRequest(space(ws, '/docs'), json('POST', { name, content })),
