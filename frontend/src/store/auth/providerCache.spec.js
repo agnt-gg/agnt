@@ -155,11 +155,28 @@ describe('an anonymous fetch is never adopted by a signed-in caller', () => {
     await appAuth.actions.fetchConnectedApps(ctx, { forceRefresh: true });
 
     expect(callsTo(LOCAL), 'the forced refresh reused the request already in flight').toBe(2);
-    const committed = ctx.commit.mock.calls.filter(([type]) => type === 'SET_CONNECTED_APPS').map(([, apps]) => apps);
-    expect(committed.some((apps) => apps.includes('e2e-fake-crm')), `committed: ${JSON.stringify(committed)}`).toBe(true);
+    const commits = () => ctx.commit.mock.calls.filter(([type]) => type === 'SET_CONNECTED_APPS').map(([, apps]) => apps);
+    expect(commits().at(-1), `committed: ${JSON.stringify(commits())}`).toContain('e2e-fake-crm');
 
+    // The older poll finishes last, with its pre-connect answer. It must not
+    // put the old list back: the screen would show the connection, then lose it.
     releasePoll({ data: [] });
     await poll;
+    expect(commits().at(-1), `committed: ${JSON.stringify(commits())}`).toContain('e2e-fake-crm');
+  });
+
+  it('a refresh whose local lane did not answer keeps the local connections it could not see', async () => {
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    axios.get.mockImplementation(async (url) => {
+      if (url === LOCAL) throw new Error('timeout of 2000ms exceeded');
+      if (url === REMOTE) return { data: ['google'] };
+      return { data: [] };
+    });
+    const ctx = ctxFor(token, ['e2e-fake-crm', 'google']);
+    await appAuth.actions.fetchConnectedApps(ctx);
+    const commits = ctx.commit.mock.calls.filter(([type]) => type === 'SET_CONNECTED_APPS').map(([, apps]) => apps);
+    expect(commits.at(-1)).toEqual(expect.arrayContaining(['e2e-fake-crm', 'google']));
   });
 
   it('still shares one request between two callers of the same subject', async () => {

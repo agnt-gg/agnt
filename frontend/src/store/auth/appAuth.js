@@ -90,6 +90,12 @@ export async function mergePluginProviders(providers) {
 
 let _fetchConnectedAppsInFlight = null;
 
+// Issue order of fetchConnectedApps runs, and the latest run that has committed.
+// A run reads the servers when it starts, so one that started before another
+// run committed holds an older answer and must not overwrite that commit.
+let _connectedAppsRunsIssued = 0;
+let _connectedAppsLatestCommit = 0;
+
 const state = {
   connectedApps: [],
   // True once the account's connections have been answered authoritatively
@@ -194,6 +200,13 @@ const actions = {
       return _fetchConnectedAppsInFlight.promise;
     }
 
+    const issued = ++_connectedAppsRunsIssued;
+    const commitApps = (apps) => {
+      if (issued < _connectedAppsLatestCommit) return;
+      _connectedAppsLatestCommit = issued;
+      commit('SET_CONNECTED_APPS', apps);
+    };
+
     // On cold start (no providers yet), commit the local-only set early so the
     // UI lights up fast. On refresh polls, we already have providers in Vuex —
     // committing the partial set would briefly drop remote-only providers,
@@ -263,7 +276,7 @@ const actions = {
           // Cold start only: paint the local set now. On refresh polls we
           // never commit a partial set — see the comment above isColdStart.
           if (isColdStart) {
-            commit('SET_CONNECTED_APPS', connectedApps);
+            commitApps(connectedApps);
           }
         }
 
@@ -293,7 +306,7 @@ const actions = {
         // reach the list in this run. A union with the local commit, so it
         // only ever grows.
         if (isColdStart) {
-          commit('SET_CONNECTED_APPS', Array.from(new Set(connectedApps)));
+          commitApps(Array.from(new Set(connectedApps)));
         }
 
         // Finally merge remote — purely additive.
@@ -304,8 +317,11 @@ const actions = {
         if (remoteResult && Array.isArray(remoteResult.data)) {
           remoteLaneAnswered = true;
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
-          const merged = withoutDisconnected(Array.from(new Set([...remoteApps, ...connectedApps])));
-          commit('SET_CONNECTED_APPS', merged);
+          // Without the local lane's answer this run knows nothing about local
+          // connections, so it adds to what the store holds instead of replacing it.
+          const kept = localLaneAnswered || isColdStart ? [] : (state.connectedApps || []).map(normalizeProviderId).filter(Boolean);
+          const merged = withoutDisconnected(Array.from(new Set([...kept, ...remoteApps, ...connectedApps])));
+          commitApps(merged);
 
           // Backfill any provider whose key exists ONLY on the remote into this
           // install's local store. This is the exact diff the backfill needs and
@@ -347,7 +363,7 @@ const actions = {
           // Keep remote-only apps through outages, but an explicit account
           // disconnect outranks every stale source. Only publish a real change.
           if (merged.length !== known.length || merged.some(id => !known.includes(id))) {
-            commit('SET_CONNECTED_APPS', merged);
+            commitApps(merged);
           }
         }
         // Without a token the remote lane answers 401 by design, so its
