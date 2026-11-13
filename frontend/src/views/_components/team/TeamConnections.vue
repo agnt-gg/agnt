@@ -29,10 +29,9 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { teamRequest } from '@/utils/teamClient.js';
+import { TEAM_CONNECTION_PROVIDERS, teamProviderLabel as providerLabel } from './teamConnectionProviders.js';
 
-const PROVIDERS = [['agnt', 'AGNT Flash (included)'], ['github', 'GitHub'], ['openai', 'OpenAI'], ['anthropic', 'Anthropic'], ['groq', 'Groq'], ['deepseek', 'DeepSeek'], ['grokai', 'Grok'], ['openrouter', 'OpenRouter']];
-const providerOptions = PROVIDERS.map(([value, label]) => ({ value, label }));
-const providerLabel = id => PROVIDERS.find(([value]) => value === id)?.[1] || id;
+const providerOptions = TEAM_CONNECTION_PROVIDERS.map(([value, label]) => ({ value, label }));
 const props = defineProps({ team: { type: Object, required: true } });
 const emit = defineEmits(['error']);
 const connections = ref([]), provider = ref('openai'), name = ref(''), busy = ref(false), tested = ref({});

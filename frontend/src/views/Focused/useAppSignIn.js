@@ -174,14 +174,18 @@ export function useAppSignIn({ store, nav, findCard }) {
     }
   }
 
-  async function disconnect(card) {
+  /**
+   * Disconnect after confirming. A caller disconnecting several at once asks
+   * once itself (`confirmed`) and reports the outcome once (`quiet`).
+   */
+  async function disconnect(card, { confirmed = false, quiet = false } = {}) {
     const name = card.name;
     // One sign-in can power several apps; say which ones stop.
     const stops = describeApps(card);
     const message = stops && card.apps?.length > 1
       ? `${stops} will stop working until you connect ${name} again.`
       : `AGNT won’t be able to use ${name} until you connect it again.`;
-    if (!(await nav.confirm({ title: `Disconnect ${name}?`, message, confirmText: 'Disconnect', danger: true }))) return false;
+    if (!confirmed && !(await nav.confirm({ title: `Disconnect ${name}?`, message, confirmText: 'Disconnect', danger: true }))) return false;
     error.value = '';
     busy.value = true;
     try {
@@ -197,7 +201,7 @@ export function useAppSignIn({ store, nav, findCard }) {
       } else {
         await store.dispatch('appAuth/disconnectApp', catalogueId(card));
       }
-      nav.toast(`${name} disconnected.`);
+      if (!quiet) nav.toast(`${name} disconnected.`);
       return true;
     } catch (e) {
       return fail(`Couldn’t disconnect ${name}. ${e?.message || e}`);

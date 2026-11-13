@@ -771,6 +771,23 @@ const actions = {
       return null;
     }
   },
+  /** Add an app of your own to the catalogue, then refresh it; throws a message to show on failure. */
+  async createProvider({ dispatch }, providerData) {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Sign in to AGNT to add an app.');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(providerData),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || body.message || `HTTP ${response.status}`);
+    }
+    await dispatch('fetchAllProviders', { forceRefresh: true });
+    notifyLocalBackendProviderChanged('created', providerData.id);
+    return { success: true };
+  },
   async updateProvider({ commit, dispatch }, { id, providerData }) {
     try {
       const response = await axios.put(`${API_CONFIG.REMOTE_URL}/auth/providers/${id}`, providerData, {

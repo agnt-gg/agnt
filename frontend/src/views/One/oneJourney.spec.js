@@ -28,6 +28,7 @@ const PAGES = {
   account: '../Focused/FocusedConnection.vue',
   pluginDetail: '../Terminal/CenterPanel/screens/Connectors/components/apps/PluginDetail.vue',
   plugins: '../Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue',
+  appsPlugins: './apps/AppsPlugins.vue',
 };
 
 describe('AGNT One journey: what leads each page', () => {
@@ -47,8 +48,9 @@ describe('AGNT One journey: what leads each page', () => {
     expect(t).toMatch(/v-if="plugin\.installed && builtByMe"[^>]*>Edit in the Forge/);
   });
 
-  it('the Plugins header offers building, but not as its primary button', () => {
-    const t = templateOf(PAGES.plugins);
+  it.each(['plugins', 'appsPlugins'])('the %s header offers building, but not as its primary button', (page) => {
+    const t = templateOf(PAGES[page]);
+    expect(t).toContain('data-action="build"');
     const build = t.slice(t.lastIndexOf('<button', t.indexOf('data-action="build"')), t.indexOf('</button>', t.indexOf('data-action="build"')));
     expect(build).not.toMatch(/class="[^"]*\bprimary\b/);
   });

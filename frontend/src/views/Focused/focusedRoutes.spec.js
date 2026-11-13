@@ -113,6 +113,7 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'connectors', item: 'slack' },
     { page: 'connectors', item: 'app:figma-bridge' },
     { page: 'connectors', item: null },
+    { page: 'connectors', tab: 'plugins', item: null },
     { page: 'library', tab: 'agents', item: null, isNew: true },
     { page: 'library', tab: 'widgets', item: null, isNew: true },
     { page: 'scheduled', item: 's1', isNew: false },
@@ -172,5 +173,9 @@ describe('Apps tabs for Studio\'s Email Inbox, Webhooks and MCP (2026-10-23)', (
     expect(focusedLocation('ConnectorsScreen', { section: 'mcp-servers' })).toEqual({ page: 'connectors', tab: 'mcp', item: null });
     expect(routeFor({ page: 'connectors', tab: 'mcp' })).toEqual(['ConnectorsScreen', { section: 'mcp-servers' }]);
     expect(routeFor({ page: 'connectors', tab: 'triggers' })).toEqual(['ConnectorsScreen', { section: 'webhooks' }]);
+  });
+  it('the Plugins section has its own route, both ways', () => {
+    expect(routeFor({ page: 'connectors', tab: 'plugins' })).toEqual(['ConnectorsScreen', { section: 'plugins' }]);
+    expect(focusedLocation('ConnectorsScreen', { section: 'plugins' })).toEqual({ page: 'connectors', tab: 'plugins', item: null });
   });
 });
