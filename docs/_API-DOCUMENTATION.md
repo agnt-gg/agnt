@@ -43,6 +43,7 @@ Storage is private and partitioned by team, tenant and workspace. Absolute paths
 - [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
 - [Ledger Routes](#ledger-routes)
+- [Wrapped Routes](#wrapped-routes)
 - [Cluster Routes](#cluster-routes)
 - [Routing Routes](#routing-routes)
 - [MCP Routes](#mcp-routes)
@@ -5386,6 +5387,55 @@ The run tree rooted at the given execution, with per-node and subtree cost. Reso
   Both backfills are per-row idempotent and resumable: dedup is by "does this execution already have a ledger row", so an interrupted run simply continues on the next boot. Goal-evaluation history is not backfilled — `goal_evaluations` records neither provider nor model, and nothing else can supply them.
 - **`credits_used` is not money.** Across `agent_executions`, `workflow_executions` and goal detail, that column stores **wall-clock seconds**. It is retained under its historical name because existing UI reads it. Every monetary figure comes from this ledger.
 - **Cost is an estimate, not an invoice.** `estimate_calibration` corrects for CLI-backed providers that inject invisible preamble, but surfaces should label the figure *estimated*.
+
+---
+
+## Wrapped Routes
+
+Base path: `/api/wrapped`
+
+The year in review behind AGNT One's Wrapped cards. One call returns everything the cards show, computed from the execution ledger and the user's own goals, agents, workflows, skills, widgets, insights and memories.
+
+### Get Year in Review
+
+**GET** `/:year`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `year` (path): a whole number from 2000 to the current year
+- **Response**:
+
+```json
+{
+  "success": true,
+  "year": 2026,
+  "window": { "from": "2026-01-01", "through": "2026-11-12", "complete": false },
+  "totals": {
+    "calls": 1520, "costUsd": 4.12, "unpricedCalls": 3, "notionalUsd": 81.5,
+    "notionalUncachedUsd": 402.1, "notionalSavedUsd": 320.6, "uncachedCostUsd": 9.4, "savedUsd": 5.28,
+    "inputTokens": 91000000, "outputTokens": 420000, "cacheReadTokens": 84000000, "cacheWriteTokens": 3100000
+  },
+  "days": [["2026-03-02", 41], ["2026-03-03", 17]],
+  "models": { "count": 12, "top": [{ "name": "claude-sonnet-4-5", "calls": 610 }] },
+  "providers": { "count": 4 },
+  "conversations": { "count": 230 },
+  "origins": { "chat": 700, "orchestrator": 410, "workflow_node": 300, "goal_task": 60, "goal_eval": 50 },
+  "split": { "conversation": 1110, "automation": 410 },
+  "goals": { "top": [{ "title": "Weekly report", "calls": 90 }], "created": 12, "validated": 10 },
+  "built": { "skills": { "2026-04": 3 }, "agents": { "2026-05": 2 }, "widgets": {}, "goals": { "2026-04": 12 }, "workflows": { "2026-06": 1 } },
+  "learning": { "insightsApplied": 40, "insightsRejected": 3, "skillTrials": 12, "skillsKept": 4, "skillsPromoted": 2, "memories": 310 }
+}
+```
+
+- **Errors**: `400` when `year` is not a whole number in that range.
+
+**The window is whole local days, and it ends at the start of today.** `days` buckets by local date exactly as `GET /api/ledger/breakdown?groupBy=day` does, and a day is counted once it is over. `window.through` is the last day included; `complete` turns true once the year has ended.
+
+Money keeps the ledger's two axes apart: `costUsd` is charged spend, reported with `unpricedCalls`; `notionalUsd` and `notionalSavedUsd` are what subscription usage would have cost at list prices. All of them are estimates.
+
+`split` sorts the year's calls by who started them: `conversation` is every chat surface (`CHAT_SURFACE_ORIGINS`, plus legacy `chat`), `automation` is `workflow_node`, `goal_task` and `goal_eval`. Titles, suggestions and other system calls are in neither.
+
+`built` counts what was created during the year, by local month: the user's own skills (built-in skills are left out), agents, widgets, goals and workflows, as their lists show them (deleted items are left out). `goals.top` ranks goals by ledger calls; `goals.validated` counts the year's goals that passed evaluation. `learning.skillsKept` includes promoted skills, as SkillForge's own stats do.
 
 ---
 

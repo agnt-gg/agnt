@@ -61,6 +61,18 @@ vi.mock('./OneCapsule.vue', () => ({
   },
 }));
 
+// The year in review has its own specs; here only its door: open().
+const { wrappedOpen } = vi.hoisted(() => ({ wrappedOpen: vi.fn() }));
+vi.mock('./wrapped/OneWrapped.vue', () => ({
+  default: {
+    name: 'OneWrapped',
+    setup(_props, { expose }) {
+      expose({ open: wrappedOpen });
+      return () => null;
+    },
+  },
+}));
+
 import OneShell from './OneShell.vue';
 import { setChannelEnabledTools, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 
@@ -276,11 +288,11 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('More holds Activity, Memories, Dashboard, Goals, Members, Approvals, Find anything and Studio', async () => {
+    it('More holds Activity, Memories, Dashboard, Goals, Members, Approvals, Year in review, Find anything and Studio', async () => {
       const w = mountShell();
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Members', 'Approvals', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Members', 'Approvals', 'Year in review', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
       await w.find('[data-testid="one-rail-activity"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
@@ -299,6 +311,18 @@ describe('OneShell', () => {
       await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-find"]').trigger('click');
       expect(dispatch).toHaveBeenCalledWith('shell/openJump');
+      w.unmount();
+    });
+
+    it('More\'s Year in review opens the year in review, without leaving the page', async () => {
+      wrappedOpen.mockClear();
+      const w = mountShell();
+      push.mockClear();
+      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-wrapped"]').trigger('click');
+      expect(wrappedOpen).toHaveBeenCalledTimes(1);
+      expect(push).not.toHaveBeenCalled();
+      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       w.unmount();
     });
 

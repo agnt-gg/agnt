@@ -79,6 +79,7 @@
         <span v-else class="one-topbar-fill"></span>
         <!-- The mockup's teamspace top bar: who works here, beside the setup pill. -->
         <div v-if="!isMobile && onTeamspace && teamState.members.length" class="mk"><span v-tooltip="`${teamState.members.length} ${teamState.members.length === 1 ? 'member' : 'members'}`" class="stack"><TeamAvatar v-for="p in teamState.members.slice(0, 5)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span></div>
+        <OneWrapped ref="wrappedRef" />
         <OneCapsule @ask="ask" @open-models="openModels" @open-setup="openSetup" />
         <div v-if="!isMobile" class="mk"><button type="button" class="icon-btn" aria-label="Search (Ctrl K)" v-tooltip="'Search (Ctrl K)'" @click="store.dispatch('shell/openJump')"><MkIcon name="find" /></button></div>
         <FocusedWindowControls />
@@ -141,6 +142,7 @@ import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneCapsule from './OneCapsule.vue';
+import OneWrapped from './wrapped/OneWrapped.vue';
 import TeamAvatar from './team/TeamAvatar.vue';
 import { RAIL_PAGE, MORE_SCREEN } from './oneModel.js';
 import { requestSetup } from './oneSetupRequest.js';
@@ -255,6 +257,9 @@ async function newTeamspace() {
   }
 }
 
+// The year in review: its capsule in the top bar in season, and More's "Year in review".
+const wrappedRef = ref(null);
+
 // The approved mockup's frame: what is lit, the breadcrumbs, where each entry goes, New….
 const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPick, create, userName, activeConversationId } = useMkFrame({
   store,
@@ -262,7 +267,7 @@ const { mkActive, mkActiveMore, mkDrawerActive, mkCounts, crumbs, mkSelect, mkPi
   location,
   screenName: computed(() => props.screenName),
   teamState,
-  nav: { go, openScreen: pushScreen, chat: () => backToChat(), ask: (text) => ask(text), prompt: (o) => prompt(o), toast: (t) => toast(t) },
+  nav: { go, openScreen: pushScreen, chat: () => backToChat(), ask: (text) => ask(text), prompt: (o) => prompt(o), toast: (t) => toast(t), wrapped: () => wrappedRef.value?.open() },
 });
 
 // ── Going places: every move is a route push (Back works, links work) ─────

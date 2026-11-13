@@ -70,6 +70,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (id === 'members') return team('members');
     if (id === 'settings') return nav.go({ page: 'settings' });
     if (id === 'find') return store.dispatch('shell/openJump');
+    if (id === 'wrapped') return nav.wrapped?.();
     return undefined;
   }
   function mkPick(what) {
