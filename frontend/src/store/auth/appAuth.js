@@ -182,12 +182,15 @@ const mutations = {
 };
 
 const actions = {
-  fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit, state }) => {
+  fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit, state }, payload) => {
     // Deduplicate concurrent calls — but only within a single subject. See the
     // declaration of _fetchConnectedAppsInFlight for why the tag matters.
+    // A forced refresh (after a connect or disconnect) never joins a request
+    // issued before that change: its answer would put the old list back.
+    const force = payload?.forceRefresh === true;
     const token = localStorage.getItem('token');
     const subject = authSubject(token);
-    if (_fetchConnectedAppsInFlight && _fetchConnectedAppsInFlight.subject === subject) {
+    if (!force && _fetchConnectedAppsInFlight && _fetchConnectedAppsInFlight.subject === subject) {
       return _fetchConnectedAppsInFlight.promise;
     }
 

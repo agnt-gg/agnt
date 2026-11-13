@@ -134,6 +134,34 @@ describe('an anonymous fetch is never adopted by a signed-in caller', () => {
     await Promise.all([anonymous, signedIn]);
   });
 
+  it('a forced refresh starts its own request, and its answer reaches the store', async () => {
+    // After a connect, the page forces a re-read. A poll already on the wire
+    // was issued before the connect; adopting it kept the new connection
+    // showing "Not connected" until something else refreshed.
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    let releasePoll;
+    axios.get.mockImplementation((url) => {
+      if (url === LOCAL) return new Promise((resolve) => { releasePoll = resolve; });
+      if (url === REMOTE) return Promise.resolve({ data: ['google'] });
+      return Promise.resolve({ data: [] });
+    });
+    const ctx = ctxFor(token, ['google']);
+    const poll = appAuth.actions.fetchConnectedApps(ctx);
+    await Promise.resolve();
+    expect(callsTo(LOCAL)).toBe(1);
+
+    lanesSucceed({ local: ['e2e-fake-crm'], remote: ['google'] });
+    await appAuth.actions.fetchConnectedApps(ctx, { forceRefresh: true });
+
+    expect(callsTo(LOCAL), 'the forced refresh reused the request already in flight').toBe(2);
+    const committed = ctx.commit.mock.calls.filter(([type]) => type === 'SET_CONNECTED_APPS').map(([, apps]) => apps);
+    expect(committed.some((apps) => apps.includes('e2e-fake-crm')), `committed: ${JSON.stringify(committed)}`).toBe(true);
+
+    releasePoll({ data: [] });
+    await poll;
+  });
+
   it('still shares one request between two callers of the same subject', async () => {
     // The dedup is scoped, not removed. Two screens mounting together must
     // still make one request.
