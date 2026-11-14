@@ -526,7 +526,7 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ReferralMilestones from './ReferralMilestones.vue';
-import { inviteLink, shareIntents, FRIEND_OFFER, REFERRAL_CODE } from '@/services/referral/referralProgram.js';
+import { inviteLink, shareIntents, INVITE_SHARE_TEXT, REFERRAL_CODE } from '@/services/referral/referralProgram.js';
 
 export default {
   name: 'ReferralsSection',
@@ -575,7 +575,7 @@ export default {
     });
     const intents = computed(() =>
       REFERRAL_CODE.test(userReferralCode.value || '') && userReferralCode.value !== 'Loading...'
-        ? shareIntents(referralLink.value, `I build with AGNT, the agent operating system. ${FRIEND_OFFER}`)
+        ? shareIntents(referralLink.value, INVITE_SHARE_TEXT)
         : null
     );
     const openExternal = (url) => {

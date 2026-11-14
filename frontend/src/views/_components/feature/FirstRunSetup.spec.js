@@ -15,6 +15,14 @@ const getStatus = vi.fn();
 vi.mock('@/composables/useAiProviderConnect.js', () => ({ useAiProviderConnect: () => ({ connect, saveApiKey }) }));
 vi.mock('@/composables/useProviderConnection.js', () => ({ useProviderConnection: () => ({ handleProviderToggle }) }));
 vi.mock('@/services/textAnnieService.js', () => ({ getStatus: (...a) => getStatus(...a) }));
+// What AGNT gives is read from three more edges: the AGNT Flash account, the
+// referral record and GitHub's star count. None of them may reach a network.
+const fetchFlashAccount = vi.fn();
+const fetchReferralProfile = vi.fn();
+const fetchStarCount = vi.fn();
+vi.mock('@/services/agntFlash.js', async (original) => ({ ...(await original()), fetchFlashAccount: (...a) => fetchFlashAccount(...a) }));
+vi.mock('@/services/referral/referralProgram.js', async (original) => ({ ...(await original()), fetchReferralProfile: (...a) => fetchReferralProfile(...a) }));
+vi.mock('@/services/giveBack.js', async (original) => ({ ...(await original()), fetchStarCount: (...a) => fetchStarCount(...a) }));
 
 import FirstRunSetup from './FirstRunSetup.vue';
 import { AHA_PROMPT, FIRST_ASK_PROMPT } from '@/services/firstRunSetup.js';
@@ -29,16 +37,35 @@ const PROVIDERS = [
   { id: 'google', name: 'Google', icon: 'google', connectionType: 'oauth' },
 ];
 const linkedPhone = { phones: [{ id: 'p1', state: 'active' }], plan: { eligible: true } };
+const TRIAL = { source: 'agnt_trial', trial: true, includedCredits: 1_000_000, usedCredits: 0, remainingCredits: 1_000_000, balanceMicroUSD: 0, resetAt: null };
+// A computer that already gave its trial to another account.
+const NO_TRIAL = { source: 'payg', trial: false, includedCredits: 0, usedCredits: 0, remainingCredits: 0, balanceMicroUSD: 0, resetAt: null };
 
 const TextAnnieStub = { name: 'TextAnnieCard', props: ['showHeader'], emits: ['state'], template: '<div class="ta-stub" />' };
 const ProviderLanesStub = { name: 'ProviderLanes', props: ['providers', 'connectedIds', 'codexStatus', 'activeId', 'showLanes'], template: '<div class="lanes-stub" />' };
 
 let wrapper;
 let store;
-function setup({ connectedApps = [], selectedProvider = 'AGNT', phone = { phones: [], plan: { eligible: true } }, props = {} } = {}) {
+function setup({
+  connectedApps = [],
+  selectedProvider = 'AGNT',
+  phone = { phones: [], plan: { eligible: true } },
+  props = {},
+  account,
+  profile,
+  plan = { planType: 'free', planStatus: 'active' },
+} = {}) {
   getStatus.mockResolvedValue(phone);
+  if (account !== undefined) fetchFlashAccount.mockResolvedValue(account);
+  if (profile !== undefined) fetchReferralProfile.mockResolvedValue(profile);
   store = createStore({
     modules: {
+      userAuth: {
+        namespaced: true,
+        state: { token: 'token-1', subscription: plan },
+        getters: { userEmail: () => 'maya@example.com', planType: () => plan.planType },
+        actions: { createSubscription: (_context, payload) => createSubscription(payload) },
+      },
       appAuth: {
         namespaced: true,
         state: { allProviders: PROVIDERS, connectedApps, codexStatus: {} },
@@ -75,7 +102,13 @@ const click = async (selector) => {
   await flushPromises();
 };
 
-beforeEach(() => [connect, saveApiKey, handleProviderToggle, getStatus].forEach((fn) => fn.mockReset()));
+const createSubscription = vi.fn();
+beforeEach(() => {
+  [connect, saveApiKey, handleProviderToggle, getStatus, fetchFlashAccount, fetchReferralProfile, fetchStarCount, createSubscription].forEach((fn) => fn.mockReset());
+  fetchFlashAccount.mockResolvedValue(NO_TRIAL);
+  fetchReferralProfile.mockResolvedValue(null);
+  fetchStarCount.mockResolvedValue(null);
+});
 afterEach(() => wrapper?.unmount());
 
 describe('step 1: your AI', () => {
@@ -231,6 +264,112 @@ describe('done', () => {
     await click('[data-action="skip"]');
     await click('.frs-tick[data-step-tab="google"]');
     expect(step()).toBe('google');
+  });
+});
+
+describe('what AGNT gives', () => {
+  const ALL_SET = { connectedApps: ['openai-codex', 'google'], selectedProvider: 'OpenAI-Codex', phone: linkedPhone };
+
+  it('says the free credits are already theirs before they choose an AI, and the way to start names them', async () => {
+    await setup({ account: TRIAL });
+    expect(wrapper.find('[data-testid="frs-gift"]').text()).toContain('1M AGNT Flash credits are already yours');
+    expect(wrapper.find('[data-action="flash"]').text()).toBe('Start now on my free credits');
+    // The plans still lead: the gift sits above the title, never in place of it.
+    expect(wrapper.find('.frs-title').text()).toBe('Connect your AI');
+    expect(wrapper.findAll('.frs-plan')).toHaveLength(2);
+  });
+
+  it('offers no gift to a computer whose trial went to another account', async () => {
+    await setup({ account: NO_TRIAL });
+    expect(wrapper.find('[data-testid="frs-gift"]').exists()).toBe(false);
+    expect(wrapper.find('[data-action="flash"]').text()).toBe('Start with AGNT Flash for now');
+  });
+
+  it('offers no gift once the trial is spent', async () => {
+    await setup({ account: { ...TRIAL, usedCredits: 1_000_000, remainingCredits: 0 } });
+    expect(wrapper.find('[data-testid="frs-gift"]').exists()).toBe(false);
+  });
+
+  it('never holds the first screen for the credits', async () => {
+    fetchFlashAccount.mockReturnValue(new Promise(() => {}));
+    await setup();
+    expect(step()).toBe('ai');
+    expect(wrapper.find('.frs-plan').exists()).toBe(true);
+  });
+
+  it('an account that cannot be read is offered no gift, and the setup still opens', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchFlashAccount.mockRejectedValue(new Error('offline'));
+    await setup();
+    expect(step()).toBe('ai');
+    expect(wrapper.find('[data-testid="frs-gift"]').exists()).toBe(false);
+    warn.mockRestore();
+  });
+
+  it('itemizes the gift on the done screen, the invite month included for an invited account', async () => {
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: true } });
+    expect(step()).toBe('done');
+    expect(wrapper.findAll('.frs-onus-row').map((row) => row.attributes('data-gift'))).toEqual(['flash', 'pro-trial', 'app']);
+    expect(wrapper.find('[data-gift="flash"]').text()).toContain('1,000,000 AGNT Flash credits');
+    expect(wrapper.find('[data-gift="flash"]').text()).toContain('Switch to AGNT Flash in the model picker');
+  });
+
+  it('says so when it is already running on the free credits', async () => {
+    await setup({ connectedApps: ['google'], selectedProvider: 'AGNT', phone: linkedPhone, account: TRIAL });
+    await click('[data-step-tab="phone"]');
+    await click('[data-action="continue"]');
+    expect(step()).toBe('done');
+    expect(wrapper.find('[data-gift="flash"]').text()).toContain("I'm running on them right now");
+  });
+
+  it('starts the invite month through checkout, which applies the 30 days itself', async () => {
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: true } });
+    await click('[data-action="start-trial"]');
+    expect(createSubscription).toHaveBeenCalledWith({ planType: 'personal', interval: 'monthly' });
+  });
+
+  it('says when checkout cannot be opened', async () => {
+    createSubscription.mockRejectedValue(new Error('Network Error'));
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: true } });
+    await click('[data-action="start-trial"]');
+    expect(wrapper.find('.frs-onus-error').text()).toBe('Network Error');
+    expect(wrapper.find('[data-action="start-trial"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('a free month already running is shown as started, not offered again', async () => {
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: true }, plan: { planType: 'personal', planStatus: 'trialing' } });
+    expect(wrapper.find('[data-gift="pro-trial"]').text()).toContain('Started');
+    expect(wrapper.find('[data-action="start-trial"]').exists()).toBe(false);
+  });
+
+  it('nobody who joined without an invite is offered the invite month', async () => {
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: false } });
+    expect(wrapper.find('[data-gift="pro-trial"]').exists()).toBe(false);
+    expect(wrapper.find('[data-gift="flash"]').exists()).toBe(true);
+  });
+
+  it('shows no list when nothing was given', async () => {
+    await setup({ ...ALL_SET, account: NO_TRIAL, profile: { code: 'MAYA', invited: false } });
+    expect(wrapper.find('[data-testid="frs-on-us"]').exists()).toBe(false);
+  });
+
+  it('asks for a follow, a star and a share after the first request, with nothing paid for them', async () => {
+    fetchStarCount.mockResolvedValue(576);
+    await setup({ ...ALL_SET, account: TRIAL, profile: { code: 'MAYA', invited: false } });
+    const ask = wrapper.find('[data-testid="frs-give-back"]');
+    expect(ask.find('[data-action="follow-x"]').text()).toBe('Follow @agnt_gg');
+    expect(ask.find('[data-testid="give-back-stars"]').text()).toBe('576');
+    expect(ask.find('[data-action="copy-invite"]').exists()).toBe(true);
+    expect(ask.text()).not.toMatch(/credit|\$/i);
+    const html = wrapper.html();
+    expect(html.indexOf('frs-aha')).toBeLessThan(html.indexOf('frs-give-back'));
+  });
+
+  it('keeps the follow and the star when there is no invite link to share', async () => {
+    await setup({ ...ALL_SET });
+    const ask = wrapper.find('[data-testid="frs-give-back"]');
+    expect(ask.find('[data-action="star-github"]').exists()).toBe(true);
+    expect(ask.find('[data-action="copy-invite"]').exists()).toBe(false);
   });
 });
 

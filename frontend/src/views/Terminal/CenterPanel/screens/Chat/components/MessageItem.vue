@@ -288,6 +288,9 @@
             :continued="h.continued"
           />
 
+          <!-- The account's first finished task: a receipt and one ask, once. See composables/useFirstWin.js. -->
+          <FirstWinCard v-if="firstWinClaim" :claim="firstWinClaim" @dismiss="dismissFirstWin" />
+
           <!-- Provider Note (shown after provider buttons) -->
           <div v-if="message.showProviderNote" class="provider-note">
             <div class="note-icon">💡</div>
@@ -523,6 +526,9 @@ const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { n
 const ConnectCard = lazyComponent(() => import('./ConnectCard.vue'), { name: 'ConnectCard' });
 const SignInCard = lazyComponent(() => import('./SignInCard.vue'), { name: 'SignInCard' });
 const ShareCard = lazyComponent(() => import('./ShareCard.vue'), { name: 'ShareCard' });
+// Rendered on one message per account, once.
+const FirstWinCard = lazyComponent(() => import('./FirstWinCard.vue'), { name: 'FirstWinCard' });
+import { useFirstWin } from '@/composables/useFirstWin.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
@@ -686,6 +692,7 @@ export default {
     ConnectCard,
     SignInCard,
     ShareCard,
+    FirstWinCard,
     TaskCheckpointCard,
     ShareBundlePreflight,
   },
@@ -3093,6 +3100,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const agntNotice = computed(() => (props.message.role === 'assistant' ? parseAgntNotice(artifactContent.value) : null));
     const handleAgntResume = () => emit('agnt-resume', props.message.id);
 
+    // The first-win card belongs to the one reply that claimed it.
+    const firstWin = useFirstWin(store);
+    const firstWinClaim = computed(() => (props.message.role === 'assistant' ? firstWin.claimOn(props.message.id) : null));
+    const dismissFirstWin = () => firstWin.dismiss();
+
     // Handoffs to sub-chats, with where each one is now (subChatLinks.js).
     const handoffCards = computed(() => {
       const handoffs = handoffsOf(props.message);
@@ -3418,6 +3430,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       handleProviderConnected,
       agntNotice,
       handleAgntResume,
+      firstWinClaim,
+      dismissFirstWin,
       handoffCards,
       hasImages,
       extractImages,

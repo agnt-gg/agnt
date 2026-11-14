@@ -312,6 +312,7 @@
         <AgntFlashMeter
           v-if="isAgntProviderSelected && hasConnectedAIProvider && conversationStarted"
           @connect-ai="$emit('screen-change', 'SettingsScreen', { section: 'providers' })"
+          @open-referrals="$emit('screen-change', 'SettingsScreen', { section: 'referrals' })"
         />
 
         <!-- Quick Actions (Studio's follow-up chips; Focused hides them in
@@ -353,6 +354,7 @@ import { contextWindowFromMetadata } from '@/utils/modelContextWindow.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
 import AgntFlashMeter from './components/AgntFlashMeter.vue';
+import { watchForFirstWin } from '@/composables/useFirstWin.js';
 import FocusedStarters from '@/views/Focused/FocusedStarters.vue';
 import OneWelcome from '@/views/One/OneWelcome.vue';
 import ChatActions from './components/ChatActions.vue';
@@ -449,6 +451,8 @@ export default {
       }
       return store.state.chat.messages;
     });
+    // The account's first finished task gets one thank-you card (useFirstWin.js).
+    watchForFirstWin(store, messagesFromStore);
     const expandedToolCalls = ref({});
     const runningToolCalls = ref({});
     const messageStates = ref({});

@@ -21,6 +21,12 @@ export function inviteLink(code) {
 /** The one line that tells a friend what they get. */
 export const FRIEND_OFFER = 'Join through my link and get 30 days of AGNT Pro free.';
 
+/** What a share intent prefills: who is sharing, then the friend's offer. */
+export const INVITE_SHARE_TEXT = `I build with AGNT, the agent operating system. ${FRIEND_OFFER}`;
+
+/** Both halves of an invite in one line, in the Referrals settings' own words. */
+export const INVITE_TERMS = 'Friends who join through your link get 30 days of AGNT Pro free. Give a month, get a month.';
+
 /** Share intents for a URL. Plain links: nothing is sent anywhere until the user posts. */
 export function shareIntents(url, text) {
   const enc = encodeURIComponent;
@@ -53,5 +59,55 @@ export async function claimReferral({ code, email, token, remoteUrl = API_CONFIG
   } catch (error) {
     return { claimed: false, reason: 'network' };
   }
+}
+
+const profiles = new Map();
+
+/**
+ * The signed-in account's own referral record: its invite code, and whether it
+ * joined through someone else's. Null when it cannot be read (signed out,
+ * offline). Asked once per account per session; a failed read is asked again.
+ *
+ * @returns {Promise<{ code: string|null, invited: boolean }|null>}
+ */
+export function fetchReferralProfile({ email, token, remoteUrl = API_CONFIG?.REMOTE_URL, fetchImpl = globalThis.fetch }) {
+  if (!email || !token || !remoteUrl) return Promise.resolve(null);
+  const key = `${remoteUrl}|${String(email).toLowerCase()}`;
+  if (!profiles.has(key)) {
+    const request = loadReferralProfile({ email, token, remoteUrl, fetchImpl }).then((profile) => {
+      if (!profile) profiles.delete(key);
+      return profile;
+    });
+    profiles.set(key, request);
+  }
+  return profiles.get(key);
+}
+
+async function loadReferralProfile({ email, token, remoteUrl, fetchImpl }) {
+  try {
+    const response = await fetchImpl(`${remoteUrl}/referrals/user/${encodeURIComponent(email)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // No record yet is an answer: no code to share, and nobody invited them.
+    if (response.status === 404) return { code: null, invited: false };
+    if (!response.ok) return null;
+    const data = await response.json();
+    return { code: REFERRAL_CODE.test(data?.referral_code || '') ? data.referral_code : null, invited: Boolean(data?.referred_by) };
+  } catch (error) {
+    console.warn('[referral] profile unavailable:', error?.message || error);
+    return null;
+  }
+}
+
+/**
+ * Where an invited account's 30 days of AGNT Pro stand: 'offer' while it is on
+ * the free plan, 'started' while the trial runs, null for anyone else. Checkout
+ * has the last word: it applies the trial only to an account that has never
+ * subscribed, which the app has no way to see.
+ */
+export function inviteTrialState({ invited, planType, planStatus } = {}) {
+  if (!invited) return null;
+  if (planStatus === 'trialing' || planType === 'trial') return 'started';
+  return !planType || planType === 'free' ? 'offer' : null;
 }
 

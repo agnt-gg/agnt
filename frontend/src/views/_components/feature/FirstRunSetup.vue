@@ -68,6 +68,14 @@
           </template>
 
           <template v-else-if="!showKeys">
+            <div v-if="gift && !changingAi" class="frs-gift" data-testid="frs-gift">
+              <span class="frs-gift-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg></span>
+              <div class="frs-gift-text">
+                <div class="frs-gift-title">{{ gift.headline }} AGNT Flash credits are already yours</div>
+                <div class="frs-gift-sub">On us, once. No card, no key. Start on them now, or connect your own AI below for top-quality results.</div>
+              </div>
+              <span class="frs-held">In your account</span>
+            </div>
             <h2 class="frs-title">Connect your AI</h2>
             <p class="frs-lead">Sign in with the plan you already pay for. Usage is included, and AGNT never adds a charge.</p>
             <div class="frs-hero">
@@ -102,7 +110,7 @@
             <div class="frs-foot">
               <button v-if="changingAi" type="button" class="frs-link" @click="changingAi = false">← Keep {{ activeAiLabel }}</button>
               <button v-else type="button" class="frs-link frs-link--flash" data-action="flash" @click="skip('ai')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg>Start with AGNT Flash for now
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg>{{ flashLabel }}
               </button>
             </div>
           </template>
@@ -124,7 +132,7 @@
             />
             <div class="frs-foot">
               <button type="button" class="frs-link frs-link--flash" data-action="flash" @click="skip('ai')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg>Start with AGNT Flash for now
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg>{{ flashLabel }}
               </button>
             </div>
           </template>
@@ -194,6 +202,47 @@
               <button v-else type="button" class="frs-tick" :data-step-tab="step.id" @click="show(step.id)">Connect {{ tickLabel(step.id) }}</button>
             </li>
           </ul>
+          <div v-if="gift || inviteTrial" class="frs-onus" data-testid="frs-on-us">
+            <div class="frs-onus-head">
+              <span class="frs-kicker">On us</span>
+              <span class="frs-onus-hint">{{ onUsHint }}</span>
+            </div>
+            <div v-if="gift" class="frs-onus-row" data-gift="flash">
+              <span class="frs-onus-icon frs-onus-icon--accent"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="BOLT" /></svg></span>
+              <div>
+                <div class="frs-onus-name">{{ gift.credits.toLocaleString('en-US') }} AGNT Flash credits</div>
+                <div class="frs-onus-desc">{{ onFlash ? "One-time, and I'm running on them right now." : 'One-time. Switch to AGNT Flash in the model picker whenever you like.' }}</div>
+              </div>
+              <span class="frs-held">In your account</span>
+            </div>
+            <div v-if="inviteTrial" class="frs-onus-row" data-gift="pro-trial">
+              <span class="frs-onus-icon"><svg class="frs-line" viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.gift" /></svg></span>
+              <div>
+                <div class="frs-onus-name">30 days of AGNT Pro <span class="frs-invited">Invited</span></div>
+                <div class="frs-onus-desc">{{ inviteTrialText }}</div>
+              </div>
+              <button
+                v-if="inviteTrial === 'offer'"
+                type="button"
+                class="frs-btn frs-btn--ink frs-btn--sm"
+                data-action="start-trial"
+                :disabled="startingTrial"
+                @click="startTrial"
+              >
+                {{ startingTrial ? 'Opening checkout…' : 'Start free month' }}
+              </button>
+              <span v-else class="frs-held frs-held--quiet">Started</span>
+            </div>
+            <div class="frs-onus-row" data-gift="app">
+              <span class="frs-onus-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.github" /></svg></span>
+              <div>
+                <div class="frs-onus-name">The AGNT app</div>
+                <div class="frs-onus-desc">Free for personal use and small businesses. Built in public on GitHub.</div>
+              </div>
+              <span class="frs-held frs-held--quiet">Yours</span>
+            </div>
+            <p v-if="trialError" class="frs-onus-error" role="alert">{{ trialError }}</p>
+          </div>
           <div class="frs-aha">
             <span class="frs-aha-kicker">{{ offer.kicker }}</span>
             <span class="frs-aha-title">{{ offer.title }}</span>
@@ -202,6 +251,10 @@
               <button type="button" class="frs-btn frs-btn--accent" data-action="ask" @click="emit('finish', { ask: offer.prompt })">Ask Annie</button>
               <button type="button" class="frs-link" data-action="start" @click="emit('finish', { ask: null })">I'll take it from here</button>
             </div>
+          </div>
+          <div class="frs-giveback" data-testid="frs-give-back">
+            <p class="frs-giveback-lead"><b>AGNT is built in public.</b> If it earns it, this is how you help.</p>
+            <GiveBackLinks terms />
           </div>
           <p v-if="!everythingDone" class="frs-fine frs-center">Anything you skipped is a click away in Settings.</p>
         </div>
@@ -217,11 +270,16 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import ProviderLanes from '@/components/ProviderLanes.vue';
 import TextAnnieCard from '@/views/Terminal/CenterPanel/screens/Settings/components/PhoneAccessSection/TextAnnieCard.vue';
+import GiveBackLinks from './GiveBackLinks.vue';
 import { useAiProviderConnect } from '@/composables/useAiProviderConnect.js';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 import { ownAiIds, readFacts } from '@/composables/useJourney.js';
 import { LOCAL_PROVIDER, isSubscriptionProvider, providerLabel, resolveProviderKey } from '@/store/app/aiProvider.js';
 import * as textAnnie from '@/services/textAnnieService.js';
+import { fetchFlashAccount } from '@/services/agntFlash.js';
+import { ICONS, flashGift } from '@/services/giveBack.js';
+import { inviteTrialState } from '@/services/referral/referralProgram.js';
+import { useInviteLink } from '@/composables/useInviteLink.js';
 import {
   HERO_PLAN_NAMES,
   SETUP_STEPS,
@@ -375,6 +433,7 @@ async function loadPhoneState() {
 
 onMounted(async () => {
   window.addEventListener('focus', refreshConnections);
+  loadFlashAccount();
   try {
     await Promise.all([
       allProviders.value.length ? null : store.dispatch('appAuth/fetchAllProviders'),
@@ -423,6 +482,56 @@ const doneLead = computed(() => {
 });
 const tickLabel = (step) => (step === 'ai' ? (status.value.ai ? activeAiLabel.value : 'your AI') : step === 'google' ? 'Google' : 'your phone');
 const offer = computed(() => finishOffer(status.value));
+
+// ── What AGNT gives ─────────────────────────────────────────────────────
+// Read without holding the setup: a slow gateway must not keep the first
+// screen waiting, and an account that cannot be read is offered no gift
+// rather than a wrong one.
+const flashAccount = ref(null);
+async function loadFlashAccount() {
+  try {
+    flashAccount.value = await fetchFlashAccount();
+  } catch (error) {
+    console.warn('[FirstRunSetup] AGNT Flash account unavailable:', error?.message || error);
+  }
+}
+const gift = computed(() => flashGift(flashAccount.value));
+const flashLabel = computed(() => (gift.value ? 'Start now on my free credits' : 'Start with AGNT Flash for now'));
+const onFlash = computed(() => selectedProvider.value.toLowerCase() === 'agnt');
+
+const { invited } = useInviteLink();
+const inviteTrial = computed(() =>
+  inviteTrialState({
+    invited: invited.value,
+    planType: store.getters['userAuth/planType'],
+    planStatus: store.state.userAuth?.subscription?.planStatus,
+  }),
+);
+const inviteTrialText = computed(() =>
+  inviteTrial.value === 'started'
+    ? 'You joined through an invite, and your free month is on: unlimited agents, workflows and automations on this computer.'
+    : 'You joined through an invite: unlimited agents, workflows and automations on this computer for 30 days. Card at checkout, cancel any time.',
+);
+const onUsHint = computed(() => {
+  if (inviteTrial.value !== 'offer') return "Nothing to claim. It's already in your account.";
+  return gift.value ? 'The credits are already yours. The free month starts when you do.' : 'Your free month starts when you do.';
+});
+
+const startingTrial = ref(false);
+const trialError = ref('');
+async function startTrial() {
+  if (startingTrial.value) return;
+  startingTrial.value = true;
+  trialError.value = '';
+  try {
+    // Stripe opens in the browser, and checkout applies the invite's 30 days itself.
+    await store.dispatch('userAuth/createSubscription', { planType: 'personal', interval: 'monthly' });
+  } catch (error) {
+    trialError.value = error?.response?.data?.error || error?.message || 'Checkout could not be opened. Try again in a moment.';
+  } finally {
+    startingTrial.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -733,8 +842,68 @@ const offer = computed(() => finishOffer(status.value));
 .frs-aha-text { margin: 8px 0 14px; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
 .frs-aha-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 
+/* 1 · the gift: what is already theirs, said before they choose */
+.frs-gift {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--pink-rgb), 0.3);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(var(--pink-rgb), 0.075), rgba(var(--pink-rgb), 0.015) 70%);
+  animation: frs-arrive 0.35s ease-out both;
+}
+.frs-gift-icon { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 11px; background: rgba(var(--pink-rgb), 0.13); }
+.frs-gift-icon svg { width: 18px; height: 18px; fill: var(--color-pink); }
+.frs-gift-text { flex: 1; min-width: 0; }
+.frs-gift-title { font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+.frs-gift-sub { margin-top: 2px; font-size: 13.5px; line-height: 1.4; color: var(--text-secondary); }
+.frs-held {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  flex: none;
+  border-radius: 999px;
+  background: rgba(var(--green-rgb), 0.15);
+  color: var(--status-green-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.frs-held::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.frs-held--quiet { background: var(--surface-active, var(--surface-hover)); color: var(--text-secondary); }
+@keyframes frs-arrive { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .frs-gift { animation: none; }
+}
+
+/* Done · what is on us, then the one ask */
+.frs-onus { width: 100%; max-width: 620px; margin: 0 0 14px; border: 1px solid var(--terminal-border-color); border-radius: 16px; background: var(--color-darker-0); text-align: left; }
+.frs-onus-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 14px 18px 10px; }
+.frs-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary, var(--text-secondary)); }
+.frs-onus-hint { font-size: 12.5px; color: var(--text-tertiary, var(--text-secondary)); }
+.frs-onus-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--terminal-border-color); }
+.frs-onus-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: var(--surface-active, var(--surface-hover)); color: var(--text-primary); }
+.frs-onus-icon svg { width: 17px; height: 17px; fill: currentColor; }
+.frs-onus-icon svg.frs-line { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.frs-onus-icon--accent { background: rgba(var(--pink-rgb), 0.13); color: var(--color-pink); }
+.frs-onus-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+.frs-onus-desc { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+.frs-invited { padding: 3px 6px 2px; border-radius: 5px; background: rgba(var(--blue-rgb), 0.16); color: var(--text-blue, var(--text-secondary)); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; line-height: 1; text-transform: uppercase; }
+.frs-btn--sm { height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; }
+.frs-onus-error { margin: 0; padding: 0 18px 14px; font-size: 12.5px; color: var(--color-red); }
+.frs-giveback { width: 100%; max-width: 620px; margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--terminal-border-color); text-align: left; }
+.frs-giveback-lead { margin: 0 0 10px; font-size: 14px; color: var(--text-secondary); }
+.frs-giveback-lead b { font-weight: 600; color: var(--text-primary); }
+
 @media (max-width: 600px) {
   .frs-card { padding: 16px; }
+  .frs-gift { flex-wrap: wrap; }
+  .frs-onus-row { grid-template-columns: 36px minmax(0, 1fr); }
+  .frs-onus-row > :last-child { grid-column: 2; justify-self: start; }
   .frs-hero { grid-template-columns: 1fr; }
   .frs-suite { grid-template-columns: repeat(4, 1fr); row-gap: 12px; }
   .frs-title { font-size: 23px; }

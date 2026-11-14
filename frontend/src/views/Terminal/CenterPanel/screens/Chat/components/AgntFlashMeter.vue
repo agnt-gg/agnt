@@ -2,13 +2,25 @@
   <div v-if="account" class="agnt-flash-meter" :class="{ low: isLow }">
     <div class="afm-row">
       <span class="afm-dot" aria-hidden="true"></span>
-      <span class="afm-label">AGNT Flash · {{ account.trial ? 'Free trial' : account.planName || 'Credits' }}</span>
+      <!-- The label opens what is on us and the invite (OnUsPopover); only ever on a click. -->
+      <button
+        ref="onUsToggle"
+        type="button"
+        class="afm-label"
+        data-action="on-us"
+        aria-haspopup="dialog"
+        :aria-expanded="onUsOpen ? 'true' : 'false'"
+        @click="onUsOpen = !onUsOpen"
+      >
+        AGNT Flash · {{ account.trial ? 'Free trial' : account.planName || 'Credits' }} <span v-if="account.trial" class="afm-onus">On us</span>
+      </button>
       <span class="afm-bar" aria-hidden="true"><i :style="{ width: `${Math.round(share * 100)}%` }"></i></span>
       <!-- A free trial shows the bar only: a raw credit count means nothing to
            someone who has not bought credits. Paid accounts keep the number. -->
       <span v-if="account.trial" class="afm-left">{{ exhausted ? 'Used up' : '' }}</span>
       <span v-else class="afm-left">{{ formatCredits(account.remainingCredits) }} left<template v-if="account.balanceMicroUSD > 0"> · ${{ (account.balanceMicroUSD / 1e6).toFixed(2) }} prepaid</template></span>
     </div>
+    <OnUsPopover v-if="onUsOpen" :account="account" :anchor="onUsToggle" @close="closeOnUs" @open-referrals="openReferrals" />
     <!-- No AI of its own: one quiet line, once per session (services/ownAi.js). -->
     <div v-if="showConnectAi" class="afm-own-ai" data-testid="flash-connect-ai">
       <span>Using AGNT Flash. Connect your AI for top-quality results.</span>
@@ -35,6 +47,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import UpgradeModal from '@/components/UpgradeModal.vue';
+import OnUsPopover from './OnUsPopover.vue';
 import { fetchFlashAccount, startFlashTopUp, formatCredits, usedShare, LOW_CREDIT_SHARE } from '@/services/agntFlash.js';
 import { readFacts } from '@/composables/useJourney.js';
 import { hasOwnAi, deferredThisSession, deferThisSession } from '@/services/ownAi.js';
@@ -43,9 +56,9 @@ const DISMISS_KEY = 'agnt-flash-low-dismissed';
 
 export default {
   name: 'AgntFlashMeter',
-  components: { UpgradeModal },
-  emits: ['connect-ai'],
-  setup() {
+  components: { UpgradeModal, OnUsPopover },
+  emits: ['connect-ai', 'open-referrals'],
+  setup(props, { emit }) {
     const store = useStore();
     const account = ref(null);
     const busy = ref(false);
@@ -79,6 +92,17 @@ export default {
       localStorage.setItem(DISMISS_KEY, periodKey.value);
     }
 
+    const onUsOpen = ref(false);
+    const onUsToggle = ref(null);
+    function closeOnUs({ returnFocus = false } = {}) {
+      onUsOpen.value = false;
+      if (returnFocus) onUsToggle.value?.focus?.();
+    }
+    function openReferrals() {
+      onUsOpen.value = false;
+      emit('open-referrals');
+    }
+
     async function topUp() {
       busy.value = true;
       try {
@@ -106,7 +130,10 @@ export default {
       () => refresh(),
     );
 
-    return { account, busy, upgradeOpen, share, isLow, exhausted, showNudge, showConnectAi, connectLater, formatCredits, dismiss, topUp };
+    return {
+      account, busy, upgradeOpen, share, isLow, exhausted, showNudge, showConnectAi, connectLater, formatCredits, dismiss, topUp,
+      onUsOpen, onUsToggle, closeOnUs, openReferrals,
+    };
   },
 };
 </script>
@@ -120,6 +147,10 @@ export default {
 /* One centred line under the conversation, not a left-aligned label. */
 .afm-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 4px; }
 .afm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); flex: none; }
+.afm-label { display: inline-flex; align-items: center; gap: 6px; margin: -2px 0; padding: 2px 6px; border: 0; border-radius: 6px; background: none; font: inherit; color: inherit; cursor: pointer; }
+.afm-label:hover, .afm-label[aria-expanded='true'] { background: var(--surface-hover); color: var(--color-text); }
+.afm-label:focus-visible { outline: 2px solid var(--color-pink); outline-offset: 1px; }
+.afm-onus { padding: 2px 6px 1px; border-radius: 5px; background: rgba(var(--pink-rgb), 0.1); color: var(--color-pink); font-weight: 600; }
 .low .afm-dot { background: var(--color-yellow); }
 .afm-bar { width: 60px; height: 4px; border-radius: 3px; background: var(--terminal-border-color); overflow: hidden; flex: none; }
 .afm-bar i { display: block; height: 100%; background: var(--color-green); }
