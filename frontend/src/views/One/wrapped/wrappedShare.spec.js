@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildCards } from './wrappedModel.js';
-import { copyShareImage, drawShareCard, shareableFigures, shareImageBlob, shareIntentUrl, shareText, wrapLines } from './wrappedShare.js';
+import { copyShareImage, drawShareCard, posterPairs, shareableFigures, shareImageBlob, shareIntentUrl, shareText, wrapLines } from './wrappedShare.js';
 import { yearFixture } from './wrapped.fixture.js';
 
 const summary = buildCards(yearFixture()).find((c) => c.id === 'summary');
@@ -35,16 +35,23 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('what leaves the app', () => {
   it('keeps spend and goal names out unless the person includes them', () => {
-    expect(shareableFigures(summary)).toMatchObject({ topGoal: null, saved: null, streak: '43', calls: '4,200' });
+    expect(shareableFigures(summary)).toMatchObject({ topGoal: null, saved: null, streak: '500', runs: '36,000', tokens: '59B' });
     expect(shareableFigures(summary, { includePrivate: true })).toMatchObject({ topGoal: 'Morning digest', saved: '$1.8K' });
   });
 
   it('the post text says the year in one line, private figures only on request', () => {
     const text = shareText(summary);
-    expect(text).toBe("My 2026 in @agnt_gg: 43-day streak · 4,200 model calls · #1 model: claude-opus-5-5 · 35 skills built. I'm The Conductor. agnt.gg");
+    expect(text).toBe("My 2026 in @agnt_gg: 500-day streak · 59B tokens · 36,000 runs · #1 model: claude-opus-5-5 · 35 skills built. I'm The Conductor. agnt.gg");
     expect(text).not.toContain('$');
     expect(shareText(summary, { includePrivate: true })).toContain('$1.8K saved by caching');
     expect(text.length).toBeLessThanOrEqual(280);
+  });
+
+  it('the poster leads with the streak and tokens, then what was built and runs, or savings when included', () => {
+    const row = (pairs) => pairs.map((p) => p.map((f) => `${f.value} ${f.label}`));
+    expect(row(posterPairs(shareableFigures(summary)))).toEqual([['500 day streak', '59B tokens'], ['35 skills built', '36,000 runs']]);
+    expect(row(posterPairs(shareableFigures(summary, { includePrivate: true })))).toEqual([['500 day streak', '59B tokens'], ['35 skills built', '$1.8K saved by caching']]);
+    expect(row(posterPairs({ ...shareableFigures(summary), tokens: null, built: null }))).toEqual([['500 day streak', '36,000 runs'], ['30 models tried']]);
   });
 
   it('opens a post on X with that text', () => {
@@ -62,7 +69,7 @@ describe('the image', () => {
   it('draws the year with the private figures left out', () => {
     const ctx = recordingContext();
     drawShareCard(ctx, shareableFigures(summary));
-    expect(ctx.texts).toEqual(expect.arrayContaining(['2026 WRAPPED', 'My 2026', 'in AGNT', '43', '4,200', 'DAY STREAK', 'claude-opus-5-5', '35', 'SKILLS BUILT', '30', 'MODELS TRIED', 'The Conductor', 'agnt.gg']));
+    expect(ctx.texts).toEqual(expect.arrayContaining(['2026 WRAPPED', 'My 2026', 'in AGNT', '500', 'DAY STREAK', '59B', 'TOKENS', 'claude-opus-5-5', '35', 'SKILLS BUILT', '36,000', 'RUNS', 'The Conductor', 'agnt.gg']));
     expect(ctx.texts.join(' ')).not.toContain('Morning digest');
     expect(ctx.texts.join(' ')).not.toContain('$');
   });

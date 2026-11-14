@@ -17,7 +17,8 @@ export function shareableFigures(summary, { includePrivate = false } = {}) {
   return {
     year: summary.year,
     streak: summary.streak,
-    calls: summary.calls,
+    runs: summary.runs,
+    tokens: summary.tokens,
     topModel: summary.topModel,
     built: summary.built,
     modelCount: summary.modelCount,
@@ -27,9 +28,27 @@ export function shareableFigures(summary, { includePrivate = false } = {}) {
   };
 }
 
+/**
+ * The summary's figures in two rows: the streak and the year's size (tokens,
+ * else runs), then the first two of what was built, what caching saved, runs
+ * (when tokens took the first row) and models tried.
+ */
+export function posterPairs(f) {
+  const size = f.tokens ? { value: f.tokens, label: 'tokens' } : { value: f.runs, label: 'runs' };
+  const rest = [
+    f.built ? { value: f.built.count, label: `${f.built.kind} built` } : null,
+    f.saved ? { value: f.saved, label: 'saved by caching' } : null,
+    f.tokens ? { value: f.runs, label: 'runs' } : null,
+    f.modelCount ? { value: f.modelCount, label: 'models tried' } : null,
+  ].filter(Boolean);
+  return [[{ value: f.streak, label: 'day streak' }, size], rest.slice(0, 2)];
+}
+
 export function shareText(summary, options) {
   const f = shareableFigures(summary, options);
-  const facts = [`${f.streak}-day streak`, `${f.calls} model calls`];
+  const facts = [`${f.streak}-day streak`];
+  if (f.tokens) facts.push(`${f.tokens} tokens`);
+  facts.push(`${f.runs} runs`);
   if (f.topModel) facts.push(`#1 model: ${f.topModel}`);
   if (f.built) facts.push(`${f.built.count} ${f.built.kind} built`);
   if (f.saved) facts.push(`${f.saved} saved by caching`);
@@ -114,16 +133,19 @@ export function drawShareCard(ctx, f) {
   ctx.fillText('in AGNT', P, 508);
 
   let y = 640;
-  const pair = (left, right) => {
-    ctx.fillStyle = WHITE;
-    ctx.font = `800 96px ${FONT}`;
-    ctx.fillText(left.value, P, y);
-    if (right) ctx.fillText(right.value, W / 2 + 12, y);
-    label(ctx, left.label, P, y + 48);
-    if (right) label(ctx, right.label, W / 2 + 12, y + 48);
+  const column = inner / 2 - 24;
+  const pair = (figures) => {
+    figures.forEach((figure, i) => {
+      const x = i === 0 ? P : W / 2 + 12;
+      ctx.fillStyle = WHITE;
+      fitFont(ctx, 800, FONT, 96, 56, figure.value, column);
+      ctx.fillText(figure.value, x, y);
+      label(ctx, figure.label, x, y + 48);
+    });
     y += 168;
   };
-  pair({ value: f.streak, label: 'day streak' }, { value: f.calls, label: 'model calls' });
+  const [first, second] = posterPairs(f);
+  pair(first);
 
   if (f.topModel) {
     label(ctx, '#1 model', P, y);
@@ -140,9 +162,7 @@ export function drawShareCard(ctx, f) {
     lines.forEach((line, i) => ctx.fillText(line, P, y + 62 + i * 54));
     y += 86 + lines.length * 54;
   }
-  const builtFigure = f.built ? { value: f.built.count, label: `${f.built.kind} built` } : { value: f.modelCount, label: 'models tried' };
-  const fourth = f.saved ? { value: f.saved, label: 'saved by caching' } : f.built ? { value: f.modelCount, label: 'models tried' } : null;
-  pair(builtFigure, fourth);
+  if (second.length) pair(second);
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
   ctx.fillRect(P, H - P - 72, inner, 2);

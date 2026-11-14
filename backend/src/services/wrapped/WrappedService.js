@@ -1,14 +1,20 @@
 import db from '../../models/database/index.js';
+import ExecutionModel from '../../models/ExecutionModel.js';
 import LlmCallModel, { CHAT_SURFACE_ORIGINS } from '../../models/LlmCallModel.js';
 
 /**
- * The numbers behind AGNT One's year in review ("Wrapped"): the ledger's totals
- * for the year, calls per local day, the most used models and goals, and what
- * was built and learned.
+ * The numbers behind AGNT One's year in review ("Wrapped").
  *
- * A year is whole local days, the days the ledger itself buckets by
- * (DATE(ts, 'localtime')), and it ends at the start of today: a day is counted
- * once it is over, so the cards never show a half day as a slow one.
+ * Activity (runs, active days, tokens and the streak) comes from the execution
+ * tables, through the same ExecutionModel reads the dashboard and its streak
+ * badge use, so the cards and the dashboard cannot disagree. Facts only the
+ * ledger records (calls, models, providers, cost) come from the ledger, which
+ * can start later than the runs do; `ledger.from` says where it starts.
+ *
+ * A year is whole local days (DATE(..., 'localtime'), as both sources bucket
+ * them), and it ends at the start of today: a day is counted once it is over,
+ * so the cards never show a half day as a slow one. The streak is the one
+ * exception: like the dashboard's, it runs over all of history, as of today.
  */
 
 const dbGet = (sql, params) => new Promise((resolve, reject) => db.get(sql, params, (e, row) => (e ? reject(e) : resolve(row))));
@@ -16,6 +22,11 @@ const dbAll = (sql, params) => new Promise((resolve, reject) => db.all(sql, para
 
 const pad = (n) => String(n).padStart(2, '0');
 const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** 'YYYY-MM-DD' + n local calendar days. */
+const addDays = (ymd, n) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return localDate(new Date(y, m - 1, d + n));
+};
 
 /** The UTC instant a local calendar day starts at, written the way `ts` and `created_at` are stored. */
 export function localDayStart(year, monthIndex, day) {
@@ -97,6 +108,35 @@ async function learningOfYear(userId, range) {
   };
 }
 
+/**
+ * The year's activity, by local day: runs, whether the day was active (the
+ * streak's rule: some run did work), and tokens, as the dashboard counts them.
+ * The streak is the dashboard's: unbroken days up to today, over all history.
+ */
+async function activityOfYear(userId, window) {
+  const [runsByDay, dashboardDays, current] = await Promise.all([
+    ExecutionModel.countRunsByDay(userId, window.from, window.through),
+    // The dashboard's daily figures; its end date is exclusive.
+    ExecutionModel.getAgentActivityData(userId, window.from, addDays(window.through, 1)),
+    ExecutionModel.getActivityStreak(userId),
+  ]);
+  const inYear = dashboardDays.filter((row) => row.date >= window.from && row.date <= window.through);
+  const active = new Set(inYear.filter((row) => Number(row.credits_used) > 0).map((row) => row.date));
+  const runs = new Map(runsByDay.map((row) => [row.date, row.runs]));
+  const tokenDays = inYear.filter((row) => Number(row.total_tokens) > 0).map((row) => row.date).sort();
+  return {
+    days: [...new Set([...runs.keys(), ...active])].sort().map((date) => ({ date, runs: runs.get(date) || 0, active: active.has(date) })),
+    runs: runsByDay.reduce((sum, row) => sum + row.runs, 0),
+    tokens: inYear.reduce((sum, row) => sum + (Number(row.total_tokens) || 0), 0),
+    tokensFrom: tokenDays[0] || null,
+    streak: {
+      days: current.streak,
+      since: current.streak > 0 ? addDays(current.lastActiveDate, -(current.streak - 1)) : null,
+      lastActiveDate: current.lastActiveDate,
+    },
+  };
+}
+
 const byCallsThenName = (a, b) => b.calls - a.calls || String(a.bucket).localeCompare(String(b.bucket));
 
 // Calls a person started in a chat surface ('chat' is the pre-split legacy
@@ -124,17 +164,19 @@ export async function yearInReview(userId, year, now = new Date()) {
     breakdown('origin'),
     breakdown('origin_id'),
   ]);
-  const [goals, built, learning] = await Promise.all([
+  const [goals, built, learning, activity] = await Promise.all([
     goalsOfYear(userId, range, byOriginId),
     builtByMonth(userId, range),
     learningOfYear(userId, range),
+    activityOfYear(userId, window),
   ]);
 
   return {
     year,
     window: { from: window.from, through: window.through, complete: window.complete },
+    activity,
     totals,
-    days: byDay.map((r) => [r.bucket, r.calls]).sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+    ledger: { from: byDay.map((r) => r.bucket).sort()[0] || null },
     models: { count: byModel.length, top: byModel.sort(byCallsThenName).slice(0, 5).map((r) => ({ name: r.bucket, calls: r.calls })) },
     providers: { count: byProvider.length },
     conversations: { count: byConversation.length },

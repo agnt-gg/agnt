@@ -526,6 +526,34 @@ class ExecutionModel {
     );
   }
 
+  // Runs (workflow and agent executions) per local date in [startYmd, endYmd],
+  // from the same two tables, padded the same way as _activeDatesBetween. Only
+  // start_time is read, so both halves are range scans of the (user_id,
+  // start_time) indexes and a year of history stays cheap.
+  static async countRunsByDay(userId, startYmd, endYmd) {
+    const lower = addDays(startYmd, -1);
+    const upper = addDays(endYmd, 2);
+    const rows = await dbAll(
+      `SELECT date, SUM(runs) AS runs FROM (
+         SELECT DATE(start_time, 'localtime') AS date, COUNT(*) AS runs
+           FROM workflow_executions
+          WHERE user_id = ? AND start_time BETWEEN ? AND ?
+          GROUP BY date
+         UNION ALL
+         SELECT DATE(start_time, 'localtime') AS date, COUNT(*) AS runs
+           FROM agent_executions
+          WHERE user_id = ? AND start_time BETWEEN ? AND ?
+          GROUP BY date
+       )
+       GROUP BY date
+       ORDER BY date`,
+      [userId, lower, upper, userId, lower, upper]
+    );
+    return rows
+      .filter((row) => row.date && row.date >= startYmd && row.date <= endYmd)
+      .map((row) => ({ date: row.date, runs: Number(row.runs) || 0 }));
+  }
+
   static async getTotalCreditsUsed(executionId) {
     return new Promise((resolve, reject) => {
       db.get('SELECT SUM(credits_used) as total_credits FROM node_executions WHERE execution_id = ?', [executionId], (err, row) => {

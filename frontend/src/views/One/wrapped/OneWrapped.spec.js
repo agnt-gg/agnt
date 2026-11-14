@@ -14,7 +14,7 @@ vi.mock('vuex', () => ({ useStore: () => ({ getters: { 'userAuth/userEmail': 'me
 import OneWrapped from './OneWrapped.vue';
 import WrappedStory from './WrappedStory.vue';
 import { seenKey } from './wrappedModel.js';
-import { yearFixture } from './wrapped.fixture.js';
+import { fixtureDays, withDays, yearFixture } from './wrapped.fixture.js';
 
 function mountOn(date) {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -86,7 +86,7 @@ describe('OneWrapped', () => {
   });
 
   it('a year with too little in it says so, instead of showing zeros', async () => {
-    getYearInReview.mockResolvedValue(yearFixture({ days: yearFixture().days.slice(0, 3) }));
+    getYearInReview.mockResolvedValue(withDays(fixtureDays().slice(0, 3)));
     const w = mountOn(new Date(2026, 10, 13));
     w.vm.open();
     await flushPromises();

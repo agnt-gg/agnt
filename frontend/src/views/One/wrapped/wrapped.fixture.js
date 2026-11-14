@@ -1,24 +1,38 @@
 /**
  * A year in review shaped as GET /api/wrapped/:year returns it, for the Wrapped specs.
  *
- * One active day in March, then every day from October 1 to November 12, with
- * October 28 the busiest; the window ends November 12, so November is partial.
+ * Runs every day from January 1 to November 12 (the window ends November 12,
+ * so November is partial): 100 a day to September, 200 a day in October with
+ * 900 on October 28, 150 a day in November. The current streak is 500 days,
+ * since July 2 of the year before. The ledger and token counts start March 3.
  */
-export function yearFixture(overrides = {}) {
-  const days = [['2026-03-03', 50]];
-  for (let d = new Date(Date.UTC(2026, 9, 1)); d <= new Date(Date.UTC(2026, 10, 12)); d.setUTCDate(d.getUTCDate() + 1)) {
-    const iso = d.toISOString().slice(0, 10);
-    days.push([iso, iso === '2026-10-28' ? 400 : iso.startsWith('2026-11') ? 120 : 100]);
+export function fixtureDays() {
+  const days = [];
+  for (let d = new Date(Date.UTC(2026, 0, 1)); d <= new Date(Date.UTC(2026, 10, 12)); d.setUTCDate(d.getUTCDate() + 1)) {
+    const date = d.toISOString().slice(0, 10);
+    const runs = date === '2026-10-28' ? 900 : date.startsWith('2026-10') ? 200 : date.startsWith('2026-11') ? 150 : 100;
+    days.push({ date, runs, active: true });
   }
+  return days;
+}
+
+export function yearFixture(overrides = {}) {
   return {
     success: true,
     year: 2026,
     window: { from: '2026-01-01', through: '2026-11-12', complete: false },
+    activity: {
+      days: fixtureDays(),
+      runs: 36000,
+      tokens: 59000000000,
+      tokensFrom: '2026-03-03',
+      streak: { days: 500, since: '2025-07-02', lastActiveDate: '2026-11-13' },
+    },
     totals: {
       calls: 4200, costUsd: 12.5, unpricedCalls: 3, notionalUsd: 640.2, notionalUncachedUsd: 2400.9, notionalSavedUsd: 1760.7,
       uncachedCostUsd: 20, savedUsd: 7.5, inputTokens: 90000000, outputTokens: 47000000, cacheReadTokens: 81000000, cacheWriteTokens: 1000000,
     },
-    days,
+    ledger: { from: '2026-03-03' },
     models: {
       count: 30,
       top: [
@@ -38,4 +52,10 @@ export function yearFixture(overrides = {}) {
     learning: { insightsApplied: 120, insightsRejected: 7, skillTrials: 40, skillsKept: 11, skillsPromoted: 4, memories: 900 },
     ...overrides,
   };
+}
+
+/** The fixture with its activity days replaced (and runs re-totalled). */
+export function withDays(days, activity = {}) {
+  const base = yearFixture();
+  return yearFixture({ activity: { ...base.activity, days, runs: days.reduce((n, d) => n + d.runs, 0), ...activity } });
 }

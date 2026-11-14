@@ -35,39 +35,42 @@
         <circle v-if="card.calendar.ring" class="wr-ring" :cx="card.calendar.ring.cx" :cy="card.calendar.ring.cy" r="6.4" />
         <text v-for="l in card.calendar.labels" :key="l.x" :x="l.x" y="81">{{ l.text }}</text>
       </svg>
-      <p class="wr-callout wr-rv" style="--delay: 1500"><span class="wr-ring-key" aria-hidden="true"></span><span><b>{{ card.busiest.date }}</b> · {{ card.busiest.calls }} calls, your busiest day</span></p>
-      <p class="wr-fine wr-rv" style="--delay: 1600">Counted from {{ card.firstDay }}, your first day on record this year.</p>
+      <p class="wr-callout wr-rv" style="--delay: 1500"><span class="wr-ring-key" aria-hidden="true"></span><span><b>{{ card.busiest.date }}</b> · {{ card.busiest.runs }} runs, your busiest day</span></p>
+      <p class="wr-fine wr-rv" style="--delay: 1600">{{ card.activeLine }}</p>
     </template>
 
-    <!-- Calls, month by month. -->
+    <!-- Runs, month by month. -->
     <template v-else-if="card.id === 'volume'">
-      <p class="wr-kicker wr-rv" style="--delay: 0">Model calls</p>
-      <p class="wr-huge wr-rv wr-pop" style="--delay: 100"><WrappedCount :value="card.calls" :active="active" :still="still" /></p>
-      <p class="wr-lead wr-rv" style="--delay: 240">calls across <b class="wr-accent">{{ card.models }}</b> models and <b class="wr-accent">{{ card.providers }}</b> providers.</p>
+      <p class="wr-kicker wr-rv" style="--delay: 0">Runs</p>
+      <p class="wr-huge wr-rv wr-pop" style="--delay: 100"><WrappedCount :value="card.runs" :active="active" :still="still" /></p>
+      <p class="wr-lead wr-rv" style="--delay: 240">workflow and agent runs<template v-if="card.calls">, and <b class="wr-accent">{{ card.calls }}</b> model calls across <b class="wr-accent">{{ card.models }}</b> models and <b class="wr-accent">{{ card.providers }}</b> providers</template>.</p>
       <div class="wr-grow"></div>
       <svg class="wr-mdots wr-rv" style="--delay: 400" :viewBox="`0 0 ${card.chart.width} ${card.chart.height}`" aria-hidden="true">
         <circle v-for="(d, i) in card.chart.dots" :key="i" class="wr-md" :class="d.kind ? `is-${d.kind}` : ''" :cx="d.cx" :cy="d.cy" r="3.8" :style="{ '--i': d.k }" />
         <text v-for="(l, i) in card.chart.labels" :key="`m${i}`" class="wr-ml" :x="l.x" :y="card.chart.height - 2" text-anchor="middle">{{ l.text }}</text>
         <text v-if="card.chart.peakLabel" class="wr-mv" :x="card.chart.peakLabel.x" :y="card.chart.peakLabel.y" text-anchor="middle">{{ card.chart.peakLabel.text }}</text>
       </svg>
-      <p class="wr-body wr-rv" style="--delay: 1100"><b>{{ card.peak.name }}</b> alone: {{ card.peak.calls }}<template v-if="card.growth"> — {{ card.growth }}</template>.</p>
-      <p class="wr-fine wr-rv" style="--delay: 1200">1 dot = {{ card.perDot }} calls<template v-if="card.partialMonth"> · {{ card.partialMonth }} so far</template></p>
+      <p class="wr-body wr-rv" style="--delay: 1100"><b>{{ card.peak.name }}</b> alone: {{ card.peak.runs }} runs<template v-if="card.growth"> — {{ card.growth }}</template>.</p>
+      <p class="wr-fine wr-rv" style="--delay: 1200">1 dot = {{ card.perDot }} runs<template v-if="card.partialMonth"> · {{ card.partialMonth }} so far</template><template v-if="card.calls && card.ledgerSince"> · model calls since {{ card.ledgerSince }}</template></p>
     </template>
 
-    <!-- What the agents wrote, as a shelf of books. -->
+    <!-- Every token, and what the agents wrote as a shelf of books. -->
     <template v-else-if="card.id === 'words'">
       <span class="wr-wm wr-wm-tr" aria-hidden="true"></span>
-      <p class="wr-kicker wr-rv" style="--delay: 0">Written by your agents</p>
-      <p class="wr-mega is-wide wr-rv wr-pop" style="--delay: 100">{{ card.written }}</p>
-      <p class="wr-title wr-rv" style="--delay: 240">tokens written.</p>
-      <p class="wr-lead wr-rv" style="--delay: 360">That’s about <b>{{ card.books }}</b> of <i>War and Peace</i>.</p>
+      <p class="wr-kicker wr-rv" style="--delay: 0">Tokens</p>
+      <p class="wr-mega is-wide wr-rv wr-pop" style="--delay: 100">{{ card.tokens }}</p>
+      <p class="wr-title wr-rv" style="--delay: 240">tokens, read and written.</p>
+      <p v-if="card.written" class="wr-lead wr-rv" style="--delay: 360">Your agents wrote <b>{{ card.written }}</b> of them: about <b>{{ card.books }}</b> of <i>War and Peace</i>.</p>
       <div class="wr-grow"></div>
-      <svg class="wr-shelf wr-rv" style="--delay: 420" :viewBox="`-4 0 ${card.shelf.width} ${card.shelf.height}`" aria-hidden="true">
+      <svg v-if="card.shelf" class="wr-shelf wr-rv" style="--delay: 420" :viewBox="`-4 0 ${card.shelf.width} ${card.shelf.height}`" aria-hidden="true">
         <rect v-for="s in card.shelf.spines" :key="s.k" class="wr-spine" :x="s.x" :y="s.y" :width="s.w" :height="s.h" rx="1.3" :style="{ '--i': s.k }" />
         <rect v-for="(s, i) in card.shelf.shelves" :key="`s${i}`" class="wr-board" x="-4" :y="s.y" :width="s.width" height="2.2" rx="1.1" />
       </svg>
-      <p class="wr-body wr-rv" style="--delay: 1300">They read <b>{{ card.read }}</b> tokens too, {{ card.cachePct }}% of it straight from cache.</p>
-      <p class="wr-fine wr-rv" style="--delay: 1400">≈ {{ card.wordsPerToken }} words per token · War and Peace ≈ {{ card.novelWords }} words<template v-if="card.perSpine"> · 1 spine = {{ card.perSpine }} copies</template></p>
+      <p v-if="card.cachePct !== null" class="wr-body wr-rv" style="--delay: 1300">{{ card.cachePct }}% of what they read came straight from cache.</p>
+      <p v-if="card.tokensSince || card.books" class="wr-fine wr-rv" style="--delay: 1400">
+        <template v-if="card.tokensSince">Recorded from {{ card.tokensSince }}.</template>
+        <template v-if="card.books"> ≈ {{ card.wordsPerToken }} words per token · War and Peace ≈ {{ card.novelWords }} words<template v-if="card.perSpine"> · 1 spine = {{ card.perSpine }} copies</template></template>
+      </p>
     </template>
 
     <!-- The model used most, and the four after it. -->
@@ -75,7 +78,7 @@
       <p class="wr-kicker wr-rv" style="--delay: 0">Your #1 model</p>
       <p class="wr-rank1 wr-rv wr-pop" style="--delay: 100" aria-hidden="true">#1</p>
       <p class="wr-model-name wr-rv" style="--delay: 240">{{ card.name }}</p>
-      <p class="wr-lead wr-rv" style="--delay: 360"><b>{{ card.calls }}</b> calls. {{ card.share }} of everything you ran.</p>
+      <p class="wr-lead wr-rv" style="--delay: 360"><b>{{ card.calls }}</b> calls. {{ card.share }} of all your model calls.</p>
       <div class="wr-grow"></div>
       <ol class="wr-ranks">
         <li v-for="(m, i) in card.rest" :key="m.name" class="wr-rv" :style="{ '--delay': 560 + i * 110 }">
@@ -83,7 +86,7 @@
           <span class="wr-track"><i :style="{ '--w': m.ratio, '--delay': 800 + i * 110 }"></i></span>
         </li>
       </ol>
-      <p class="wr-fine wr-rv" style="--delay: 1100">{{ card.modelCount }} models from {{ card.providerCount }} providers this year</p>
+      <p class="wr-fine wr-rv" style="--delay: 1100">{{ card.modelCount }} models from {{ card.providerCount }} providers {{ card.ledgerSince ? `since ${card.ledgerSince}` : 'this year' }}</p>
     </template>
 
     <!-- The goals that ran most. -->
@@ -125,7 +128,7 @@
         <p class="wr-saved wr-rv" style="--delay: 900">Caching saved <span class="wr-hl">{{ card.saved }}</span>.</p>
       </template>
       <p class="wr-fine wr-rv" style="--delay: 1050">
-        Estimates from the AGNT ledger.<template v-if="card.notional"> Metered spend this year: {{ card.charged }}</template><template v-if="card.unpriced"> · {{ card.unpriced }} calls unpriced</template>.
+        Estimates from the AGNT ledger<template v-if="card.ledgerSince">, from {{ card.ledgerSince }}</template>.<template v-if="card.notional"> Metered spend: {{ card.charged }}</template><template v-if="card.unpriced"> · {{ card.unpriced }} calls unpriced</template>.
       </p>
     </template>
 
@@ -172,13 +175,10 @@
         </div>
         <p class="wr-p-title">My {{ card.year }}<br />in AGNT</p>
         <div class="wr-p-grid">
-          <div><b>{{ card.streak }}</b><span>day streak</span></div>
-          <div><b>{{ card.calls }}</b><span>model calls</span></div>
+          <div v-for="f in pairs[0]" :key="f.label"><b>{{ f.value }}</b><span>{{ f.label }}</span></div>
           <div v-if="card.topModel" class="is-wide"><span>#1 model</span><b class="is-mono">{{ card.topModel }}</b></div>
           <div v-if="card.topGoal" class="is-wide"><span>Most-run goal</span><b class="is-small">{{ card.topGoal }}</b></div>
-          <div v-if="card.built"><b>{{ card.built.count }}</b><span>{{ card.built.kind }} built</span></div>
-          <div v-if="card.saved"><b>{{ card.saved }}</b><span>saved by caching</span></div>
-          <div v-else><b>{{ card.modelCount }}</b><span>models tried</span></div>
+          <div v-for="f in pairs[1]" :key="f.label"><b>{{ f.value }}</b><span>{{ f.label }}</span></div>
         </div>
         <div class="wr-p-foot"><span>{{ card.persona ? `The ${card.persona}` : '' }}</span><span>agnt.gg</span></div>
       </div>
@@ -193,15 +193,20 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import WrappedCount from './WrappedCount.vue';
 import { MARK_DOTS } from './wrappedModel.js';
+import { posterPairs } from './wrappedShare.js';
 
-defineProps({
+const props = defineProps({
   card: { type: Object, required: true },
   active: { type: Boolean, default: false },
   still: { type: Boolean, default: false },
 });
 const emit = defineEmits(['share', 'replay']);
+
+// The summary's figures, laid out as the shared image lays them out.
+const pairs = computed(() => (props.card.id === 'summary' ? posterPairs(props.card) : [[], []]));
 
 const SHARE_ICON = 'M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6';
 </script>

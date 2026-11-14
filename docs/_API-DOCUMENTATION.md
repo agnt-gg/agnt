@@ -5394,7 +5394,7 @@ The run tree rooted at the given execution, with per-node and subtree cost. Reso
 
 Base path: `/api/wrapped`
 
-The year in review behind AGNT One's Wrapped cards. One call returns everything the cards show, computed from the execution ledger and the user's own goals, agents, workflows, skills, widgets, insights and memories.
+The year in review behind AGNT One's Wrapped cards. One call returns everything the cards show: activity from the execution tables (the same reads as the dashboard and `GET /api/executions/streak`), per-call facts from the execution ledger, and the user's own goals, agents, workflows, skills, widgets, insights and memories.
 
 ### Get Year in Review
 
@@ -5410,12 +5410,19 @@ The year in review behind AGNT One's Wrapped cards. One call returns everything 
   "success": true,
   "year": 2026,
   "window": { "from": "2026-01-01", "through": "2026-11-12", "complete": false },
+  "activity": {
+    "days": [{ "date": "2026-01-01", "runs": 64, "active": true }, { "date": "2026-01-02", "runs": 3, "active": false }],
+    "runs": 18240,
+    "tokens": 91420000,
+    "tokensFrom": "2026-03-02",
+    "streak": { "days": 412, "since": "2025-09-28", "lastActiveDate": "2026-11-13" }
+  },
   "totals": {
     "calls": 1520, "costUsd": 4.12, "unpricedCalls": 3, "notionalUsd": 81.5,
     "notionalUncachedUsd": 402.1, "notionalSavedUsd": 320.6, "uncachedCostUsd": 9.4, "savedUsd": 5.28,
     "inputTokens": 91000000, "outputTokens": 420000, "cacheReadTokens": 84000000, "cacheWriteTokens": 3100000
   },
-  "days": [["2026-03-02", 41], ["2026-03-03", 17]],
+  "ledger": { "from": "2026-03-02" },
   "models": { "count": 12, "top": [{ "name": "claude-sonnet-4-5", "calls": 610 }] },
   "providers": { "count": 4 },
   "conversations": { "count": 230 },
@@ -5429,7 +5436,11 @@ The year in review behind AGNT One's Wrapped cards. One call returns everything 
 
 - **Errors**: `400` when `year` is not a whole number in that range.
 
-**The window is whole local days, and it ends at the start of today.** `days` buckets by local date exactly as `GET /api/ledger/breakdown?groupBy=day` does, and a day is counted once it is over. `window.through` is the last day included; `complete` turns true once the year has ended.
+**The window is whole local days, and it ends at the start of today.** Both sources bucket by local date, and a day is counted once it is over. `window.through` is the last day included; `complete` turns true once the year has ended.
+
+`activity` is the year as the dashboard sees it. `days` lists every local day with runs (workflow and agent executions), and `active` uses the streak's rule: some run that day did work. `runs` counts every run in the window; `tokens` is the dashboard's token total for the same days (LLM nodes, agent runs, and ledger calls that belong to no run), and `tokensFrom` is the first day with any. `streak` is exactly `GET /api/executions/streak`: unbroken active days up to today, over all history, so it can start before the year does.
+
+The ledger can begin later than the runs: `ledger.from` is its first day in the window, and everything the ledger alone records (`totals`, `models`, `providers`, `conversations`, `origins`, `split`, `goals.top`) covers only the days from there.
 
 Money keeps the ledger's two axes apart: `costUsd` is charged spend, reported with `unpricedCalls`; `notionalUsd` and `notionalSavedUsd` are what subscription usage would have cost at list prices. All of them are estimates.
 

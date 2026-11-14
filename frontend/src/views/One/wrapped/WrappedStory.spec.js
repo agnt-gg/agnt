@@ -155,7 +155,8 @@ describe('WrappedStory', () => {
     await w.find('[data-action="post"]').trigger('click');
     const first = decodeURIComponent(openExternal.mock.calls[0][0]);
     expect(first.startsWith('https://x.com/intent/post?text=')).toBe(true);
-    expect(first).toContain('43-day streak');
+    expect(first).toContain('500-day streak');
+    expect(first).toContain('59B tokens');
     expect(first).not.toContain('$');
     await w.find('[data-testid="wrapped-hide-private"]').trigger('click');
     expect(w.find('[data-testid="wrapped-hide-private"]').attributes('aria-checked')).toBe('false');

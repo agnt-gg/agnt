@@ -1,10 +1,12 @@
 /**
  * HTTP contract for the year in review (GET /api/wrapped/:year): real express
  * routing, real status codes and JSON, against a throwaway database seeded
- * through the ledger's own write path.
+ * through the ledger's own write path and the execution tables the dashboard
+ * reads.
  *
  * The year under test is LAST year, so its window is complete and the result
- * does not depend on the day the suite runs.
+ * does not depend on the day the suite runs. The streak is the exception by
+ * design: it runs up to today, like the dashboard's.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -16,6 +18,8 @@ import os from 'os';
 
 const USER = 'user-wrapped';
 const OTHER = 'user-wrapped-other';
+// Runs every day from Jan 1 of the year under test until today; the ledger only from March 11.
+const LONG = 'user-wrapped-long-streak';
 const YEAR = new Date().getFullYear() - 1;
 
 vi.mock('./Middleware.js', () => ({
@@ -57,6 +61,41 @@ async function call({ user = USER, ts, origin = 'chat', originId = null, model =
   return id;
 }
 
+let seq = 0;
+/** A workflow run; `tokens` adds an LLM node that measured that many (input, output). */
+async function workflowRun(user, workflowId, ts, credits, tokens = null) {
+  const id = `wfe-${++seq}`;
+  await dbRun(
+    `INSERT INTO workflow_executions (id, workflow_id, user_id, workflow_name, status, start_time, credits_used)
+     VALUES (?, ?, ?, 'Fixture', 'completed', ?, ?)`,
+    [id, workflowId, user, ts, credits],
+  );
+  if (tokens) {
+    await dbRun(
+      `INSERT INTO node_executions (id, execution_id, node_id, status, start_time, input_tokens, output_tokens)
+       VALUES (?, ?, 'llm-node', 'completed', ?, ?, ?)`,
+      [`ne-${seq}`, id, ts, tokens[0], tokens[1]],
+    );
+  }
+}
+const agentRun = (user, ts, credits, totalTokens = 0) => dbRun(
+  `INSERT INTO agent_executions (id, agent_id, agent_name, user_id, status, start_time, credits_used, total_tokens)
+   VALUES (?, NULL, 'Fixture Agent', ?, 'completed', ?, ?, ?)`,
+  [`age-${++seq}`, user, ts, credits, totalTokens],
+);
+
+/** Local dates from `from` through `through`, inclusive. */
+function localDates(from, through) {
+  const dates = [];
+  const [fy, fm, fd] = from.split('-').map(Number);
+  for (let d = new Date(fy, fm - 1, fd); ; d.setDate(d.getDate() + 1)) {
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (ymd > through) return dates;
+    dates.push(ymd);
+  }
+}
+let today;
+
 beforeAll(async () => {
   TMP = await fsp.mkdtemp(path.join(os.tmpdir(), 'agnt-wrapped-http-'));
   for (const k of ['AGNT_HOME', 'USER_DATA_PATH', 'DOCKER_CONTAINER']) savedEnv[k] = process.env[k];
@@ -76,7 +115,7 @@ beforeAll(async () => {
   ({ yearWindow, localDayStart } = await import('../services/wrapped/WrappedService.js'));
   const WrappedRoutes = (await import('./WrappedRoutes.js')).default;
 
-  for (const [id, email] of [[USER, 'wrapped@test.local'], [OTHER, 'wrapped-other@test.local']]) {
+  for (const [id, email] of [[USER, 'wrapped@test.local'], [OTHER, 'wrapped-other@test.local'], [LONG, 'wrapped-long@test.local']]) {
     await dbRun('INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)', [id, email, id]);
   }
 
@@ -153,11 +192,47 @@ beforeAll(async () => {
     await dbRun('INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, 'agent-a', USER, 'fact', id, created]);
   }
 
+  // ── Runs, in the tables the dashboard reads ──
+  // Edges of the year: the first and last half hour are in, a half hour either side is out.
+  await workflowRun(USER, 'wf-mine', at(YEAR, 0, 1, 0, 30), 5);
+  await workflowRun(USER, 'wf-mine', at(YEAR, 11, 31, 23, 30), 5);
+  await workflowRun(USER, 'wf-mine', at(YEAR - 1, 11, 31, 23, 30), 5);
+  await workflowRun(USER, 'wf-mine', at(YEAR + 1, 0, 1, 0, 30), 5);
+  // March 10: three workflow runs (one with an LLM node), a run that did no work, and an agent run.
+  await workflowRun(USER, 'wf-mine', at(YEAR, 2, 10, 9), 5, [700, 300]);
+  await workflowRun(USER, 'wf-mine', at(YEAR, 2, 10, 10), 5);
+  await workflowRun(USER, 'wf-mine', at(YEAR, 2, 10, 11), 5);
+  await workflowRun(USER, 'wf-mine', at(YEAR, 2, 10, 12), 0);
+  await agentRun(USER, at(YEAR, 2, 10, 15), 3, 1500);
+  // March 11: a run that did no work is a run, but not an active day.
+  await workflowRun(USER, 'wf-mine', at(YEAR, 2, 11, 12), 0);
+  await agentRun(USER, at(YEAR, 5, 1, 12), 3, 2500);
+  await agentRun(OTHER, at(YEAR, 5, 1, 12), 3);
+
+  ({ today } = await new Promise((res, rej) => db.get(`SELECT DATE('now', 'localtime') AS today`, [], (e, r) => (e ? rej(e) : res(r)))));
+  await dbRun('INSERT INTO workflows (id, workflow_data, user_id) VALUES (?, ?, ?)', ['wf-long', '{}', LONG]);
+  await dbRun('BEGIN');
+  for (const ymd of localDates(`${YEAR}-01-01`, today)) {
+    const [y, m, d] = ymd.split('-').map(Number);
+    await workflowRun(LONG, 'wf-long', at(y, m - 1, d, 12), 5);
+  }
+  await dbRun('COMMIT');
+  await call({ user: LONG, ts: at(YEAR, 2, 11, 12) });
+  await call({ user: LONG, ts: at(YEAR, 5, 1, 12) });
+
   const app = express();
   app.use('/wrapped', WrappedRoutes);
   server = http.createServer(app);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  // A person's first year in review fills the dashboard's daily rollup for the
+  // year's days, once. Pay that here, under this hook's timeout, rather than
+  // inside whichever test happens to ask first.
+  for (const user of [USER, OTHER, LONG]) {
+    const warm = await get(`/wrapped/${YEAR}`, user);
+    if (warm.status !== 200) throw new Error(`warm-up for ${user} answered ${warm.status}`);
+  }
 }, 120000);
 
 afterAll(async () => {
@@ -212,10 +287,42 @@ describe('GET /wrapped/:year', () => {
     expect(body.totals).toHaveProperty('costUsd');
     expect(body.totals).toHaveProperty('unpricedCalls');
     expect(body.totals).toHaveProperty('notionalUsd');
-    expect(body.days[0]).toEqual([`${YEAR}-01-01`, 1]);
-    expect(body.days[body.days.length - 1]).toEqual([`${YEAR}-12-31`, 1]);
-    expect(body.days.find(([d]) => d === `${YEAR}-03-10`)).toEqual([`${YEAR}-03-10`, 4]);
-    expect(body.days.map(([d]) => d)).toEqual([...body.days.map(([d]) => d)].sort());
+    expect(body.ledger).toEqual({ from: `${YEAR}-01-01` });
+  });
+
+  it('counts runs and active days by local day from the execution tables: a run that did no work is a run, not an active day', async () => {
+    const { body } = await get(`/wrapped/${YEAR}`);
+    expect(body.activity.days).toEqual([
+      { date: `${YEAR}-01-01`, runs: 1, active: true },
+      { date: `${YEAR}-03-10`, runs: 5, active: true },
+      { date: `${YEAR}-03-11`, runs: 1, active: false },
+      { date: `${YEAR}-06-01`, runs: 1, active: true },
+      { date: `${YEAR}-12-31`, runs: 1, active: true },
+    ]);
+    expect(body.activity.runs).toBe(9);
+  });
+
+  it('totals tokens the way the dashboard does: LLM nodes, agent runs, and ledger calls that belong to no run', async () => {
+    const { body } = await get(`/wrapped/${YEAR}`);
+    // 1,000 from the node, 4,000 from agent runs, 10 × 1,100 from ledger calls (the workflow_node one is the node's).
+    expect(body.activity.tokens).toBe(16000);
+    expect(body.activity.tokensFrom).toBe(`${YEAR}-01-01`);
+  });
+
+  it('the streak and active days come from runs, so they reach back before the ledger starts', async () => {
+    const { body } = await get(`/wrapped/${YEAR}`, LONG);
+    const daysOfYear = localDates(`${YEAR}-01-01`, `${YEAR}-12-31`);
+    const daysToToday = localDates(`${YEAR}-01-01`, today);
+    expect(body.ledger).toEqual({ from: `${YEAR}-03-11` });
+    expect(body.totals.calls).toBe(2);
+    expect(body.activity.days).toHaveLength(daysOfYear.length);
+    expect(body.activity.days.every((d) => d.active && d.runs === 1)).toBe(true);
+    expect(body.activity.days[0].date).toBe(`${YEAR}-01-01`);
+    expect(body.activity.runs).toBe(daysOfYear.length);
+    // The dashboard's streak: every day since Jan 1 of last year, up to today.
+    expect(body.activity.streak).toEqual({ days: daysToToday.length, since: `${YEAR}-01-01`, lastActiveDate: today });
+    expect(body.activity.tokens).toBe(2200);
+    expect(body.activity.tokensFrom).toBe(`${YEAR}-03-11`);
   });
 
   it('ranks models and counts providers, conversations and where calls came from', async () => {
@@ -261,13 +368,18 @@ describe('GET /wrapped/:year', () => {
     expect(body.built.agents).toEqual({ [`${YEAR}-08`]: 1 });
     expect(body.built.skills).toEqual({});
     expect(body.learning.insightsApplied).toBe(0);
+    expect(body.activity.days).toEqual([{ date: `${YEAR}-06-01`, runs: 1, active: true }]);
+    expect(body.activity.runs).toBe(1);
+    expect(body.activity.tokens).toBe(1100);
   });
 
-  it('a year with no activity answers with zeros, not an error', async () => {
+  // Its first ask fills a year of empty rollup days, so it gets room under a loaded run.
+  it('a year with no activity answers with zeros, not an error', { timeout: 30000 }, async () => {
     const { status, body } = await get(`/wrapped/${YEAR - 5}`);
     expect(status).toBe(200);
     expect(body.totals.calls).toBe(0);
-    expect(body.days).toEqual([]);
+    expect(body.ledger).toEqual({ from: null });
+    expect(body.activity).toEqual({ days: [], runs: 0, tokens: 0, tokensFrom: null, streak: { days: 0, since: null, lastActiveDate: null } });
     expect(body.models).toEqual({ count: 0, top: [] });
     expect(body.goals.top).toEqual([]);
   });
