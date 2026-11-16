@@ -14,7 +14,7 @@ const seed = ({ user, token }) => {
   set('token', token); set('user', JSON.stringify(user)); set('userId', user.id);
   set('onboardingCompleted', 'true'); set('hasSeenOnboarding', 'true'); set('hasCompletedOnboarding', 'true'); set('tours_enabled', 'false'); set('tours_auto_start', 'false');
   set('currentTheme', 'dark'); set('uiScale', '100'); set('showLeftPanel', 'true'); set('showRightPanel', 'true'); set('leftPanelWidth', '260'); set('actualLeftPanelWidth', '260'); set('rightPanelWidth', '320');
-  set('isPromoBannerClosed', 'true'); set('isRateLimitBannerClosed', 'true'); set('agnt:canvasSidebar:expanded', 'true');
+  set('isPromoBannerClosed', 'true'); set('agnt:offer-dismissed:blackfriday-2026', '1'); set('isRateLimitBannerClosed', 'true'); set('agnt:canvasSidebar:expanded', 'true');
   const css = `*,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important;caret-color:transparent!important}.scanline-overlay,.scanlines{display:none!important}`;
   const inject = () => { if (!document.head && !document.documentElement) return false; const st = document.createElement('style'); st.textContent = css; (document.head || document.documentElement).appendChild(st); return true; };
   if (!inject()) document.addEventListener('DOMContentLoaded', inject, { once: true });

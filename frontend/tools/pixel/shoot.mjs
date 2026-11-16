@@ -119,6 +119,8 @@ const seedState = ({ user, token }) => {
   set('rightPanelWidth', '320');
   set('panelPosition', 'default');
   set('isPromoBannerClosed', 'true');
+  // The running offer's corner card (views/One/offer.js), closed for stable shots.
+  set('agnt:offer-dismissed:blackfriday-2026', '1');
   set('isRateLimitBannerClosed', 'true');
   // Kill animation nondeterminism at the source. This init script runs before
   // the document exists, so the node has to be parked until there is a head.

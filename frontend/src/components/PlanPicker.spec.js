@@ -83,6 +83,24 @@ describe('PlanPicker', () => {
     expect(yearlyTeam.find('.meta').text()).toContain('+$250/yr each extra');
   });
 
+  it("an offer's link opens a monthly plan on annual billing with its code filled in", async () => {
+    const w = mount(PlanPicker, { props: { currentPlan: 'business', currentInterval: 'monthly', suggest: 'business', presetYearly: true, presetCode: 'BLACKFRIDAY' } });
+    expect(w.find('.interval input').element.checked).toBe(true);
+    expect(w.find('.code').element.value).toBe('BLACKFRIDAY');
+    expect(cta(w).text()).toBe('Switch to annual billing');
+    await cta(w).trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ planType: 'business', interval: 'yearly', promoCode: 'BLACKFRIDAY' }]]);
+  });
+
+  it("an offer's link opens a free account on annual billing, with a note saying where the code goes", async () => {
+    const w = mount(PlanPicker, { props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' } });
+    expect(w.find('.interval input').element.checked).toBe(true);
+    expect(w.find('.code').exists()).toBe(false);
+    expect(w.find('.note').text()).toBe('At checkout, enter BLACKFRIDAY.');
+    await cta(w).trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ planType: 'personal', interval: 'yearly' }]]);
+  });
+
   it('a subscriber is not told checkout is opening', () => {
     const w = mount(PlanPicker, { props: { currentPlan: 'personal', currentInterval: 'monthly', busy: true } });
     expect(cta(w).text()).toBe('Working…');

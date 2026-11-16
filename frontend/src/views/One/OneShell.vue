@@ -17,8 +17,10 @@
       :badge="needsYou"
       :user-name="userName"
       :collapsed="!sidebarExpanded"
+      :offer="offerState.shown ? offerState.offer.railLabel : ''"
       @select="mkSelect"
       @expand="setSidebarExpanded(true)"
+      @offer="offerState.toggle"
     />
     <!-- One sidebar on every desktop page: the drawer, with the chats as its last
          section. The chats are Studio's own list (OutputList), the same component,
@@ -126,6 +128,7 @@
     </main>
 
     <div v-if="toastText" class="focused-toast" role="status" aria-live="polite">{{ toastText }}</div>
+    <OneOffer v-if="offerState.open" :offer="offerState.offer" :now="offerState.now" :compact="isMobile" @dismiss="offerState.dismiss" />
     <SimpleModal ref="modalRef" />
     <JumpPalette @navigate="pushScreen" />
   </div>
@@ -154,6 +157,8 @@ import { screenTitle } from '@/views/Focused/focusedModel.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneCapsule from './OneCapsule.vue';
+import OneOffer from './OneOffer.vue';
+import { useOffer } from './useOffer.js';
 import OneWrapped from './wrapped/OneWrapped.vue';
 import TeamAvatar from './team/TeamAvatar.vue';
 import { requestSetup } from './oneSetupRequest.js';
@@ -183,6 +188,8 @@ const store = useStore();
 const router = useRouter();
 const route = useRoute();
 const isMobile = inject('isMobile', ref(false));
+// The running offer, if this account can use it: a corner card and a rail button.
+const offerState = useOffer();
 
 // Every screen rendered inside this frame can ask which shell it is in.
 // BaseScreen drops its side panels on Chat, Chat shows One's home, and

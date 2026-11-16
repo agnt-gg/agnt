@@ -49,7 +49,7 @@ const seed = ({ user, token }) => {
   set('currentTheme', 'dark'); set('greyscaleMode', 'false'); set('useCustomBackground', 'false'); set('uiScale', '100'); set('fontFamily', 'default');
   set('showLeftPanel', 'true'); set('showRightPanel', 'true'); set('leftPanelCollapsed', 'false'); set('rightPanelCollapsed', 'false');
   set('leftPanelWidth', '260'); set('actualLeftPanelWidth', '260'); set('rightPanelWidth', '320'); set('panelPosition', 'default');
-  set('isPromoBannerClosed', 'true'); set('isRateLimitBannerClosed', 'true'); set('agnt:canvasSidebar:expanded', 'true');
+  set('isPromoBannerClosed', 'true'); set('agnt:offer-dismissed:blackfriday-2026', '1'); set('isRateLimitBannerClosed', 'true'); set('agnt:canvasSidebar:expanded', 'true');
   const css = `*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;animation-fill-mode:forwards!important;transition-duration:1ms!important;transition-delay:0ms!important;caret-color:transparent!important}.scanline-overlay,.scanlines,[class*="scanline"]{display:none!important}`;
   const inject = () => { if (!document.head && !document.documentElement) return false; const st = document.createElement('style'); st.textContent = css; (document.head || document.documentElement).appendChild(st); return true; };
   if (!inject()) document.addEventListener('DOMContentLoaded', inject, { once: true });

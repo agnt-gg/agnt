@@ -23,6 +23,7 @@
       </ul>
       <p class="meta">{{ annual && plan.metaYearly ? plan.metaYearly : plan.meta }}</p>
       <p v-if="reason" class="reason"><i class="fas fa-lock"></i> {{ reason }}</p>
+      <p v-if="note" class="note">{{ note }}</p>
     </div>
 
     <div class="plan-foot">
@@ -76,10 +77,16 @@ export default {
     reason: { type: String, default: '' },
     busy: { type: Boolean, default: false },
     error: { type: String, default: '' },
+    /** Open with annual billing ticked, where annual can be chosen (an offer's link). */
+    presetYearly: { type: Boolean, default: false },
+    /** A code to fill in when switching to annual billing (an offer's link). */
+    presetCode: { type: String, default: '' },
+    /** A plain line under the plan, e.g. where to enter an offer's code. */
+    note: { type: String, default: '' },
   },
   emits: ['choose'],
   data() {
-    return { selected: this.suggest, yearly: false, promoCode: '', plans: PLANS };
+    return { selected: this.suggest, yearly: this.presetYearly, promoCode: this.presetCode, plans: PLANS };
   },
   computed: {
     plan() {
@@ -142,6 +149,7 @@ export default {
 .includes li span { color: var(--color-text-secondary); }
 .meta { margin: 10px 0 0; font-size: 12px; color: var(--color-text-secondary); }
 .reason { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: rgba(var(--pink-rgb), 0.1); font-size: 13px; }
+.note { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: rgba(var(--pink-rgb), 0.1); font-size: 13px; }
 .plan-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
 .interval { font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
 .code { flex: 1 1 140px; min-width: 0; padding: 10px 12px; border: 1px solid var(--terminal-border-color); border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 13px; }

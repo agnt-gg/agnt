@@ -10,7 +10,7 @@
  *     collapses to the rail as in Studio;
  *   - the capsule's steps reach the chat (ask) or the model picker (Settings).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, inject, ref, reactive } from 'vue';
 
@@ -444,6 +444,45 @@ describe('OneShell', () => {
       expect(seen).not.toHaveBeenCalled();
       window.removeEventListener('agnt:ask-annie', seen);
       clearSetupRequest();
+      w.unmount();
+    });
+  });
+
+  // The running offer (offer.js): a corner card, and a rail button that reopens it.
+  describe('the offer', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.UTC(2026, 10, 16, 18));
+    });
+    afterEach(() => {
+      delete storeState.userAuth;
+      vi.useRealTimers();
+    });
+
+    it('a monthly plan gets the card and the rail button; closing the card keeps the button, which opens it again', async () => {
+      storeState.userAuth = { planType: 'personal', subscription: { planType: 'personal', interval: 'monthly' } };
+      const w = mountShell();
+      await w.vm.$nextTick();
+      expect(w.find('[data-testid="one-offer"]').exists()).toBe(true);
+      const rail = w.find('[data-testid="one-rail-offer"]');
+      expect(rail.exists()).toBe(true);
+      expect(rail.attributes('aria-label')).toBe('Black Friday deal');
+
+      await w.find('[data-testid="one-offer"] .offer-x').trigger('click');
+      expect(w.find('[data-testid="one-offer"]').exists()).toBe(false);
+      expect(w.find('[data-testid="one-rail-offer"]').exists()).toBe(true);
+
+      await w.find('[data-testid="one-rail-offer"]').trigger('click');
+      expect(w.find('[data-testid="one-offer"]').exists()).toBe(true);
+      w.unmount();
+    });
+
+    it('a yearly plan gets neither', async () => {
+      storeState.userAuth = { planType: 'personal', subscription: { planType: 'personal', interval: 'yearly' } };
+      const w = mountShell();
+      await w.vm.$nextTick();
+      expect(w.find('[data-testid="one-offer"]').exists()).toBe(false);
+      expect(w.find('[data-testid="one-rail-offer"]').exists()).toBe(false);
       w.unmount();
     });
   });

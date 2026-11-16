@@ -30,6 +30,8 @@
         </div>
       </div>
       <span class="rail-fill"></span>
+      <!-- While an offer runs: opens and closes its corner card (OneOffer). -->
+      <button v-if="offer" type="button" class="rail-btn rail-offer" data-testid="one-rail-offer" :aria-label="offer" v-tooltip="offer" @click="$emit('offer')"><MkIcon name="gift" /><span class="rail-dot" aria-hidden="true"></span></button>
       <button type="button" class="rail-btn" :class="{ 'is-active': active === 'settings' }" data-testid="one-rail-settings" aria-label="Settings" v-tooltip="'Settings'" @click="$emit('select', 'settings')"><MkIcon name="settings" /></button>
       <button type="button" class="rail-btn" data-testid="one-rail-me" :aria-label="userName || 'You'" v-tooltip="userName || 'You'" @click="$emit('select', 'members')">
         <span class="av rail-me" :style="{ background: 'var(--color-pink)' }">{{ initials }}</span>
@@ -63,8 +65,16 @@ const MORE = Object.freeze([
   // Studio: custom pages, every forge, the canvas and Navigation settings (services/uiMode.js).
   { id: 'studio', label: 'Switch to Studio', icon: 'template', hint: 'Ctrl Shift S' },
 ]);
-const props = defineProps({ active: { type: String, default: null }, activeMore: { type: String, default: null }, badge: { type: Number, default: 0 }, userName: { type: String, default: '' }, collapsed: { type: Boolean, default: false } });
-const emit = defineEmits(['select', 'expand']);
+const props = defineProps({
+  active: { type: String, default: null },
+  activeMore: { type: String, default: null },
+  badge: { type: Number, default: 0 },
+  userName: { type: String, default: '' },
+  collapsed: { type: Boolean, default: false },
+  /** The running offer's button label; empty while there is none. */
+  offer: { type: String, default: '' },
+});
+const emit = defineEmits(['select', 'expand', 'offer']);
 const menuOpen = ref(false);
 const moreRef = ref(null);
 const initials = computed(() => {

@@ -16,6 +16,9 @@
           :current-interval="currentInterval"
           :suggest="suggest"
           :reason="reason"
+          :note="note"
+          :preset-yearly="presetYearly"
+          :preset-code="presetCode"
           :busy="busy"
           :error="quote ? '' : error"
           @choose="go"
@@ -61,6 +64,10 @@ export default {
     reason: { type: String, default: '' },
     /** Which tab to land on. */
     suggest: { type: String, default: 'personal' },
+    /** An offer's link: annual ticked, its code filled in, and a line saying where the code goes. */
+    presetYearly: { type: Boolean, default: false },
+    presetCode: { type: String, default: '' },
+    note: { type: String, default: '' },
   },
   emits: ['close'],
   data() {

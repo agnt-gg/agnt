@@ -7,7 +7,7 @@ import PlanPicker from './PlanPicker.vue';
 const QUOTE = { amountDue: 7500, discount: 2500, credit: 0, promoCode: 'SAVE25', currency: 'usd', interval: 'yearly', isDowngrade: false, renewal: { amount: 10000, date: 1893456000 } };
 const refused = (error, reason) => Object.assign(new Error('Request failed'), { response: { status: 400, data: { error, reason } } });
 
-function mountModal({ planType = 'personal', interval = 'monthly', preview } = {}) {
+function mountModal({ planType = 'personal', interval = 'monthly', preview, props = {} } = {}) {
   const actions = {
     createSubscription: vi.fn(async () => ({})),
     previewSubscriptionChange: vi.fn(preview || (async () => QUOTE)),
@@ -15,7 +15,7 @@ function mountModal({ planType = 'personal', interval = 'monthly', preview } = {
     fetchSubscription: vi.fn(async () => null),
   };
   const store = createStore({ modules: { userAuth: { namespaced: true, state: { planType, subscription: { planType, interval } }, actions } } });
-  const wrapper = mount(UpgradeModal, { props: { open: true }, global: { plugins: [store], stubs: { teleport: true } } });
+  const wrapper = mount(UpgradeModal, { props: { open: true, ...props }, global: { plugins: [store], stubs: { teleport: true } } });
   return { wrapper, actions };
 }
 const choose = async (wrapper, choice) => {
@@ -66,6 +66,11 @@ describe('UpgradeModal', () => {
     expect(wrapper.find('.confirm-text').exists()).toBe(false);
     expect(wrapper.findComponent(PlanPicker).attributes('style') || '').not.toContain('display: none');
     expect(actions.updateSubscription).not.toHaveBeenCalled();
+  });
+
+  it("an offer's presets and note reach the picker", () => {
+    const { wrapper } = mountModal({ props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' } });
+    expect(wrapper.findComponent(PlanPicker).props()).toMatchObject({ presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' });
   });
 
   it('a free user goes straight to checkout', async () => {

@@ -28,6 +28,9 @@
 .mk .scope.mk-private { background: var(--raised); border: 1px solid var(--line); }
 .mk .av.is-system { background: var(--surface-active); color: var(--text-tertiary); }
 .mk .tc-docprev { white-space: pre-wrap; max-height: 260px; overflow: auto; }
+/* The rail's offer button: the brand pink, with a dot while the offer runs. */
+.mk .rail-btn.rail-offer { color: var(--color-pink); }
+.mk .rail-offer .rail-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-pink); box-shadow: 0 0 0 2px var(--color-background); }
 /* Below 860px the drawer gives way (mk.css hides it) and the rail reaches
    everything it lists. The chat page keeps it: the drawer holds the chats. */
 @media (max-width: 860px) {
