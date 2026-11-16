@@ -58,7 +58,7 @@
         <h3>Compare Plans</h3>
         <p>Six services. One subscription. Nothing else to buy.</p>
       </div>
-      <PlanPicker :current-plan="planType !== 'free' ? planType : null" :busy="loading" @choose="choosePlan" />
+      <PlanPicker :current-plan="billedAs.currentPlan" :current-interval="billedAs.currentInterval" :busy="loading" @choose="choosePlan" />
       <p class="enterprise-note">Need unlimited seats or a dedicated runtime? <button type="button" class="enterprise-link" @click="handleContactSales">Contact sales</button></p>
     </div>
 
@@ -174,6 +174,8 @@ import { PLANS } from '@/components/plans.js';
 // disagree with the upgrade modal, chat's credit card or the Usage page.
 const flashCredits = (planId) => PLANS.find((plan) => plan.id === planId)?.includes.find((row) => row.label === 'AGNT Flash')?.value || '';
 import PlanPicker from '@/components/PlanPicker.vue';
+import { confirmLabel, describeQuote, planChangeRequest, switchesToYearly } from '@/components/planChange.js';
+import { escapeHtml } from '@/utils/vizError.js';
 import TeamSeats from '@/views/_components/team/TeamSeats.vue';
 
 // ============================================
@@ -208,6 +210,11 @@ export default {
 
     subscriptionDetails() {
       return this.subscription || {};
+    },
+
+    /** The plan and billing period a change starts from. */
+    billedAs() {
+      return { currentPlan: this.planType !== 'free' ? this.planType : null, currentInterval: this.subscriptionDetails.interval || null };
     },
 
     scheduledPlanChange() {
@@ -365,7 +372,7 @@ export default {
     },
   },
   methods: {
-    ...mapActions('userAuth', ['fetchSubscription', 'createSubscription', 'cancelSubscription', 'reactivateSubscription']),
+    ...mapActions('userAuth', ['fetchSubscription', 'createSubscription', 'cancelSubscription', 'reactivateSubscription', 'updateSubscription', 'previewSubscriptionChange']),
 
     updateCountdown() {
       const endDate = new Date(DISCOUNT_END_DATE);
@@ -391,14 +398,15 @@ export default {
 
     // PlanPicker's choice, run through this page's own upgrade / downgrade
     // flows (a downgrade is scheduled at period end and asks first).
-    async choosePlan({ planType, interval }) {
-      this.selectedInterval = interval;
-      const plan = this.plans.find((p) => p.planType === planType);
-      if (plan) await this.handlePlanAction(plan);
+    async choosePlan(choice) {
+      this.selectedInterval = choice.interval;
+      const plan = this.plans.find((p) => p.planType === choice.planType);
+      if (plan) await this.handlePlanAction(plan, choice);
     },
 
-    async handlePlanAction(plan) {
-      if (plan.name === this.currentPlan) {
+    async handlePlanAction(plan, choice = { planType: plan.planType, interval: this.selectedInterval }) {
+      // The current plan is a change only when it moves monthly billing to yearly.
+      if (plan.name === this.currentPlan && !switchesToYearly(choice, this.billedAs)) {
         return; // Already on this plan
       }
 
@@ -431,7 +439,7 @@ export default {
       if (isDowngrade) {
         await this.handleDowngrade(plan.name);
       } else {
-        await this.handleUpgrade(plan.name);
+        await this.handleUpgrade(plan.name, choice);
       }
     },
 
@@ -451,28 +459,10 @@ export default {
       this.loading = true;
       try {
         const planTypeMap = Object.fromEntries(this.plans.map((p) => [p.name, p.planType]));
+        // No billing period: a downgrade keeps the one the customer is on.
+        const data = await this.updateSubscription({ newPlanType: planTypeMap[planName] });
 
-        const token = this.$store.state.userAuth.token;
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/users/subscription/update`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            newPlanType: planTypeMap[planName],
-            interval: 'yearly',
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to schedule downgrade');
-        }
-
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
 
         const effectiveDate = new Date(data.effectiveDate * 1000).toLocaleDateString();
 
@@ -487,7 +477,7 @@ export default {
         console.error('Downgrade error:', error);
         await this.$refs.modal.showModal({
           title: 'Downgrade Failed',
-          message: error.message || 'Failed to schedule downgrade. Please try again.',
+          message: escapeHtml(error.response?.data?.error || error.message || 'Failed to schedule downgrade. Please try again.'),
           confirmText: 'OK',
           showCancel: false,
           confirmClass: 'btn-primary',
@@ -497,7 +487,7 @@ export default {
       }
     },
 
-    async handleUpgrade(planName) {
+    async handleUpgrade(planName, choice) {
       // If user is on free plan, they need to create a new subscription
       if (this.planType === 'free') {
         this.loading = true;
@@ -513,9 +503,14 @@ export default {
           // User will be redirected to Stripe checkout
         } catch (error) {
           console.error('Upgrade error:', error);
+          const subscribed = error.response?.data?.reason === 'already_subscribed';
+          // Subscribed somewhere this app has not caught up with: show the real plan.
+          if (subscribed) await this.fetchSubscription({ forceRefresh: true });
           await this.$refs.modal.showModal({
-            title: 'Upgrade Failed',
-            message: 'Failed to start upgrade process. Please try again.',
+            title: subscribed ? 'You already have a plan' : 'Upgrade Failed',
+            message: subscribed
+              ? 'Nothing was charged. Your current plan is shown here: choose the change you want.'
+              : 'Failed to start upgrade process. Please try again.',
             confirmText: 'OK',
             showCancel: false,
             confirmClass: 'btn-primary',
@@ -526,11 +521,35 @@ export default {
         return;
       }
 
-      // User already has a subscription, upgrade it immediately
+      // A subscriber's change is priced by the server first, so the confirm
+      // states the exact charge, and is then made with the same request.
+      const planType = this.plans.find((p) => p.name === planName)?.planType;
+      const request = planChangeRequest(choice || { planType, interval: this.selectedInterval }, this.billedAs);
+      const switching = !!request.interval;
+      const toYearlyOnly = switching && request.newPlanType === this.planType;
+
+      let quote;
+      this.loading = true;
+      try {
+        quote = await this.previewSubscriptionChange(request);
+      } catch (error) {
+        console.error('Upgrade preview error:', error);
+        await this.$refs.modal.showModal({
+          title: 'Upgrade Failed',
+          message: escapeHtml(error.response?.data?.error || error.message || 'Could not price that change. Please try again.'),
+          confirmText: 'OK',
+          showCancel: false,
+          confirmClass: 'btn-primary',
+        });
+        return;
+      } finally {
+        this.loading = false;
+      }
+
       const confirmed = await this.$refs.modal.showModal({
-        title: `Upgrade to ${planName}?`,
-        message: `You'll be charged the prorated difference and immediately get access to ${planName} features.`,
-        confirmText: 'Upgrade Now',
+        title: toYearlyOnly ? 'Switch to yearly billing?' : `Upgrade to ${planName}?`,
+        message: escapeHtml(describeQuote(quote, { switching, planName })),
+        confirmText: confirmLabel(quote),
         cancelText: 'Cancel',
         confirmClass: 'btn-primary',
       });
@@ -541,36 +560,16 @@ export default {
 
       this.loading = true;
       try {
-        const planTypeMap = Object.fromEntries(this.plans.map((p) => [p.name, p.planType]));
+        await this.updateSubscription(request);
 
-        const token = this.$store.state.userAuth.token;
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/users/subscription/update`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            newPlanType: planTypeMap[planName],
-            interval: 'yearly',
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to upgrade');
-        }
-
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
 
         // Trigger confetti animation
         this.triggerConfetti();
 
         await this.$refs.modal.showModal({
-          title: 'Upgrade Successful!',
-          message: `Welcome to ${planName}! Your new features are now active.`,
+          title: toYearlyOnly ? 'Switched to yearly billing' : 'Upgrade Successful!',
+          message: toYearlyOnly ? `You're now billed yearly for ${planName}.` : `Welcome to ${planName}! Your new features are now active.`,
           confirmText: 'OK',
           showCancel: false,
           confirmClass: 'btn-primary',
@@ -579,7 +578,7 @@ export default {
         console.error('Upgrade error:', error);
         await this.$refs.modal.showModal({
           title: 'Upgrade Failed',
-          message: error.message || 'Failed to upgrade. Please try again.',
+          message: escapeHtml(error.response?.data?.error || error.message || 'Failed to upgrade. Please try again.'),
           confirmText: 'OK',
           showCancel: false,
           confirmClass: 'btn-primary',

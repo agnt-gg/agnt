@@ -26,9 +26,23 @@
     </div>
 
     <div class="plan-foot">
-      <label class="interval"><input v-model="yearly" type="checkbox" /> Annual billing <small>(${{ plan.yearly }}/yr)</small></label>
-      <button type="button" class="btn-primary" :disabled="busy || selected === currentPlan" @click="choose">
-        {{ busy ? 'Opening checkout…' : selected === currentPlan ? 'Your current plan' : cta }}
+      <label class="interval">
+        <input type="checkbox" :checked="annual" :disabled="!annualOffered" @change="yearly = $event.target.checked" />
+        Annual billing <small>(${{ plan.yearly }}/yr)</small>
+      </label>
+      <input
+        v-if="switchingToYearly"
+        v-model="promoCode"
+        class="code"
+        type="text"
+        maxlength="64"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Code (optional)"
+        aria-label="Code"
+      />
+      <button type="button" class="btn-primary" :disabled="busy || isCurrentChoice" @click="choose">
+        {{ busy ? busyLabel : isCurrentChoice ? 'Your current plan' : cta }}
       </button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
@@ -40,16 +54,22 @@
  * The plan picker: AGNT's paid plans as tabs, what each includes, annual or
  * monthly, and one button. It is the body of the upgrade modal AND Billing's
  * "Compare plans", so both places show the same thing. It decides nothing
- * about checkout: it emits `choose({ planType, interval })` and the host runs
- * its own path (the modal's checkout, Billing's upgrade/downgrade flows).
+ * about checkout: it emits `choose({ planType, interval, promoCode? })` and the
+ * host runs its own path (the modal's checkout, Billing's upgrade/downgrade flows).
+ *
+ * A subscriber billed monthly can choose annual billing on their plan or a
+ * higher one, with an optional code. Yearly billing stays yearly.
  */
 import { PLANS } from './plans.js';
+import { switchesToYearly } from './planChange.js';
 
 export default {
   name: 'PlanPicker',
   props: {
     /** The plan the user is on ('personal' | 'always_on' | 'business'), or null on free. */
     currentPlan: { type: String, default: null },
+    /** How that plan is billed ('monthly' | 'yearly'), or null when unknown. */
+    currentInterval: { type: String, default: null },
     /** Which tab to open on. */
     suggest: { type: String, default: 'personal' },
     /** Why a gate sent the user here, e.g. "Web search is included with AGNT Pro." */
@@ -59,14 +79,36 @@ export default {
   },
   emits: ['choose'],
   data() {
-    return { selected: this.suggest, yearly: false, plans: PLANS };
+    return { selected: this.suggest, yearly: false, promoCode: '', plans: PLANS };
   },
   computed: {
     plan() {
       return this.plans.find((p) => p.id === this.selected) || this.plans[0];
     },
+    current() {
+      return { currentPlan: this.currentPlan, currentInterval: this.currentInterval };
+    },
+    /** Can annual billing be chosen for the selected plan? */
+    annualOffered() {
+      if (!this.currentPlan) return true;
+      return switchesToYearly({ planType: this.selected, interval: 'yearly' }, this.current);
+    },
+    annual() {
+      if (this.currentPlan && this.currentInterval === 'yearly') return true;
+      return this.annualOffered && this.yearly;
+    },
+    switchingToYearly() {
+      return !!this.currentPlan && switchesToYearly({ planType: this.selected, interval: this.annual ? 'yearly' : 'monthly' }, this.current);
+    },
+    isCurrentChoice() {
+      return this.selected === this.currentPlan && !this.switchingToYearly;
+    },
     cta() {
+      if (this.switchingToYearly && this.selected === this.currentPlan) return 'Switch to annual billing';
       return this.currentPlan ? `Switch to ${this.plan.name}` : `Get ${this.plan.name}`;
+    },
+    busyLabel() {
+      return this.currentPlan ? 'Working…' : 'Opening checkout…';
     },
   },
   watch: {
@@ -76,7 +118,10 @@ export default {
   },
   methods: {
     choose() {
-      this.$emit('choose', { planType: this.selected, interval: this.yearly ? 'yearly' : 'monthly' });
+      const choice = { planType: this.selected, interval: this.annual ? 'yearly' : 'monthly' };
+      const code = this.promoCode.trim();
+      if (this.switchingToYearly && code) choice.promoCode = code;
+      this.$emit('choose', choice);
     },
   },
 };
@@ -99,6 +144,7 @@ export default {
 .reason { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: rgba(var(--pink-rgb), 0.1); font-size: 13px; }
 .plan-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; }
 .interval { font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
+.code { flex: 1 1 140px; min-width: 0; padding: 10px 12px; border: 1px solid var(--terminal-border-color); border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 13px; }
 .btn-primary { padding: 12px 20px; border-radius: 6px; border: 0; background: var(--color-pink); color: var(--text-on-fill); font-weight: 700; cursor: pointer; font: inherit; font-weight: 700; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .error { margin: 10px 0 0; color: var(--color-red); font-size: 13px; }

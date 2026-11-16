@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import BillingManager from './BillingManager.vue';
@@ -39,9 +39,93 @@ describe('BillingManager mounts', () => {
     const handlePlanAction = vi.spyOn(wrapper.vm, 'handlePlanAction').mockResolvedValue();
     await picker.vm.$emit('choose', { planType: 'always_on', interval: 'yearly' });
     expect(wrapper.vm.selectedInterval).toBe('yearly');
-    expect(handlePlanAction).toHaveBeenCalledWith(expect.objectContaining({ planType: 'always_on', name: 'Pro + Always-On' }));
+    expect(handlePlanAction).toHaveBeenCalledWith(expect.objectContaining({ planType: 'always_on', name: 'Pro + Always-On' }), { planType: 'always_on', interval: 'yearly' });
     expect(wrapper.text()).toContain('Contact sales');
     vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * A subscriber's change from Billing: priced by the server first, and the
+ * billing period sent only for a monthly-to-yearly switch.
+ */
+describe('BillingManager plan changes', () => {
+  const QUOTE = { amountDue: 10000, discount: 0, credit: 0, currency: 'usd', interval: 'monthly', isDowngrade: false, renewal: { amount: 9900, date: 1893456000 } };
+
+  function mountBilling({ planType, interval, confirm = true }) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    const actions = {
+      fetchLicense: vi.fn(() => null),
+      fetchSubscription: vi.fn(async () => null),
+      previewSubscriptionChange: vi.fn(async () => QUOTE),
+      updateSubscription: vi.fn(async () => ({ effectiveDate: 1893456000 })),
+      createSubscription: vi.fn(async () => ({})),
+    };
+    const store = createStore({
+      modules: {
+        userAuth: {
+          namespaced: true,
+          state: { token: 't', planType, subscription: { planType, interval, currentPeriodEnd: 1893456000 }, user: { email: 'a@b.co' } },
+          getters: { isPremium: () => true, licenseInfo: () => null, planName: () => 'AGNT Pro', hasFeature: () => () => true },
+          actions,
+        },
+      },
+    });
+    const showModal = vi.fn(async () => confirm);
+    const wrapper = mount(BillingManager, {
+      global: {
+        plugins: [store],
+        directives: { tooltip: {} },
+        stubs: { SimpleModal: { template: '<div />', methods: { showModal } }, Tooltip: { template: '<div><slot /></div>' }, TeamSeats: true },
+      },
+    });
+    vi.spyOn(wrapper.vm, 'triggerConfetti').mockImplementation(() => {});
+    return { wrapper, actions, showModal };
+  }
+  const sentTo = (action) => action.mock.calls.map(([, body]) => body);
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a monthly subscriber upgrading keeps monthly billing, and confirms the exact price first', async () => {
+    const { wrapper, actions, showModal } = mountBilling({ planType: 'personal', interval: 'monthly' });
+    await wrapper.vm.choosePlan({ planType: 'business', interval: 'monthly' });
+    expect(sentTo(actions.previewSubscriptionChange)).toEqual([{ newPlanType: 'business' }]);
+    expect(sentTo(actions.updateSubscription)).toEqual([{ newPlanType: 'business' }]);
+    const [confirm] = showModal.mock.calls[0];
+    expect(confirm.message).toContain('You pay $100.00 today');
+    expect(confirm.confirmText).toBe('Pay $100.00');
+    expect(actions.fetchSubscription).toHaveBeenCalledWith(expect.anything(), { forceRefresh: true });
+  });
+
+  it('switching the same plan to yearly sends the billing period and the code', async () => {
+    const { wrapper, actions, showModal } = mountBilling({ planType: 'personal', interval: 'monthly' });
+    await wrapper.vm.choosePlan({ planType: 'personal', interval: 'yearly', promoCode: 'SAVE25' });
+    const request = { newPlanType: 'personal', interval: 'yearly', promoCode: 'SAVE25' };
+    expect(sentTo(actions.previewSubscriptionChange)).toEqual([request]);
+    expect(sentTo(actions.updateSubscription)).toEqual([request]);
+    expect(showModal.mock.calls[0][0].title).toBe('Switch to yearly billing?');
+  });
+
+  it('a yearly subscriber upgrading is never sent a billing period', async () => {
+    const { wrapper, actions } = mountBilling({ planType: 'personal', interval: 'yearly' });
+    await wrapper.vm.choosePlan({ planType: 'business', interval: 'yearly' });
+    expect(sentTo(actions.updateSubscription)).toEqual([{ newPlanType: 'business' }]);
+  });
+
+  it('a downgrade sends no billing period', async () => {
+    const { wrapper, actions } = mountBilling({ planType: 'business', interval: 'monthly' });
+    await wrapper.vm.choosePlan({ planType: 'personal', interval: 'monthly' });
+    expect(actions.previewSubscriptionChange).not.toHaveBeenCalled();
+    expect(sentTo(actions.updateSubscription)).toEqual([{ newPlanType: 'personal' }]);
+  });
+
+  it('declining the price changes nothing, and the current plan without a switch is no change', async () => {
+    const { wrapper, actions } = mountBilling({ planType: 'personal', interval: 'monthly', confirm: false });
+    await wrapper.vm.choosePlan({ planType: 'business', interval: 'monthly' });
+    expect(actions.previewSubscriptionChange).toHaveBeenCalledTimes(1);
+    expect(actions.updateSubscription).not.toHaveBeenCalled();
+    await wrapper.vm.choosePlan({ planType: 'personal', interval: 'monthly' });
+    expect(actions.previewSubscriptionChange).toHaveBeenCalledTimes(1);
   });
 });
 

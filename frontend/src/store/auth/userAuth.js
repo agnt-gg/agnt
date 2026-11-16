@@ -272,6 +272,11 @@ const syncTokenWithBackend = async (token) => {
   }
 };
 
+/** A plan change's body: the plan, plus the billing period and code only when given. */
+function planChangeBody({ newPlanType, interval, promoCode } = {}) {
+  return { newPlanType, ...(interval ? { interval } : {}), ...(promoCode ? { promoCode } : {}) };
+}
+
 export default {
   namespaced: true,
   state: {
@@ -899,7 +904,7 @@ export default {
         throw error;
       }
     },
-    async updateSubscription({ commit, state }, { newPlanType }) {
+    async updateSubscription({ state }, change) {
       if (!state.token) {
         throw new Error('Authentication required');
       }
@@ -907,7 +912,7 @@ export default {
       try {
         const response = await axios.post(
           `${API_CONFIG.REMOTE_URL}/users/subscription/update`,
-          { newPlanType },
+          planChangeBody(change),
           {
             headers: { Authorization: `Bearer ${state.token}` },
             withCredentials: true,
@@ -919,6 +924,22 @@ export default {
         console.error('Error updating subscription:', error);
         throw error;
       }
+    },
+    /**
+     * What a plan change would cost, without making it: the amount due now and
+     * what the plan renews at. Takes the same change as updateSubscription and
+     * sends the same body, so the price shown is the price charged.
+     */
+    async previewSubscriptionChange({ state }, change) {
+      if (!state.token) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await axios.post(`${API_CONFIG.REMOTE_URL}/users/subscription/preview`, planChangeBody(change), {
+        headers: { Authorization: `Bearer ${state.token}` },
+        withCredentials: true,
+      });
+      return response.data;
     },
 
     /**

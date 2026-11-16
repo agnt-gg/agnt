@@ -37,4 +37,45 @@ describe('PlanPicker', () => {
     expect(w.find('.error').text()).toBe('Card declined');
     expect(w.find('.reason').text()).toContain('Web search');
   });
+
+  it('a monthly subscriber can switch their plan to annual billing, with a code', async () => {
+    const w = mount(PlanPicker, { props: { currentPlan: 'personal', currentInterval: 'monthly', suggest: 'personal' } });
+    expect(cta(w).text()).toBe('Your current plan');
+    expect(w.find('.code').exists()).toBe(false);
+    await w.find('.interval input').setValue(true);
+    expect(cta(w).text()).toBe('Switch to annual billing');
+    expect(cta(w).attributes('disabled')).toBeUndefined();
+    await w.find('.code').setValue('  SAVE25 ');
+    await cta(w).trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ planType: 'personal', interval: 'yearly', promoCode: 'SAVE25' }]]);
+  });
+
+  it('a lower plan keeps monthly billing: annual is off and there is no code', async () => {
+    const w = mount(PlanPicker, { props: { currentPlan: 'business', currentInterval: 'monthly', suggest: 'business' } });
+    await w.find('.interval input').setValue(true);
+    await tab(w, 'AGNT Pro').trigger('click');
+    const box = w.find('.interval input');
+    expect(box.element.checked).toBe(false);
+    expect(box.attributes('disabled')).toBeDefined();
+    expect(w.find('.code').exists()).toBe(false);
+    await cta(w).trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ planType: 'personal', interval: 'monthly' }]]);
+  });
+
+  it('yearly billing stays yearly, and a change from it carries no code', async () => {
+    const w = mount(PlanPicker, { props: { currentPlan: 'personal', currentInterval: 'yearly', suggest: 'personal' } });
+    const box = w.find('.interval input');
+    expect(box.element.checked).toBe(true);
+    expect(box.attributes('disabled')).toBeDefined();
+    expect(cta(w).text()).toBe('Your current plan');
+    await tab(w, 'AGNT Team').trigger('click');
+    expect(w.find('.code').exists()).toBe(false);
+    await cta(w).trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ planType: 'business', interval: 'yearly' }]]);
+  });
+
+  it('a subscriber is not told checkout is opening', () => {
+    const w = mount(PlanPicker, { props: { currentPlan: 'personal', currentInterval: 'monthly', busy: true } });
+    expect(cta(w).text()).toBe('Working…');
+  });
 });
