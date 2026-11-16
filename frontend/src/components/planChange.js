@@ -48,7 +48,11 @@ export function formatCents(cents, currency = 'usd') {
   }
 }
 
-const onDay = (seconds) => (Number.isFinite(seconds) && seconds > 0 ? ` on ${new Date(seconds * 1000).toLocaleDateString()}` : '');
+// The same long date agnt.gg shows, e.g. "November 16, 2027".
+const onDay = (seconds) =>
+  Number.isFinite(seconds) && seconds > 0
+    ? ` on ${new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`
+    : '';
 
 /**
  * What a customer confirms, from the server's quote: the amount charged

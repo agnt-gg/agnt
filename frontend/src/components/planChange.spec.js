@@ -23,7 +23,14 @@ describe('planChangeRequest: the billing period is sent only for a monthly-to-ye
 
 describe('describeQuote: what a customer confirms', () => {
   const renews = 1893456000;
-  const day = new Date(renews * 1000).toLocaleDateString();
+  // agnt.gg's format, so the app and the site say the same thing.
+  const day = new Date(renews * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+  it('dates read in full, as on agnt.gg, never as digits and slashes', () => {
+    const quote = { amountDue: 100, discount: 0, credit: 0, currency: 'usd', interval: 'yearly', isDowngrade: false, renewal: { amount: 100, date: renews } };
+    expect(describeQuote(quote)).toContain(` on ${day}.`);
+    expect(describeQuote(quote)).not.toMatch(/\d+\/\d+\/\d+/);
+  });
 
   it('a switch says what is paid today, what made it smaller, and what it renews at', () => {
     const quote = { amountDue: 6250, discount: 2500, credit: 1250, promoCode: 'SAVE25', currency: 'usd', interval: 'yearly', isDowngrade: false, renewal: { amount: 10000, date: renews } };
