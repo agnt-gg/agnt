@@ -604,7 +604,7 @@ export default {
       this.loading = true;
       try {
         await this.cancelSubscription();
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
         await this.$refs.modal.showModal({
           title: 'Subscription Cancelled',
           message: 'You will retain access until the end of your billing period.',
@@ -630,7 +630,7 @@ export default {
       this.loading = true;
       try {
         await this.reactivateSubscription();
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
         await this.$refs.modal.showModal({
           title: 'Subscription Reactivated',
           message: 'Your subscription has been reactivated successfully!',
@@ -683,7 +683,7 @@ export default {
           throw new Error(data.error || 'Failed to cancel downgrade');
         }
 
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
 
         await this.$refs.modal.showModal({
           title: 'Downgrade Cancelled',
@@ -737,7 +737,7 @@ export default {
           throw new Error(data.error || 'Failed to cancel upgrade');
         }
 
-        await this.fetchSubscription();
+        await this.fetchSubscription({ forceRefresh: true });
 
         await this.$refs.modal.showModal({
           title: 'Upgrade Cancelled',
@@ -927,7 +927,8 @@ ${this.contactForm.message}
         const maxAttempts = 5;
 
         while (attempts < maxAttempts) {
-          await this.fetchSubscription();
+          // From the server each time: the cached answer is the plan before checkout.
+          await this.fetchSubscription({ forceRefresh: true });
 
           // Check if subscription was updated
           if (this.planType !== 'free') {

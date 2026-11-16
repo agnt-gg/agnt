@@ -4,7 +4,7 @@
   <div v-if="instance" class="team-seats" aria-label="Team seats">
     <div class="seat-summary">
       <strong>{{ used }} of {{ total }} seats in use</strong>
-      <span>{{ SEATS_INCLUDED }} included with Business Cloud · extra seats ${{ SEAT_PRICE }}/mo each</span>
+      <span>{{ SEATS_INCLUDED }} included with Business Cloud · extra seats {{ seatPrice }} each</span>
     </div>
     <div class="seat-stepper">
       <button type="button" aria-label="Fewer seats" :disabled="busy || target <= floor" @click="target--">&minus;</button>
@@ -17,11 +17,12 @@
   </div>
 </template>
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
+import { storeKey } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { tenantRequest } from '@/utils/teamClient.js';
 // Mirrors agnt.gg/account (agnt-instance.js) and the server's clamp (resolveSeats).
-import { SEATS_INCLUDED, SEATS_MAX, SEAT_PRICE, seatActionLabel } from './teamSeats.js';
+import { SEATS_INCLUDED, SEATS_MAX, seatActionLabel, seatPriceLabel } from './teamSeats.js';
 
 const props = defineProps({ slug: { type: String, default: '' } });
 const emit = defineEmits(['changed']);
@@ -31,6 +32,10 @@ const total = computed(() => instance.value?.seats?.total ?? SEATS_INCLUDED);
 // Never offer a number the server refuses: not below the people already in.
 const floor = computed(() => Math.max(SEATS_INCLUDED, used.value));
 const actionLabel = computed(() => seatActionLabel(target.value - total.value));
+// A plan billed yearly pays for seats by the year. Read from the app's store,
+// which every parent of this panel shares; monthly when it is not known.
+const store = inject(storeKey, null);
+const seatPrice = computed(() => seatPriceLabel(store?.state?.userAuth?.subscription?.interval));
 
 /** The Business instance to size: the one named, or the one this person owns. */
 async function load() {

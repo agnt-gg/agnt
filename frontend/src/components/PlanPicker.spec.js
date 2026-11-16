@@ -74,6 +74,15 @@ describe('PlanPicker', () => {
     expect(w.emitted('choose')).toEqual([[{ planType: 'business', interval: 'yearly' }]]);
   });
 
+  it("Team's extra seats are quoted by the billing period", async () => {
+    const w = mount(PlanPicker, { props: { suggest: 'business' } });
+    expect(w.find('.meta').text()).toContain('+$25/mo each extra');
+    await w.find('.interval input').setValue(true);
+    expect(w.find('.meta').text()).toContain('+$250/yr each extra');
+    const yearlyTeam = mount(PlanPicker, { props: { currentPlan: 'business', currentInterval: 'yearly', suggest: 'business' } });
+    expect(yearlyTeam.find('.meta').text()).toContain('+$250/yr each extra');
+  });
+
   it('a subscriber is not told checkout is opening', () => {
     const w = mount(PlanPicker, { props: { currentPlan: 'personal', currentInterval: 'monthly', busy: true } });
     expect(cta(w).text()).toBe('Working…');

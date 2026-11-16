@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { createStore } from 'vuex';
 
 // Reported on the 2026-10-27 call: adding seats meant leaving the app for
 // agnt.gg/account; the app's Billing page had no way to do it.
 const tenantRequest = vi.fn();
 vi.mock('@/utils/teamClient.js', () => ({ tenantRequest: (...a) => tenantRequest(...a) }));
 const { default: TeamSeats } = await import('./TeamSeats.vue');
-const { seatActionLabel } = await import('./teamSeats.js');
+const { seatActionLabel, seatPriceLabel } = await import('./teamSeats.js');
 
 const GENII = { slug: 'genii', isOwner: true, plan: 'business', status: 'running' };
 const detail = (used, total) => ({ slug: 'genii', seats: { used, total } });
@@ -67,6 +68,20 @@ describe('TeamSeats', () => {
     const wrapper = mount(TeamSeats);
     await flushPromises();
     expect(wrapper.find('.team-seats').exists()).toBe(false);
+  });
+
+  it('quotes extra seats by how the plan is billed', async () => {
+    tenantRequest.mockImplementation(async (path) => (path === '' ? { tenants: [GENII] } : detail(3, 3)));
+    const billed = (interval) => createStore({ modules: { userAuth: { namespaced: true, state: { subscription: { interval } } } } });
+    const yearly = mount(TeamSeats, { global: { plugins: [billed('yearly')] } });
+    const monthly = mount(TeamSeats, { global: { plugins: [billed('monthly')] } });
+    const unknown = mount(TeamSeats);
+    await flushPromises();
+    expect(yearly.find('.seat-summary span').text()).toContain('extra seats $250/yr each');
+    expect(monthly.find('.seat-summary span').text()).toContain('extra seats $25/mo each');
+    expect(unknown.find('.seat-summary span').text()).toContain('extra seats $25/mo each');
+    expect(seatPriceLabel('yearly')).toBe('$250/yr');
+    expect(seatPriceLabel(null)).toBe('$25/mo');
   });
 
   it('labels the change it will make', () => {

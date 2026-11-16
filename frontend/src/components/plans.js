@@ -53,5 +53,6 @@ export const PLANS = [
       { label: 'Webhooks', value: '20,000 units · 100 endpoints' },
     ],
     meta: '3 seats included · +$25/mo each extra.',
+    metaYearly: '3 seats included · +$250/yr each extra.',
   },
 ];

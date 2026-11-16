@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import BillingManager from './BillingManager.vue';
 import { PLAN_PRICES, yearlySavingsPercent } from './planPrices.js';
@@ -60,6 +60,8 @@ describe('BillingManager plan changes', () => {
       previewSubscriptionChange: vi.fn(async () => QUOTE),
       updateSubscription: vi.fn(async () => ({ effectiveDate: 1893456000 })),
       createSubscription: vi.fn(async () => ({})),
+      cancelSubscription: vi.fn(async () => ({})),
+      reactivateSubscription: vi.fn(async () => ({})),
     };
     const store = createStore({
       modules: {
@@ -117,6 +119,34 @@ describe('BillingManager plan changes', () => {
     await wrapper.vm.choosePlan({ planType: 'personal', interval: 'monthly' });
     expect(actions.previewSubscriptionChange).not.toHaveBeenCalled();
     expect(sentTo(actions.updateSubscription)).toEqual([{ newPlanType: 'personal' }]);
+  });
+
+  it('the plan is re-read from the server after a cancel, a reactivate or a cancelled scheduled change', async () => {
+    const { wrapper, actions } = mountBilling({ planType: 'personal', interval: 'monthly' });
+    await flushPromises();
+    actions.fetchSubscription.mockClear();
+    await wrapper.vm.handleCancel();
+    await wrapper.vm.handleReactivate();
+    await wrapper.vm.handleCancelDowngrade();
+    await wrapper.vm.handleCancelUpgrade();
+    expect(actions.cancelSubscription).toHaveBeenCalledTimes(1);
+    expect(actions.reactivateSubscription).toHaveBeenCalledTimes(1);
+    expect(sentTo(actions.fetchSubscription)).toEqual([{ forceRefresh: true }, { forceRefresh: true }, { forceRefresh: true }, { forceRefresh: true }]);
+  });
+
+  it('after checkout, the plan is read from the server until it shows, never from the cache', async () => {
+    vi.useFakeTimers();
+    window.history.replaceState({}, '', '/settings?subscription=success');
+    try {
+      const { actions } = mountBilling({ planType: 'free', interval: null });
+      await vi.advanceTimersByTimeAsync(3000 + 2000);
+      const reads = sentTo(actions.fetchSubscription);
+      expect(reads.length).toBeGreaterThanOrEqual(2);
+      expect(reads).toEqual(reads.map(() => ({ forceRefresh: true })));
+    } finally {
+      vi.useRealTimers();
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('declining the price changes nothing, and the current plan without a switch is no change', async () => {

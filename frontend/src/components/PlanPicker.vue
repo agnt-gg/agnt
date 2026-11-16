@@ -21,7 +21,7 @@
       <ul class="includes">
         <li v-for="row in plan.includes" :key="row.label"><span>{{ row.label }}</span><b>{{ row.value }}</b></li>
       </ul>
-      <p class="meta">{{ plan.meta }}</p>
+      <p class="meta">{{ annual && plan.metaYearly ? plan.metaYearly : plan.meta }}</p>
       <p v-if="reason" class="reason"><i class="fas fa-lock"></i> {{ reason }}</p>
     </div>
 
