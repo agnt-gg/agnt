@@ -173,6 +173,30 @@ describe('contextManager chunked eviction watermark', () => {
       }
     });
   });
+
+  it('keeps a Gemini-shaped tool result with the call it answers across the cut boundary', () => {
+    // Large calls and small results: the cut boundary falls on a call, which
+    // is where a result would be left without it.
+    const messages = [SYSTEM];
+    for (let t = 1; t <= 60; t++) {
+      messages.push({
+        role: 'assistant',
+        content: `[t${t}] ` + 'a '.repeat(3600),
+        tool_calls: [{ id: `gemini-tool-${t}`, type: 'function', function: { name: 'web_search', arguments: '{}' } }],
+      });
+      messages.push({ role: 'user', parts: [{ functionResponse: { name: 'web_search', response: { result: `r${t}` } } }] });
+    }
+    const result = manageContext(messages, MODEL, [], PROVIDER, { contextWindow: 60_000 });
+    expect(result.evictedUnits).toBeGreaterThan(0);
+    const kept = result.messages.filter((m) => m.role !== 'system');
+    expect(kept.length).toBeGreaterThan(2);
+    expect(kept.length % 2).toBe(0);
+    kept.forEach((m, i) => {
+      if (!Array.isArray(m.parts)) return;
+      expect(kept[i - 1]?.role).toBe('assistant');
+      expect(kept[i - 1].tool_calls).toHaveLength(1);
+    });
+  });
 });
 
 /**

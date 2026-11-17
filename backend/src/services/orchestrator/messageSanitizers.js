@@ -21,10 +21,20 @@ const CANCELLED_TOOL_RESULT = JSON.stringify({
   error: 'Tool execution cancelled: stream aborted before completion.',
 });
 
+/** A Gemini-shaped tool-result message: a user message of functionResponse parts. */
+function isFunctionResponseMessage(msg) {
+  return !!msg && msg.role === 'user' && Array.isArray(msg.parts)
+    && msg.parts.some((part) => part && part.functionResponse);
+}
+
 /**
  * Ensure every tool_use (Anthropic) / tool_calls[] (OpenAI-style) has a matching
  * tool_result / role:'tool' reply in the next message. If not, inject a synthetic
  * "cancelled" result so the conversation can be safely replayed to the provider.
+ *
+ * The Gemini adapter writes a round's results as ONE user message of
+ * functionResponse parts, which carry no ids. That message answers the round
+ * it follows; a round with no such message is repaired like any other.
  */
 function sanitizeOrphanToolCalls(msgs) {
   if (!Array.isArray(msgs) || msgs.length === 0) return msgs;
@@ -66,6 +76,7 @@ function sanitizeOrphanToolCalls(msgs) {
 
     // OpenAI-style: tool_calls[] on assistant; each needs a role:'tool' follow-up with matching tool_call_id.
     if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      if (isFunctionResponseMessage(next)) continue;
       const presentIds = new Set();
       let j = i + 1;
       while (j < msgs.length && msgs[j] && msgs[j].role === 'tool') {

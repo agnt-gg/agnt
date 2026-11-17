@@ -364,10 +364,12 @@ function truncateMessagePayload(message, maxTokens) {
  * side and the next provider request fails with "tool_use ids were found
  * without tool_result blocks" (Anthropic) or the OpenAI equivalent.
  *
- * Two wire shapes to recognize:
- *   OpenAI/Gemini: `{ role: 'assistant', tool_calls: [...] }` followed by
- *     one or more `{ role: 'tool', ... }` messages.
- *   Anthropic:     `{ role: 'assistant', content: [{ type: 'tool_use', ... }] }`
+ * Three ledger shapes to recognize:
+ *   OpenAI:    `{ role: 'assistant', tool_calls: [...] }` followed by one or
+ *     more `{ role: 'tool', ... }` messages.
+ *   Gemini:    the same assistant message, followed by
+ *     `{ role: 'user', parts: [{ functionResponse: ... }] }`.
+ *   Anthropic: `{ role: 'assistant', content: [{ type: 'tool_use', ... }] }`
  *     followed by `{ role: 'user', content: [{ type: 'tool_result', ... }] }`.
  */
 function assistantHasToolUseBlock(msg) {
@@ -380,16 +382,22 @@ function userHasToolResultBlock(msg) {
   return msg.content.some((b) => b && b.type === 'tool_result');
 }
 
+function userHasFunctionResponsePart(msg) {
+  if (!msg || msg.role !== 'user' || !Array.isArray(msg.parts)) return false;
+  return msg.parts.some((p) => p && p.functionResponse);
+}
+
 function groupMessageUnits(messages) {
   const units = [];
   let i = 0;
   while (i < messages.length) {
     const msg = messages[i];
-    // OpenAI/Gemini shape: assistant.tool_calls + following role:'tool' messages
+    // OpenAI/Gemini shape: assistant.tool_calls + the messages carrying its
+    // results (role:'tool', or a user message of functionResponse parts)
     if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
       const group = [msg];
       let j = i + 1;
-      while (j < messages.length && messages[j].role === 'tool') {
+      while (j < messages.length && (messages[j].role === 'tool' || userHasFunctionResponsePart(messages[j]))) {
         group.push(messages[j]);
         j++;
       }

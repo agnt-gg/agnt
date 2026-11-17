@@ -17,9 +17,10 @@
  * tests pin that behaviour so a future refactor can't quietly reopen the gap.
  */
 
-import { describe, it, expect } from 'vitest';
-import { AnthropicAdapter, BaseAdapter } from './llmAdapters.js';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { AnthropicAdapter, BaseAdapter, GeminiAdapter } from './llmAdapters.js';
 import { manageContext } from '../../utils/contextManager.js';
+import { CANCELLED_TOOL_RESULT } from './messageSanitizers.js';
 
 /** Every tool_use must have a matching tool_result in the following message. */
 function findOrphanToolUse(msgs) {
@@ -206,5 +207,94 @@ describe('AnthropicAdapter wire payload', () => {
     expect(carrier.role).toBe('user');
     expect(carrier.content.map((b) => b.type)).toEqual(['tool_result']);
     expect(carrier.content[0].content.at(-1)).toEqual({ type: 'text', text: 'carry on' });
+  });
+});
+
+/**
+ * The Gemini ledger is the third shape: an assistant message with
+ * tool_calls, then ONE user message of functionResponse parts, written by
+ * GeminiAdapter.formatToolResults. These run that ledger through the
+ * adapter's own outbound sanitize and transform, which is what the API
+ * receives.
+ */
+describe('GeminiAdapter wire payload', () => {
+  const adapter = new GeminiAdapter({}, 'gemini-2.5-flash');
+  const call = (id, name) => ({ id, type: 'function', function: { name, arguments: '{}' } });
+  const result = (id, name, value) => ({ tool_call_id: id, role: 'tool', name, content: JSON.stringify({ value }) });
+  const wireOf = (ledger) => adapter._transformToGemini(BaseAdapter._sanitizeOutboundAsOpenAI(ledger, 'gemini')).geminiMessages;
+  const kinds = (content) => content.parts.map((part) => Object.keys(part)[0]);
+  const hasResponse = (content) => content.parts.some((part) => part.functionResponse);
+
+  let log;
+  beforeAll(() => { log = vi.spyOn(console, 'log').mockImplementation(() => {}); }); // the adapter logs every result it formats
+  afterAll(() => { log.mockRestore(); });
+
+  it('sends a completed round as one call and one response, with nothing added', () => {
+    const ledger = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'Read it.' },
+      { role: 'assistant', content: 'Reading.', tool_calls: [call('gemini-tool-1', 'read_file')] },
+      ...adapter.formatToolResults([result('gemini-tool-1', 'read_file', 41)]),
+      { role: 'assistant', content: 'Done.' },
+      { role: 'user', content: 'Next.' },
+    ];
+
+    expect(BaseAdapter._sanitizeOutboundAsOpenAI(ledger, 'gemini')).toEqual(ledger);
+
+    const wire = wireOf(ledger);
+    expect(wire.map((content) => [content.role, kinds(content)])).toEqual([
+      ['user', ['text']],
+      ['model', ['text', 'functionCall']],
+      ['user', ['functionResponse']],
+      ['model', ['text']],
+      ['user', ['text']],
+    ]);
+    expect(wire[2].parts[0].functionResponse).toEqual({ name: 'read_file', response: { value: 41 } });
+    expect(JSON.stringify(wire)).not.toContain('cancelled');
+  });
+
+  it('sends the results of parallel calls as one user turn, a response per call, in call order', () => {
+    const names = ['read_file', 'web_search', 'list_files'];
+    const ledger = [
+      { role: 'user', content: 'Look around.' },
+      { role: 'assistant', content: 'Looking.', tool_calls: names.map((name, k) => call(`gemini-tool-${k}`, name)) },
+      ...adapter.formatToolResults(names.map((name, k) => result(`gemini-tool-${k}`, name, k))),
+    ];
+
+    const wire = wireOf(ledger);
+    expect(wire.map((content) => content.role)).toEqual(['user', 'model', 'user']);
+    expect(wire[1].parts.filter((part) => part.functionCall).map((part) => part.functionCall.name)).toEqual(names);
+    expect(wire[2].parts.map((part) => part.functionResponse?.name)).toEqual(names);
+  });
+
+  it('still repairs a round that never got its results', () => {
+    const ledger = [
+      { role: 'user', content: 'Read it.' },
+      { role: 'assistant', content: 'Reading.', tool_calls: [call('gemini-tool-1', 'read_file')] },
+      { role: 'user', content: 'carry on' },
+    ];
+
+    const responses = wireOf(ledger).flatMap((content) => content.parts).filter((part) => part.functionResponse);
+    expect(responses).toHaveLength(1);
+    expect(responses[0].functionResponse).toEqual({ name: 'read_file', response: JSON.parse(CANCELLED_TOOL_RESULT) });
+  });
+
+  it('never separates a call from its response when context is managed', () => {
+    // Large calls and small results, so the cut boundary falls on a call.
+    const ledger = [{ role: 'system', content: 'You are Annie.' }, { role: 'user', content: 'Work through it.' }];
+    for (let r = 0; r < 60; r++) {
+      ledger.push({ role: 'assistant', content: `Round ${r} ` + 'note '.repeat(1400), tool_calls: [call(`gemini-tool-${r}`, 'read_file')] });
+      ledger.push(...adapter.formatToolResults([result(`gemini-tool-${r}`, 'read_file', r)]));
+    }
+    const managed = manageContext(ledger, 'gemini-2.5-flash', [], 'gemini', { contextWindow: 60_000 });
+    expect(managed.evictedUnits).toBeGreaterThan(0);
+
+    const wire = wireOf(managed.messages);
+    expect(wire.filter(hasResponse).length).toBeGreaterThan(2);
+    wire.forEach((content, k) => {
+      if (!hasResponse(content)) return;
+      expect(wire[k - 1]?.role).toBe('model');
+      expect(wire[k - 1].parts.some((part) => part.functionCall)).toBe(true);
+    });
   });
 });

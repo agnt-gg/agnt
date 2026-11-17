@@ -86,7 +86,8 @@ const ROUNDS = 40;
 // Wire items are serialized once per request and compared as strings.
 const isPrefix = (previous, next) => previous.length <= next.length && previous.every((item, k) => item === next[k]);
 const startsWithToolResult = (message) => message.role === 'tool'
-  || (Array.isArray(message.content) && message.content.some((block) => block?.type === 'tool_result'));
+  || (Array.isArray(message.content) && message.content.some((block) => block?.type === 'tool_result'))
+  || (Array.isArray(message.parts) && message.parts.some((part) => part?.functionResponse));
 
 function runConversation(provider, model, shape, wireOf, budgetOptions = {}) {
   const manage = (messages, options) => manageContext(messages, model, [], provider, { ...budgetOptions, ...options });
@@ -163,11 +164,7 @@ describe.each(PROVIDERS)('eviction watermark at the wire: %s / %s (%s ledger)', 
     expect(seen.overBudget).toBe(0);
   });
 
-  // Only for the two shapes groupMessageUnits pairs. A Gemini tool result is
-  // a user message with `parts`, which it treats as a unit of its own.
-  if (shape !== 'gemini') {
-    it('never starts the kept history with a tool result whose call was evicted', () => {
-      expect(seen.orphanedResults).toBe(0);
-    });
-  }
+  it('never starts the kept history with a tool result whose call was evicted', () => {
+    expect(seen.orphanedResults).toBe(0);
+  });
 });
