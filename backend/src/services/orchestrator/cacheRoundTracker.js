@@ -104,9 +104,18 @@ export function createCacheRoundTracker({ carried = null, now = () => Date.now()
   const rounds = [];
 
   return {
-    stamp({ provider, model, messages, tools }) {
+    /**
+     * @param {number} [evictedUnits] the eviction watermark this request was
+     *   built with (contextManager). Recorded as measured, so a cut that is
+     *   dropped or moved shows up as the number changing.
+     */
+    stamp({ provider, model, messages, tools, evictedUnits }) {
       requestsStamped += 1;
-      pending = { ...fingerprintRequest({ provider, model, messages, tools }), sentAt: now() };
+      pending = {
+        ...fingerprintRequest({ provider, model, messages, tools }),
+        sentAt: now(),
+        evictedUnits: Number.isSafeInteger(evictedUnits) && evictedUnits >= 0 ? evictedUnits : null,
+      };
     },
 
     /**
@@ -142,6 +151,7 @@ export function createCacheRoundTracker({ carried = null, now = () => Date.now()
         divergeAt: divergeAt === null ? null : divergeAt,
         divergeRole: divergeAt === null ? null : previous.messageRoles[divergeAt] || null,
         historyLength: current.messageHashes.length,
+        evictedUnits: current.evictedUnits,
       };
       observedCount += 1;
       if (rounds.length < MAX_CACHE_ROUNDS) rounds.push(round);

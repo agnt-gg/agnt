@@ -30,6 +30,13 @@ describe('OrchestratorService cache-telemetry wiring', () => {
     expect(stampAt).toBeLessThan(tier.indexOf('adapter.callStream('));
   });
 
+  it('stamps the eviction watermark the request was built with', () => {
+    const tier = body('const runTierStream = async', 'const onProviderFallback');
+    const stampAt = tier.indexOf('cacheRounds.stamp(');
+    const stamp = tier.slice(stampAt, tier.indexOf(');', stampAt));
+    expect(stamp).toContain('evictedUnits: conversationContext._evictedUnits || 0');
+  });
+
   it('there is exactly one stamp site, so no request can be counted twice', () => {
     expect(SRC.match(/cacheRounds\.stamp\(/g)).toHaveLength(1);
   });

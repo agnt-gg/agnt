@@ -33,6 +33,17 @@ describe('execution telemetry v2 (cache rounds)', () => {
     expect(() => normalizeExecutionTelemetry(envelope([round()], 1))).toThrow();
   });
 
+  it('keeps the eviction watermark, and reads a round recorded without one as null', () => {
+    const t = normalizeExecutionTelemetry(envelope([
+      round({ evictedUnits: 82 }),
+      round({ round: 2, firstOfTurn: false, evictedUnits: 0 }),
+      round({ round: 3, firstOfTurn: false }),
+      round({ round: 4, firstOfTurn: false, evictedUnits: null }),
+    ]));
+    expect(t.cacheRounds.map((r) => r.evictedUnits)).toEqual([82, 0, null, null]);
+    expect(readExecutionTelemetry(JSON.stringify(t))).toEqual({ availability: 'available', value: t });
+  });
+
   it('strips fields outside the allowlist, so no content can ride along', () => {
     const t = normalizeExecutionTelemetry(envelope([{ ...round(), prompt: 'SECRET', divergeText: 'SECRET' }]));
     expect(JSON.stringify(t)).not.toContain('SECRET');
@@ -46,6 +57,9 @@ describe('execution telemetry v2 (cache rounds)', () => {
     ['out-of-order round', { round: 2 }],
     ['non-boolean firstOfTurn', { firstOfTurn: 'yes' }],
     ['unknown role', { divergeRole: 'narrator', divergeAt: 0 }],
+    ['negative watermark', { evictedUnits: -1 }],
+    ['fractional watermark', { evictedUnits: 1.5 }],
+    ['non-numeric watermark', { evictedUnits: '82' }],
   ])('rejects %s', (_label, bad) => {
     expect(() => normalizeExecutionTelemetry(envelope([round(bad)]))).toThrow();
   });

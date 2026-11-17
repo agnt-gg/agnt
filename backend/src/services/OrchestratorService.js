@@ -3243,7 +3243,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // after failover re-pointing so the fingerprint names the real target.
       messages = ageToolResults(messages, conversationContext, { summarize: generateDataSummary, cacheCold: cacheRounds.isColdFor(normalizedProvider, model) });
       const wire = prepareTierRequest(adapter.deferredToolStyle?.() || null, { tools, messages, catalog: conversationContext._deferredToolCatalog });
-      cacheRounds.stamp({ provider: normalizedProvider, model, messages: wire.messages, tools: wire.fingerprintTools });
+      cacheRounds.stamp({ provider: normalizedProvider, model, messages: wire.messages, tools: wire.fingerprintTools, evictedUnits: conversationContext._evictedUnits || 0 });
       return adapter.callStream(
         wire.messages,
         wire.tools,

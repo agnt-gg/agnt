@@ -190,6 +190,48 @@ describe('turn lifecycle', () => {
   });
 });
 
+describe('eviction watermark', () => {
+  const acc = { inputTokens: 100, outputTokens: 1, totalTokens: 101 };
+  const stamped = (tracker, evictedUnits) => {
+    tracker.stamp({ provider: 'claude-code', model: 'm', messages: warmTurn, tools, evictedUnits });
+    return tracker.observe({ promptTokens: 100, read: 100 }, HOUR);
+  };
+
+  it('records the watermark each request was stamped with', () => {
+    const { tracker } = harness();
+    expect(stamped(tracker, 82).evictedUnits).toBe(82);
+    expect(stamped(tracker, 0).evictedUnits).toBe(0);
+    expect(stamped(tracker, 90).evictedUnits).toBe(90);
+  });
+
+  it('records null when no watermark was given', () => {
+    const { tracker, send } = harness();
+    expect(send(warmTurn, { promptTokens: 100 }).evictedUnits).toBeNull();
+    expect(stamped(tracker, undefined).evictedUnits).toBeNull();
+  });
+
+  it.each([-1, 1.5, NaN, '82', {}])('records an unusable watermark (%s) as null and keeps the measurement', (bad) => {
+    const { tracker } = harness();
+    expect(stamped(tracker, bad).evictedUnits).toBeNull();
+    expect(buildCacheTelemetry('completed', acc, tracker).cacheRounds).toHaveLength(1);
+  });
+
+  it('survives the envelope and its normalization', () => {
+    const { tracker } = harness();
+    stamped(tracker, 82);
+    stamped(tracker, 0);
+    const t = buildCacheTelemetry('completed', acc, tracker);
+    expect(t.cacheRounds.map((r) => r.evictedUnits)).toEqual([82, 0]);
+    expect(normalizeExecutionTelemetry(t)).toEqual(t);
+  });
+
+  it('does not ride along into the next turn', () => {
+    const { tracker } = harness();
+    stamped(tracker, 82);
+    expect('evictedUnits' in tracker.carryState()).toBe(false);
+  });
+});
+
 describe('buildCacheTelemetry', () => {
   const acc = { inputTokens: 20500, outputTokens: 50, totalTokens: 20550 };
 

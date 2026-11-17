@@ -24,13 +24,16 @@ function normalizeCacheRounds(list) {
   return list.map((r, i) => {
     const valid = r && roundCounts.every(k => number(r[k])) && r.round === i + 1
       && typeof r.firstOfTurn === 'boolean' && nullableCount(r.msSincePrev) && nullableCount(r.divergeAt)
+      && nullableCount(r.evictedUnits ?? null)
       && (r.blocksAdded === null || Number.isSafeInteger(r.blocksAdded))
       && fingerprint.test(r.toolsFp) && fingerprint.test(r.systemFp) && CACHE_CAUSES.includes(r.cause)
       && (r.divergeRole === null || roles.includes(r.divergeRole));
     if (!valid) throw new Error('Invalid cache round measurement');
     return {round:r.round,firstOfTurn:r.firstOfTurn,msSincePrev:r.msSincePrev,
       ...Object.fromEntries(roundCounts.slice(1).map(k=>[k,r[k]])),
-      blocksAdded:r.blocksAdded,toolsFp:r.toolsFp,systemFp:r.systemFp,cause:r.cause,divergeAt:r.divergeAt,divergeRole:r.divergeRole};
+      blocksAdded:r.blocksAdded,toolsFp:r.toolsFp,systemFp:r.systemFp,cause:r.cause,divergeAt:r.divergeAt,divergeRole:r.divergeRole,
+      // Null on rounds recorded before the watermark was measured.
+      evictedUnits:r.evictedUnits ?? null};
   });
 }
 export function normalizeExecutionTelemetry(value) {
