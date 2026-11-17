@@ -2754,8 +2754,9 @@ body.dark .create-output-btn {
 /* ===== In AGNT One's sidebar (variant="drawer") =====
    The list flows in the sidebar's one scroll and draws flat rows like the
    sidebar's own: no card borders, 8px corners, the hover and selected fills.
-   Titles start 32px in, where the labels above them start; the unread dot
-   and the running mark sit in that gutter. */
+   As in Focused's Recents, every title starts at the row's edge, under the
+   icons above it: a row's state (unread, running) is a mark at the right end
+   of its title line, never an indent. A group's chats start under its name. */
 .is-drawer div#saved-outputs {
   height: auto;
 }
@@ -2811,8 +2812,9 @@ body.dark .create-output-btn {
 .is-drawer .group-items {
   gap: 1px;
 }
+/* Under the group's name: past its 14px mark (dot or icon) and the 9px gap. */
 .is-drawer .group-items {
-  margin: 0 0 0 12px;
+  margin: 0 0 0 23px;
 }
 .is-drawer .group-section {
   margin-bottom: 0;
@@ -2820,7 +2822,7 @@ body.dark .create-output-btn {
 
 .is-drawer .output-item {
   gap: 8px;
-  padding: 6px 30px 6px 32px;
+  padding: 6px 30px 6px 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -2859,11 +2861,19 @@ body.dark .create-output-btn {
   color: var(--text-primary);
   font-weight: 600;
 }
+/* Where the row's ⋯ appears on hover; the mark gives way to it. */
 .is-drawer .output-preview .unread-dot,
 .is-drawer .output-preview .streaming-indicator {
   position: absolute;
-  left: 12px;
+  right: 12px;
   margin: 0;
+  transition: opacity 0.1s;
+}
+.is-drawer .output-item:hover .output-preview .unread-dot,
+.is-drawer .output-item:hover .output-preview .streaming-indicator,
+.is-drawer .output-item:focus-within .output-preview .unread-dot,
+.is-drawer .output-item:focus-within .output-preview .streaming-indicator {
+  opacity: 0;
 }
 .is-drawer .output-preview .unread-dot {
   top: 12px;

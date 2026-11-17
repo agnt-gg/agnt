@@ -207,3 +207,98 @@ test('One desktop chat list shows a running chat as working, with who is speakin
   await expect(item).not.toContainText('speaking');
   await expect(item.locator('.unread-dot')).toBeVisible();
 });
+
+// As in Focused's Recents, every title in One's sidebar starts at the same left
+// edge, under the icons above it. Read, unread or running, a row's state is a
+// mark at the right end of its title line, never an indent; in Groups, a
+// group's chats start under the group's name.
+test('One desktop chat list lines every title up on the left, whatever its state @ci', async ({ appPage: page }) => {
+  await page.setViewportSize({ width: 1440, height: 950 });
+  await page.addInitScript(() => {
+    localStorage.setItem('tours_auto_start', 'false');
+    localStorage.setItem('agnt:focused-intro-seen', 'true');
+    localStorage.setItem('uiMode', 'focused');
+    localStorage.setItem('agnt:savedChats:view', 'all');
+  });
+  await page.route('**/users/preferences**', r => r.fulfill(json({})));
+  const ago = minutes => new Date(Date.now() - minutes * 60000).toISOString();
+  const rows = [
+    { id: 'out-read', title: 'Weekly competitor report', group_id: 'grp-north', updated_at: ago(30), last_read_at: ago(25) },
+    { id: 'out-unread', title: 'Northwind renewal email', group_id: 'grp-north', updated_at: ago(10), last_read_at: ago(20) },
+    { id: 'out-live', title: 'Background research', group_id: null, updated_at: ago(20), last_read_at: ago(15) },
+  ].map(row => ({ content_type: 'conversation', created_at: ago(60), ...row }));
+  await page.route(/\/api\/content-outputs(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill(json({ outputs: rows, totalCount: rows.length }))
+    : r.fallback());
+  await page.route(/\/api\/groups(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill(json({ groups: [{ id: 'grp-north', name: 'Northwind', parent_id: null }] }))
+    : r.fallback());
+  await page.goto('/chat');
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+  const list = page.locator('[data-testid="one-chat-sidebar"]');
+  await expect(list.locator('.output-item')).toHaveCount(3);
+  await page.evaluate(() => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+    store.commit('chat/ENSURE_CONVERSATION', 'conv-live');
+    store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: 'conv-live', id: 'out-live' });
+    store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: 'conv-live', messages: [
+      { id: 'u', role: 'user', content: 'research this' },
+      { id: 'a', role: 'assistant', content: '', agentId: 'agent-sol', agentName: 'Sol' },
+    ] });
+    store.commit('chat/SCOPED_SET_STREAMING', { conversationId: 'conv-live', value: true });
+  });
+  await expect(list.locator('.output-item', { hasText: 'Background research' }).locator('.streaming-indicator')).toBeVisible();
+  await expect(list.locator('.output-item', { hasText: 'Northwind renewal email' }).locator('.unread-dot')).toBeVisible();
+
+  const measure = () => page.evaluate(() => {
+    // Where an element's text starts on screen: its first non-blank character.
+    const textLeft = (el) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const start = node.textContent.search(/\S/);
+        if (start < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, node.textContent.length);
+        return range.getBoundingClientRect().left;
+      }
+      return null;
+    };
+    const sidebar = document.querySelector('[data-testid="one-sidebar"]');
+    return {
+      navIconLeft: sidebar.querySelector('[data-testid="one-new-chat"] svg').getBoundingClientRect().left,
+      rows: [...sidebar.querySelectorAll('[data-testid="one-chat-sidebar"] .output-item')].map((row) => {
+        const mark = row.querySelector('.unread-dot, .streaming-indicator');
+        const groupName = row.closest('.group-section')?.querySelector('.group-name');
+        return {
+          title: row.querySelector('.output-preview').textContent.trim(),
+          titleLeft: textLeft(row.querySelector('.output-preview')),
+          metaLeft: row.querySelector('.output-meta')?.getBoundingClientRect().left ?? null,
+          rowRight: row.getBoundingClientRect().right,
+          markLeft: mark ? mark.getBoundingClientRect().left : null,
+          groupNameLeft: groupName ? textLeft(groupName) : null,
+        };
+      }),
+    };
+  });
+
+  const flat = await measure();
+  expect(flat.rows.map(r => r.title).sort()).toEqual(['Background research', 'Northwind renewal email', 'Weekly competitor report']);
+  for (const row of flat.rows) {
+    expect(Math.abs(row.titleLeft - flat.navIconLeft), `${row.title}: starts under the icons above`).toBeLessThanOrEqual(1);
+    expect(row.metaLeft, `${row.title}: has its meta line`).not.toBeNull();
+    expect(Math.abs(row.metaLeft - row.titleLeft), `${row.title}: meta line under the title`).toBeLessThanOrEqual(1);
+  }
+  const marked = flat.rows.filter(r => r.markLeft !== null);
+  expect(marked.map(r => r.title).sort()).toEqual(['Background research', 'Northwind renewal email']);
+  for (const row of marked) expect(row.markLeft, `${row.title}: its mark is at the right end`).toBeGreaterThan(row.rowRight - 30);
+
+  await list.locator('.view-seg-btn', { hasText: 'Groups' }).click();
+  await list.locator('.group-header', { hasText: 'Northwind' }).click();
+  await expect(list.locator('.output-item')).toHaveCount(3);
+  const grouped = await measure();
+  for (const row of grouped.rows) {
+    expect(row.groupNameLeft, `${row.title}: sits in a group`).not.toBeNull();
+    expect(Math.abs(row.titleLeft - row.groupNameLeft), `${row.title}: starts under its group's name`).toBeLessThanOrEqual(1);
+  }
+});
