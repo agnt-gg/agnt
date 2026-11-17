@@ -308,9 +308,10 @@
             </div>
           </div>
 
-          <!-- Output context menu (shared across all sections) -->
+          <!-- Output context menu (shared across all sections). Opened beside its
+               button; v-viewport-clamp keeps it inside the window from any row. -->
           <Teleport to="body">
-            <div v-if="activeMenu" class="action-menu" @click.stop :style="menuPosition">
+            <div v-if="activeMenu" v-viewport-clamp class="action-menu" @click.stop :style="menuPosition">
               <button @click="startRename(getOutputById(activeMenu))" class="menu-item">
                 <i class="fas fa-edit"></i>
                 <span>Rename</span>
@@ -376,9 +377,9 @@
             </div>
           </Teleport>
 
-          <!-- Group context menu -->
+          <!-- Group context menu, at the pointer; kept inside the window too. -->
           <Teleport to="body">
-            <div v-if="groupMenu" class="action-menu" @click.stop :style="groupMenuPosition">
+            <div v-if="groupMenu" v-viewport-clamp class="action-menu" @click.stop :style="groupMenuPosition">
               <button @click="showCreateGroup(groupMenu.id)" class="menu-item">
                 <i class="fas fa-folder-plus"></i>
                 <span>New Sub-group</span>
@@ -406,7 +407,7 @@
 
 <script>
 import { useRoute, useRouter } from 'vue-router';
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, inject, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, inject, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -1445,22 +1446,18 @@ export default {
       if (activeMenu.value === outputId) {
         activeMenu.value = null;
         menuPosition.value = {};
-      } else {
-        activeMenu.value = outputId;
-
-        // Position the menu next to the button using Teleport
-        nextTick(() => {
-          const button = event.currentTarget;
-          const rect = button.getBoundingClientRect();
-
-          // Calculate position - menu appears to the right of the button
-          menuPosition.value = isMobile.value ? { position: 'fixed', left: '8px', right: '8px', bottom: 'max(8px, env(safe-area-inset-bottom))', top: 'auto', width: 'auto', maxHeight: '70%', overflowY: 'auto' } : {
-            position: 'fixed',
-            top: `${rect.top}px`,
-            left: `${rect.right + 8}px`,
-          };
-        });
+        return;
       }
+      // Read the button now: event.currentTarget is only set while the click is
+      // being dispatched. The menu opens to its right; v-viewport-clamp then
+      // keeps it inside the window, so a low row's menu is not cut off.
+      const rect = event.currentTarget.getBoundingClientRect();
+      menuPosition.value = isMobile.value ? { position: 'fixed', left: '8px', right: '8px', bottom: 'max(8px, env(safe-area-inset-bottom))', top: 'auto', width: 'auto', maxHeight: '70%', overflowY: 'auto' } : {
+        position: 'fixed',
+        top: `${rect.top}px`,
+        left: `${rect.right + 8}px`,
+      };
+      activeMenu.value = outputId;
     }
 
     // A conversation is private until its owner shares it, one at a time, as a read-only snapshot link.

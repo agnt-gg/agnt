@@ -302,3 +302,88 @@ test('One desktop chat list lines every title up on the left, whatever its state
     expect(Math.abs(row.titleLeft - row.groupNameLeft), `${row.title}: starts under its group's name`).toBeLessThanOrEqual(1);
   }
 });
+
+// A chat's ⋯ menu (Rename, Archive, Move to group, Delete) and a group's menu
+// open beside the row; from the lowest rows they used to run off the bottom of
+// the window. They stay inside it, 8px clear, even after Move to group grows.
+test('One desktop chat list keeps its row and group menus inside the window @ci', async ({ appPage: page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.addInitScript(() => {
+    localStorage.setItem('tours_auto_start', 'false');
+    localStorage.setItem('agnt:focused-intro-seen', 'true');
+    localStorage.setItem('uiMode', 'focused');
+    localStorage.setItem('agnt:savedChats:view', 'all');
+  });
+  await page.route('**/users/preferences**', r => r.fulfill(json({})));
+  const ago = minutes => new Date(Date.now() - minutes * 60000).toISOString();
+  const groups = [
+    { id: 'grp-a', name: 'Northwind', parent_id: null },
+    { id: 'grp-b', name: 'Launch week', parent_id: null },
+    { id: 'grp-c', name: 'Research', parent_id: null },
+  ];
+  const rows = Array.from({ length: 14 }, (_, i) => ({
+    id: `out-${i}`, title: `Saved chat ${i + 1}`, content_type: 'conversation',
+    group_id: i < 10 ? groups[i % 3].id : null,
+    updated_at: ago(10 + i * 60), created_at: ago(20 + i * 60), last_read_at: ago(10 + i * 60),
+  }));
+  await page.route(/\/api\/content-outputs(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill(json({ outputs: rows, totalCount: rows.length }))
+    : r.fallback());
+  await page.route(/\/api\/groups(\?.*)?$/, r => r.request().method() === 'GET'
+    ? r.fulfill(json({ groups }))
+    : r.fallback());
+  await page.goto('/chat');
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
+  const list = page.locator('[data-testid="one-chat-sidebar"]');
+  await expect(list.locator('.output-item')).toHaveCount(14);
+
+  // How far the open menu reaches past the window's 8px margin, on any side.
+  // Under 1px is rounding: the clamp moves it by whole pixels, rows sit at fractions.
+  const menuOverflow = () => page.evaluate(() => {
+    const menu = document.querySelector('.action-menu');
+    if (!menu) return 'no menu';
+    const r = menu.getBoundingClientRect();
+    return Math.max(0, 8 - r.top, r.bottom - (innerHeight - 8), 8 - r.left, r.right - (innerWidth - 8));
+  });
+
+  // The lowest chat fully in view, just above the sidebar's Collapse row.
+  const lowest = await page.evaluate(() => {
+    const scroller = document.querySelector('[data-testid="one-sidebar"] .drawer-scroll').getBoundingClientRect();
+    const inView = [...document.querySelectorAll('[data-testid="one-chat-sidebar"] .output-item')]
+      .filter((row) => { const r = row.getBoundingClientRect(); return r.top >= scroller.top && r.bottom <= scroller.bottom; });
+    const last = inView[inView.length - 1];
+    return { title: last.querySelector('.output-preview').textContent.trim(), bottom: last.getBoundingClientRect().bottom };
+  });
+  expect(lowest.bottom, 'the row is in the bottom fifth of the window').toBeGreaterThan(700 * 0.8);
+  const row = list.locator('.output-item', { hasText: lowest.title });
+  await row.hover();
+  await row.locator('.action-menu-btn').click();
+  await expect(page.locator('.action-menu')).toBeVisible();
+  await expect.poll(menuOverflow, { message: `${lowest.title}: its menu stays inside the window` }).toBeLessThan(1);
+  // Still beside the button it came from.
+  const beside = await page.evaluate((title) => {
+    const button = [...document.querySelectorAll('[data-testid="one-chat-sidebar"] .output-item')]
+      .find((el) => el.querySelector('.output-preview').textContent.trim() === title)
+      .querySelector('.action-menu-btn').getBoundingClientRect();
+    return document.querySelector('.action-menu').getBoundingClientRect().left - button.right;
+  }, lowest.title);
+  expect(beside, 'opens to the right of its button').toBeGreaterThanOrEqual(0);
+
+  // Move to group lists every group inside the menu: it grows and still fits.
+  await page.locator('.action-menu .menu-item', { hasText: 'Move to group' }).click();
+  await expect(page.locator('.action-menu .submenu-inline')).toBeVisible();
+  await expect.poll(menuOverflow, { message: 'with Move to group open' }).toBeLessThan(1);
+  await page.mouse.click(1100, 350);
+  await expect(page.locator('.action-menu')).toHaveCount(0);
+
+  // A group's menu opens at the pointer: right-click a group header at the bottom of the list.
+  await list.locator('.view-seg-btn', { hasText: 'Groups' }).click();
+  for (const name of ['Northwind', 'Launch week']) await list.locator('.group-header', { hasText: name }).click();
+  const header = list.locator('.group-header', { hasText: 'Research' });
+  await header.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+  const headerBox = await header.boundingBox();
+  expect(headerBox.y + headerBox.height, 'the header is in the bottom fifth of the window').toBeGreaterThan(700 * 0.8);
+  await header.click({ button: 'right' });
+  await expect(page.locator('.action-menu')).toBeVisible();
+  await expect.poll(menuOverflow, { message: 'the group menu stays inside the window' }).toBeLessThan(1);
+});
