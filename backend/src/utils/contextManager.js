@@ -574,15 +574,18 @@ function manageContext(messages, model, tools = [], provider = null, options = {
   // re-measured from every reply, so near the limit "the full history fits"
   // can be true on one request and false on the next. Releasing on that alone
   // lets the cut come and go, and each round trip re-writes the provider's
-  // cached prefix. So the watermark is released only when the full history
-  // fits the budget AND one of these holds:
-  //   - it also fits under the LOW-WATER mark, the size a cut itself leaves.
-  //     The budget must grow by 1 / LOW_WATER_FRACTION (a model switch) or
-  //     the history shrink that far, so this cannot alternate with a cut;
+  // cached prefix. So the watermark is released in two cases only:
+  //   - the full history fits under the LOW-WATER mark, the size a cut itself
+  //     leaves. The budget must grow by 1 / LOW_WATER_FRACTION (a model
+  //     switch) or the history shrink that far, so this cannot alternate
+  //     with a cut;
   //   - the watermark leaves less than STALE_VIEW_FRACTION of what a cut
-  //     keeps. The count was recorded against a history that has since been
-  //     cut back (edit, regenerate, fork) and no longer describes this one.
-  // Otherwise the watermark holds, and the model sees at least
+  //     keeps. The count no longer describes this history: it was recorded
+  //     against one that has since been cut back (edit, regenerate, fork), or
+  //     against one that grouped into more units (the history a client sends
+  //     after a provider or model change folds tool rounds differently). A
+  //     history that fits is then sent whole; one that does not is cut afresh.
+  // Otherwise the watermark holds, and a held view is at least
   // STALE_VIEW_FRACTION of a cut's worth of history.
   const LOW_WATER_FRACTION = 0.7;
   const STALE_VIEW_FRACTION = 0.5;
@@ -603,7 +606,7 @@ function manageContext(messages, model, tools = [], provider = null, options = {
       const viewTokens = estimateMessagesTokens(view);
       const viewIsStale = viewTokens - evictionSystemTokens
         < (lowWaterTokens - evictionSystemTokens) * STALE_VIEW_FRACTION;
-      if (viewIsStale && currentTokens <= availableTokens) {
+      if (viewIsStale) {
         evictedUnits = 0;
       } else {
         managedMessages = view;
@@ -620,8 +623,8 @@ function manageContext(messages, model, tools = [], provider = null, options = {
         keepFrom = i;
         keptTokens += unitTokens;
       }
-      // The watermark only ever moves forward — retreating would rewrite the
-      // prefix for no correctness gain.
+      // A cut never moves a held watermark back — retreating would rewrite
+      // the prefix for no correctness gain.
       const nextEvicted = Math.min(Math.max(evictedUnits, keepFrom), units.length - 1);
       if (nextEvicted > evictedUnits) {
         evictedUnits = nextEvicted;

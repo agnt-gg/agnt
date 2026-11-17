@@ -355,4 +355,66 @@ describe('contextManager eviction watermark: release rule', () => {
     expect(released.evictedUnits).toBe(0);
     expect(released.messages.length).toBe(messages.length);
   });
+
+  // The same three cases when the history is over the budget: a watermark
+  // that no longer matches is forgotten and the history is cut as if it had
+  // never been cut before.
+  it('cuts an over-budget history afresh when the watermark is beyond its end', () => {
+    const budget = budgetAt(1);
+    const messages = historyOfShare(1.4, budget);
+    const fresh = manage(messages, {});
+    expect(fresh.evictedUnits).toBeGreaterThan(0);
+    // Carried from a longer history: more units than this one has.
+    const result = manage(messages, { evictedUnits: messages.length + 300 });
+    expect(result.evictedUnits).toBe(fresh.evictedUnits);
+    expect(result.messages.length).toBe(fresh.messages.length);
+    expect(estimateMessagesTokens(result.messages)).toBeLessThanOrEqual(result.tokenLimit);
+    expect(estimateMessagesTokens(result.messages.slice(1))).toBeGreaterThanOrEqual(cutHistoryTokens(budget) * 0.9);
+  });
+
+  it('cuts an over-budget history afresh when the watermark leaves only its last few messages', () => {
+    const budget = budgetAt(1);
+    const messages = historyOfShare(1.4, budget);
+    const fresh = manage(messages, {});
+    const result = manage(messages, { evictedUnits: messages.length - 1 - 4 });
+    expect(result.evictedUnits).toBe(fresh.evictedUnits);
+    expect(result.messages.length).toBe(fresh.messages.length);
+  });
+
+  it('holds a watermark that leaves most of a cut on an over-budget history', () => {
+    const budget = budgetAt(1);
+    const messages = historyOfShare(1.4, budget);
+    const healthy = watermarkLeaving(messages, cutHistoryTokens(budget) * 0.8);
+    const result = manage(messages, { evictedUnits: healthy });
+    expect(result.evictedUnits).toBe(healthy);
+    expect(result.messages.length).toBe(messages.length - healthy);
+  });
+
+  it('cuts afresh when the watermark was counted on a history that grouped into more units', () => {
+    // One conversation in two groupings: tool rounds of two messages each,
+    // and the same messages with every one its own unit. A count taken on
+    // the second points past the end of the first.
+    const budget = budgetAt(1);
+    const rounds = [SYSTEM];
+    for (let t = 1; estimateMessagesTokens(rounds) < budget * 1.4; t++) {
+      seq += 1;
+      rounds.push(
+        {
+          role: 'assistant',
+          content: `[t${t} a${seq}] ` + 'reply '.repeat(900),
+          tool_calls: [{ id: `call_${seq}`, type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+        },
+        { role: 'tool', tool_call_id: `call_${seq}`, content: `[t${t} r${seq}] ` + 'word '.repeat(900) },
+      );
+    }
+    const ungrouped = rounds.map((m) => (m.role === 'system' ? m : { role: m.role === 'tool' ? 'user' : 'assistant', content: m.content }));
+    const countedUngrouped = manage(ungrouped, {}).evictedUnits;
+    const fresh = manage(rounds, {});
+    expect(fresh.evictedUnits).toBeGreaterThan(0);
+    expect(countedUngrouped).toBeGreaterThan(fresh.evictedUnits * 1.5);
+
+    const result = manage(rounds, { evictedUnits: countedUngrouped });
+    expect(result.evictedUnits).toBe(fresh.evictedUnits);
+    expect(result.messages.length).toBe(fresh.messages.length);
+  });
 });

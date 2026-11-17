@@ -278,7 +278,7 @@ export async function loadStoredTranscript(conversationId, userId) {
  *
  * The live in-memory context is preferred (it is current); the stored row is
  * the fallback. A watermark beyond the cut (_evictedUnits) is safe to carry:
- * contextManager clamps it to the history it is given.
+ * contextManager forgets one that no longer matches the history it is given.
  *
  * Scoped by user on both paths: state recorded for someone else is never
  * copied, even if a caller forgot to prove ownership of `fromId`.
