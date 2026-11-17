@@ -12,6 +12,8 @@
  *   jumpOpen — whether the ⌘K palette is showing. Kept in the store rather
  *              than in CanvasScreen so a screen can open it too (the composer
  *              hint, the empty states) without a prop chain.
+ *   jumpSeed — the words the palette opens with: One's sidebar search hands
+ *              its text over on Enter. Empty for every other way in.
  *   screenPanels — which side panels the ACTIVE screen offers. The phone
  *              header owns the Browse / Inspector buttons, but only the
  *              screen knows whether it has those panels; without this the
@@ -25,6 +27,7 @@ export default {
   state: () => ({
     inspect: null, // { kind, id, screen?, payload?, nonce }
     jumpOpen: false,
+    jumpSeed: '',
     updateAvailable: null, // { version } when the updater has one waiting
     screenPanels: { screenId: null, left: false, right: false },
   }),
@@ -37,6 +40,9 @@ export default {
     },
     SET_JUMP_OPEN(state, open) {
       state.jumpOpen = !!open;
+    },
+    SET_JUMP_SEED(state, text) {
+      state.jumpSeed = typeof text === 'string' ? text : '';
     },
     SET_UPDATE_AVAILABLE(state, info) {
       state.updateAvailable = info || null;
@@ -57,13 +63,16 @@ export default {
     clearInspect({ commit }) {
       commit('CLEAR_INSPECT');
     },
-    openJump({ commit }) {
+    /** Open the palette, optionally with its search already typed in. */
+    openJump({ commit }, seed) {
+      commit('SET_JUMP_SEED', seed);
       commit('SET_JUMP_OPEN', true);
     },
     closeJump({ commit }) {
       commit('SET_JUMP_OPEN', false);
     },
     toggleJump({ commit, state }) {
+      commit('SET_JUMP_SEED', '');
       commit('SET_JUMP_OPEN', !state.jumpOpen);
     },
     setUpdateAvailable({ commit }, info) {
@@ -73,6 +82,7 @@ export default {
   getters: {
     inspect: (state) => state.inspect,
     jumpOpen: (state) => state.jumpOpen,
+    jumpSeed: (state) => state.jumpSeed,
     updateAvailable: (state) => state.updateAvailable,
     screenPanels: (state) => state.screenPanels,
   },

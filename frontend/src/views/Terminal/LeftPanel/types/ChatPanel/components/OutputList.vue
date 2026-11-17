@@ -1,7 +1,9 @@
 <template>
-  <div class="output-list-container">
+  <div class="output-list-container" :class="{ 'is-drawer': isDrawer }">
     <SimpleModal ref="simpleModal" />
-    <div class="panel-header">
+    <!-- In AGNT One's sidebar (variant="drawer") the sidebar draws the header,
+         the Main chat row and the search box; this list is only the chats. -->
+    <div v-if="!isDrawer" class="panel-header">
       <h2 class="title">/ Saved Chats</h2>
       <div class="panel-stats">
         <button v-if="isMobile" type="button" class="new-chat-btn" :aria-pressed="mobileSelection" @click="mobileSelection = !mobileSelection">{{ mobileSelection ? 'Done' : 'Select' }}</button>
@@ -38,6 +40,7 @@
         <!-- The Main chat: pinned first. Texts to Annie land here; New chat never
              does. Never an item in the lists below (contentOutputs/visibleOutputs). -->
         <div
+          v-if="!isDrawer"
           class="output-item main-chat-item"
           :class="{ active: isMainOpen, streaming: isMainStreaming }"
           data-testid="main-chat-row"
@@ -64,7 +67,7 @@
           </div>
         </div>
 
-        <div class="list-header">
+        <div v-if="!isDrawer" class="list-header">
           <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />
         </div>
         <div id="saved-outputs" class="saved-items">
@@ -73,7 +76,7 @@
                Sort direction lives on the small arrow at the right. -->
           <div class="sort-controls">
             <div class="view-seg" role="tablist">
-              <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'all' }" @click="setViewMode('all')">All</button>
+              <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'all' }" @click="setViewMode('all')">{{ isDrawer ? 'Chats' : 'All' }}</button>
               <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'unread' }" @click="setViewMode('unread')">
                 Unread<span v-if="unreadConversations.length > 0" class="sort-unread-count">{{ unreadConversations.length }}</span>
               </button>
@@ -96,16 +99,16 @@
           <!-- Groups Section -->
           <div class="groups-section">
             <!-- New Group Button -->
-            <button v-if="viewMode === 'groups'" @click="showCreateGroup()" class="create-group-btn">
+            <button v-if="listView === 'groups'" @click="showCreateGroup()" class="create-group-btn">
               <i class="fas fa-folder-plus"></i>
               <span>New Group</span>
             </button>
-            <div v-if="viewMode === 'groups' && groups.length === 0" class="no-outputs">
+            <div v-if="listView === 'groups' && groups.length === 0" class="no-outputs">
               <p>No groups yet. Make one and drag chats into it.</p>
             </div>
 
             <!-- Recursive Group Tree -->
-            <template v-for="node in viewMode === 'groups' ? flatGroupTree : []" :key="node.id">
+            <template v-for="node in listView === 'groups' ? flatGroupTree : []" :key="node.id">
               <div class="group-section" :style="{ paddingLeft: node.depth * 16 + 'px' }">
                 <div
                   class="group-header"
@@ -126,7 +129,7 @@
                   </div>
                 <div class="group-header-right">
                   <span v-if="getGroupUnreadBadge(node.id) > 0" class="group-unread-badge" v-tooltip="'Unread chats'">{{ getGroupUnreadBadge(node.id) }}</span>
-                  <span class="group-count">{{ searchQuery ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
+                  <span class="group-count">{{ filterText ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
                   <button v-if="isMobile" type="button" class="mobile-group-menu" :aria-label="'Actions for group ' + node.name" @click.stop="openGroupMenu($event, node)"><i class="fas fa-ellipsis-v"></i></button>
                 </div>
               </div>
@@ -168,7 +171,7 @@
 
             <!-- Ungrouped: always in Groups view. It used to need a group to
                  exist first, so a new account's Groups view showed no chats. -->
-            <div class="group-section ungrouped-section" v-if="viewMode === 'groups'">
+            <div class="group-section ungrouped-section" v-if="listView === 'groups'">
               <div
                 class="group-header ungrouped-header"
                 @click="toggleGroup('__ungrouped__')"
@@ -231,9 +234,12 @@
             </div>
 
             <!-- Flat list: All and Unread views -->
-            <div v-if="viewMode !== 'groups'" class="output-list-items">
+            <div v-if="listView !== 'groups'" class="output-list-items">
               <div v-if="visibleOutputs.length === 0" class="no-outputs">
                 <p>No saved chats yet. Start a chat to create one.</p>
+              </div>
+              <div v-else-if="isDrawer && filterText && flatListOutputs.length === 0" class="no-outputs">
+                <p>No chats match.</p>
               </div>
               <div v-else-if="viewMode === 'unread' && flatListOutputs.length === 0" class="no-outputs">
                 <p>Nothing unread.</p>
@@ -418,13 +424,23 @@ export default {
     Tooltip,
     ConversationMetaLine,
   },
-  setup() {
+  props: {
+    // 'panel': Studio's left panel, with its own header, Main chat row and search.
+    // 'drawer': inside AGNT One's sidebar, which draws those three itself.
+    variant: { type: String, default: 'panel', validator: (value) => ['panel', 'drawer'].includes(value) },
+    // What is typed in One's sidebar search (drawer only).
+    query: { type: String, default: '' },
+  },
+  setup(props) {
     const route = useRoute();
     const router = useRouter();
     const store = useStore();
     const playSound = inject('playSound', () => {});
     const simpleModal = ref(null);
     const searchQuery = ref('');
+    const isDrawer = computed(() => props.variant === 'drawer');
+    // The one search text the list filters by: the sidebar's in One, the panel's own box in Studio.
+    const filterText = computed(() => (isDrawer.value ? (props.query || '').trim() : searchQuery.value));
 
     // The pinned Main chat, and which rows are tasks it started.
     const { mainChatId, isMainOpen, isMainUnread, isMainStreaming, openMainChat, clearMainChat } = useMainChat();
@@ -498,6 +514,9 @@ export default {
         sortOrder.value = 'desc';
       }
     }
+    // What the list renders. A search in One's sidebar lists every match flat:
+    // in Groups, a match inside a folded group would stay out of sight.
+    const listView = computed(() => (isDrawer.value && filterText.value && viewMode.value === 'groups' ? 'all' : viewMode.value));
     watch([sortKey, sortOrder], ([key, order]) => {
       try {
         localStorage.setItem(SORT_PREF_KEY, JSON.stringify({ key, order }));
@@ -728,9 +747,9 @@ export default {
     // "Mark as Unread" have to compete on one axis rather than in two tiers.
     function filterAndSort(list) {
       const filtered = list.filter((output) => {
-        if (!searchQuery.value) return true;
+        if (!filterText.value) return true;
         const title = getPreviewText(output.content, output).toLowerCase();
-        return title.includes(searchQuery.value.toLowerCase());
+        return title.includes(filterText.value.toLowerCase());
       });
       return sortOutputs(filtered, {
         sortKey: sortKey.value,
@@ -825,7 +844,7 @@ export default {
     // Get outputs belonging to a specific group
     // When searching, include conversations from all descendant groups
     function getGroupOutputs(groupId) {
-      if (searchQuery.value) {
+      if (filterText.value) {
         const ids = getDescendantIds(groupId);
         return filterAndSort(visibleOutputs.value.filter((o) => ids.has(o.group_id)));
       }
@@ -1610,10 +1629,13 @@ export default {
       hasLoadedAll,
       isFetchingMore,
       searchQuery,
+      isDrawer,
+      filterText,
       sortKey,
       sortOrder,
       sortedOutputs,
       viewMode,
+      listView,
       setViewMode,
       flatListOutputs,
       activeMenu,
@@ -2727,5 +2749,206 @@ body.dark .create-output-btn {
 .output-item[draggable="true"]:active {
   cursor: grabbing;
   opacity: 0.6;
+}
+
+/* ===== In AGNT One's sidebar (variant="drawer") =====
+   The list flows in the sidebar's one scroll and draws flat rows like the
+   sidebar's own: no card borders, 8px corners, the hover and selected fills.
+   Titles start 32px in, where the labels above them start; the unread dot
+   and the running mark sit in that gutter. */
+.is-drawer div#saved-outputs {
+  height: auto;
+}
+
+/* The tabs stay in reach while the list scrolls under them. */
+.is-drawer .sort-controls {
+  position: sticky;
+  top: -4px; /* the sidebar's top scroll padding */
+  z-index: 2;
+  align-items: center;
+  gap: 6px;
+  margin: 10px -10px 2px;
+  padding: 6px 10px;
+  background: var(--color-background);
+}
+.is-drawer .view-seg {
+  flex: 0 1 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.is-drawer .view-seg-btn {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+.is-drawer .view-seg-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+.is-drawer .view-seg-btn.on {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}
+.is-drawer .sort-dir-btn,
+.is-drawer .mark-all-read-btn {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+}
+.is-drawer .sort-dir-btn:hover,
+.is-drawer .mark-all-read-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.is-drawer .groups-section,
+.is-drawer .output-list-items,
+.is-drawer .group-items {
+  gap: 1px;
+}
+.is-drawer .group-items {
+  margin: 0 0 0 12px;
+}
+.is-drawer .group-section {
+  margin-bottom: 0;
+}
+
+.is-drawer .output-item {
+  gap: 8px;
+  padding: 6px 30px 6px 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  --avatar-ring: var(--color-background);
+}
+.is-drawer .output-item:hover {
+  background: var(--surface-hover);
+}
+.is-drawer .output-item.active,
+.is-drawer .output-item.active:hover {
+  background: var(--surface-active);
+}
+.is-drawer .output-item.selected,
+.is-drawer .output-item.selected:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+/* The pulsing mark and "Sol speaking" already say it is running. */
+.is-drawer .output-item.streaming::after {
+  content: none;
+}
+.is-drawer .output-preview {
+  margin-bottom: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 19px;
+}
+.is-drawer .output-item:hover .output-preview,
+.is-drawer .output-item.active .output-preview {
+  color: var(--text-primary);
+}
+.is-drawer .output-item.active .output-preview {
+  font-weight: 500;
+}
+.is-drawer .output-item:has(.unread-dot) .output-preview {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.is-drawer .output-preview .unread-dot,
+.is-drawer .output-preview .streaming-indicator {
+  position: absolute;
+  left: 12px;
+  margin: 0;
+}
+.is-drawer .output-preview .unread-dot {
+  top: 12px;
+}
+.is-drawer .output-preview .streaming-indicator {
+  top: 6px;
+  font-size: 7px;
+  line-height: 19px;
+}
+.is-drawer .output-meta {
+  margin-top: 1px;
+}
+.is-drawer .output-actions {
+  top: 4px;
+  right: 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.is-drawer .output-item:hover .output-actions,
+.is-drawer .output-item:focus-within .output-actions {
+  opacity: 1;
+}
+.is-drawer .action-menu-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.is-drawer .group-header {
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+.is-drawer .group-header:hover {
+  background: var(--surface-hover);
+}
+.is-drawer .group-header-left {
+  gap: 9px;
+}
+.is-drawer .group-color-dot {
+  margin: 0 3px;
+}
+.is-drawer .ungrouped-icon {
+  width: 14px;
+  text-align: center;
+}
+.is-drawer .group-name {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+.is-drawer .group-header:hover .group-name {
+  color: var(--text-primary);
+}
+.is-drawer .group-count {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.is-drawer .create-group-btn {
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  gap: 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  font-size: 13.5px;
+}
+.is-drawer .create-group-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+.is-drawer .create-group-btn i {
+  width: 14px;
+  text-align: center;
+}
+.is-drawer .no-outputs {
+  padding: 6px 8px;
+  text-align: left;
+}
+.is-drawer .archived-section {
+  margin-top: 6px;
 }
 </style>

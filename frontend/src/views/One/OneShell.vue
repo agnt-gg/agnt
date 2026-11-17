@@ -10,30 +10,42 @@
          them. Comments stay INSIDE the root: one before it makes a fragment. -->
     <!-- The approved mockup's frame (projects/agnt-team-os-tasks): its rail
          and its drawer, on every desktop page. Styled by mk/mk.css. -->
-    <MkRail v-if="!isMobile" :active="mkActive" :active-more="mkActiveMore" :badge="needsYou" :user-name="userName" @select="mkSelect" />
-    <MkDrawer
+    <MkRail
       v-if="!isMobile"
+      :active="mkActive"
+      :active-more="mkActiveMore"
+      :badge="needsYou"
+      :user-name="userName"
+      :collapsed="!sidebarExpanded"
+      @select="mkSelect"
+      @expand="setSidebarExpanded(true)"
+    />
+    <!-- One sidebar on every desktop page: the drawer, with the chats as its last
+         section. The chats are Studio's own list (OutputList), the same component,
+         so groups, unread, archive and every row action work as in Studio; a row
+         opens its chat by routing to /chat?content-id=… from any page. -->
+    <MkDrawer
+      v-if="!isMobile && sidebarExpanded"
       :team="teamState.team"
       :teams="teamState.teams"
       :spaces="teamState.spaces"
       :active="mkDrawerActive"
       :counts="mkCounts"
       :marks="spaceMarks"
+      :main-chat="mainChatRow"
       @go="(loc) => go({ page: 'team', ...loc })"
       @pick="mkPick"
-      @find="store.dispatch('shell/openJump')"
+      @find="(text) => store.dispatch('shell/openJump', text)"
+      @ask="ask"
+      @new-chat="newChat"
+      @open-main="openMain"
+      @clear-main="clearMain"
       @new-space="newTeamspace"
+      @collapse="setSidebarExpanded(false)"
       @error="toast"
-    />
-    <!-- The chat page's list, as in the mockup, with Studio's unread and groups: chats waiting
-         for your OK first, then All / Unread / Groups. -->
-    <!-- The chat page's list: Studio's own chat sidebar (LeftPanel ChatPanel → OutputList), the same
-         component, so search, the Main chat, groups and unread work identically in both layouts. It opens
-         a chat by routing to /chat?content-id=…, exactly as One does. Not under .mk, so it renders as in
-         Studio; mk-chatlist-host keeps the custom-background glass (one.css). -->
-    <div v-if="!isMobile && onChatPage" class="mk-chatlist-host one-chat-sidebar" data-testid="one-chat-sidebar">
-      <ChatPanel />
-    </div>
+    >
+      <template #chats="{ query }"><OutputList variant="drawer" :query="query" /></template>
+    </MkDrawer>
 
     <!-- Chats: your chats only (Main chat, search, recents, right-click
          actions, account), as a drawer behind the rail's Chats icon. The rail
@@ -144,12 +156,11 @@ import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import OneCapsule from './OneCapsule.vue';
 import OneWrapped from './wrapped/OneWrapped.vue';
 import TeamAvatar from './team/TeamAvatar.vue';
-import { RAIL_PAGE, MORE_SCREEN } from './oneModel.js';
 import { requestSetup } from './oneSetupRequest.js';
 import OneTeamPage from './team/OneTeamPage.vue';
 import MkRail from './mk/MkRail.vue';
 import MkDrawer from './mk/MkDrawer.vue';
-import ChatPanel from '@/views/Terminal/LeftPanel/types/ChatPanel/ChatPanel.vue';
+import OutputList from '@/views/Terminal/LeftPanel/types/ChatPanel/components/OutputList.vue';
 import MkTaskStrip from './mk/MkTaskStrip.vue';
 import MkIcon from './mk/MkIcon.vue';
 import { useMkFrame } from './mk/useMkFrame.js';
@@ -202,6 +213,26 @@ watch(isMobile, (mobile) => {
 });
 function closeDrawerOnPhone() {
   if (isMobile.value) drawerOpen.value = false;
+}
+
+// ── The sidebar (desktop): expanded unless collapsed to the rail, as in ─────
+// Studio, and remembered the same way (CanvasScreen's agnt:canvasSidebar:expanded).
+const SIDEBAR_KEY = 'agnt:oneSidebar:expanded';
+function readSidebarPref() {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+const sidebarExpanded = ref(readSidebarPref());
+function setSidebarExpanded(expanded) {
+  sidebarExpanded.value = expanded;
+  try {
+    localStorage.setItem(SIDEBAR_KEY, String(expanded));
+  } catch {
+    /* storage disabled: the choice still holds for this session */
+  }
 }
 
 // ── Where we are: read from the route, never kept here ─────────────────────
@@ -286,22 +317,6 @@ function openPage(id) {
   else if (id === 'files') go({ page: 'library', tab: 'files', dir: '' });
   else if (['connectors', 'scheduled', 'market', 'memory', 'activity', 'settings'].includes(id)) go({ page: id });
 }
-function selectRail(id) {
-  if (id === 'chats') {
-    // From another page, Chats goes back to your chat with its list open.
-    if (!isMobile.value && !onChatPage.value) {
-      setDrawer(true);
-      backToChat();
-      return;
-    }
-    setDrawer(!drawerShown.value);
-    return;
-  }
-  if (id === 'home') go({ page: 'team', view: 'home' });
-  else if (id === 'find') store.dispatch('shell/openJump');
-  else if (MORE_SCREEN[id]) pushScreen(MORE_SCREEN[id]);
-  else if (RAIL_PAGE[id]) openPage(RAIL_PAGE[id]);
-}
 // The model is chosen in Settings, never through the chat (a key must not
 // enter a transcript).
 function openModels() {
@@ -326,6 +341,12 @@ async function newChat() {
 
 // ── The Main chat: the one conversation texts to Annie land in ─────────────
 const mainChat = useMainChat();
+// The sidebar's Main chat row: lit only while the chat page shows it.
+const mainChatRow = computed(() => ({
+  open: onChatPage.value && mainChat.isMainOpen.value,
+  unread: mainChat.isMainUnread.value,
+  streaming: mainChat.isMainStreaming.value,
+}));
 async function openMain() {
   closeDrawerOnPhone();
   await mainChat.openMainChat();

@@ -1,8 +1,9 @@
 <template>
-  <!-- The approved mockup's drawer: workspace switcher, search, New…, My Space
-       (private), Teamspaces. Every row goes to the real page. -->
+  <!-- AGNT One's one sidebar, on every desktop page: workspace switcher, one
+       search, New chat, the Main chat, My Space (private), Teamspaces, then the
+       chats (OneShell passes the list in). Every row goes to the real page. -->
   <div class="mk mk-drawer-host">
-    <aside class="drawer" aria-label="Spaces">
+    <aside class="drawer" aria-label="Sidebar" data-testid="one-sidebar">
       <div ref="headRef" class="drawer-head">
         <button type="button" class="ws-btn" data-testid="ot-switcher" :aria-expanded="String(menu === 'ws')" @click="toggle('ws')">
           <span class="ws-tile"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
@@ -19,43 +20,106 @@
           <button type="button" class="menu-item sep" role="menuitem" @click="pick('team-settings')"><MkIcon name="plus" size="sm" />Create or join a team</button>
         </div>
       </div>
-      <button type="button" class="find-btn" @click="$emit('find')"><MkIcon name="find" size="sm" />Search or ask Annie<kbd>Ctrl K</kbd></button>
+      <!-- One search for the whole sidebar: typing filters it in place; Enter
+           carries the words to Find anything (Ctrl K opens that anywhere). -->
+      <div class="find-box" @click="searchRef?.focus()">
+        <MkIcon name="find" size="sm" />
+        <input
+          ref="searchRef"
+          v-model="query"
+          type="text"
+          placeholder="Search or ask Annie"
+          aria-label="Search or ask Annie"
+          autocomplete="off"
+          spellcheck="false"
+          data-testid="one-sidebar-search"
+          @keydown.enter.prevent="findEverywhere"
+          @keydown.esc="query = ''"
+        />
+        <kbd>Ctrl K</kbd>
+      </div>
       <div class="drawer-scroll">
-        <div class="mk-new-anchor">
-          <button type="button" class="d-item" style="color: var(--text-primary); font-weight: 500" @click="toggle('new')"><MkIcon name="plus" size="sm" />New…</button>
-          <div v-if="menu === 'new'" class="ws-menu" role="menu" style="top: 100%">
+        <template v-if="q">
+          <button type="button" class="d-item s-act" data-testid="one-sidebar-ask" @click="askAnnie"><MkIcon name="chats" size="sm" /><span class="ell">Ask Annie about “{{ q }}”</span></button>
+          <button type="button" class="d-item s-act" data-testid="one-sidebar-find" @click="findEverywhere"><MkIcon name="find" size="sm" /><span class="ell">Find “{{ q }}” everywhere</span><kbd>Enter</kbd></button>
+        </template>
+        <div v-else class="mk-new-anchor new-split">
+          <button type="button" class="d-item new-main" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="pen" size="sm" />New chat</button>
+          <button v-tooltip="menu === 'new' ? '' : 'New task, doc, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New task, doc, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="sm" /></button>
+          <div v-if="menu === 'new'" class="ws-menu new-menu" role="menu">
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-task')"><MkIcon name="task" size="sm" />Task</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-doc')"><MkIcon name="doc" size="sm" />Doc</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-agent')"><MkIcon name="bot" size="sm" />Agent</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-routine')"><MkIcon name="bolt" size="sm" />Routine</button>
           </div>
         </div>
-        <div class="d-head"><MkIcon name="lock" size="xs" /> My Space</div>
-        <button v-if="team" type="button" class="d-item" :class="{ 'is-active': active === 'mine-tasks' }" @click="pick('mine-tasks')"><MkIcon name="task" size="sm" />My tasks<span v-if="counts.tasks" class="count">{{ counts.tasks }}</span></button>
-        <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-agents' }" @click="pick('mine-agents')"><MkIcon name="bot" size="sm" />My agents<span v-if="counts.agents" class="count">{{ counts.agents }}</span></button>
-        <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-routines' }" @click="pick('mine-routines')"><MkIcon name="bolt" size="sm" />My routines<span v-if="counts.routines" class="count">{{ counts.routines }}</span></button>
-        <button type="button" class="d-item" :class="{ 'is-active': active === 'mine-files' }" @click="pick('mine-files')"><MkIcon name="file" size="sm" />My files</button>
-        <template v-if="team">
-          <div class="d-head" data-tour-id="team-spaces"><MkIcon name="users" size="xs" /> Teamspaces
-            <!-- Always shown, as in the approved mockup. The server decides who may create (owner/admin) and says why if not. -->
-            <button v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" data-testid="new-teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
+        <!-- The Main chat: texts to Annie land here; New chat never does. -->
+        <div
+          v-if="matches(MAIN_CHAT_LABEL)"
+          class="d-item main-row"
+          :class="{ 'is-active': mainChat.open }"
+          role="button"
+          tabindex="0"
+          data-testid="main-chat-row"
+          @click="$emit('open-main')"
+          @keydown.enter.prevent="$emit('open-main')"
+        >
+          <span class="main-mark" aria-hidden="true">
+            <i v-if="mainChat.streaming" class="fas fa-circle main-streaming"></i>
+            <span v-else-if="mainChat.unread" v-tooltip="'Unread changes'" class="main-unread"></span>
+            <i v-else class="fas fa-thumbtack main-pin"></i>
+          </span>
+          <span class="main-text"><b>{{ MAIN_CHAT_LABEL }}</b><small>Tasks run in their own chats and report back here</small></span>
+          <button
+            v-tooltip="mainChat.streaming ? 'Wait for the reply to finish' : 'Clear main chat'"
+            type="button"
+            class="row-act"
+            :disabled="mainChat.streaming"
+            aria-label="Clear main chat"
+            data-testid="main-chat-clear"
+            @click.stop="$emit('clear-main')"
+          ><i class="fas fa-eraser" aria-hidden="true"></i></button>
+        </div>
+        <section v-if="mineRows.length" class="d-sec">
+          <div class="d-head">
+            <button type="button" class="sec-toggle" data-testid="fold-mine" :aria-expanded="String(!isFolded('mine'))" @click="fold('mine')"><MkIcon name="lock" size="xs" /> My Space<MkIcon name="down" size="xs" class="chev" :class="{ 'is-folded': isFolded('mine') }" /></button>
           </div>
-          <button v-for="s in spaces" :key="s.id" type="button" class="d-item" :class="{ 'is-active': active === 'space:' + s.id }" @click="$emit('go', { view: 'space', space: s.id })">
-            <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}<span v-if="marks[s.id]" class="space-mark" :data-testid="`space-mark-${s.id}`">{{ marks[s.id] }}</span>
-          </button>
-          <p v-if="!spaces.length" class="d-note">No teamspaces yet. Add one with +.</p>
+          <template v-if="!isFolded('mine')">
+            <button v-for="row in mineRows" :key="row.id" type="button" class="d-item" :class="{ 'is-active': active === row.id }" @click="pick(row.id)"><MkIcon :name="row.icon" size="sm" />{{ row.label }}<span v-if="row.count" class="count">{{ row.count }}</span></button>
+          </template>
+        </section>
+        <template v-if="team">
+          <section v-if="!q || spaceRows.length" class="d-sec">
+            <div class="d-head" data-tour-id="team-spaces">
+              <button type="button" class="sec-toggle" data-testid="fold-spaces" :aria-expanded="String(!isFolded('spaces'))" @click="fold('spaces')"><MkIcon name="users" size="xs" /> Teamspaces<MkIcon name="down" size="xs" class="chev" :class="{ 'is-folded': isFolded('spaces') }" /></button>
+              <!-- Always shown. -->
+              <button v-tooltip="'New teamspace'" type="button" aria-label="New teamspace" data-testid="new-teamspace" @click="$emit('new-space')"><MkIcon name="plus" size="xs" /></button>
+            </div>
+            <template v-if="!isFolded('spaces')">
+              <button v-for="s in spaceRows" :key="s.id" type="button" class="d-item" :class="{ 'is-active': active === 'space:' + s.id }" @click="$emit('go', { view: 'space', space: s.id })">
+                <span style="width: 15px; text-align: center">{{ spaceEmoji(s) }}</span>{{ s.name }}<span v-if="marks[s.id]" class="space-mark" :data-testid="`space-mark-${s.id}`">{{ marks[s.id] }}</span>
+              </button>
+              <p v-if="!spaces.length" class="d-note">No teamspaces yet. Add one with +.</p>
+            </template>
+          </section>
         </template>
-        <div v-else class="d-note">This is your personal workspace: everything here is private.<template v-if="teams.length"> Teamspaces live in <button type="button" class="link" @click="goTeam(teams[0])">{{ teams[0].name }}</button>.</template><template v-else> <button type="button" class="link" @click="pick('team-settings')">Set up a team</button> to work with others.</template></div>
+        <div v-else-if="!q" class="d-note">This is your personal workspace: everything here is private. <template v-if="teams.length">Teamspaces live in <button type="button" class="link" @click="goTeam(teams[0])">{{ teams[0].name }}</button>.</template><template v-else><button type="button" class="link" @click="pick('team-settings')">Set up a team</button> to work with others.</template></div>
+        <div class="drawer-chats" data-testid="one-chat-sidebar"><slot name="chats" :query="q" /></div>
+      </div>
+      <!-- Collapse, as in Studio's sidebar: the rail keeps the way back. -->
+      <div class="drawer-foot">
+        <button type="button" class="d-item collapse-row" data-testid="one-sidebar-collapse" aria-label="Collapse sidebar" @click="$emit('collapse')"><i class="fas fa-angle-double-left" aria-hidden="true"></i>Collapse</button>
       </div>
     </aside>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import MkIcon from './MkIcon.vue';
 import { roleLabel } from '@/utils/teamClient.js';
 import { spaceEmoji } from '@/views/One/team/teamModel.js';
+import { MAIN_CHAT_LABEL } from '@/composables/useMainChat.js';
 
 /** A workspace name as a name: "bravo" reads "Bravo". The stored name is unchanged. */
 const titled = (name) => { const s = String(name || ''); return s ? s[0].toUpperCase() + s.slice(1) : s; };
@@ -69,12 +133,64 @@ const props = defineProps({
   counts: { type: Object, default: () => ({}) },
   // Beside a teamspace: what has stopped there, or that it is at its work limit (teamModel.spaceMark).
   marks: { type: Object, default: () => ({}) },
+  // The Main chat row's state: open on screen, unread, a reply streaming into it.
+  mainChat: { type: Object, default: () => ({ open: false, unread: false, streaming: false }) },
 });
-const emit = defineEmits(['go', 'pick', 'find', 'new-space', 'error']);
+const emit = defineEmits(['go', 'pick', 'find', 'ask', 'new-chat', 'open-main', 'clear-main', 'new-space', 'collapse', 'error']);
 const menu = ref(null);
 const headRef = ref(null);
 const toggle = (name) => { menu.value = menu.value === name ? null : name; };
 function pick(what) { menu.value = null; emit('pick', what); }
+
+// ── One search for the sidebar ────────────────────────────────────────────
+const query = ref('');
+const searchRef = ref(null);
+const q = computed(() => query.value.trim());
+const matches = (label) => !q.value || String(label).toLowerCase().includes(q.value.toLowerCase());
+function askAnnie() {
+  const text = q.value;
+  query.value = '';
+  emit('ask', text);
+}
+function findEverywhere() {
+  const text = q.value;
+  if (!text) return;
+  query.value = '';
+  emit('find', text);
+}
+
+const MINE = Object.freeze([
+  { id: 'mine-tasks', label: 'My tasks', icon: 'task', count: 'tasks', teamOnly: true },
+  { id: 'mine-agents', label: 'My agents', icon: 'bot', count: 'agents' },
+  { id: 'mine-routines', label: 'My routines', icon: 'bolt', count: 'routines' },
+  { id: 'mine-files', label: 'My files', icon: 'file' },
+]);
+const mineRows = computed(() => MINE
+  .filter((row) => (props.team || !row.teamOnly) && matches(row.label))
+  .map((row) => ({ ...row, count: row.count ? props.counts[row.count] : 0 })));
+const spaceRows = computed(() => props.spaces.filter((s) => matches(s.name)));
+
+// ── Folded sections: remembered; a search looks inside them anyway ────────
+const FOLD_KEY = 'agnt:one-sidebar:folded';
+function readFolds() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}');
+    return { mine: stored?.mine === true, spaces: stored?.spaces === true };
+  } catch {
+    return { mine: false, spaces: false };
+  }
+}
+const folds = ref(readFolds());
+const isFolded = (key) => !q.value && folds.value[key];
+function fold(key) {
+  folds.value = { ...folds.value, [key]: !folds.value[key] };
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify(folds.value));
+  } catch {
+    /* storage disabled: folding still works for this session */
+  }
+}
+
 async function goTeam(t) {
   menu.value = null;
   if (t.id === props.team?.id) return;
@@ -91,6 +207,57 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 </script>
 
 <style scoped>
+/* One sidebar for the drawer and the chats: the rows keep the drawer's own size (mk.css .d-item). */
 /* A teamspace with stopped work, or at its work limit, says so beside its name. */
 .space-mark { margin-left: auto; padding: 1px 6px; border-radius: 6px; background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
+
+/* The search: the old Search-or-ask button's look, now a field. */
+.find-box { box-sizing: border-box; display: flex; align-items: center; gap: 8px; margin: 4px 10px 6px; padding: 0 10px; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--text-tertiary); font-size: 13px; cursor: text; }
+.find-box:hover,
+.find-box:focus-within { border-color: var(--border-strong); }
+.find-box input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
+.find-box input::placeholder { color: var(--text-tertiary); }
+.find-box kbd { font: inherit; font-size: 11px; white-space: nowrap; }
+.ell { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-act { color: var(--text-primary); }
+.s-act kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--text-tertiary); }
+
+/* New chat, and the rest of New… behind the chevron. */
+.new-split { display: flex; align-items: center; gap: 2px; }
+.new-split .new-main { flex: 1; color: var(--text-primary); font-weight: 500; }
+.new-more { position: relative; flex: none; width: 28px; height: 31px; border: 0; border-radius: 8px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; }
+.new-more::before { content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 1px; background: var(--border-strong); opacity: 0.7; }
+.new-more:hover,
+.new-more[aria-expanded='true'] { background: var(--surface-hover); color: var(--text-primary); }
+.new-menu { left: 0; right: 0; top: calc(100% + 2px); }
+
+/* The Main chat: two lines, the eraser on hover. */
+.main-row { box-sizing: border-box; position: relative; align-items: flex-start; cursor: pointer; }
+.main-mark { width: 15px; height: 19px; flex: none; display: grid; place-items: center; }
+.main-pin { color: var(--color-primary); font-size: 11px; }
+.main-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); }
+.main-streaming { color: var(--color-primary); font-size: 7px; animation: main-pulse 1.5s ease-in-out infinite; }
+@keyframes main-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.main-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main-text b { font-weight: 600; color: var(--text-primary); }
+.main-text small { font-size: 11.5px; line-height: 1.3; color: var(--text-tertiary); text-wrap: balance; }
+.row-act { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; opacity: 0; font-size: 12px; }
+.main-row:hover .row-act,
+.row-act:focus-visible { opacity: 1; }
+.row-act:hover:not(:disabled) { background: var(--surface-active); color: var(--text-primary); }
+.row-act:disabled { cursor: not-allowed; opacity: 0.35; }
+
+/* A section's name folds it (mk.css styles every .d-head button as the 22px + beside it). */
+.mk .d-head .sec-toggle { display: inline-flex; align-items: center; gap: 6px; width: auto; height: auto; margin: 0; padding: 0; border-radius: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.mk .d-head .sec-toggle:hover { background: none; color: var(--text-primary); }
+.sec-toggle .chev { opacity: 0; transition: opacity 0.15s, transform 0.15s; }
+.d-head:hover .sec-toggle .chev,
+.sec-toggle:focus-visible .chev,
+.sec-toggle .chev.is-folded { opacity: 1; }
+.sec-toggle .chev.is-folded { transform: rotate(-90deg); }
+
+/* Collapse, at the foot, as in Studio. */
+.drawer-foot { flex: none; padding: 6px 10px 10px; border-top: 1px solid var(--line); }
+.collapse-row { color: var(--text-tertiary); font-size: 13px; }
+.collapse-row i { width: 15px; text-align: center; }
 </style>

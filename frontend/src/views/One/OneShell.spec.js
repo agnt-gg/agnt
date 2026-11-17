@@ -5,7 +5,9 @@
  *     Back) lands on One's own page for it;
  *   - a screen with no page renders in full, with a way back to the chat;
  *   - pages navigate through one injected service, by real routes;
- *   - the rail shows only what the account has, and Chats opens the drawer;
+ *   - the rail shows only what the account has; one sidebar (the drawer,
+ *     with the chats in it) sits beside it on every desktop page, and
+ *     collapses to the rail as in Studio;
  *   - the capsule's steps reach the chat (ask) or the model picker (Settings).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,7 +32,19 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push, replace }), useRoute: (
 const mainChatId = ref('main-1');
 const openMainChat = vi.fn(() => Promise.resolve());
 vi.mock('@/composables/useMainChat.js', () => ({
-  useMainChat: () => ({ mainChatId, openMainChat, clearMainChat: vi.fn(() => Promise.resolve(false)) }),
+  MAIN_CHAT_LABEL: 'Main chat',
+  useMainChat: () => ({
+    mainChatId,
+    isMainOpen: ref(false),
+    isMainUnread: ref(false),
+    isMainStreaming: ref(false),
+    openMainChat,
+    clearMainChat: vi.fn(() => Promise.resolve(false)),
+  }),
+}));
+// Studio's chat list has its own specs (OutputList.*.spec.js); here only where it sits and what it is given.
+vi.mock('@/views/Terminal/LeftPanel/types/ChatPanel/components/OutputList.vue', () => ({
+  default: { name: 'OutputList', props: ['variant', 'query'], template: '<div class="output-list-stub" :data-variant="variant" :data-query="query" />' },
 }));
 
 // Children are replaced by MODULE: a name-based stub does not reach a
@@ -99,8 +113,6 @@ function mountShell(screenName = 'ChatScreen', query = {}) {
     global: {
       provide: { isMobile: ref(false) },
       directives: { tooltip: {} },
-      // Studio's chat sidebar is covered by its own specs.
-      stubs: { ChatPanel: { name: 'ChatPanel', template: '<div class="chat-panel-stub" />' } },
     },
     attachTo: document.body,
   });
@@ -326,17 +338,66 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('the drawer is on every desktop page; the chat list is the chat page\'s own', () => {
-      const chat = mountShell('ChatScreen');
-      expect(chat.find('.drawer').exists()).toBe(true);
-      // Studio's own chat sidebar, the same component as in Studio.
-      expect(chat.find('[data-testid="one-chat-sidebar"]').findComponent({ name: 'ChatPanel' }).exists()).toBe(true);
-      expect(chat.find('.sidebar-stub').exists()).toBe(false);
-      chat.unmount();
-      const apps = mountShell('ConnectorsScreen');
-      expect(apps.find('.drawer').exists()).toBe(true);
-      expect(apps.find('[data-testid="one-chat-sidebar"]').exists()).toBe(false);
-      apps.unmount();
+    it('one sidebar on every desktop page: the drawer, with Studio\'s chat list in it', () => {
+      for (const screen of ['ChatScreen', 'ConnectorsScreen']) {
+        const w = mountShell(screen);
+        const chats = w.find('.drawer [data-testid="one-chat-sidebar"] .output-list-stub');
+        expect(chats.exists(), screen).toBe(true);
+        expect(chats.attributes('data-variant')).toBe('drawer');
+        // No second column of chats beside it, and no phone drawer on a desktop.
+        expect(w.findAll('.output-list-stub')).toHaveLength(1);
+        expect(w.find('.sidebar-stub').exists()).toBe(false);
+        w.unmount();
+      }
+    });
+
+    it('the sidebar search reaches the chats; Enter opens Find anything with it; Ask Annie asks in a new chat', async () => {
+      const seen = vi.fn();
+      window.addEventListener('agnt:ask-annie', seen);
+      const w = mountShell('ConnectorsScreen');
+      const input = () => w.get('[data-testid="one-sidebar-search"]');
+      await input().setValue('northwind');
+      expect(w.get('.output-list-stub').attributes('data-query')).toBe('northwind');
+      await input().trigger('keydown', { key: 'Enter' });
+      expect(dispatch).toHaveBeenCalledWith('shell/openJump', 'northwind');
+      await input().setValue('Draft the renewal');
+      await w.get('[data-testid="one-sidebar-ask"]').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(seen.mock.calls[0][0].detail).toEqual({ text: 'Draft the renewal', send: false });
+      window.removeEventListener('agnt:ask-annie', seen);
+      w.unmount();
+    });
+
+    it('New chat and the Main chat are in the sidebar on any page', async () => {
+      const fresh = vi.fn();
+      window.addEventListener('trigger-new-chat', fresh);
+      const w = mountShell('ConnectorsScreen');
+      await w.get('[data-testid="one-new-chat"]').trigger('click');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(push).toHaveBeenCalledWith('/chat');
+      expect(fresh).toHaveBeenCalledTimes(1);
+      await w.get('[data-testid="main-chat-row"]').trigger('click');
+      expect(openMainChat).toHaveBeenCalledTimes(1);
+      window.removeEventListener('trigger-new-chat', fresh);
+      w.unmount();
+    });
+
+    it('collapses to the rail as in Studio, remembers it, and the rail\'s arrow brings it back', async () => {
+      const w = mountShell('ChatScreen');
+      expect(w.find('[data-testid="one-rail-expand"]').exists()).toBe(false);
+      await w.get('[data-testid="one-sidebar-collapse"]').trigger('click');
+      expect(w.find('.drawer').exists()).toBe(false);
+      expect(localStorage.getItem('agnt:oneSidebar:expanded')).toBe('false');
+      expect(w.get('[data-testid="one-rail-expand"]').find('.fa-angle-double-right').exists()).toBe(true);
+      w.unmount();
+
+      const again = mountShell('ConnectorsScreen');
+      expect(again.find('.drawer').exists()).toBe(false);
+      await again.get('[data-testid="one-rail-expand"]').trigger('click');
+      expect(again.find('.drawer').exists()).toBe(true);
+      expect(localStorage.getItem('agnt:oneSidebar:expanded')).toBe('true');
+      expect(again.find('[data-testid="one-rail-expand"]').exists()).toBe(false);
+      again.unmount();
     });
 
 

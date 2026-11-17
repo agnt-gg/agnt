@@ -76,33 +76,28 @@
    position:fixed descendant, which moved the drawer's right-click menu off
    the pointer. The layer has no children, so nothing inside is affected.
 
-   The chat page's list is Studio's own chat sidebar (.one-chat-sidebar, below).
-
-   The desktop frame is now the mockup's (mk/): its rail, teamspace drawer and
-   chat list are .mk-rail-host, .mk-drawer-host and .mk-chatlist-host, not
+   The desktop frame is now the mockup's (mk/): its rail and its sidebar (the
+   drawer, with the chats in it) are .mk-rail-host and .mk-drawer-host, not
    .one-rail / .one-drawer. Listed here so they get the same glass; without
-   them both left panels were fully transparent over a wallpaper. */
+   them the left panels were fully transparent over a wallpaper. */
 body.custom-bg .ui-one .one-rail,
 body.custom-bg .ui-one:not(.is-compact) .one-drawer,
 body.custom-bg .ui-one .mk-rail-host,
-body.custom-bg .ui-one .mk-drawer-host,
-body.custom-bg .ui-one .mk-chatlist-host {
+body.custom-bg .ui-one .mk-drawer-host {
   position: relative;
 }
 body.custom-bg .ui-one .one-rail,
 body.custom-bg .ui-one .one-drawer,
 body.custom-bg .ui-one .one-main,
 body.custom-bg .ui-one .mk-rail-host,
-body.custom-bg .ui-one .mk-drawer-host,
-body.custom-bg .ui-one .mk-chatlist-host {
+body.custom-bg .ui-one .mk-drawer-host {
   background: transparent;
 }
 body.custom-bg .ui-one .one-rail::before,
 body.custom-bg .ui-one:not(.is-compact) .one-drawer::before,
 body.custom-bg .ui-one .one-main::before,
 body.custom-bg .ui-one .mk-rail-host::before,
-body.custom-bg .ui-one .mk-drawer-host::before,
-body.custom-bg .ui-one .mk-chatlist-host::before {
+body.custom-bg .ui-one .mk-drawer-host::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -141,10 +136,12 @@ body.custom-bg .ui-one.has-window-bar:not(.is-compact)::before {
 }
 /* Overlays stay solid (Studio keeps popovers opaque for the same reason,
    Workspace.vue): see-through over moving content is unreadable. On a phone
-   the drawer covers the chat; the scroll button floats over the messages.
+   the drawer covers the chat; the scroll button floats over the messages; the
+   sidebar's chat tabs stay put while the chats scroll under them.
    The solid theme colour, as Studio's phone sheets use (_compact-app.css). */
 body.custom-bg .ui-one.is-compact .one-drawer,
-body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
+body.custom-bg .ui-one .chat-scroll-controls .scroll-btn,
+body.custom-bg .ui-one .output-list-container.is-drawer .sort-controls {
   background: rgb(var(--color-background-rgb, 0, 0, 0));
 }
 
@@ -846,20 +843,3 @@ body.custom-bg .ui-one .chat-scroll-controls .scroll-btn {
   color: var(--text-tertiary);
 }
 
-/* The chat page's list: Studio's chat sidebar (ChatPanel), in a column padded like Studio's left
-   panel (LeftPanel .left-panel: 12px). Sits beside the drawer, before the sheet. */
-.ui-one .one-chat-sidebar {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  flex: none;
-  width: 300px;
-  min-height: 0;
-  padding: 12px;
-  box-sizing: border-box;
-  border-right: 1px solid var(--terminal-border-color);
-  background: var(--color-background);
-}
-.ui-one .one-chat-sidebar > * { flex: 1 1 0; min-height: 0; }
-body.custom-bg .ui-one .one-chat-sidebar { background: transparent; }
-.ui-one .one-chat-sidebar + .one-main { border-left: 0; }

@@ -158,12 +158,15 @@ test('the Main chat is pinned once in both frames, beside new chat and the chat 
   await expect(page.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
   await expect(page.locator('.chat-library-toggle')).toBeVisible();
   await expect(page.locator('.left-panel-component input[placeholder="Search chats..."]')).toBeAttached();
-  // AGNT One on a desktop shows Studio's own chat list beside the chat.
+  // AGNT One on a desktop: one sidebar, with the Main chat pinned once above
+  // the chats (Studio's own list), New chat and the one search beside them.
   await mode(page, 'focused');
-  const oneList = page.locator('[data-testid="one-chat-sidebar"]');
-  await expect(oneList.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
-  await expect(oneList.locator('.new-chat-btn.header-new')).toBeVisible();
-  await expect(oneList.locator('input[placeholder="Search chats..."]')).toBeAttached();
+  const sidebar = page.locator('[data-testid="one-sidebar"]');
+  await expect(page.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
+  await expect(sidebar.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
+  await expect(sidebar.locator('[data-testid="one-new-chat"]')).toBeVisible();
+  await expect(sidebar.locator('input[placeholder="Search or ask Annie"]')).toBeAttached();
+  await expect(sidebar.locator('[data-testid="one-chat-sidebar"] .output-list-container.is-drawer')).toBeAttached();
   // ...and on a phone, the chats drawer.
   await page.setViewportSize({ width: 390, height: 950 });
   await page.getByRole('button', { name: 'Open chats', exact: true }).click();

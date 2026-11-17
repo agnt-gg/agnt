@@ -24,7 +24,7 @@ afterEach(() => {
   wrappers.splice(0).forEach(w => w.unmount());
   document.body.innerHTML = '';vi.unstubAllGlobals();localStorage.clear();
 });
-async function setup() {
+async function setup({ seed = '' } = {}) {
   const store = createStore({
     modules: {
       shell: {
@@ -33,7 +33,8 @@ async function setup() {
           open: false
         }),
         getters: {
-          jumpOpen: s => s.open
+          jumpOpen: s => s.open,
+          jumpSeed: () => seed
         },
         mutations: {
           open(s, v) {
@@ -118,6 +119,12 @@ describe('JumpPalette real grid', () => {
     document.querySelector('[data-jump-id="go:WorkflowsScreen"]').click();
     await flushPromises();
     expect(w.emitted('navigate')[0]).toEqual(['WorkflowsScreen', {}])
+  });
+  it('opens with the words One\'s sidebar handed over, already searching them', async () => {
+    await setup({ seed: 'research automation' });
+    expect(document.querySelector('input').value).toBe('research automation');
+    expect(document.querySelector('[data-jump-id="agent:a"]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-jump-id]')).toHaveLength(1)
   });
   it('search finds a resource by category and name', async () => {
     await setup();

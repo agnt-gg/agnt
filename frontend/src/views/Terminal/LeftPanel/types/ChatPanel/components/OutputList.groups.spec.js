@@ -17,7 +17,13 @@ describe('Groups view', () => {
   it('always shows Ungrouped, whether or not any group exists', () => {
     const section = src.match(/<div class="group-section ungrouped-section" v-if="([^"]+)">/);
     expect(section, 'the Ungrouped section is rendered').not.toBeNull();
-    expect(section[1]).toBe("viewMode === 'groups'");
+    expect(section[1]).toBe("listView === 'groups'");
+    // listView is the chosen view, except that a search in One's sidebar lists
+    // matches flat. Neither depends on whether any group exists.
+    const start = src.indexOf('const listView = computed(');
+    const listView = src.slice(start, src.indexOf(';', start));
+    expect(listView).toMatch(/viewMode\.value/);
+    expect(listView).not.toMatch(/groups\.value/);
   });
 
   it('pages the ungrouped list the same way with or without groups', () => {

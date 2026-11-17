@@ -170,9 +170,9 @@ test('One phone Recents show a running chat as working, with who is speaking @ci
   await expect(recent).toHaveClass(/unread/);
 });
 
-// The same promise on a desktop, where One shows Studio's own chat list
-// (OneShell one-chat-sidebar -> OutputList): a running chat shows the
-// streaming mark instead of the unread dot and says who is speaking.
+// The same promise on a desktop, where One's sidebar lists the chats with
+// Studio's own list (MkDrawer one-chat-sidebar -> OutputList): a running chat
+// shows the streaming mark instead of the unread dot and says who is speaking.
 test('One desktop chat list shows a running chat as working, with who is speaking @ci', async ({ appPage: page }) => {
   await page.setViewportSize({ width: 1440, height: 950 });
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); localStorage.setItem('uiMode', 'focused'); });

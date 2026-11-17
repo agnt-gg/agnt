@@ -91,9 +91,9 @@ for (const width of [1440, 900, 390]) {
     });
     expect(line.tops).toHaveLength(1);
     expect(line.width).toBeLessThanOrEqual(line.parentWidth);
-    // The chat keeps a usable column beside One's rail, drawer and chat list (it was 292px at 900px).
+    // The chat keeps a usable column beside One's rail and sidebar (it was 292px at 900px with two side columns).
     if (width > 800) expect(await page.locator('.one-main').evaluate(el => el.getBoundingClientRect().width), 'chat column').toBeGreaterThanOrEqual(480);
-    // A phone lists chats in One's drawer (FocusedSidebar's Recents); a desktop in Studio's chat list.
+    // A phone lists chats in One's drawer (FocusedSidebar's Recents); a desktop in the sidebar (Studio's chat list).
     const phone = width <= 800;
     if (phone) await page.getByRole('button', { name: 'Open chats', exact: true }).click();
     const recent = phone ? page.locator('.focused-recent').first() : page.locator('[data-testid="one-chat-sidebar"] .output-item', { hasText: 'A deliberately long' }).first();

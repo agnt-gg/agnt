@@ -148,7 +148,7 @@ function toggleGroup(id) {
 watch(open, async value => {
   if (value) {
     returnFocus = document.activeElement;
-    query.value = '';
+    query.value = store.getters['shell/jumpSeed'] || '';
     history.value=[];
     storeHits.value=[];storeUnavailable.value=false;
     loadCatalog();
