@@ -35,10 +35,11 @@ const MIN_TARGET_TOKENS = 500;
 /**
  * Forget the chunked-eviction watermark for this conversation.
  *
- * manageContext() forgets it on its own when the history fits the budget,
- * which a compressed history always should. The explicit reset is for the
- * case where it does not: the clamp `min(evictedUnits, units - 1)` would
- * then drop nearly the whole (already short) history on the next turn.
+ * manageContext() forgets a watermark that no longer matches the history it
+ * is given, as long as that history fits the budget, which a compressed
+ * history always should. The explicit reset is for the case where it does
+ * not: the clamp `min(evictedUnits, units - 1)` would then drop nearly the
+ * whole (already short) history on the next turn.
  */
 async function resetEvictionWatermark(conversationId, userId) {
   if (typeof conversationId !== 'string' || !conversationId) return;

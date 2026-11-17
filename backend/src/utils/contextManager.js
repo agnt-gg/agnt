@@ -570,36 +570,53 @@ function manageContext(messages, model, tools = [], provider = null, options = {
   // structural (roles + tool_calls, never content), and the conversation is
   // append-only, so the first N units are the same N units on every turn.
   //
-  // Reset rule: if the FULL array fits the budget outright, the watermark is
-  // forgotten. In normal append-only flow that never happens after a cut
-  // (history only grows), so there is no oscillation. It fires exactly when
-  // the budget grew (model switch — which changes cache namespace anyway) or
-  // the history shrank (edit/regenerate — which already breaks the cache),
-  // and restores full fidelity in both cases.
+  // Release rule. The budget is an estimate: it is divided by a calibration
+  // re-measured from every reply, so near the limit "the full history fits"
+  // can be true on one request and false on the next. Releasing on that alone
+  // lets the cut come and go, and each round trip re-writes the provider's
+  // cached prefix. So the watermark is released only when the full history
+  // fits the budget AND one of these holds:
+  //   - it also fits under the LOW-WATER mark, the size a cut itself leaves.
+  //     The budget must grow by 1 / LOW_WATER_FRACTION (a model switch) or
+  //     the history shrink that far, so this cannot alternate with a cut;
+  //   - the watermark leaves less than STALE_VIEW_FRACTION of what a cut
+  //     keeps. The count was recorded against a history that has since been
+  //     cut back (edit, regenerate, fork) and no longer describes this one.
+  // Otherwise the watermark holds, and the model sees at least
+  // STALE_VIEW_FRACTION of a cut's worth of history.
   const LOW_WATER_FRACTION = 0.7;
+  const STALE_VIEW_FRACTION = 0.5;
+  const lowWaterTokens = Math.floor(availableTokens * LOW_WATER_FRACTION);
   let evictedUnits = Math.max(0, Math.floor(Number(options.evictedUnits) || 0));
-  if (evictedUnits > 0 && currentTokens <= availableTokens) {
+  if (evictedUnits > 0 && currentTokens <= lowWaterTokens) {
     evictedUnits = 0;
   }
   if (evictedUnits > 0 || currentTokens > availableTokens) {
     const evictionSystemMessage = managedMessages.find((m) => m.role === 'system') || null;
+    const evictionSystemTokens = evictionSystemMessage ? estimateMessagesTokens([evictionSystemMessage]) : 0;
     const units = groupMessageUnits(managedMessages.filter((m) => m.role !== 'system'));
     // Clamp: the conversation may have been edited/truncated since the
     // watermark was recorded. Always keep at least the last unit.
     evictedUnits = Math.min(evictedUnits, Math.max(0, units.length - 1));
     if (evictedUnits > 0) {
-      managedMessages = [evictionSystemMessage, ...units.slice(evictedUnits).flat()].filter(Boolean);
-      currentTokens = estimateMessagesTokens(managedMessages);
+      const view = [evictionSystemMessage, ...units.slice(evictedUnits).flat()].filter(Boolean);
+      const viewTokens = estimateMessagesTokens(view);
+      const viewIsStale = viewTokens - evictionSystemTokens
+        < (lowWaterTokens - evictionSystemTokens) * STALE_VIEW_FRACTION;
+      if (viewIsStale && currentTokens <= availableTokens) {
+        evictedUnits = 0;
+      } else {
+        managedMessages = view;
+        currentTokens = viewTokens;
+      }
     }
     if (currentTokens > availableTokens && units.length > 1) {
       // Over budget even after replaying the watermark — cut to low-water.
-      const systemTokens = evictionSystemMessage ? estimateMessagesTokens([evictionSystemMessage]) : 0;
-      const target = Math.floor(availableTokens * LOW_WATER_FRACTION);
-      let keptTokens = systemTokens;
+      let keptTokens = evictionSystemTokens;
       let keepFrom = units.length;
       for (let i = units.length - 1; i >= 0; i--) {
         const unitTokens = estimateMessagesTokens(units[i]);
-        if (keptTokens + unitTokens > target && keepFrom < units.length) break;
+        if (keptTokens + unitTokens > lowWaterTokens && keepFrom < units.length) break;
         keepFrom = i;
         keptTokens += unitTokens;
       }
