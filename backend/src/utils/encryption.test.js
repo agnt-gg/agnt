@@ -33,7 +33,7 @@ let saved;
  * Load with a chosen key pair. Env wins in the resolver, so no disk is touched.
  *
  * `legacy: null` means "this install has no legacy key at all" — the state
- * after the key is removed in 0.6.9, and the state for anyone who overrides it
+ * after the key is removed in 0.6.10, and the state for anyone who overrides it
  * away. Deleting the environment variable NO LONGER produces that state, because
  * legacySecrets.js now ships a default, so the module is mocked instead.
  * Simulating it by clearing the env would silently test the shipped key
@@ -271,7 +271,7 @@ describe('a container that ran with the compose placeholder as ENCRYPTION_KEY', 
     expect(underPlaceholder).not.toBe('new-credential');
   });
 
-  it('is gone when the legacy keys are removed (0.6.9)', async () => {
+  it('is gone when the legacy keys are removed (0.6.10)', async () => {
     const { decrypt } = await load({ legacy: null });
     const row = CryptoJS.AES.encrypt('x', PLACEHOLDER).toString();
     let result;
@@ -331,7 +331,7 @@ describe('the SHIPPED default (nothing set in the environment at all)', () => {
   });
 });
 
-describe('with no legacy key at all (post-0.6.9, or overridden away)', () => {
+describe('with no legacy key at all (post-0.6.10, or overridden away)', () => {
   it('still encrypts and decrypts current data normally', async () => {
     const { encrypt, decrypt } = await load({ legacy: null });
 

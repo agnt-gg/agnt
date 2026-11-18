@@ -137,7 +137,7 @@ describe('guard 3 — no secret literal in source', () => {
     // app.asar, so writing it here adds no exposure — while omitting it would
     // silently destroy every user's stored credentials on upgrade. It is
     // decrypt-only, and legacySecrets.test.js fails the build once the version
-    // reaches 0.6.9 with it still present.
+    // reaches 0.6.10 with it still present.
     //
     // This is the ONLY entry in this list that guards real secret material.
     // Anything similar arriving later should be argued on its own merits, not
@@ -148,7 +148,7 @@ describe('guard 3 — no secret literal in source', () => {
     // api.agnt.gg mints tokens with. This backend has no `jwt.sign` outside
     // tests, so it can only verify a session by holding the issuer's key —
     // omitting it does not harden anything, it rejects every session on the
-    // machine. Removed in 0.6.9 by the /users/sync-token exchange.
+    // machine. Removed in 0.6.10 by the /users/sync-token exchange.
     ['utils/legacySecrets.js', 'SHARED_JWT_SECRET'],
   ];
 

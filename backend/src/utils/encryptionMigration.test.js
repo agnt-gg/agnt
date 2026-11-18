@@ -37,7 +37,7 @@ const asLegacy = (plaintext) => CryptoJS.AES.encrypt(plaintext, LEGACY_KEY).toSt
 
 /**
  * `legacy: null` means "no legacy key exists on this install" — the state after
- * the key is removed in 0.6.9. Clearing the environment variable no longer
+ * the key is removed in 0.6.10. Clearing the environment variable no longer
  * produces that state, because legacySecrets.js ships a default, so the module
  * is mocked instead.
  */
@@ -182,7 +182,7 @@ describe('migrateEncryptedColumns', () => {
     expect(second.reason).toBe('nothing-to-migrate');
   });
 
-  it('does nothing at all without a legacy key — the post-0.6.9 state', async () => {
+  it('does nothing at all without a legacy key — the post-0.6.10 state', async () => {
     const { migration } = await loadModules({ legacy: null });
 
     const summary = await migration.migrateEncryptedColumns(db);

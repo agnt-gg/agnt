@@ -66,7 +66,7 @@ function atLeast(version, target) {
   return true;
 }
 
-const REMOVE_BY = '0.6.9';
+const REMOVE_BY = '0.6.10';
 
 /**
  * A ciphertext produced ONCE by the real published key and frozen here.
@@ -437,10 +437,10 @@ describe(`SUNSET GATE: remove the legacy key by ${REMOVE_BY}`, () => {
   it('the gate is capable of firing (anti-vacuity)', () => {
     // A date-based gate that never triggers is indistinguishable from no gate.
     // Prove the comparison works in both directions.
-    expect(atLeast('0.6.9', REMOVE_BY)).toBe(true);
+    expect(atLeast('0.6.10', REMOVE_BY)).toBe(true);
     expect(atLeast('0.7.0', REMOVE_BY)).toBe(true);
     expect(atLeast('1.0.0', REMOVE_BY)).toBe(true);
-    expect(atLeast('0.6.8', REMOVE_BY)).toBe(false);
+    expect(atLeast('0.6.9', REMOVE_BY)).toBe(false);
     expect(atLeast('0.6.5', REMOVE_BY)).toBe(false);
   });
 

@@ -51,8 +51,8 @@
  * deleted outright. Adoption is measurable from the app_version reported to
  * /license/validate.
  *
- * REMOVE BY 0.6.9 — and that is not a deadline anyone has to remember.
- * legacySecrets.test.js FAILS THE BUILD once package.json reaches 0.6.9 with
+ * REMOVE BY 0.6.10 — and that is not a deadline anyone has to remember.
+ * legacySecrets.test.js FAILS THE BUILD once package.json reaches 0.6.10 with
  * this key still present. A deadline written only in prose is a deadline
  * discovered years later by someone reading an old diff.
  */
@@ -63,7 +63,7 @@
  * An empty string means "no legacy fallback": decryption of old rows fails
  * cleanly and the migration skips them, rather than corrupting anything. Every
  * consumer must treat '' as absent — which is also the state this module is
- * deliberately left in when the key is removed in 0.6.9.
+ * deliberately left in when the key is removed in 0.6.10.
  *
  * @type {string}
  */
@@ -96,7 +96,7 @@ export function hasLegacyKey() {
  * win. utils/encryption.js tries these keys for both.
  *
  * Decrypt-only. Never used to encrypt, never used to verify a token.
- * REMOVE BY 0.6.9 together with the key above; the sunset test covers both.
+ * REMOVE BY 0.6.10 together with the key above; the sunset test covers both.
  *
  * @type {readonly string[]}
  */
@@ -170,7 +170,7 @@ export function legacyEncryptionKeys() {
  * inside every shipped app.asar. Nobody gains access who did not already have
  * it.
  *
- * REMOVE BY 0.6.9, together with LEGACY_ENCRYPTION_KEY. The real fix is the
+ * REMOVE BY 0.6.10, together with LEGACY_ENCRYPTION_KEY. The real fix is the
  * `/users/sync-token` exchange, after which the client mints and verifies its
  * own local session token and stops needing the cloud's signing key at all.
  * legacySecrets.test.js fails the build if this is still here at that version.
