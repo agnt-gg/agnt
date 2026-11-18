@@ -1,6 +1,42 @@
 {
   "releases": [
     {
+      "version": "0.6.9",
+      "date": "November 18, 2026",
+      "title": "Agent Teams & Your Year in AGNT — AGNT v0.6.9",
+      "type": "patch",
+      "features": [
+        { "name": "[Team] Team leads: make one agent the team lead with standing rules, and a card an agent stops on goes to the lead before it comes to you", "status": "new" },
+        { "name": "[Team] An agent can stop a card for your decision, with its reason and up to three choices; answer with one or in your own words and it carries on", "status": "new" },
+        { "name": "[Team] Work limits: cap how many cards sit in In progress and Review, and agents queue new work in To do until there is room", "status": "new" },
+        { "name": "[Team] Every card says why it stopped or is waiting, how long it has been in its column, and whether it was accepted first time or sent back", "status": "new" },
+        { "name": "[Team] The Agents page shows each teamspace as a team: work in progress, results accepted first time, the cost per accepted card, and what every agent is doing", "status": "new" },
+        { "name": "Your year in AGNT: tap through your Year in review and share its summary card; it is in the top bar from December 1 to January 31, and under More any time", "status": "new" },
+        { "name": "A new Apps page: your connections, plugins, MCP servers, email and webhooks in searchable tables, with Connect, Reconnect and Test right in the list", "status": "new" },
+        { "name": "Every connection shows whether it works, who it is signed in as and what uses it, and an app that is not listed can be added with its API key", "status": "new" },
+        { "name": "Home opens with a status line: what has stopped on you, apps to reconnect, and how many agents are working", "status": "new" },
+        { "name": "Review agent results one after another with Approve, Send back and Skip, or the A, S and J keys", "status": "new" },
+        { "name": "Objectives: set a few, each with a target and where it stands; they sit above your goals board, and every goal says which one it serves", "status": "new" },
+        { "name": "Switch a monthly plan to yearly billing right in the app, with an optional code, and see the price before anything is charged", "status": "new" },
+        { "name": "When an update is ready, AGNT shows what is new in it before you restart", "status": "new" },
+        { "name": "One sidebar on every page: workspaces, New chat, the Main chat, My Space, Teamspaces and all your chats, with groups, drag and drop, and type to filter", "status": "updated" },
+        { "name": "Needs you lists cards an agent stopped on, routines whose last run failed and apps to reconnect, and Reconnect works right from Home", "status": "updated" },
+        { "name": "Learning: a recurring problem reads as one page, and a fix that worked can be tested on other tools with the same kind of failure", "status": "updated" },
+        { "name": "First run shows the free AGNT Flash credits that are already yours before you pick an AI", "status": "updated" },
+        { "name": "Plugins: For you shows things to try first, then the apps to connect", "status": "updated" },
+        { "name": "The Library shows Market picks under your own, so a short list has examples to add in place", "status": "updated" },
+        { "name": "[Team] Team Seats show the yearly seat price on plans billed yearly", "status": "updated" },
+        { "name": "A long chat keeps its context after you edit, fork or switch model, instead of sending only the last message", "status": "bug" },
+        { "name": "Long chats near the context limit keep their prompt cache from one reply to the next, so they cost less", "status": "bug" },
+        { "name": "Gemini chats with tools keep each result with its call, and no longer see a finished tool as cancelled", "status": "bug" },
+        { "name": "Plugin sign-ins connect from every screen, instead of failing with an HTTP 404 error", "status": "bug" },
+        { "name": "A new connection shows as connected straight away, and no longer disappears again", "status": "bug" },
+        { "name": "Billing shows your current plan right after you cancel, reactivate or change it, and renewal dates are written out in full", "status": "bug" },
+        { "name": "Chat menus stay inside the window, and chat titles line up on the left", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.8",
       "date": "November 7, 2026",
       "title": "AGNT One & Teamspaces — AGNT v0.6.8",
@@ -787,6 +823,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-08-08T12:00:00Z"
+    "lastUpdated": "2026-11-18T12:00:00Z"
   }
 }
