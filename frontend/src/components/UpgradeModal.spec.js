@@ -69,8 +69,8 @@ describe('UpgradeModal', () => {
   });
 
   it("an offer's presets and note reach the picker", () => {
-    const { wrapper } = mountModal({ props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' } });
-    expect(wrapper.findComponent(PlanPicker).props()).toMatchObject({ presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' });
+    const { wrapper } = mountModal({ props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'BLACKFRIDAY is applied at checkout.' } });
+    expect(wrapper.findComponent(PlanPicker).props()).toMatchObject({ presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'BLACKFRIDAY is applied at checkout.' });
   });
 
   it('a free user goes straight to checkout', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CURRENT_OFFER, offerApplies, offerDismissedKey, offerEndsOn, offerLive, offerTimeLeft } from './offer.js';
+import { CURRENT_OFFER, offerApplies, offerCodeForCheckout, offerDismissedKey, offerEndsOn, offerLive, offerTimeLeft } from './offer.js';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -16,6 +16,15 @@ describe('the running offer', () => {
     expect(offerLive(CURRENT_OFFER, CURRENT_OFFER.endsAt - 1)).toBe(true);
     expect(offerLive(CURRENT_OFFER, CURRENT_OFFER.endsAt)).toBe(false);
     expect(offerLive(null, 0)).toBe(false);
+  });
+
+  it('a new yearly checkout carries the code until the deadline; monthly never does', () => {
+    const before = CURRENT_OFFER.endsAt - 1;
+    expect(offerCodeForCheckout('yearly', before)).toBe('BLACKFRIDAY');
+    expect(offerCodeForCheckout('monthly', before)).toBeNull();
+    expect(offerCodeForCheckout(undefined, before)).toBeNull();
+    expect(offerCodeForCheckout('yearly', CURRENT_OFFER.endsAt)).toBeNull();
+    expect(offerCodeForCheckout('yearly', before, null)).toBeNull();
   });
 
   it.each([

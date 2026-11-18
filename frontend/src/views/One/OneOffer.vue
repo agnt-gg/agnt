@@ -8,6 +8,7 @@
     <div class="offer-body">
       {{ offer.body }}
       <button type="button" class="offer-code" :aria-label="`Copy code ${offer.code}`" @click="copyCode">{{ copied ? 'Copied' : offer.code }}</button>
+      {{ offer.afterCode }}
     </div>
     <div class="offer-time">Ends {{ endsOn }} &middot; {{ timeLeft }}</div>
     <button type="button" class="offer-cta" data-testid="one-offer-cta" @click="upgradeOpen = true">Get the deal</button>
@@ -40,8 +41,9 @@ const timeLeft = computed(() => offerTimeLeft(props.offer, props.now));
 const planType = computed(() => store.state.userAuth?.planType || 'free');
 // A plan billed monthly opens on itself: annual ticked, the code filled in.
 const suggest = computed(() => (planType.value === 'free' ? 'personal' : planType.value));
-// A new subscription takes the code on Stripe's checkout page, so say so there.
-const note = computed(() => (planType.value === 'free' ? `At checkout, enter ${props.offer.code}: ${props.offer.title}.` : ''));
+// A new yearly subscription carries the code to Stripe's checkout page
+// (userAuth createSubscription), so there is nothing to type.
+const note = computed(() => (planType.value === 'free' ? `${props.offer.code} is applied at checkout: ${props.offer.title}.` : ''));
 
 async function copyCode() {
   try {

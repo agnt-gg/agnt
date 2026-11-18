@@ -93,10 +93,10 @@ describe('PlanPicker', () => {
   });
 
   it("an offer's link opens a free account on annual billing, with a note saying where the code goes", async () => {
-    const w = mount(PlanPicker, { props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'At checkout, enter BLACKFRIDAY.' } });
+    const w = mount(PlanPicker, { props: { presetYearly: true, presetCode: 'BLACKFRIDAY', note: 'BLACKFRIDAY is applied at checkout.' } });
     expect(w.find('.interval input').element.checked).toBe(true);
     expect(w.find('.code').exists()).toBe(false);
-    expect(w.find('.note').text()).toBe('At checkout, enter BLACKFRIDAY.');
+    expect(w.find('.note').text()).toBe('BLACKFRIDAY is applied at checkout.');
     await cta(w).trigger('click');
     expect(w.emitted('choose')).toEqual([[{ planType: 'personal', interval: 'yearly' }]]);
   });

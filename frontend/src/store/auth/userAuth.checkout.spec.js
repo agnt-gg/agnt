@@ -54,6 +54,43 @@ describe('in-app upgrade (userAuth.createSubscription)', () => {
   });
 });
 
+describe('an offer\u2019s code on in-app checkouts', () => {
+  // Nov 16, 2026: during Black Friday, which ends Dec 1 07:59:59 UTC. Only Date is faked.
+  const DURING = Date.UTC(2026, 10, 16, 18, 0, 0);
+  const ENDS = Date.UTC(2026, 11, 1, 7, 59, 59);
+  const checkout = (args) => userAuth.actions.createSubscription({ commit: vi.fn(), state: { token: 'token-1' } }, { planType: 'personal', ...args });
+  const sent = () => post.mock.calls[0][1];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(DURING);
+    post.mockResolvedValue({ data: { sessionId: 'cs_live_a1B2c3D4e5F6g7H8i9J0', url: STRIPE } });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('a yearly checkout sends the code, so Stripe opens with it applied', async () => {
+    await checkout({ interval: 'yearly' });
+    expect(post.mock.calls[0][0]).toMatch(/\/users\/subscription\/create$/);
+    expect(sent()).toMatchObject({ planType: 'personal', interval: 'yearly', promoCode: 'BLACKFRIDAY' });
+  });
+
+  it('a monthly checkout sends no code', async () => {
+    await checkout({ interval: 'monthly' });
+    expect(sent()).not.toHaveProperty('promoCode');
+  });
+
+  it('a code the caller passes is sent as it is', async () => {
+    await checkout({ interval: 'yearly', promoCode: 'SOMETHINGELSE' });
+    expect(sent().promoCode).toBe('SOMETHINGELSE');
+  });
+
+  it('once the offer has ended, a yearly checkout sends no code', async () => {
+    vi.setSystemTime(ENDS);
+    await checkout({ interval: 'yearly' });
+    expect(sent()).not.toHaveProperty('promoCode');
+  });
+});
+
 describe('marketplace purchase (marketplace.purchaseItem)', () => {
   const store = () => createStore({ modules: { marketplace: { ...marketplace, namespaced: true, state: JSON.parse(JSON.stringify(marketplace.state)) } } });
   const respond = (body) => vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));

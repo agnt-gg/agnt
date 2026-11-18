@@ -21,7 +21,7 @@ describe('OneOffer: the corner card', () => {
     const w = mountCard('free', { planType: 'free' });
     expect(w.find('.offer-eyebrow').text()).toBe('Black Friday');
     expect(w.find('.offer-title').text()).toBe('12 months for the price of 6');
-    expect(w.find('.offer-body').text()).toContain('On yearly plans, with code');
+    expect(w.find('.offer-body').text()).toBe('On yearly plans. Code BLACKFRIDAY is applied for you.');
     expect(w.find('.offer-code').text()).toBe('BLACKFRIDAY');
     expect(w.find('.offer-time').text()).toBe('Ends Mon, Nov 30 \u00b7 14 days left');
     expect(w.attributes('aria-label')).toBe('Black Friday offer');
@@ -41,14 +41,14 @@ describe('OneOffer: the corner card', () => {
     expect(modal().props()).toMatchObject({ open: true, suggest: 'business', presetYearly: true, presetCode: 'BLACKFRIDAY', note: '' });
   });
 
-  it('a free account opens it on Pro with annual ticked, told to enter the code at checkout', async () => {
+  it('a free account opens it on Pro with annual ticked, told the code is applied at checkout', async () => {
     const w = mountCard('free', { planType: 'free' });
     await w.find('[data-testid="one-offer-cta"]').trigger('click');
     expect(w.findComponent({ name: 'UpgradeModal' }).props()).toMatchObject({
       open: true,
       suggest: 'personal',
       presetYearly: true,
-      note: 'At checkout, enter BLACKFRIDAY: 12 months for the price of 6.',
+      note: 'BLACKFRIDAY is applied at checkout: 12 months for the price of 6.',
     });
   });
 

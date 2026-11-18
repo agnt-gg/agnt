@@ -10,6 +10,7 @@ import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIde
 // `export { userFromJwt } from './jwt.js'` below re-exports the binding but does
 // NOT introduce it into this module's scope, and it is called internally.
 import { userFromJwt, expiryMsFromJwt } from './jwt.js';
+import { offerCodeForCheckout } from '@/views/One/offer.js';
 
 // All fetch* actions in this module are wrapped with `withFreshness` so the
 // second call within the per-action TTL is a no-op. Pass `{ forceRefresh: true }`
@@ -835,15 +836,18 @@ export default {
       // kind of answer that must never survive a change of account.
       identity: (ctx) => authSubject(ctx.state.token),
     }),
-    async createSubscription({ commit, state }, { planType, interval = 'yearly', pricingTier = 'discount', successUrl, cancelUrl }) {
+    async createSubscription({ commit, state }, { planType, interval = 'yearly', pricingTier = 'discount', successUrl, cancelUrl, promoCode }) {
       if (!state.token) {
         throw new Error('Authentication required');
       }
 
+      // Every new subscription starts here, so a yearly one during an offer
+      // carries the offer's code (offer.js) and Stripe opens with it applied.
+      const code = promoCode || offerCodeForCheckout(interval);
       try {
         const response = await axios.post(
           `${API_CONFIG.REMOTE_URL}/users/subscription/create`,
-          { planType, interval, pricingTier, successUrl, cancelUrl },
+          { planType, interval, pricingTier, successUrl, cancelUrl, ...(code ? { promoCode: code } : {}) },
           {
             headers: { Authorization: `Bearer ${state.token}` },
             withCredentials: true,

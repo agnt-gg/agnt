@@ -11,7 +11,9 @@ export const CURRENT_OFFER = Object.freeze({
   code: 'BLACKFRIDAY',
   eyebrow: 'Black Friday',
   title: '12 months for the price of 6',
-  body: 'On yearly plans, with code',
+  // The card reads: body, the code, afterCode.
+  body: 'On yearly plans. Code',
+  afterCode: 'is applied for you.',
   railLabel: 'Black Friday deal',
   // When the code expires in Stripe: Nov 30, 11:59 pm PT.
   endsAt: Date.UTC(2026, 11, 1, 7, 59, 59),
@@ -23,6 +25,15 @@ const HOUR = 3_600_000;
 /** True until the offer's code expires. */
 export function offerLive(offer, now) {
   return !!offer && now < offer.endsAt;
+}
+
+/**
+ * The code a new checkout carries: the running offer's, on a yearly plan,
+ * until it expires; otherwise none. Stripe then opens with the discount
+ * applied, and the server leaves the code off where it does not apply.
+ */
+export function offerCodeForCheckout(interval, now = Date.now(), offer = CURRENT_OFFER) {
+  return interval === 'yearly' && offerLive(offer, now) ? offer.code : null;
 }
 
 /**
