@@ -22,3 +22,11 @@ describe('saved-chat toolbar narrow-width layout', () => {
     expect(style).toMatch(/@container[^\{]*\(max-width:[^)]+\)[\s\S]*?\.new-chat-label\s*{[^}]*display:\s*none;/s);
   });
 });
+
+describe('chats in AGNT One\'s sidebar (variant="drawer")', () => {
+  it('starts a group\'s chats flush with the group header, not indented under its name', () => {
+    const rules = [...style.matchAll(/\.is-drawer \.group-items\s*{([^}]*)}/g)].map((m) => m[1]);
+    expect(rules.join('')).toMatch(/margin:\s*0;/);
+    for (const body of rules) expect(body).not.toMatch(/margin(-left)?:[^;]*[1-9]\d*px/);
+  });
+});

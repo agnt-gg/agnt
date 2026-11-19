@@ -2809,9 +2809,9 @@ body.dark .create-output-btn {
 .is-drawer .group-items {
   gap: 1px;
 }
-/* Under the group's name: past its 14px mark (dot or icon) and the 9px gap. */
+/* Flush under the group's header: no indent, and none of the panel's 4px top gap. */
 .is-drawer .group-items {
-  margin: 0 0 0 23px;
+  margin: 0;
 }
 .is-drawer .group-section {
   margin-bottom: 0;
