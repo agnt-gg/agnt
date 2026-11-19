@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getAvailableToolSchemas, executeTool } from '../services/orchestrator/tools.js';
+import { runToolCall, PARENT_RUN_HEADER } from '../services/orchestrator/codeToolCalls.js';
 import toolRegistry from '../services/orchestrator/toolRegistry.js';
 import ToolRegistry from '../tools/ToolRegistry.js';
 import PluginManager from '../plugins/PluginManager.js';
@@ -240,6 +241,8 @@ router.get('/plugins-only', authenticateToken, async (req, res) => {
  * executeTool() in orchestrator/tools.js).
  *
  * Body: { args: { ... } }    // tool parameters; defaults to {}
+ * Header X-AGNT-Parent-Execution (optional): the run whose script made the
+ * call (agnt.tool() in execute_javascript_code); the call is recorded there.
  *
  * Tool name accepts both `kebab-case` and `snake_case` — registry/plugin
  * tools are looked up with `_` normalised to `-` internally.
@@ -261,14 +264,13 @@ router.post('/:toolName/execute', authenticateToken, async (req, res) => {
   const authToken = req.headers['authorization'] || null;
 
   try {
-    const raw = await executeTool(toolName, args, authToken, { userId: req.user.id });
-
-    let parsed;
-    try {
-      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch {
-      parsed = raw;
-    }
+    const parsed = await runToolCall({
+      toolName,
+      args,
+      userId: req.user.id,
+      parentExecutionId: req.get(PARENT_RUN_HEADER) || null,
+      run: (runId) => executeTool(toolName, args, authToken, runId ? { userId: req.user.id, executionId: runId } : { userId: req.user.id }),
+    });
 
     if (parsed && typeof parsed === 'object' && parsed.success === false) {
       return res.json({ success: false, tool: toolName, error: parsed.error || 'Tool execution failed', details: parsed });

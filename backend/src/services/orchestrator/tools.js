@@ -18,6 +18,7 @@ import scrapeUtil from '../../utils/webScrape.js';
 import { SCRAPE_FORMATS } from '../scrape/localScrape.js';
 import { youtubeTranscriptHint } from '../scrape/youtubeTranscriptHint.js';
 import toolRegistry from './toolRegistry.js';
+import { CODE_TOOL_HELPER, agntApiBase } from './codeToolHelper.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
 import { ASYNC_TOOL_PARAMS, isAsyncCapableSchema } from './asyncToolParams.js';
@@ -318,14 +319,14 @@ export const TOOLS = {
       function: {
         name: 'execute_javascript_code',
         description:
-          'Executes JavaScript code in Node.js (NOT a browser — no localStorage/document/window). Code is auto-wrapped in async IIFE so top-level await works. Use console.log() for output (return does nothing). For AGNT API calls: define a fetchJSON helper using process.env.AGNT_AUTH_TOKEN (auto-provided) as Bearer token, then call it. Pattern: `async function fetchJSON(ep, opts={}) { const r = await fetch("http://localhost:' + (process.env.PORT || 3333) + '/api"+ep, {...opts, headers:{"Authorization":"Bearer "+process.env.AGNT_AUTH_TOKEN,"Content-Type":"application/json",...opts.headers}}); return r.json(); } const data = await fetchJSON("/agents/"); console.log(JSON.stringify(data,null,2));`',
+          'Executes JavaScript code in Node.js (NOT a browser — no localStorage/document/window). Code is auto-wrapped in async IIFE so top-level await works. Use console.log() for output (return does nothing). Call any AGNT tool from the code with `await agnt.tool(name, args)`: it returns the tool\'s result and throws if the tool fails. Use it to make many calls in one step (loops, Promise.all fan-out, filtering a large result) and print only what you need. For other AGNT API calls: define a fetchJSON helper using process.env.AGNT_AUTH_TOKEN (auto-provided) as Bearer token, then call it. Pattern: `async function fetchJSON(ep, opts={}) { const r = await fetch("http://localhost:' + (process.env.PORT || 3333) + '/api"+ep, {...opts, headers:{"Authorization":"Bearer "+process.env.AGNT_AUTH_TOKEN,"Content-Type":"application/json",...opts.headers}}); return r.json(); } const data = await fetchJSON("/agents/"); console.log(JSON.stringify(data,null,2));`',
         parameters: {
           type: 'object',
           properties: {
             code: {
               type: 'string',
               description:
-                "JavaScript code to execute in Node.js. Top-level await works. Use console.log() for output. For AGNT API calls, always define a fetchJSON() helper with process.env.AGNT_AUTH_TOKEN as Bearer token — never use localStorage (doesn't exist in Node.js).",
+                "JavaScript code to execute in Node.js. Top-level await works. Use console.log() for output. Call AGNT tools with await agnt.tool(name, args). For other AGNT API calls, define a fetchJSON() helper with process.env.AGNT_AUTH_TOKEN as Bearer token — never use localStorage (doesn't exist in Node.js).",
             },
             timeoutSeconds: {
               type: 'number',
@@ -336,13 +337,19 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ code: codeString, timeoutSeconds }, authToken) => {
+    execute: async ({ code: codeString, timeoutSeconds }, authToken, context) => {
       if (!codeString || typeof codeString !== 'string') {
         return JSON.stringify({ success: false, error: 'Invalid code provided. Code must be a non-empty string.' });
       }
+      const abortSignal = context?.abortSignal;
+      if (abortSignal?.aborted) {
+        return JSON.stringify({ success: false, cancelled: true, error: 'Not run: the run was stopped.' });
+      }
       console.log(`Tool call: executeJavaScriptCode with code: \n${codeString}`);
 
-      const wrappedCode = `(async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
+      // The helper shares the wrapper's first line, so the script's own line
+      // numbers are the same as without it.
+      const wrappedCode = `${CODE_TOOL_HELPER} (async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
 
       // Restore user tool paths (Homebrew, ~/.local/bin, version managers) —
       // GUI-launched servers on macOS inherit a minimal PATH. No-op on Windows.
@@ -354,6 +361,9 @@ export const TOOLS = {
         }
         env.AGNT_AUTH_TOKEN = token;
       }
+      env.AGNT_API_BASE = agntApiBase();
+      if (typeof context?.executionId === 'string' && context.executionId) env.AGNT_PARENT_EXECUTION_ID = context.executionId;
+      else delete env.AGNT_PARENT_EXECUTION_ID;
 
       // Resolve workspace path for NODE_PATH (cached import)
       let workspaceCwd;
@@ -385,6 +395,15 @@ export const TOOLS = {
         let stdout = '';
         let stderr = '';
 
+        // Stop ends the script, and with it any agnt.tool() calls it would still make.
+        let cancelled = false;
+        const onAbort = () => {
+          cancelled = true;
+          nodeProcess.kill();
+        };
+        abortSignal?.addEventListener('abort', onAbort, { once: true });
+        if (abortSignal?.aborted) onAbort(); // stopped while the workspace path was resolving
+
         nodeProcess.stdout.on('data', (data) => {
           stdout += data.toString();
         });
@@ -394,7 +413,10 @@ export const TOOLS = {
         });
 
         nodeProcess.on('close', (code, signal) => {
-          if (code === 0) {
+          abortSignal?.removeEventListener('abort', onAbort);
+          if (cancelled) {
+            resolve(JSON.stringify({ success: false, cancelled: true, stdout: stdout.trim(), stderr: 'Stopped: the run was stopped.' + (stderr.trim() ? ' ' + stderr.trim() : '') }));
+          } else if (code === 0) {
             resolve(JSON.stringify({ success: true, stdout: stdout.trim(), stderr: stderr.trim() }));
           } else if (code === null) {
             resolve(JSON.stringify({ success: false, timedOut: signal === 'SIGTERM', stdout: stdout.trim(), stderr: (signal === 'SIGTERM' ? `Stopped after ${limitSeconds}s: the script ran past its time limit. Pass timeoutSeconds (up to 600) for longer scripts.` : `Stopped by signal ${signal}.`) + (stderr.trim() ? ' ' + stderr.trim() : '') }));
@@ -404,6 +426,7 @@ export const TOOLS = {
         });
 
         nodeProcess.on('error', (err) => {
+          abortSignal?.removeEventListener('abort', onAbort);
           console.error('Failed to start subprocess for code execution:', err);
           resolve(JSON.stringify({ success: false, error: `Failed to start subprocess: ${err.message}` }));
         });
