@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { reactive, nextTick } from 'vue';
 import GoalDetail from './GoalDetail.vue';
 import GoalDetailEvidence from './GoalDetailEvidence.vue';
-import { briefText, goalResultText, taskOutputText, OUTPUT_LIMIT } from '../goalDetailModel.js';
+import { briefText, goalResultText, goalReviewItems, goalStopReason, taskNeedsAttention, taskOutputText, taskPreview, OUTPUT_LIMIT } from '../goalDetailModel.js';
 
 const REPORT = 'C:/work/weekly/report.md';
 const htmlFile = 'C:/work/site/index.html';
@@ -27,12 +27,11 @@ describe('goal detail actions and lifecycle', () => {
     expect(store.dispatch).toHaveBeenCalledWith('goals/fetchGoalTasks', 'g1');
     wrapper.unmount();
   });
-  it('opens full task work on demand without navigating', async () => {
+  it('opens a finished task\'s full work on demand without navigating', async () => {
     const wrapper = mountGoal(); await flushPromises();
-    expect(wrapper.find('.gd-rendered').exists()).toBe(false);
-    await openDetails(wrapper.find('.gd-tasks'));
+    expect(wrapper.find('.gd-task-work').exists()).toBe(false);
     await openDetails(wrapper.find('.gd-task'));
-    expect(wrapper.find('.gd-rendered').text()).toContain('Work completed.');
+    expect(wrapper.find('.gd-task-work .gd-rendered').text()).toContain('Work completed.');
     wrapper.unmount();
   });
   it('previews HTML through the existing inspector and closes back to the same goal', async () => {
@@ -91,14 +90,15 @@ describe('goal detail actions and lifecycle', () => {
     await wrapper.setProps({ goalId: 'g2' }); await flushPromises();
     rejectOld(Error('Old failure')); await flushPromises();
     expect(wrapper.text()).not.toContain('Old failure');
-    await openDetails(wrapper.find('.gd-tasks'));
+    await openDetails(wrapper.find('.gd-task'));
     await button(wrapper, 'Request changes').trigger('click');
     await wrapper.find('textarea').setValue('Old feedback');
     await wrapper.find('.gd-file').trigger('click');
     await wrapper.setProps({ goalId: 'g1' }); await flushPromises();
     expect(wrapper.find('.inline-inspector').exists()).toBe(false);
     expect(wrapper.find('textarea').exists()).toBe(false);
-    expect(wrapper.find('.gd-tasks').element.open).toBe(false);
+    expect(wrapper.find('.gd-task').element.open).toBe(false);
+    expect(wrapper.find('.gd-task-work').exists()).toBe(false);
     wrapper.unmount();
   });
   it('does not publish an old mutation notice after a goal switch', async () => {
@@ -132,26 +132,112 @@ describe('concise evidence boundaries', () => {
     expect(briefText('# Heading\n**Read** [the report](file:///work/a.md)')).toBe('Heading Read the report');
     expect(taskOutputText({ content: [{ type: 'thinking', thinking: 'private' }, { type: 'text', text: 'answer' }, { type: 'tool_use', name: 'test' }] })).toBe('answer');
     expect(taskOutputText('x'.repeat(500000))).toHaveLength(OUTPUT_LIMIT);
+    // A long tool-heavy task: the answer, not the raw JSON it is stored in.
+    const huge = JSON.stringify({ content: 'All checks pass.\n\n## Summary "quoted"', toolExecutions: [{ response: 'y'.repeat(260000) }] });
+    expect(taskOutputText(huge)).toBe('All checks pass.\n\n## Summary "quoted"');
+    expect(taskPreview({ output: huge })).toBe('All checks pass. Summary "quoted"');
     expect(goalResultText([{ status: 'completed', output: 'First' }, { status: 'failed', output: 'Do not call this the result' }])).toBe('First');
     expect(goalResultText([{ status: 'completed', output: 'First' }, { status: 'completed', output: 'Latest' }])).toBe('Latest');
     expect(goalResultText([])).toBe('');
   });
-  it('sanitises hostile task HTML and never renders summary text as HTML', async () => {
+  it('says why a goal waits on review only while it does, from its own record', () => {
+    expect(goalStopReason({ status: 'validated', loop_status: 'max_iterations' })).toBe('');
+    expect(goalStopReason({ status: 'executing' })).toBe('');
+    expect(goalStopReason({ status: 'needs_review', loop_status: 'max_iterations' })).toBe('This goal used all its attempts without passing its automatic review.');
+    expect(goalStopReason({ status: 'needs_review', loop_status: 'stuck' })).toBe('This goal stopped because each new plan repeated the last one.');
+    expect(goalStopReason({ status: 'needs_review', loop_status: 'stopped' })).toContain('without passing its automatic review');
+    expect(goalStopReason({ status: 'failed', loop_status: 'error' })).toBe('This goal stopped on an error.');
+    expect(goalStopReason({ status: 'stopped' })).toBe('This goal was stopped before it finished.');
+  });
+  it('lists asks first, then failures not already asked about, and nothing for an approved goal', () => {
+    const tasks = [{ id: 'a', title: 'Asked', status: 'failed', error: 'Needs from you: x' }, { id: 'b', title: 'Broke', status: 'failed', error: null }, { id: 'c', title: 'Fine', status: 'completed' }];
+    const goal = { status: 'needs_review', world_state: { needsInput: [{ taskId: 'a', title: 'Asked', what: 'A token' }] } };
+    expect(goalReviewItems(goal, tasks)).toEqual([
+      { key: 'ask:a', kind: 'ask', title: 'Asked', text: 'A token' },
+      { key: 'failed:b', kind: 'failed', title: 'Broke', text: 'It failed without a recorded reason.' },
+    ]);
+    expect(goalReviewItems({ ...goal, status: 'validated' }, tasks)).toEqual([]);
+    expect(taskNeedsAttention({ status: 'pending', error: 'leftover' })).toBe(true);
+    expect(taskNeedsAttention({ status: 'completed' })).toBe(false);
+    expect(taskPreview({ output: JSON.stringify({ content: '# Done\n**All** good' }), description: 'plan' })).toBe('Done All good');
+    expect(taskPreview({ status: 'pending', description: 'Find the stories' })).toBe('Find the stories');
+  });
+  it('sanitises hostile task HTML in the result and in the task, and never renders a preview as HTML', async () => {
     state.goals[0].tasks[0].output = '<img src=x onerror="alert(1)"><script>alert(2)</script><iframe src="https://example.com"></iframe>Output';
     const wrapper = mountGoal(); await flushPromises();
-    expect(wrapper.find('.gd-result-summary img').exists()).toBe(false);
-    await openDetails(wrapper.find('.gd-tasks')); await openDetails(wrapper.find('.gd-task'));
-    expect(wrapper.find('.gd-rendered').html()).not.toContain('onerror');
-    expect(wrapper.find('.gd-rendered script').exists()).toBe(false);
-    expect(wrapper.find('.gd-rendered iframe').exists()).toBe(false); wrapper.unmount();
+    expect(wrapper.find('.gd-task-preview img').exists()).toBe(false);
+    await openDetails(wrapper.find('.gd-task'));
+    const rendered = wrapper.findAll('.gd-rendered');
+    expect(rendered).toHaveLength(2);
+    for (const block of rendered) {
+      expect(block.html()).not.toContain('onerror');
+      expect(block.find('script').exists()).toBe(false);
+      expect(block.find('iframe').exists()).toBe(false);
+    }
+    wrapper.unmount();
   });
   it('does not invent a successful result for empty, failed or running goals', async () => {
     const wrapper = mount(GoalDetailEvidence, { props: { goal: { id: 'g1', status: 'planning' }, tasks: [] } });
     expect(wrapper.find('.gd-result-summary').text()).toBe('No result yet.');
     await wrapper.setProps({ goal: { id: 'g1', status: 'failed' } });
-    expect(wrapper.find('.gd-result-summary').text()).toContain('Execution failed.');
+    expect(wrapper.find('.gd-attention-reason').text()).toBe('This goal stopped on an error.');
+    expect(wrapper.find('.gd-result-summary').exists()).toBe(false);
     await wrapper.setProps({ goal: { id: 'g1', status: 'executing' }, tasks: [{ title: 'Compare products', status: 'running' }] });
     expect(wrapper.find('.gd-result-summary').text()).toBe('Working on: Compare products'); wrapper.unmount();
+  });
+  it('shows what the goal needs from the reviewer first, and opens the task it concerns', async () => {
+    const ask = { taskId: 't1', title: 'Pull analytics', what: 'Sign in with an analytics-admin account', why: 'agnt.gg answered 401' };
+    state.goals = [{ ...makeGoal(), loop_status: 'needs_input', world_state: { needsInput: [ask] },
+      tasks: [{ id: 't1', title: 'Pull analytics', status: 'failed', error: 'Needs from you: Sign in with an analytics-admin account', output: null }] }];
+    const wrapper = mountGoal(); await flushPromises();
+    const attention = wrapper.find('.gd-attention');
+    expect(attention.find('.gd-attention-reason').text()).toBe('This goal is waiting for something only you can provide.');
+    // Nothing contradicts the ask: no 'No result yet.' under it.
+    expect(wrapper.find('.gd-result-summary').exists()).toBe(false);
+    expect(attention.find('li.ask').text()).toContain('Needs from you: Pull analytics');
+    expect(attention.find('li.ask').text()).toContain('Sign in with an analytics-admin account Why: agnt.gg answered 401');
+    expect(wrapper.find('.gd-task').element.open).toBe(true);
+    expect(wrapper.find('.gd-task-work .gd-error').text()).toContain('Sign in with an analytics-admin account');
+    wrapper.unmount();
+  });
+  it('leads an opened task with its error and output, its instructions rendered behind a toggle', async () => {
+    state.goals = [{ ...makeGoal(), status: 'needs_review', loop_status: 'max_iterations', tasks: [
+      { id: 't1', title: 'Send the digest', status: 'failed', description: '**Method:** format the stories, then send.', error: 'Did not pass review (CRITERIA_UNMET): No email was sent.', output: JSON.stringify({ content: 'Drafted, not sent.' }) },
+    ] }];
+    const wrapper = mountGoal(); await flushPromises();
+    const work = wrapper.find('.gd-task-work');
+    const order = work.element.children;
+    expect(order[0].classList.contains('gd-error')).toBe(true);
+    expect(order[1].textContent).toContain('Drafted, not sent.');
+    const instructions = work.find('details.gd-task-instructions');
+    expect(instructions.element.open).toBe(false);
+    expect(instructions.find('strong').text()).toBe('Method:');
+    expect(work.text()).not.toContain('No output yet.');
+    wrapper.unmount();
+  });
+  it('lists each failed task with its reason, open, while finished tasks stay one line', async () => {
+    state.goals = [{ ...makeGoal(), status: 'needs_review', loop_status: 'max_iterations', max_iterations: 50, tasks: [
+      { id: 't1', title: 'Search the news', status: 'completed', output: JSON.stringify({ content: 'Found 15 stories.' }) },
+      { id: 't2', title: 'Send the digest', status: 'failed', error: 'Did not pass review (TASK_SCORE_REJECTED): No email was sent.', output: null },
+    ] }];
+    const wrapper = mountGoal(); await flushPromises();
+    expect(wrapper.find('.gd-attention-reason').text()).toBe('This goal used all 50 attempts without passing its automatic review.');
+    expect(wrapper.find('li.failed strong').text()).toBe('Failed: Send the digest');
+    expect(wrapper.find('li.failed p').text()).toBe('Did not pass review: No email was sent.');
+    const [done, failed] = wrapper.findAll('.gd-task');
+    expect(done.element.open).toBe(false);
+    expect(done.find('.gd-task-preview').text()).toBe('Found 15 stories.');
+    expect(failed.element.open).toBe(true);
+    expect(failed.classes()).toContain('attention');
+    wrapper.unmount();
+  });
+  it('shows a plan\'s tasks with what each will do, and no review notice', async () => {
+    state.goals = [{ ...makeGoal(), status: 'needs_review', current_iteration: 0, tasks: [{ id: 't1', title: 'Search the news', status: 'pending', description: 'Run several searches for AI news from the last 7 days.' }] }];
+    const wrapper = mountGoal(); await flushPromises();
+    expect(wrapper.find('.gd-attention').exists()).toBe(false);
+    expect(wrapper.find('.gd-result-summary').text()).toBe('The plan is ready. Review the tasks below.');
+    expect(wrapper.find('.gd-task-preview').text()).toBe('Run several searches for AI news from the last 7 days.');
+    wrapper.unmount();
   });
   it('keeps overflow files collapsed and includes files linked in answers', async () => {
     const tasks = [{ status: 'completed', output: { content: 'Files: file:///C:/work/answer.md', toolExecutions: Array.from({ length: 5 }, (_, index) => ({ name: 'write_file', arguments: { path: 'C:/work/file' + index + '.md' } })) } }];

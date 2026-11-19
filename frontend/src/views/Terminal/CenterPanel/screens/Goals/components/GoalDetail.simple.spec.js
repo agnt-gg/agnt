@@ -19,11 +19,13 @@ function button(wrapper, text) { const found = wrapper.findAll('button').find(bu
 beforeEach(() => { state.goals = [makeGoal()]; store.dispatch.mockReset().mockResolvedValue({}); getFile.mockClear(); });
 
 describe('approved simple Studio goal detail', () => {
-  it('shows one result and collapsed tasks, with no tabs, score dashboard, metadata cards, or eager report read', async () => {
+  it('shows the result and every task without a click, with no tabs, score dashboard, metadata cards, or eager report read', async () => {
     const wrapper = mountGoal(); await flushPromises();
     expect(wrapper.findAll('[role="tab"], [role="tablist"], .gd-score, .gd-meta, .gd-verdict')).toHaveLength(0);
-    expect(wrapper.find('.gd-result-summary').text()).toBe('The comparison and recommendation are ready.');
-    expect(wrapper.find('.gd-tasks').element.open).toBe(false);
+    expect(wrapper.find('.gd-result-body').text()).toBe('The comparison and recommendation are ready.');
+    expect(wrapper.find('details.gd-tasks').exists()).toBe(false);
+    expect(wrapper.find('.gd-task .gd-task-title').text()).toContain('Write recommendation');
+    expect(wrapper.find('.gd-task-preview').text()).toBe('The comparison and recommendation are ready.');
     expect(wrapper.text()).toContain('1 of 1 complete');
     expect(wrapper.findAll('.gd-file')).toHaveLength(1);
     expect(getFile).not.toHaveBeenCalled();
