@@ -116,6 +116,36 @@ describe('the block describes interleaving, and shows it', () => {
   });
 });
 
+describe('a round carries every independent call, and nothing that depends on one', () => {
+  // Every round is a full model pass, so independent calls belong together.
+  // A round's tools run concurrently, so a call that needs another call's
+  // result cannot share its round.
+  const example = CRITICAL_TOOL_RESPONSE_RULES.slice(CRITICAL_TOOL_RESPONSE_RULES.indexOf('EXAMPLE'));
+  const rounds = example
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('['))
+    .map((l) => l.slice(1, -1).split('·').map((call) => call.trim()));
+
+  it('tells the model to batch independent calls rather than keep rounds small', () => {
+    expect(CRITICAL_TOOL_RESPONSE_RULES).toMatch(/every independent call the step needs goes out in the same round/);
+    expect(CRITICAL_TOOL_RESPONSE_RULES).toMatch(/only when it needs an earlier result/);
+    expect(CRITICAL_TOOL_RESPONSE_RULES).not.toMatch(/smallest batch/i);
+  });
+
+  it('the example opens with a batch of independent calls', () => {
+    expect(rounds[0].length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('the example never edits and verifies in the same round', () => {
+    for (const calls of rounds) {
+      const edits = calls.some((call) => /^edit\b/.test(call));
+      const runs = calls.some((call) => /^run\b/.test(call));
+      expect(edits && runs, `round [${calls.join(' · ')}]`).toBe(false);
+    }
+  });
+});
+
 describe('placement in the unified prompt', () => {
   it('is resident with no tools loaded, on every provider', async () => {
     for (const provider of ['anthropic', 'openai', 'claude-code', 'groq']) {

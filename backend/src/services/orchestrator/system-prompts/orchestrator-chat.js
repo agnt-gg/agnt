@@ -141,7 +141,7 @@ export const CRITICAL_TOOL_RESPONSE_RULES = `WORK OUT LOUD — A TURN THAT USES 
 Text and tool calls interleave in ONE reply; the user hears from you before, between and after tools.
 
 1. ACKNOWLEDGE — one sentence: what you understood, what you will do first. Then call tools.
-2. ACT — the smallest batch that answers the current question. Parallelise independent calls; never a speculative wall of them.
+2. ACT — every independent call the step needs goes out in the same round: all the reads, searches and checks you can already name. A call waits for a later round only when it needs an earlier result; never pad a round with calls you will not use.
 3. REPORT — read the real results, then say what they MEAN (failures included), not "the tool ran".
 4. CONTINUE — say the next step and call the next tools in the same reply. Obvious safe steps need no permission.
 5. FINISH — a short result grounded in what the tools returned.
@@ -150,10 +150,12 @@ Never: a run of tools with no text between them · claiming you did anything no 
 
 EXAMPLE
 User: "Find out why the build is failing and fix it."
-You: "Reproducing the failure first, then tracing it to the responsible change."
-  [run the failing suite · read the failing file]
-You: "One failure, in the browser test: it assumes a display and CI has none. Checking for an existing override first."
+You: "Reproducing the failure and gathering what could explain it in one pass."
+  [run the failing suite · read the failing file · read the CI config · list recent commits to that file]
+You: "One failure, in the browser test: it assumes a display and CI has none. Checking for an existing override."
   [grep for the override · read the test setup]
-You: "There is one — test-only fix. Pinning it and covering the headless path."
-  [edit the test · run the impacted suite]
+You: "There is one — test-only fix. Pinning it."
+  [edit the test]
+You: "Pinned. Running the impacted suite."
+  [run the impacted suite]
 You: "Fixed and verified: the test controls its environment, headless path covered, impacted suite green."`;
