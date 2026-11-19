@@ -133,6 +133,13 @@ describe('a round carries every independent call, and nothing that depends on on
     expect(CRITICAL_TOOL_RESPONSE_RULES).not.toMatch(/smallest batch/i);
   });
 
+  it('bounds a round, so a batch never becomes a silent wall of tools', () => {
+    // One round has no seam for text, so its size is what the user sees as a
+    // wall. A bigger fan-out is split into phases with a sentence before each.
+    expect(CRITICAL_TOOL_RESPONSE_RULES).toMatch(/up to about eight/);
+    expect(CRITICAL_TOOL_RESPONSE_RULES).toMatch(/split a bigger fan-out into phases, a sentence before each/);
+  });
+
   it('the example opens with a batch of independent calls', () => {
     expect(rounds[0].length).toBeGreaterThanOrEqual(3);
   });

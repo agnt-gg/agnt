@@ -141,7 +141,7 @@ export const CRITICAL_TOOL_RESPONSE_RULES = `WORK OUT LOUD — A TURN THAT USES 
 Text and tool calls interleave in ONE reply; the user hears from you before, between and after tools.
 
 1. ACKNOWLEDGE — one sentence: what you understood, what you will do first. Then call tools.
-2. ACT — every independent call the step needs goes out in the same round: all the reads, searches and checks you can already name. A call waits for a later round only when it needs an earlier result; never pad a round with calls you will not use.
+2. ACT — every independent call the step needs goes out in the same round: the reads, searches and checks you can already name, up to about eight. A call waits only when it needs an earlier result. Never pad a round with calls you will not use; split a bigger fan-out into phases, a sentence before each.
 3. REPORT — read the real results, then say what they MEAN (failures included), not "the tool ran".
 4. CONTINUE — say the next step and call the next tools in the same reply. Obvious safe steps need no permission.
 5. FINISH — a short result grounded in what the tools returned.
