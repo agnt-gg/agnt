@@ -20,6 +20,7 @@ import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
 import { buildTextRegisterSection } from './system-prompts/textRegister.js';
 import { loadConversationRoleSection, withoutMainChatOnlyTools } from './system-prompts/conversationRole.js';
 import { buildDeferredCatalog } from './deferredTools.js';
+import { createExpiringLoader } from '../../utils/expiringLoader.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
@@ -86,6 +87,21 @@ const MIN_FEATURED_SKILLS = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * The stats summarise FEATURED_SKILL_WINDOW_DAYS of runs, so a few minutes of
+ * staleness cannot change the featured tier, while the query behind them reads
+ * every tool call in that window. Every new conversation, agent run and
+ * workflow agent node asks for them, so one result per user is reused.
+ */
+const FEATURED_STATS_TTL_MS = 10 * 60 * 1000;
+const activationStatsByUser = createExpiringLoader({
+  ttlMs: FEATURED_STATS_TTL_MS,
+  load: async (userId) => {
+    const SkillModel = (await import('../../models/SkillModel.js')).default;
+    return SkillModel.activationStats(userId, new Date(Date.now() - FEATURED_SKILL_WINDOW_DAYS * DAY_MS).toISOString());
+  },
+});
+
+/**
  * Normalized names of the skills this user actually works with, or null for
  * "feature everything". The rest are listed by name only and are findable
  * with activate_skill search.
@@ -93,10 +109,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 async function loadFeaturedSkillKeys(userId, catalogEntries = []) {
   if (!userId) return null;
   try {
-    const SkillModel = (await import('../../models/SkillModel.js')).default;
     const { normalizeSkillKey, selectFeaturedSkills } = await import('../SkillService.js');
     const now = Date.now();
-    const stats = await SkillModel.activationStats(userId, new Date(now - FEATURED_SKILL_WINDOW_DAYS * DAY_MS).toISOString());
+    const stats = await activationStatsByUser.get(userId);
     const keys = selectFeaturedSkills(stats, {
       installed: catalogEntries.map((s) => normalizeSkillKey(s.name)),
       recentSince: new Date(now - FEATURED_RECENT_DAYS * DAY_MS).toISOString(),
