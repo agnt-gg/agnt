@@ -44,27 +44,28 @@ describe('create', () => {
   });
 });
 
-describe('ordering is by id, not iteration_number', () => {
+describe('ordering is by insertion (rowid), not iteration_number', () => {
   // Iteration numbers restart at 1 every run; a goal on a daily schedule has
-  // dozens of rows with iteration_number=1. Only id is chronologically correct.
-  it('findByGoalId orders by id ASC', async () => {
+  // dozens of rows with iteration_number=1. rowid is chronological on every
+  // schema (GoalIterationModel.schema.test.js covers the legacy one).
+  it('findByGoalId orders by rowid ASC', async () => {
     await GoalIterationModel.findByGoalId('g1');
     const [sql] = all.mock.calls[0];
-    expect(sql).toMatch(/ORDER BY id ASC/);
+    expect(sql).toMatch(/ORDER BY rowid ASC/);
     expect(sql).not.toMatch(/ORDER BY iteration_number/);
   });
 
-  it('getLatest takes the newest row by id', async () => {
+  it('getLatest takes the newest row', async () => {
     await GoalIterationModel.getLatest('g1');
     const [sql] = get.mock.calls[0];
-    expect(sql).toMatch(/ORDER BY id DESC LIMIT 1/);
+    expect(sql).toMatch(/ORDER BY rowid DESC LIMIT 1/);
   });
 
   it('findOne takes the most recent occurrence of a repeated iteration number', async () => {
     await GoalIterationModel.findOne('g1', 2);
     const [sql] = get.mock.calls[0];
     expect(sql).toMatch(/iteration_number = \?/);
-    expect(sql).toMatch(/ORDER BY id DESC LIMIT 1/);
+    expect(sql).toMatch(/ORDER BY rowid DESC LIMIT 1/);
   });
 });
 
@@ -86,8 +87,8 @@ describe('prune', () => {
     await GoalIterationModel.prune('g1');
     const [sql, params] = run.mock.calls[0];
     expect(sql).toMatch(/DELETE FROM goal_iterations/);
-    expect(sql).toMatch(/ORDER BY id DESC LIMIT \?/);           // recency window
-    expect(sql).toMatch(/ORDER BY evaluation_score DESC, id DESC LIMIT 1/); // best row protected
+    expect(sql).toMatch(/ORDER BY rowid DESC LIMIT \?/);           // recency window
+    expect(sql).toMatch(/ORDER BY evaluation_score DESC, rowid DESC LIMIT 1/); // best row protected
     expect(params).toEqual(['g1', 'g1', GoalIterationModel.RETAIN_PER_GOAL, 'g1']);
   });
 

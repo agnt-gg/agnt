@@ -19,6 +19,7 @@ vi.mock('../../models/GoalModel.js', () => ({
 }));
 vi.mock('../../models/TaskModel.js', () => ({
   default: {
+    recordPlan: vi.fn(async (goalId, loadRecorded) => { calls.push(['plan', goalId, typeof loadRecorded]); return 0; }),
     resetForNewRun: vi.fn(async (goalId) => { calls.push(['reset', goalId]); tasks = tasks.map((t) => ({ ...t, status: 'pending', started_at: null })); return tasks.length; }),
     findByGoalId: vi.fn(async () => tasks),
   },
@@ -43,14 +44,15 @@ beforeEach(() => {
 });
 
 describe('a scheduled run of a goal', () => {
-  it('resets the tasks first and starts the loop fresh, never resuming the last run', async () => {
+  it('records the task plans, resets the tasks to them and starts the loop fresh, never resuming the last run', async () => {
     const loop = vi.spyOn(TaskOrchestrator, 'executeGoalAutonomous').mockImplementation(async () => {
       calls.push(['loop']);
       tasks = tasks.map((t) => ({ ...t, status: 'completed', started_at: new Date().toISOString() }));
       return { goalId: 'g', status: 'completed' };
     });
     const result = await TaskOrchestrator.runScheduledGoal('g', 'u');
-    expect(calls.map((c) => c[0])).toEqual(['reset', 'loop']);
+    expect(calls.map((c) => c[0])).toEqual(['plan', 'reset', 'loop']);
+    expect(calls[0]).toEqual(['plan', 'g', 'function']);
     expect(loop).toHaveBeenCalledWith('g', 'u', { freshRun: true });
     expect(result).toEqual({ goalId: 'g', status: 'completed' });
     loop.mockRestore();

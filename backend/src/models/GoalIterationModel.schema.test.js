@@ -58,3 +58,59 @@ describe('iteration history on every schema', () => {
     expect(await recordAndRead()).toHaveLength(1);
   });
 });
+
+// The oldest goal_iterations tables have `id TEXT PRIMARY KEY`, which inserts
+// never fill: every id is NULL. Anything keyed on id silently did nothing
+// there — a daily goal kept every snapshot it ever took.
+const LEGACY_TEXT_ID_TABLE = `CREATE TABLE goal_iterations (
+  id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, iteration_number INTEGER NOT NULL, state TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`;
+
+for (const [schema, createSql] of [['current', () => createTable], ['legacy TEXT id', () => LEGACY_TEXT_ID_TABLE]]) {
+  describe(`iteration history keeps its order and its bound (${schema} schema)`, () => {
+    const record = (goalId, iteration, score, title) =>
+      GoalIterationModel.create(goalId, iteration, score, false, {}, [], 10, [{ id: 't1', title }]);
+
+    beforeEach(async () => {
+      await exec(createSql());
+      await migrate();
+    });
+
+    it('Given more runs than the window, Then prune keeps the newest window plus the best row', async () => {
+      await record('g', 1, 90, 'best, oldest');
+      for (let run = 2; run <= 30; run++) await record('g', 1, 10, `run ${run}`);
+      await record('other', 1, 10, 'another goal');
+
+      expect(await GoalIterationModel.prune('g', 5)).toBe(24);
+
+      const rows = await GoalIterationModel.findByGoalId('g');
+      expect(rows.map((row) => row.task_snapshot[0].title)).toEqual(['best, oldest', 'run 26', 'run 27', 'run 28', 'run 29', 'run 30']);
+      expect(rows.every((row) => row.id !== null)).toBe(true);
+      expect(await GoalIterationModel.findByGoalId('other')).toHaveLength(1);
+    });
+
+    it('Given repeated iteration numbers, Then the latest occurrence is the one found', async () => {
+      await record('g', 1, 10, 'monday');
+      await record('g', 2, 20, 'monday, second try');
+      await record('g', 1, 30, 'tuesday');
+      expect((await GoalIterationModel.findOne('g', 1)).task_snapshot[0].title).toBe('tuesday');
+      expect((await GoalIterationModel.getLatest('g')).task_snapshot[0].title).toBe('tuesday');
+    });
+
+    it('Given a recorded iteration, Then its re-plan is attached to that row', async () => {
+      const first = await record('g', 1, 10, 'first');
+      await record('g', 2, 20, 'second');
+      expect(await GoalIterationModel.setReplannedTasks(first, [{ id: 't1', title: 'first, re-planned' }])).toBe(1);
+      const [row] = await GoalIterationModel.findByGoalId('g');
+      expect(row.replanned_tasks).toEqual([{ id: 't1', title: 'first, re-planned' }]);
+    });
+
+    it('Given several runs, Then the earliest snapshot is the first one recorded', async () => {
+      expect(await GoalIterationModel.earliestTaskSnapshot('g')).toBeNull();
+      await GoalIterationModel.create('g', 1, 0, false, {}, [], 10, null);
+      await record('g', 1, 10, 'as planned');
+      await record('g', 2, 20, 'rewritten');
+      expect(await GoalIterationModel.earliestTaskSnapshot('g')).toEqual([{ id: 't1', title: 'as planned' }]);
+    });
+  });
+}

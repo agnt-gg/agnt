@@ -1,5 +1,13 @@
 import db from './database/index.js';
 
+// Rows are addressed by rowid, never by `id`. A database whose goal_iterations
+// table predates the INTEGER PRIMARY KEY schema has `id TEXT PRIMARY KEY`,
+// which the insert below never fills, so every row's id is NULL there:
+// ordering by it is arbitrary, `id NOT IN (...)` matches nothing (prune
+// deleted no row) and `WHERE id = ?` finds no row. rowid exists on both
+// schemas, grows with every insert, and IS `id` on the current schema.
+const SELECT_ROWS = 'SELECT rowid AS row_id, * FROM goal_iterations';
+
 class GoalIterationModel {
   // How many iteration records to keep per goal (newest first). The
   // best-scoring record is always kept in addition to this window, so
@@ -25,7 +33,7 @@ class GoalIterationModel {
         ],
         function (err) {
           if (err) reject(err);
-          else resolve(this.lastID);
+          else resolve(this.lastID); // the rowid on every schema
         }
       );
     });
@@ -35,11 +43,12 @@ class GoalIterationModel {
    * Attach the re-plan an iteration produced. The iteration row is written
    * when the work is graded, before re-planning rewrites the tasks, so the
    * graded state survives a pause or failure during the re-plan.
+   * @param {number} id  the value create() resolved with
    */
   static setReplannedTasks(id, replannedTasks) {
     return new Promise((resolve, reject) => {
       db.run(
-        `UPDATE goal_iterations SET replanned_tasks = ? WHERE id = ?`,
+        `UPDATE goal_iterations SET replanned_tasks = ? WHERE rowid = ?`,
         [JSON.stringify(replannedTasks || []), id],
         function (err) {
           if (err) reject(err);
@@ -52,10 +61,9 @@ class GoalIterationModel {
   static findByGoalId(goalId) {
     return new Promise((resolve, reject) => {
       db.all(
-        // Order by id, not iteration_number: a goal that re-runs (e.g. on a
-        // schedule) restarts numbering at 1 each run, so id is the only
-        // chronologically correct ordering.
-        `SELECT * FROM goal_iterations WHERE goal_id = ? ORDER BY id ASC`,
+        // Insertion order, not iteration_number: a goal that re-runs (e.g. on
+        // a schedule) restarts numbering at 1 each run.
+        `${SELECT_ROWS} WHERE goal_id = ? ORDER BY rowid ASC`,
         [goalId],
         (err, rows) => {
           if (err) reject(err);
@@ -71,7 +79,7 @@ class GoalIterationModel {
     return new Promise((resolve, reject) => {
       db.get(
         // Iteration numbers repeat across runs; take the most recent occurrence.
-        `SELECT * FROM goal_iterations WHERE goal_id = ? AND iteration_number = ? ORDER BY id DESC LIMIT 1`,
+        `${SELECT_ROWS} WHERE goal_id = ? AND iteration_number = ? ORDER BY rowid DESC LIMIT 1`,
         [goalId, iterationNumber],
         (err, row) => {
           if (err) reject(err);
@@ -84,11 +92,36 @@ class GoalIterationModel {
   static getLatest(goalId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT * FROM goal_iterations WHERE goal_id = ? ORDER BY id DESC LIMIT 1`,
+        `${SELECT_ROWS} WHERE goal_id = ? ORDER BY rowid DESC LIMIT 1`,
         [goalId],
         (err, row) => {
           if (err) reject(err);
           else resolve(row ? this._parseRow(row) : null);
+        }
+      );
+    });
+  }
+
+  /**
+   * The goal's tasks as the first recorded iteration found them, or null when
+   * nothing is on record. Snapshots are taken before re-planning, so the
+   * first one holds each task as it was planned.
+   * @returns {Promise<Array<object>|null>}
+   */
+  static earliestTaskSnapshot(goalId) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT task_snapshot FROM goal_iterations WHERE goal_id = ? AND task_snapshot IS NOT NULL ORDER BY rowid ASC LIMIT 1`,
+        [goalId],
+        (err, row) => {
+          if (err) return reject(err);
+          if (!row?.task_snapshot) return resolve(null);
+          try {
+            const snapshot = JSON.parse(row.task_snapshot);
+            resolve(Array.isArray(snapshot) ? snapshot : null);
+          } catch {
+            resolve(null);
+          }
         }
       );
     });
@@ -104,8 +137,8 @@ class GoalIterationModel {
       db.run(
         `DELETE FROM goal_iterations
          WHERE goal_id = ?
-           AND id NOT IN (SELECT id FROM goal_iterations WHERE goal_id = ? ORDER BY id DESC LIMIT ?)
-           AND id NOT IN (SELECT id FROM goal_iterations WHERE goal_id = ? ORDER BY evaluation_score DESC, id DESC LIMIT 1)`,
+           AND rowid NOT IN (SELECT rowid FROM goal_iterations WHERE goal_id = ? ORDER BY rowid DESC LIMIT ?)
+           AND rowid NOT IN (SELECT rowid FROM goal_iterations WHERE goal_id = ? ORDER BY evaluation_score DESC, rowid DESC LIMIT 1)`,
         [goalId, goalId, keep, goalId],
         function (err) {
           if (err) reject(err);
@@ -116,12 +149,14 @@ class GoalIterationModel {
   }
 
   static _parseRow(row) {
+    const { row_id: rowId, ...columns } = row;
     return {
-      ...row,
-      evaluation_passed: !!row.evaluation_passed,
-      world_state_snapshot: JSON.parse(row.world_state_snapshot || '{}'),
-      replanned_tasks: JSON.parse(row.replanned_tasks || '[]'),
-      task_snapshot: row.task_snapshot ? JSON.parse(row.task_snapshot) : null,
+      ...columns,
+      id: columns.id ?? rowId ?? null,
+      evaluation_passed: !!columns.evaluation_passed,
+      world_state_snapshot: JSON.parse(columns.world_state_snapshot || '{}'),
+      replanned_tasks: JSON.parse(columns.replanned_tasks || '[]'),
+      task_snapshot: columns.task_snapshot ? JSON.parse(columns.task_snapshot) : null,
     };
   }
 }

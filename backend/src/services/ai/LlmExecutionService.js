@@ -10,7 +10,9 @@ import { executeTool, getAvailableToolSchemas } from '../orchestrator/tools.js';
 import { getToolsForCategories } from '../orchestrator/toolSelector.js';
 import { manageContext } from '../../utils/contextManager.js';
 import { recordLlmCall } from '../execution/LedgerRecorder.js';
-import { raceWithAbort } from '../../utils/abortUtils.js';
+import { raceWithAbort, isCancellationError } from '../../utils/abortUtils.js';
+import { runWithFallback } from '../orchestrator/ProviderFallback.js';
+import { providerHealth } from './providerHealth.js';
 import {
   sanitizeOrphanToolCalls,
   sanitizeUnexpectedToolResults,
@@ -25,6 +27,22 @@ function recoveredFailure(response) {
   return response?.recoveredFromError === true
     ? { recoveredFromError: true, recoveredError: response.recoveredError || 'Provider error' }
     : {};
+}
+
+/**
+ * The tiers to try, in order: the caller's chain when it names any usable
+ * tier, else the one provider/model the caller named (no failover).
+ */
+function providerChainFor(chain, provider, model) {
+  const tiers = (Array.isArray(chain) ? chain : [])
+    .filter((tier) => tier && typeof tier.provider === 'string' && tier.provider.trim() && tier.model);
+  if (tiers.length === 0) return [{ provider, model, tier: 0, primary: true }];
+  return tiers.map((tier, index) => ({ provider: tier.provider, model: tier.model, tier: index, primary: index === 0 }));
+}
+
+/** Remove the tools any of these providers refuses, so every tier can take the list. */
+function toolsAcceptedBy(providers, schemas) {
+  return [].concat(providers).reduce((list, provider) => stripProviderIncompatibleTools(list, provider), schemas);
 }
 
 function isolateToolContext(context, toolSchemas) {
@@ -47,7 +65,7 @@ function isolateToolContext(context, toolSchemas) {
  * Keep the existing prefix stable; reuse the registry's category selection and
  * provider filter rather than maintaining another tool catalog here.
  */
-async function loadRequestedTools(context, toolSchemas, provider, userId) {
+async function loadRequestedTools(context, toolSchemas, providers, userId) {
   const pending = context._requestedToolCategories;
   if (currentTeamExecution()) return;
   if (!(pending instanceof Set) || pending.size === 0) return;
@@ -62,7 +80,7 @@ async function loadRequestedTools(context, toolSchemas, provider, userId) {
     : (context.enabledTools instanceof Set ? context.enabledTools : null);
   const candidates = getToolsForCategories(schemas, categories)
     .filter((schema) => !ceiling || ceiling.has(schema.function?.name));
-  const admitted = stripProviderIncompatibleTools(candidates, provider);
+  const admitted = toolsAcceptedBy(providers, candidates);
   const names = new Set(toolSchemas.map((schema) => schema.function.name));
   for (const schema of admitted) {
     const name = schema.function?.name;
@@ -222,6 +240,9 @@ class LlmExecutionService {
    * @param {Object} config.context - Additional context for tool execution
    * @param {number} config.maxToolRounds - Maximum tool execution rounds (default: 10)
    * @param {AbortSignal} config.signal - Optional abort signal for cooperative cancellation (goal pause/stop)
+   * @param {Array<{provider:string, model:string}>} [config.providerChain] - Tiers to try in order
+   *   when a call fails (ProviderFallback.runWithFallback). Once a tier answers, later calls in
+   *   this execution start from it. Omitted: provider/model only, no failover.
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithTools(config) {
@@ -260,20 +281,35 @@ class LlmExecutionService {
       return cachedResponse;
     }
 
-    // Create LLM client and adapter
-    const client = await createLlmClient(provider, userId);
-    const originalAdapter = await createLlmAdapter(provider, client, model);
-    // Instrument actual adapter requests without changing the shared adapter.
+    const chain = providerChainFor(config.providerChain, provider, model);
     const telemetry = config._executionTelemetry;
-    const adapter = new Proxy(originalAdapter, { get(target,key) {
-      if (key === 'call' || key === 'callStream') return async (...args) => {
-        telemetry.request(args[0],args[1]);
-        const response = await target[key](...args);
-        telemetry.usage(response?.usage);
-        return response;
-      };
-      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
-    }});
+    // One client+adapter per tier, built when the tier is first tried. The
+    // proxy instruments actual adapter requests without changing the shared
+    // adapter.
+    const tierRuntimes = new Map();
+    const runtimeFor = (tier) => {
+      if (!tierRuntimes.has(tier.tier)) {
+        tierRuntimes.set(tier.tier, (async () => {
+          const client = await createLlmClient(tier.provider, userId);
+          const originalAdapter = await createLlmAdapter(tier.provider, client, tier.model);
+          const adapter = new Proxy(originalAdapter, { get(target,key) {
+            if (key === 'call' || key === 'callStream') return async (...args) => {
+              telemetry.request(args[0],args[1]);
+              const response = await target[key](...args);
+              telemetry.usage(response?.usage);
+              return response;
+            };
+            const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+          }});
+          return { client, adapter };
+        })());
+      }
+      return tierRuntimes.get(tier.tier);
+    };
+    // The tier that answered last, and its adapter (which formats the tool
+    // results for the calls it made). Later calls start from this tier.
+    let serving = chain[0];
+    let servingAdapter = null;
 
     // Prepare messages
     let messages = JSON.parse(JSON.stringify(inputMessages));
@@ -295,21 +331,19 @@ class LlmExecutionService {
         uniqueToolMap.set(tool.function.name, tool);
       }
     }
-    // Withhold tools this provider refuses to accept. Applied BEFORE
-    // manageContext so the token budget is computed over the list that is
-    // actually sent.
+    // Withhold tools any provider in the chain refuses to accept, so a
+    // failover never sends one. Applied BEFORE manageContext so the token
+    // budget is computed over the list that is actually sent.
     //
     // These two methods serve the goal-task executor and the run_agent tool.
     // The rule lived in OrchestratorService and not here, so on Claude Code
     // every goal task came back as an API-error string while the chat beside
     // it worked — see services/orchestrator/providerToolCompat.js.
-    const finalToolSchemas = stripProviderIncompatibleTools(
-      Array.from(uniqueToolMap.values()),
-      provider
-    );
+    const chainProviders = [...new Set(chain.map((tier) => tier.provider))];
+    const finalToolSchemas = toolsAcceptedBy(chainProviders, Array.from(uniqueToolMap.values()));
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas, provider);
+    const contextResult = manageContext(messages, serving.model, finalToolSchemas, serving.provider);
     messages = contextResult.messages;
     // Guard every outbound history: strip orphan tool_use, unexpected
     // tool_result, and empty assistant turns before the provider sees it.
@@ -317,25 +351,72 @@ class LlmExecutionService {
     messages = sanitizeUnexpectedToolResults(messages);
     messages = sanitizeEmptyAssistantMessages(messages);
 
-    // Store client in context for tool execution
+    // Client, provider and model are the serving tier's, set before each call
+    // (tools read them from the context).
     const executionContext = {
       ...isolateToolContext(context, finalToolSchemas),
       computerImages: [],
-      llmClient: client,
+      llmClient: null,
       userId,
-      provider,
-      model,
+      provider: serving.provider,
+      model: serving.model,
       // PRD-051 identity mapping — goal/autonomous loops run as 'agent'
       role: context?.role || 'agent',
     };
 
     executionContext.abortSignal = signal || context.abortSignal;
 
+    // One model call across the chain, starting at the serving tier. A tier
+    // that fails (its adapter's error notice, or a throw) rolls to the next.
+    // Pause/stop is never a failure: it propagates as the error it was.
+    // When every tier threw, the last error is thrown, as a single tier's
+    // would be; otherwise the last adapter result (possibly an error notice)
+    // is the answer.
+    const callModel = async () => {
+      let cancellation = null;
+      let lastThrown = null;
+      let lastReturned = null;
+      const { result, tier } = await runWithFallback({
+        chain: chain.slice(chain.indexOf(serving)),
+        shouldStop: () => signal?.aborted === true,
+        health: providerHealth.forUser(userId),
+        onFallback: ({ from, to, reason, recoveredError }) => {
+          const why = String(recoveredError || '').replace(/\s+/g, ' ').slice(0, 300);
+          console.warn(`[LlmExecutionService] Provider failover: ${from.provider}/${from.model} → ${to.provider}/${to.model} (${reason}${why ? `: ${why}` : ''})`);
+        },
+        runOne: async (attempt) => {
+          try {
+            const runtime = await runtimeFor(attempt);
+            executionContext.llmClient = runtime.client;
+            executionContext.provider = attempt.provider;
+            executionContext.model = attempt.model;
+            const response = await raceWithAbort(() => runtime.adapter.call(messages, finalToolSchemas, executionContext), signal);
+            lastReturned = { response, attempt, runtime };
+            return response;
+          } catch (error) {
+            if (isCancellationError(error)) cancellation = error;
+            else lastThrown = error;
+            throw error;
+          }
+        },
+      });
+      if (cancellation) throw cancellation;
+      if (result?._threw && !lastReturned) throw lastThrown;
+      const answered = result?._threw ? lastReturned : { response: result, attempt: tier };
+      const runtime = await runtimeFor(answered.attempt);
+      serving = answered.attempt;
+      servingAdapter = runtime.adapter;
+      executionContext.llmClient = runtime.client;
+      executionContext.provider = serving.provider;
+      executionContext.model = serving.model;
+      return answered.response;
+    };
+
     // Track accumulated token usage across all LLM calls
     const accumulatedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
     // Initial LLM call (raced against abort so pause/stop unblocks immediately)
-    const initialResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
+    const initialResponse = await callModel();
     let { responseMessage, toolCalls, usage: initialUsage } = initialResponse;
     // Adapters that exhaust retries return an error notice as assistant text,
     // flagged recoveredFromError. Track the flag for the reply we end on.
@@ -422,13 +503,13 @@ class LlmExecutionService {
       });
 
       const toolResponses = await raceWithAbort(Promise.all(toolPromises), signal);
-      const formattedToolResponses = adapter.formatToolResults(toolResponses);
+      const formattedToolResponses = servingAdapter.formatToolResults(toolResponses);
       messages.push(...formattedToolResponses);
 
-      await raceWithAbort(() => loadRequestedTools(executionContext, finalToolSchemas, provider, userId), signal);
+      await raceWithAbort(() => loadRequestedTools(executionContext, finalToolSchemas, chainProviders, userId), signal);
 
       // Apply context management before next LLM call
-      const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
+      const loopContextResult = manageContext(messages, serving.model, finalToolSchemas, serving.provider);
       messages = loopContextResult.messages;
       // Guard every outbound history: strip orphan tool_use, unexpected
       // tool_result, and empty assistant turns before the provider sees it.
@@ -436,8 +517,8 @@ class LlmExecutionService {
       messages = sanitizeUnexpectedToolResults(messages);
       messages = sanitizeEmptyAssistantMessages(messages);
 
-      // Get next response (factory form: never fires if already aborted)
-      const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
+      // Get next response (raced against abort per attempt: never fires if already aborted)
+      const nextResponse = await callModel();
       recovered = recoveredFailure(nextResponse);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
@@ -465,10 +546,10 @@ class LlmExecutionService {
     // answer. Callers must be able to tell, and continue the work.
     const toolRoundsExhausted = Boolean(toolCalls && toolCalls.length > 0 && currentRound >= maxToolRounds);
 
-    // Calculate execution time and update metrics
+    // Calculate execution time and update metrics (attributed to the tier that answered)
     const executionTime = Date.now() - startTime;
     const actualTokens = accumulatedUsage.totalTokens || contextResult.managedTokens || 0;
-    this._updateMetrics(provider, model, executionTime, actualTokens, allToolExecutions.length);
+    this._updateMetrics(serving.provider, serving.model, executionTime, actualTokens, allToolExecutions.length);
 
     // PRD-122: persist what we just measured.
     //
@@ -485,8 +566,8 @@ class LlmExecutionService {
       origin: ledger?.origin || 'system',
       originId: ledger?.originId || null,
       conversationId: ledger?.conversationId || null,
-      provider,
-      model,
+      provider: serving.provider,
+      model: serving.model,
       usage: accumulatedUsage,
       durationMs: executionTime,
     });
@@ -495,6 +576,8 @@ class LlmExecutionService {
       responseMessage,
       content: finalContent,
       toolRoundsExhausted,
+      provider: serving.provider,
+      model: serving.model,
       toolExecutions: allToolExecutions,
       messages,
       metrics: {

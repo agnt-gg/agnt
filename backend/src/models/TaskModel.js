@@ -7,9 +7,9 @@ class TaskModel {
     const createdAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO tasks (id, goal_id, parent_task_id, title, description, required_tools, dependencies, order_index, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, goalId, parentTaskId, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt],
+        `INSERT INTO tasks (id, goal_id, parent_task_id, title, description, plan_title, plan_description, required_tools, dependencies, order_index, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, goalId, parentTaskId, title, description, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt],
         function (err) {
           if (err) reject(err);
           else resolve(id);
@@ -144,17 +144,68 @@ class TaskModel {
   }
 
   /**
+   * Record the plan of every task of the goal that has none yet: its
+   * definition in the recorded history when there is one (matched by id),
+   * else its current title and description. A recorded plan is never
+   * overwritten. The history is only loaded when a task needs it.
+   * @param {string} goalId
+   * @param {() => Promise<Array<{id:string,title:string,description?:string}>|null>} [loadRecorded]
+   * @returns {Promise<number>} tasks whose plan was recorded
+   */
+  static async recordPlan(goalId, loadRecorded = async () => null) {
+    const unplanned = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, title, description FROM tasks WHERE goal_id = ? AND plan_title IS NULL`,
+        [goalId],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+    if (unplanned.length === 0) return 0;
+
+    const recorded = new Map();
+    for (const entry of (await loadRecorded()) || []) {
+      if (entry && typeof entry.id === 'string' && typeof entry.title === 'string' && entry.title.trim()) {
+        recorded.set(entry.id, entry);
+      }
+    }
+
+    let count = 0;
+    for (const task of unplanned) {
+      const plan = recorded.get(task.id) || task;
+      count += await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE tasks SET plan_title = ?, plan_description = ? WHERE id = ? AND goal_id = ? AND plan_title IS NULL`,
+          [plan.title, plan.description ?? null, task.id, goalId],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      });
+    }
+    return count;
+  }
+
+  /**
    * Ready every task of a goal for a NEW run of it (a scheduled routine):
-   * back to pending with no progress, output, error or timestamps, keeping
-   * what each task is (title, description, tools, order, agent, workflow).
-   * A routine used to keep its first run's completed tasks, so every later
-   * run skipped them and re-graded day one's output (2026-10-21).
+   * back to its plan (title and description) and to pending with no
+   * progress, output, error or timestamps, keeping tools, order, agent and
+   * workflow. Re-planning rewrites a task's title and description within a
+   * run; starting from the plan keeps one run's rewrites out of the next.
+   * A task with no recorded plan keeps its definition, which becomes its plan.
    * @returns {Promise<number>} tasks reset
    */
   static resetForNewRun(goalId) {
     return new Promise((resolve, reject) => {
+      // Every right-hand side reads the row as it was before this UPDATE.
       db.run(
-        `UPDATE tasks SET status = 'pending', progress = 0, output = NULL, error = NULL, started_at = NULL, completed_at = NULL, updated_at = ? WHERE goal_id = ?`,
+        `UPDATE tasks SET
+           title = COALESCE(plan_title, title),
+           description = CASE WHEN plan_title IS NULL THEN description ELSE plan_description END,
+           plan_title = COALESCE(plan_title, title),
+           plan_description = CASE WHEN plan_title IS NULL THEN description ELSE plan_description END,
+           status = 'pending', progress = 0, output = NULL, error = NULL, started_at = NULL, completed_at = NULL, updated_at = ?
+         WHERE goal_id = ?`,
         [new Date().toISOString(), goalId],
         function (err) {
           if (err) reject(err);

@@ -480,16 +480,17 @@ class TaskOrchestrator {
 
       if (review.rejected) {
         const needsInput = review.code === 'NEEDS_INPUT' ? review.needsInput : null;
-        const reason = (needsInput ? review.feedback : `Did not pass review (${review.code}): ${review.feedback}`).slice(0, 2000);
+        const providerFailed = review.code === 'PROVIDER_ERROR';
+        const reason = (needsInput || providerFailed ? review.feedback : `Did not pass review (${review.code}): ${review.feedback}`).slice(0, 2000);
         const output = {
           content: result?.content,
           toolExecutions: result?.tool_executions || [],
-          outcome: needsInput ? 'needs_input' : 'incomplete',
+          outcome: needsInput ? 'needs_input' : providerFailed ? 'provider_error' : 'incomplete',
           ...(needsInput ? { needsInput } : {}),
           timestamp: new Date().toISOString(),
         };
         await TaskModel.updateStatus(task.id, 'failed', 0, null, null, null, output, reason);
-        throw Object.assign(new Error(reason), { code: needsInput ? 'TASK_NEEDS_INPUT' : 'TASK_REVIEW_FAILED' });
+        throw Object.assign(new Error(reason), { code: needsInput ? 'TASK_NEEDS_INPUT' : providerFailed ? 'TASK_PROVIDER_ERROR' : 'TASK_REVIEW_FAILED' });
       }
 
       // Step 5: Process and store results
@@ -648,6 +649,13 @@ Begin working on this task now.`;
       conversation = result.messages || null;
       const lastTurn = turn === TASK_WORK_TURNS;
 
+      if (result.providerFailed) {
+        // No model could answer. Grading a provider's error notice only
+        // invents a reason, and another turn would fail the same way.
+        review = { rejected: true, code: 'PROVIDER_ERROR', feedback: `No model could run this task: ${result.error}`.slice(0, 1500) };
+        break;
+      }
+
       if (result.toolRoundsExhausted && !lastTurn) {
         console.log(`[TaskOrchestrator] Task ${task.id} used its tool rounds (turn ${turn}) — continuing the same conversation`);
         nextMessage = CONTINUE_WORK_MESSAGE;
@@ -725,11 +733,14 @@ Begin working on this task now.`;
         provider,
       });
 
+      const providerChain = await this._providerChainFor(userId, provider, model, ledgerCtx?.origin);
+
       // Execute with tools using LlmExecutionService
       // CRITICAL FIX: Pass userId in context so tools can access OAuth tokens
       const result = await LlmExecutionService.executeWithTools({
         provider,
         model,
+        providerChain,
         userId,
         messages,
         toolSchemas: availableTools,
@@ -763,9 +774,11 @@ Begin working on this task now.`;
         content: result.content,
         toolRoundsExhausted: result.toolRoundsExhausted === true,
         messages: result.messages,
-        // A recovered provider error is a notice, not the agent's reply.
+        // A recovered provider error is a notice, not the agent's reply. With
+        // a chain it means no model in it could answer.
         ...(result.error || result.success === false || result.recoveredFromError
           ? {success:false,error:result.error || result.recoveredError || 'Execution failed'} : {}),
+        ...(result.recoveredFromError ? { providerFailed: true } : {}),
         tool_executions: result.toolExecutions.map((execution) => ({
           name: execution.name,
           callId: execution.callId ?? null,
@@ -778,6 +791,27 @@ Begin working on this task now.`;
     } catch (error) {
       console.error('[TaskOrchestrator] Error executing task via agent chat');
       throw error;
+    }
+  }
+
+  /**
+   * Who to try for a task, in order: the requested pair first, then the
+   * account's default and fallbacks (and, for background origins, routed
+   * picks) — the chain every other background model call uses
+   * (ModelRouter.resolveChain). A pinned model the account cannot run (a
+   * retired id, a plan that does not include it) then falls back to one it
+   * can. The requested pair is kept exactly as given. Null = that pair only.
+   */
+  static async _providerChainFor(userId, provider, model, origin) {
+    try {
+      const { resolveChain, canonicalProvider } = await import('../ai/ModelRouter.js');
+      const { chain } = await resolveChain({ userId, origin: origin || 'goal_task', requested: { provider, model } });
+      const requestedKey = `${canonicalProvider(provider)}::${String(model).toLowerCase()}`;
+      const others = chain.filter((tier) => `${canonicalProvider(tier.provider)}::${String(tier.model || '').toLowerCase()}` !== requestedKey);
+      return [{ provider, model }, ...others.map(({ provider: tierProvider, model: tierModel }) => ({ provider: tierProvider, model: tierModel }))];
+    } catch (error) {
+      console.warn(`[TaskOrchestrator] No fallback chain for ${provider}/${model}: ${error.message}`);
+      return null;
     }
   }
   static async processTaskResult(taskId, agentResponse) {
@@ -984,6 +1018,59 @@ The goal you delegated has completed. Synthesize the results from all tasks into
       const needsInput = output?.outcome === 'needs_input' ? parseNeedsInput(output.needsInput) : null;
       return needsInput ? [{ taskId: task.id, title: task.title, ...needsInput }] : [];
     });
+  }
+
+  /** Failed tasks whose stored outcome is a provider failure, with the error. */
+  static async _tasksWithProviderFailure(goalId) {
+    const tasks = await TaskModel.findByGoalId(goalId);
+    return tasks.flatMap((task) => {
+      if (task.status !== 'failed') return [];
+      let output;
+      try {
+        output = typeof task.output === 'string' ? JSON.parse(task.output) : task.output;
+      } catch {
+        return [];
+      }
+      return output?.outcome === 'provider_error'
+        ? [{ taskId: task.id, title: task.title, error: task.error || 'No model could run this task.' }]
+        : [];
+    });
+  }
+
+  /** The first task this run lost to a provider failure, or null. */
+  static async _taskProviderFailure(goalId) {
+    return (await this._tasksWithProviderFailure(goalId))[0] || null;
+  }
+
+  /**
+   * Stop the run because no model could run a task. The goal fails with the
+   * provider's error (a scheduled run records it as the run's error); the
+   * plan is left as it is, and the next run tries again.
+   */
+  static async _stopForProviderFailure(goalId, userId, iteration, failure, conversationId) {
+    const error = `${failure.title}: ${failure.error}`;
+    console.log(`[AGI Loop] Goal ${goalId} stopped at iteration ${iteration}; no model could run a task (${error})`);
+    await GoalModel.updateLoopStatus(goalId, 'error');
+    await GoalModel.updateStatus(goalId, 'failed');
+    broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, { id: goalId, status: 'failed' });
+    broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, { goalId, iteration, error });
+    if (conversationId) {
+      this._sendGoalFailureToChat(goalId, conversationId, 'provider_error',
+        `It stopped because no model could run "${failure.title}": ${failure.error}`).catch(() => {});
+    }
+    this.runningGoals.delete(goalId);
+    return { goalId, status: 'error', reason: 'provider_error', error, iteration };
+  }
+
+  /** A new or resumed run retries the tasks a provider failure stopped. Never throws. */
+  static async _releaseProviderFailures(goalId) {
+    try {
+      for (const entry of await this._tasksWithProviderFailure(goalId)) {
+        await TaskModel.updateStatus(entry.taskId, 'pending', 0);
+      }
+    } catch (error) {
+      console.error(`[AGI Loop] Could not release the tasks goal ${goalId} lost to a provider failure:`, error);
+    }
   }
 
   /**
@@ -1223,10 +1310,12 @@ The goal you delegated did not fully pass. Let the user know:
   /**
    * One scheduled run of a goal (a routine): the whole job, done again.
    *
-   * Every run starts fresh: tasks reset (resetForNewRun) and the loop from
-   * iteration 1. Before this, a routine kept its first run's completed tasks,
-   * so later runs skipped them and re-graded day one's output; and a run that
-   * ended "stopped" was RESUMED by the next day's run (2026-10-21).
+   * Every run starts fresh: tasks back to their plan and to pending
+   * (resetForNewRun) and the loop from iteration 1. Before this, a routine
+   * kept its first run's completed tasks, so later runs skipped them and
+   * re-graded day one's output; a run that ended "stopped" was RESUMED by the
+   * next day's run (2026-10-21); and a re-plan's rewrite of a task became
+   * that task for every later run.
    *
    * A run in which no task ran did no work and is reported as an error, never
    * completed. A goal that is gone (deleted, or not this user's) asks the
@@ -1241,6 +1330,7 @@ The goal you delegated did not fully pass. Let the user know:
       return { goalId, status: 'error', reason: 'already_running', error: 'The goal was still running from before; this run was skipped.' };
     }
     const startedAt = new Date().toISOString();
+    await this._recordTaskPlans(goalId);
     await TaskModel.resetForNewRun(goalId);
     const result = await this.executeGoalAutonomous(goalId, userId, { ...options, freshRun: true });
     if (result?.status === 'stopped') return result;
@@ -1252,9 +1342,26 @@ The goal you delegated did not fully pass. Let the user know:
     return result;
   }
 
+  /**
+   * Record the plan of each task that has none yet, before this run can
+   * re-plan it or prune the history the plan is read from. The plan is the
+   * earliest definition on record: the first iteration snapshot (taken
+   * before any re-plan), else the task as it stands. Never throws: without a
+   * recorded plan, resetForNewRun keeps the task's current definition.
+   */
+  static async _recordTaskPlans(goalId) {
+    try {
+      const recorded = await TaskModel.recordPlan(goalId, () => GoalIterationModel.earliestTaskSnapshot(goalId));
+      if (recorded > 0) console.log(`[AGI Loop] Recorded the plan of ${recorded} task(s) of goal ${goalId}`);
+    } catch (error) {
+      console.error(`[AGI Loop] Could not record the task plans of goal ${goalId}:`, error);
+    }
+  }
+
   static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null, freshRun = false } = {}) {
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
+      await this._recordTaskPlans(goalId);
 
       // Must run before updateLoopStatus below overwrites the previous run's
       // loop state — that state is what tells us whether to resume or start fresh.
@@ -1267,6 +1374,7 @@ The goal you delegated did not fully pass. Let the user know:
       // Starting the loop again is how the user answers a needs-input stop:
       // the tasks it blocked run again (other failures keep their re-plan).
       await this._clearNeedsInput(goalId, { releaseTasks: true });
+      await this._releaseProviderFailures(goalId);
 
       this.runningGoals.set(goalId, {
         userId,
@@ -1359,6 +1467,11 @@ The goal you delegated did not fully pass. Let the user know:
           await GoalModel.updateLoopStatus(goalId, 'stopped');
           return { goalId, status: 'stopped', iteration };
         }
+
+        // No model could run a task: the plan is not the problem, so a re-plan
+        // would rewrite it for nothing, and grading would grade an error notice.
+        const providerFailure = await this._taskProviderFailure(goalId);
+        if (providerFailure) return this._stopForProviderFailure(goalId, userId, iteration, providerFailure, conversationId);
 
         // A task blocked on something only the user can supply stops the loop
         // here: grading and re-planning would spend rounds that cannot succeed.

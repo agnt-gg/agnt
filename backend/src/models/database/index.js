@@ -1933,6 +1933,20 @@ function runMigrations() {
         });
       });
 
+      // Migration: a task's plan (2026-11-19). A scheduled run starts every task
+      // from its plan, so a re-plan inside one run (which rewrites title and
+      // description) never becomes the next run's task. NULL until recorded;
+      // see TaskModel.recordPlan.
+      ['plan_title', 'plan_description'].forEach((name) => {
+        db.run(`ALTER TABLE tasks ADD COLUMN ${name} TEXT`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${name} column to tasks:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${name} column to tasks table`);
+          }
+        });
+      });
+
       // The claim query's covering index: find the next claimable task without
       // scanning every task ever created. Registered through createIndex() —
       // NOT db.run — because it names claim_expires_at, a column that arrives
