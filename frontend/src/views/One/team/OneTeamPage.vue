@@ -4,7 +4,7 @@
     <div v-else-if="!state.loaded" class="content"><div class="page"><p class="mk-muted">Loading your team…</p></div></div>
     <MkAgents v-else-if="location.view === 'agents'" />
     <MkAgent v-else-if="location.view === 'agent' && location.item" :key="location.item" :agent-id="location.item" />
-    <MkLibrary v-else-if="location.view === 'library'" :tab="location.tab" />
+    <MkLibrary v-else-if="location.view === 'library'" :tab="location.tab" :dir="location.dir" />
     <MkMembers v-else-if="location.view === 'members'" />
     <TeamMyTasks v-else-if="location.view === 'mine' && state.team" />
     <TeamSpaceView v-else-if="location.view === 'space' && space" :key="space.id" :team="state.team" :space="space" :location="location" />

@@ -2,13 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import MkLibrary from './MkLibrary.vue';
+import MkFiles from './MkFiles.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { LIBRARY_TABS, teamLocation } from '@/views/One/team/teamModel.js';
 
 vi.mock('@/composables/useMarketplaceInstall', () => ({ useMarketplaceInstall: () => ({ handleInstall: vi.fn() }) }));
+vi.mock('@/services/fileSystemService.js', () => ({ getTree: vi.fn(async () => ({ items: [] })) }));
 
-// The Library shows every kind of asset you own, Connections and the Market; there are no "Templates".
-function mountLibrary(tab, { agents = [], workflows = [], picks = {} } = {}) {
+// The Library shows every kind of asset you own, your files and the Market; there are no "Templates".
+function mountLibrary(tab, { agents = [], workflows = [], picks = {}, dir } = {}) {
   const dispatch = vi.fn(async () => {});
   const store = createStore({
     state: { marketplace: { myInstalls: [] } },
@@ -21,17 +23,27 @@ function mountLibrary(tab, { agents = [], workflows = [], picks = {} } = {}) {
   });
   store.dispatch = dispatch;
   const ctx = { go: vi.fn(), openLibrary: vi.fn(), openMarket: vi.fn(), toast: vi.fn() };
-  const wrapper = mount(MkLibrary, { props: { tab }, global: { plugins: [store], provide: { teamCtx: ctx }, directives: { tooltip: {} }, stubs: { SimpleModal: true } } });
+  const wrapper = mount(MkLibrary, { props: { tab, dir }, global: { plugins: [store], provide: { teamCtx: ctx }, directives: { tooltip: {} }, stubs: { SimpleModal: true } } });
   return { wrapper, dispatch, ctx };
 }
 
 describe('Library', () => {
-  it('has a tab for every asset kind and the Market; no Templates, and Connections live on Apps', () => {
-    expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'market']);
+  it('has a tab for every asset kind, Files and the Market; no Templates, and Connections live on Apps', () => {
+    expect(LIBRARY_TABS.map((t) => t.id)).toEqual(['agents', 'workflows', 'tools', 'skills', 'widgets', 'files', 'market']);
     expect(teamLocation({ view: 'library', tab: 'templates' }).tab).toBe('agents');
     expect(teamLocation({ view: 'library', tab: 'connections' }).tab).toBe('agents');
     const { wrapper } = mountLibrary('agents');
-    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Market']);
+    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Files', 'Market']);
+  });
+  it('Files shows your workspace in the page, at the folder the route names', async () => {
+    const { wrapper, ctx } = mountLibrary('files', { dir: 'Reports' });
+    await flushPromises();
+    expect(wrapper.find('.tabs .tab.is-active').text()).toBe('Files');
+    expect(wrapper.findComponent(MkFiles).props('dir')).toBe('Reports');
+    expect(wrapper.findComponent(MarketplaceShelf).exists()).toBe(false);
+    expect(wrapper.find('.page-head .primary').exists()).toBe(false);
+    await wrapper.findAll('.tabs .tab').find((b) => b.text().startsWith('Files')).trigger('click');
+    expect(ctx.go).toHaveBeenCalledWith({ view: 'library', tab: 'files' });
   });
   it('loads every kind so each tab shows its real count', async () => {
     const { wrapper, dispatch } = mountLibrary('agents', { agents: [{ id: 'a1', name: 'Scout' }], workflows: [{ id: 'w1', name: 'Brief' }, { id: 'w2', name: 'Chase' }] });

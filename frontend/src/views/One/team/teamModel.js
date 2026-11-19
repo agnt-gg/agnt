@@ -31,8 +31,9 @@ export const SPACE_TABS = Object.freeze([
 ]);
 export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc', 'agents', 'agent', 'library', 'members']);
 /**
- * Library tabs: every kind of asset you own, and the Market to add more.
- * Connections and plugins live on Apps. `asset` is the Focused Library tab whose store list it shows.
+ * Library tabs: every kind of asset you own, your files, and the Market to add more.
+ * Connections and plugins live on Apps. `asset` is the Focused Library tab whose store list it shows;
+ * Files is the workspace on disk, browsed a folder at a time (`dir`).
  */
 export const LIBRARY_TABS = Object.freeze([
   { id: 'agents', label: 'Agents', icon: 'bot', asset: 'agents' },
@@ -40,6 +41,7 @@ export const LIBRARY_TABS = Object.freeze([
   { id: 'tools', label: 'Tools', icon: 'pen', asset: 'tools' },
   { id: 'skills', label: 'Skills', icon: 'library', asset: 'skills' },
   { id: 'widgets', label: 'Widgets', icon: 'board', asset: 'widgets' },
+  { id: 'files', label: 'Files', icon: 'file' },
   { id: 'market', label: 'Market', icon: 'share' },
 ]);
 /** My Space sections (the drawer). */
@@ -48,13 +50,21 @@ export const MINE_TABS = Object.freeze(['tasks']);
 const str = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? String(v[0] ?? '') : '');
 const ID = /^[A-Za-z0-9_.:-]{1,200}$/;
 const id = (v) => (ID.test(str(v)) ? str(v) : null);
+/** A workspace folder as its path from the top ('a/b'); '' (the top) when absent or malformed. */
+const folder = (v) => {
+  const raw = str(v);
+  if (!raw || raw.length > 1000) return '';
+  const parts = raw.split(/[\\/]+/).filter(Boolean);
+  return parts.every((p) => p !== '.' && p !== '..' && !/[\u0000-\u001f]/.test(p)) ? parts.join('/') : '';
+};
 
 /** The team page a /team query describes. Unknown or malformed values fall back, never throw. */
 export function teamLocation(query = {}) {
   const view = VIEWS.includes(str(query.view)) ? str(query.view) : 'home';
   const tabs = view === 'library' ? LIBRARY_TABS : SPACE_TABS;
   const tab = tabs.some((t) => t.id === str(query.tab)) ? str(query.tab) : tabs[0].id;
-  return { view, space: id(query.space), tab, task: id(query.task), doc: id(query.doc), item: id(query.item) };
+  const dir = view === 'library' && tab === 'files' ? folder(query.dir) : '';
+  return { view, space: id(query.space), tab, task: id(query.task), doc: id(query.doc), item: id(query.item), dir };
 }
 
 /** The /team query for a location: the inverse of teamLocation (tested both ways). */
@@ -63,6 +73,7 @@ export function teamQuery(loc = {}) {
   if (loc.space) query.space = loc.space;
   if (loc.view === 'space' && loc.tab && loc.tab !== 'chat') query.tab = loc.tab;
   if (loc.view === 'library' && loc.tab && loc.tab !== 'agents') query.tab = loc.tab;
+  if (loc.view === 'library' && loc.tab === 'files' && loc.dir) query.dir = loc.dir;
   if (loc.task) query.task = loc.task;
   if (loc.doc) query.doc = loc.doc;
   if (loc.item) query.item = loc.item;

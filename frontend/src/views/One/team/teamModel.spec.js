@@ -60,7 +60,21 @@ describe('team location ↔ query', () => {
     }
   });
   it('falls back instead of trusting a crafted URL', () => {
-    expect(teamLocation({ view: 'evil', tab: '<script>', space: '../../x', task: 'a b', item: '<x>' })).toEqual({ view: 'home', space: null, tab: 'chat', task: null, doc: null, item: null });
+    expect(teamLocation({ view: 'evil', tab: '<script>', space: '../../x', task: 'a b', item: '<x>' })).toEqual({ view: 'home', space: null, tab: 'chat', task: null, doc: null, item: null, dir: '' });
+  });
+  it('the Library\u2019s Files tab keeps the folder you are in', () => {
+    const loc = { view: 'library', tab: 'files', dir: 'Reports/2026 Q4' };
+    expect(teamQuery(loc)).toEqual({ view: 'library', tab: 'files', dir: 'Reports/2026 Q4' });
+    expect(teamLocation(teamQuery(loc))).toMatchObject(loc);
+    expect(teamQuery({ view: 'library', tab: 'files', dir: '' })).toEqual({ view: 'library', tab: 'files' });
+    expect(teamLocation({ view: 'library', tab: 'files', dir: 'a\\b/' }).dir).toBe('a/b');
+  });
+  it('a folder only means something on Files; a malformed one opens the top', () => {
+    expect(teamLocation({ view: 'library', tab: 'skills', dir: 'a' }).dir).toBe('');
+    expect(teamLocation({ view: 'space', space: 'ws-1', tab: 'files', dir: 'a' }).dir).toBe('');
+    for (const dir of ['../x', 'a/../../b', './a', 'a/\u0000b', 'x'.repeat(1001), ['a', 'b']]) {
+      expect(teamLocation({ view: 'library', tab: 'files', dir }).dir).toBe(Array.isArray(dir) ? 'a' : '');
+    }
   });
   it('the mockup\u2019s pages have routes: Agents, an agent, Library tabs, Members', () => {
     expect(teamLocation(teamQuery({ view: 'agent', item: 'a-1' }))).toMatchObject({ view: 'agent', item: 'a-1' });

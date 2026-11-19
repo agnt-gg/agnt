@@ -1,10 +1,11 @@
 <template>
-  <!-- The Library in the mockup's style: every asset you own, by kind, plus
-       the Market. Connections and plugins are on Apps. Backed by the real stores and catalog. -->
+  <!-- The Library in the mockup's style: every asset you own, by kind, your
+       files, plus the Market. Connections and plugins are on Apps. Backed by the
+       real stores, the workspace and the catalog. -->
   <div class="content">
     <div class="page">
       <div class="page-head">
-        <div><h1>Library</h1><p>Everything you’ve built or added: agents, workflows, tools, skills and widgets. Add more from the Market; connections and plugins are on Apps.</p></div>
+        <div><h1>Library</h1><p>Everything you’ve built or added: agents, workflows, tools, skills, widgets and files. Add more from the Market; connections and plugins are on Apps.</p></div>
         <button v-if="asset" type="button" class="primary" @click="ctx.openLibrary(asset.id, null, true)"><MkIcon name="plus" size="sm" />New {{ asset.noun }}</button>
       </div>
       <nav class="tabs" aria-label="Library">
@@ -45,6 +46,9 @@
         />
       </template>
 
+      <!-- Your files: the workspace, a folder at a time. -->
+      <MkFiles v-else-if="current.id === 'files'" :dir="dir" />
+
       <!-- The Market: agents, workflows, tools, skills and widgets from AGNT and makers. -->
       <template v-else>
         <ul v-if="status === 'loading' && !items.length" class="list"><li class="empty">Loading…</li></ul>
@@ -74,6 +78,7 @@
 import { computed, inject, onMounted, reactive, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
+import MkFiles from './MkFiles.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
@@ -82,7 +87,11 @@ import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
 import { libraryTab, libraryRows } from '@/views/Focused/focusedModel.js';
 
 const MARKET_ICON = Object.freeze({ workflow: 'bolt', tool: 'pen', skill: 'library', widget: 'board', plugin: 'plug' });
-const props = defineProps({ tab: { type: String, default: 'agents' } });
+const props = defineProps({
+  tab: { type: String, default: 'agents' },
+  /** The Files tab's open folder ('' is the top of the workspace). */
+  dir: { type: String, default: '' },
+});
 const ctx = inject('teamCtx');
 const store = useStore();
 const modalRef = ref(null);

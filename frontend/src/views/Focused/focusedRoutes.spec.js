@@ -124,6 +124,9 @@ describe('routeFor is the inverse of focusedLocation', () => {
     { page: 'activity', item: null },
     { page: 'activity', item: 'agent-a 1' },
     { page: 'market', item: 'asset-1' },
+    { page: 'team', view: 'library', tab: 'skills' },
+    { page: 'team', view: 'library', tab: 'files', dir: '' },
+    { page: 'team', view: 'library', tab: 'files', dir: 'Reports/2026 Q4' },
   ];
   it.each(locations.map((l) => [JSON.stringify(l), l]))('%s', (_, loc) => {
     const [screen, opts] = routeFor(loc);
