@@ -153,3 +153,12 @@
 .mk .card.v2-new { border: 1.5px dashed var(--border-strong); }
 .mk .card.v2-new:hover { border-color: var(--pink); }
 .mk .card.v2-new .r-icon { background: rgba(var(--pink-rgb), 0.12); color: var(--pink); }
+
+/* Nothing under 12px on One's own pages: the shared pieces they embed (Market cards,
+   pills, a chat message's time, the tools summary) keep Studio's sizes elsewhere.
+   Borrowed Studio screens are Studio's and untouched. */
+.ui-one:not(.is-borrowed) .one-main :is(.ms-count, .mlc-type, .mlc-meta, .scope.sm, .tc-mode, .message-time, .lws-summary, .lws-summary-actions button, .focused-status-pill, .plan-pill, .fetched, .focused-market-kind, .ms-row-txt p) { font-size: 12px; }
+.ui-one:not(.is-borrowed) .one-main :is(.mlc-type, .mlc-meta) :is(b, span) { font-size: inherit; }
+/* The sidebar's chat filter counts ("Unread 2"), readable. */
+.ui-one .mk-drawer-host .view-seg-btn { font-size: 13px; }
+.ui-one .mk-drawer-host .view-seg-btn :is(span, b, em) { font-size: 12px; }

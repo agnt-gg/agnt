@@ -185,23 +185,51 @@ export function teamActivityRows(events = [], { spaces = new Map(), tasks = new 
   return rows.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
 }
 
-/** @returns rows: { id, kind, icon, title, detail, at, status, target } */
-export function activityRows(runs = [], { kind = 'all', query = '' } = {}) {
+const timeOfRun = (run) => new Date(run?.startTime || run?.endTime || 0).getTime() || 0;
+
+/**
+ * A chat is one row, judged by its latest reply. A reply that failed is one
+ * attempt, not a failed chat: when the AI sent nothing back the row says so in
+ * plain words, and it is never something that needs a look.
+ */
+function chatStatus(run) {
+  const s = String(run.status || '').toLowerCase();
+  if (/^(failed|error|stuck)$/.test(s)) return { label: 'No reply from the AI', tone: 'warn' };
+  return statusOf(run.status);
+}
+
+/** Only the newest run of each chat; runs with no chat behind them are kept. */
+function latestPerChat(runs) {
+  const newest = new Map();
+  for (const run of runs) {
+    if (kindOf(run) !== 'chat' || !run.conversationId) continue;
+    const key = String(run.conversationId);
+    if (!newest.has(key) || timeOfRun(run) > timeOfRun(newest.get(key))) newest.set(key, run);
+  }
+  return runs.filter((run) => kindOf(run) !== 'chat' || !run.conversationId || newest.get(String(run.conversationId)) === run);
+}
+
+/**
+ * @param titles  Map of conversation id to the chat's own title (contentOutputs).
+ * @returns rows: { id, kind, icon, title, detail, at, status, target }
+ */
+export function activityRows(runs = [], { kind = 'all', query = '', titles = null } = {}) {
   const q = String(query || '').trim().toLowerCase();
-  return (Array.isArray(runs) ? runs : [])
-    .filter((run) => run && !run.deleted)
+  return latestPerChat((Array.isArray(runs) ? runs : []).filter((run) => run && !run.deleted))
     .map((run) => {
       const k = kindOf(run);
       const tools = Number(run.nodeCount) || 0;
-      // A forge chat says what was being built (origin is the chat surface).
-      const title = k === 'chat' ? FORGE_TITLE[run.origin] || 'Chat with Annie' : String(run.workflowName || '').trim() || (k === 'agent' ? 'Agent' : k === 'routine' ? 'Routine' : 'Workflow');
-      const detail = k === 'workflow' ? `${tools} step${tools === 1 ? '' : 's'}` : k === 'routine' ? `${tools} task${tools === 1 ? '' : 's'}` : tools ? `${tools} tool${tools === 1 ? '' : 's'} used` : '';
+      // A chat by its own title; a forge chat says what was being built (origin is the chat surface).
+      const chatTitle = run.conversationId && titles?.get?.(String(run.conversationId));
+      const title = k === 'chat' ? String(chatTitle || '').trim() || FORGE_TITLE[run.origin] || 'Chat with Annie' : String(run.workflowName || '').trim() || (k === 'agent' ? 'Agent' : k === 'routine' ? 'Routine' : 'Workflow');
+      // How big the run was is builder detail; a chat and an agent run say nothing extra.
+      const detail = k === 'workflow' ? `${tools} step${tools === 1 ? '' : 's'}` : k === 'routine' ? `${tools} task${tools === 1 ? '' : 's'}` : '';
       const target =
         k === 'chat' ? (run.conversationId ? { type: 'conversation', id: String(run.conversationId) } : null)
           : k === 'agent' ? (run.agentId ? { type: 'library', tab: 'agents', id: String(run.agentId) } : null)
             : k === 'workflow' ? (run.workflowId ? { type: 'library', tab: 'workflows', id: String(run.workflowId) } : null)
               : { type: 'routines' };
-      return { id: String(run.id), kind: k, icon: ICON[k], title, detail, at: run.startTime || run.endTime || null, status: statusOf(run.status), target };
+      return { id: String(run.id), kind: k, icon: ICON[k], title, detail, at: run.startTime || run.endTime || null, status: k === 'chat' ? chatStatus(run) : statusOf(run.status), target };
     })
     .filter((row) => kind === 'all' || row.kind === kind)
     .filter((row) => !q || `${row.title} ${row.detail}`.toLowerCase().includes(q))

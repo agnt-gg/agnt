@@ -15,9 +15,9 @@ describe('activityRows', () => {
   it('lists every kind of run, newest first, named for what ran, and where each one opens', () => {
     expect(activityRows(runs).map((r) => [r.kind, r.title, r.detail, r.status.label, r.target])).toEqual([
       ['workflow', 'Daily digest', '4 steps', 'Running', { type: 'library', tab: 'workflows', id: 'wf1' }],
-      ['agent', 'Inbox Helper', '1 tool used', 'Failed', { type: 'library', tab: 'agents', id: 'a9' }],
-      ['chat', 'Chat with Annie', '3 tools used', 'Done', { type: 'conversation', id: 'c1' }],
-      ['chat', 'Building a workflow', '5 tools used', 'Done', { type: 'conversation', id: 'c2' }],
+      ['agent', 'Inbox Helper', '', 'Failed', { type: 'library', tab: 'agents', id: 'a9' }],
+      ['chat', 'Chat with Annie', '', 'Done', { type: 'conversation', id: 'c1' }],
+      ['chat', 'Building a workflow', '', 'Done', { type: 'conversation', id: 'c2' }],
       ['routine', 'Search agnt.gg', '1 task', 'Needs a look', { type: 'routines' }],
     ]);
   });
@@ -25,6 +25,18 @@ describe('activityRows', () => {
     expect(activityRows(runs, { kind: 'routine' }).map((r) => r.id)).toEqual(['goal-g1']);
     expect(activityRows(runs, { query: 'inbox' }).map((r) => r.id)).toEqual(['agent-3']);
     expect(activityRows(null)).toEqual([]);
+  });
+  // Reported: Activity listed "failed chats" that were one empty reply from the AI
+  // provider in a chat that carried on. A chat is judged by its latest reply.
+  it('a chat is one row, judged by its latest reply, under its own title', () => {
+    const chat = (id, status, at, conv = 'c9') => ({ id, isAgentExecution: true, agentId: 'orchestrator', status, startTime: at, conversationId: conv, outputTokens: status === 'failed' ? 0 : 120 });
+    const titles = new Map([['c9', 'Plan the Q3 launch']]);
+    const recovered = activityRows([chat('a1', 'failed', '2026-11-21T10:00:00Z'), chat('a2', 'completed', '2026-11-21T10:05:00Z')], { titles });
+    expect(recovered.map((r) => [r.id, r.title, r.status.label])).toEqual([['a2', 'Plan the Q3 launch', 'Done']]);
+    const noReply = activityRows([chat('b1', 'completed', '2026-11-21T09:00:00Z', 'c8'), chat('b2', 'failed', '2026-11-21T09:10:00Z', 'c8')]);
+    expect(noReply.map((r) => [r.id, r.title, r.status.label, r.status.tone])).toEqual([['b2', 'Chat with Annie', 'No reply from the AI', 'warn']]);
+    // Never pinned as something that needs a look.
+    expect(activityGroups(noReply, new Date('2026-11-21T15:00:00Z').getTime()).needs).toEqual([]);
   });
   it('says statuses in plain words', () => {
     expect(['executing', 'error', 'cancelled', 'completed'].map((s) => statusOf(s).label)).toEqual(['Running', 'Failed', 'Stopped', 'Done']);

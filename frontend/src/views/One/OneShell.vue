@@ -100,11 +100,11 @@
         <FocusedWindowControls />
       </header>
 
-      <!-- A screen with no One page (a forge's full editor, run traces…):
-           shown in full, untouched, with one way back. -->
+      <!-- A screen with no One page (a forge's full editor, a goal, a settings
+           section…): shown in full, with one way back to where it was opened from. -->
       <div v-if="borrowed" class="focused-borrowed-bar" role="navigation" aria-label="Full screen">
-        <button type="button" class="focused-back" @click="backToChat">
-          <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to chat
+        <button type="button" class="focused-back" data-testid="borrowed-back" @click="leaveBorrowed">
+          <i class="fas fa-arrow-left" aria-hidden="true"></i> {{ borrowedBackTo.label }}
         </button>
         <span class="focused-borrowed-title">{{ borrowedTitle }}</span>
       </div>
@@ -157,8 +157,9 @@ import FocusedMarket from '@/views/Focused/FocusedMarket.vue';
 import FocusedActivity from '@/views/Focused/FocusedActivity.vue';
 import FocusedActivityDetail from '@/views/Focused/FocusedActivityDetail.vue';
 import { screenTitle } from '@/views/Focused/focusedModel.js';
+import { settingsDirectory } from '@/mobile/sectionDirectories.js';
 import { waitUntil } from '@/views/Focused/focusedTime.js';
-import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
+import { focusedLocation, routeFor, borrowedBack, canonicalLocation } from '@/views/Focused/focusedRoutes.js';
 import OneCapsule from './OneCapsule.vue';
 import OneOffer from './OneOffer.vue';
 import { useOffer } from './useOffer.js';
@@ -260,9 +261,30 @@ watch(
   },
   { immediate: true },
 );
+// The old Library and Routines lists each have one home now (Library, Goals): a
+// link to either list lands there, so a page is never shown two ways.
+watch(
+  location,
+  (loc) => {
+    const home = canonicalLocation(loc);
+    if (!home) return;
+    const [screen, opts] = routeFor(home);
+    const target = screenRoute(screen, opts);
+    if (target) router.replace({ path: target.path, query: target.query }).catch(() => {});
+  },
+  { immediate: true },
+);
 const page = computed(() => location.value?.page || null);
 const borrowed = computed(() => !page.value && props.screenName !== 'ChatScreen');
-const borrowedTitle = computed(() => screenTitle(props.screenName));
+// A Settings section is named for itself (the same names as One's Settings list).
+const SETTINGS_LABELS = new Map(settingsDirectory.flatMap((group) => group.items.map((item) => [item.id, item.label])));
+const borrowedTitle = computed(() => (props.screenName === 'SettingsScreen' && SETTINGS_LABELS.get(String(route.query.section || ''))) || screenTitle(props.screenName));
+const borrowedBackTo = computed(() => borrowedBack(props.screenName));
+function leaveBorrowed() {
+  const to = borrowedBackTo.value.loc;
+  if (to) go(to);
+  else backToChat();
+}
 // No conversation title in the top bar (removed 2026-10-21): the Chats
 // drawer already names the open chat.
 const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat?.messages || []).some((m) => m?.role === 'user');

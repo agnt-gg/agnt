@@ -426,8 +426,11 @@ export default {
     const uiPresentation = inject('uiPresentation', 'studio');
     const isOneFrame = uiPresentation === 'one';
     const focusedChat = computed(() => isOneFrame && props.screenId === 'ChatScreen');
-    const leftHidden = computed(() => props.hidePanels || focusedChat.value);
-    const rightHidden = computed(() => props.hidePanels || (focusedChat.value && !artifactTarget.value));
+    // In AGNT One a Settings section opens from One's own Settings page, which is
+    // its menu: Studio's section list and news column are not shown beside it.
+    const focusedSettings = computed(() => isOneFrame && props.screenId === 'SettingsScreen');
+    const leftHidden = computed(() => props.hidePanels || focusedChat.value || focusedSettings.value);
+    const rightHidden = computed(() => props.hidePanels || focusedSettings.value || (focusedChat.value && !artifactTarget.value));
     const panelsHidden = computed(() => leftHidden.value && rightHidden.value);
 
     // --- Panel geometry scope ---

@@ -3,7 +3,7 @@
  *   - every screen under it can tell it is in One (provide/inject);
  *   - the page comes from the ROUTE, so any link (chat, Ctrl+K, entity chips,
  *     Back) lands on One's own page for it;
- *   - a screen with no page renders in full, with a way back to the chat;
+ *   - a screen with no page renders in full, with a way back to where it opened from;
  *   - pages navigate through one injected service, by real routes;
  *   - the rail shows only what the account has; one sidebar (the drawer,
  *     with the chats in it) sits beside it on every desktop page, and
@@ -217,15 +217,22 @@ describe('OneShell', () => {
   });
 
   it('a screen with no page renders in full, with a way back and no mode to switch to', async () => {
+    // The dashboard's useful parts are Home's, so its way back is Home.
     const w = mountShell('DashboardScreen');
     const bar = w.find('.focused-borrowed-bar');
     expect(bar.exists()).toBe(true);
     expect(bar.text()).not.toMatch(/studio/i);
-    expect(bar.find('.focused-back').text()).toContain('Back to chat');
+    expect(bar.find('.focused-back').text()).toBe('Home');
     await bar.find('.focused-back').trigger('click');
-    expect(push).toHaveBeenCalledWith('/chat');
+    expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
     expect(dispatch).not.toHaveBeenCalledWith('theme/setUiMode', expect.anything());
     w.unmount();
+    // A screen opened from nowhere in particular goes back to the chat.
+    const other = mountShell('WorkspaceScreen');
+    expect(other.get('.focused-back').text()).toBe('Chat');
+    await other.get('.focused-back').trigger('click');
+    expect(push).toHaveBeenLastCalledWith('/chat');
+    other.unmount();
   });
 
   it('?studio=1 shows the full editor even where One has a page', () => {
@@ -316,6 +323,42 @@ describe('OneShell', () => {
       await click('chats');
       expect(push).toHaveBeenLastCalledWith('/chat');
       w.unmount();
+    });
+
+    it('lights the rail on every page: editors and forges are Library, Studio settings sections are Settings', () => {
+      const lit = (screen, query) => {
+        const w = mountShell(screen, query);
+        const on = w.find('.rail .rail-btn.is-active');
+        const id = on.exists() ? on.attributes('data-testid') : null;
+        w.unmount();
+        return id;
+      };
+      expect(lit('AgentsScreen', { select: 'agent:a1' })).toBe('one-rail-library');
+      expect(lit('WorkflowForgeScreen', { id: 'w1' })).toBe('one-rail-library');
+      expect(lit('MarketplaceScreen')).toBe('one-rail-library');
+      expect(lit('SettingsScreen', { section: 'billing', studio: '1' })).toBe('one-rail-settings');
+      expect(lit('MemoryScreen')).toBe('one-rail-settings');
+    });
+
+    it('a borrowed Studio screen goes back to where it was opened from, not always the chat', async () => {
+      const w = mountShell('SettingsScreen', { section: 'billing', studio: '1' });
+      const back = w.get('[data-testid="borrowed-back"]');
+      expect(back.text()).toBe('Settings');
+      expect(w.get('.focused-borrowed-title').text()).toBe('Billing');
+      await back.trigger('click');
+      expect(push.mock.calls.at(-1)[0]).toMatchObject({ path: '/settings' });
+      w.unmount();
+      const goal = mountShell('GoalsScreen', { select: 'goal:g1' });
+      expect(goal.get('[data-testid="borrowed-back"]').text()).toBe('Goals');
+      goal.unmount();
+    });
+
+    it('the old Library and Routines lists open their one home', () => {
+      replace.mockClear();
+      mountShell('AgentsScreen').unmount();
+      expect(replace).toHaveBeenCalledWith({ path: '/team', query: { view: 'library' } });
+      mountShell('GoalsScreen', { section: 'schedules' }).unmount();
+      expect(replace).toHaveBeenLastCalledWith({ path: '/goals', query: {} });
     });
 
     it('your account menu holds your account, Members, Year in review, Find anything and Studio', async () => {

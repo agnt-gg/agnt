@@ -28,7 +28,13 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (p === 'goals' || p === 'scheduled') return 'goals';
     if (!p && screenName.value === 'GoalsScreen') return 'goals';
     if (p === 'connectors') return 'apps';
-    if (p === 'market') return 'library';
+    // Your own things and where you get more: the Library.
+    if (p === 'market' || p === 'library') return 'library';
+    if (!p && ['WorkflowForgeScreen', 'ToolForgeScreen', 'WidgetForgeScreen'].includes(screenName.value)) return 'library';
+    if (!p && screenName.value === 'PluginsScreen') return 'apps';
+    // How Annie works: Settings and what opens from it.
+    if (p === 'memory') return 'settings';
+    if (!p && ['SettingsScreen', 'LearningScreen'].includes(screenName.value)) return 'settings';
     // Activity is Home's history, and the dashboard's useful parts live on Home.
     if (p === 'activity') return 'home';
     if (!p && screenName.value === 'DashboardScreen') return 'home';
@@ -122,7 +128,8 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       const s = (teamState.spaces || []).find((x) => x.id === space);
       if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? spaceEmoji(s) + ' ' + s.name : 'Teamspace' }];
       if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'files' }) }, { label: 'File' }];
-      if (view === 'mine') return [{ label: 'My Space', go: () => team('mine') }, { label: 'My tasks' }];
+      if (view === 'mine') return [{ label: 'My tasks' }];
+      if (view === 'agents') return [{ label: 'Library', go: () => team('library') }, { label: 'Agents' }];
       if (view === 'agent') {
         const agent = (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(item));
         return [{ label: 'Agents', go: () => team('agents') }, { label: agent?.name || 'Agent' }];
@@ -130,8 +137,13 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       return [{ label: LABELS[view] || 'Home' }];
     }
     if (p === 'scheduled' && (loc().item || loc().isNew)) return [{ label: 'Goals', go: () => nav.go({ page: 'goals' }) }, { label: loc().isNew ? 'New routine' : 'Routine' }];
+    // A run opens with its own way back to Activity.
+    if (p === 'activity' && loc().item) return [{ label: 'Activity' }];
     if (p === 'activity') return [{ label: 'Home', go: () => team('home') }, { label: 'Activity' }];
-    if (p === 'library') return [{ label: 'My Space', go: () => team('mine') }, { label: loc().tab === 'files' ? 'My files' : 'Library' }];
+    // An item opens with its own way back; the Library names itself.
+    if (p === 'library') return [{ label: 'Library' }];
+    if (p === 'market') return [{ label: 'Library', go: () => team('library') }, { label: 'Market' }];
+    if (p === 'memory') return [{ label: 'Settings', go: () => nav.go({ page: 'settings' }) }, { label: 'Memories' }];
     return [{ label: LABELS[p] || (screenName.value || '').replace(/Screen$/, '') || 'AGNT' }];
   });
 

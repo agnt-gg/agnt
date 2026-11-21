@@ -194,6 +194,39 @@ export function routeFor(loc) {
   return ['ChatScreen', {}];
 }
 
+/**
+ * Where a borrowed Studio screen's back button goes, and what it says: the page
+ * it was opened from, not always the chat. `loc` is a Focused location (routeFor),
+ * or null for the chat.
+ */
+const BORROWED_BACK = Object.freeze({
+  SettingsScreen: { label: 'Settings', loc: { page: 'settings' } },
+  LearningScreen: { label: 'Settings', loc: { page: 'settings' } },
+  GoalsScreen: { label: 'Goals', loc: { page: 'goals' } },
+  DashboardScreen: { label: 'Home', loc: { page: 'team', view: 'home' } },
+  WorkflowForgeScreen: { label: 'Library', loc: { page: 'team', view: 'library', tab: 'workflows' } },
+  ToolForgeScreen: { label: 'Library', loc: { page: 'team', view: 'library', tab: 'tools' } },
+  WidgetForgeScreen: { label: 'Library', loc: { page: 'team', view: 'library', tab: 'widgets' } },
+  PluginsScreen: { label: 'Apps', loc: { page: 'connectors', tab: 'plugins' } },
+});
+export function borrowedBack(screen) {
+  return BORROWED_BACK[screen] || { label: 'Chat', loc: null };
+}
+
+/**
+ * The Focused page a list route should show instead. The old Library list and
+ * the Routines list each have one home now: the Library page and the Goals page.
+ * An open item, a new one, or a folder of files stays where it is.
+ */
+export function canonicalLocation(loc) {
+  if (!loc) return null;
+  if (loc.page === 'library' && !loc.item && !loc.isNew) {
+    return { page: 'team', view: 'library', tab: loc.tab || 'agents', ...(loc.tab === 'files' && loc.dir ? { dir: loc.dir } : {}) };
+  }
+  if (loc.page === 'scheduled' && !loc.item && !loc.isNew) return { page: 'goals' };
+  return null;
+}
+
 /** Which sidebar row a location belongs to (for its active state). */
 export function sidebarPageOf(loc) {
   return loc ? loc.page : null;

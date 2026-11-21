@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { focusedLocation, routeFor, selected, LIBRARY_TAB_SCREENS } from './focusedRoutes.js';
+import { borrowedBack, canonicalLocation, focusedLocation, routeFor, selected, LIBRARY_TAB_SCREENS } from './focusedRoutes.js';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import { SECTION_ROUTES } from '@/canvas/sections.js';
 
@@ -189,5 +189,24 @@ describe('Apps tabs for Studio\'s Email Inbox, Webhooks and MCP (2026-10-23)', (
   it('the Plugins section has its own route, both ways', () => {
     expect(routeFor({ page: 'connectors', tab: 'plugins' })).toEqual(['ConnectorsScreen', { section: 'plugins' }]);
     expect(focusedLocation('ConnectorsScreen', { section: 'plugins' })).toEqual({ page: 'connectors', tab: 'plugins', item: null });
+  });
+});
+
+describe('one home per page, and a way back from Studio screens', () => {
+  it('the old Library and Routines lists land on Library and Goals; items stay put', () => {
+    expect(canonicalLocation(focusedLocation('AgentsScreen', {}))).toEqual({ page: 'team', view: 'library', tab: 'agents' });
+    expect(canonicalLocation(focusedLocation('ArtifactsScreen', { select: 'dir:Reports' }))).toEqual({ page: 'team', view: 'library', tab: 'files', dir: 'Reports' });
+    expect(canonicalLocation(focusedLocation('GoalsScreen', { section: 'schedules' }))).toEqual({ page: 'goals' });
+    expect(canonicalLocation(focusedLocation('AgentsScreen', { select: 'agent:a1' }))).toBeNull();
+    expect(canonicalLocation(focusedLocation('AgentsScreen', { new: '1' }))).toBeNull();
+    expect(canonicalLocation(focusedLocation('GoalsScreen', { section: 'schedules', select: 'schedule:s1' }))).toBeNull();
+    expect(canonicalLocation(null)).toBeNull();
+  });
+  it('a borrowed screen goes back to where it opens from', () => {
+    expect(borrowedBack('SettingsScreen')).toEqual({ label: 'Settings', loc: { page: 'settings' } });
+    expect(borrowedBack('GoalsScreen').label).toBe('Goals');
+    expect(borrowedBack('WorkflowForgeScreen').loc).toEqual({ page: 'team', view: 'library', tab: 'workflows' });
+    expect(borrowedBack('DashboardScreen').label).toBe('Home');
+    expect(borrowedBack('SomethingElse')).toEqual({ label: 'Chat', loc: null });
   });
 });

@@ -17,7 +17,7 @@
           <div v-for="a in mine" :key="a.id" class="card clickable" @click="ctx.go({ view: 'agent', item: String(a.id) })">
             <div class="card-top"><span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div class="mk-muted">by you</div></div></div>
             <p>{{ a.description || 'No description yet.' }}</p>
-            <div class="card-foot"><span class="tag">Draft</span><span>{{ (a.assignedTools || []).length }} tools</span><span class="fill"></span><span class="scope sm mk-private"><MkIcon name="lock" size="sm" />Private</span></div>
+            <div class="card-foot"><span class="tag">Draft</span><span>{{ (a.assignedTools || []).length }} {{ (a.assignedTools || []).length === 1 ? 'tool' : 'tools' }}</span><span class="fill"></span><span class="scope sm mk-private"><MkIcon name="lock" size="sm" />Private</span></div>
           </div>
         </template>
         <div v-else class="card">

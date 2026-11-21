@@ -70,7 +70,8 @@ const store = useStore();
 const nav = inject('focusedNav');
 const team = useTeam(store);
 // The mockup's tag tones for each run outcome.
-const TONE = Object.freeze({ ok: 'green', success: 'green', good: 'green', done: 'green', running: 'blue', live: 'blue', warn: 'amber', bad: 'amber', error: 'amber', failed: 'amber', stopped: '' });
+// Amber is something to act on; an empty reply from the AI is information, so it stays quiet.
+const TONE = Object.freeze({ ok: 'green', success: 'green', good: 'green', done: 'green', running: 'blue', live: 'blue', warn: '', bad: 'amber', error: 'amber', failed: 'amber', stopped: '' });
 const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Agent', workflow: 'Automation', routine: 'Goal' });
 const KIND_ICON = Object.freeze({ chat: 'chats', agent: 'bot', workflow: 'bolt', routine: 'task' });
 const CAP = 300;
@@ -79,7 +80,11 @@ const loading = ref(false);
 const teamRows = ref([]);
 
 const kinds = computed(() => (team.state.team ? ACTIVITY_KINDS : ACTIVITY_KINDS.filter((k) => k.id !== 'team')));
-const runRows = computed(() => activityRows(store.getters['executionHistory/getExecutions'] || [], { kind: kind.value === 'team' ? 'none' : kind.value }));
+// Each chat under its own title: saved chats, by the conversation they hold.
+const chatTitles = computed(() => new Map((store.getters['contentOutputs/outputs'] || [])
+  .filter((o) => o && (o.conversation_id || o.conversationId) && o.title)
+  .map((o) => [String(o.conversation_id || o.conversationId), o.title])));
+const runRows = computed(() => activityRows(store.getters['executionHistory/getExecutions'] || [], { kind: kind.value === 'team' ? 'none' : kind.value, titles: chatTitles.value }));
 const rows = computed(() => {
   const team_ = kind.value === 'all' || kind.value === 'team' ? teamRows.value : [];
   return [...team_, ...runRows.value].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
