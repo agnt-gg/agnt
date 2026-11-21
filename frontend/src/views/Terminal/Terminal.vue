@@ -80,7 +80,8 @@ const screenLoaders = [
   ['WorkflowForgeScreen', () => import('./CenterPanel/screens/WorkflowForge/WorkflowForge.vue')],
   ['ToolForgeScreen', () => import('./CenterPanel/screens/ToolForge/ToolForge.vue')],
   ['BallJumperScreen', () => import('./CenterPanel/screens/Minigames/BallJumper/BallJumper.vue')],
-  ['ConnectorsScreen', () => import('./CenterPanel/screens/Connectors/Connectors.vue')],
+  // Plugins: One's Apps page in Studio; the full Connectors screen inside One's frame (AppsScreen).
+  ['ConnectorsScreen', () => import('./CenterPanel/screens/Connectors/AppsScreen.vue')],
   ['PluginsScreen', () => import('./CenterPanel/screens/Plugins/Plugins.vue')],
   ['GoalsScreen', () => import('./CenterPanel/screens/Goals/Goals.vue')],
   ['TracesScreen', () => import('./CenterPanel/screens/Traces/Traces.vue')],

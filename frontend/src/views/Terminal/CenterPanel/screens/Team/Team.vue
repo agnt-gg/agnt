@@ -24,9 +24,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue';
+import { computed, provide, ref, watch } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import OneTeamPage from '@/views/One/team/OneTeamPage.vue';
@@ -35,22 +35,18 @@ import FocusedLibrary from '@/views/Focused/FocusedLibrary.vue';
 import { useMkFrame } from '@/views/One/mk/useMkFrame.js';
 import { useTeam, teamApi } from '@/views/One/team/useTeam.js';
 import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
-import { screenRoute } from '@/views/Terminal/screenRoute.js';
+import { useStudioPageNav } from '../useStudioPageNav.js';
 
 const emit = defineEmits(['screen-change']);
 const store = useStore();
 const route = useRoute();
-const router = useRouter();
+const { pushScreen, chat, ask, openConversation, modalRef, confirm, prompt, toastText, toast } = useStudioPageNav();
 
 // Where we are, read from the route (/team?view=…&space=…), exactly as One reads it.
 const location = computed(() => focusedLocation('TeamScreen', route.query) || { page: 'team', view: 'home' });
 const team = useTeam(store);
 
 // ── Going places: route pushes; in Studio every screen opens in full ─────────
-function pushScreen(screen, opts = {}) {
-  const target = screenRoute(screen, opts);
-  if (target) router.push({ path: target.path, query: target.query }).catch(() => {});
-}
 // Pages the Team screen shows in its own center panel instead of leaving for a full screen
 // (in Studio, Routines would open Goals and My files the Files screen).
 const INLINE_PAGES = new Set(['scheduled', 'library']);
@@ -63,31 +59,6 @@ function go(loc) {
 }
 // Arriving at /team from anywhere else (the rail, a link) shows the team page again.
 watch(() => route.fullPath, () => { inline.value = null; });
-const chat = () => router.push('/chat').catch(() => {});
-async function ask(text) {
-  await router.push('/chat').catch(() => {});
-  await nextTick();
-  window.dispatchEvent(new CustomEvent('trigger-new-chat'));
-  setTimeout(() => window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text, send: false } })), 300);
-}
-
-// ── Dialogs, through the app's own modal ───────────────────────────────────
-const modalRef = ref(null);
-function confirm({ title, message, confirmText = 'OK', danger = false }) {
-  return modalRef.value?.showModal({ title, message, confirmText, cancelText: 'Cancel', showCancel: true, confirmClass: danger ? 'btn-danger' : 'btn-primary' });
-}
-async function prompt({ title, message, placeholder = '', secret = false, confirmText = 'Save' }) {
-  const value = await modalRef.value?.showModal({ title, message, isPrompt: true, inputType: secret ? 'password' : 'text', placeholder, defaultValue: '', confirmText, cancelText: 'Cancel', confirmClass: 'btn-primary', showCancel: true });
-  return typeof value === 'string' ? value : null;
-}
-const toastText = ref('');
-let toastTimer = null;
-function toast(text) {
-  toastText.value = text;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toastText.value = ''), 2600);
-}
-onBeforeUnmount(() => clearTimeout(toastTimer));
 
 // My Space rows, New… and which row is lit: the same wiring One's frame uses.
 const { mkDrawerActive, mkPick, create } = useMkFrame({
@@ -120,7 +91,7 @@ provide('focusedNav', {
   go,
   ask,
   chat,
-  openConversation: (outputId) => router.push({ path: '/chat', query: { 'content-id': outputId } }).catch(() => {}),
+  openConversation,
   studio: pushScreen,
   confirm,
   prompt,
