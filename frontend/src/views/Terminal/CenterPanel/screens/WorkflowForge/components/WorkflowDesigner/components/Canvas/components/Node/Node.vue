@@ -32,6 +32,7 @@
     <div
       v-if="!hasWidget"
       class="node-content"
+      :title="node.isEditing || node.type === 'label' ? null : node.text || 'Untitled Node'"
       @dblclick="startEditing"
       :contenteditable="node.isEditing"
       @blur="finishEditing"
@@ -640,14 +641,17 @@ export default {
   user-select: none;
 }
 
+/* The name takes the room between the icon and the grabber, on one line, and
+   ends in an ellipsis when it is longer than the node; the full name is its
+   tooltip. It used to fill the whole node and refuse to shrink, so a long
+   name ran past both edges and under the icon. */
 .node-content {
-  display: flex;
-  align-content: center;
-  align-items: center;
-  justify-content: center;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  width: -webkit-fill-available;
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
   padding: 10px;
   transition:
     opacity 0.35s ease,
@@ -672,9 +676,13 @@ export default {
 
 .node-icon {
   display: flex;
+  flex: none;
 }
 
 .node-content[contenteditable='true'] {
+  /* While editing, the whole name scrolls in place instead of being cut off. */
+  overflow-x: auto;
+  text-overflow: clip;
   cursor: text;
   user-select: text;
   outline: 2px solid #01052a25;
@@ -743,6 +751,7 @@ export default {
   padding: 5px;
   min-width: 50px;
   min-height: 20px;
+  overflow: visible;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -799,6 +808,7 @@ export default {
 /* IF TINY NODES ENABLED */
 .node.tiny-node .node-content {
   /* display: none; */
+  flex: 0 0 0;
   width: 0;
   padding: 0;
   opacity: 0;
@@ -816,6 +826,7 @@ export default {
 }
 
 .node.tiny-node.label-node .node-content {
+  flex: 1 1 auto;
   width: initial;
   padding: initial;
   opacity: 1;
