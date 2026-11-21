@@ -48,18 +48,31 @@ describe('appAuth app connections', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('disconnectApp posts the disconnect and refreshes both lists', async () => {
-    fetch.mockResolvedValueOnce(ok({ success: true }));
-    await disconnectApp({ dispatch }, 'slack');
-    expect(fetch.mock.calls[0][0]).toBe('https://remote/api/auth/disconnect/slack');
-    expect(fetch.mock.calls[0][1].method).toBe('POST');
+  it('disconnectApp disconnects a provider the local backend knows through it, and refreshes both lists', async () => {
+    fetch.mockResolvedValueOnce({ ...ok({ success: true }), status: 200 });
+    await disconnectApp({ dispatch }, 'gemini');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe('http://local/api/providers/gemini/auth/disconnect');
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer tok' } });
     expect(dispatch).toHaveBeenCalledWith('fetchConnectedApps', { forceRefresh: true });
     expect(dispatch).toHaveBeenCalledWith('fetchAllProviders');
   });
 
+  it('disconnectApp disconnects an app the local backend does not know remotely', async () => {
+    fetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ success: false }) });
+    fetch.mockResolvedValueOnce({ ...ok({ success: true }), status: 200 });
+    await disconnectApp({ dispatch }, 'slack');
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual(['http://local/api/providers/slack/auth/disconnect', 'https://remote/api/auth/disconnect/slack']);
+    expect(dispatch).toHaveBeenCalledWith('fetchConnectedApps', { forceRefresh: true });
+  });
+
   it('disconnectApp does not pretend it worked', async () => {
-    fetch.mockResolvedValueOnce(ok({ success: false }));
-    await expect(disconnectApp({ dispatch }, 'slack')).rejects.toThrow('Disconnection failed');
+    fetch.mockResolvedValueOnce({ ...ok({ success: false }), status: 200 });
+    await expect(disconnectApp({ dispatch }, 'gemini')).rejects.toThrow('Disconnection failed');
+    fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ success: false, error: 'remote refused' }) });
+    await expect(disconnectApp({ dispatch }, 'gemini')).rejects.toThrow('remote refused');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('saveApiKey surfaces the server\'s reason on an HTTP error, not just the status', async () => {

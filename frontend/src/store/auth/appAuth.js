@@ -582,17 +582,26 @@ const actions = {
     return result;
   },
 
-  /** Disconnect an OAuth/API-key app (locally and remotely), then refresh. */
+  /**
+   * Disconnect an OAuth/API-key app, then refresh. The local backend disconnects every provider
+   * it knows, remotely and in this install; an app it does not know (404) is disconnected remotely.
+   */
   async disconnectApp({ state, dispatch }, providerId) {
     refuseRemoteForPluginSignIn(state, providerId);
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${encodeURIComponent(providerId)}`, {
+    let response = await fetch(`${API_CONFIG.BASE_URL}/providers/${encodeURIComponent(providerId)}/auth/disconnect`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (!data.success) throw new Error('Disconnection failed');
+    if (response.status === 404) {
+      response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${encodeURIComponent(providerId)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP error! status: ${response.status}`);
+    if (!data.success) throw new Error(data.error || 'Disconnection failed');
     await dispatch('fetchConnectedApps', { forceRefresh: true });
     await dispatch('fetchAllProviders');
     dispatch('checkConnectionHealth');
