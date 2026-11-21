@@ -138,22 +138,20 @@ export const RAIL_ICONS = Object.freeze({
 });
 
 /** Which rail icon a page belongs to (its active state). */
-// Activity and Memories live under More (2026-10-23). The Market is on the
-// rail again (2026-10-26): publishing, your listings and earnings live there.
-const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'market', activity: 'more', memory: 'more', settings: 'settings' });
+// Activity lives under More. The Market is on the rail: publishing, your
+// listings and earnings live there.
+const RAIL_OF_PAGE = Object.freeze({ connectors: 'apps', scheduled: 'routines', library: 'library', market: 'market', activity: 'more', settings: 'settings' });
 /** The page each rail icon (or More entry) opens; `chats` toggles the drawer, `more` opens its menu. */
-export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', market: 'market', activity: 'activity', memory: 'memory', settings: 'settings' });
+export const RAIL_PAGE = Object.freeze({ apps: 'connectors', routines: 'scheduled', library: 'library', market: 'market', activity: 'activity', settings: 'settings' });
 /**
- * What More holds, in order (2026-10-23). Dashboard, Goals and Approvals are
- * Studio's screens, opened in full with a way back (`screen`); Find anything
+ * What More holds, in order. Dashboard and Goals are Studio's screens,
+ * opened in full with a way back (`screen`); Find anything
  * opens the Ctrl+K palette, so every other screen is a click away too.
  */
 export const MORE_ITEMS = Object.freeze([
   { id: 'activity', label: 'Activity' },
-  { id: 'memory', label: 'Memories' },
   { id: 'dashboard', label: 'Dashboard', screen: 'DashboardScreen' },
   { id: 'goals', label: 'Goals', screen: 'GoalsScreen' },
-  { id: 'approvals', label: 'Approvals', screen: 'LearningScreen' },
   { id: 'find', label: 'Find anything', hint: 'Ctrl K', separated: true },
 ]);
 /** The Studio screen a More entry opens, if any. */

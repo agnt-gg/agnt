@@ -139,16 +139,16 @@ describe('the rail', () => {
     expect(railItems().some((i) => i.id === 'inbox')).toBe(false);
   });
 
-  it('marks the page that is open; Activity and Memories light More and their own entry', () => {
+  it('marks the page that is open; Activity lights More and its own entry', () => {
     const active = (activePage) => railItems({ activePage }).filter((i) => i.active).map((i) => i.id);
     expect(active('connectors')).toEqual(['apps']);
     expect(active('market')).toEqual(['market']);
-    expect(active('memory')).toEqual(['more']);
+    expect(active('memory')).toEqual([]);
     expect(active('activity')).toEqual(['more']);
     const more = railItems({ activePage: 'activity' }).find((i) => i.id === 'more');
     expect(more.menu.map((m) => [m.id, m.label, m.active])).toEqual([
-      ['activity', 'Activity', true], ['memory', 'Memories', false], ['dashboard', 'Dashboard', false],
-      ['goals', 'Goals', false], ['approvals', 'Approvals', false], ['find', 'Find anything', false],
+      ['activity', 'Activity', true], ['dashboard', 'Dashboard', false],
+      ['goals', 'Goals', false], ['find', 'Find anything', false],
     ]);
     // A Studio screen opened from More lights More and its entry.
     const onDash = railItems({ activeScreen: 'DashboardScreen' });
@@ -161,7 +161,7 @@ describe('the rail', () => {
   it('marks one icon active: the page, then an open drawer, then a blank chat', () => {
     const active = (opts) => railItems(opts).filter((i) => i.active).map((i) => i.id);
     expect(active({ drawerOpen: true, activePage: 'connectors' })).toEqual(['apps']);
-    expect(active({ drawerOpen: true, activePage: 'memory' })).toEqual(['more']);
+    expect(active({ drawerOpen: true, activePage: 'activity' })).toEqual(['more']);
     expect(active({ drawerOpen: true })).toEqual(['chats']);
     expect(active({ drawerOpen: true, onBlankChat: true })).toEqual(['chats']);
     const chats = (opts) => railItems(opts).find((i) => i.id === 'chats');

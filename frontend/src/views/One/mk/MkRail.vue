@@ -55,11 +55,9 @@ const ITEMS = Object.freeze([
 ]);
 const MORE = Object.freeze([
   { id: 'activity', label: 'Activity', icon: 'activity' },
-  { id: 'memory', label: 'Memories', icon: 'doc' },
   { id: 'dashboard', label: 'Dashboard', icon: 'board' },
   { id: 'goals', label: 'Goals', icon: 'task' },
   { id: 'members', label: 'Members', icon: 'users' },
-  { id: 'approvals', label: 'Approvals', icon: 'approvals' },
   { id: 'wrapped', label: 'Year in review', icon: 'spark' },
   { id: 'find', label: 'Find anything', icon: 'find', hint: 'Ctrl K', sep: true },
   // Studio: custom pages, every forge, the canvas and Navigation settings (services/uiMode.js).

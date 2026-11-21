@@ -26,14 +26,14 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (p === 'scheduled') return 'routines';
     if (p === 'connectors') return 'apps';
     if (p === 'market') return 'library';
-    if (p === 'activity' || p === 'memory') return 'more';
+    if (p === 'activity') return 'more';
     if (!p && ['DashboardScreen', 'GoalsScreen'].includes(screenName.value)) return 'more';
     if (p === 'settings') return 'settings';
     return null;
   });
   const MORE_SCREENS = { DashboardScreen: 'dashboard', GoalsScreen: 'goals' };
   const mkActiveMore = computed(() => {
-    if (page.value === 'activity' || page.value === 'memory') return page.value;
+    if (page.value === 'activity') return page.value;
     if (page.value === 'team' && loc().view === 'members') return 'members';
     return !page.value ? MORE_SCREENS[screenName.value] || null : null;
   });
@@ -57,13 +57,12 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
 
   const team = (view, extra = {}) => nav.go({ page: 'team', view, ...extra });
   function mkSelect(id) {
-    if (id === 'home' || id === 'approvals') return team('home');
+    if (id === 'home') return team('home');
     if (id === 'chats') return nav.chat();
     if (id === 'apps') return nav.go({ page: 'connectors' });
     if (id === 'routines') return nav.go({ page: 'scheduled' });
     if (id === 'library') return team('library');
     if (id === 'activity') return nav.go({ page: 'activity' });
-    if (id === 'memory') return nav.go({ page: 'memory' });
     if (id === 'dashboard') return nav.openScreen('DashboardScreen');
     if (id === 'goals') return nav.openScreen('GoalsScreen');
     if (id === 'studio') return store.dispatch('theme/setUiMode', 'studio');

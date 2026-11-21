@@ -300,11 +300,13 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('More holds Activity, Memories, Dashboard, Goals, Members, Approvals, Year in review, Find anything and Studio', async () => {
+    it('More holds Activity, Dashboard, Goals, Members, Year in review, Find anything and Studio', async () => {
       const w = mountShell();
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Memories', 'Dashboard', 'Goals', 'Members', 'Approvals', 'Year in review', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
+      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Dashboard', 'Goals', 'Members', 'Year in review', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
+      expect(w.find('[data-testid="one-rail-memory"]').exists()).toBe(false);
+      expect(w.find('[data-testid="one-rail-approvals"]').exists()).toBe(false);
       await w.find('[data-testid="one-rail-activity"]').trigger('click');
       expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
       expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
@@ -317,9 +319,6 @@ describe('OneShell', () => {
       await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-members"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'members' } });
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
-      await w.find('[data-testid="one-rail-approvals"]').trigger('click');
-      expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'home' } });
       await w.find('[data-testid="one-rail-more"]').trigger('click');
       await w.find('[data-testid="one-rail-find"]').trigger('click');
       expect(dispatch).toHaveBeenCalledWith('shell/openJump');
