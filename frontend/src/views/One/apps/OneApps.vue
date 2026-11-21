@@ -2,9 +2,10 @@
   <section class="za za-page" aria-label="Apps" data-testid="one-apps">
     <aside class="za-sub" aria-label="Apps sections">
       <h2>Apps</h2>
+      <template v-for="item in SECTIONS" :key="item.id">
+      <!-- MCP servers and email & webhooks are for builders: grouped under their own label. -->
+      <div v-if="item.id === 'mcp'" class="sub-label">Advanced</div>
       <button
-        v-for="item in SECTIONS"
-        :key="item.id"
         type="button"
         class="sub-item"
         :class="{ on: section === item.id }"
@@ -17,6 +18,7 @@
           <span v-if="item.id === 'connections' && needsYou" v-tooltip="`${needsYou} need you`" class="needs-pill">{{ needsYou }}</span>{{ counts[item.id] }}
         </span>
       </button>
+      </template>
     </aside>
 
     <div class="za-main">

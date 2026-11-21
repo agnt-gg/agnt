@@ -33,7 +33,9 @@ describe('Library', () => {
     expect(teamLocation({ view: 'library', tab: 'templates' }).tab).toBe('agents');
     expect(teamLocation({ view: 'library', tab: 'connections' }).tab).toBe('agents');
     const { wrapper } = mountLibrary('agents');
-    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Files', 'Market']);
+    // Your own kinds as tabs; the Market, somewhere to get more, as a link after them.
+    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Files', 'Get more from the Market']);
+    expect(wrapper.get('.tabs .v2-tab-link').attributes('data-tab')).toBe('market');
   });
   it('Files shows your workspace in the page, at the folder the route names', async () => {
     const { wrapper, ctx } = mountLibrary('files', { dir: 'Reports' });

@@ -90,9 +90,18 @@ describe('focusedLocation: every Library kind has a Focused page', () => {
   });
 
   it('Chat and Studio-only screens are not Focused pages', () => {
-    for (const s of ['ChatScreen', 'GoalsScreen', 'DashboardScreen', 'WorkspaceScreen']) {
+    for (const s of ['ChatScreen', 'DashboardScreen', 'WorkspaceScreen']) {
       expect(focusedLocation(s, {}), s).toBeNull();
     }
+  });
+
+  it('plain Goals is the Goals page; one goal and Studio\'s other sections stay Studio\'s', () => {
+    expect(focusedLocation('GoalsScreen', {})).toEqual({ page: 'goals' });
+    expect(routeFor({ page: 'goals' })).toEqual(['GoalsScreen', {}]);
+    expect(focusedLocation('GoalsScreen', { select: 'goal:g1' })).toBeNull();
+    expect(focusedLocation('GoalsScreen', { section: 'approvals' })).toBeNull();
+    expect(focusedLocation('GoalsScreen', { section: 'schedules' })).toMatchObject({ page: 'scheduled' });
+    expect(focusedLocation('AutonomyScreen', {})).toBeNull();
   });
 
   it('Traces is Activity, and a run opens as its own Activity page', () => {

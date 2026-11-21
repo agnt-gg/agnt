@@ -98,20 +98,31 @@ describe('OneCapsule', () => {
     w.unmount();
   });
 
-  it('says All set once every step is done, an AI of your own included', async () => {
+  // A finished checklist is not news: once every step is done the capsule goes away.
+  it('goes away once every step is done, an AI of your own included', async () => {
     state.appAuth.connectedApps = ['google', 'openai-codex'];
     getStatus.mockResolvedValue(LINKED);
     const w = await mountCapsule();
-    expect(w.find('[data-testid="one-capsule"]').text()).toBe('All set');
-    expect(w.find('.one-capsule').classes()).toContain('is-set');
+    expect(w.find('[data-testid="one-capsule"]').exists()).toBe(false);
     w.unmount();
   });
 
-  it('is All set without a phone on a plan that cannot text', async () => {
+  it('goes away without a phone on a plan that cannot text', async () => {
     state.appAuth.connectedApps = ['google', 'openai-codex'];
     getStatus.mockResolvedValue({ phones: [], plan: { eligible: false } });
     const w = await mountCapsule();
+    expect(w.find('[data-testid="one-capsule"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('finishing the last step with the list open keeps it on screen until the list closes', async () => {
+    state.appAuth.connectedApps = ['google', 'openai-codex'];
+    const w = await mountCapsule();
+    getStatus.mockResolvedValue(LINKED);
+    await open(w);
     expect(w.find('[data-testid="one-capsule"]').text()).toBe('All set');
+    await w.find('[data-testid="one-capsule"]').trigger('click');
+    expect(w.find('[data-testid="one-capsule"]').exists()).toBe(false);
     w.unmount();
   });
 

@@ -296,3 +296,17 @@
 .za .note p { margin-top: 4px; font-size: 13.5px; color: var(--text-secondary); }
 .za .note .row-gap { margin-top: 10px; }
 .za .pro-note { align-items: center; margin: 0 0 18px; }
+
+/* Focused v2: what stopped working, with its fix, above the list. */
+.za .za-broken { margin: 0 0 18px; border: 1px solid rgba(var(--red-rgb), 0.35); border-radius: 14px; background: var(--raised); overflow: hidden; }
+.za .za-broken-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; font-size: 14px; font-weight: 600; color: var(--color-red); }
+.za .za-broken-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.za .za-broken-row .logo { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--surface-active); }
+.za .za-broken-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.za .za-broken-text strong { font-size: 14.5px; font-weight: 600; }
+.za .za-broken-text small { font-size: 13px; color: var(--text-secondary); }
+/* The sub-nav's advanced sections, under their own label. */
+.za .sub-label { margin: 18px 10px 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-tertiary); }
+.ui-focused.is-compact .za .sub-label { display: none; }
+.za .tag { font-size: 12px; }
+.za .use.zero { border: 0; background: none; padding: 0; color: var(--text-tertiary); }

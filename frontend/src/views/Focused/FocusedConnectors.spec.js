@@ -191,12 +191,15 @@ describe('Apps page: App connections', () => {
     expect(dispatch).toHaveBeenCalledWith('appAuth/disconnectApp', 'google');
   });
 
-  it('Test connection runs the health check and says how it went', async () => {
+  it('Test connection, in a working row\'s menu, runs the health check and says how it went', async () => {
     getters['apps/installed'] = [gmail];
     getters['appAuth/connectedApps'] = ['google'];
     state.appAuth.connectionHealth = { providers: [{ provider: 'google', status: 'healthy', lastChecked: new Date().toISOString(), details: { email: 'nathan@example.com' } }] };
     mountPage(); await flushPromises();
     expect(row('google').text()).toContain('nathan@example.com');
+    // A working connection needs nothing in its row; the test is one menu away.
+    expect(row('google').find('.col-status [data-action="test"]').exists()).toBe(false);
+    await row('google').find('[aria-label="More actions"]').trigger('click'); await flushPromises();
     await row('google').find('[data-action="test"]').trigger('click'); await flushPromises();
     expect(dispatch).toHaveBeenCalledWith('appAuth/checkConnectionHealth');
     expect(nav.toast).toHaveBeenCalledWith('Google works.');

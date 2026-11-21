@@ -21,23 +21,22 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       if (v === 'home' || v === 'inbox') return 'home';
       // Agents live in the Library now.
       if (v === 'agents' || v === 'agent' || v === 'library') return 'library';
-      if (v === 'members') return 'more';
+      if (v === 'members') return 'me';
       return null; // a teamspace, My tasks or a doc: lit in the drawer
     }
-    if (p === 'scheduled') return 'routines';
+    // Goals holds one-off goals and repeating ones (routines).
+    if (p === 'goals' || p === 'scheduled') return 'goals';
+    if (!p && screenName.value === 'GoalsScreen') return 'goals';
     if (p === 'connectors') return 'apps';
     if (p === 'market') return 'library';
-    if (p === 'activity') return 'more';
-    if (!p && ['DashboardScreen', 'GoalsScreen'].includes(screenName.value)) return 'more';
+    // Activity is Home's history, and the dashboard's useful parts live on Home.
+    if (p === 'activity') return 'home';
+    if (!p && screenName.value === 'DashboardScreen') return 'home';
     if (p === 'settings') return 'settings';
     return null;
   });
-  const MORE_SCREENS = { DashboardScreen: 'dashboard', GoalsScreen: 'goals' };
-  const mkActiveMore = computed(() => {
-    if (page.value === 'activity') return page.value;
-    if (page.value === 'team' && loc().view === 'members') return 'members';
-    return !page.value ? MORE_SCREENS[screenName.value] || null : null;
-  });
+  // The account menu entry that is the page on screen.
+  const mkActiveMore = computed(() => (page.value === 'team' && loc().view === 'members' ? 'members' : null));
   const mkDrawerActive = computed(() => {
     if (page.value === 'team') {
       const { view, space } = loc();
@@ -55,7 +54,8 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     files: files.count.value ?? 0,
   }));
 
-  const userName = computed(() => store.getters['userAuth/userPseudonym'] || store.getters['userAuth/userEmail'] || '');
+  // Your name as Members and Settings show it, so the rail's initials match theirs.
+  const userName = computed(() => store.getters['userAuth/userName'] || store.getters['userAuth/userPseudonym'] || store.getters['userAuth/userEmail'] || '');
   const activeChatId = computed(() => store.state.chat?.savedOutputId || null);
   const activeConversationId = computed(() => store.state.chat?.activeConversationId || null);
 
@@ -64,7 +64,9 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (id === 'home') return team('home');
     if (id === 'chats') return nav.chat();
     if (id === 'apps') return nav.go({ page: 'connectors' });
+    if (id === 'goals') return nav.go({ page: 'goals' });
     if (id === 'routines') return nav.go({ page: 'scheduled' });
+    if (id === 'account') return nav.go({ page: 'settings' });
     if (id === 'library') return team('library');
     if (id === 'activity') return nav.go({ page: 'activity' });
     if (id === 'dashboard') return nav.openScreen('DashboardScreen');
@@ -81,6 +83,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       case 'mine-tasks': return team('mine');
       case 'mine-drafts': case 'mine-files': return nav.go({ page: 'library', tab: 'files', dir: '' });
       case 'mine-agents': return team('agents');
+      // Studio's Team screen still lists My routines (it opens the routines page in place).
       case 'mine-routines': return nav.go({ page: 'scheduled' });
       case 'team-settings': return nav.go({ page: 'settings', section: 'members' });
       case 'new-chat': return nav.chat();
@@ -108,10 +111,12 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     return undefined;
   }
 
-  const LABELS = Object.freeze({ home: 'Home', inbox: 'Home', agents: 'Agents', library: 'Library', members: 'Members', scheduled: 'Routines', activity: 'Activity', settings: 'Settings', market: 'Market', connectors: 'Apps', memory: 'Memories' });
+  const LABELS = Object.freeze({ home: 'Home', inbox: 'Home', agents: 'Agents', library: 'Library', members: 'Members', scheduled: 'Goals', goals: 'Goals', activity: 'Activity', settings: 'Settings', market: 'Market', connectors: 'Apps', memory: 'Memories' });
+  // Every page names itself in its own heading; the top bar shows a trail only
+  // when there is somewhere to step back to (Teamspaces › Product).
   const crumbs = computed(() => {
     const p = page.value;
-    if (onChat.value) return [{ label: 'Chats with Annie' }];
+    if (onChat.value) return [{ label: 'Chats' }];
     if (p === 'team') {
       const { view, space, item } = loc();
       const s = (teamState.spaces || []).find((x) => x.id === space);
@@ -124,7 +129,8 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       }
       return [{ label: LABELS[view] || 'Home' }];
     }
-    if (p === 'scheduled' && loc().item) return [{ label: 'Routines', go: () => nav.go({ page: 'scheduled' }) }, { label: 'Routine' }];
+    if (p === 'scheduled' && (loc().item || loc().isNew)) return [{ label: 'Goals', go: () => nav.go({ page: 'goals' }) }, { label: loc().isNew ? 'New routine' : 'Routine' }];
+    if (p === 'activity') return [{ label: 'Home', go: () => team('home') }, { label: 'Activity' }];
     if (p === 'library') return [{ label: 'My Space', go: () => team('mine') }, { label: loc().tab === 'files' ? 'My files' : 'Library' }];
     return [{ label: LABELS[p] || (screenName.value || '').replace(/Screen$/, '') || 'AGNT' }];
   });

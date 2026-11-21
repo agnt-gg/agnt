@@ -1,6 +1,6 @@
 // Activity (2026-10-23): every run in one list. Shapes are executionHistory's.
 import { describe, it, expect } from 'vitest';
-import { activityRows, statusOf, activityDetail, kindFromId, durationLabel } from './focusedActivity.js';
+import { activityGroups, activityRows, statusOf, activityDetail, kindFromId, durationLabel } from './focusedActivity.js';
 
 const runs = [
   { id: 'agent-1', isAgentExecution: true, agentId: 'orchestrator', origin: 'chat', status: 'completed', startTime: '2026-10-23T10:00:00Z', nodeCount: 3, conversationId: 'c1' },
@@ -53,5 +53,30 @@ describe('activityDetail', () => {
   it('kind from a run id, and durations in words', () => {
     expect(['goal-1', 'agent-1', 'abc'].map(kindFromId)).toEqual(['routine', 'agent', 'workflow']);
     expect([null, 2400, 65000, 3720000].map(durationLabel)).toEqual(['', '2.4 s', '1 min 5 s', '1 h 2 min']);
+  });
+});
+
+describe('Activity groups', () => {
+  const now = new Date('2026-11-21T15:00:00').getTime();
+  const row = (id, at, tone = 'good') => ({ id, at, status: { tone } });
+  it('pins what needs a look, then groups the rest by day, newest first', () => {
+    const groups = activityGroups([
+      row('old', '2026-11-10T09:00:00'),
+      row('y', '2026-11-20T18:00:00'),
+      row('t1', '2026-11-21T09:00:00'),
+      row('t2', '2026-11-21T14:00:00'),
+      row('bad-old', '2026-11-19T09:00:00', 'bad'),
+      { id: 'team', at: '2026-11-21T10:00:00' },
+    ], now);
+    expect(groups.needs.map((r) => r.id)).toEqual(['bad-old']);
+    expect(groups.days.map((d) => [d.label, d.rows.map((r) => r.id)])).toEqual([
+      ['Today', ['t2', 'team', 't1']],
+      ['Yesterday', ['y']],
+      ['Earlier', ['old']],
+    ]);
+  });
+  it('is empty for nothing', () => {
+    expect(activityGroups([], now)).toEqual({ needs: [], days: [] });
+    expect(activityGroups(undefined, now)).toEqual({ needs: [], days: [] });
   });
 });

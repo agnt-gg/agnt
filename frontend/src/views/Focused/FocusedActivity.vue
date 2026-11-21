@@ -1,10 +1,10 @@
-<!-- Activity (under More): everything people and agents did, newest first:
-     teamspace activity (tasks, docs, chat, members) and every run. -->
+<!-- Activity: Home's full history, newest first: teamspace activity (tasks,
+     docs, chat, members) and every run. What needs a look is pinned on top. -->
 <template>
   <div class="mk mk-page">
     <div class="content">
       <div class="page">
-        <div class="page-head"><div><h1>Activity</h1><p>Everything people and agents did that you can see.</p></div></div>
+        <div class="page-head"><div><h1>Activity</h1><p>Everything Annie{{ team.state.team ? ' and your team' : '' }} did for you, newest first.</p></div></div>
         <nav class="tabs" role="tablist" aria-label="Show">
           <button
             v-for="k in kinds"
@@ -20,28 +20,36 @@
         </nav>
         <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
         <ul v-else-if="!rows.length" class="list"><li class="empty">{{ kind !== 'all' ? 'Nothing here yet.' : 'No activity yet. Start a chat and it shows up here.' }}</li></ul>
-        <ul v-else class="list" data-testid="activity-list" data-tour-id="traces.list">
-          <li v-for="r in rows.slice(0, CAP)" :key="r.id">
-            <!-- What a person did in a teamspace. -->
-            <button v-if="r.kind === 'team'" type="button" class="r" data-kind="team" @click="openTeam(r)">
-              <TeamAvatar :who="{ kind: 'person', id: r.actorId }" :label="personName(r.actorId) || r.actor" size="lg" />
-              <span class="r-text">
-                <strong style="white-space: normal">{{ r.actor }} <span style="font-weight: 400; color: var(--text-secondary)">{{ r.sentence }}</span></strong>
-                <small>{{ ago(r.at) }}<template v-if="r.where"> · {{ r.where }}</template></small>
-              </span>
-              <span class="tag">Teamspace</span>
-            </button>
-            <!-- A run: a chat with Annie, an agent, a workflow or a routine. -->
-            <button v-else type="button" class="r" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
-              <span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
-              <span class="r-text">
-                <strong style="white-space: normal">{{ r.title }} <span style="font-weight: 400; color: var(--text-secondary)">{{ r.detail }}</span></strong>
-                <small>{{ ago(r.at) }} · {{ KIND_LABEL[r.kind] }}</small>
-              </span>
-              <span class="tag" :class="TONE[r.status.tone] || ''">{{ r.status.label }}</span>
-            </button>
-          </li>
-        </ul>
+        <template v-else>
+          <div data-testid="activity-list" data-tour-id="traces.list">
+            <section v-for="group in groups" :key="group.id" class="v2-section" :data-group="group.id">
+              <div class="v2-sec-head"><h2>{{ group.label }}<span class="v2-sec-count">{{ group.rows.length }}</span></h2></div>
+              <ul class="list" :class="{ 'v2-needs': group.id === 'needs' }">
+                <li v-for="r in group.rows" :key="r.id">
+                  <!-- What a person did in a teamspace. -->
+                  <button v-if="r.kind === 'team'" type="button" class="r" data-kind="team" @click="openTeam(r)">
+                    <TeamAvatar :who="{ kind: 'person', id: r.actorId }" :label="personName(r.actorId) || r.actor" size="lg" />
+                    <span class="r-text">
+                      <strong style="white-space: normal">{{ r.actor }} <span style="font-weight: 400; color: var(--text-secondary)">{{ r.sentence }}</span></strong>
+                      <small>Teamspace<template v-if="r.where"> · {{ r.where }}</template></small>
+                    </span>
+                    <span class="v2-time">{{ ago(r.at) }}</span>
+                  </button>
+                  <!-- A run: a chat with Annie, an agent, a workflow or a routine. -->
+                  <button v-else type="button" class="r" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
+                    <span class="r-icon" :class="'v2-kind-' + r.kind"><MkIcon :name="KIND_ICON[r.kind] || 'activity'" /></span>
+                    <span class="r-text">
+                      <span class="v2-title-row"><strong>{{ r.title }}</strong><span class="tag" :class="TONE[r.status.tone] || ''">{{ r.status.label }}</span></span>
+                      <small>{{ KIND_LABEL[r.kind] }}<template v-if="r.detail"> · {{ r.detail }}</template></small>
+                    </span>
+                    <span class="v2-time">{{ ago(r.at) }}</span>
+                    <MkIcon name="chev" size="sm" class="v2-go" />
+                  </button>
+                </li>
+              </ul>
+            </section>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -53,16 +61,18 @@ import { useStore } from 'vuex';
 import '@/views/One/mk/mk.css';
 import '@/views/One/mk/mk-frame.css';
 import TeamAvatar from '@/views/One/team/TeamAvatar.vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { useTeam, teamApi } from '@/views/One/team/useTeam.js';
 import { teamRequest } from '@/utils/teamClient.js';
-import { ACTIVITY_KINDS, activityRows, teamActivityRows } from './focusedActivity.js';
+import { ACTIVITY_KINDS, activityRows, teamActivityRows, activityGroups } from './focusedActivity.js';
 
 const store = useStore();
 const nav = inject('focusedNav');
 const team = useTeam(store);
 // The mockup's tag tones for each run outcome.
 const TONE = Object.freeze({ ok: 'green', success: 'green', good: 'green', done: 'green', running: 'blue', live: 'blue', warn: 'amber', bad: 'amber', error: 'amber', failed: 'amber', stopped: '' });
-const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Agent run', workflow: 'Workflow run', routine: 'Routine run' });
+const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Agent', workflow: 'Automation', routine: 'Goal' });
+const KIND_ICON = Object.freeze({ chat: 'chats', agent: 'bot', workflow: 'bolt', routine: 'task' });
 const CAP = 300;
 const kind = ref('all');
 const loading = ref(false);
@@ -73,6 +83,11 @@ const runRows = computed(() => activityRows(store.getters['executionHistory/getE
 const rows = computed(() => {
   const team_ = kind.value === 'all' || kind.value === 'team' ? teamRows.value : [];
   return [...team_, ...runRows.value].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+});
+// What needs a look first, then by day; a long history shows its newest rows.
+const groups = computed(() => {
+  const { needs, days } = activityGroups(rows.value.slice(0, CAP));
+  return [...(needs.length ? [{ id: 'needs', label: 'Needs a look', rows: needs }] : []), ...days];
 });
 
 /** The team's events, named from the lists this person may read. */

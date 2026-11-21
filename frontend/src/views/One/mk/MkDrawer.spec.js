@@ -34,44 +34,35 @@ describe('drawer: Teamspaces +', () => {
   });
 });
 
-// One sidebar for the drawer and the chats (2026-11): one search, New chat,
-// the Main chat, My Space, Teamspaces, then the chats OneShell passes in.
+// One sidebar for the drawer and the chats (Focused v2): one search, New chat,
+// the Main chat, in a team My tasks and Teamspaces, then the chats OneShell
+// passes in. The rail reaches every page, so the sidebar never repeats it.
 describe('the one sidebar', () => {
   beforeEach(() => localStorage.clear());
   const spaces = [{ id: 'sales', name: 'Sales' }, { id: 'ops', name: 'Ops' }];
-  const sidebar = (extra = {}, slots) => mountDrawer({ team: team('owner'), teams: [team('owner')], spaces, counts: { agents: 5, routines: 4 }, ...extra }, slots);
+  const sidebar = (extra = {}, slots) => mountDrawer({ team: team('owner'), teams: [team('owner')], spaces, counts: { agents: 5, routines: 4, tasks: 2 }, ...extra }, slots);
   const search = (w) => w.get('[data-testid="one-sidebar-search"]');
 
-  it('My files carries a count like the other My Space rows', () => {
-    const w = sidebar({ counts: { agents: 5, routines: 4, files: 3110 } });
-    const rows = Object.fromEntries(w.findAll('.d-item').filter((b) => /^My /.test(b.text())).map((b) => [b.text().replace(/\d+$/, ''), b.find('.count').exists() ? b.find('.count').text() : null]));
-    expect(rows).toMatchObject({ 'My agents': '5', 'My routines': '4', 'My files': '3110' });
+  it('never repeats the rail: no My agents, My routines or My files rows', () => {
+    for (const w of [sidebar(), mountDrawer({ team: null, teams: [], spaces: [], counts: { agents: 5, files: 3 } })]) {
+      expect(w.text()).not.toMatch(/My agents|My routines|My files/);
+    }
   });
 
-  it('+ New beside the search starts a chat; its chevron holds the rest of New…', async () => {
+  it('New chat is one full-width button, with nothing else to start from here', async () => {
     const w = sidebar();
-    expect(w.get('[data-testid="one-new-chat"]').text()).toBe('New');
-    expect(w.get('.find-row [data-testid="one-new-menu"]').exists()).toBe(true);
+    expect(w.get('[data-testid="one-new-chat"]').text()).toBe('New chat');
+    expect(w.find('[data-testid="one-new-menu"]').exists()).toBe(false);
     await w.get('[data-testid="one-new-chat"]').trigger('click');
     expect(w.emitted('new-chat')).toHaveLength(1);
-    await w.get('[data-testid="one-new-menu"]').trigger('click');
-    const items = w.findAll('.new-menu [role="menuitem"]');
-    // No "Task" (it only opened a chat that asked you to make a task): Chat starts a new chat.
-    expect(items.map((b) => b.text())).toEqual(['Chat', 'File', 'Agent', 'Routine']);
-    await items[0].trigger('click');
-    expect(w.emitted('new-chat')).toHaveLength(2);
-    expect(w.emitted('pick')).toBeUndefined();
-    expect(w.find('.new-menu').exists()).toBe(false);
-    await w.get('[data-testid="one-new-menu"]').trigger('click');
-    await w.findAll('.new-menu [role="menuitem"]')[1].trigger('click');
-    expect(w.emitted('pick')).toEqual([['new-doc']]);
   });
 
-  it('the Main chat row opens the Main chat; its eraser clears it, and never while a reply streams', async () => {
+  it('the Main chat row says what it is, opens the Main chat, and its eraser clears it, never while a reply streams', async () => {
     const w = sidebar({ mainChat: { open: true, unread: false, streaming: false } });
     const row = w.get('[data-testid="main-chat-row"]');
     expect(row.classes()).toContain('is-active');
-    expect(row.text()).toBe('Main chat'); // one line, no subtext
+    expect(row.find('.main-text b').text()).toBe('Main chat');
+    expect(row.find('.main-text small').text()).toBe('Your everyday chat with Annie');
     await row.trigger('click');
     expect(w.emitted('open-main')).toHaveLength(1);
     await w.get('[data-testid="main-chat-clear"]').trigger('click');
@@ -82,19 +73,15 @@ describe('the one sidebar', () => {
     expect(w.get('[data-testid="main-chat-clear"]').attributes('disabled')).toBeDefined();
   });
 
-  it('one search filters the sidebar in place, then hands over to Annie or to Find anything', async () => {
+  it('one search filters the sidebar in place and hands over to Find anything; asking is the composer\'s', async () => {
     const w = sidebar();
+    expect(search(w).attributes('placeholder')).toBe('Search');
     await search(w).setValue('  sal ');
-    // + New sits beside the search, so it stays while you type.
-    expect(w.get('[data-testid="one-new-chat"]').element.closest('.find-row')).not.toBeNull();
     expect(w.find('[data-testid="main-chat-row"]').exists()).toBe(false);
-    expect(w.text()).not.toContain('My agents');
     expect(w.text()).toContain('Sales');
     expect(w.text()).not.toContain('Ops');
-    expect(w.get('[data-testid="one-sidebar-ask"]').text()).toBe('Ask Annie about “sal”');
-    await w.get('[data-testid="one-sidebar-ask"]').trigger('click');
-    expect(w.emitted('ask')).toEqual([['sal']]);
-    expect(search(w).element.value).toBe('');
+    expect(w.find('[data-testid="one-sidebar-ask"]').exists()).toBe(false);
+    expect(w.get('[data-testid="one-sidebar-find"]').text()).toContain('Find “sal” everywhere');
 
     await search(w).setValue('quarterly');
     await search(w).trigger('keydown', { key: 'Enter' });
@@ -115,39 +102,36 @@ describe('the one sidebar', () => {
     expect(probe().text()).toBe('[northwind]');
   });
 
-  it('a section folds by its name and stays folded; a search still looks inside it', async () => {
+  it('in a team, Mine holds My tasks; it folds by its name and stays folded, and a search still looks inside it', async () => {
     const w = sidebar();
-    expect(w.text()).toContain('My agents5');
+    expect(w.text()).toContain('My tasks2');
     await w.get('[data-testid="fold-mine"]').trigger('click');
-    expect(w.text()).not.toContain('My agents');
+    expect(w.text()).not.toContain('My tasks');
     expect(w.get('[data-testid="fold-mine"]').attributes('aria-expanded')).toBe('false');
     expect(JSON.parse(localStorage.getItem('agnt:one-sidebar:folded'))).toEqual({ mine: true, spaces: false });
     w.unmount();
 
     const again = sidebar();
-    expect(again.text()).not.toContain('My agents');
+    expect(again.text()).not.toContain('My tasks');
     expect(again.text()).toContain('Sales'); // Teamspaces did not fold with it
-    await search(again).setValue('agents');
-    expect(again.text()).toContain('My agents');
+    await search(again).setValue('tasks');
+    expect(again.text()).toContain('My tasks');
   });
 
-  it('collapses from its foot, as in Studio', async () => {
+  it('collapses from the button beside the switcher, as in Studio', async () => {
     const w = sidebar();
-    const collapse = w.get('[data-testid="one-sidebar-collapse"]');
+    const collapse = w.get('.drawer-head [data-testid="one-sidebar-collapse"]');
     expect(collapse.attributes('aria-label')).toBe('Collapse sidebar');
-    expect(collapse.text()).toBe('Collapse');
     expect(collapse.find('.fa-angle-double-left').exists()).toBe(true);
     await collapse.trigger('click');
     expect(w.emitted('collapse')).toHaveLength(1);
   });
 
-  it('a personal workspace: no My tasks, and the note in place of Teamspaces', () => {
+  it('a personal workspace: no Mine section and no explainer note; the switcher says it is private', () => {
     const w = mountDrawer({ team: null, teams: [], spaces: [], counts: {} });
     expect(w.text()).not.toContain('My tasks');
-    expect(w.text()).toContain('My agents');
-    // It read "private.Set up a team": the space was dropped with the branch's leading whitespace.
-    expect(w.get('.d-note').text()).toBe('This is your personal workspace: everything here is private. Set up a team to work with others.');
-    const withTeam = mountDrawer({ team: null, teams: [team('member')], spaces: [], counts: {} });
-    expect(withTeam.get('.d-note').text()).toBe('This is your personal workspace: everything here is private. Teamspaces live in bravo.');
+    expect(w.find('[data-testid="fold-mine"]').exists()).toBe(false);
+    expect(w.find('.d-note').exists()).toBe(false);
+    expect(w.get('[data-testid="ot-switcher"]').text()).toContain('Only you');
   });
 });

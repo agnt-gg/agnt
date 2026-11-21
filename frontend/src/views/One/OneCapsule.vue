@@ -1,7 +1,9 @@
 <template>
-  <div v-if="!flags.hidden" ref="rootEl" class="one-capsule-anchor">
+  <div v-if="!flags.hidden && (!summary.complete || open)" ref="rootEl" class="one-capsule-anchor">
     <!-- The only onboarding chrome: progress through the first-run setup.
-         Every step opens the setup at that step, in a blank chat. -->
+         Every step opens the setup at that step, in a blank chat. Once every
+         step is done it goes away (a finished checklist is not news), but not
+         from under an open list: it leaves when that list closes. -->
     <button
       type="button"
       class="one-capsule"

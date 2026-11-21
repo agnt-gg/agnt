@@ -134,9 +134,12 @@ describe('Home is the inbox', () => {
     const { wrapper, nav } = mountPage(loc({ view: 'home' }));
     await flushPromises();
     const panel = wrapper.find('[data-testid="home-inbox"]');
-    expect(panel.find('.tab.is-active').text()).toMatch(/^Needs you/);
+    expect(panel.find('.v2-inbox-title').text()).toMatch(/^Needs you/);
     expect(panel.text()).toContain('Ready for your review');
-    expect(panel.text()).toContain('Your OK');
+    // No tabs: Home is what needs you; the rest of the history is Activity, one click away.
+    expect(panel.find('.tab').exists()).toBe(false);
+    await panel.get('[data-testid="home-all-activity"]').trigger('click');
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'activity' });
     expect(panel.text()).toContain('Send the January price notice');
     expect(panel.text()).not.toMatch(/\bApprove\b/); // Review, never Approve: the whole card is in the chat
     await panel.findAll('button').find((b) => b.text() === 'Review').trigger('click');
@@ -154,7 +157,8 @@ describe('Home is the inbox', () => {
     expect(apps.text()).toContain('Google');
     expect(apps.text()).toContain('Gmail can’t run until then');
     expect(apps.text()).not.toContain('Slack');
-    expect(wrapper.find('[data-testid="home-inbox"] .tab.is-active').text()).toMatch(/^Needs you\s*1/);
+    expect(wrapper.find('[data-testid="home-inbox"] .v2-inbox-title').text()).toMatch(/^Needs you\s*1/);
+    expect(apps.text()).toContain('Stopped working');
     await apps.find('button').trigger('click');
     expect(signInCalls).toEqual(['google']);
   });
@@ -318,7 +322,7 @@ describe('home', () => {
     expect(review.text()).not.toContain('Weekly SEO report');
     await review.find('button').trigger('click');
     expect(nav.openScreen).toHaveBeenLastCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g-game' } });
-    expect(wrapper.find('[data-testid="home-inbox"] .tab .count').text()).toBe('2');
+    expect(wrapper.find('[data-testid="home-inbox"] .v2-inbox-title .v2-sec-count').text()).toBe('2');
 
     const [done, upcoming] = wrapper.find('[data-testid="home-routines"]').findAll('.list').map((l) => l.text());
     expect(done).toContain('AI news digest');
@@ -331,17 +335,18 @@ describe('home', () => {
     expect(noSpaces.text()).toContain('No teamspaces yet');
     await noSpaces.find('button').trigger('click');
     expect(nav.newTeamspace).toHaveBeenCalled();
-    // The chips: chat is Ask Annie; there is no "New task", and files are files.
-    const chips = wrapper.findAll('.chips .chip').map((b) => b.text());
-    expect(chips).toEqual(['Ask Annie', 'New file', 'New agent', 'New routine']);
+    // No quick-create chips: making things starts on their own pages (and New chat).
+    expect(wrapper.findAll('.chips .chip')).toHaveLength(0);
   });
 
-  it('without a team, offers your teams instead of empty team widgets', async () => {
+  it('without a team, says plainly that nothing needs you, and leaves your teams to the switcher', async () => {
     routes[''] = [{ id: 'other', name: 'Globex', role: 'member', tenantUrl: 'https://globex.t1.agnt.gg' }];
     const { wrapper } = mountPage(loc({ view: 'home' }));
     await flushPromises();
-    expect(wrapper.text()).toContain('This is your personal space');
-    expect(wrapper.text()).toContain('Globex');
+    expect(wrapper.get('.lead').text()).toBe('Nothing needs you right now.');
+    expect(wrapper.get('[data-testid="home-all-caught-up"]').text()).toContain('all caught up');
+    expect(wrapper.text()).not.toContain('This is your personal space');
+    expect(wrapper.text()).not.toContain('Globex');
     expect(calls.some((c) => c.path.includes('/inbox'))).toBe(false);
   });
 });

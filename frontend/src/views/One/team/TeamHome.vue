@@ -9,24 +9,15 @@
         </button>
       </div>
       <p v-else class="lead">{{ lead }}</p>
-      <div class="chips">
-        <button type="button" class="chip" @click="ctx.ask('')"><MkIcon name="chats" />Ask Annie</button>
-        <button type="button" class="chip" @click="ctx.create('doc')"><MkIcon name="doc" />New file</button>
-        <button type="button" class="chip" @click="ctx.create('agent')"><MkIcon name="bot" />New agent</button>
-        <button type="button" class="chip" @click="ctx.create('routine')"><MkIcon name="bolt" />New routine</button>
-      </div>
 
-      <!-- Home IS the inbox: what needs me first, then my work. -->
-      <section class="hm-inbox" aria-label="Inbox" data-testid="home-inbox">
-        <div class="hm-inbox-h">
-          <nav class="tabs" aria-label="Inbox" style="margin: 0; border: 0">
-            <button v-for="t in TABS" :key="t.id" type="button" class="tab" :class="{ 'is-active': tab === t.id }" @click="tab = t.id">
-              {{ t.label }}<span v-if="t.id === 'needs' && needCount" class="count">{{ needCount }}</span>
-            </button>
-          </nav>
+      <!-- Home IS the inbox: what needs you, with everything else one click away in Activity. -->
+      <section class="hm-inbox" aria-label="Needs you" data-testid="home-inbox">
+        <div class="hm-inbox-h v2-inbox-h">
+          <h2 class="v2-inbox-title">Needs you<span v-if="needCount" class="v2-sec-count">{{ needCount }}</span></h2>
           <span class="fill"></span>
           <button v-if="reviewTasks.length" type="button" class="primary sm" data-testid="review-sitting-open" @click="sitting = [...reviewTasks]">Review {{ reviewTasks.length === 1 ? 'the agent result' : `${reviewTasks.length} agent results` }}</button>
           <button v-if="team" type="button" class="btn ghost sm" :disabled="!ctx.unread.value" @click="readAll"><MkIcon name="check" size="xs" />Mark all read</button>
+          <button type="button" class="btn ghost sm" data-testid="home-all-activity" @click="ctx.openPage('activity')">See all activity<MkIcon name="chev" size="xs" /></button>
         </div>
         <div class="hm-inbox-b">
           <template v-if="tab === 'needs'">
@@ -38,7 +29,6 @@
                   <div class="r">
                     <span class="r-icon"><MkIcon name="routines" /></span>
                     <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
-                    <span class="tag amber">Your answer</span>
                     <button type="button" class="primary sm" @click="ctx.openRoutine(run.routineId)">Answer</button>
                   </div>
                 </li>
@@ -50,9 +40,9 @@
                   <span class="r-icon"><SvgIcon :name="brandIcon(card.providerId, card.icon)" /></span>
                   <span class="r-text">
                     <strong>{{ card.name }}</strong>
-                    <small>{{ card.status === 'reconnect' ? 'Its sign-in stopped working' : 'Not connected yet' }}<template v-if="describeApps(card)"> · {{ describeApps(card) }} can’t run until then</template></small>
+                    <small>{{ card.status === 'reconnect' ? 'Stopped working: its sign-in expired' : 'Not connected yet' }}<template v-if="describeApps(card)"> · {{ describeApps(card) }} can’t run until then</template></small>
                   </span>
-                  <button type="button" class="primary sm" :disabled="signIn.busy.value" @click="connectApp(card)">{{ card.status === 'reconnect' ? 'Reconnect' : 'Connect' }}</button>
+                  <button type="button" class="primary sm" :class="{ 'v2-warn': card.status === 'reconnect' }" :disabled="signIn.busy.value" @click="connectApp(card)">{{ card.status === 'reconnect' ? 'Reconnect' : 'Connect' }}</button>
                 </div>
               </li>
               </ul>
@@ -62,8 +52,7 @@
               <li v-for="goal in reviewGoals" :key="goal.id">
                 <div class="r">
                   <span class="r-icon"><MkIcon name="task" /></span>
-                  <span class="r-text"><strong>{{ goal.title || 'Untitled goal' }}</strong><small>Goal · finished, waiting for your review · {{ since(goal.updated_at || goal.created_at) }}</small></span>
-                  <span class="tag pink">Your OK</span>
+                  <span class="r-text"><strong>{{ goal.title || 'Untitled goal' }}</strong><small>Goal · finished, waiting for your OK · {{ since(goal.updated_at || goal.created_at) }}</small></span>
                   <button type="button" class="primary sm" @click="ctx.openGoal(goal.id)">Review</button>
                 </div>
               </li>
@@ -81,28 +70,7 @@
             </ul>
             <div v-if="teamNeeds.length" class="hm-sub">Mentions, assignments and agent results</div>
             <ul v-if="teamNeeds.length" class="list"><li v-for="item in teamNeeds" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li></ul>
-            <ul v-if="!needCount" class="list"><li class="empty">Nothing needs you right now.</li></ul>
-          </template>
-          <template v-else-if="tab === 'mentions'">
-            <ul class="list">
-              <li v-if="!mentions.length" class="empty">{{ team ? 'No mentions yet.' : 'Mentions come from teammates. Open a team to see them.' }}</li>
-              <li v-for="item in mentions" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li>
-            </ul>
-          </template>
-          <template v-else-if="tab === 'runs'">
-            <ul class="list">
-              <li v-if="!runs.length" class="empty">{{ runsLoaded ? 'No routine runs yet.' : 'Loading…' }}</li>
-              <li v-for="r in runs" :key="r.id"><TeamRunRow :run="r" /></li>
-            </ul>
-          </template>
-          <template v-else>
-            <div v-if="checkpointsWaiting.length" class="hm-sub">Waiting for your OK</div>
-            <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
-            <div v-if="ctx.inbox.value.length" class="hm-sub">Everything else</div>
-            <ul class="list">
-              <li v-if="!ctx.inbox.value.length && !checkpointsWaiting.length" class="empty">Nothing here yet.</li>
-              <li v-for="item in ctx.inbox.value" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li>
-            </ul>
+            <ul v-if="!needCount" class="list"><li class="empty" data-testid="home-all-caught-up">You’re all caught up. Annie will put anything that needs you here.</li></ul>
           </template>
         </div>
       </section>
@@ -110,27 +78,26 @@
       <!-- Routines: what got done while you were away, and what runs next without you. -->
       <div v-if="doneToday.length || upcoming.length" ref="routinesRef" class="two" data-testid="home-routines">
         <div>
-          <div class="sec-head"><h3>Done while you were away</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('scheduled')">Routines</button></div>
+          <div class="sec-head"><h3>Done while you were away</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('activity')">See all<MkIcon name="chev" size="xs" /></button></div>
           <ul class="list">
             <li v-if="!doneToday.length" class="empty">Nothing has finished in the last day.</li>
             <li v-for="run in doneToday" :key="run.id">
               <button type="button" class="r" @click="ctx.openRoutine(run.routineId)">
                 <span class="r-icon"><MkIcon name="routines" /></span>
-                <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ since(run.fired_at) }}</small></span>
-                <span class="tag green">Done</span>
-                <span class="r-go">Open result</span>
+                <span class="r-text"><strong>{{ run.routineName }}</strong><small>Done · {{ since(run.fired_at) }}</small></span>
+                <MkIcon name="chev" size="sm" class="v2-go" />
               </button>
             </li>
           </ul>
         </div>
         <div>
-          <div class="sec-head"><h3>Coming up</h3></div>
+          <div class="sec-head"><h3>Coming up</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('goals')">All goals<MkIcon name="chev" size="xs" /></button></div>
           <ul class="list">
             <li v-if="!upcoming.length" class="empty">Nothing scheduled.</li>
             <li v-for="row in upcoming" :key="row.id">
               <button type="button" class="r" @click="ctx.openRoutine(row.id)">
                 <span class="r-icon"><MkIcon name="routines" /></span>
-                <span class="r-text"><strong>{{ row.label }}</strong><small>{{ formatNextRun(row.next) }} · {{ row.cadence }}</small></span>
+                <span class="r-text"><strong>{{ row.label }}</strong><small>Next: {{ formatNextRun(row.next) }} · {{ row.cadence }}</small></span>
               </button>
             </li>
           </ul>
@@ -174,20 +141,7 @@
           </div>
         </div>
       </template>
-
-      <template v-else>
-        <div class="sec-head"><h3>Your teams</h3></div>
-        <ul class="list">
-          <li v-if="!teams.length" class="empty">You are not on a team yet. A team shares chat, a board, files and agents, each person keeping their own private space. <button type="button" class="link" @click="ctx.teamSettings()">Set one up</button>.</li>
-          <li v-for="t in teams" :key="t.id">
-            <div class="r">
-              <span class="r-icon"><img src="/images/agnt-logo-mark.svg" alt="" style="width: 15px" /></span>
-              <span class="r-text"><strong>{{ t.name }}</strong><small>{{ roleLabel(t.role) }}</small></span>
-              <button type="button" class="primary sm" @click="ctx.openTeam(t)">Open</button>
-            </div>
-          </li>
-        </ul>
-      </template>
+      <!-- Your teams live in the workspace switcher (and Members), so Home does not repeat them. -->
     </div>
     <TeamReviewSitting v-if="sitting" :tasks="sitting" @changed="ctx.loadBoards()" @close="closeSitting" />
   </div>
@@ -212,21 +166,21 @@ import { cardNeedsYou } from '@/services/pluginDirectory.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import { useStore } from 'vuex';
 import { teamApi } from './useTeam.js';
-import { roleLabel } from '@/utils/teamClient.js';
 import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook, spaceFlow, teamFlowLine, byWhatTheyHoldUp, plural, ago, doneRecently, comingUp } from './teamModel.js';
 import { usePersonalNeeds } from './usePersonalNeeds.js';
 import { scheduleRows } from '@/views/Focused/focusedModel.js';
 import { formatNextRun } from '@/views/Focused/focusedTime.js';
 
-const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
+// Home lists what needs you; mentions, runs and everything else are Activity.
+const TABS = [{ id: 'needs', label: 'Needs you' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
 const ctx = inject('teamCtx');
 const nav = inject('focusedNav');
 const store = useStore();
 const team = computed(() => ctx.team.value);
-const teams = computed(() => ctx.teams.value);
 const spaces = computed(() => ctx.spaces.value);
-const firstName = computed(() => ctx.people.value.find((p) => p.isMe)?.first || '');
+// Your name as the chat greets you; in a team the roster's first name wins.
+const firstName = computed(() => ctx.people.value.find((p) => p.isMe)?.first || String(store.getters['userAuth/userPseudonym'] || '').trim());
 const tab = ref(TABS.some((t) => t.id === props.initialTab) ? props.initialTab : 'needs');
 // Every teamspace's board, from the shared team state (the drawer reads the same boards).
 const tasks = computed(() => spaces.value.flatMap((s) => ctx.boards.value[s.id] || []));
@@ -238,7 +192,6 @@ const routinesRef = ref(null);
 
 const checkpointsWaiting = computed(() => ctx.checkpoints.state.pending);
 const runs = computed(() => ctx.routineRuns.value);
-const runsLoaded = computed(() => ctx.routineRunsLoaded.value);
 const runsWaiting = computed(() => runs.value.filter((r) => r.status === 'needs_review'));
 const brokenRoutines = computed(() => routinesNeedingALook(runs.value));
 // Your own work waiting on you: routines with a question, goals waiting for review (shared with the rail badge).
@@ -275,7 +228,6 @@ function connectApp(card) {
 const reviewIds = computed(() => new Set(reviewTasks.value.map((t) => t.id)));
 const teamNeeds = computed(() => ctx.inbox.value.filter((i) => (!i.read || (i.kind === 'approval' && i.state === 'pending'))
   && !(i.kind === 'approval' && i.target?.kind === 'task' && reviewIds.value.has(i.target.id))));
-const mentions = computed(() => ctx.inbox.value.filter((i) => i.kind === 'mention'));
 // Plugin requests: the ones you decide, and your own once decided (until dismissed).
 const plugins = usePluginRequests();
 const pluginAsks = computed(() => (plugins.state.canDecide ? plugins.state.pending : []));
@@ -332,7 +284,7 @@ function closeSitting() {
 /** Outside a team there is no status line: one sentence instead. */
 const lead = computed(() => {
   const n = needCount.value;
-  return `${n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you.` : 'Nothing needs you.'} This is your personal space; everything here is private to you.`;
+  return n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you. Everything else is running fine.` : 'Nothing needs you right now.';
 });
 
 async function readAll() {
@@ -361,4 +313,7 @@ onMounted(() => { load(); ctx.checkpoints.loadPending(); personal.load(); plugin
 .flow-stat.is-warn .flow-dot { background: var(--amber-text); }
 .flow-stat.is-plain .flow-dot { background: var(--text-tertiary); }
 .hm-sub-note { margin-left: 8px; text-transform: none; letter-spacing: 0; font-size: 12px; }
+/* One heading for the inbox, instead of tabs. */
+.v2-inbox-h { padding: 12px 12px 10px 16px; gap: 8px; }
+.v2-inbox-title { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }
 </style>

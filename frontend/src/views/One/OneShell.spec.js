@@ -274,14 +274,30 @@ describe('OneShell', () => {
   describe('the rail', () => {
     const railIds = (w) => w.findAll('.rail .rail-btn').map((b) => b.attributes('data-testid'));
 
-    it('is Home, Chats, Routines, Library, Apps, More; Settings and you at the bottom (agents live in the Library)', () => {
+    it('is Home, Chats, Goals, Library, Apps; Settings and your account at the bottom, every item named', () => {
       const w = mountShell();
       expect(railIds(w)).toEqual([
-        'one-rail-home', 'one-rail-chats', 'one-rail-routines', 'one-rail-library', 'one-rail-apps', 'one-rail-more', 'one-rail-settings', 'one-rail-me',
+        'one-rail-home', 'one-rail-chats', 'one-rail-goals', 'one-rail-library', 'one-rail-apps', 'one-rail-settings', 'one-rail-me',
       ]);
-      expect(w.find('[data-testid="one-rail-inbox"]').exists()).toBe(false);
-      expect(w.find('[data-testid="one-rail-agents"]').exists()).toBe(false);
+      expect(w.findAll('.rail .rail-label').map((l) => l.text())).toEqual(['Home', 'Chats', 'Goals', 'Library', 'Apps', 'Settings']);
+      // No More menu, no logo standing in for Home, no separate Routines.
+      for (const gone of ['more', 'routines', 'inbox', 'agents']) expect(w.find(`[data-testid="one-rail-${gone}"]`).exists(), gone).toBe(false);
+      expect(w.find('.rail-mark').exists()).toBe(false);
       w.unmount();
+    });
+
+    it('lights Goals for goals and repeating goals, and Home for Activity and the dashboard', () => {
+      const lit = (screen, query) => {
+        const w = mountShell(screen, query);
+        const on = w.find('.rail .rail-btn.is-active');
+        const id = on.exists() ? on.attributes('data-testid') : null;
+        w.unmount();
+        return id;
+      };
+      expect(lit('GoalsScreen')).toBe('one-rail-goals');
+      expect(lit('AutonomyScreen', { section: 'schedules' })).toBe('one-rail-goals');
+      expect(lit('TracesScreen')).toBe('one-rail-home');
+      expect(lit('DashboardScreen')).toBe('one-rail-home');
     });
 
     it('every entry opens its real page at a linkable route', async () => {
@@ -293,47 +309,42 @@ describe('OneShell', () => {
       expect(push.mock.calls.at(-1)[0]).toMatchObject({ path: '/plugins' }); // Apps: plugins, connectors, MCP
       await click('library');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'library' } });
-      await click('routines');
-      expect(push.mock.calls.at(-1)[0]).toEqual({ path: '/goals', query: { section: 'schedules' } });
+      await click('goals');
+      expect(push.mock.calls.at(-1)[0]).toEqual({ path: '/goals', query: {} });
+      await click('settings');
+      expect(push.mock.calls.at(-1)[0]).toMatchObject({ path: '/settings' });
       await click('chats');
       expect(push).toHaveBeenLastCalledWith('/chat');
       w.unmount();
     });
 
-    it('More holds Activity, Dashboard, Goals, Members, Year in review, Find anything and Studio', async () => {
+    it('your account menu holds your account, Members, Year in review, Find anything and Studio', async () => {
       const w = mountShell();
-      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
-      expect(w.findAll('[data-testid="one-rail-menu-more"] [role=menuitem]').map((b) => b.text())).toEqual(['Activity', 'Dashboard', 'Goals', 'Members', 'Year in review', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
-      expect(w.find('[data-testid="one-rail-memory"]').exists()).toBe(false);
-      expect(w.find('[data-testid="one-rail-approvals"]').exists()).toBe(false);
-      await w.find('[data-testid="one-rail-activity"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/traces');
-      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
-      await w.find('[data-testid="one-rail-dashboard"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/dashboard');
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
-      await w.find('[data-testid="one-rail-goals"]').trigger('click');
-      expect(push.mock.calls.at(-1)[0].path).toBe('/goals');
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      const openMenu = () => w.find('[data-testid="one-rail-me"]').trigger('click');
+      expect(w.find('[data-testid="one-rail-menu-account"]').exists()).toBe(false);
+      await openMenu();
+      expect(w.findAll('[data-testid="one-rail-menu-account"] [role=menuitem]').map((b) => b.text())).toEqual(['Your account', 'Members', 'Year in review', 'Find anythingCtrl K', 'Switch to StudioCtrl Shift S']);
+      await w.find('[data-testid="one-rail-account"]').trigger('click');
+      expect(push.mock.calls.at(-1)[0]).toMatchObject({ path: '/settings' });
+      expect(w.find('[data-testid="one-rail-menu-account"]').exists()).toBe(false);
+      await openMenu();
       await w.find('[data-testid="one-rail-members"]').trigger('click');
       expect(push).toHaveBeenLastCalledWith({ path: '/team', query: { view: 'members' } });
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await openMenu();
       await w.find('[data-testid="one-rail-find"]').trigger('click');
       expect(dispatch).toHaveBeenCalledWith('shell/openJump');
       w.unmount();
     });
 
-    it('More\'s Year in review opens the year in review, without leaving the page', async () => {
+    it('Year in review opens the year in review, without leaving the page', async () => {
       wrappedOpen.mockClear();
       const w = mountShell();
       push.mockClear();
-      await w.find('[data-testid="one-rail-more"]').trigger('click');
+      await w.find('[data-testid="one-rail-me"]').trigger('click');
       await w.find('[data-testid="one-rail-wrapped"]').trigger('click');
       expect(wrappedOpen).toHaveBeenCalledTimes(1);
       expect(push).not.toHaveBeenCalled();
-      expect(w.find('[data-testid="one-rail-menu-more"]').exists()).toBe(false);
+      expect(w.find('[data-testid="one-rail-menu-account"]').exists()).toBe(false);
       w.unmount();
     });
 
@@ -350,20 +361,17 @@ describe('OneShell', () => {
       }
     });
 
-    it('the sidebar search reaches the chats; Enter opens Find anything with it; Ask Annie asks in a new chat', async () => {
-      const seen = vi.fn();
-      window.addEventListener('agnt:ask-annie', seen);
+    it('the sidebar search reaches the chats and Enter opens Find anything with it; asking is the composer\'s job', async () => {
       const w = mountShell('ConnectorsScreen');
       const input = () => w.get('[data-testid="one-sidebar-search"]');
+      expect(input().attributes('placeholder')).toBe('Search');
       await input().setValue('northwind');
       expect(w.get('.output-list-stub').attributes('data-query')).toBe('northwind');
+      expect(w.find('[data-testid="one-sidebar-ask"]').exists()).toBe(false);
       await input().trigger('keydown', { key: 'Enter' });
       expect(dispatch).toHaveBeenCalledWith('shell/openJump', 'northwind');
-      await input().setValue('Draft the renewal');
-      await w.get('[data-testid="one-sidebar-ask"]').trigger('click');
-      await new Promise((r) => setTimeout(r, 0));
-      expect(seen.mock.calls[0][0].detail).toEqual({ text: 'Draft the renewal', send: false });
-      window.removeEventListener('agnt:ask-annie', seen);
+      // One search: the top bar has no second one.
+      expect(w.find('.one-topbar [aria-label="Search (Ctrl K)"]').exists()).toBe(false);
       w.unmount();
     });
 
@@ -400,10 +408,13 @@ describe('OneShell', () => {
     });
 
 
-    it('the top bar shows where you are', () => {
-      const w = mountShell('ChatScreen');
-      expect(w.find('[data-testid="mk-crumbs"]').text()).toBe('Chats with Annie');
-      w.unmount();
+    it('every page names itself; the top bar shows a trail only when there is somewhere to step back to', () => {
+      const chat = mountShell('ChatScreen');
+      expect(chat.find('[data-testid="mk-crumbs"]').exists()).toBe(false);
+      chat.unmount();
+      const run = mountShell('TracesScreen');
+      expect(run.find('[data-testid="mk-crumbs"]').text()).toBe('HomeActivity');
+      run.unmount();
     });
   });
 

@@ -83,7 +83,8 @@
           </button>
         </template>
         <div v-if="!isMobile" class="mk mk-topbar">
-          <div class="crumbs" data-testid="mk-crumbs">
+          <!-- A trail only when there is somewhere to step back to; every page names itself. -->
+          <div v-if="crumbs.length > 1" class="crumbs" data-testid="mk-crumbs">
             <template v-for="(c, i) in crumbs" :key="i">
               <template v-if="i < crumbs.length - 1"><button type="button" @click="c.go()">{{ c.label }}</button><MkIcon name="chev" size="xs" /></template>
               <b v-else>{{ c.label }}</b>
@@ -94,8 +95,8 @@
         <!-- The mockup's teamspace top bar: who works here, beside the setup pill. -->
         <div v-if="!isMobile && onTeamspace && teamState.members.length" class="mk"><span v-tooltip="`${teamState.members.length} ${teamState.members.length === 1 ? 'member' : 'members'}`" class="stack"><TeamAvatar v-for="p in teamState.members.slice(0, 5)" :key="p.id" :who="{ kind: 'person', id: p.id }" :label="p.name" size="sm" /></span></div>
         <OneWrapped ref="wrappedRef" />
+        <!-- Setup progress, until it is done. Search lives in the sidebar (and Ctrl K). -->
         <OneCapsule @ask="ask" @open-models="openModels" @open-setup="openSetup" />
-        <div v-if="!isMobile" class="mk"><button type="button" class="icon-btn" aria-label="Search (Ctrl K)" v-tooltip="'Search (Ctrl K)'" @click="store.dispatch('shell/openJump')"><MkIcon name="find" /></button></div>
         <FocusedWindowControls />
       </header>
 
@@ -111,6 +112,7 @@
       <OneTeamPage v-if="page === 'team'" :location="location" />
       <FocusedLibrary v-else-if="page === 'library'" :location="location" />
       <FocusedConnectors v-else-if="page === 'connectors'" :item="location.item" :tab="location.tab" />
+      <FocusedGoals v-else-if="page === 'goals'" />
       <FocusedScheduled v-else-if="page === 'scheduled'" :item="location.item" :is-new="location.isNew" />
       <FocusedMemory v-else-if="page === 'memory'" :item="location.item" :is-new="location.isNew" />
       <FocusedSettings v-else-if="page === 'settings'" :section="location.section" />
@@ -148,6 +150,7 @@ import FocusedWindowControls from '@/views/Focused/FocusedWindowControls.vue';
 import FocusedLibrary from '@/views/Focused/FocusedLibrary.vue';
 import FocusedConnectors from '@/views/Focused/FocusedConnectors.vue';
 import FocusedScheduled from '@/views/Focused/FocusedScheduled.vue';
+import FocusedGoals from '@/views/Focused/FocusedGoals.vue';
 import FocusedMemory from '@/views/Focused/FocusedMemory.vue';
 import FocusedSettings from '@/views/Focused/FocusedSettings.vue';
 import FocusedMarket from '@/views/Focused/FocusedMarket.vue';
@@ -171,6 +174,7 @@ import MkIcon from './mk/MkIcon.vue';
 import { useMkFrame } from './mk/useMkFrame.js';
 import './mk/mk.css';
 import './mk/mk-frame.css';
+import './mk/mk-v2.css';
 import { useTeam, teamApi } from './team/useTeam.js';
 import { spaceFlow, spaceMark } from './team/teamModel.js';
 import { useCheckpoints } from '@/composables/useCheckpoints.js';
@@ -285,6 +289,8 @@ checkpointsWaiting.loadPending();
 const personalNeeds = usePersonalNeeds(store);
 personalNeeds.load();
 const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value + personalNeeds.count.value);
+// The same count for the chat's start screen, so it and the rail badge never disagree.
+provide('oneNeedsYou', needsYou);
 /** Owners and admins (the server enforces it): a new teamspace, registered with the cloud and opened. */
 async function newTeamspace() {
   const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });

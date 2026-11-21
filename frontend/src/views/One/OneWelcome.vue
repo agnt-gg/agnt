@@ -27,8 +27,8 @@
       </template>
       <template v-else>
         <h1 class="one-welcome-title">{{ greeting }}</h1>
-        <!-- The approved mockup's promise: real work becomes a task you see and approve. -->
-        <p class="one-welcome-sub">What can I get done for you? When it’s real work, it becomes a task: you see the plan before anything happens, and you approve every step that sends or changes something.</p>
+        <!-- The promise in one line: you stay in charge of anything that leaves the app. -->
+        <p class="one-welcome-sub">Ask for anything. I’ll check with you before I send or change something.</p>
       </template>
     </template>
   </div>

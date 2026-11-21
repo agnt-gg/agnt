@@ -15,6 +15,16 @@
       </div>
     </div>
 
+    <!-- What stopped working, with the fix, before the full list. -->
+    <section v-if="broken.length" class="za-broken" data-testid="apps-broken" aria-label="Stopped working">
+      <div class="za-broken-head"><AppsGlyph name="info" size="sm" />{{ broken.length === 1 ? '1 app stopped working' : `${broken.length} apps stopped working` }}</div>
+      <div v-for="row in broken" :key="row.id" class="za-broken-row" :data-row="row.id">
+        <span class="logo"><SvgIcon :name="row.icon" /></span>
+        <span class="za-broken-text"><strong>{{ row.name }}</strong><small>{{ row.problem || 'Its sign-in stopped working' }}</small></span>
+        <button type="button" class="primary sm" data-action="signin" :disabled="!!busy[row.id]" @click="emit('act', 'signin', row)">{{ busy[row.id] ? 'Signing in…' : 'Reconnect' }}</button>
+      </div>
+    </section>
+
     <AppsList :rows="rows" :spec="LISTS.connections" :heads="heads" label="Connections" noun="connection" :flash-id="flashId" @open="(row) => emit('act', 'open', row)">
       <template #empty>
         <div class="tbl">
@@ -56,7 +66,7 @@
           <span class="st-l"><span>{{ statusOf(row).label }}</span><span class="tip-i" v-tooltip="tipOf(row)"><AppsGlyph name="info" size="xs" /></span></span>
           <button v-if="row.status === 'reconnect'" type="button" class="primary sm act" data-action="signin" @click="emit('act', 'signin', row)">Reconnect</button>
           <button v-else-if="row.status === 'connect'" type="button" class="primary sm act" data-action="signin" @click="emit('act', 'signin', row)">Connect</button>
-          <button v-else-if="row.testable" type="button" class="btn sm act" data-action="test" @click="emit('act', 'test', row)">Test connection</button>
+          <!-- A working connection needs nothing here: Test connection is in its menu. -->
         </div>
       </template>
       <template #cell-used="{ row }">
@@ -65,7 +75,7 @@
         <button v-else-if="row.apps.length" type="button" class="use" data-action="show-plugins" v-tooltip="row.apps.map((app) => app.label).join(', ')" @click="emit('act', 'show-plugins', row)">
           <AppsGlyph name="puzzle" />Plugins {{ row.apps.length }}
         </button>
-        <span v-else class="use zero" v-tooltip="'No plugin uses it yet'"><AppsGlyph name="puzzle" />Plugins 0</span>
+        <span v-else class="use zero" v-tooltip="'Nothing uses it yet'">—</span>
       </template>
       <template #cell-checked="{ row }">
         <span>{{ row.team || row.status === 'connect' ? '—' : formatChecked(row.checked) }}</span>
@@ -143,7 +153,9 @@ const team = computed(() => props.scope === 'team');
 const heads = computed(() => (team.value ? HEADS : HEADS.filter((head) => head.id !== 'access')));
 const lastChecked = computed(() => props.rows.map((row) => row.checked).filter(Boolean).sort().pop() || null);
 const statusOf = (row) => CONNECTION_STATUS[row.status] || CONNECTION_STATUS.ready;
-const hasAction = (row) => row.status !== 'ready' || row.testable;
+const hasAction = (row) => row.status !== 'ready';
+// Connections whose sign-in stopped, shown first with their fix.
+const broken = computed(() => props.rows.filter((row) => row.status === 'reconnect'));
 
 function tagsOf(row) {
   const tags = [];

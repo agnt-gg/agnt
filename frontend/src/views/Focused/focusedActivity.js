@@ -10,8 +10,8 @@ export const ACTIVITY_KINDS = Object.freeze([
   { id: 'team', label: 'Teamspaces' },
   { id: 'chat', label: 'Chats' },
   { id: 'agent', label: 'Agents' },
-  { id: 'workflow', label: 'Workflows' },
-  { id: 'routine', label: 'Routines' },
+  { id: 'workflow', label: 'Automations' },
+  { id: 'routine', label: 'Goals' },
 ]);
 
 const FORGE_TITLE = { workflow: 'Building a workflow', tool: 'Building a tool', agent: 'Building an agent', widget: 'Building a widget', plugin: 'Building a plugin' };
@@ -33,6 +33,35 @@ export function statusOf(status) {
   if (/^(stopped|cancelled|canceled|paused)$/.test(s)) return { label: 'Stopped', tone: '' };
   if (s === 'needs_review') return { label: 'Needs a look', tone: 'bad' };
   return { label: 'Done', tone: 'good' };
+}
+
+const startOfDay = (t) => {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+/**
+ * The page's groups: runs that need a look, pinned first, then everything
+ * else by day (Today, Yesterday, Earlier), newest first within each. A row is
+ * { at, status?: { tone } }; team events carry no status and never need a look.
+ */
+export function activityGroups(rows = [], now = Date.now()) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  const needs = list.filter((r) => r.status?.tone === 'bad');
+  const rest = list.filter((r) => r.status?.tone !== 'bad');
+  const today = startOfDay(now);
+  const yesterday = today - 86400000;
+  const buckets = [
+    { id: 'today', label: 'Today', test: (t) => t >= today },
+    { id: 'yesterday', label: 'Yesterday', test: (t) => t >= yesterday && t < today },
+    { id: 'earlier', label: 'Earlier', test: (t) => t < yesterday },
+  ];
+  const at = (r) => new Date(r.at || 0).getTime() || 0;
+  const days = buckets
+    .map((b) => ({ id: b.id, label: b.label, rows: rest.filter((r) => b.test(at(r))).sort((a, b2) => at(b2) - at(a)) }))
+    .filter((b) => b.rows.length);
+  return { needs: needs.sort((a, b) => at(b) - at(a)), days };
 }
 
 /** The kind of a run from its id alone (executionHistory's id scheme), for a deep link. */

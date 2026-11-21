@@ -40,6 +40,7 @@ export const LIBRARY_ITEM_KIND = Object.freeze({
 
 export const PAGE_SCREENS = Object.freeze({
   connectors: 'ConnectorsScreen',
+  goals: 'GoalsScreen',
   scheduled: 'GoalsScreen',
   memory: 'MemoryScreen',
   settings: 'SettingsScreen',
@@ -118,6 +119,10 @@ export function focusedLocation(screen, query = {}) {
       // its schedules are Focused's "Scheduled".
       const item = selected(query, 'schedule');
       if (str(query.section) === 'schedules' || item || isNew) return { page: 'scheduled', item, isNew };
+      // Plain /goals is the Goals page: one-off and repeating goals together.
+      // One goal open (?select=goal:ID) is its full detail, and any other
+      // section is Studio's.
+      if (screen === 'GoalsScreen' && !str(query.select) && !str(query.section)) return { page: 'goals' };
       return null;
     }
     case 'MemoryScreen':
@@ -166,6 +171,7 @@ export function routeFor(loc) {
     const app = String(loc.item).startsWith('app:') ? String(loc.item).slice(4) : null;
     return [PAGE_SCREENS.connectors, { select: app ? { kind: 'plugin', id: app } : { kind: 'provider', id: loc.item } }];
   }
+  if (loc.page === 'goals') return [PAGE_SCREENS.goals, {}];
   if (loc.page === 'scheduled') {
     const opts = { section: 'schedules' };
     if (loc.item) opts.select = { kind: 'schedule', id: loc.item };

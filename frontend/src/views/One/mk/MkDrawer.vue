@@ -1,7 +1,8 @@
 <template>
   <!-- AGNT One's one sidebar, on every desktop page: workspace switcher, one
-       search, New chat, the Main chat, My Space (private), Teamspaces, then the
-       chats (OneShell passes the list in). Every row goes to the real page. -->
+       search, New chat, the Main chat, in a team My tasks and Teamspaces, then
+       the chats (OneShell passes the list in). The rail is the way to every
+       page, so the sidebar never repeats it. -->
   <div class="mk mk-drawer-host">
     <aside class="drawer" aria-label="Sidebar" data-testid="one-sidebar">
       <div ref="headRef" class="drawer-head">
@@ -10,6 +11,8 @@
           <span style="flex: 1; min-width: 0"><div class="ws-name">{{ team ? titled(team.name) : 'Personal' }}</div><div class="ws-plan">{{ team ? roleLabel(team.role) + ' · Team Workspace' : 'Only you' }}</div></span>
           <MkIcon name="down" size="sm" />
         </button>
+        <!-- Collapse, beside the switcher: the rail keeps the way back. -->
+        <button type="button" class="collapse-btn" data-testid="one-sidebar-collapse" aria-label="Collapse sidebar" v-tooltip="'Collapse sidebar'" @click="$emit('collapse')"><i class="fas fa-angle-double-left" aria-hidden="true"></i></button>
         <div v-if="menu === 'ws'" class="ws-menu" role="menu">
           <button type="button" class="menu-item" :class="{ 'is-active': !team }" role="menuitem" @click="goPersonal">
             <span class="ws-tile" style="width: 22px; height: 22px"><MkIcon name="lock" size="xs" /></span><span style="flex: 1"><div>Personal</div><div class="ws-plan">Only you</div></span><MkIcon v-if="!team" name="check" size="sm" />
@@ -20,9 +23,8 @@
           <button type="button" class="menu-item sep" role="menuitem" @click="pick('team-settings')"><MkIcon name="plus" size="sm" />Create or join a team</button>
         </div>
       </div>
-      <!-- One search for the whole sidebar (typing filters it in place; Enter
-           carries the words to Find anything), with New beside it as in
-           Studio's chat list: + New starts a chat, its chevron holds the rest. -->
+      <!-- One search for the app: typing filters the sidebar in place, Enter
+           carries the words to Find anything (Ctrl K). Asking is the composer's job. -->
       <div class="find-row">
         <div class="find-box" @click="searchRef?.focus()">
           <MkIcon name="find" size="sm" />
@@ -30,29 +32,21 @@
             ref="searchRef"
             v-model="query"
             type="text"
-            placeholder="Search or ask Annie"
-            aria-label="Search or ask Annie"
+            placeholder="Search"
+            aria-label="Search"
             autocomplete="off"
             spellcheck="false"
             data-testid="one-sidebar-search"
             @keydown.enter.prevent="findEverywhere"
             @keydown.esc="query = ''"
           />
-        </div>
-        <div class="mk-new-anchor new-pill">
-          <button v-tooltip="'New chat'" type="button" class="new-main" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="plus" size="sm" />New</button>
-          <button v-tooltip="menu === 'new' ? '' : 'New chat, file, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New chat, file, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="xs" /></button>
-          <div v-if="menu === 'new'" class="ws-menu new-menu" role="menu">
-            <button type="button" class="menu-item" role="menuitem" @click="newChatFromMenu"><MkIcon name="chats" size="sm" />Chat</button>
-            <button type="button" class="menu-item" role="menuitem" @click="pick('new-doc')"><MkIcon name="doc" size="sm" />File</button>
-            <button type="button" class="menu-item" role="menuitem" @click="pick('new-agent')"><MkIcon name="bot" size="sm" />Agent</button>
-            <button type="button" class="menu-item" role="menuitem" @click="pick('new-routine')"><MkIcon name="bolt" size="sm" />Routine</button>
-          </div>
+          <kbd class="find-kbd" aria-hidden="true">Ctrl K</kbd>
         </div>
       </div>
+      <!-- New chat: the one thing to start from here. Agents, goals and files start on their own pages. -->
+      <button type="button" class="new-chat-btn" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="plus" size="sm" />New chat</button>
       <div class="drawer-scroll">
         <template v-if="q">
-          <button type="button" class="d-item s-act" data-testid="one-sidebar-ask" @click="askAnnie"><MkIcon name="chats" size="sm" /><span class="ell">Ask Annie about “{{ q }}”</span></button>
           <button type="button" class="d-item s-act" data-testid="one-sidebar-find" @click="findEverywhere"><MkIcon name="find" size="sm" /><span class="ell">Find “{{ q }}” everywhere</span><kbd>Enter</kbd></button>
         </template>
         <!-- The Main chat: texts to Annie land here; New chat never does. Drawn
@@ -72,7 +66,7 @@
             <span v-else-if="mainChat.unread" v-tooltip="'Unread changes'" class="main-unread"></span>
             <i v-else class="fas fa-thumbtack main-pin"></i>
           </span>
-          <span class="main-text"><b>{{ MAIN_CHAT_LABEL }}</b></span>
+          <span class="main-text"><b>{{ MAIN_CHAT_LABEL }}</b><small>Your everyday chat with Annie</small></span>
           <button
             v-tooltip="mainChat.streaming ? 'Wait for the reply to finish' : 'Clear main chat'"
             type="button"
@@ -85,7 +79,7 @@
         </div>
         <section v-if="mineRows.length" class="d-sec">
           <div class="d-head">
-            <button type="button" class="sec-toggle" data-testid="fold-mine" :aria-expanded="String(!isFolded('mine'))" @click="fold('mine')"><MkIcon name="lock" size="xs" /> My Space<MkIcon name="down" size="xs" class="chev" :class="{ 'is-folded': isFolded('mine') }" /></button>
+            <button type="button" class="sec-toggle" data-testid="fold-mine" :aria-expanded="String(!isFolded('mine'))" @click="fold('mine')"><MkIcon name="lock" size="xs" /> Mine<MkIcon name="down" size="xs" class="chev" :class="{ 'is-folded': isFolded('mine') }" /></button>
           </div>
           <template v-if="!isFolded('mine')">
             <button v-for="row in mineRows" :key="row.id" type="button" class="d-item" :class="{ 'is-active': active === row.id }" @click="pick(row.id)"><MkIcon :name="row.icon" size="sm" />{{ row.label }}<span v-if="row.count" class="count">{{ row.count }}</span></button>
@@ -106,12 +100,7 @@
             </template>
           </section>
         </template>
-        <div v-else-if="!q" class="d-note">This is your personal workspace: everything here is private. <template v-if="teams.length">Teamspaces live in <button type="button" class="link" @click="goTeam(teams[0])">{{ teams[0].name }}</button>.</template><template v-else><button type="button" class="link" @click="pick('team-settings')">Set up a team</button> to work with others.</template></div>
         <div class="drawer-chats" data-testid="one-chat-sidebar"><slot name="chats" :query="q" /></div>
-      </div>
-      <!-- Collapse, as in Studio's sidebar: the rail keeps the way back. -->
-      <div class="drawer-foot">
-        <button type="button" class="d-item collapse-row" data-testid="one-sidebar-collapse" aria-label="Collapse sidebar" @click="$emit('collapse')"><i class="fas fa-angle-double-left" aria-hidden="true"></i>Collapse</button>
       </div>
     </aside>
   </div>
@@ -144,18 +133,12 @@ const menu = ref(null);
 const headRef = ref(null);
 const toggle = (name) => { menu.value = menu.value === name ? null : name; };
 function pick(what) { menu.value = null; emit('pick', what); }
-function newChatFromMenu() { menu.value = null; emit('new-chat'); }
 
 // ── One search for the sidebar ────────────────────────────────────────────
 const query = ref('');
 const searchRef = ref(null);
 const q = computed(() => query.value.trim());
 const matches = (label) => !q.value || String(label).toLowerCase().includes(q.value.toLowerCase());
-function askAnnie() {
-  const text = q.value;
-  query.value = '';
-  emit('ask', text);
-}
 function findEverywhere() {
   const text = q.value;
   if (!text) return;
@@ -163,11 +146,9 @@ function findEverywhere() {
   emit('find', text);
 }
 
+// In a team, your own tasks across its teamspaces. Agents, goals and files are rail pages.
 const MINE = Object.freeze([
   { id: 'mine-tasks', label: 'My tasks', icon: 'task', count: 'tasks', teamOnly: true },
-  { id: 'mine-agents', label: 'My agents', icon: 'bot', count: 'agents' },
-  { id: 'mine-routines', label: 'My routines', icon: 'bolt', count: 'routines' },
-  { id: 'mine-files', label: 'My files', icon: 'file', count: 'files' },
 ]);
 const mineRows = computed(() => MINE
   .filter((row) => (props.team || !row.teamOnly) && matches(row.label))
@@ -215,37 +196,36 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 /* A teamspace with stopped work, or at its work limit, says so beside its name. */
 .space-mark { margin-left: auto; padding: 1px 6px; border-radius: 6px; background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
 
-/* The search, and New beside it. */
+/* The search, then New chat. */
 .find-row { display: flex; align-items: center; gap: 6px; margin: 4px 10px 8px; }
-.find-box { box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--text-tertiary); font-size: 13px; cursor: text; }
+.find-box { box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 40px; border: 1px solid var(--line); border-radius: 11px; background: var(--raised); color: var(--text-tertiary); font-size: 14px; cursor: text; }
+.find-kbd { flex: none; padding: 2px 6px 1px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 12px; color: var(--text-tertiary); }
+.new-chat-btn { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 7px; width: calc(100% - 20px); height: 40px; margin: 0 10px 10px; border: 0; border-radius: 11px; background: var(--color-pink); color: var(--on-fill-brand); font-size: 14px; font-weight: 600; }
+.new-chat-btn:hover { filter: brightness(1.08); }
+.new-chat-btn:focus-visible { outline: 2px solid var(--focus-ring, var(--color-pink)); outline-offset: 2px; }
+.drawer-head { display: flex; align-items: center; gap: 4px; }
+.drawer-head .ws-btn { flex: 1; min-width: 0; }
+.collapse-btn { flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; font-size: 13px; }
+.collapse-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
 .find-box:hover,
 .find-box:focus-within { border-color: var(--border-strong); }
-.find-box input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
+.find-box input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; }
 .find-box input::placeholder { color: var(--text-tertiary); }
 .ell { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-act { color: var(--text-primary); }
 .s-act kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--text-tertiary); }
 
-/* + New and its chevron: one compact button, the height of the search. */
-.new-pill { flex: none; display: flex; align-items: stretch; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
-.new-pill:hover { border-color: var(--border-strong); }
-.new-pill .new-main { display: flex; align-items: center; gap: 5px; padding: 0 8px 0 9px; border: 0; border-radius: 9px 0 0 9px; background: transparent; color: var(--text-primary); font-size: 13px; font-weight: 500; }
-.new-more { position: relative; width: 22px; border: 0; border-radius: 0 9px 9px 0; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; }
-.new-more::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
-.new-pill .new-main:hover,
-.new-more:hover,
-.new-more[aria-expanded='true'] { background: var(--surface-hover); color: var(--text-primary); }
-.mk .ws-menu.new-menu { left: auto; right: 0; width: 170px; top: calc(100% + 4px); }
-
-/* The Main chat: Studio's pinned row, a bordered card; the eraser on hover. */
-.main-row { box-sizing: border-box; position: relative; cursor: pointer; margin-bottom: 6px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
+/* The Main chat: pinned first, with what it is under its name; the eraser on hover. */
+.main-row { box-sizing: border-box; position: relative; cursor: pointer; margin-bottom: 6px; padding: 9px 8px; background: var(--surface-hover); }
+.main-row.is-active { background: var(--surface-active); }
 .main-mark { width: 15px; height: 19px; flex: none; display: grid; place-items: center; }
-.main-pin { color: var(--color-primary); font-size: 11px; }
+.main-pin { color: var(--color-pink); font-size: 11px; }
 .main-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); }
 .main-streaming { color: var(--color-primary); font-size: 7px; animation: main-pulse 1.5s ease-in-out infinite; }
 @keyframes main-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.main-text { flex: 1; min-width: 0; }
+.main-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .main-text b { font-weight: 600; color: var(--text-primary); }
+.main-text small { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-act { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; opacity: 0; font-size: 12px; }
 .main-row:hover .row-act,
 .row-act:focus-visible { opacity: 1; }
@@ -261,8 +241,4 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 .sec-toggle .chev.is-folded { opacity: 1; }
 .sec-toggle .chev.is-folded { transform: rotate(-90deg); }
 
-/* Collapse, at the foot, as in Studio. */
-.drawer-foot { flex: none; padding: 6px 10px 10px; border-top: 1px solid var(--line); }
-.collapse-row { color: var(--text-tertiary); font-size: 13px; }
-.collapse-row i { width: 15px; text-align: center; }
 </style>

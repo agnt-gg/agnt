@@ -3,8 +3,9 @@
   <div class="content">
     <div class="page">
       <div class="page-head">
-        <div><h1>Members</h1><p>Three roles: Owner/Admin, Member, Guest. Item-level access is handled by each item’s Share button, not here.</p></div>
+        <div><h1>Members</h1><p>Who can see your work, and what each person can do.</p></div>
         <button v-if="team && canManage" type="button" class="primary" @click="inviting = !inviting"><MkIcon name="plus" size="sm" />{{ inviting ? 'Done' : 'Invite by email' }}</button>
+        <button v-else-if="!team" type="button" class="btn" data-action="create-team" @click="ctx.teamSettings()"><MkIcon name="plus" size="sm" />Create a team</button>
       </div>
       <template v-if="team">
         <!-- Adding, inviting, seats and finishing a half-added person: the full manager, on demand. -->
@@ -39,13 +40,32 @@
           <div v-if="loaded && !agentCount" class="empty">No team agents yet.</div>
         </div>
       </template>
-      <div v-else class="banner"><MkIcon name="users" size="sm" /><span style="flex: 1">Members belong to a team. You are in your personal space.</span><button type="button" class="primary" @click="ctx.teamSettings()">Create or join a team</button></div>
+      <!-- Your personal space: only you, said plainly, and the way to your teams. -->
+      <template v-else>
+        <div class="sec-head" style="margin-top: 0"><h3>This space</h3><span class="mk-muted">Personal · only you can see it</span></div>
+        <ul class="list" data-testid="members-you">
+          <li><div class="r"><span class="av lg" style="background: var(--color-pink); color: var(--on-fill-brand)">{{ myInitials }}</span><span class="r-text"><strong>{{ myName }} <span style="font-weight: 400; color: var(--text-tertiary)">(you)</span></strong><small v-if="myEmail">{{ myEmail }}</small></span><span class="tag">Owner</span></div></li>
+        </ul>
+        <div class="sec-head"><h3>Your teams</h3></div>
+        <ul class="list" data-testid="members-teams">
+          <li v-if="!teams.length" class="empty">You’re not on a team yet. A team shares chats, a board, files and agents, and everyone keeps their own private space. Joining one starts with an invite from its owner.</li>
+          <li v-for="t in teams" :key="t.id"><div class="r"><span class="r-icon"><MkIcon name="users" /></span><span class="r-text"><strong>{{ t.name }}</strong><small>{{ roleLabel(t.role) }}</small></span><button type="button" class="btn sm" @click="ctx.openTeam(t)">Open team<MkIcon name="chev" size="xs" /></button></div></li>
+        </ul>
+      </template>
+
+      <!-- What each role can do, in plain words; sharing one item is that item's job. -->
+      <div class="sec-head"><h3>What each role can do</h3></div>
+      <div class="v2-roles" data-testid="members-roles">
+        <div v-for="r in ROLE_CARDS" :key="r.name" class="v2-role"><b>{{ r.name }}</b><p>{{ r.can }}</p></div>
+      </div>
+      <p class="v2-note">To share a single file, agent or goal, use its Share button.</p>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue';
+import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
 import TeamAvatar from '@/views/One/team/TeamAvatar.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
@@ -56,7 +76,20 @@ import { ROLES, roleLabel, teamRequest, removePerson, changeRole } from '@/utils
 import '@/views/_components/team/team.css';
 
 const ctx = inject('teamCtx');
+const store = useStore();
 const team = computed(() => ctx.team.value);
+const teams = computed(() => ctx.teams.value || []);
+const ROLE_CARDS = Object.freeze([
+  { name: 'Owner or admin', can: 'Invites people and manages billing.' },
+  { name: 'Member', can: 'Uses and builds the team’s agents, goals and files.' },
+  { name: 'Guest', can: 'Sees only what someone shares with them.' },
+]);
+const myName = computed(() => store.getters['userAuth/userName'] || store.getters['userAuth/userPseudonym'] || 'You');
+const myEmail = computed(() => store.getters['userAuth/userEmail'] || '');
+const myInitials = computed(() => {
+  const words = String(myName.value || myEmail.value || '').trim().split(/[\s@._-]+/).filter(Boolean);
+  return ((words[0]?.[0] || '?') + (words[1]?.[0] || '')).toUpperCase();
+});
 const spaces = computed(() => ctx.spaces.value);
 const me = computed(() => ctx.me.value);
 const canManage = computed(() => team.value?.capabilities?.manageMembers === true || ['owner', 'admin'].includes(team.value?.role));

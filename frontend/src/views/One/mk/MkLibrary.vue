@@ -5,13 +5,15 @@
   <div class="content">
     <div class="page">
       <div class="page-head">
-        <div><h1>Library</h1><p>Everything you’ve built or added: agents, workflows, tools, skills, widgets and files. Add more from the Market; connections and plugins are on Apps.</p></div>
+        <div><h1>Library</h1><p>Everything you’ve built or added.</p></div>
         <button v-if="asset" type="button" class="primary" @click="ctx.openLibrary(asset.id, null, true)"><MkIcon name="plus" size="sm" />New {{ asset.noun }}</button>
       </div>
       <nav class="tabs" aria-label="Library">
-        <button v-for="t in LIBRARY_TABS" :key="t.id" type="button" class="tab" :class="{ 'is-active': tab === t.id }" @click="ctx.go({ view: 'library', tab: t.id })">
+        <button v-for="t in OWN_TABS" :key="t.id" type="button" class="tab" :class="{ 'is-active': tab === t.id }" @click="ctx.go({ view: 'library', tab: t.id })">
           <MkIcon :name="t.icon" size="sm" />{{ t.label }}<span v-if="counts[t.id] !== undefined" class="count">{{ counts[t.id] }}</span>
         </button>
+        <!-- The Market is somewhere to get more, not a kind of your own things. -->
+        <button type="button" class="tab v2-tab-link" :class="{ 'is-active': tab === 'market' }" data-tab="market" @click="ctx.go({ view: 'library', tab: 'market' })"><MkIcon name="share" size="sm" />Get more from the Market</button>
       </nav>
 
       <!-- Your assets of one kind. -->
@@ -20,17 +22,20 @@
         <div v-else class="cards">
           <div v-for="r in rows" :key="r.id" class="card clickable" role="button" tabindex="0" @click="ctx.openLibrary(asset.id, r.itemId)" @keydown.enter="ctx.openLibrary(asset.id, r.itemId)">
             <div class="card-top">
-              <span v-if="asset.id === 'agents'" class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
-              <span v-else class="r-icon"><MkIcon :name="current.icon" size="sm" /></span>
-              <div style="min-width: 0"><h4 class="mk-ellipsis">{{ r.label }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">{{ asset.noun[0].toUpperCase() + asset.noun.slice(1) }}</div></div>
+              <!-- Each one its own colour and initial, so a grid of them can be told apart at a glance. -->
+              <span class="v2-mono" :class="'v2-hue-' + hueOf(r.label)" aria-hidden="true">{{ initialOf(r.label) }}</span>
+              <h4 class="mk-ellipsis" style="min-width: 0">{{ r.label }}</h4>
             </div>
-            <p>{{ r.description || 'No description yet.' }}</p>
-            <div class="card-foot">
-              <span v-if="r.status" class="tag" :class="['listening', 'running'].includes(r.status) ? 'green' : ''">{{ statusLabel(r.status) }}</span>
-              <span class="fill"></span>
-              <button type="button" class="btn sm" @click.stop="ctx.openLibrary(asset.id, r.itemId)">Open</button>
+            <p>{{ r.description || 'No description yet. Open it to add one.' }}</p>
+            <div v-if="r.status" class="card-foot">
+              <span class="tag" :class="['listening', 'running'].includes(r.status) ? 'green' : ''">{{ statusLabel(r.status) }}</span>
             </div>
           </div>
+          <!-- The way to make another, where the next one would go. -->
+          <button type="button" class="card v2-new" data-action="new-asset" @click="ctx.openLibrary(asset.id, null, true)">
+            <div class="card-top"><span class="r-icon"><MkIcon name="plus" size="sm" /></span><h4>New {{ asset.noun }}</h4></div>
+            <p>Describe what you need and Annie sets it up.</p>
+          </button>
         </div>
         <!-- Market picks of this kind under your own, so an empty or short list has examples to add in place. -->
         <MarketplaceShelf
@@ -87,6 +92,16 @@ import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
 import { libraryTab, libraryRows } from '@/views/Focused/focusedModel.js';
 
 const MARKET_ICON = Object.freeze({ workflow: 'bolt', tool: 'pen', skill: 'library', widget: 'board', plugin: 'plug' });
+// Your own kinds of things; the Market is a link after them.
+const OWN_TABS = LIBRARY_TABS.filter((t) => t.id !== 'market');
+const HUES = 7;
+/** A stable colour for a name, so an item keeps its colour from visit to visit. */
+function hueOf(name) {
+  let h = 0;
+  for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return h % HUES;
+}
+const initialOf = (name) => (String(name || '').trim()[0] || '?').toUpperCase();
 const props = defineProps({
   tab: { type: String, default: 'agents' },
   /** The Files tab's open folder ('' is the top of the workspace). */

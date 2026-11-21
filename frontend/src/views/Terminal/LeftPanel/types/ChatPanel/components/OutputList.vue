@@ -2874,6 +2874,11 @@ body.dark .create-output-btn {
   font-size: 7px;
   line-height: 19px;
 }
+/* In AGNT One's sidebar the time and the speaker are read at a glance: never under 12px. */
+.is-drawer :deep(.output-date),
+.is-drawer :deep(.output-speaker) {
+  font-size: 12px;
+}
 .is-drawer .output-meta {
   margin-top: 1px;
 }

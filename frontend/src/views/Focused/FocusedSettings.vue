@@ -10,20 +10,24 @@
     <header class="focused-page-head">
       <div>
         <h1>{{ page.title }}</h1>
-        <p>{{ page.sub }}</p>
+        <p>{{ page.sub }} Changes save as you go.</p>
       </div>
     </header>
 
+    <div class="v2-settings">
+    <!-- Every section on one page, with a list to jump to each. -->
+    <nav class="v2-settings-nav" aria-label="Settings sections" data-testid="settings-nav">
+      <button v-for="s in SETTINGS_SECTIONS" :key="s.id" type="button" :class="{ on: current === s.id }" :data-jump="s.id" @click="jump(s.id)"><i :class="s.icon" aria-hidden="true"></i>{{ s.label }}</button>
+    </nav>
+    <div class="v2-settings-body">
     <!-- No banner above the settings: the plan's own row (Billing) offers the
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
     <ConnectYourAi @api-key="nav.studio('SettingsScreen', { section: 'providers' })" />
-    <!-- AGNT One or Studio (custom pages, dashboard, goals, forges, Navigation settings). -->
-    <UiModeSetting />
     <!-- Appearance: Studio's own theme settings (themes, font, scale, custom background with its
          opacity and blur, greyscale), embedded rather than re-implemented, so both modes set the
          same preferences the same way. -->
-    <section class="focused-edit-block" data-section="theme">
+    <section id="settings-appearance" class="focused-edit-block" data-section="theme">
       <div class="focused-edit-block-head"><h3>Appearance</h3></div>
       <div class="focused-edit-card focused-theme-card">
         <ThemeSelector />
@@ -31,10 +35,10 @@
     </section>
 
     <!-- data-section="providers": the "Connect your AI" tour step points here. -->
-    <section class="focused-edit-block" data-section="providers">
+    <section id="settings-model" class="focused-edit-block" data-section="providers">
       <div class="focused-edit-block-head">
-        <h3>Default model</h3>
-        <span class="focused-edit-hint">What AGNT uses unless a chat or an agent picks another.</span>
+        <h3>AI model</h3>
+        <span class="focused-edit-hint">Used unless a chat or an agent picks another.</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
@@ -63,7 +67,7 @@
       </div>
     </section>
 
-    <section class="focused-edit-block">
+    <section id="settings-account" class="focused-edit-block">
       <div class="focused-edit-block-head"><h3>Account</h3></div>
       <div class="focused-edit-card">
         <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
@@ -79,7 +83,7 @@
       </div>
     </section>
 
-    <section class="focused-edit-block">
+    <section id="settings-billing" class="focused-edit-block">
       <div class="focused-edit-block-head">
         <h3>Billing</h3>
         <span class="focused-flex"></span>
@@ -116,7 +120,7 @@
 
     <!-- Usage: Studio's own Usage page (Settings › Usage), embedded rather than
          re-implemented, so both modes show the numbers the services enforce. -->
-    <section class="focused-edit-block focused-usage">
+    <section id="settings-usage" class="focused-edit-block focused-usage">
       <div class="focused-edit-block-head">
         <h3>Usage</h3>
         <span class="focused-edit-hint">AGNT Flash and every hosted service, this month.</span>
@@ -125,6 +129,7 @@
     </section>
 
     <!-- Every other setting, in Studio's groups (2026-10-23); each row opens its section. -->
+    <div id="settings-more"></div>
     <section v-for="group in moreSettings" :key="group.label" class="focused-edit-block" :data-settings-group="group.label">
       <div class="focused-edit-block-head"><h3>{{ group.label }}</h3></div>
       <ul class="focused-list">
@@ -137,6 +142,10 @@
         </li>
       </ul>
     </section>
+    <!-- AGNT One or Studio (custom pages, dashboard, goals, forges, Navigation settings): last, it is rarely changed. -->
+    <div id="settings-layout"><UiModeSetting /></div>
+    </div>
+    </div>
     </template>
   </section>
 </template>
@@ -161,6 +170,21 @@ import { settingsDirectory } from '@/mobile/sectionDirectories.js';
 const store = useStore();
 const router = useRouter();
 const nav = inject('focusedNav');
+// The section list: one click to each part of this page.
+const SETTINGS_SECTIONS = Object.freeze([
+  { id: 'appearance', label: 'Appearance', icon: 'fas fa-palette' },
+  { id: 'model', label: 'AI model', icon: 'fas fa-robot' },
+  { id: 'account', label: 'Account', icon: 'fas fa-user' },
+  { id: 'billing', label: 'Billing', icon: 'fas fa-credit-card' },
+  { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' },
+  { id: 'more', label: 'More settings', icon: 'fas fa-sliders-h' },
+  { id: 'layout', label: 'Layout', icon: 'fas fa-columns' },
+]);
+const current = ref('appearance');
+function jump(id) {
+  current.value = id;
+  document.getElementById('settings-' + id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+}
 // Shown in full above: Theme (Studio's ThemeSelector), Members, Usage. Default model and Billing
 // are summaries above with a link to the full section. 'general' is the sign-in form (Account
 // above). Navigation arranges Studio's sidebar; One's rail is fixed, so it changes nothing here.
@@ -251,3 +275,19 @@ async function cancelPlan() {
 const reactivate = () => changeSubscription('userAuth/reactivateSubscription', 'Subscription reactivated.');
 onMounted(refreshSubscription);
 </script>
+
+<style scoped>
+/* The section list beside the settings, on desktop; above them on a narrow window. */
+.v2-settings { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start; }
+.v2-settings-nav { position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.v2-settings-nav button { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; }
+.v2-settings-nav button i { width: 16px; text-align: center; color: var(--text-tertiary); }
+.v2-settings-nav button:hover { background: var(--surface-hover); color: var(--text-primary); }
+.v2-settings-nav button.on { background: var(--surface-active); color: var(--text-primary); font-weight: 600; }
+.v2-settings-body { min-width: 0; }
+.v2-settings-body > [id^='settings-'] { scroll-margin-top: 12px; }
+@media (max-width: 900px) {
+  .v2-settings { grid-template-columns: minmax(0, 1fr); }
+  .v2-settings-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+</style>

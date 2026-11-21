@@ -1,10 +1,9 @@
 <template>
-  <!-- The rail: Home (also the inbox, with its badge), Chats, Routines, Library
-       (agents, workflows, tools, skills, widgets), Apps (plugins, connectors),
-       More; Settings and you at the bottom. -->
+  <!-- The rail: Home (the inbox, with its badge), Chats, Goals (one-off and
+       repeating), Library and Apps, each with its name under the icon; Settings
+       and your account menu at the bottom. -->
   <div class="mk mk-rail-host">
-    <nav class="rail" aria-label="AGNT">
-      <img class="rail-mark" src="/images/agnt-logo-mark.svg" alt="AGNT" />
+    <nav class="rail rail-v2" aria-label="AGNT">
       <div v-for="item in ITEMS" :key="item.id" class="rail-slot">
         <button
           type="button"
@@ -12,30 +11,40 @@
           :class="{ 'is-active': active === item.id }"
           :data-testid="`one-rail-${item.id}`"
           :aria-label="item.label"
-          v-tooltip="item.label"
+          :aria-current="active === item.id ? 'page' : null"
           @click="$emit('select', item.id)"
         >
           <MkIcon :name="item.icon" />
-          <span v-if="item.id === 'home' && badge" class="rail-badge">{{ badge > 99 ? '99+' : badge }}</span>
+          <span class="rail-label">{{ item.label }}</span>
+          <span v-if="item.id === 'home' && badge" class="rail-badge" :aria-label="`${badge} need you`">{{ badge > 99 ? '99+' : badge }}</span>
         </button>
-      </div>
-      <div ref="moreRef" class="rail-slot">
-        <button type="button" class="rail-btn" :class="{ 'is-active': active === 'more' || menuOpen }" data-testid="one-rail-more" aria-label="More" :aria-expanded="String(menuOpen)" v-tooltip="menuOpen ? '' : 'More'" @click="menuOpen = !menuOpen">
-          <MkIcon name="more" />
-        </button>
-        <div v-if="menuOpen" class="rail-menu" role="menu" data-testid="one-rail-menu-more">
-          <button v-for="m in MORE" :key="m.id" type="button" role="menuitem" class="menu-item" :class="{ sep: m.sep, 'is-active': activeMore === m.id }" :data-testid="`one-rail-${m.id}`" @click="choose(m.id)">
-            <MkIcon :name="m.icon" />{{ m.label }}<kbd v-if="m.hint">{{ m.hint }}</kbd>
-          </button>
-        </div>
       </div>
       <span class="rail-fill"></span>
       <!-- While an offer runs: opens and closes its corner card (OneOffer). -->
       <button v-if="offer" type="button" class="rail-btn rail-offer" data-testid="one-rail-offer" :aria-label="offer" v-tooltip="offer" @click="$emit('offer')"><MkIcon name="gift" /><span class="rail-dot" aria-hidden="true"></span></button>
-      <button type="button" class="rail-btn" :class="{ 'is-active': active === 'settings' }" data-testid="one-rail-settings" aria-label="Settings" v-tooltip="'Settings'" @click="$emit('select', 'settings')"><MkIcon name="settings" /></button>
-      <button type="button" class="rail-btn" data-testid="one-rail-me" :aria-label="userName || 'You'" v-tooltip="userName || 'You'" @click="$emit('select', 'members')">
-        <span class="av rail-me" :style="{ background: 'var(--color-pink)' }">{{ initials }}</span>
+      <button type="button" class="rail-btn" :class="{ 'is-active': active === 'settings' }" data-testid="one-rail-settings" aria-label="Settings" :aria-current="active === 'settings' ? 'page' : null" @click="$emit('select', 'settings')">
+        <MkIcon name="settings" /><span class="rail-label">Settings</span>
       </button>
+      <div ref="meRef" class="rail-slot">
+        <button
+          type="button"
+          class="rail-btn rail-me-btn"
+          :class="{ 'is-active': active === 'me' || menuOpen }"
+          data-testid="one-rail-me"
+          :aria-label="`${userName || 'You'}: account menu`"
+          aria-haspopup="menu"
+          :aria-expanded="String(menuOpen)"
+          @click="menuOpen = !menuOpen"
+        >
+          <span class="av rail-me">{{ initials }}</span>
+        </button>
+        <div v-if="menuOpen" class="rail-menu rail-menu-up" role="menu" data-testid="one-rail-menu-account">
+          <div class="rail-menu-who"><span class="av rail-me">{{ initials }}</span><span class="rail-menu-name">{{ userName || 'You' }}</span></div>
+          <button v-for="m in ACCOUNT" :key="m.id" type="button" role="menuitem" class="menu-item" :class="{ sep: m.sep, 'is-active': activeMore === m.id }" :data-testid="`one-rail-${m.id}`" @click="choose(m.id)">
+            <MkIcon :name="m.icon" />{{ m.label }}<kbd v-if="m.hint">{{ m.hint }}</kbd>
+          </button>
+        </div>
+      </div>
       <!-- With the sidebar collapsed, the way back sits at the foot, as in Studio's sidebar. -->
       <button v-if="collapsed" type="button" class="rail-btn rail-expand" data-testid="one-rail-expand" aria-label="Expand sidebar" v-tooltip="'Expand sidebar'" @click="$emit('expand')"><i class="fas fa-angle-double-right" aria-hidden="true"></i></button>
     </nav>
@@ -48,15 +57,14 @@ import MkIcon from './MkIcon.vue';
 
 const ITEMS = Object.freeze([
   { id: 'home', label: 'Home', icon: 'home' },
-  { id: 'chats', label: 'Chats with Annie', icon: 'chats' },
-  { id: 'routines', label: 'Routines', icon: 'routines' },
+  { id: 'chats', label: 'Chats', icon: 'chats' },
+  { id: 'goals', label: 'Goals', icon: 'task' },
   { id: 'library', label: 'Library', icon: 'library' },
   { id: 'apps', label: 'Apps', icon: 'plug' },
 ]);
-const MORE = Object.freeze([
-  { id: 'activity', label: 'Activity', icon: 'activity' },
-  { id: 'dashboard', label: 'Dashboard', icon: 'board' },
-  { id: 'goals', label: 'Goals', icon: 'task' },
+// Your account menu: everything that is about you or the team rather than a page of work.
+const ACCOUNT = Object.freeze([
+  { id: 'account', label: 'Your account', icon: 'lock' },
   { id: 'members', label: 'Members', icon: 'users' },
   { id: 'wrapped', label: 'Year in review', icon: 'spark' },
   { id: 'find', label: 'Find anything', icon: 'find', hint: 'Ctrl K', sep: true },
@@ -65,6 +73,7 @@ const MORE = Object.freeze([
 ]);
 const props = defineProps({
   active: { type: String, default: null },
+  /** The account menu entry that is the page on screen (Members). */
   activeMore: { type: String, default: null },
   badge: { type: Number, default: 0 },
   userName: { type: String, default: '' },
@@ -74,7 +83,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['select', 'expand', 'offer']);
 const menuOpen = ref(false);
-const moreRef = ref(null);
+const meRef = ref(null);
 const initials = computed(() => {
   const words = String(props.userName || '').trim().split(/[\s@._-]+/).filter(Boolean);
   return ((words[0]?.[0] || '?') + (words[1]?.[0] || '')).toUpperCase();
@@ -83,7 +92,7 @@ function choose(id) {
   menuOpen.value = false;
   emit('select', id);
 }
-const onDown = (e) => { if (menuOpen.value && !moreRef.value?.contains(e.target)) menuOpen.value = false; };
+const onDown = (e) => { if (menuOpen.value && !meRef.value?.contains(e.target)) menuOpen.value = false; };
 const onKey = (e) => { if (e.key === 'Escape') menuOpen.value = false; };
 onMounted(() => { document.addEventListener('mousedown', onDown); document.addEventListener('keydown', onKey); });
 onBeforeUnmount(() => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); });

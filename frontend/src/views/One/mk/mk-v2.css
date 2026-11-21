@@ -1,0 +1,155 @@
+/* AGNT One, second pass (the Focused v2 review): a labelled rail, one search,
+   readable type and one button and badge language across every page. Only
+   the theme's own variables (mk.css maps them to --line, --raised, --pink…).
+   The frame itself (background, the main panel's edge, custom backgrounds)
+   is one.css's and is left exactly as it is. Loaded after mk.css and
+   mk-frame.css, which it refines; mk.css is generated and never hand-edited. */
+
+/* ── The rail: every icon named, the badge on its corner ─────────────────── */
+.mk .rail.rail-v2 { width: 72px; gap: 2px; padding: 12px 0 12px; }
+.mk .rail-v2 .rail-btn { width: 60px; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; }
+.mk .rail-v2 .rail-btn svg.i { width: 20px; height: 20px; }
+.mk .rail-v2 .rail-label { font-size: 12px; font-weight: 500; line-height: 1; letter-spacing: 0.01em; }
+.mk .rail-v2 .rail-btn.is-active { color: var(--text-primary); }
+.mk .rail-v2 .rail-btn.is-active::before { content: ''; position: absolute; left: -6px; top: 15px; width: 3px; height: 24px; border-radius: 3px; background: var(--pink); }
+.mk .rail-v2 .rail-badge { top: 6px; right: auto; left: 33px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 11px; line-height: 16px; box-shadow: 0 0 0 2px var(--color-background); }
+.mk .rail-v2 .rail-offer,
+.mk .rail-v2 .rail-expand { height: 40px; }
+.mk .rail-v2 .rail-me-btn { height: 48px; margin-top: 6px; }
+.mk .rail-v2 .rail-me-btn.is-active::before { top: 12px; }
+.mk .rail-v2 .rail-me { width: 32px; height: 32px; margin: 0; font-size: 12px; background: var(--color-pink); color: var(--on-fill-brand); }
+.mk .rail-menu.rail-menu-up { top: auto; bottom: 0; min-width: 240px; }
+.mk .rail-menu-who { display: flex; align-items: center; gap: 10px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.mk .rail-menu-name { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── The sidebar: readable rows and labels ───────────────────────────────── */
+.mk .ws-plan { font-size: 12.5px; color: var(--text-secondary); }
+.mk .d-head { font-size: 12px; letter-spacing: 0.04em; }
+.mk .d-item { min-height: 36px; box-sizing: border-box; }
+
+/* ── Pages: one heading, readable text, one button set ───────────────────── */
+.mk .page-head { align-items: flex-end; margin-bottom: 22px; }
+.mk .page-head h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
+.mk .page-head p { font-size: 15px; color: var(--text-secondary); }
+.mk .lead { font-size: 16px; }
+/* The page's one main action is the brand pink; the rest are quiet. */
+.mk .primary { min-height: 40px; padding: 0 18px; background: var(--color-pink); color: var(--on-fill-brand); font-size: 14px; border-radius: 12px; }
+.mk .primary.sm { min-height: 32px; padding: 0 14px; font-size: 13px; border-radius: 10px; }
+.mk .btn { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 12px; }
+.mk .btn.sm { min-height: 32px; padding: 0 12px; font-size: 13px; border-radius: 10px; }
+/* Section headings in sentence case, the size of a title rather than a label. */
+.mk .sec-head { margin: 28px 2px 10px; }
+.mk .sec-head h3 { font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.mk .hm-sub { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-secondary); padding: 14px 2px 6px; }
+.mk .tc-runs-h,
+.mk .tc-group,
+.mk .mk-label { font-size: 12px; letter-spacing: 0.04em; }
+/* Nothing under 12px. */
+.mk .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.mk .tab .count,
+.mk .tc-when,
+.mk .tc-kpi-l,
+.mk .card-foot,
+.mk .msg-time { font-size: 12.5px; }
+.mk .r { padding: 12px 16px; }
+.mk .r-text strong { font-size: 14.5px; }
+.mk .r-text small { font-size: 13px; }
+.mk .r-go { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.mk .card p { font-size: 13.5px; line-height: 1.45; }
+.mk .tabs { margin-bottom: 20px; }
+.mk .tab { font-size: 14.5px; }
+
+/* ── Shared pieces of the v2 pages ───────────────────────────────────────── */
+.mk .v2-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.mk .seg.v2-seg { padding: 3px; border-radius: 12px; }
+.mk .seg.v2-seg button { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 9px; font-size: 14px; color: var(--text-secondary); }
+.mk .seg.v2-seg button.on { color: var(--text-primary); }
+.mk .v2-count { font-size: 12.5px; color: var(--text-tertiary); }
+.mk .v2-search { flex: 1; min-width: 180px; max-width: 320px; margin-left: auto; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--raised); color: var(--text-tertiary); }
+.mk .v2-search:focus-within { border-color: var(--border-strong); }
+.mk .v2-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: 14px; }
+.mk .v2-section { margin-top: 22px; }
+.mk .v2-sec-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
+.mk .v2-sec-head h2 { display: flex; align-items: baseline; gap: 8px; font-size: 16px; font-weight: 600; }
+.mk .v2-sec-count { font-size: 13px; font-weight: 500; color: var(--text-tertiary); }
+.mk .v2-bar { flex: none; width: 110px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.mk .v2-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--pink); }
+.mk .v2-go { color: var(--text-tertiary); }
+.mk .v2-onoff { flex: none; width: 28px; text-align: right; font-size: 13px; color: var(--text-secondary); }
+.mk .v2-empty { padding: 28px 18px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--text-secondary); font-size: 14.5px; }
+.mk .v2-empty p { margin: 0 0 14px; }
+.mk .v2-note { margin: 18px 2px 0; font-size: 13.5px; color: var(--text-secondary); }
+.mk .v2-foot { margin: 22px 2px 0; font-size: 13.5px; }
+.mk .v2-back { display: inline-flex; align-items: center; gap: 4px; height: 30px; margin: 0 0 8px -6px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
+.mk .v2-back:hover { background: var(--surface-hover); color: var(--text-primary); }
+.mk .v2-back svg.i { transform: rotate(180deg); }
+/* Icon tiles carry meaning by tone: amber needs you, blue working, green done. */
+.mk .r-icon.v2-tone-needs { background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); }
+.mk .r-icon.v2-tone-progress { background: rgba(var(--blue-rgb), 0.14); color: var(--blue-text); }
+.mk .r-icon.v2-tone-done { background: rgba(var(--green-rgb), 0.14); color: var(--green-text); }
+.mk .r-icon.v2-tone-repeating { background: rgba(var(--pink-rgb), 0.12); color: var(--pink); }
+.mk .r-icon.v2-tone-broken { background: rgba(var(--red-rgb, 239, 68, 68), 0.14); color: var(--danger); }
+/* A row that needs fixing (an app whose sign-in stopped). */
+.mk .primary.v2-warn { background: rgba(var(--red-rgb, 239, 68, 68), 0.16); color: var(--danger); box-shadow: inset 0 0 0 1px rgba(var(--red-rgb, 239, 68, 68), 0.4); }
+.mk .list.v2-alert { border-color: rgba(var(--red-rgb, 239, 68, 68), 0.35); }
+.mk .v2-alert-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; font-size: 14px; font-weight: 600; color: var(--danger); }
+.mk .v2-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+@media (max-width: 1100px) { .mk .v2-grid2 { grid-template-columns: minmax(0, 1fr); } }
+.mk .v2-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mk .v2-stat { padding: 14px 16px; }
+.mk .v2-stat + .v2-stat { border-left: 1px solid var(--line); }
+.mk .v2-stat b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.mk .v2-stat span { font-size: 13px; color: var(--text-secondary); }
+.mk .v2-roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .mk .v2-roles { grid-template-columns: minmax(0, 1fr); } }
+.mk .v2-role { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); }
+.mk .v2-role b { display: block; font-size: 14.5px; font-weight: 600; }
+.mk .v2-role p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--text-secondary); }
+.mk .card.v2-new { border-style: dashed; background: transparent; }
+.mk .card.v2-new h4 { color: var(--text-secondary); }
+.mk .v2-mono { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 11px; font-size: 15px; font-weight: 700; }
+
+/* Activity rows: what kind of thing it was, its status beside its name, when on the right. */
+.mk .v2-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mk .v2-title-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk .v2-title-row .tag { flex: none; }
+.mk .v2-time { flex: none; font-size: 12.5px; color: var(--text-tertiary); white-space: nowrap; }
+.mk .r-icon.v2-kind-chat { background: rgba(var(--pink-rgb), 0.12); color: var(--pink); }
+.mk .r-icon.v2-kind-agent { background: rgba(var(--blue-rgb), 0.14); color: var(--blue-text); }
+.mk .r-icon.v2-kind-workflow { background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); }
+.mk .r-icon.v2-kind-routine { background: rgba(var(--green-rgb), 0.14); color: var(--green-text); }
+.mk .list.v2-needs { border-color: rgba(var(--orange-rgb), 0.4); }
+
+/* The composer's model button: shown when this chat has its own model pin (that is what it
+   warns about); a chat that follows the default model leaves the choice to Settings. */
+.ui-one .tooltip-container:has(> .chat-provider-button:not(.is-pinned)),
+.ui-one .chat-provider-button:not(.is-pinned) { display: none; }
+
+/* Library: the Market link at the end of the tabs, and each item's own colour. */
+.mk .tab.v2-tab-link { margin-left: auto; color: var(--text-secondary); }
+.mk .v2-mono.v2-hue-0 { background: rgba(var(--pink-rgb), 0.18); color: var(--pink); }
+.mk .v2-mono.v2-hue-1 { background: rgba(var(--blue-rgb), 0.16); color: var(--blue-text); }
+.mk .v2-mono.v2-hue-2 { background: rgba(var(--green-rgb), 0.16); color: var(--green-text); }
+.mk .v2-mono.v2-hue-3 { background: rgba(var(--orange-rgb), 0.16); color: var(--amber-text); }
+.mk .v2-mono.v2-hue-4 { background: rgba(var(--red-rgb), 0.16); color: var(--danger); }
+.mk .v2-mono.v2-hue-5 { background: rgba(var(--primary-rgb), 0.18); color: var(--text-primary); }
+.mk .v2-mono.v2-hue-6 { background: var(--surface-active); color: var(--text-secondary); }
+.mk button.card.v2-new { cursor: pointer; font: inherit; color: inherit; }
+
+/* One accent: an on switch is the brand pink. */
+.mk .switch.on { background: var(--pink); }
+.mk .switch.on::after { background: var(--on-fill-brand); }
+/* Home's inbox is one card: the groups inside it are rows with dividers, not cards in a card. */
+.mk .hm-inbox-b .list { border: 0; border-radius: 0; background: transparent; }
+.mk .hm-inbox-b .list,
+.mk .hm-inbox-b .hm-sub { border-top: 1px solid var(--line); }
+.mk .hm-inbox-b .hm-sub + .list { border-top: 0; }
+.mk .hm-inbox-b { padding: 0 0 4px; }
+.mk .hm-inbox-b .hm-sub { padding-left: 16px; }
+/* A filter with nothing in it reads as empty. */
+.mk .seg.v2-seg button.is-empty { opacity: 0.55; }
+
+/* Library: the New card reads as an action, not one more item. */
+.mk .card.v2-new { border: 1.5px dashed var(--border-strong); }
+.mk .card.v2-new:hover { border-color: var(--pink); }
+.mk .card.v2-new .r-icon { background: rgba(var(--pink-rgb), 0.12); color: var(--pink); }
