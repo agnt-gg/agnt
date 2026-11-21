@@ -95,7 +95,7 @@
               <p v-if="isLoadingProviders" role="status">Loading connections…</p>
               <p v-else-if="!filteredOAuthProviders.length">No matching connections.</p>
               <article v-for="provider in paginatedProviders" v-else :key="provider.id" class="vault-connection">
-                <span class="vault-icon"><SvgIcon :name="provider.icon" /></span>
+                <span class="vault-icon"><SvgIcon :name="brandIcon(provider.id, provider.icon)" /></span>
                 <div class="vault-identity"><strong>{{ providerLabel(provider) }}</strong><span :class="{ connected: provider.connected }">{{ provider.connected ? provider.healthStatus === 'error' ? 'Needs attention' : 'Connected' : 'Not connected' }}</span></div>
                 <button type="button" class="vault-connect" @click="handleOAuthAppClick(provider)">{{ provider.connected ? 'Manage' : 'Connect' }}</button>
                 <button type="button" class="vault-edit" :aria-label="'Edit ' + providerLabel(provider)" @click="editProvider(provider)"><i class="fas fa-ellipsis-h"></i></button>
@@ -445,6 +445,7 @@ import providerAuthService from '@/services/providerAuthService.js';
 import { isPluginSignIn, connectPluginSignIn, disconnectPluginSignIn, modalSignInUi } from '@/services/pluginSignIn.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { describeApps } from '@/services/appCards.js';
+import { brandIcon } from '@/services/brandIcons.js';
 import AppsSection from './components/AppsSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
@@ -1688,6 +1689,7 @@ export default {
       selectedSecret,
       oauthProviders,
       providerLabel,
+      brandIcon,
       oauthSearch,
       connectOAuthApp,
       disconnectApp,

@@ -22,6 +22,11 @@ const PLUGIN_BRAND = Object.freeze({
   'youtube-plugin': 'youtube',
   'ga4-plugin': 'business-ga4',
   'searchconsole-plugin': 'business-searchconsole',
+  'elevenlabs-plugin': 'elevenlabs',
+  'elevenlabs-media': 'elevenlabs',
+  'cartesia-plugin': 'cartesia',
+  // Simple Icons has no Firecrawl mark; its sign-in already shows the flame (catalogue icon "fire").
+  'firecrawl-plugin': 'fire',
 });
 
 /** Sign-in ids whose brand file has a different name. */
@@ -34,7 +39,8 @@ const GLYPH = Object.freeze({
   'building-shield': 'dashboard', wallet: 'finance', 'dollar-sign': 'finance', graph: 'database', mic: 'speaker',
   gamepad: 'dice', 'scale-balanced': 'check', 'shield-check': 'check', 'shield-halved': 'check', 'shield-alt': 'check',
   cube: 'grid', hexagon: 'grid', 'code-branch': 'code', message: 'chat', 'message-circle': 'chat', 'message-square': 'chat',
-  calendar: 'clock', 'file-lines': 'document',
+  calendar: 'clock', 'file-lines': 'document', film: 'video', music: 'speaker', envelope: 'inbox', 'chart-line': 'dashboard',
+  rocket: 'magic',
 });
 const bare = (name) => String(name || '').replace(/^fa[srb]?\s+/, '').replace(/^fa-/, '').trim();
 const shipped = (name) => (typeof name === 'string' && SHIPPED_ICONS.has(name) ? name : null);

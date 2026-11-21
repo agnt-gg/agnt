@@ -38,7 +38,7 @@
               <ul v-if="appsToConnect.length" class="list" data-testid="apps-to-connect">
               <li v-for="card in appsToConnect" :key="card.id">
                 <div class="r" :data-app="card.id">
-                  <span class="r-icon"><SvgIcon v-if="card.icon" :name="card.icon" /><MkIcon v-else name="plug" size="sm" /></span>
+                  <span class="r-icon"><SvgIcon :name="brandIcon(card.providerId, card.icon)" /></span>
                   <span class="r-text">
                     <strong>{{ card.name }}</strong>
                     <small>{{ card.status === 'reconnect' ? 'Its sign-in stopped working' : 'Not connected yet' }}<template v-if="describeApps(card)"> · {{ describeApps(card) }} can’t run until then</template></small>
@@ -145,6 +145,7 @@ import { usePluginRequests } from '@/composables/usePluginRequests.js';
 import { useAppCards } from '@/composables/useAppCards.js';
 import { useAppSignIn } from '@/views/Focused/useAppSignIn.js';
 import { findAppCard, describeApps } from '@/services/appCards.js';
+import { brandIcon } from '@/services/brandIcons.js';
 import { cardNeedsYou } from '@/services/pluginDirectory.js';
 import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import { useStore } from 'vuex';
