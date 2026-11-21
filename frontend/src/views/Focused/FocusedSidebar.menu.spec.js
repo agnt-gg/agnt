@@ -60,11 +60,13 @@ beforeEach(() => {
 // Reported 2026-10-21: beside AGNT One's rail, the drawer repeated the rail's
 // links (two navigations). Without navigation it is your chats, nothing else.
 describe('navigation: false (beside a rail)', () => {
-  it('drops the page links and More; keeps New chat, Main chat, recents, search and the profile', () => {
+  it('drops the page links and More; keeps New chat, Main chat, recents, search and the profile', async () => {
     const pageRows = (w) => w.findAll('.focused-nav > .focused-nav-row').map((b) => b.text());
     const full = mountSidebar();
     expect(pageRows(full)).toEqual(expect.arrayContaining(['Library', 'Market']));
     expect(full.find('[aria-expanded].focused-nav-row').exists()).toBe(true);
+    await full.find('[aria-expanded].focused-nav-row').trigger('click');
+    expect(full.findAll('.focused-menu [role=menuitem]').map((b) => b.text())).toEqual(['Files', 'Settings', 'Find anythingCtrl K']);
     full.unmount();
 
     const w = mountSidebar({ navigation: false });

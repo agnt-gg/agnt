@@ -195,7 +195,6 @@ const pageItems = [
 // Focused pages one click away (the demo's More). Studio-only screens are a
 // Ctrl+K search away, so nothing here leaves Focused.
 const moreItems = [
-  { page: 'memory', label: 'Memory', icon: FOCUSED_PAGES.memory.icon },
   { page: 'files', label: 'Files', icon: 'fas fa-folder' },
   { page: 'settings', label: 'Settings', icon: FOCUSED_PAGES.settings.icon },
 ];
