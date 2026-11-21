@@ -20,6 +20,8 @@ const BAR = readFileSync(join(DIR, 'FocusedWindowControls.vue'), 'utf8');
 // The frame these controls sit in: AGNT One's top bar.
 const SHELL = readFileSync(join(DIR, '../One/OneShell.vue'), 'utf8');
 const CSS = readFileSync(join(DIR, '../One/one.css'), 'utf8');
+// How the rail and sidebar sit in the frame, including under the window's drag strip.
+const FRAME = readFileSync(join(DIR, '../One/mk/mk-frame.css'), 'utf8');
 // Docs renders outside the frame (its own route), so it carries its own bar.
 const DOCS = readFileSync(join(DIR, '../Docs/Docs.vue'), 'utf8');
 
@@ -93,6 +95,17 @@ describe('AGNT One top bar: window drag + window buttons', () => {
   // Reported 2026-10-21: the 8px gutters beside the floating sheet did not
   // drag. Gutters exist only with a custom background; flush, the strip stays
   // 8px, or it would cover the first 9px of every page under the 48px bar.
+  // Home, the workspace switcher and the sidebar's collapse button sit inside the
+  // top drag strip; without opting out, the window took their clicks as a drag.
+  it('every control in the rail and the sidebar stays pressable under the top drag strip', () => {
+    for (const host of ['mk-rail-host', 'mk-drawer-host']) {
+      const rule = new RegExp(`\\.ui-one\\.has-window-bar \\.${host} :is\\(button, a, input, \\[role='button'\\], \\[role='menuitem'\\]\\)[^{]*\\{[^}]*-webkit-app-region: no-drag;`);
+      expect(FRAME, host).toMatch(rule);
+    }
+    // The strip is what they sit under: full width, and 57px with a custom background.
+    expect(CSS).toMatch(/body\.custom-bg \.ui-one\.has-window-bar:not\(\.is-compact\)::before \{\s*height: 57px;/);
+  });
+
   it('the top edge drags end to end: the band covers the gutters where there are any', () => {
     expect(CSS).toMatch(/\.ui-one\.has-window-bar::before \{[^}]*left: 0;[^}]*right: 0;[^}]*height: 8px;[^}]*-webkit-app-region: drag;/);
     expect(CSS).toMatch(/body\.custom-bg \.ui-one\.has-window-bar:not\(\.is-compact\)::before \{\s*height: 57px;/);

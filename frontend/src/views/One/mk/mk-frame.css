@@ -7,6 +7,12 @@
 /* One sidebar holds the drawer and the chats: 280px fits a chat row's title and
    its people-and-time line (it was 248px, beside a separate 300px chat list). */
 .mk.mk-drawer-host .drawer { width: 280px; height: 100%; box-sizing: border-box; }
+/* Desktop: the window's drag strip runs along the top edge (one.css, 57px with a
+   custom background) and takes every click it covers unless the target opts out.
+   The rail's first items and the sidebar head sit under it, so everything you can
+   press in either one opts out. */
+.ui-one.has-window-bar .mk-rail-host :is(button, a, input, [role='button'], [role='menuitem']),
+.ui-one.has-window-bar .mk-drawer-host :is(button, a, input, [role='button'], [role='menuitem']) { -webkit-app-region: no-drag; }
 .mk .mk-new-anchor { position: relative; }
 .mk.mk-topbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .mk.mk-page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
