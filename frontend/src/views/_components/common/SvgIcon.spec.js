@@ -96,6 +96,18 @@ describe('SvgIcon', () => {
     expect(offenders).toEqual([]);
   });
 
+  // An icon with only a viewBox has no size of its own: in a box that does not size it (Home's
+  // apps-to-connect row) it collapses to nothing. The business-* marks shipped that way.
+  it('every shipped icon declares its own width and height', () => {
+    const unsized = readdirSync(ICON_DIR)
+      .filter((f) => f.endsWith('.svg'))
+      .filter((f) => {
+        const root = new DOMParser().parseFromString(readFileSync(resolve(ICON_DIR, f), 'utf8'), 'image/svg+xml').documentElement;
+        return !root.getAttribute('width') || !root.getAttribute('height');
+      });
+    expect(unsized).toEqual([]);
+  });
+
   it('updates SVG when name prop changes', async () => {
     wrapper = shallowMount(SvgIcon, { props: { name: 'agent' } });
     const first = wrapper.vm.svgContent;
