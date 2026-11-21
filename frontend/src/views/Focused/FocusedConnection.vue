@@ -15,7 +15,7 @@
 
     <template v-else>
       <header class="focused-edit-head">
-        <FocusedConnectorLogo :provider-id="card.providerId || card.id" :name="card.name" :icon="card.icon" />
+        <FocusedConnectorLogo :provider-id="card.providerId || card.id" :icon="card.icon" />
         <div class="focused-edit-names">
           <h2 class="focused-plain-title">{{ card.name }}</h2>
           <span class="focused-edit-meta" :class="{ ok: card.status === 'ready' }">{{ STATUS_WORD[card.status] }}</span>

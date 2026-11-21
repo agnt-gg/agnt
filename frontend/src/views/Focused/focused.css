@@ -2430,7 +2430,7 @@
 }
 
 /* ── Connector logos (FocusedConnectorLogo) ──
-   Just the colored mark: no tile, no border, no background. */
+   Just the mark: no tile, no border, no background. */
 .ui-focused .focused-connector-logo {
   width: 36px;
   height: 36px;
@@ -2440,30 +2440,7 @@
   background: transparent;
   border: 0;
 }
-.ui-focused .focused-connector-logo img {
-  width: 26px;
-  height: 26px;
-  display: block;
-}
-/* Black marks (GitHub, X, Notion…) turn white on a dark theme, or they would
-   vanish; very light marks get a faint edge on a light theme. */
-.ui-focused:where(.dark *) .focused-connector-logo img.dark {
-  filter: invert(1);
-}
-.ui-focused:not(:where(.dark *)) .focused-connector-logo img.light {
-  filter: drop-shadow(0 0 0.6px rgba(0, 0, 0, 0.55));
-}
-/* No brand mark: the app's icon in a color of its own. SvgIcon paints with
-   --color-text, so redefining it here recolors the icon without touching it.
-   The default is overridden per plugin by an inline color. */
-.ui-focused .focused-connector-logo.fallback {
-  --logo-fg: var(--text-secondary);
-  --color-text: var(--logo-fg);
-  color: var(--logo-fg);
-  font-weight: 700;
-  font-size: 20px;
-}
-.ui-focused .focused-connector-logo.fallback svg {
+.ui-focused .focused-connector-logo svg {
   width: 26px;
   height: 26px;
 }
@@ -2472,8 +2449,7 @@
   height: 48px;
   flex-basis: 48px;
 }
-.ui-focused .focused-edit-head .focused-connector-logo img,
-.ui-focused .focused-edit-head .focused-connector-logo.fallback svg {
+.ui-focused .focused-edit-head .focused-connector-logo svg {
   width: 36px;
   height: 36px;
 }

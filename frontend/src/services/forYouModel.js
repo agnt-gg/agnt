@@ -24,7 +24,7 @@ const POPULAR = ['google', 'slack', 'notion', 'microsoft365', 'hubspot', 'github
  */
 export const DEFAULT_ASKS = Object.freeze({
   google: [
-    { text: 'Draft replies to my most important unread emails', icon: 'gmail-color' },
+    { text: 'Draft replies to my most important unread emails', icon: 'gmail' },
     { text: 'Plan my day from my calendar and inbox', icon: 'google-calendar' },
     { text: 'Turn my latest meeting notes into a Google Doc with action items', icon: 'google-docs' },
   ],

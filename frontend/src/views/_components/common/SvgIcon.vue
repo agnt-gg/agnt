@@ -3,6 +3,8 @@
 </template>
 
 <script>
+import { canonicalIconName } from '@/services/iconNames.js';
+
 // Pre-load all SVGs at build time via Vite glob import (raw strings)
 const svgModules = import.meta.glob('/src/assets/icons/*.svg', {
   eager: true,
@@ -48,9 +50,11 @@ for (const [path, raw] of Object.entries(svgModules)) {
 // fall back to puzzle-piece instead of silently rendering an empty <span>.
 // Callsite `name="foo" || 'fallback'` shortcuts only catch *null* names —
 // they can't catch "string is set but unknown to the cache".
+// A name the file is not called (an old business-<id>, an alias) resolves through
+// services/iconNames.js, so plugins written before the rename keep their marks.
 const FALLBACK_ICON = 'puzzle-piece';
 function resolveIcon(name) {
-  return svgCache.get(name) || svgCache.get(FALLBACK_ICON) || '';
+  return svgCache.get(name) || svgCache.get(canonicalIconName(name)) || svgCache.get(FALLBACK_ICON) || '';
 }
 
 export default {

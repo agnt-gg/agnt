@@ -66,7 +66,7 @@ describe('SvgIcon', () => {
   // Dark mode renders icons in the theme text colour. That only works if the
   // colour an icon ships with sits on an element SvgIcon's stylesheet
   // overrides; a colour anywhere else stays baked in and vanishes on a dark
-  // background (the business-* icons shipped with fill on the <svg> root).
+  // background (the Simple Icons brand marks ship with fill on the <svg> root).
   it('recolours every painted element of every shipped icon', () => {
     const recoloured = {
       fill: new Set(['path', 'circle', 'ellipse', 'polygon']),
@@ -97,7 +97,7 @@ describe('SvgIcon', () => {
   });
 
   // An icon with only a viewBox has no size of its own: in a box that does not size it (Home's
-  // apps-to-connect row) it collapses to nothing. The business-* marks shipped that way.
+  // apps-to-connect row) it collapses to nothing. The Simple Icons brand marks shipped that way.
   it('every shipped icon declares its own width and height', () => {
     const unsized = readdirSync(ICON_DIR)
       .filter((f) => f.endsWith('.svg'))

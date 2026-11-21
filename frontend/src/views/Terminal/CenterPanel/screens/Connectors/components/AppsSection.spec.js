@@ -114,7 +114,7 @@ describe('For you: things to try, then the apps to connect', () => {
     expect(wrapper.find('.fy-hero').exists()).toBe(false);
     expect(wrapper.find('.fy-fam').attributes('data-family')).toBe('google');
     const google = wrapper.find('[data-family="google"]');
-    expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail-color', 'google-calendar']);
+    expect(google.findAll('.fy-mini [data-icon]').map((i) => i.attributes('data-icon'))).toEqual(['gmail', 'google-calendar']);
     // No pack shelf on For you.
     expect(wrapper.find('[data-pack]').exists()).toBe(false);
   });

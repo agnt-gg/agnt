@@ -29,7 +29,7 @@ describe('brand icons', () => {
     expect(pluginIcon({ name: 'x', icon: 'fas fa-flask' })).toBe('magic');
     expect(pluginIcon({ name: 'x', icon: 'globe' })).toBe('web');
     expect(pluginIcon({ name: 'x', icon: 'nope', kind: 'pack' })).toBe('agent');
-    expect(providerIcon('microsoft365')).toBe('business-microsoft365');
+    expect(providerIcon('microsoft365')).toBe('microsoft365');
     expect(providerIcon('nope')).toBeNull();
   });
 });
@@ -47,7 +47,7 @@ describe('For you', () => {
   it('families: only sign-ins something uses, Google first, with its apps and their brand icons', () => {
     const fams = families({ cards, rows, connected: none });
     expect(fams.map((f) => f.id)).toEqual(['google', 'slack', 'notion']);
-    expect(fams[0].apps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar']);
+    expect(fams[0].apps.map((a) => a.icon)).toEqual(['gmail', 'google-calendar']);
     expect(fams[0].icon).toBe('google');
   });
   it('shelf: a pack needs the sign-ins its tools declare; ready first', () => {
@@ -73,7 +73,7 @@ describe('For you', () => {
       expect.objectContaining({ text: 'Clean up my newsletters', plugin: 'gmail-pro', provider: 'google' }),
     ]);
     // Each Google ask carries its own app's mark: email shows Gmail, not the Google G.
-    expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail-color', 'google-calendar', 'google-docs']);
+    expect(asks({ connected: new Set(['google']), rows }).forApps.map((a) => a.icon)).toEqual(['gmail', 'google-calendar', 'google-docs']);
     expect(asks({ connected: new Set(['slack']), rows }).forApps[0]).toMatchObject({ provider: 'slack', icon: 'slack' });
     for (const a of asks({ connected: new Set(['google', 'slack', 'github']), rows }).forApps) expect(a.text).not.toMatch(/agnt\.gg|ai agent/i);
   });

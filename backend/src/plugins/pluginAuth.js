@@ -7,7 +7,7 @@
  *   "auth": [{
  *     "id": "pipedrive",                 // what tools name in `authProvider`
  *     "name": "Pipedrive",
- *     "icon": "business-pipedrive",
+ *     "icon": "pipedrive",
  *     "type": "apikey",                  // or "oauth2"
  *     "keyLabel": "API token",
  *     "instructions": "Settings → Personal preferences → API",

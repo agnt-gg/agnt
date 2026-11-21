@@ -1,36 +1,20 @@
 /**
- * The real brand icon for a plugin or a sign-in, from the icons AGNT ships (src/assets/icons).
+ * The brand icon for a plugin or a sign-in, from the icons AGNT ships (src/assets/icons).
  *
- * A plugin's manifest `icon` is often a generic glyph ("calendar", "file-lines") or an emoji, so the
- * Apps page would show a calendar outline for Google Calendar. This resolves, in order: a known
- * plugin's brand mark, the manifest icon when AGNT ships it, the sign-in's brand mark
- * (business-<id> or <id>), and only then the generic fallback.
+ * A brand's mark is the file named by its sign-in id (services/iconNames.js), so this only decides
+ * which id or name applies, in order: the plugin's own brand (`<id>-plugin` is the `<id>` brand),
+ * the manifest icon when it names a shipped file, its sign-in's brand, the nearest shipped icon for a
+ * generic glyph ("calendar", "globe"), and only then the generic fallback.
  */
+import { canonicalIconName } from './iconNames.js';
+
 const files = import.meta.glob('/src/assets/icons/*.svg');
 export const SHIPPED_ICONS = new Set(Object.keys(files).map((path) => path.split('/').pop().replace(/\.svg$/, '')));
 
-/** Plugins whose manifest names a generic glyph but whose brand mark AGNT ships. */
+/** Plugins whose name is not `<brand id>-plugin`. */
 const PLUGIN_BRAND = Object.freeze({
-  // gmail-color is the Gmail "M" mark (rendered single-colour like every icon); gmail is a generic envelope.
-  'gmail-plugin': 'gmail-color',
-  'google-calendar-plugin': 'google-calendar',
-  'google-docs-plugin': 'google-docs',
-  'google-sheets-plugin': 'google-sheets',
-  'google-meet-plugin': 'google-meet',
-  'google-drive-plugin': 'google-drive',
-  'google-slides-plugin': 'google-slides',
-  'youtube-plugin': 'youtube',
-  'ga4-plugin': 'business-ga4',
-  'searchconsole-plugin': 'business-searchconsole',
-  'elevenlabs-plugin': 'elevenlabs',
   'elevenlabs-media': 'elevenlabs',
-  'cartesia-plugin': 'cartesia',
-  // Simple Icons has no Firecrawl mark; its sign-in already shows the flame (catalogue icon "fire").
-  'firecrawl-plugin': 'fire',
 });
-
-/** Sign-in ids whose brand file has a different name. */
-const PROVIDER_BRAND = Object.freeze({ microsoft365: 'business-microsoft365', microsoft: 'microsoft', ga4: 'business-ga4' });
 
 /** Generic glyph names manifests use (Font Awesome / Lucide style) mapped to the nearest shipped icon. */
 const GLYPH = Object.freeze({
@@ -40,28 +24,40 @@ const GLYPH = Object.freeze({
   gamepad: 'dice', 'scale-balanced': 'check', 'shield-check': 'check', 'shield-halved': 'check', 'shield-alt': 'check',
   cube: 'grid', hexagon: 'grid', 'code-branch': 'code', message: 'chat', 'message-circle': 'chat', 'message-square': 'chat',
   calendar: 'clock', 'file-lines': 'document', film: 'video', music: 'speaker', envelope: 'inbox', 'chart-line': 'dashboard',
-  rocket: 'magic',
+  rocket: 'magic', plug: 'connect',
 });
 const bare = (name) => String(name || '').replace(/^fa[srb]?\s+/, '').replace(/^fa-/, '').trim();
-const shipped = (name) => (typeof name === 'string' && SHIPPED_ICONS.has(name) ? name : null);
 
-/** The brand icon for a sign-in id (google, slack, notion, github…), or null. */
+/** The shipped icon a name or id resolves to, or null. */
+export function shippedIcon(name) {
+  if (typeof name !== 'string' || !name) return null;
+  if (SHIPPED_ICONS.has(name)) return name;
+  const canonical = canonicalIconName(name);
+  return SHIPPED_ICONS.has(canonical) ? canonical : null;
+}
+
+/** The brand icon for a sign-in id (google, slack, notion, github…), else its declared icon, or null. */
 export function providerIcon(providerId, declared = '') {
-  const id = String(providerId || '').trim().toLowerCase();
-  return shipped(PROVIDER_BRAND[id]) || shipped(id) || shipped(`business-${id}`) || shipped(declared) || null;
+  return shippedIcon(String(providerId || '').trim().toLowerCase()) || shippedIcon(declared) || null;
 }
 
 /** Template helpers: a sign-in's brand icon (else the declared icon, else fallback), and a plugin's. */
 export const brandIcon = (providerId, declared = '', fallback = 'connect') => providerIcon(providerId, declared) || fallback;
 export const brandApp = (plugin, providerId = '') => pluginIcon(plugin, { providers: providerId ? [String(providerId).toLowerCase()] : [] });
 
-/** The brand icon for a plugin row: known brand, shipped manifest icon, its sign-in's brand, else fallback. */
+/** The plugin's own brand: an exception, or `<id>-plugin` naming a shipped brand. */
+function ownBrand(name) {
+  if (PLUGIN_BRAND[name]) return shippedIcon(PLUGIN_BRAND[name]);
+  return name.endsWith('-plugin') ? shippedIcon(name.slice(0, -'-plugin'.length)) : null;
+}
+
+/** The brand icon for a plugin row: its own brand, shipped manifest icon, its sign-in's brand, a glyph, else fallback. */
 export function pluginIcon(plugin, { providers = [], fallback = 'puzzle-piece' } = {}) {
   const name = String(plugin?.name || '').toLowerCase();
-  return shipped(PLUGIN_BRAND[name])
-    || shipped(plugin?.icon)
+  return ownBrand(name)
+    || shippedIcon(plugin?.icon)
     || providers.map((id) => providerIcon(id)).find(Boolean)
-    || shipped(GLYPH[bare(plugin?.icon)])
-    || shipped(bare(plugin?.icon))
+    || shippedIcon(GLYPH[bare(plugin?.icon)])
+    || shippedIcon(bare(plugin?.icon))
     || (String(plugin?.kind || '').toLowerCase() === 'pack' ? 'agent' : fallback);
 }
