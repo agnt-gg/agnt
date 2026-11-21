@@ -48,6 +48,7 @@
 import { ref, computed, inject, watch, onMounted } from 'vue';
 import MkIcon from './MkIcon.vue';
 import { getTree } from '@/services/fileSystemService.js';
+import { reportWorkspaceRootCount } from '@/composables/useWorkspaceFileCount.js';
 import { FILE_SORTS, sortFileItems, crumbsOf, baseName, fmtSize } from '@/views/Focused/focusedFiles.js';
 import { ago } from '@/views/Focused/focusedEditors.js';
 import { matches } from '@/canvas/jumpIndex.js';
@@ -102,6 +103,7 @@ async function load() {
     const body = await getTree(props.dir, { details: true });
     if (ticket !== latest) return;
     items.value = body?.items || [];
+    if (!props.dir) reportWorkspaceRootCount(items.value);
     if (body?.missingRoot) listError.value = 'The workspace folder is missing. Choose it again in Settings.';
   } catch (e) {
     if (ticket !== latest) return;

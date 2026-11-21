@@ -94,6 +94,7 @@ import FocusedGlyph from './FocusedGlyph.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows } from './focusedModel.js';
 import { isRunningStatus } from './focusedEditors.js';
+import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
 
 const props = defineProps({ location: { type: Object, required: true } });
 const store = useStore();
@@ -108,7 +109,13 @@ const loading = ref(false);
 const CAP = 200;
 
 const itemsFor = (t) => (t.getter ? store.getters[t.getter] || [] : []);
-const counts = computed(() => Object.fromEntries(tabs.filter((t) => t.getter).map((t) => [t.id, itemsFor(t).length])));
+// Files is the workspace on disk, counted from its top folder (shared with the sidebar's My files).
+const files = useWorkspaceFileCount();
+files.load();
+const counts = computed(() => ({
+  ...Object.fromEntries(tabs.filter((t) => t.getter).map((t) => [t.id, itemsFor(t).length])),
+  ...(files.count.value !== null ? { files: files.count.value } : {}),
+}));
 const rows = computed(() => (tab.value.getter ? libraryRows(tab.value.id, itemsFor(tab.value), query.value) : []));
 const shownRows = computed(() => rows.value.slice(0, CAP));
 // Nothing of this kind yet (not merely filtered out): the body leads with asking.

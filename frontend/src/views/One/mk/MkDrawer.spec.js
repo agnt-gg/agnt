@@ -42,6 +42,12 @@ describe('the one sidebar', () => {
   const sidebar = (extra = {}, slots) => mountDrawer({ team: team('owner'), teams: [team('owner')], spaces, counts: { agents: 5, routines: 4 }, ...extra }, slots);
   const search = (w) => w.get('[data-testid="one-sidebar-search"]');
 
+  it('My files carries a count like the other My Space rows', () => {
+    const w = sidebar({ counts: { agents: 5, routines: 4, files: 3110 } });
+    const rows = Object.fromEntries(w.findAll('.d-item').filter((b) => /^My /.test(b.text())).map((b) => [b.text().replace(/\d+$/, ''), b.find('.count').exists() ? b.find('.count').text() : null]));
+    expect(rows).toMatchObject({ 'My agents': '5', 'My routines': '4', 'My files': '3110' });
+  });
+
   it('+ New beside the search starts a chat; its chevron holds the rest of New…', async () => {
     const w = sidebar();
     expect(w.get('[data-testid="one-new-chat"]').text()).toBe('New');

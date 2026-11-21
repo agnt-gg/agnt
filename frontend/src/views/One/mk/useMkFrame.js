@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { spaceEmoji } from '@/views/One/team/teamModel.js';
+import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
 
 /**
  * The approved mockup's frame, driven by the app's real routes and data:
@@ -46,9 +47,12 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (page.value === 'library' && loc().tab === 'files') return 'mine-files';
     return null;
   });
+  const files = useWorkspaceFileCount();
+  files.load();
   const mkCounts = computed(() => ({
     agents: (store.getters['agents/allAgents'] || []).length || 0,
     routines: (store.getters['schedules/allSchedules'] || []).length || 0,
+    files: files.count.value ?? 0,
   }));
 
   const userName = computed(() => store.getters['userAuth/userPseudonym'] || store.getters['userAuth/userEmail'] || '');

@@ -103,6 +103,7 @@ import { FOCUSED_PAGES, editAsk } from './focusedModel.js';
 import { ago } from './focusedEditors.js';
 import { fileKind, fmtSize, iconFor, baseName, parentDir, crumbsOf, FILE_SORTS, sortFileItems, newFilePath } from './focusedFiles.js';
 import { getTree, getFile, saveFile, rawFileUrl } from '@/services/fileSystemService.js';
+import { reportWorkspaceRootCount } from '@/composables/useWorkspaceFileCount.js';
 import { getWorkspaceRoot, artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { openLocalPath } from '@/utils/openLocalFile.js';
 import { matches } from '@/canvas/jumpIndex.js';
@@ -152,6 +153,7 @@ async function loadDir() {
   try {
     const body = await getTree(props.dir, { details: true });
     items.value = body.items || [];
+    if (!props.dir) reportWorkspaceRootCount(items.value);
     if (body.missingRoot) listError.value = 'The workspace folder is missing. Choose it again in Settings.';
   } catch (e) {
     items.value = [];

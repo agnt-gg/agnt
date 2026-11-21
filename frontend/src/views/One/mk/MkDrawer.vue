@@ -167,7 +167,7 @@ const MINE = Object.freeze([
   { id: 'mine-tasks', label: 'My tasks', icon: 'task', count: 'tasks', teamOnly: true },
   { id: 'mine-agents', label: 'My agents', icon: 'bot', count: 'agents' },
   { id: 'mine-routines', label: 'My routines', icon: 'bolt', count: 'routines' },
-  { id: 'mine-files', label: 'My files', icon: 'file' },
+  { id: 'mine-files', label: 'My files', icon: 'file', count: 'files' },
 ]);
 const mineRows = computed(() => MINE
   .filter((row) => (props.team || !row.teamOnly) && matches(row.label))

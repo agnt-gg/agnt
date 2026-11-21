@@ -84,6 +84,7 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { useTeam } from '@/views/One/team/useTeam.js';
 import { unreadCount } from '@/views/One/team/teamModel.js';
+import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
 
 defineProps({ active: { type: String, default: null } });
 const emit = defineEmits(['panel-action']);
@@ -93,16 +94,19 @@ const team = computed(() => state.team);
 const spaces = computed(() => state.spaces || []);
 const memberCount = computed(() => (state.members || []).length);
 const needsYou = computed(() => unreadCount(state.inbox || []));
+const files = useWorkspaceFileCount();
+files.load();
 const counts = computed(() => ({
   agents: (store.getters['agents/allAgents'] || []).length,
   routines: (store.getters['schedules/allSchedules'] || []).length,
+  files: files.count.value ?? 0,
 }));
 
 const MINE = [
   { id: 'mine-tasks', label: 'My tasks', icon: 'fas fa-check-square' },
   { id: 'mine-agents', label: 'My agents', icon: 'fas fa-robot', count: 'agents' },
   { id: 'mine-routines', label: 'My routines', icon: 'fas fa-redo', count: 'routines' },
-  { id: 'mine-files', label: 'My files', icon: 'fas fa-folder' },
+  { id: 'mine-files', label: 'My files', icon: 'fas fa-folder', count: 'files' },
 ];
 const NEW = [
   { id: 'new-chat', label: 'New chat', icon: 'fas fa-comment' },
