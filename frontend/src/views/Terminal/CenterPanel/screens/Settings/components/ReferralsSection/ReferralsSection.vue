@@ -40,8 +40,6 @@
       </div>
     </div>
 
-    <ReferralMilestones />
-
     <!-- Stats Grid -->
     <div class="stats-grid">
       <div class="stat-card">
@@ -525,14 +523,12 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import ReferralMilestones from './ReferralMilestones.vue';
 import { inviteLink, shareIntents, INVITE_SHARE_TEXT, REFERRAL_CODE } from '@/services/referral/referralProgram.js';
 
 export default {
   name: 'ReferralsSection',
   components: {
     SimpleModal,
-    ReferralMilestones,
   },
   setup() {
     const store = useStore();
