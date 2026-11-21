@@ -2,7 +2,7 @@
   "releases": [
     {
       "version": "0.6.9",
-      "date": "November 18, 2026",
+      "date": "November 21, 2026",
       "title": "Agent Teams & Your Year in AGNT — AGNT v0.6.9",
       "type": "patch",
       "features": [
@@ -806,6 +806,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-11-18T12:00:00Z"
+    "lastUpdated": "2026-11-21T12:00:00Z"
   }
 }
