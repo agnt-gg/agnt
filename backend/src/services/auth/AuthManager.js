@@ -284,7 +284,22 @@ class AuthManager {
     }
     return Array.from(connected).map((providerId) => ({ providerId, connected: true }));
   }
-  async disconnectProviderAndRemoveApiKey(providerId, userId) {
+  /** Disconnects a provider for this account on the remote server. */
+  async _remoteDisconnect(providerId, authToken) {
+    if (!this.remoteUrl || !authToken) return;
+    const response = await axios.post(`${this.remoteUrl}/auth/disconnect/${encodeURIComponent(providerId)}`, null, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      timeout: 8000,
+      validateStatus: () => true,
+    });
+    if (response.status >= 400 || response.data?.success !== true) {
+      throw new Error(`Couldn't remove ${providerId} from your AGNT account (HTTP ${response.status}). Nothing was disconnected; try again.`);
+    }
+  }
+
+  /** Disconnects a provider on the remote server and in this install. */
+  async disconnectProviderAndRemoveApiKey(providerId, userId, authToken = null) {
+    await this._remoteDisconnect(providerId, authToken);
     const run = (sql, params) => new Promise((resolve, reject) => {
       db.run(sql, params, (err) => (err ? reject(err) : resolve()));
     });

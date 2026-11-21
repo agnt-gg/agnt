@@ -11,7 +11,7 @@ import { discoverSessions } from '../services/auth/sessionDiscovery.js';
 import CodexCliService from '../services/ai/CodexCliService.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { authenticateToken } from './Middleware.js';
-import { requireAuthHeader } from '../utils/authGuard.js';
+import { extractToken, requireAuthHeader } from '../utils/authGuard.js';
 import { isLocalProviderDisconnected, setLocalProviderDisconnected } from '../services/auth/localProviderAccess.js';
 import { listPluginAuthProviders, publicProviderView, getPluginAuthProvider } from '../plugins/pluginAuth.js';
 import { startPluginOAuth, completePluginOAuth, getPluginOAuthStatus } from '../plugins/pluginOAuth.js';
@@ -242,15 +242,15 @@ router.post('/:providerId/auth/disconnect', authenticateToken, async (req, res) 
     }
   }
 
-  // Remote-type providers: delete the locally-stored API key (and any OAuth token row).
+  // Remote-type providers: disconnect on the remote server and in this install.
   try {
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Authentication required to disconnect provider' });
     }
 
-    await AuthManager.disconnectProviderAndRemoveApiKey(providerId, userId);
-    return res.json({ success: true, message: `${providerId} disconnected locally`, providerId });
+    await AuthManager.disconnectProviderAndRemoveApiKey(providerId, userId, extractToken(req));
+    return res.json({ success: true, message: `${providerId} disconnected`, providerId });
   } catch (error) {
     console.error(`[ProviderAuth] Failed to disconnect ${req.providerId}:`, error.message);
     return res.status(500).json({ success: false, error: error.message || 'Failed to disconnect provider' });
