@@ -49,7 +49,7 @@ describe('Activity shows what people did in teamspaces, in detail', () => {
     ], lookups);
     expect(rows.map((r) => `${r.actor} ${r.sentence}${r.where ? ' · ' + r.where : ''}`)).toEqual([
       'You approved the task “Call Globex” · Sales',
-      'Jess Park edited the doc “Q4 plan” · Sales',
+      'Jess Park edited the file “Q4 plan” · Sales',
       'Jess Park posted in chat · Sales',
       'Jess Park joined the team',
       'Jess Park created the task “Call Globex” · Sales',

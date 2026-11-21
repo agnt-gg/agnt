@@ -105,8 +105,8 @@ const MINE = [
   { id: 'mine-files', label: 'My files', icon: 'fas fa-folder' },
 ];
 const NEW = [
-  { id: 'new-task', label: 'New task', icon: 'fas fa-check-square' },
-  { id: 'new-doc', label: 'New doc', icon: 'fas fa-file-alt' },
+  { id: 'new-chat', label: 'New chat', icon: 'fas fa-comment' },
+  { id: 'new-doc', label: 'New file', icon: 'fas fa-file-alt' },
   { id: 'new-agent', label: 'New agent', icon: 'fas fa-robot' },
   { id: 'new-routine', label: 'New routine', icon: 'fas fa-redo' },
 ];

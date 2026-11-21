@@ -130,7 +130,7 @@ export function activityDetail(detail = {}, { workflowNodes = [] } = {}) {
 export function teamActivityRows(events = [], { spaces = new Map(), tasks = new Map(), docs = new Map(), people = new Map(), me = null } = {}) {
   const who = (id) => (id === me ? 'You' : people.get(id) || 'A teammate');
   const TASK = { 'task.created': 'created the task', 'task.moved': 'moved the task', 'task.approved': 'approved the task', 'task.sent_back': 'sent back the task' };
-  const DOC = { 'doc.created': 'created the doc', 'doc.revised': 'edited the doc' };
+  const DOC = { 'doc.created': 'created the file', 'doc.revised': 'edited the file' };
   const MEMBER = { 'member.invited': 'invited someone to the team', 'member.joined': 'joined the team', 'member.removed': 'removed someone from the team' };
   const rows = [];
   for (const e of Array.isArray(events) ? events : []) {

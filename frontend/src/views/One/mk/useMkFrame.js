@@ -1,12 +1,12 @@
 import { computed } from 'vue';
-import { teamApi } from '@/views/One/team/useTeam.js';
-import { spaceEmoji, homeSpaceOf } from '@/views/One/team/teamModel.js';
+import { spaceEmoji } from '@/views/One/team/teamModel.js';
 
 /**
  * The approved mockup's frame, driven by the app's real routes and data:
  * which rail item and drawer row are lit, the top bar's breadcrumbs, where
- * each rail / More / drawer entry goes, and the four create flows (New…,
- * and Home's chips). Pure wiring: every destination is an existing page.
+ * each rail / More / drawer entry goes, and the create flows (New… and
+ * Home's chips): a chat, a file, an agent or a routine. Pure wiring: every
+ * destination is an existing page.
  */
 export function useMkFrame({ store, page, location, screenName, teamState, nav }) {
   const loc = () => location.value || {};
@@ -79,7 +79,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       case 'mine-agents': return team('agents');
       case 'mine-routines': return nav.go({ page: 'scheduled' });
       case 'team-settings': return nav.go({ page: 'settings', section: 'members' });
-      case 'new-task': return create('task');
+      case 'new-chat': return nav.chat();
       case 'new-doc': return create('doc');
       case 'new-agent': return create('agent');
       case 'new-routine': return create('routine');
@@ -93,37 +93,15 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     if (page.value !== 'team' || !['space', 'doc'].includes(view)) return null;
     return (teamState.spaces || []).find((s) => s.id === space) || null;
   };
-  /** Where private My Space cards live: the team's main workspace, visible to their owner only. */
-  const homeSpace = () => homeSpaceOf(teamState.spaces || []);
-  async function create(kind) {
+  function create(kind) {
     if (kind === 'agent') return nav.go({ page: 'library', tab: 'agents', isNew: true });
     if (kind === 'routine') return nav.go({ page: 'scheduled', isNew: true });
-    const space = teamState.team ? openSpace() : null;
     if (kind === 'doc') {
-      // Docs live in Files: the open teamspace's, else your own private files.
+      // Files: the open teamspace's, else your own private files.
+      const space = teamState.team ? openSpace() : null;
       return space ? team('space', { space: space.id, tab: 'files' }) : nav.go({ page: 'library', tab: 'files', dir: '' });
     }
-    const home = teamState.team && !space ? homeSpace() : null;
-    if (!space && !home) return nav.ask('Make this a task: '); // personal: Annie plans it with you
-    const name = await nav.prompt({
-      title: 'New task',
-      message: space ? `In ${space.name}. Everyone there can see it.` : 'In My Space. Only you can see it.',
-      placeholder: 'Call Northwind about the renewal',
-      confirmText: 'Create',
-    });
-    if (!name || !name.trim()) return undefined;
-    try {
-      if (space) {
-        const task = await teamApi.createTask(space.id, { title: name.trim() });
-        return team('space', { space: space.id, tab: 'board', task: task.id });
-      }
-      await teamApi.createTask(home.id, { title: name.trim(), private: true, assignee: { kind: 'person', id: teamState.me } });
-      nav.toast('Added to My tasks. Only you can see it.');
-      return team('mine');
-    } catch (error) {
-      nav.toast(error.message);
-      return undefined;
-    }
+    return undefined;
   }
 
   const LABELS = Object.freeze({ home: 'Home', inbox: 'Home', agents: 'Agents', library: 'Library', members: 'Members', scheduled: 'Routines', activity: 'Activity', settings: 'Settings', market: 'Market', connectors: 'Apps', memory: 'Memories' });
@@ -134,7 +112,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       const { view, space, item } = loc();
       const s = (teamState.spaces || []).find((x) => x.id === space);
       if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? spaceEmoji(s) + ' ' + s.name : 'Teamspace' }];
-      if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'files' }) }, { label: 'Doc' }];
+      if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'files' }) }, { label: 'File' }];
       if (view === 'mine') return [{ label: 'My Space', go: () => team('mine') }, { label: 'My tasks' }];
       if (view === 'agent') {
         const agent = (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(item));

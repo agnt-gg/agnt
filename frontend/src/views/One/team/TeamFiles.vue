@@ -2,12 +2,12 @@
   <div>
     <div class="board-bar">
       <span class="fill"></span>
-      <button v-if="canWrite" type="button" class="btn" @click="newDoc"><MkIcon name="doc" size="sm" />New doc</button>
+      <button v-if="canWrite" type="button" class="btn" @click="newDoc"><MkIcon name="doc" size="sm" />New file</button>
       <label v-if="canWrite" class="primary" style="cursor: pointer; display: inline-flex; width: auto; flex: none"><MkIcon name="up" size="sm" />Upload<input type="file" hidden @change="upload" /></label>
     </div>
     <!-- One list: the teamspace's docs (edited here, versioned) and its uploaded files. -->
     <ul class="list">
-      <li v-if="!rows.length" class="empty">{{ loading ? 'Loading…' : error || 'No files yet. Upload one, or start a doc.' }}</li>
+      <li v-if="!rows.length" class="empty">{{ loading ? 'Loading…' : error || 'No files yet. Upload one, or start a new one.' }}</li>
       <li v-for="r in rows" :key="r.key">
         <button type="button" class="r" @click="r.open()">
           <span class="r-icon"><MkIcon :name="r.doc ? 'doc' : 'file'" size="sm" /></span>
@@ -36,7 +36,7 @@ const canWrite = computed(() => ctx.canWrite.value);
 const size = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B');
 const who = (id) => nameOf({ kind: 'person', id }, { people: ctx.people.value, me: ctx.me.value });
 const rows = computed(() => [
-  ...docs.value.map((d) => ({ key: 'd:' + d.id, doc: true, name: d.name, at: d.updatedAt, meta: `Doc · ${who(d.updatedBy)} · edited ${ago(d.updatedAt)}`, open: () => emit('open-doc', d.id) })),
+  ...docs.value.map((d) => ({ key: 'd:' + d.id, doc: true, name: d.name, at: d.updatedAt, meta: `Text · ${who(d.updatedBy)} · edited ${ago(d.updatedAt)}`, open: () => emit('open-doc', d.id) })),
   ...files.value.map((f) => ({ key: 'f:' + f.name, doc: false, name: f.name, at: f.modifiedAt, meta: `${size(f.bytes)} · ${ago(f.modifiedAt)}`, open: () => download(f) })),
 ].sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))));
 
@@ -52,7 +52,7 @@ async function load() {
   emit('loaded', rows.value);
 }
 async function newDoc() {
-  const name = await ctx.prompt({ title: 'New doc', message: `Everyone in ${props.spaceName} can see it.`, placeholder: 'Q4 plan', confirmText: 'Create' });
+  const name = await ctx.prompt({ title: 'New file', message: `Everyone in ${props.spaceName} can see it.`, placeholder: 'Q4 plan', confirmText: 'Create' });
   if (!name || !name.trim()) return;
   try { const doc = await teamApi.createDoc(props.workspaceId, name.trim(), ''); emit('open-doc', doc.id); } catch (e) { ctx.toast(e.message); }
 }

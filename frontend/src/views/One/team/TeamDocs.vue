@@ -3,7 +3,7 @@
     <div class="board-bar">
       <span class="fill"></span>
       <button v-if="canWrite" type="button" class="btn ghost sm" @click="pickerOpen = !pickerOpen"><MkIcon name="share" size="sm" />Share one of my files</button>
-      <button v-if="canWrite" type="button" class="primary" @click="create"><MkIcon name="plus" size="sm" />New doc</button>
+      <button v-if="canWrite" type="button" class="primary" @click="create"><MkIcon name="plus" size="sm" />New file</button>
     </div>
     <div v-if="pickerOpen" class="banner" style="display: block">
       <p style="margin: 0 0 8px">Pick a private file. A copy goes into {{ spaceName }}; your private original stays yours.</p>
@@ -15,7 +15,7 @@
       </ul>
     </div>
     <ul class="list">
-      <li v-if="!docs.length" class="empty">{{ loading ? 'Loading…' : 'No docs yet. Start one, or share one of your files.' }}</li>
+      <li v-if="!docs.length" class="empty">{{ loading ? 'Loading…' : 'No files yet. Start one, or share one of yours.' }}</li>
       <li v-for="d in docs" :key="d.id">
         <button type="button" class="r" @click="$emit('open-doc', d.id)">
           <span class="r-icon"><i class="far fa-file-alt" aria-hidden="true"></i></span>
@@ -52,7 +52,7 @@ async function load() {
   try { docs.value = await teamApi.docs(props.workspaceId); } catch (e) { ctx.toast(e.message); } finally { loading.value = false; }
 }
 async function create() {
-  const name = await ctx.prompt({ title: 'New doc', message: `Everyone in ${props.spaceName} can see it.`, placeholder: 'Q4 plan', confirmText: 'Create' });
+  const name = await ctx.prompt({ title: 'New file', message: `Everyone in ${props.spaceName} can see it.`, placeholder: 'Q4 plan', confirmText: 'Create' });
   if (!name || !name.trim()) return;
   try { const doc = await teamApi.createDoc(props.workspaceId, name.trim(), ''); emit('open-doc', doc.id); } catch (e) { ctx.toast(e.message); }
 }

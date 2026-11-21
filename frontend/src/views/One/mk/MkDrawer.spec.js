@@ -50,10 +50,15 @@ describe('the one sidebar', () => {
     expect(w.emitted('new-chat')).toHaveLength(1);
     await w.get('[data-testid="one-new-menu"]').trigger('click');
     const items = w.findAll('.new-menu [role="menuitem"]');
-    expect(items.map((b) => b.text())).toEqual(['Task', 'Doc', 'Agent', 'Routine']);
+    // No "Task" (it only opened a chat that asked you to make a task): Chat starts a new chat.
+    expect(items.map((b) => b.text())).toEqual(['Chat', 'File', 'Agent', 'Routine']);
     await items[0].trigger('click');
-    expect(w.emitted('pick')).toEqual([['new-task']]);
+    expect(w.emitted('new-chat')).toHaveLength(2);
+    expect(w.emitted('pick')).toBeUndefined();
     expect(w.find('.new-menu').exists()).toBe(false);
+    await w.get('[data-testid="one-new-menu"]').trigger('click');
+    await w.findAll('.new-menu [role="menuitem"]')[1].trigger('click');
+    expect(w.emitted('pick')).toEqual([['new-doc']]);
   });
 
   it('the Main chat row opens the Main chat; its eraser clears it, and never while a reply streams', async () => {

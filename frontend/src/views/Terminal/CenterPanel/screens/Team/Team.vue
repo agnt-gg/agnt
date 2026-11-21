@@ -97,6 +97,7 @@ provide('focusedNav', {
   prompt,
   toast,
   create: (kind) => create(kind),
+  newTeamspace,
 });
 </script>
 

@@ -23,7 +23,7 @@
         <div v-if="canWrite && !m.live" class="msg-actions">
           <button v-if="!m.taskId" type="button" @click="toTask(m)"><i class="far fa-check-square" aria-hidden="true"></i>Create task</button>
           <button v-if="!m.taskId && agents.length" type="button" @click="toAgent(m)"><i class="fas fa-robot" aria-hidden="true"></i>Hand to {{ agents[0].name }}</button>
-          <button type="button" @click="toDoc(m)"><i class="far fa-file-alt" aria-hidden="true"></i>Save to doc</button>
+          <button type="button" @click="toDoc(m)"><i class="far fa-file-alt" aria-hidden="true"></i>Save as a file</button>
           <button v-if="canDelete(m)" type="button" aria-label="Delete message" @click="remove(m)"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
         </div>
       </div>
@@ -183,7 +183,7 @@ async function toAgent(m) {
 async function toDoc(m) {
   try {
     const doc = await teamApi.createDoc(props.workspaceId, 'From chat: ' + titleFrom(m.body).slice(0, 60), m.body);
-    ctx.toast('Saved as a doc in this teamspace’s Files');
+    ctx.toast('Saved as a file in this teamspace’s Files');
     emit('open-doc', doc.id);
   } catch (error) { ctx.toast(error.message); }
 }

@@ -41,10 +41,10 @@
         </div>
         <div class="mk-new-anchor new-pill">
           <button v-tooltip="'New chat'" type="button" class="new-main" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="plus" size="sm" />New</button>
-          <button v-tooltip="menu === 'new' ? '' : 'New task, doc, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New task, doc, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="xs" /></button>
+          <button v-tooltip="menu === 'new' ? '' : 'New chat, file, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New chat, file, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="xs" /></button>
           <div v-if="menu === 'new'" class="ws-menu new-menu" role="menu">
-            <button type="button" class="menu-item" role="menuitem" @click="pick('new-task')"><MkIcon name="task" size="sm" />Task</button>
-            <button type="button" class="menu-item" role="menuitem" @click="pick('new-doc')"><MkIcon name="doc" size="sm" />Doc</button>
+            <button type="button" class="menu-item" role="menuitem" @click="newChatFromMenu"><MkIcon name="chats" size="sm" />Chat</button>
+            <button type="button" class="menu-item" role="menuitem" @click="pick('new-doc')"><MkIcon name="doc" size="sm" />File</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-agent')"><MkIcon name="bot" size="sm" />Agent</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-routine')"><MkIcon name="bolt" size="sm" />Routine</button>
           </div>
@@ -144,6 +144,7 @@ const menu = ref(null);
 const headRef = ref(null);
 const toggle = (name) => { menu.value = menu.value === name ? null : name; };
 function pick(what) { menu.value = null; emit('pick', what); }
+function newChatFromMenu() { menu.value = null; emit('new-chat'); }
 
 // ── One search for the sidebar ────────────────────────────────────────────
 const query = ref('');

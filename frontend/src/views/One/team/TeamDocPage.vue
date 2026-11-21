@@ -8,7 +8,7 @@
         <span class="fill"></span>
         <span v-if="dirty" class="mk-muted">Unsaved changes</span>
         <button v-if="doc && canWrite" type="button" class="primary sm" :disabled="!dirty || saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
-        <button v-if="doc && canDelete" v-tooltip="'Delete doc'" type="button" class="one-icon-btn" aria-label="Delete doc" @click="remove"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+        <button v-if="doc && canDelete" v-tooltip="'Delete file'" type="button" class="one-icon-btn" aria-label="Delete file" @click="remove"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
       </div>
       <div v-if="conflict" class="mk-error">
         Someone else saved a newer version while you were editing. Your text is still here. Copy anything you need, then
@@ -16,8 +16,8 @@
       </div>
       <p v-if="!doc" class="mk-muted">{{ error || 'Loading…' }}</p>
       <template v-else>
-        <input v-model="name" class="doc-title" aria-label="Doc title" :readonly="!canWrite" @input="dirty = true" />
-        <textarea v-model="content" class="mk-doc-body" aria-label="Doc body" placeholder="Write in plain text or Markdown…" :readonly="!canWrite" @input="dirty = true" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save"></textarea>
+        <input v-model="name" class="doc-title" aria-label="File name" :readonly="!canWrite" @input="dirty = true" />
+        <textarea v-model="content" class="mk-doc-body" aria-label="File content" placeholder="Write in plain text or Markdown…" :readonly="!canWrite" @input="dirty = true" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save"></textarea>
       </template>
     </div>
   </div>
@@ -51,7 +51,7 @@ async function reload() {
     dirty.value = false;
     conflict.value = false;
     error.value = '';
-  } catch (e) { error.value = e.status === 404 ? 'This doc was deleted or moved.' : e.message; doc.value = null; }
+  } catch (e) { error.value = e.status === 404 ? 'This file was deleted or moved.' : e.message; doc.value = null; }
 }
 async function save() {
   if (!dirty.value || saving.value || !doc.value) return;
@@ -67,7 +67,7 @@ async function save() {
   } finally { saving.value = false; }
 }
 async function remove() {
-  if (!(await ctx.confirm({ title: 'Delete this doc?', message: 'It is removed from the teamspace for everyone. Its history is kept for the audit log.', confirmText: 'Delete', danger: true }))) return;
+  if (!(await ctx.confirm({ title: 'Delete this file?', message: 'It is removed from the teamspace for everyone. Its history is kept for the audit log.', confirmText: 'Delete', danger: true }))) return;
   try { await teamApi.deleteDoc(props.workspaceId, props.docId); emit('back'); } catch (e) { ctx.toast(e.message); }
 }
 // A teammate saved: refresh only if you have nothing unsaved; otherwise the save will surface the conflict.

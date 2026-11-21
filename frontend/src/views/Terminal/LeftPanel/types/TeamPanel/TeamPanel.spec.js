@@ -35,8 +35,11 @@ describe('TeamPanel: Activity-panel parts, not bare rows', () => {
     await w.find('[data-nav="space:s1"]').trigger('click');
     await w.find('[data-nav="mine-tasks"]').trigger('click');
     await w.find('[data-nav="new-doc"]').trigger('click');
+    await w.find('[data-nav="new-chat"]').trigger('click');
     await w.find('[data-nav="new-space"]').trigger('click');
-    expect(w.emitted('panel-action')).toEqual([['team-go', { view: 'space', space: 's1' }], ['team-pick', 'mine-tasks'], ['team-pick', 'new-doc'], ['team-new-space']]);
+    expect(w.emitted('panel-action')).toEqual([['team-go', { view: 'space', space: 's1' }], ['team-pick', 'mine-tasks'], ['team-pick', 'new-doc'], ['team-pick', 'new-chat'], ['team-new-space']]);
+    expect(w.find('[data-nav="new-doc"]').text()).toContain('New file');
+    expect(w.find('[data-nav="new-task"]').exists()).toBe(false);
   });
   it('off a team it says so instead of showing empty team cards', () => {
     teamState.team = null;

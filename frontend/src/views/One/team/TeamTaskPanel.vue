@@ -70,7 +70,7 @@
           <div v-if="task.result" class="tc-docprev">{{ task.result }}</div>
           <div v-if="canWrite" class="row-gap">
             <button type="button" class="primary sm" :disabled="busy" @click="decide(true, false)">Approve</button>
-            <button type="button" class="btn sm" :disabled="busy" @click="decide(true, true)">Approve and save as doc</button>
+            <button type="button" class="btn sm" :disabled="busy" @click="decide(true, true)">Approve and save as a file</button>
             <button type="button" class="btn sm" :disabled="busy" @click="sendBack">Send back</button>
           </div>
         </div>
@@ -221,7 +221,7 @@ async function decide(approve, saveAsDoc) {
   busy.value = true;
   try {
     const result = await teamApi.approve(props.workspaceId, task.value.id, { saveAsDoc });
-    ctx.toast(result.doc ? 'Approved and saved as a doc' : 'Approved');
+    ctx.toast(result.doc ? 'Approved and saved as a file' : 'Approved');
     emit('changed');
     if (result.doc) emit('open-doc', result.doc.id);
   } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
