@@ -39,7 +39,7 @@
                     <span class="r-icon"><MkIcon name="routines" /></span>
                     <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
                     <span class="tag amber">Your answer</span>
-                    <button type="button" class="primary sm" @click="ctx.openRun(run)">Answer</button>
+                    <button type="button" class="primary sm" @click="ctx.openRoutine(run.routineId)">Answer</button>
                   </div>
                 </li>
               </ul>

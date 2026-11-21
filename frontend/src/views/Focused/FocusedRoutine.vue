@@ -1,23 +1,46 @@
 <template>
-  <!-- One routine: a compact editor, then everything it has done. Same frame as the Routines page (mk.css). -->
+  <!-- One routine: what it does, anything it needs from you, then its runs. The editor opens on Edit. -->
   <div class="mk mk-page">
     <div class="content">
       <div class="page rt-page">
         <div class="page-head">
-          <div>
+          <div class="rt-head">
             <h1>{{ existing ? existing.label : title }}</h1>
             <p>{{ headline }}</p>
           </div>
-          <button v-if="existing" type="button" class="btn" :disabled="busy" data-testid="routine-run-now" @click="runNow"><MkIcon name="play" size="xs" />Run now</button>
+          <div v-if="existing" class="row-gap rt-actions">
+            <label class="rt-active">
+              <button type="button" class="switch" :class="{ on: existing.enabled }" role="switch" :aria-checked="existing.enabled ? 'true' : 'false'" :aria-label="existing.enabled ? 'Pause routine' : 'Resume routine'" data-testid="routine-active" :disabled="busy" @click="toggleActive"></button>
+              <span>{{ existing.enabled ? 'On' : 'Paused' }}</span>
+            </label>
+            <button type="button" class="btn sm" :disabled="busy" data-testid="routine-run-now" @click="runNow"><MkIcon name="play" size="xs" />Run now</button>
+            <button v-if="!editing" type="button" class="btn sm" data-testid="routine-edit" @click="startEditing"><MkIcon name="pen" size="xs" />Edit</button>
+          </div>
         </div>
 
         <ul v-if="scheduleId && !existing" class="list"><li class="empty">{{ loading ? 'Loading…' : 'This routine no longer exists.' }}</li></ul>
-        <form v-else class="card rt-card" novalidate data-testid="routine-form" @submit.prevent="save">
+        <p v-if="existing && !editing && existing.description" class="rt-what-text" data-testid="routine-what">{{ existing.description }}</p>
+
+        <!-- It stopped to ask you something: answer here. The answer is kept for every later run. -->
+        <form v-if="existing && question && !editing" class="card rt-needs" data-testid="routine-needs-you" @submit.prevent="answer">
+          <div class="rt-needs-h"><span class="tag amber">Needs you</span><span class="rt-needs-when">{{ needsSince }}</span></div>
+          <p class="rt-needs-label">It can’t continue without:</p>
+          <p class="rt-question">{{ question }}</p>
+          <AutoTextarea v-model="reply" class="field rt-what" maxlength="2000" aria-label="Your answer" placeholder="Your answer. It is kept for every later run." />
+          <div class="row-gap">
+            <button type="submit" class="primary sm" :disabled="busy || !reply.trim()" data-testid="routine-answer">Send and run again</button>
+            <button type="button" class="btn sm" :disabled="busy" v-tooltip="'For when you sorted it out somewhere else, like connecting an app'" @click="runNow">I’ve done it, run again</button>
+          </div>
+        </form>
+
+        <p v-if="error && !editing" class="rt-error">{{ error }}</p>
+
+        <form v-if="editing && (existing || !scheduleId)" class="card rt-card" novalidate data-testid="routine-form" @submit.prevent="save">
           <div class="props rt-props">
             <span>What it does</span>
             <div>
               <AutoTextarea v-model="f.what" class="field rt-what" maxlength="2000" aria-label="What it does" placeholder="For example: Every morning, summarise my unread email and flag anything urgent." />
-              <small class="rt-hint">{{ existing ? 'Changing this sets the routine up again with the new instructions.' : 'AGNT plans the steps when you create it. That takes a few seconds.' }}</small>
+              <small v-if="!existing" class="rt-hint">AGNT plans the steps when you create it. That takes a few seconds.</small>
             </div>
             <span>When</span>
             <div class="row-gap rt-when">
@@ -30,22 +53,17 @@
               <CustomSelect v-model="f.timezone" :options="zones" aria-label="Time zone" class="rt-zone" />
               <small class="rt-preview" aria-live="polite" data-testid="routine-preview">{{ cron ? cronLabel(cron) : '' }}<template v-if="f.repeat === 'custom'"> · minute, hour, day of month, month, weekday</template></small>
             </div>
-            <span>Active</span>
-            <div class="row-gap">
-              <button type="button" class="switch" :class="{ on: f.enabled }" role="switch" :aria-checked="f.enabled ? 'true' : 'false'" aria-label="Active" @click="f.enabled = !f.enabled"></button>
-              <small class="rt-preview">{{ f.enabled ? 'On' : 'Paused' }}</small>
-            </div>
           </div>
           <p v-if="error" class="rt-error">{{ error }}</p>
           <div class="card-foot rt-foot">
             <button v-if="existing" type="button" class="btn ghost sm danger" :disabled="busy" @click="remove">Delete</button>
             <span class="fill"></span>
-            <button type="button" class="btn sm" :disabled="busy" @click="back">Cancel</button>
+            <button type="button" class="btn sm" :disabled="busy" @click="cancelEditing">Cancel</button>
             <button type="submit" class="primary sm" :disabled="busy">{{ busyLabel || (existing ? 'Save' : 'Create routine') }}</button>
           </div>
         </form>
 
-        <RoutineRunHistory v-if="existing" ref="history" :key="existing.id" :routine="existing" />
+        <RoutineRunHistory v-if="existing" ref="history" :key="existing.id" :routine="existing" @loaded="(runs) => (latestRun = runs[0] || null)" />
       </div>
     </div>
   </div>
@@ -61,6 +79,8 @@ import MkIcon from '@/views/One/mk/MkIcon.vue';
 import '@/views/One/mk/mk.css';
 import { scheduleRows, parseCron, buildCron, isCron, cronLabel, REPEATS, WEEKDAYS } from './focusedModel.js';
 import { formatNextRun, timezoneOptions, LOCAL_TZ } from './focusedTime.js';
+import { waitingQuestion } from './routineRuns.js';
+import { ago } from '@/views/One/team/teamModel.js';
 
 const props = defineProps({ scheduleId: { type: String, default: null } });
 const store = useStore();
@@ -77,6 +97,16 @@ const existing = computed(() => {
 });
 const title = computed(() => (props.scheduleId ? 'Edit routine' : 'New routine'));
 const history = ref(null);
+// A new routine opens on the editor; an existing one shows what it does and its runs.
+const editing = ref(!props.scheduleId);
+const latestRun = ref(null);
+const reply = ref('');
+/** What the newest run stopped to ask you, if it did. */
+const question = computed(() => waitingQuestion(latestRun.value));
+const needsSince = computed(() => {
+  const when = latestRun.value ? ago(latestRun.value.fired_at) : '';
+  return !when ? '' : when === 'just now' ? 'Asked just now' : `Asked ${when} ago`;
+});
 /** Under the name: when it runs and when it runs next. */
 const headline = computed(() => {
   const r = existing.value;
@@ -148,14 +178,52 @@ async function save() {
       if (r) await store.dispatch('schedules/deleteSchedule', r.id).catch(() => {});
     }
     nav.toast(r ? 'Routine saved.' : 'Routine created.');
-    nav.go({ page: 'scheduled' });
+    // Same routine, new schedule: stay on it. New instructions make a new routine: back to the list.
+    if (r && !changedWhat) editing.value = false;
+    else nav.go({ page: 'scheduled' });
+  });
+}
+
+function startEditing() {
+  fill(existing.value);
+  error.value = '';
+  editing.value = true;
+}
+function cancelEditing() {
+  if (!existing.value) return back();
+  error.value = '';
+  editing.value = false;
+}
+
+async function toggleActive() {
+  const r = existing.value;
+  await withBusy('', async () => {
+    await store.dispatch('schedules/updateSchedule', { id: r.id, patch: { enabled: !r.enabled } });
+    nav.toast(r.enabled ? 'Paused.' : 'Resumed.');
+  });
+}
+
+/**
+ * Answers what the routine asked: the reply is kept as review feedback on its goal, which
+ * every later run's steps are given, and the routine runs again now with it.
+ */
+async function answer() {
+  const text = reply.value.trim();
+  const r = existing.value;
+  if (!text || !r?.goalId) return;
+  await withBusy('', async () => {
+    await store.dispatch('goals/reviewGoal', { goalId: r.goalId, action: 'reject', feedback: text });
+    await store.dispatch('schedules/fireNow', r.id);
+    reply.value = '';
+    nav.toast('Sent. It is running again with your answer.');
+    await history.value?.load();
   });
 }
 
 async function runNow() {
   await withBusy('', async () => {
     await store.dispatch('schedules/fireNow', existing.value.id);
-    nav.toast('Running now. It shows at the top of Runs.');
+    nav.toast('Running now.');
     await history.value?.load();
   });
 }
@@ -187,7 +255,16 @@ watch(existing, (r, prev) => {
 
 <style scoped>
 /* .mk-level selectors: they must outrank mk.css's own (.mk .props, .mk .card, .mk .field). */
-.mk .page.rt-page { max-width: 980px; }
+.mk .page.rt-page { max-width: 920px; }
+.mk .rt-head { min-width: 0; }
+.mk .row-gap.rt-actions { flex: none; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
+.mk .rt-active { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); margin-right: 4px; }
+.mk .rt-needs-label { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+.mk .rt-what-text { margin: -8px 0 18px; font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mk .card.rt-needs { padding: 12px 14px; gap: 8px; margin-bottom: 18px; border-color: rgba(var(--orange-rgb), 0.45); }
+.mk .rt-needs-h { display: flex; align-items: center; gap: 8px; }
+.mk .rt-needs-when { font-size: 12px; color: var(--text-tertiary); }
+.mk .rt-question { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
 .mk .card.rt-card { padding: 12px 14px; gap: 8px; }
 .mk .props.rt-props { grid-template-columns: 96px minmax(0, 1fr); margin: 0; align-items: start; }
 .mk .props.rt-props > span { padding-top: 7px; }

@@ -42,6 +42,18 @@ export function goalTasksAreFromRun(run, newestRun, tasks = []) {
   return (Array.isArray(tasks) ? tasks : []).some((task) => parseServerTime(task.started_at) >= firedAt);
 }
 
+/** What a run waiting on you asks, in its own words; null for any other run. */
+export function waitingQuestion(run) {
+  if (run?.status !== 'needs_input') return null;
+  return String(run.error || '').replace(/^Needs from you:\s*/i, '').trim() || 'It has a question for you.';
+}
+
+/** A run's result: its last step with something to read, preferring finished ones. Null when there is none. */
+export function resultOf(output) {
+  const tasks = (output?.tasks || []).filter((task) => task.content);
+  return [...tasks].reverse().find((task) => task.status === 'completed') || tasks[tasks.length - 1] || null;
+}
+
 /** How a task in a run reads. */
 export function taskTone(status) {
   if (status === 'completed') return { label: 'Done', tag: 'green' };

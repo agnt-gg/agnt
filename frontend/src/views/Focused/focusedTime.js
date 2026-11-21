@@ -52,7 +52,7 @@ export function formatDuration(ms) {
   const s = Math.round(Number(ms) / 1000);
   if (!Number.isFinite(s) || s < 0) return '';
   if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s / 60}m`;
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 

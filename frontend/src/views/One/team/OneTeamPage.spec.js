@@ -308,8 +308,9 @@ describe('home', () => {
     expect(waiting.text()).toContain('Weekly SEO report');
     expect(waiting.text()).toContain('Needs from you: an API key');
     expect(waiting.text()).toContain('3d ago');
+    // Answer opens the routine, where the question and the reply box are.
     await waiting.find('button').trigger('click');
-    expect(nav.openScreen).toHaveBeenLastCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g-seo' } });
+    expect(nav.go).toHaveBeenLastCalledWith({ page: 'scheduled', item: 'weekly' });
 
     // The routine's goal is listed once, under the routine.
     const review = wrapper.find('[data-testid="goals-review"]');
