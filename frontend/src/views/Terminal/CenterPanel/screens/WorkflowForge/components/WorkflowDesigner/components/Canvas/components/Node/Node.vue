@@ -32,7 +32,7 @@
     <div
       v-if="!hasWidget"
       class="node-content"
-      :title="node.isEditing || node.type === 'label' ? null : node.text || 'Untitled Node'"
+      v-tooltip="node.isEditing || node.type === 'label' ? '' : node.text || 'Untitled Node'"
       @dblclick="startEditing"
       :contenteditable="node.isEditing"
       @blur="finishEditing"

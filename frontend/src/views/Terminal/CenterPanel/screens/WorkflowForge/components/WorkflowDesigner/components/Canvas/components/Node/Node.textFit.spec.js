@@ -23,7 +23,7 @@ describe('workflow node text fits its node', () => {
   });
 
   it('keeps the full name as a tooltip, except while editing and on label notes', () => {
-    expect(SRC).toMatch(/class="node-content"\s*:title="node\.isEditing \|\| node\.type === 'label' \? null : node\.text \|\| 'Untitled Node'"/);
+    expect(SRC).toMatch(/class="node-content"\s*v-tooltip="node\.isEditing \|\| node\.type === 'label' \? '' : node\.text \|\| 'Untitled Node'"/);
   });
 
   it('scrolls while editing, label notes still wrap, and tiny nodes still hide the name', () => {
