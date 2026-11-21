@@ -32,6 +32,30 @@ export function formatNext(ms, now = new Date()) {
     : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/** A run's time: "Sun, 9:00" within the coming week, a date further out (formatNext). */
+export function formatNextRun(ms, now = Date.now()) {
+  const d = new Date(ms);
+  if (!ms || Number.isNaN(d.getTime()) || d.getTime() - now > 6 * 86400e3) return formatNext(ms);
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })}, ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** When a run happened: "Sat, Nov 21, 9:00". */
+export function formatRunTime(ms) {
+  const d = new Date(ms);
+  if (!ms || Number.isNaN(d.getTime())) return '';
+  return `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** How long a run took: "45s", "2m 14s", "1h 3m". */
+export function formatDuration(ms) {
+  if (ms === null || ms === undefined || ms === '') return '';
+  const s = Math.round(Number(ms) / 1000);
+  if (!Number.isFinite(s) || s < 0) return '';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
 /** The machine's zone, for a routine nobody has set one on. */
 export const LOCAL_TZ = (() => {
   try {

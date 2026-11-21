@@ -130,7 +130,7 @@
             <li v-for="row in upcoming" :key="row.id">
               <button type="button" class="r" @click="ctx.openRoutine(row.id)">
                 <span class="r-icon"><MkIcon name="routines" /></span>
-                <span class="r-text"><strong>{{ row.label }}</strong><small>{{ formatNext(row.next) }} · {{ row.cadence }}</small></span>
+                <span class="r-text"><strong>{{ row.label }}</strong><small>{{ formatNextRun(row.next) }} · {{ row.cadence }}</small></span>
               </button>
             </li>
           </ul>
@@ -216,7 +216,7 @@ import { roleLabel } from '@/utils/teamClient.js';
 import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook, spaceFlow, teamFlowLine, byWhatTheyHoldUp, plural, ago, doneRecently, comingUp } from './teamModel.js';
 import { usePersonalNeeds } from './usePersonalNeeds.js';
 import { scheduleRows } from '@/views/Focused/focusedModel.js';
-import { formatNext } from '@/views/Focused/focusedTime.js';
+import { formatNextRun } from '@/views/Focused/focusedTime.js';
 
 const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
@@ -315,7 +315,7 @@ const status = computed(() => {
     doneToday.value.length && { id: 'done', tone: 'calm', target: 'routines', label: `${plural(doneToday.value.length, 'routine')} ran today` },
     teamRows.value.length && { id: 'working', tone: 'working', target: 'teams', label: `${working} working` },
     atLimit && { id: 'limit', tone: 'warn', target: 'teams', label: atLimit === 1 ? '1 team at its work limit' : `${atLimit} teams at their work limit` },
-    next && { id: 'next', tone: 'plain', target: 'routines', label: `Next: ${next.label}, ${formatNext(next.next)}` },
+    next && { id: 'next', tone: 'plain', target: 'routines', label: `Next: ${next.label}, ${formatNextRun(next.next)}` },
   ].filter(Boolean);
 });
 async function goTo(target) {

@@ -127,6 +127,16 @@ export default {
       }
     },
 
+    /** One run with what it produced (`output` is null when nothing was kept). */
+    async fetchRun(_context, { scheduleId, runId }) {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/schedules/${encodeURIComponent(scheduleId)}/runs/${encodeURIComponent(runId)}`, {
+        credentials: 'include', headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data.run;
+    },
+
     async fetchRunHistory({ commit }, { scheduleId, limit = 50 }) {
       try {
         const res = await fetch(`${API_CONFIG.BASE_URL}/schedules/${scheduleId}/runs?limit=${limit}`, {

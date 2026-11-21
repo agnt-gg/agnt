@@ -1,96 +1,66 @@
 <template>
-  <section class="focused-page focused-editor" :aria-label="title">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Scheduled</button>
-    <header class="focused-page-head">
-      <div>
-        <h1>{{ title }}</h1>
-        <p>{{ existing ? existing.label : 'Have AGNT do something for you on a schedule.' }}</p>
+  <!-- One routine: a compact editor, then everything it has done. Same frame as the Routines page (mk.css). -->
+  <div class="mk mk-page">
+    <div class="content">
+      <div class="page rt-page">
+        <div class="page-head">
+          <div>
+            <h1>{{ existing ? existing.label : title }}</h1>
+            <p>{{ headline }}</p>
+          </div>
+          <button v-if="existing" type="button" class="btn" :disabled="busy" data-testid="routine-run-now" @click="runNow"><MkIcon name="play" size="xs" />Run now</button>
+        </div>
+
+        <ul v-if="scheduleId && !existing" class="list"><li class="empty">{{ loading ? 'Loading…' : 'This routine no longer exists.' }}</li></ul>
+        <form v-else class="card rt-card" novalidate data-testid="routine-form" @submit.prevent="save">
+          <div class="props rt-props">
+            <span>What it does</span>
+            <div>
+              <AutoTextarea v-model="f.what" class="field rt-what" maxlength="2000" aria-label="What it does" placeholder="For example: Every morning, summarise my unread email and flag anything urgent." />
+              <small class="rt-hint">{{ existing ? 'Changing this sets the routine up again with the new instructions.' : 'AGNT plans the steps when you create it. That takes a few seconds.' }}</small>
+            </div>
+            <span>When</span>
+            <div class="row-gap rt-when">
+              <CustomSelect v-model="f.repeat" :options="repeatOptions" aria-label="Repeat" />
+              <CustomSelect v-if="f.repeat === 'weekly'" v-model="f.dow" :options="dayOptions" aria-label="Day" />
+              <CustomSelect v-if="f.repeat === 'monthly'" v-model="f.dom" :options="dateOptions" aria-label="Date" />
+              <input v-if="f.repeat === 'hourly'" v-model.number="f.minute" class="field rt-num" type="number" min="0" max="59" aria-label="Minute" />
+              <input v-else-if="f.repeat !== 'custom'" v-model="f.time" class="field rt-time" type="time" aria-label="Time" />
+              <input v-else v-model="f.custom" class="field mono rt-cron" spellcheck="false" aria-label="Schedule" placeholder="0 9 * * MON-FRI" />
+              <CustomSelect v-model="f.timezone" :options="zones" aria-label="Time zone" class="rt-zone" />
+              <small class="rt-preview" aria-live="polite" data-testid="routine-preview">{{ cron ? cronLabel(cron) : '' }}<template v-if="f.repeat === 'custom'"> · minute, hour, day of month, month, weekday</template></small>
+            </div>
+            <span>Active</span>
+            <div class="row-gap">
+              <button type="button" class="switch" :class="{ on: f.enabled }" role="switch" :aria-checked="f.enabled ? 'true' : 'false'" aria-label="Active" @click="f.enabled = !f.enabled"></button>
+              <small class="rt-preview">{{ f.enabled ? 'On' : 'Paused' }}</small>
+            </div>
+          </div>
+          <p v-if="error" class="rt-error">{{ error }}</p>
+          <div class="card-foot rt-foot">
+            <button v-if="existing" type="button" class="btn ghost sm danger" :disabled="busy" @click="remove">Delete</button>
+            <span class="fill"></span>
+            <button type="button" class="btn sm" :disabled="busy" @click="back">Cancel</button>
+            <button type="submit" class="primary sm" :disabled="busy">{{ busyLabel || (existing ? 'Save' : 'Create routine') }}</button>
+          </div>
+        </form>
+
+        <RoutineRunHistory v-if="existing" ref="history" :key="existing.id" :routine="existing" />
       </div>
-    </header>
-
-    <p v-if="scheduleId && !existing" class="focused-empty">{{ loading ? 'Loading…' : 'This routine no longer exists.' }}</p>
-    <form v-else class="focused-form" novalidate @submit.prevent="save">
-      <label class="focused-field">
-        <span class="focused-field-label">What should AGNT do?</span>
-        <AutoTextarea v-model="f.what" class="focused-input" maxlength="2000" placeholder="For example: Every morning, summarise my unread email and flag anything urgent." autofocus />
-        <small class="focused-edit-hint">
-          {{ existing ? 'Changing this sets the routine up again with the new instructions.' : 'AGNT plans the steps when you create it. That takes a few seconds.' }}
-        </small>
-      </label>
-
-      <div class="focused-field-row">
-        <div class="focused-field">
-          <span class="focused-field-label">Repeat</span>
-          <CustomSelect v-model="f.repeat" :options="repeatOptions" />
-        </div>
-        <div v-if="f.repeat === 'weekly'" class="focused-field">
-          <span class="focused-field-label">Day</span>
-          <CustomSelect v-model="f.dow" :options="dayOptions" />
-        </div>
-        <div v-if="f.repeat === 'monthly'" class="focused-field">
-          <span class="focused-field-label">Date</span>
-          <CustomSelect v-model="f.dom" :options="dateOptions" />
-        </div>
-        <label v-if="f.repeat === 'hourly'" class="focused-field">
-          <span class="focused-field-label">Minute</span>
-          <input v-model.number="f.minute" class="focused-input" type="number" min="0" max="59" />
-        </label>
-        <label v-else-if="f.repeat !== 'custom'" class="focused-field">
-          <span class="focused-field-label">Time</span>
-          <input v-model="f.time" class="focused-input" type="time" />
-        </label>
-        <div class="focused-field">
-          <span class="focused-field-label">Time zone</span>
-          <CustomSelect v-model="f.timezone" :options="zones" />
-        </div>
-      </div>
-      <label v-if="f.repeat === 'custom'" class="focused-field">
-        <span class="focused-field-label">Schedule</span>
-        <input v-model="f.custom" class="focused-input mono" spellcheck="false" placeholder="minute hour day month weekday, e.g. 0 9 * * MON-FRI" />
-        <small class="focused-edit-hint">Standard cron: minute, hour, day of month, month, weekday.</small>
-      </label>
-      <p class="focused-preview-line" aria-live="polite">{{ cron ? cronLabel(cron) : '' }}</p>
-
-      <div class="focused-edit-card">
-        <div class="focused-edit-row">
-          <span class="focused-edit-label">Active</span>
-          <button type="button" class="focused-switch" role="switch" :aria-checked="f.enabled ? 'true' : 'false'" aria-label="Active" @click="f.enabled = !f.enabled"></button>
-        </div>
-      </div>
-
-      <section v-if="existing" class="focused-edit-block">
-        <div class="focused-edit-block-head">
-          <h3>Activity</h3>
-          <span class="focused-flex"></span>
-          <button type="button" class="focused-btn" :disabled="busy" @click="runNow">Run now</button>
-        </div>
-        <div class="focused-edit-card">
-          <div class="focused-edit-row"><span class="focused-edit-label">Next run</span><span>{{ existing.enabled && existing.next ? formatNext(existing.next) : 'Paused' }}</span></div>
-          <div class="focused-edit-row"><span class="focused-edit-label">Last run</span><span>{{ existing.last ? ago(existing.last) + (existing.lastStatus ? ' · ' + existing.lastStatus : '') : 'Not yet' }}</span></div>
-          <div class="focused-edit-row"><span class="focused-edit-label">Runs</span><span>{{ existing.runCount }}</span></div>
-          <div v-if="existing.lastError" class="focused-edit-row column"><span class="focused-save-text error">{{ existing.lastError }}</span></div>
-        </div>
-      </section>
-
-      <p v-if="error" class="focused-save-text error">{{ error }}</p>
-      <div class="focused-form-foot">
-        <button v-if="existing" type="button" class="focused-btn danger" :disabled="busy" @click="remove">Delete</button>
-        <span class="focused-flex"></span>
-        <button type="button" class="focused-btn" :disabled="busy" @click="back">Cancel</button>
-        <button type="submit" class="focused-primary" :disabled="busy">{{ busyLabel || (existing ? 'Save' : 'Create routine') }}</button>
-      </div>
-    </form>
-  </section>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, inject, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import AutoTextarea from './AutoTextarea.vue';
+import RoutineRunHistory from './RoutineRunHistory.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import MkIcon from '@/views/One/mk/MkIcon.vue';
+import '@/views/One/mk/mk.css';
 import { scheduleRows, parseCron, buildCron, isCron, cronLabel, REPEATS, WEEKDAYS } from './focusedModel.js';
-import { ago } from './focusedEditors.js';
-import { formatNext, timezoneOptions, LOCAL_TZ } from './focusedTime.js';
+import { formatNextRun, timezoneOptions, LOCAL_TZ } from './focusedTime.js';
 
 const props = defineProps({ scheduleId: { type: String, default: null } });
 const store = useStore();
@@ -106,6 +76,14 @@ const existing = computed(() => {
   return scheduleRows(store.getters['schedules/allSchedules'], '', store.getters['goals/allGoals']).find((r) => String(r.id) === String(props.scheduleId)) || null;
 });
 const title = computed(() => (props.scheduleId ? 'Edit routine' : 'New routine'));
+const history = ref(null);
+/** Under the name: when it runs and when it runs next. */
+const headline = computed(() => {
+  const r = existing.value;
+  if (!r) return 'Have AGNT do something for you on a schedule.';
+  if (!r.enabled) return `${r.cadence} · paused`;
+  return r.next ? `${r.cadence} · next ${formatNextRun(r.next)}` : r.cadence;
+});
 
 const f = reactive({ what: '', repeat: 'daily', time: '09:00', dow: 'MON', dom: 1, minute: 0, custom: '', timezone: LOCAL_TZ, enabled: true });
 function fill(r) {
@@ -177,7 +155,8 @@ async function save() {
 async function runNow() {
   await withBusy('', async () => {
     await store.dispatch('schedules/fireNow', existing.value.id);
-    nav.toast('Running now.');
+    nav.toast('Running now. It shows at the top of Runs.');
+    await history.value?.load();
   });
 }
 
@@ -205,3 +184,27 @@ watch(existing, (r, prev) => {
   if (r && !prev) fill(r);
 });
 </script>
+
+<style scoped>
+/* .mk-level selectors: they must outrank mk.css's own (.mk .props, .mk .card, .mk .field). */
+.mk .page.rt-page { max-width: 980px; }
+.mk .card.rt-card { padding: 12px 14px; gap: 8px; }
+.mk .props.rt-props { grid-template-columns: 96px minmax(0, 1fr); margin: 0; align-items: start; }
+.mk .props.rt-props > span { padding-top: 7px; }
+.mk .field.rt-what { box-sizing: border-box; resize: none; line-height: 1.45; }
+.mk .rt-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.mk .row-gap.rt-when { gap: 6px; flex-wrap: wrap; }
+.mk .rt-when :deep(.custom-select) { flex: 0 0 auto; width: 150px; }
+.mk .rt-when :deep(.custom-select.rt-zone) { width: 230px; }
+.mk .field.rt-time, .mk .field.rt-num, .mk .field.rt-cron { box-sizing: border-box; flex: 0 0 auto; height: 32px; padding: 0 10px; font-size: 13px; color: var(--text-primary); }
+/* The base stylesheet makes every text/time/number input fill its row with !important; these sit inline. */
+.mk .field.rt-time { width: 120px !important; }
+.mk .field.rt-num { width: 80px !important; }
+.mk .field.rt-cron { width: 200px !important; }
+.mk .rt-preview { font-size: 12.5px; color: var(--text-tertiary); }
+/* The time picker's icon follows the AGNT theme, not the OS. */
+:global(body.dark) .mk .field.rt-time { color-scheme: dark; }
+.mk .rt-error { margin: 0; font-size: 13px; color: var(--danger); }
+.mk .card-foot.rt-foot { margin-top: 2px; }
+.mk .rt-foot .fill { flex: 1; }
+</style>
