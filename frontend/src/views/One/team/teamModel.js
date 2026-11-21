@@ -5,6 +5,7 @@
  * Back works, a link in a chat opens the same card, and a reload lands where
  * you were. Nothing here touches the network or the DOM.
  */
+import { parseServerTime } from '@/utils/serverTime.js';
 
 export const TASK_STATUSES = Object.freeze([
   { id: 'todo', label: 'To do', color: '#87898e' },
@@ -212,8 +213,9 @@ export function mentionRuns(text, names = []) {
 
 /** "just now", "5m", "3h", "2d". */
 export function ago(iso, now = Date.now()) {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
+  // Server times without a zone (SQLite's CURRENT_TIMESTAMP) are UTC.
+  const t = parseServerTime(iso);
+  if (!t) return '';
   const s = Math.max(0, now - t);
   if (s < 60e3) return 'just now';
   if (s < 3600e3) return Math.floor(s / 60e3) + 'm';
@@ -255,6 +257,7 @@ export function runTone(status) {
   switch (status) {
     case 'running': return { label: 'Running', color: '#2d64bd', state: 'running' };
     case 'needs_review': return { label: 'Waiting for your OK', color: '#e53d8f', state: 'need' };
+    case 'needs_input': return { label: 'Waiting for your answer', color: '#e53d8f', state: 'need' };
     case 'completed': return { label: 'Done', color: '#157839', state: 'done' };
     case 'stopped': return { label: 'Stopped', color: '#87898e', state: 'done' };
     case 'interrupted': return { label: 'Interrupted', color: '#915d06', state: 'problem' };
@@ -270,7 +273,7 @@ export function runTone(status) {
  */
 export function runStats(runs = [], now = Date.now()) {
   const WEEK = 7 * 86400e3;
-  const times = runs.map((r) => ({ t: Date.parse(r.fired_at), status: r.status })).filter((r) => Number.isFinite(r.t));
+  const times = runs.map((r) => ({ t: parseServerTime(r.fired_at), status: r.status })).filter((r) => r.t > 0);
   const recent = times.filter((r) => now - r.t <= 30 * 86400e3);
   const ended = recent.filter((r) => r.status !== 'running');
   const finished = ended.filter((r) => r.status === 'completed').length;
@@ -283,13 +286,46 @@ export function runStats(runs = [], now = Date.now()) {
  * A failure a later run already fixed is not shown.
  */
 export function routinesNeedingALook(runs = []) {
+  return newestRunPerRoutine(runs).filter((run) => runTone(run.status).state === 'problem');
+}
+
+/** Each routine's newest run, newest first. */
+function newestRunPerRoutine(runs = []) {
   const newest = new Map();
   for (const run of runs) {
     const key = run.routineId ?? run.routineName;
     const seen = newest.get(key);
-    if (!seen || Date.parse(run.fired_at) > Date.parse(seen.fired_at)) newest.set(key, run);
+    if (!seen || parseServerTime(run.fired_at) > parseServerTime(seen.fired_at)) newest.set(key, run);
   }
-  return [...newest.values()].filter((run) => runTone(run.status).state === 'problem');
+  return [...newest.values()].sort((a, b) => parseServerTime(b.fired_at) - parseServerTime(a.fired_at));
+}
+
+/** Routines whose newest run stopped to ask you something. Nothing runs again usefully until you answer. */
+export function routinesWaitingForAnswer(runs = []) {
+  return newestRunPerRoutine(runs).filter((run) => run.status === 'needs_input');
+}
+
+/**
+ * Goals that finished and wait for your review, newest first. `exclude` holds goal ids
+ * already listed elsewhere (a routine waiting for your answer runs that goal).
+ */
+export function goalsAwaitingReview(goals = [], exclude = new Set()) {
+  return (Array.isArray(goals) ? goals : [])
+    .filter((goal) => goal && goal.status === 'needs_review' && !exclude.has(String(goal.id)))
+    .sort((a, b) => parseServerTime(b.updated_at || b.created_at) - parseServerTime(a.updated_at || a.created_at));
+}
+
+/** Each routine's newest run, when it finished within the last day: what got done while you were away. */
+export function doneRecently(runs = [], now = Date.now()) {
+  return newestRunPerRoutine(runs).filter((run) => run.status === 'completed' && now - parseServerTime(run.fired_at) <= 86400e3);
+}
+
+/** The next routines due, soonest first, leaving out the ones waiting for your answer. */
+export function comingUp(rows = [], waitingIds = new Set(), limit = 3) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row.enabled && row.next && !waitingIds.has(String(row.id)))
+    .sort((a, b) => a.next - b.next)
+    .slice(0, limit);
 }
 
 /**
@@ -306,7 +342,7 @@ export function tasksNeedingMe(tasks = [], me) {
 
 /** The run Run-now must not race: the newest one, while it is still running or waiting for the person. */
 export function blockingRun(runs = []) {
-  const newest = [...runs].sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at))[0];
+  const newest = [...runs].sort((a, b) => parseServerTime(b.fired_at) - parseServerTime(a.fired_at))[0];
   return newest && ['running', 'needs_review'].includes(newest.status) ? newest : null;
 }
 

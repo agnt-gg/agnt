@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE, tasksNeedingMe, routinesNeedingALook } from './teamModel.js';
+import { teamLocation, teamQuery, initials, toPeople, nameOf, mentionsIn, mentionRuns, ago, filterTasks, unreadCount, pendingApprovals, inboxSentence, runTone, runStats, blockingRun, sparkPath, visibleToOptions, homeSpaceOf, PRIVATE_SCOPE, tasksNeedingMe, routinesNeedingALook, routinesWaitingForAnswer, goalsAwaitingReview, doneRecently, comingUp } from './teamModel.js';
 
 describe('needs you', () => {
   const task = (over) => ({ id: 't', status: 'todo', agentState: null, createdBy: 'jess', assignee: null, ...over });
@@ -25,6 +25,52 @@ describe('needs you', () => {
     ];
     expect(routinesNeedingALook(runs).map((r) => r.id)).toEqual(['b2']);
     expect(routinesNeedingALook()).toEqual([]);
+  });
+
+  // A routine stopped on a question read as "done": Home said nothing needed you.
+  it('lists a routine while its newest run waits for your answer', () => {
+    const runs = [
+      { id: 'w1', routineId: 'weekly', status: 'needs_input', fired_at: '2026-11-16 14:02:25' },
+      { id: 'w0', routineId: 'weekly', status: 'completed', fired_at: '2026-11-09 14:02:25' },
+      { id: 'd1', routineId: 'daily', status: 'needs_input', fired_at: '2026-11-20 14:00:00' },
+      { id: 'd2', routineId: 'daily', status: 'completed', fired_at: '2026-11-21 14:00:00' },
+    ];
+    expect(routinesWaitingForAnswer(runs).map((r) => r.id)).toEqual(['w1']);
+    expect(runTone('needs_input')).toMatchObject({ label: 'Waiting for your answer', state: 'need' });
+    expect(routinesNeedingALook(runs)).toEqual([]);
+  });
+
+  it('lists goals waiting for review, newest first, except ones already listed', () => {
+    const goals = [
+      { id: 'old', status: 'needs_review', updated_at: '2026-11-02T05:18:23.150Z' },
+      { id: 'new', status: 'needs_review', updated_at: '2026-11-16T14:14:12.500Z' },
+      { id: 'done', status: 'validated', updated_at: '2026-11-20T00:00:00.000Z' },
+    ];
+    expect(goalsAwaitingReview(goals).map((g) => g.id)).toEqual(['new', 'old']);
+    expect(goalsAwaitingReview(goals, new Set(['new'])).map((g) => g.id)).toEqual(['old']);
+    expect(goalsAwaitingReview(null)).toEqual([]);
+  });
+
+  it('reads zone-less server times as UTC, so "the last day" is the real last day', () => {
+    const now = Date.parse('2026-11-22T13:00:00Z');
+    const runs = [
+      { id: 'today', routineId: 'a', status: 'completed', fired_at: '2026-11-21 14:00:49' },
+      { id: 'old', routineId: 'b', status: 'completed', fired_at: '2026-11-21 12:59:00' },
+      { id: 'failed', routineId: 'c', status: 'failed', fired_at: '2026-11-22 09:00:00' },
+    ];
+    expect(doneRecently(runs, now).map((r) => r.id)).toEqual(['today']);
+    expect(ago('2026-11-22 12:00:00', now)).toBe('1h');
+  });
+
+  it('coming up: the next enabled routines, soonest first, without the ones waiting for you', () => {
+    const rows = [
+      { id: 'weekly', enabled: true, next: 300 },
+      { id: 'digest', enabled: true, next: 200 },
+      { id: 'paused', enabled: false, next: 0 },
+      { id: 'search', enabled: true, next: 100 },
+    ];
+    expect(comingUp(rows, new Set(['weekly'])).map((r) => r.id)).toEqual(['search', 'digest']);
+    expect(comingUp(rows, new Set(), 1).map((r) => r.id)).toEqual(['search']);
   });
 });
 

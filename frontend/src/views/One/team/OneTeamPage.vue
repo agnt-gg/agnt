@@ -68,11 +68,12 @@ function openCheckpoint(checkpoint) {
   if (checkpoint.outputId) nav.openConversation(checkpoint.outputId);
   else { nav.chat(); nav.toast('Open the chat this task started in to review it.'); }
 }
-/** A routine run is a goal run: open that run. */
-function openRun(run) {
-  const goalId = run.run_target_id || run.target_id;
+/** A goal, where its review and any question it asks you are on screen. */
+function openGoal(goalId) {
   if (goalId) nav.openScreen('GoalsScreen', { select: { kind: 'goal', id: goalId } });
 }
+/** A routine run is a goal run: open that run. */
+const openRun = (run) => openGoal(run.run_target_id || run.target_id);
 
 provide('teamCtx', {
   team: computed(() => state.team),
@@ -96,6 +97,9 @@ provide('teamCtx', {
   openInbox,
   openCheckpoint,
   openRun,
+  openGoal,
+  openRoutine: (scheduleId) => nav.go({ page: 'scheduled', item: String(scheduleId) }),
+  newTeamspace: () => nav.newTeamspace?.(),
   checkpoints,
   routineRuns: routineRuns.runs,
   routineRunsLoaded: routineRuns.loaded,

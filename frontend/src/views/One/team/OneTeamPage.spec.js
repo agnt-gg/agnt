@@ -53,10 +53,10 @@ function baseRoutes() {
   };
 }
 
-function mountPage(location) {
-  const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(async () => true), prompt: vi.fn(async () => null), openConversation: vi.fn(), chat: vi.fn(), openScreen: vi.fn() };
+function mountPage(location, extraModules = {}) {
+  const nav = { go: vi.fn(), ask: vi.fn(), toast: vi.fn(), confirm: vi.fn(async () => true), prompt: vi.fn(async () => null), openConversation: vi.fn(), chat: vi.fn(), openScreen: vi.fn(), newTeamspace: vi.fn() };
   // The chat renders through the main chat's MessageItem, which reads the agents list for @mention pills.
-  const store = createStore({ state: { userAuth: { user: { id: 'me' } } }, modules: { agents: { namespaced: true, state: () => ({ agents: [] }), getters: { allAgents: () => [] } } } });
+  const store = createStore({ state: { userAuth: { user: { id: 'me' } } }, modules: { agents: { namespaced: true, state: () => ({ agents: [] }), getters: { allAgents: () => [] } }, ...extraModules } });
   const wrapper = mount(OneTeamPage, { props: { location }, global: { plugins: [store], provide: { focusedNav: nav } } });
   mounted.push(wrapper);
   return { wrapper, nav };
@@ -210,7 +210,7 @@ describe('Home shows flow', () => {
     const { wrapper } = mountPage(loc({ view: 'home' }));
     await flushPromises();
     const stats = wrapper.findAll('[data-testid="flow-status"] button').map((b) => b.text());
-    expect(stats).toEqual(['2 stopped until you answer', '1 working', '1 team at its work limit']);
+    expect(stats).toEqual(['2 need you', '1 working', '1 team at its work limit']);
     const stopped = wrapper.find('[data-testid="stuck-tasks"]').findAll('li').map((li) => li.text());
     expect(stopped[0]).toContain('Big stop');
     expect(stopped[0]).toContain('holding up 2 cards');
@@ -274,6 +274,67 @@ describe('board', () => {
 });
 
 describe('home', () => {
+  // Reported 2026-11: Home said "Nothing needs you right now" while a routine had waited
+  // on an answer for days and a goal waited for review.
+  it('routines waiting for your answer and goals waiting for review need you; done and coming up are shown; no teamspaces is one line', async () => {
+    routes[''] = [{ ...TEAM, role: 'owner' }];
+    routes['/acme/workspaces'] = [];
+    const sqliteAgo = (min) => new Date(Date.now() - min * 60e3).toISOString().replace('T', ' ').slice(0, 19);
+    const inHours = (h) => new Date(Date.now() + h * 3600e3).toISOString();
+    const schedules = [
+      { id: 'weekly', target_type: 'goal', target_id: 'g-seo', cron: '0 9 * * MON', enabled: 1, next_run: inHours(40) },
+      { id: 'daily', target_type: 'goal', target_id: 'g-news', cron: '0 9 * * *', enabled: 1, next_run: inHours(16) },
+    ];
+    const goals = [
+      { id: 'g-seo', title: 'Weekly SEO report', status: 'needs_review', updated_at: new Date().toISOString() },
+      { id: 'g-news', title: 'AI news digest', status: 'validated' },
+      { id: 'g-game', title: 'Snowboarding game', status: 'needs_review', updated_at: new Date(Date.now() - 5 * 86400e3).toISOString() },
+    ];
+    const runs = {
+      weekly: [{ id: 'r1', status: 'needs_input', fired_at: sqliteAgo(3 * 1440), error: 'Needs from you: an API key', target_id: 'g-seo', run_target_id: 'g-seo' }],
+      daily: [{ id: 'r2', status: 'completed', fired_at: sqliteAgo(120), target_id: 'g-news', run_target_id: 'g-news' }],
+    };
+    const { wrapper, nav } = mountPage(loc({ view: 'home' }), {
+      userAuth: { namespaced: true, state: () => ({ user: { id: 'me' } }), getters: { planType: () => 'personal' } },
+      goals: { namespaced: true, getters: { allGoals: () => goals }, actions: { fetchGoals: () => {} } },
+      schedules: { namespaced: true, getters: { allSchedules: () => schedules }, actions: { fetchSchedules: () => {}, fetchRunHistory: (_, { scheduleId }) => runs[scheduleId] } },
+    });
+    await flushPromises();
+    const stats = wrapper.findAll('[data-testid="flow-status"] button').map((b) => b.text());
+    expect(stats.slice(0, 2)).toEqual(['2 need you', '1 routine ran today']);
+    expect(stats[2]).toMatch(/^Next: AI news digest, /);
+
+    const waiting = wrapper.find('[data-testid="routines-waiting"]');
+    expect(waiting.text()).toContain('Weekly SEO report');
+    expect(waiting.text()).toContain('Needs from you: an API key');
+    expect(waiting.text()).toContain('3d ago');
+    await waiting.find('button').trigger('click');
+    expect(nav.openScreen).toHaveBeenLastCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g-seo' } });
+
+    // The routine's goal is listed once, under the routine.
+    const review = wrapper.find('[data-testid="goals-review"]');
+    expect(review.text()).toContain('Snowboarding game');
+    expect(review.text()).not.toContain('Weekly SEO report');
+    await review.find('button').trigger('click');
+    expect(nav.openScreen).toHaveBeenLastCalledWith('GoalsScreen', { select: { kind: 'goal', id: 'g-game' } });
+    expect(wrapper.find('[data-testid="home-inbox"] .tab .count').text()).toBe('2');
+
+    const [done, upcoming] = wrapper.find('[data-testid="home-routines"]').findAll('.list').map((l) => l.text());
+    expect(done).toContain('AI news digest');
+    expect(done).toContain('2h ago');
+    expect(upcoming).toContain('AI news digest');
+    expect(upcoming).not.toContain('Weekly SEO report');
+
+    expect(wrapper.find('[data-testid="teams-at-work"]').exists()).toBe(false);
+    const noSpaces = wrapper.find('[data-testid="team-no-spaces"]');
+    expect(noSpaces.text()).toContain('No teamspaces yet');
+    await noSpaces.find('button').trigger('click');
+    expect(nav.newTeamspace).toHaveBeenCalled();
+    // The chips: chat is Ask Annie; there is no "New task", and files are files.
+    const chips = wrapper.findAll('.chips .chip').map((b) => b.text());
+    expect(chips).toEqual(['Ask Annie', 'New file', 'New agent', 'New routine']);
+  });
+
   it('without a team, offers your teams instead of empty team widgets', async () => {
     routes[''] = [{ id: 'other', name: 'Globex', role: 'member', tenantUrl: 'https://globex.t1.agnt.gg' }];
     const { wrapper } = mountPage(loc({ view: 'home' }));

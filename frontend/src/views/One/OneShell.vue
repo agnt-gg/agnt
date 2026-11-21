@@ -174,6 +174,7 @@ import './mk/mk-frame.css';
 import { useTeam, teamApi } from './team/useTeam.js';
 import { spaceFlow, spaceMark } from './team/teamModel.js';
 import { useCheckpoints } from '@/composables/useCheckpoints.js';
+import { usePersonalNeeds } from './team/usePersonalNeeds.js';
 
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
 
@@ -278,10 +279,12 @@ const spaceMarks = computed(() => Object.fromEntries(teamState.spaces
   .filter(([, mark]) => mark)));
 const onTeamspace = computed(() => page.value === 'team' && ['space', 'doc'].includes(String(route.query.view || '')));
 const teamUnread = team.unread;
-// Home is the inbox: its badge is everything waiting on you, team items and checkpoints alike.
+// Home is the inbox: its badge is everything waiting on you, team items, checkpoints, routines and goals alike.
 const checkpointsWaiting = useCheckpoints();
 checkpointsWaiting.loadPending();
-const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value);
+const personalNeeds = usePersonalNeeds(store);
+personalNeeds.load();
+const needsYou = computed(() => teamUnread.value + checkpointsWaiting.pendingCount.value + personalNeeds.count.value);
 /** Owners and admins (the server enforces it): a new teamspace, registered with the cloud and opened. */
 async function newTeamspace() {
   const name = await prompt({ title: 'New teamspace', message: 'Everyone on the team works in it by their role.', placeholder: 'Product', confirmText: 'Create' });
@@ -450,6 +453,7 @@ provide('focusedNav', {
   prompt,
   toast,
   create: (kind) => create(kind),
+  newTeamspace,
 });
 
 // Ctrl/⌘+K opens the Jump palette: every screen stays one search away,

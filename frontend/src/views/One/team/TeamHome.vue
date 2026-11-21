@@ -11,8 +11,7 @@
       <p v-else class="lead">{{ lead }}</p>
       <div class="chips">
         <button type="button" class="chip" @click="ctx.ask('')"><MkIcon name="chats" />Ask Annie</button>
-        <button type="button" class="chip" @click="ctx.create('task')"><MkIcon name="task" />New task</button>
-        <button type="button" class="chip" @click="ctx.create('doc')"><MkIcon name="doc" />New doc</button>
+        <button type="button" class="chip" @click="ctx.create('doc')"><MkIcon name="doc" />New file</button>
         <button type="button" class="chip" @click="ctx.create('agent')"><MkIcon name="bot" />New agent</button>
         <button type="button" class="chip" @click="ctx.create('routine')"><MkIcon name="bolt" />New routine</button>
       </div>
@@ -34,6 +33,16 @@
             <div ref="stoppedRef" class="flow-group" data-group="stopped">
               <div v-if="stoppedCount" class="hm-sub">Stopped until you answer<span v-if="stoppedTasks.length > 1" class="hm-sub-note">sorted by what they hold up</span></div>
               <ul v-if="stoppedTasks.length" class="list" data-testid="stuck-tasks"><li v-for="t in stoppedTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
+              <ul v-if="waitingRoutines.length" class="list" data-testid="routines-waiting">
+                <li v-for="run in waitingRoutines" :key="run.id">
+                  <div class="r">
+                    <span class="r-icon"><MkIcon name="routines" /></span>
+                    <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
+                    <span class="tag amber">Your answer</span>
+                    <button type="button" class="primary sm" @click="ctx.openRun(run)">Answer</button>
+                  </div>
+                </li>
+              </ul>
               <ul v-if="brokenRoutines.length" class="list" data-testid="broken-routines"><li v-for="r in brokenRoutines" :key="r.id"><TeamRunRow :run="r" /></li></ul>
               <ul v-if="appsToConnect.length" class="list" data-testid="apps-to-connect">
               <li v-for="card in appsToConnect" :key="card.id">
@@ -49,6 +58,16 @@
               </ul>
             </div>
             <div v-if="readyCount" class="hm-sub">Ready for your review</div>
+            <ul v-if="reviewGoals.length" class="list" data-testid="goals-review">
+              <li v-for="goal in reviewGoals" :key="goal.id">
+                <div class="r">
+                  <span class="r-icon"><MkIcon name="task" /></span>
+                  <span class="r-text"><strong>{{ goal.title || 'Untitled goal' }}</strong><small>Goal · finished, waiting for your review · {{ since(goal.updated_at || goal.created_at) }}</small></span>
+                  <span class="tag pink">Your OK</span>
+                  <button type="button" class="primary sm" @click="ctx.openGoal(goal.id)">Review</button>
+                </div>
+              </li>
+            </ul>
             <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
             <ul v-if="reviewTasks.length" class="list" data-testid="review-tasks"><li v-for="t in reviewTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
             <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
@@ -88,7 +107,50 @@
         </div>
       </section>
 
-      <template v-if="team">
+      <!-- Routines: what got done while you were away, and what runs next without you. -->
+      <div v-if="doneToday.length || upcoming.length" ref="routinesRef" class="two" data-testid="home-routines">
+        <div>
+          <div class="sec-head"><h3>Done while you were away</h3><button type="button" class="btn ghost sm" @click="ctx.openPage('scheduled')">Routines</button></div>
+          <ul class="list">
+            <li v-if="!doneToday.length" class="empty">Nothing has finished in the last day.</li>
+            <li v-for="run in doneToday" :key="run.id">
+              <button type="button" class="r" @click="ctx.openRoutine(run.routineId)">
+                <span class="r-icon"><MkIcon name="routines" /></span>
+                <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ since(run.fired_at) }}</small></span>
+                <span class="tag green">Done</span>
+                <span class="r-go">Open result</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <div class="sec-head"><h3>Coming up</h3></div>
+          <ul class="list">
+            <li v-if="!upcoming.length" class="empty">Nothing scheduled.</li>
+            <li v-for="row in upcoming" :key="row.id">
+              <button type="button" class="r" @click="ctx.openRoutine(row.id)">
+                <span class="r-icon"><MkIcon name="routines" /></span>
+                <span class="r-text"><strong>{{ row.label }}</strong><small>{{ formatNext(row.next) }} · {{ row.cadence }}</small></span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- A team without teamspaces: one line, not two empty panels. -->
+      <template v-if="team && !spaces.length">
+        <div class="sec-head"><h3>Your team</h3></div>
+        <ul class="list" data-testid="team-no-spaces">
+          <li>
+            <div class="r">
+              <span class="r-icon"><MkIcon name="users" /></span>
+              <span class="r-text"><strong>{{ team.name }}</strong><small>No teamspaces yet. A teamspace shares chat, a board, files and agents.</small></span>
+              <button v-if="canCreateSpace" type="button" class="btn sm" @click="ctx.newTeamspace()">Create a teamspace</button>
+            </div>
+          </li>
+        </ul>
+      </template>
+      <template v-else-if="team">
         <div class="two">
           <div>
             <div class="sec-head"><h3>My tasks</h3><button type="button" class="btn ghost sm" @click="ctx.go({ view: 'mine' })">All</button></div>
@@ -116,7 +178,7 @@
       <template v-else>
         <div class="sec-head"><h3>Your teams</h3></div>
         <ul class="list">
-          <li v-if="!teams.length" class="empty">You are not on a team yet. A team shares chat, a board, docs and agents, each person keeping their own private space. <button type="button" class="link" @click="ctx.teamSettings()">Set one up</button>.</li>
+          <li v-if="!teams.length" class="empty">You are not on a team yet. A team shares chat, a board, files and agents, each person keeping their own private space. <button type="button" class="link" @click="ctx.teamSettings()">Set one up</button>.</li>
           <li v-for="t in teams" :key="t.id">
             <div class="r">
               <span class="r-icon"><img src="/images/agnt-logo-mark.svg" alt="" style="width: 15px" /></span>
@@ -151,7 +213,10 @@ import { AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import { useStore } from 'vuex';
 import { teamApi } from './useTeam.js';
 import { roleLabel } from '@/utils/teamClient.js';
-import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook, spaceFlow, teamFlowLine, byWhatTheyHoldUp, plural } from './teamModel.js';
+import { partOfDay, spaceEmoji, tasksNeedingMe, routinesNeedingALook, spaceFlow, teamFlowLine, byWhatTheyHoldUp, plural, ago, doneRecently, comingUp } from './teamModel.js';
+import { usePersonalNeeds } from './usePersonalNeeds.js';
+import { scheduleRows } from '@/views/Focused/focusedModel.js';
+import { formatNext } from '@/views/Focused/focusedTime.js';
 
 const TABS = [{ id: 'needs', label: 'Needs you' }, { id: 'mentions', label: 'Mentions' }, { id: 'runs', label: 'Runs' }, { id: 'all', label: 'All' }];
 const props = defineProps({ initialTab: { type: String, default: 'needs' } });
@@ -169,12 +234,26 @@ const loading = ref(true);
 const sitting = ref(null);
 const stoppedRef = ref(null);
 const teamsRef = ref(null);
+const routinesRef = ref(null);
 
 const checkpointsWaiting = computed(() => ctx.checkpoints.state.pending);
 const runs = computed(() => ctx.routineRuns.value);
 const runsLoaded = computed(() => ctx.routineRunsLoaded.value);
 const runsWaiting = computed(() => runs.value.filter((r) => r.status === 'needs_review'));
 const brokenRoutines = computed(() => routinesNeedingALook(runs.value));
+// Your own work waiting on you: routines with a question, goals waiting for review (shared with the rail badge).
+const personal = usePersonalNeeds(store);
+const waitingRoutines = personal.waitingRoutines;
+const reviewGoals = personal.reviewGoals;
+const routineRows = computed(() => scheduleRows(store.getters['schedules/allSchedules'], '', store.getters['goals/allGoals']));
+const doneToday = computed(() => doneRecently(runs.value));
+const upcoming = computed(() => comingUp(routineRows.value, new Set(waitingRoutines.value.map((run) => String(run.routineId)))));
+const canCreateSpace = computed(() => ['owner', 'admin'].includes(ctx.role?.value));
+/** "3d ago", "just now". */
+function since(at) {
+  const text = ago(at);
+  return !text || text === 'just now' ? text : `${text} ago`;
+}
 // Yours: you made the card or it is assigned to you. Stopped ones first, by what they hold up.
 const cardsNeedingMe = computed(() => tasksNeedingMe(tasks.value, ctx.me.value));
 const stoppedTasks = computed(() => byWhatTheyHoldUp(cardsNeedingMe.value.filter((t) => t.agentState === 'blocked')));
@@ -213,8 +292,8 @@ async function decidePlugin(request, approve) {
 }
 const approvePlugin = (r) => decidePlugin(r, true);
 const declinePlugin = (r) => decidePlugin(r, false);
-const stoppedCount = computed(() => stoppedTasks.value.length + brokenRoutines.value.length + appsToConnect.value.length);
-const readyCount = computed(() => checkpointsWaiting.value.length + reviewTasks.value.length + runsWaiting.value.length);
+const stoppedCount = computed(() => stoppedTasks.value.length + waitingRoutines.value.length + brokenRoutines.value.length + appsToConnect.value.length);
+const readyCount = computed(() => checkpointsWaiting.value.length + reviewTasks.value.length + runsWaiting.value.length + reviewGoals.value.length);
 const needCount = computed(() => stoppedCount.value + readyCount.value + teamNeeds.value.length + pluginAsks.value.length + pluginOutcomes.value.length);
 const myTasks = computed(() => tasks.value.filter((t) => t.status !== 'done' && t.assignee?.kind === 'person' && t.assignee.id === ctx.me.value));
 
@@ -225,24 +304,26 @@ const teamRows = computed(() => spaces.value
     const flow = spaceFlow(ctx.boards.value[s.id], ctx.limits.value[s.id] || {});
     return { space: s, flow, line: teamFlowLine(flow) };
   }));
-// The status line: an andon board for the whole team. Calm when nothing has stopped.
+// The status line: everything waiting on you, then what ran and what runs next. Calm when nothing needs you.
 const status = computed(() => {
-  const stopped = stoppedTasks.value.length;
-  const apps = appsToConnect.value.length;
+  const needs = needCount.value;
   const working = teamRows.value.reduce((sum, row) => sum + row.flow.working, 0);
   const atLimit = teamRows.value.filter((row) => row.flow.atLimit).length;
+  const next = upcoming.value[0];
   return [
-    { id: 'stopped', tone: stopped ? 'alert' : 'calm', target: 'stopped', label: stopped ? `${stopped} stopped until you answer` : 'Nothing stopped on you' },
-    apps && { id: 'apps', tone: 'warn', target: 'stopped', label: `${plural(apps, 'app')} to reconnect` },
-    { id: 'working', tone: 'working', target: 'teams', label: `${working} working` },
+    { id: 'needs', tone: needs ? 'alert' : 'calm', target: 'stopped', label: needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'Nothing needs you' },
+    doneToday.value.length && { id: 'done', tone: 'calm', target: 'routines', label: `${plural(doneToday.value.length, 'routine')} ran today` },
+    teamRows.value.length && { id: 'working', tone: 'working', target: 'teams', label: `${working} working` },
     atLimit && { id: 'limit', tone: 'warn', target: 'teams', label: atLimit === 1 ? '1 team at its work limit' : `${atLimit} teams at their work limit` },
+    next && { id: 'next', tone: 'plain', target: 'routines', label: `Next: ${next.label}, ${formatNext(next.next)}` },
   ].filter(Boolean);
 });
 async function goTo(target) {
   if (target === 'stopped') tab.value = 'needs';
   // After the tab switch renders, so the list is there to scroll to.
   await nextTick();
-  (target === 'stopped' ? stoppedRef.value : teamsRef.value)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const refs = { stopped: stoppedRef, teams: teamsRef, routines: routinesRef };
+  refs[target]?.value?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 }
 function closeSitting() {
   sitting.value = null;
@@ -265,7 +346,7 @@ async function load() {
 watch(() => props.initialTab, (value) => { if (TABS.some((t) => t.id === value)) tab.value = value; });
 watch(() => [spaces.value.length, team.value?.id], load);
 watch(() => ctx.version.value, () => plugins.load());
-onMounted(() => { load(); ctx.checkpoints.loadPending(); ctx.loadRoutineRuns(); plugins.load(); });
+onMounted(() => { load(); ctx.checkpoints.loadPending(); personal.load(); plugins.load(); });
 </script>
 
 <style scoped>
@@ -278,5 +359,6 @@ onMounted(() => { load(); ctx.checkpoints.loadPending(); ctx.loadRoutineRuns(); 
 .flow-stat.is-alert .flow-dot { background: var(--pink); }
 .flow-stat.is-warn { border-color: rgba(var(--orange-rgb), 0.4); background: rgba(var(--orange-rgb), 0.07); }
 .flow-stat.is-warn .flow-dot { background: var(--amber-text); }
+.flow-stat.is-plain .flow-dot { background: var(--text-tertiary); }
 .hm-sub-note { margin-left: 8px; text-transform: none; letter-spacing: 0; font-size: 12px; }
 </style>
