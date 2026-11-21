@@ -3,7 +3,6 @@
    The aliases below map the mockup's names onto the theme tokens, as mk.css does, so every
    theme draws it. Control edges mix from the text colour so they read on any background. */
 .za {
-  --bg: var(--color-background);
   --raised: var(--color-dark-navy);
   --sunken: var(--color-darker-1);
   --line: var(--terminal-border-color);
@@ -19,7 +18,9 @@
   --warn-dot: var(--text-orange);
   --bad-dot: var(--color-red);
   --popup: var(--color-popup);
-  --ink-on-ink: var(--color-background);
+  /* --color-background goes transparent under a custom background, so ink and fills that must
+     stay solid use --color-dark-navy (as mk.css does) and --color-popup. */
+  --ink-on-ink: var(--color-dark-navy);
   --scrim: rgba(8, 8, 20, 0.42);
   --mono: var(--font-family-mono);
   font-size: 14px;
@@ -214,7 +215,7 @@
 .za .za-layer { position: fixed; inset: 0; z-index: 55; }
 .za .scrim { position: absolute; inset: 0; background: var(--scrim); animation: za-fade 0.16s ease; }
 @keyframes za-fade { from { opacity: 0; } }
-.za .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--bg); box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.25); animation: za-slide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.za .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--color-popup); box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.25); animation: za-slide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @keyframes za-slide { from { transform: translateX(24px); opacity: 0; } }
 .za .dr-head { display: flex; align-items: flex-start; gap: 14px; padding: 22px 20px 18px; border-bottom: 1px solid var(--line); }
 .za .dr-title { flex: 1; min-width: 0; }
@@ -242,7 +243,7 @@
 
 .za .modal-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 40px; }
 /* za-modal, not modal: an app-wide .modal rule (fixed, centred flex) would reach in. */
-.za .za-modal { position: relative; width: 760px; max-width: 100%; height: min(680px, 100%); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); box-shadow: var(--shadow-lg), 0 30px 80px -30px rgba(0, 0, 0, 0.35); animation: za-pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.za .za-modal { position: relative; width: 760px; max-width: 100%; height: min(680px, 100%); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; background: var(--color-popup); box-shadow: var(--shadow-lg), 0 30px 80px -30px rgba(0, 0, 0, 0.35); animation: za-pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .za .za-modal.fit { height: auto; max-height: 100%; }
 .za .md-head { display: flex; align-items: center; gap: 12px; padding: 20px 20px 14px; }
 .za .md-head h2 { flex: 1; font-size: 19px; font-weight: 600; }
@@ -254,7 +255,7 @@
 .za .md-body.picker > .pick.is-empty { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; }
 .za .md-foot { position: relative; display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); }
 .za .md-foot.split { justify-content: space-between; }
-.za .za-modal:not(.fit) .md-foot::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 18px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; }
+.za .za-modal:not(.fit) .md-foot::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 18px; background: linear-gradient(to bottom, transparent, var(--color-popup)); pointer-events: none; }
 .za .foot-note { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; color: var(--text-secondary); }
 .za .foot-note svg.i { color: var(--text-tertiary); }
 .za .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--edge); border-radius: 999px; background: var(--raised); margin: 12px 0 14px; }

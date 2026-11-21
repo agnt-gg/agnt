@@ -110,6 +110,19 @@ describe('AGNT One under a custom background', () => {
     expect(ONE_RULES.some((r) => r.selectors.some((s) => s.startsWith('body.custom-bg') && /\.ui-one\.is-compact[^,]*\.one-main/.test(s)))).toBe(false);
   });
 
+  // The Apps page's drawer and modal are teleported to <body>, where --color-background is
+  // transparent; painting with it left them see-through and the primary buttons' text invisible.
+  it('the Apps page never paints with --color-background; its layers use --color-popup', () => {
+    const APPS = readFileSync(join(DIR, 'apps', 'appsPage.css'), 'utf8');
+    expect(APPS.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/var\(--color-background\)/);
+    const appsRules = rulesOf(APPS);
+    for (const layer of ['.za .drawer', '.za .za-modal']) {
+      expect(decl(ruleFor(appsRules, layer).body, 'background'), layer).toBe('var(--color-popup)');
+    }
+    expect(decl(ruleFor(appsRules, '.za').body, '--ink-on-ink')).toBe('var(--color-dark-navy)');
+    expect(decl(ruleFor(appsRules, '.za .primary').body, 'color')).toBe('var(--ink-on-ink)');
+  });
+
   it('overlays over moving content stay solid', () => {
     for (const overlay of ['body.custom-bg .ui-one.is-compact .one-drawer', 'body.custom-bg .ui-one .chat-scroll-controls .scroll-btn', 'body.custom-bg .ui-one .output-list-container.is-drawer .sort-controls']) {
       expect(decl(ruleFor(ONE_RULES, overlay).body, 'background'), overlay).toBe('rgb(var(--color-background-rgb, 0, 0, 0))');
