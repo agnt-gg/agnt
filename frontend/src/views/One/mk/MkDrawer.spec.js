@@ -42,8 +42,10 @@ describe('the one sidebar', () => {
   const sidebar = (extra = {}, slots) => mountDrawer({ team: team('owner'), teams: [team('owner')], spaces, counts: { agents: 5, routines: 4 }, ...extra }, slots);
   const search = (w) => w.get('[data-testid="one-sidebar-search"]');
 
-  it('New chat starts a chat; its chevron holds the rest of New…', async () => {
+  it('+ New beside the search starts a chat; its chevron holds the rest of New…', async () => {
     const w = sidebar();
+    expect(w.get('[data-testid="one-new-chat"]').text()).toBe('New');
+    expect(w.get('.find-row [data-testid="one-new-menu"]').exists()).toBe(true);
     await w.get('[data-testid="one-new-chat"]').trigger('click');
     expect(w.emitted('new-chat')).toHaveLength(1);
     await w.get('[data-testid="one-new-menu"]').trigger('click');
@@ -72,7 +74,8 @@ describe('the one sidebar', () => {
   it('one search filters the sidebar in place, then hands over to Annie or to Find anything', async () => {
     const w = sidebar();
     await search(w).setValue('  sal ');
-    expect(w.find('[data-testid="one-new-chat"]').exists()).toBe(false);
+    // + New sits beside the search, so it stays while you type.
+    expect(w.get('[data-testid="one-new-chat"]').element.closest('.find-row')).not.toBeNull();
     expect(w.find('[data-testid="main-chat-row"]').exists()).toBe(false);
     expect(w.text()).not.toContain('My agents');
     expect(w.text()).toContain('Sales');

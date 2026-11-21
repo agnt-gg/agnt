@@ -20,32 +20,28 @@
           <button type="button" class="menu-item sep" role="menuitem" @click="pick('team-settings')"><MkIcon name="plus" size="sm" />Create or join a team</button>
         </div>
       </div>
-      <!-- One search for the whole sidebar: typing filters it in place; Enter
-           carries the words to Find anything (Ctrl K opens that anywhere). -->
-      <div class="find-box" @click="searchRef?.focus()">
-        <MkIcon name="find" size="sm" />
-        <input
-          ref="searchRef"
-          v-model="query"
-          type="text"
-          placeholder="Search or ask Annie"
-          aria-label="Search or ask Annie"
-          autocomplete="off"
-          spellcheck="false"
-          data-testid="one-sidebar-search"
-          @keydown.enter.prevent="findEverywhere"
-          @keydown.esc="query = ''"
-        />
-        <kbd>Ctrl K</kbd>
-      </div>
-      <div class="drawer-scroll">
-        <template v-if="q">
-          <button type="button" class="d-item s-act" data-testid="one-sidebar-ask" @click="askAnnie"><MkIcon name="chats" size="sm" /><span class="ell">Ask Annie about “{{ q }}”</span></button>
-          <button type="button" class="d-item s-act" data-testid="one-sidebar-find" @click="findEverywhere"><MkIcon name="find" size="sm" /><span class="ell">Find “{{ q }}” everywhere</span><kbd>Enter</kbd></button>
-        </template>
-        <div v-else class="mk-new-anchor new-split">
-          <button type="button" class="d-item new-main" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="pen" size="sm" />New chat</button>
-          <button v-tooltip="menu === 'new' ? '' : 'New task, doc, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New task, doc, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="sm" /></button>
+      <!-- One search for the whole sidebar (typing filters it in place; Enter
+           carries the words to Find anything), with New beside it as in
+           Studio's chat list: + New starts a chat, its chevron holds the rest. -->
+      <div class="find-row">
+        <div class="find-box" @click="searchRef?.focus()">
+          <MkIcon name="find" size="sm" />
+          <input
+            ref="searchRef"
+            v-model="query"
+            type="text"
+            placeholder="Search or ask Annie"
+            aria-label="Search or ask Annie"
+            autocomplete="off"
+            spellcheck="false"
+            data-testid="one-sidebar-search"
+            @keydown.enter.prevent="findEverywhere"
+            @keydown.esc="query = ''"
+          />
+        </div>
+        <div class="mk-new-anchor new-pill">
+          <button v-tooltip="'New chat'" type="button" class="new-main" data-testid="one-new-chat" @click="$emit('new-chat')"><MkIcon name="plus" size="sm" />New</button>
+          <button v-tooltip="menu === 'new' ? '' : 'New task, doc, agent or routine'" type="button" class="new-more" data-testid="one-new-menu" aria-label="New task, doc, agent or routine" :aria-expanded="String(menu === 'new')" @click="toggle('new')"><MkIcon name="down" size="xs" /></button>
           <div v-if="menu === 'new'" class="ws-menu new-menu" role="menu">
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-task')"><MkIcon name="task" size="sm" />Task</button>
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-doc')"><MkIcon name="doc" size="sm" />Doc</button>
@@ -53,7 +49,14 @@
             <button type="button" class="menu-item" role="menuitem" @click="pick('new-routine')"><MkIcon name="bolt" size="sm" />Routine</button>
           </div>
         </div>
-        <!-- The Main chat: texts to Annie land here; New chat never does. -->
+      </div>
+      <div class="drawer-scroll">
+        <template v-if="q">
+          <button type="button" class="d-item s-act" data-testid="one-sidebar-ask" @click="askAnnie"><MkIcon name="chats" size="sm" /><span class="ell">Ask Annie about “{{ q }}”</span></button>
+          <button type="button" class="d-item s-act" data-testid="one-sidebar-find" @click="findEverywhere"><MkIcon name="find" size="sm" /><span class="ell">Find “{{ q }}” everywhere</span><kbd>Enter</kbd></button>
+        </template>
+        <!-- The Main chat: texts to Annie land here; New chat never does. Drawn
+             as Studio's pinned row (OutputList .main-chat-item). -->
         <div
           v-if="matches(MAIN_CHAT_LABEL)"
           class="d-item main-row"
@@ -211,28 +214,30 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 /* A teamspace with stopped work, or at its work limit, says so beside its name. */
 .space-mark { margin-left: auto; padding: 1px 6px; border-radius: 6px; background: rgba(var(--orange-rgb), 0.14); color: var(--amber-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
 
-/* The search: the old Search-or-ask button's look, now a field. */
-.find-box { box-sizing: border-box; display: flex; align-items: center; gap: 8px; margin: 4px 10px 6px; padding: 0 10px; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--text-tertiary); font-size: 13px; cursor: text; }
+/* The search, and New beside it. */
+.find-row { display: flex; align-items: center; gap: 6px; margin: 4px 10px 8px; }
+.find-box { box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--text-tertiary); font-size: 13px; cursor: text; }
 .find-box:hover,
 .find-box:focus-within { border-color: var(--border-strong); }
 .find-box input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
 .find-box input::placeholder { color: var(--text-tertiary); }
-.find-box kbd { font: inherit; font-size: 11px; white-space: nowrap; }
 .ell { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-act { color: var(--text-primary); }
 .s-act kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--text-tertiary); }
 
-/* New chat, and the rest of New… behind the chevron. */
-.new-split { display: flex; align-items: center; gap: 2px; }
-.new-split .new-main { flex: 1; color: var(--text-primary); font-weight: 500; }
-.new-more { position: relative; flex: none; width: 28px; height: 31px; border: 0; border-radius: 8px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; }
-.new-more::before { content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 1px; background: var(--border-strong); opacity: 0.7; }
+/* + New and its chevron: one compact button, the height of the search. */
+.new-pill { flex: none; display: flex; align-items: stretch; height: 33px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
+.new-pill:hover { border-color: var(--border-strong); }
+.new-pill .new-main { display: flex; align-items: center; gap: 5px; padding: 0 8px 0 9px; border: 0; border-radius: 9px 0 0 9px; background: transparent; color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.new-more { position: relative; width: 22px; border: 0; border-radius: 0 9px 9px 0; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; }
+.new-more::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
+.new-pill .new-main:hover,
 .new-more:hover,
 .new-more[aria-expanded='true'] { background: var(--surface-hover); color: var(--text-primary); }
-.new-menu { left: 0; right: 0; top: calc(100% + 2px); }
+.mk .ws-menu.new-menu { left: auto; right: 0; width: 170px; top: calc(100% + 4px); }
 
-/* The Main chat: two lines, the eraser on hover. */
-.main-row { box-sizing: border-box; position: relative; align-items: flex-start; cursor: pointer; }
+/* The Main chat: Studio's pinned row, a bordered card; the eraser on hover. */
+.main-row { box-sizing: border-box; position: relative; align-items: flex-start; cursor: pointer; margin-bottom: 6px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
 .main-mark { width: 15px; height: 19px; flex: none; display: grid; place-items: center; }
 .main-pin { color: var(--color-primary); font-size: 11px; }
 .main-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); }
