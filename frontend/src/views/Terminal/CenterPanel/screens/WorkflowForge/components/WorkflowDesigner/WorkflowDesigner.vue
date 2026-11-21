@@ -892,7 +892,12 @@ export default {
         canvas.canvasOffsetX = workflowData.canvasOffsetX || 0;
         canvas.canvasOffsetY = workflowData.canvasOffsetY || 0;
         canvas.updateCanvasTransform();
-        canvas.centerGraph({ zoom: workflowData.zoomLevel || 1 });
+        // A narrow canvas (AGNT One's editor, beside Annie's chat) leaves no room
+        // beside the open palette: close it for this view first, as a new
+        // workflow does, so the graph never opens underneath it.
+        const center = () => canvas.centerGraph({ zoom: workflowData.zoomLevel || 1 });
+        if (this.makeRoomForGraph()) setTimeout(center, PALETTE_TRANSITION_MS);
+        else center();
       });
 
       // 5) Process media data in the background AFTER initial render

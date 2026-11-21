@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import {
   WORKFLOW_QUICKSTARTS,
@@ -136,5 +139,16 @@ describe('quickstart helpers', () => {
         expect((ys[i] - ys[i - 1]) % QUICKSTART_GRID, template.id).toBe(0);
       }
     }
+  });
+});
+
+// Reported: opening a saved workflow in AGNT One's narrow editor put its nodes
+// under the tool palette. Opening one makes room the way a new one does.
+describe('a saved workflow opens clear of the palette', () => {
+  const DESIGNER = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'WorkflowDesigner.vue'), 'utf8');
+  it('closes a crowding palette before centring a loaded graph', () => {
+    const load = DESIGNER.slice(DESIGNER.indexOf('4) Centre the graph'), DESIGNER.indexOf('5) Process media data'));
+    expect(load).toMatch(/if \(this\.makeRoomForGraph\(\)\) setTimeout\(center, PALETTE_TRANSITION_MS\);\s*else center\(\);/);
+    expect(load).toMatch(/const center = \(\) => canvas\.centerGraph\(\{ zoom: workflowData\.zoomLevel \|\| 1 \}\);/);
   });
 });

@@ -453,6 +453,12 @@ export default {
 .chat-input-textarea::placeholder {
   color: var(--color-med-navy, rgba(127, 129, 147, 0.7));
 }
+/* Empty, the hint stays on one line inside the pill (a narrow panel wrapped
+   it under the border); typing is unaffected. */
+.chat-input-textarea:placeholder-shown {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 /* Highlight backdrop (orchestrator @ mention coloring) */
 .chat-input-backdrop {
