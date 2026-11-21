@@ -52,7 +52,6 @@
               <i v-else class="fas fa-thumbtack main-chat-pin" aria-hidden="true"></i>
               {{ MAIN_CHAT_LABEL }}
             </div>
-            <div class="main-chat-sub">Tasks run in their own chats and report back here</div>
           </div>
           <div class="output-actions">
             <button
@@ -2410,11 +2409,6 @@ body.dark .create-output-btn {
   color: var(--color-primary);
   font-size: 0.8em;
   margin-right: 6px;
-}
-.main-chat-sub {
-  margin-top: 4px;
-  font-size: 0.78em;
-  color: var(--text-tertiary);
 }
 .main-chat-item .action-menu-btn:disabled {
   opacity: 0.35;

@@ -60,7 +60,7 @@ describe('the one sidebar', () => {
     const w = sidebar({ mainChat: { open: true, unread: false, streaming: false } });
     const row = w.get('[data-testid="main-chat-row"]');
     expect(row.classes()).toContain('is-active');
-    expect(row.text()).toContain('Main chat');
+    expect(row.text()).toBe('Main chat'); // one line, no subtext
     await row.trigger('click');
     expect(w.emitted('open-main')).toHaveLength(1);
     await w.get('[data-testid="main-chat-clear"]').trigger('click');

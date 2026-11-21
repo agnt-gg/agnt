@@ -79,7 +79,7 @@ describe('OutputList in AGNT One\'s sidebar (variant="drawer")', () => {
     const w = mountList();
     expect(w.classes()).not.toContain('is-drawer');
     expect(w.find('.panel-header').text()).toContain('/ Saved Chats');
-    expect(w.find('[data-testid="main-chat-row"]').exists()).toBe(true);
+    expect(w.get('[data-testid="main-chat-row"] .output-content').text()).toBe('Main chat'); // one line, no subtext
     expect(w.find('input.search-input').exists()).toBe(true);
     expect(w.find('.view-seg-btn').text()).toBe('All');
     w.unmount();

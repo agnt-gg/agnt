@@ -72,7 +72,7 @@
             <span v-else-if="mainChat.unread" v-tooltip="'Unread changes'" class="main-unread"></span>
             <i v-else class="fas fa-thumbtack main-pin"></i>
           </span>
-          <span class="main-text"><b>{{ MAIN_CHAT_LABEL }}</b><small>Tasks run in their own chats and report back here</small></span>
+          <span class="main-text"><b>{{ MAIN_CHAT_LABEL }}</b></span>
           <button
             v-tooltip="mainChat.streaming ? 'Wait for the reply to finish' : 'Clear main chat'"
             type="button"
@@ -237,16 +237,15 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 .mk .ws-menu.new-menu { left: auto; right: 0; width: 170px; top: calc(100% + 4px); }
 
 /* The Main chat: Studio's pinned row, a bordered card; the eraser on hover. */
-.main-row { box-sizing: border-box; position: relative; align-items: flex-start; cursor: pointer; margin-bottom: 6px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
+.main-row { box-sizing: border-box; position: relative; cursor: pointer; margin-bottom: 6px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
 .main-mark { width: 15px; height: 19px; flex: none; display: grid; place-items: center; }
 .main-pin { color: var(--color-primary); font-size: 11px; }
 .main-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--color-green); }
 .main-streaming { color: var(--color-primary); font-size: 7px; animation: main-pulse 1.5s ease-in-out infinite; }
 @keyframes main-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.main-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main-text { flex: 1; min-width: 0; }
 .main-text b { font-weight: 600; color: var(--text-primary); }
-.main-text small { font-size: 11.5px; line-height: 1.3; color: var(--text-tertiary); text-wrap: balance; }
-.row-act { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; opacity: 0; font-size: 12px; }
+.row-act { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); display: grid; place-items: center; opacity: 0; font-size: 12px; }
 .main-row:hover .row-act,
 .row-act:focus-visible { opacity: 1; }
 .row-act:hover:not(:disabled) { background: var(--surface-active); color: var(--text-primary); }
