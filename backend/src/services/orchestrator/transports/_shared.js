@@ -22,6 +22,7 @@ import {
   getProviderConfig,
   getReasoningControl,
   getAnthropicReasoningEfforts,
+  getGeminiThinkingLevels,
   supportsZaiReasoningEffort,
   // Reasoning predicates are defined ONCE, in providerConfigs, and consumed
   // here to build the wire body. This module used to carry its own copies and
@@ -594,6 +595,15 @@ function buildAnthropicReasoningConfig(model, reasoningValue) {
 function buildGeminiThinkingConfig(model, reasoningValue) {
   const normalized = normalizeReasoningValue(reasoningValue);
   if (normalized === 'default') return null;
+
+  // Gemini 4+: only a level this model accepts. The selection is sticky across
+  // model switches, so a carried-over 'off' or an xhigh picked on neon must
+  // fall back to the server default on a model that does not take it.
+  const thinkingLevels = getGeminiThinkingLevels(model);
+  if (thinkingLevels) {
+    const level = normalized === 'on' ? 'high' : normalized;
+    return thinkingLevels.includes(level) ? { thinkingLevel: level } : null;
+  }
 
   const lower = String(model || '').toLowerCase();
   if (lower.startsWith('gemini-3')) {

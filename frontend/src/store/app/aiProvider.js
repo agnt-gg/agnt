@@ -23,6 +23,7 @@ import {
   effortOptionsFromList,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
+  geminiBaselineThinkingLevels,
   supportsDeepSeekThinkingToggle as supportsDeepSeekThinking,
   isGroqGptOssReasoningModel,
   isGroqQwenReasoningModel,
@@ -647,6 +648,14 @@ export function inferReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'gemini' || lowerProvider === 'antigravity') {
+    // Cold-start fallback only, as for Anthropic above: the server's control
+    // adds the grades a model publishes (xhigh on neon/hydrogen).
+    const baselineLevels = geminiBaselineThinkingLevels(modelId);
+    if (baselineLevels) {
+      const options = effortOptionsFromList(baselineLevels);
+      return options ? buildReasoningControl('effort', options) : null;
+    }
+
     if (isGemini3ReasoningModel(modelId) || isGemini25ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {

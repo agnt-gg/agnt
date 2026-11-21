@@ -213,6 +213,29 @@ export function isGemini25ReasoningModel(modelId) {
   return lc(modelId).startsWith('gemini-2.5');
 }
 
+// Gemini 4 moved to a per-model `thinkingLevel` set (ai.google.dev/gemini-api/
+// docs/thinking, 2026-11-20): neon and hydrogen take low..xhigh, carbon and
+// argon low..high, and none of them accepts `minimal`, so there is no Off.
+// A GENERATION test like OpenAI's above: the gemini-3 prefix test is what left
+// every Gemini 4 model without a control, and Gemini 5 must not repeat it.
+export const GEMINI_GEN4_OR_LATER_RE = /^(?:models\/)?gemini-(?:[4-9]|\d{2,})(?:[.\-]|$)/;
+
+/** Google's `thinkingLevel` vocabulary; catalog grades outside it are dropped. */
+export const GEMINI_THINKING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+
+export function isGemini4OrLaterModel(modelId) {
+  return GEMINI_GEN4_OR_LATER_RE.test(lc(modelId));
+}
+
+/**
+ * Levels every Gemini 4+ model accepts, or null for older generations. Used
+ * when the model's own published list is not loaded; the higher grades a model
+ * adds (xhigh) are offered only once its catalog entry says so.
+ */
+export function geminiBaselineThinkingLevels(modelId) {
+  return isGemini4OrLaterModel(modelId) ? ['low', 'medium', 'high'] : null;
+}
+
 // ── DeepSeek ────────────────────────────────────────────────────────────────
 // Family-wide, deliberately. Every model DeepSeek's API serves takes the same
 // `thinking` toggle and `reasoning_effort` (api-docs.deepseek.com/guides/

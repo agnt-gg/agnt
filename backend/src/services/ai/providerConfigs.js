@@ -27,6 +27,9 @@ import {
   effortOptionsFromList,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
+  isGemini4OrLaterModel,
+  geminiBaselineThinkingLevels,
+  GEMINI_THINKING_LEVELS,
   supportsDeepSeekThinkingToggle,
   isGroqGptOssReasoningModel,
   isGroqQwenReasoningModel,
@@ -81,6 +84,7 @@ export {
   isAnthropicAdaptiveThinkingModel,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
+  isGemini4OrLaterModel,
   supportsDeepSeekThinkingToggle,
   isGroqGptOssReasoningModel,
   isGroqQwenReasoningModel,
@@ -2754,6 +2758,31 @@ export function getAnthropicReasoningEfforts(modelId) {
   return efforts;
 }
 
+/**
+ * The `thinkingLevel` values a Gemini 4+ model accepts, weakest first, or null
+ * for models outside that contract. The ONE answer read by both the selector
+ * (getReasoningControl) and the request builder (buildGeminiThinkingConfig).
+ *
+ * The model's published list wins: Google's own catalog entry when present,
+ * else OpenRouter's entry for the same Google model, which is where the
+ * per-model grades (xhigh on neon/hydrogen only) are published. Read by exact
+ * key — a sibling's list would offer a level this model rejects. With neither
+ * loaded, the levels common to the whole generation answer.
+ */
+export function getGeminiThinkingLevels(modelId) {
+  if (!isGemini4OrLaterModel(modelId)) return null;
+  const id = String(modelId).trim().replace(/^models\//i, '');
+
+  const published = [`gemini:${id}`, `openrouter:google/${id}`]
+    .map((key) => dynamicPricingCache.get(key)?.reasoningEfforts)
+    .find((efforts) => Array.isArray(efforts) && efforts.length);
+
+  const source = published || geminiBaselineThinkingLevels(id);
+  const accepted = new Set(source.map((level) => String(level).toLowerCase()));
+  const levels = GEMINI_THINKING_LEVELS.filter((level) => accepted.has(level));
+  return levels.length ? levels : geminiBaselineThinkingLevels(id);
+}
+
 export function getReasoningControl(providerKey, modelId) {
   const lowerProvider = String(providerKey || '').toLowerCase();
   const lowerModel = String(modelId || '').toLowerCase();
@@ -2851,6 +2880,12 @@ export function getReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'gemini' || lowerProvider === 'antigravity') {
+    const thinkingLevels = getGeminiThinkingLevels(modelId);
+    if (thinkingLevels) {
+      const options = effortOptionsFromList(thinkingLevels);
+      return options ? buildReasoningControl('effort', options) : null;
+    }
+
     if (isGemini3ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {
