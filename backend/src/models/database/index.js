@@ -1385,6 +1385,7 @@ function createTables() {
         status TEXT DEFAULT 'fired',
         error TEXT,
         duration_ms INTEGER,
+        output TEXT,
         FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
       )`);
       // Migration: how long a run took (#95). Existing rows stay NULL.
@@ -1394,6 +1395,10 @@ function createTables() {
         } else if (!err) {
           console.log('✓ Added duration_ms column to schedule_runs table');
         }
+      });
+      // Migration: what a run produced (runOutput.js). Existing rows stay NULL.
+      db.run(`ALTER TABLE schedule_runs ADD COLUMN output TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) console.error('Error adding output column to schedule_runs:', err);
       });
       createIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
 

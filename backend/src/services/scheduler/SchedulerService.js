@@ -212,11 +212,13 @@ class SchedulerService {
   static async _runToEnd({ schedule, executor, userId, runId, now, nextRun }) {
     const startedAt = Date.now();
     let runTargetId = null;
+    let output = null;
     let outcome;
     try {
       const result = await executor(schedule.target_id, userId, schedule);
       if (result && typeof result === 'object') {
         runTargetId = result.goalId || result.id || null;
+        output = result.runOutput || null;
       }
       outcome = runOutcome(result);
       // Its target is gone (a deleted goal): stop firing it every day.
@@ -237,6 +239,7 @@ class SchedulerService {
         error: outcome.error,
         runTargetId: runTargetId || schedule.target_id,
         durationMs: Date.now() - startedAt,
+        output,
       }).catch((err) => console.error(`[Scheduler] Failed to record run outcome:`, err.message));
     }
 

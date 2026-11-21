@@ -1,5 +1,6 @@
 import { taskFailureReason, goalEvaluationPasses, taskEvaluationRejection } from './taskOutcome.js';
 import { parseNeedsInput } from './taskReview.js';
+import { summarizeRunOutput } from './runOutput.js';
 import GoalModel from '../../models/GoalModel.js';
 import { databaseRepository } from '../authorization/ScopeRepository.js';
 import { asRecordedRunner } from '../authorization/ResourceCreators.js';
@@ -1339,7 +1340,8 @@ The goal you delegated did not fully pass. Let the user know:
     if (!worked) {
       return { ...(result || {}), goalId, status: 'error', reason: 'no_tasks_ran', error: `No task ran in this run${result?.reason ? ` (${result.reason})` : ''}.` };
     }
-    return result;
+    // The next run resets these tasks, so the run keeps its own copy of what it produced.
+    return { ...(result || {}), goalId, runOutput: summarizeRunOutput(tasks) };
   }
 
   /**

@@ -144,6 +144,21 @@ ScheduleRoutes.get('/:id/runs', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/schedules/:id/runs/:runId
+ScheduleRoutes.get('/:id/runs/:runId', authenticateToken, async (req, res) => {
+  try {
+    const existing = await ScheduleModel.findOne(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Schedule not found' });
+    if (existing.user_id !== req.user.userId) return res.status(403).json({ error: 'Forbidden' });
+    const run = await ScheduleModel.findRun(req.params.id, req.params.runId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    res.json({ success: true, run });
+  } catch (err) {
+    console.error('[Schedule Route] Run detail error:', err);
+    res.status(500).json({ error: 'Failed to fetch the run' });
+  }
+});
+
 // DELETE /api/schedules/:id
 ScheduleRoutes.delete('/:id', authenticateToken, async (req, res) => {
   try {

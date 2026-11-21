@@ -8,6 +8,9 @@ import generateUUID from '../utils/generateUUID.js';
  * SchedulerService ticks every 60s and fires anything where next_run <= now.
  */
 class ScheduleModel {
+  /** How many of a schedule's newest runs keep their output. */
+  static RUN_OUTPUTS_KEPT = 100;
+
   static create({ userId, targetType, targetId, cron, timezone, nextRun, enabled, onMissed, runMode = null, sourceConversationId = null }) {
     const id = generateUUID();
     return new Promise((resolve, reject) => {
@@ -199,12 +202,38 @@ class ScheduleModel {
     });
   }
 
-  /** Close a run row with its outcome. */
-  static finishRun(id, { status, error = null, runTargetId = null, durationMs = null }) {
+  /** Close a run row with its outcome and, when the target reported one, what it produced. */
+  static async finishRun(id, { status, error = null, runTargetId = null, durationMs = null, output = null }) {
+    const changes = await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE schedule_runs SET status = ?, error = ?, run_target_id = ?, duration_ms = ?, output = ? WHERE id = ?`,
+        [status, error, runTargetId, durationMs, output ? JSON.stringify(output) : null, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+    if (output) await ScheduleModel.pruneRunOutputs(id);
+    return changes;
+  }
+
+  /**
+   * Outputs are kept for a schedule's newest runs only; older rows keep their
+   * status, error and duration. Bounds the table for routines that run hourly.
+   */
+  static pruneRunOutputs(runId, keep = ScheduleModel.RUN_OUTPUTS_KEPT) {
     return new Promise((resolve, reject) => {
       db.run(
-        `UPDATE schedule_runs SET status = ?, error = ?, run_target_id = ?, duration_ms = ? WHERE id = ?`,
-        [status, error, runTargetId, durationMs, id],
+        `UPDATE schedule_runs SET output = NULL
+         WHERE schedule_id = (SELECT schedule_id FROM schedule_runs WHERE id = ?)
+           AND output IS NOT NULL
+           AND id NOT IN (
+             SELECT id FROM schedule_runs
+             WHERE schedule_id = (SELECT schedule_id FROM schedule_runs WHERE id = ?)
+             ORDER BY fired_at DESC, rowid DESC LIMIT ?
+           )`,
+        [runId, runId, keep],
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -231,10 +260,26 @@ class ScheduleModel {
     });
   }
 
+  /** One run of a schedule, with what it produced (null when nothing was kept). */
+  static findRun(scheduleId, runId) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT * FROM schedule_runs WHERE id = ? AND schedule_id = ?', [runId, scheduleId], (err, row) => {
+        if (err) return reject(err);
+        if (!row) return resolve(null);
+        let output = null;
+        try { output = row.output ? JSON.parse(row.output) : null; } catch { output = null; }
+        resolve({ ...row, output });
+      });
+    });
+  }
+
+  /** A schedule's runs, newest first, without their outputs (findRun has those). */
   static findRunHistory(scheduleId, limit = 50) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT * FROM schedule_runs WHERE schedule_id = ? ORDER BY fired_at DESC LIMIT ?`,
+        `SELECT id, schedule_id, target_type, target_id, run_target_id, fired_at, status, error, duration_ms,
+                (output IS NOT NULL) AS has_output
+         FROM schedule_runs WHERE schedule_id = ? ORDER BY fired_at DESC, rowid DESC LIMIT ?`,
         [scheduleId, limit],
         (err, rows) => {
           if (err) reject(err);

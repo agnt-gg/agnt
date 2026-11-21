@@ -149,3 +149,42 @@ describe('TaskModel.resetForNewRun', () => {
     expect((await TaskModel.findByGoalId(other))[0].status).toBe('completed');
   });
 });
+
+describe('what a run produced', () => {
+  const OUTPUT = { tasks: [{ title: 'Search', status: 'completed', error: null, content: 'Found 12 stories.', truncated: false, files: [] }] };
+
+  it('Given the target reports its output Then the run keeps it, the history lists it without the body, and the run returns it', async () => {
+    const schedule = await newSchedule();
+    const { runId } = await SchedulerService.fireNow(schedule.id);
+    finishRun.resolve({ goalId: 'goal-fixture', status: 'completed', runOutput: OUTPUT });
+    await settle();
+    const [listed] = await ScheduleModel.findRunHistory(schedule.id);
+    expect(listed).toMatchObject({ id: runId, status: 'completed', has_output: 1 });
+    expect(listed).not.toHaveProperty('output');
+    expect((await ScheduleModel.findRun(schedule.id, runId)).output).toEqual(OUTPUT);
+    expect(await ScheduleModel.findRun('another-schedule', runId)).toBeNull();
+  });
+
+  it('Given a target that reports nothing Then the run has no output', async () => {
+    const schedule = await newSchedule();
+    const { runId } = await SchedulerService.fireNow(schedule.id);
+    finishRun.resolve({ goalId: 'goal-fixture', status: 'completed' });
+    await settle();
+    expect((await ScheduleModel.findRunHistory(schedule.id))[0].has_output).toBe(0);
+    expect((await ScheduleModel.findRun(schedule.id, runId)).output).toBeNull();
+  });
+
+  it('Given more runs than are kept Then only the newest keep their output, and every run stays listed', async () => {
+    const schedule = await newSchedule();
+    const runIds = [];
+    for (let i = 0; i < 4; i++) {
+      const runId = await ScheduleModel.startRun({ scheduleId: schedule.id, targetType: TARGET, targetId: 'goal-fixture' });
+      await run("UPDATE schedule_runs SET fired_at = datetime('now', ?) WHERE id = ?", [`-${10 - i} minutes`, runId]);
+      await ScheduleModel.finishRun(runId, { status: 'completed', output: OUTPUT });
+      runIds.push(runId);
+    }
+    await ScheduleModel.pruneRunOutputs(runIds[3], 2);
+    const history = await ScheduleModel.findRunHistory(schedule.id);
+    expect(history.map((r) => [r.id, r.has_output])).toEqual([[runIds[3], 1], [runIds[2], 1], [runIds[1], 0], [runIds[0], 0]]);
+  });
+});

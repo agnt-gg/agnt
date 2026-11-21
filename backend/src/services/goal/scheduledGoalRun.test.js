@@ -47,14 +47,19 @@ describe('a scheduled run of a goal', () => {
   it('records the task plans, resets the tasks to them and starts the loop fresh, never resuming the last run', async () => {
     const loop = vi.spyOn(TaskOrchestrator, 'executeGoalAutonomous').mockImplementation(async () => {
       calls.push(['loop']);
-      tasks = tasks.map((t) => ({ ...t, status: 'completed', started_at: new Date().toISOString() }));
+      tasks = tasks.map((t) => ({ ...t, title: 'Search', status: 'completed', started_at: new Date().toISOString(), output: { content: 'Found it.' } }));
       return { goalId: 'g', status: 'completed' };
     });
     const result = await TaskOrchestrator.runScheduledGoal('g', 'u');
     expect(calls.map((c) => c[0])).toEqual(['plan', 'reset', 'loop']);
     expect(calls[0]).toEqual(['plan', 'g', 'function']);
     expect(loop).toHaveBeenCalledWith('g', 'u', { freshRun: true });
-    expect(result).toEqual({ goalId: 'g', status: 'completed' });
+    // The run keeps what it produced: the next run resets these tasks.
+    expect(result).toEqual({
+      goalId: 'g',
+      status: 'completed',
+      runOutput: { tasks: [{ title: 'Search', status: 'completed', error: null, content: 'Found it.', truncated: false, files: [] }] },
+    });
     loop.mockRestore();
   });
 
