@@ -166,7 +166,7 @@ describe('canvas sections registry', () => {
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
         'Chat', 'Team', 'Market',
         'Dashboard', 'Goals', 'Activity', 'Files',
-        'Plugins', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
+        'Add-ons', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
         'chat', 'team', 'store',
@@ -374,8 +374,8 @@ describe('canvas sections registry', () => {
     const apps = MAIN_SECTIONS.find((s) => s.id === 'apps');
     expect(apps.group).toBe('BUILD');
     expect(MAIN_SECTIONS.filter((s) => s.group === 'BUILD')[0].id).toBe('apps');
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
-    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['ADD-ONS', 'PLUGIN FORGE']);
+    expect(visibleTabs(apps, 'PluginsScreen').map((t) => t.label)).toEqual(['ADD-ONS', 'PLUGIN FORGE']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
     const market = MAIN_SECTIONS.find((s) => s.id === 'store');
     expect(market.group).toBe('WORK');
@@ -392,11 +392,11 @@ describe('canvas sections registry', () => {
   it('the Plugins nav is one list: Plugins, then Email and Webhooks; Plugin Forge is not a row', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    expect(appsDirectory.map((g) => g.label)).toEqual(['Plugins']);
+    expect(appsDirectory.map((g) => g.label)).toEqual(['Add-ons']);
     const [main] = appsDirectory;
     // Plugins is the default view (one card per thing you connect).
     expect(main.items.map((i) => i.id)).toEqual(['apps', 'email-server', 'webhooks', 'mcp-servers', 'oauth']);
-    expect(main.items[0].label).toBe('Plugins');
+    expect(main.items[0].label).toBe('Add-ons');
     expect(main.items.some((i) => i.screen === 'PluginsScreen' || /forge/i.test(i.label))).toBe(false);
     expect(appsDirectory.flatMap((g) => g.items).map((i) => i.label).join(' ')).not.toMatch(/advanced/i);
     // Embedded (Focused's "Edit integrations") opens the provider editor; the page itself owns Accounts & keys.

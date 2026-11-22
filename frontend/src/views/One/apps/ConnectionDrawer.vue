@@ -5,7 +5,7 @@
       <span>{{ row.appName }} · {{ row.kind }}</span>
       <span v-if="row.ai" class="tag blue">AI model</span>
       <span v-if="row.local" class="tag">On this computer</span>
-      <span v-if="row.fromPlugin" class="tag">Plugin sign-in</span>
+      <span v-if="row.fromPlugin" class="tag">Add-on sign-in</span>
       <span v-if="row.custom" class="tag">Custom app</span>
       <span v-if="row.team" class="tag">Team</span>
     </template>
@@ -28,7 +28,7 @@
         <template v-if="row.appName !== row.name"><dt>App</dt><dd>{{ row.appName }}</dd></template>
         <dt>Connects with</dt><dd>{{ row.kind }}{{ row.local ? ' · on this computer' : '' }}</dd>
         <template v-if="row.identity"><dt>Signed in as</dt><dd class="ellipsis">{{ row.identity }}</dd></template>
-        <template v-if="row.fromPlugin"><dt>Added by</dt><dd>{{ row.fromPlugin }} plugin</dd></template>
+        <template v-if="row.fromPlugin"><dt>Added by</dt><dd>{{ row.fromPlugin }} add-on</dd></template>
         <template v-else-if="row.custom"><dt>Added by</dt><dd>You, as a custom app</dd></template>
         <template v-if="!row.team"><dt>Last checked</dt><dd>{{ row.checked ? formatWhen(row.checked) : '—' }}</dd></template>
         <dt>Access</dt>
@@ -47,7 +47,7 @@
       <div v-if="row.ai" class="dr-card">
         <div class="dr-row">
           <span class="logo sm"><AppsGlyph name="bot" size="xs" /></span>
-          <div class="grow"><strong>Annie and your agents</strong><small>Model keys and sign-ins are managed in Settings › AI models</small></div>
+          <div class="grow"><strong>Annie and your assistants</strong><small>Model keys and sign-ins are managed in Settings › AI models</small></div>
           <button type="button" class="btn sm" data-action="ai-models" @click="emit('act', 'ai-models', row)">Open AI models</button>
         </div>
       </div>
@@ -60,11 +60,11 @@
       <div v-else-if="row.apps.length" class="dr-card">
         <button v-for="app in row.apps" :key="app.name" type="button" class="dr-row" :data-plugin="app.name" @click="emit('act', 'open-plugin', row, app.name)">
           <span class="logo sm"><SvgIcon :name="app.icon" /></span>
-          <div class="grow"><strong>{{ app.label }}</strong><small>{{ plural(app.tools, 'tool') }}</small></div>
+          <div class="grow"><strong>{{ app.label }}</strong><small>{{ plural(app.tools, 'action') }}</small></div>
           <AppsGlyph name="chev" size="sm" />
         </button>
       </div>
-      <p v-else class="muted dr-desc">No plugin uses it yet. Annie can still call it through custom tools.</p>
+      <p v-else class="muted dr-desc">No add-on uses it yet. Annie can still call it through custom actions.</p>
     </section>
 
     <section v-if="row.suggested.length && !row.team" class="dr-sec" data-section="suggested">

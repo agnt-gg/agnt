@@ -11,7 +11,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { reactive } from 'vue';
 
 const CREATED = {
-  'agents/createAgent': { message: 'New agent created', agentId: 'a-new' },
+  'agents/createAgent': { message: 'New assistant created', agentId: 'a-new' },
   'workflows/createWorkflow': { id: 'w-new', name: 'Digest', nodes: [], edges: [] },
   'tools/createTool': { id: 't-new' },
   'skills/createSkill': { skill: { id: 's-new' } },
@@ -93,12 +93,12 @@ describe('Library New', () => {
   });
 });
 
-describe('new agent', () => {
-  it('starts blank, creates on Save, then opens the new agent', async () => {
+describe('new assistant', () => {
+  it('starts blank, creates on Save, then opens the new assistant', async () => {
     const w = mount(FocusedAgentEditor, { props: { agentId: null }, global });
     await flushPromises();
     expect(w.find('.focused-inline-title').element.value).toBe('');
-    expect(w.text()).not.toContain('Delete agent');
+    expect(w.text()).not.toContain('Delete assistant');
     expect(w.text()).not.toContain('Edit in chat');
     expect(w.find('.focused-save-bar').exists()).toBe(false); // nothing to save yet
     await nameAndSave(w, '  Scout ');
@@ -115,7 +115,7 @@ describe('new agent', () => {
     await nameAndSave(w, ' x');
     await w.find('.focused-inline-title').setValue('   ');
     await w.find('.focused-save-bar .focused-primary').trigger('click');
-    expect(w.text()).toContain('Give the agent a name.');
+    expect(w.text()).toContain('Give the assistant a name.');
     w.unmount();
   });
 
@@ -132,7 +132,7 @@ describe('new agent', () => {
   });
 });
 
-describe('new workflow / tool / skill / widget', () => {
+describe('new automation / action / playbook / dashboard card', () => {
   it.each([
     ['workflows', 'workflows/createWorkflow', { name: 'Digest', nodes: [], edges: [] }, 'w-new'],
     ['tools', 'tools/createTool', { title: 'Digest', base: 'AI' }, 't-new'],
@@ -150,7 +150,7 @@ describe('new workflow / tool / skill / widget', () => {
     w.unmount();
   });
 
-  it('regression: a new workflow gets steps from Add step, wired and saved', async () => {
+  it('regression: a new automation gets steps from Add step, wired and saved', async () => {
     const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: null }, global });
     await flushPromises();
     const addStep = async (title) => {
@@ -184,7 +184,7 @@ describe('new workflow / tool / skill / widget', () => {
     w.unmount();
   });
 
-  it('regression: Discard on a stored workflow with steps restores it (its record is reactive)', async () => {
+  it('regression: Discard on a stored automation with steps restores it (its record is reactive)', async () => {
     const stored = { id: 'w1', name: 'Daily', nodes: [{ id: 'a', text: 'Fetch', type: 'x', category: 'action', parameters: { url: 'u', opts: { deep: [1] } } }], edges: [] };
     dispatch.mockImplementation((action) => Promise.resolve(action === 'workflows/fetchWorkflowById' ? JSON.parse(JSON.stringify(stored)) : CREATED[action]));
     const w = mount(FocusedAssetEditor, { props: { kind: 'workflows', itemId: 'w1' }, global });
@@ -218,7 +218,7 @@ describe('new workflow / tool / skill / widget', () => {
   it.each([
     ['JavaScript', 'CODE_JS'],
     ['Python', 'CODE_PYTHON'],
-  ])('regression: a new tool can be a %s tool, with code instead of a prompt', async (label, base) => {
+  ])('regression: a new action can be a %s action, with code instead of a prompt', async (label, base) => {
     const w = mount(FocusedAssetEditor, { props: { kind: 'tools', itemId: null }, global });
     await flushPromises();
     const types = w.findAll('[role="radiogroup"] [role="radio"]');

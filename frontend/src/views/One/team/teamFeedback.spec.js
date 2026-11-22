@@ -3,7 +3,7 @@ import { mentionAt, mentionOptions, nameOf, SPACE_TABS, ANNIE } from './teamMode
 import { teamActivityRows, ACTIVITY_KINDS } from '@/views/Focused/focusedActivity.js';
 
 const people = [{ id: 'me', name: 'Nathan Wilbanks' }, { id: 'p2', name: 'Jess Park' }, { id: 'p3', name: 'Marco Diaz' }];
-const agents = [{ id: 'a1', name: 'Proposal Agent' }];
+const agents = [{ id: 'a1', name: 'Proposal Assistant' }];
 
 describe('@ tagging in a teamspace chat', () => {
   it('finds the @ being typed at the caret, and only at a word start', () => {
@@ -12,8 +12,8 @@ describe('@ tagging in a teamspace chat', () => {
     expect(mentionAt('mail me at a@b.com', 18)).toBe(null);
     expect(mentionAt('hey @jess park', 14)).toEqual({ query: 'jess park', start: 4 });
   });
-  it('offers Annie, teammates (not me) and the teamspace agents, filtered by any word', () => {
-    expect(mentionOptions('', { people, agents, me: 'me' }).map((o) => o.name)).toEqual(['Annie', 'Jess Park', 'Marco Diaz', 'Proposal Agent']);
+  it('offers Annie, teammates (not me) and the teamspace assistants, filtered by any word', () => {
+    expect(mentionOptions('', { people, agents, me: 'me' }).map((o) => o.name)).toEqual(['Annie', 'Jess Park', 'Marco Diaz', 'Proposal Assistant']);
     expect(mentionOptions('pa', { people, agents, me: 'me' }).map((o) => o.name)).toEqual(['Jess Park']);
     expect(mentionOptions('pro', { people, agents, me: 'me' })[0]).toMatchObject({ kind: 'agent', id: 'a1' });
     expect(mentionOptions('ann', { people, agents })[0]).toMatchObject({ kind: 'agent', id: ANNIE.id, hint: 'Assistant' });
@@ -26,7 +26,7 @@ describe('@ tagging in a teamspace chat', () => {
 describe('teamspace tabs', () => {
   it('the board is called Tasks, and Docs is not a tab (docs live in Files)', () => {
     const shown = SPACE_TABS.filter((t) => !t.hidden).map((t) => t.label);
-    expect(shown).toEqual(['Chat', 'Tasks', 'Agents', 'Routines', 'Files']);
+    expect(shown).toEqual(['Chat', 'Tasks', 'Assistants', 'Repeating goals', 'Files']);
   });
 });
 

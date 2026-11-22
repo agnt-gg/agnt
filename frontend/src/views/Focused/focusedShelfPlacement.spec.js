@@ -55,8 +55,8 @@ describe('Library Market shelf placement', () => {
     wrapper.unmount();
   });
 
-  it('places discovery after the count note when the owned agent list is capped', () => {
-    const items = Array.from({ length: 201 }, (_, i) => ({ id: `a${i}`, name: `Agent ${i}` }));
+  it('places discovery after the count note when the owned assistant list is capped', () => {
+    const items = Array.from({ length: 201 }, (_, i) => ({ id: `a${i}`, name: `Assistant ${i}` }));
     const { wrapper } = mountLibrary('agents', items);
     expect(wrapper.findAll('.focused-list > li')).toHaveLength(200);
     const note = wrapper.find('.focused-foot-note');
@@ -73,7 +73,7 @@ describe('Library Market shelf placement', () => {
     wrapper.unmount();
   });
 
-  it.each([['agents', 'Make me an agent that '], ['workflows', 'Make me a workflow that '], ['skills', 'Make me a skill that ']])(
+  it.each([['agents', 'Make me an assistant that '], ['workflows', 'Make me an automation that '], ['skills', 'Make me a playbook that ']])(
     'an empty %s tab says what goes there and starts it by asking Annie',
     async (tab, prompt) => {
       const { wrapper, nav } = mountLibrary(tab, []);
@@ -104,7 +104,7 @@ describe('Library Market shelf placement', () => {
     expect(t.match(/<MarketplaceShelf/g)).toHaveLength(1);
   });
 
-  it('Studio desktop discovery follows the owned-agent grid and mobile uses the collection footer', () => {
+  it('Studio desktop discovery follows the owned-assistant grid and mobile uses the collection footer', () => {
     const t = templateOf('../Terminal/CenterPanel/screens/Agents/Agents.vue');
     const desktop = t.slice(t.indexOf('class="desktop-view-container"'));
     const shelf = desktop.indexOf('v-if="!ownsNothing"');

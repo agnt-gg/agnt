@@ -5,6 +5,9 @@
  * rather than shown with zeros.
  */
 
+/** What a person calls each kind of thing they built (the data keys stay as they are). */
+const BUILT_WORDS = Object.freeze({ agents: ['assistant', 'assistants'], workflows: ['automation', 'automations'], tools: ['action', 'actions'], skills: ['playbook', 'playbooks'], widgets: ['dashboard card', 'dashboard cards'], plugins: ['add-on', 'add-ons'] });
+
 export const MONTHS = Object.freeze(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']);
 const MON = MONTHS.map((m) => m.slice(0, 3));
 const WEEKDAYS = Object.freeze(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
@@ -161,8 +164,8 @@ export function deriveYear(data) {
   let persona = null;
   if (conversation || automation) {
     persona = conversation >= automation
-      ? { name: 'Conductor', line: `You lead in conversation and let the orchestra play: ${pct(conversation)}% of your model calls came from chats with Annie, ${pct(automation)}% from workflows and goals.` }
-      : { name: 'Operator', line: `You build things that run without you: ${pct(automation)}% of your model calls came from workflows and goals, ${pct(conversation)}% from chats with Annie.` };
+      ? { name: 'Conductor', line: `You lead in conversation and let the orchestra play: ${pct(conversation)}% of your model calls came from chats with Annie, ${pct(automation)}% from automations and goals.` }
+      : { name: 'Operator', line: `You build things that run without you: ${pct(automation)}% of your model calls came from automations and goals, ${pct(conversation)}% from chats with Annie.` };
   }
 
   const built = data.built || {};
@@ -268,8 +271,8 @@ export function shelfGeometry(n) {
 /** SkillForge's year as three clusters of dots: trials, kept, promoted. */
 export function funnelGeometry({ skillTrials, skillsKept, skillsPromoted }) {
   const groups = [
-    { n: skillTrials, kind: 'trial', top: formatCount(skillTrials), sub: 'skill trials' },
-    { n: skillsKept, kind: 'kept', top: formatCount(skillsKept), sub: 'skills kept' },
+    { n: skillTrials, kind: 'trial', top: formatCount(skillTrials), sub: 'playbook trials' },
+    { n: skillsKept, kind: 'kept', top: formatCount(skillsKept), sub: 'playbooks kept' },
     { n: skillsPromoted, kind: 'promoted', top: formatCount(skillsPromoted), sub: 'promoted' },
   ];
   const cell = 4.2;
@@ -368,9 +371,9 @@ export function buildCards(data) {
   const withYear = (iso) => (iso.startsWith(`${data.year}-`) ? longDate(iso) : `${longDate(iso)}, ${iso.slice(0, 4)}`);
   let sentence = `Your longest run this year went from ${longDate(y.streak.start)} to ${longDate(y.streak.end)}.`;
   if (y.streak.current && y.streak.start <= data.window.from) {
-    sentence = `You and your agents haven’t missed a day since ${withYear(y.streak.start)}. That’s every day of ${data.year}${data.window.complete ? '' : ' so far'}.`;
+    sentence = `You and your assistants haven’t missed a day since ${withYear(y.streak.start)}. That’s every day of ${data.year}${data.window.complete ? '' : ' so far'}.`;
   } else if (y.streak.current) {
-    sentence = `You and your agents have shown up every day since ${withYear(y.streak.start)}.`;
+    sentence = `You and your assistants have shown up every day since ${withYear(y.streak.start)}.`;
   }
   add({
     id: 'streak',
@@ -453,7 +456,7 @@ export function buildCards(data) {
   }
 
   if (y.builtKinds.length) {
-    const parts = (y.peakBuild?.parts || []).map((p) => `${formatCount(p.n)} ${p.n === 1 ? p.kind.replace(/s$/, '') : p.kind}`);
+    const parts = (y.peakBuild?.parts || []).map((p) => { const [one, many] = BUILT_WORDS[p.kind] || [p.kind.replace(/s$/, ''), p.kind]; return `${formatCount(p.n)} ${p.n === 1 ? one : many}`; });
     add({
       id: 'built',
       tone: 'dark',

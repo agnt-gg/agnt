@@ -18,7 +18,7 @@
       <div class="wr-grow"></div>
       <p class="wr-kicker wr-rv" style="--delay: 250">AGNT · Year in review</p>
       <h2 class="wr-display wr-rv" style="--delay: 380">{{ card.year }},<br /><span class="wr-accent">wrapped.</span></h2>
-      <p class="wr-lead wr-rv" style="--delay: 560">Annie kept count. Here’s what you and your agents did this year.</p>
+      <p class="wr-lead wr-rv" style="--delay: 560">Annie kept count. Here’s what you and your assistants did this year.</p>
       <p class="wr-fine wr-rv" style="--delay: 720">{{ card.from }} – {{ card.through }}, {{ card.year }}</p>
     </template>
 
@@ -43,7 +43,7 @@
     <template v-else-if="card.id === 'volume'">
       <p class="wr-kicker wr-rv" style="--delay: 0">Runs</p>
       <p class="wr-huge wr-rv wr-pop" style="--delay: 100"><WrappedCount :value="card.runs" :active="active" :still="still" /></p>
-      <p class="wr-lead wr-rv" style="--delay: 240">workflow and agent runs<template v-if="card.calls">, and <b class="wr-accent">{{ card.calls }}</b> model calls across <b class="wr-accent">{{ card.models }}</b> models and <b class="wr-accent">{{ card.providers }}</b> providers</template>.</p>
+      <p class="wr-lead wr-rv" style="--delay: 240">automation and assistant runs<template v-if="card.calls">, and <b class="wr-accent">{{ card.calls }}</b> model calls across <b class="wr-accent">{{ card.models }}</b> models and <b class="wr-accent">{{ card.providers }}</b> providers</template>.</p>
       <div class="wr-grow"></div>
       <svg class="wr-mdots wr-rv" style="--delay: 400" :viewBox="`0 0 ${card.chart.width} ${card.chart.height}`" aria-hidden="true">
         <circle v-for="(d, i) in card.chart.dots" :key="i" class="wr-md" :class="d.kind ? `is-${d.kind}` : ''" :cx="d.cx" :cy="d.cy" r="3.8" :style="{ '--i': d.k }" />
@@ -60,7 +60,7 @@
       <p class="wr-kicker wr-rv" style="--delay: 0">Tokens</p>
       <p class="wr-mega is-wide wr-rv wr-pop" style="--delay: 100">{{ card.tokens }}</p>
       <p class="wr-title wr-rv" style="--delay: 240">tokens, read and written.</p>
-      <p v-if="card.written" class="wr-lead wr-rv" style="--delay: 360">Your agents wrote <b>{{ card.written }}</b> of them: about <b>{{ card.books }}</b> of <i>War and Peace</i>.</p>
+      <p v-if="card.written" class="wr-lead wr-rv" style="--delay: 360">Your assistants wrote <b>{{ card.written }}</b> of them: about <b>{{ card.books }}</b> of <i>War and Peace</i>.</p>
       <div class="wr-grow"></div>
       <svg v-if="card.shelf" class="wr-shelf wr-rv" style="--delay: 420" :viewBox="`-4 0 ${card.shelf.width} ${card.shelf.height}`" aria-hidden="true">
         <rect v-for="s in card.shelf.spines" :key="s.k" class="wr-spine" :x="s.x" :y="s.y" :width="s.w" :height="s.h" rx="1.3" :style="{ '--i': s.k }" />
@@ -137,7 +137,7 @@
       <p class="wr-kicker wr-rv" style="--delay: 0">Getting better on their own</p>
       <p class="wr-mega wr-accent wr-rv wr-pop" style="--delay: 100"><WrappedCount :value="card.applied" :active="active" :still="still" /></p>
       <p class="wr-title wr-rv" style="--delay: 240">improvements applied.</p>
-      <p class="wr-body wr-rv" style="--delay: 380">Your agents learned from their own runs: {{ card.applied.toLocaleString('en-US') }} changes went in, {{ card.rejected }} were turned down.</p>
+      <p class="wr-body wr-rv" style="--delay: 380">Your assistants learned from their own runs: {{ card.applied.toLocaleString('en-US') }} changes went in, {{ card.rejected }} were turned down.</p>
       <div class="wr-grow"></div>
       <svg v-if="card.funnel" class="wr-funnel wr-rv" style="--delay: 420" :viewBox="`0 0 ${card.funnel.width} ${card.funnel.height}`" aria-hidden="true">
         <circle v-for="(d, i) in card.funnel.dots" :key="i" :class="`is-${d.kind}`" :cx="d.cx" :cy="d.cy" r="1.45" :style="{ '--i': d.k }" />

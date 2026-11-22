@@ -17,7 +17,7 @@ import TeamAvatar from './TeamAvatar.vue';
 import { ago } from './teamModel.js';
 
 // Review, never Approve: the decision is made in the chat, where the whole card is on screen.
-const KIND_SENTENCE = Object.freeze({ plan: 'Plan to approve', review: 'Something to check', run: 'Run to approve', final: 'Final review', routine: 'Routine to approve' });
+const KIND_SENTENCE = Object.freeze({ plan: 'Plan to approve', review: 'Something to check', run: 'Run to approve', final: 'Final review', routine: 'Repeating goal to approve' });
 const props = defineProps({ checkpoint: { type: Object, required: true } });
 const ctx = inject('teamCtx');
 const open = () => ctx.openCheckpoint(props.checkpoint);

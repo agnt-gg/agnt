@@ -4,7 +4,7 @@
     <div class="focused-edit-block-head"><h3>Team files with AI</h3></div>
     <div class="focused-edit-card">
       <div class="focused-edit-row">
-        <span class="focused-edit-label">Annie and agents</span>
+        <span class="focused-edit-label">Annie and assistants</span>
         <CustomSelect
           :model-value="setting.mode"
           :options="OPTIONS"
@@ -14,7 +14,7 @@
         />
       </div>
       <p class="tf-muted">
-        Their file tools see each teamspace you are in as Teamspaces/&lt;name&gt; in your files, with what you can do there:
+        Their file actions see each teamspace you are in as Teamspaces/&lt;name&gt; in your files, with what you can do there:
         people who can edit a teamspace can change its files, viewers only read them. Your own files stay private.
         <template v-if="!setting.canChange"> Only the team owner can change this.</template>
       </p>

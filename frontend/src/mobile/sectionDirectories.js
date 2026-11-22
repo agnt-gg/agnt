@@ -159,17 +159,17 @@ export const settingsDirectory = [
 // The page Settings opens on: the first row of its nav (AI Models).
 export const DEFAULT_SETTINGS_SECTION = settingsDirectory[0].items[0].id;
 
-// Plugins: the catalog and connection services share one navigation list.
-// Plugin Forge is a toolbar tab beside Plugins (canvas/sections.js), not a row.
+// Add-ons: the catalog and connection services share one navigation list.
+// Plugin Forge is a toolbar tab beside Add-ons (canvas/sections.js), not a row.
 // Persisted section IDs stay unchanged; model connections live in Settings.
 export const appsDirectory = [
   {
-    "label": "Plugins",
+    "label": "Add-ons",
     "items": [
       {
         "id": "apps",
         "icon": "fas fa-th-large",
-        "label": "Plugins",
+        "label": "Add-ons",
         "description": "Everything you installed and connected"
       },
       {

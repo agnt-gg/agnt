@@ -28,7 +28,7 @@ const column = (w, id) => w.get(`[data-column="${id}"]`);
 describe('the team board shows flow', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('a full Review says agents wait, how many reviews make room, and opens the oldest review', async () => {
+  it('a full Review says assistants wait, how many reviews make room, and opens the oldest review', async () => {
     const { wrapper } = mountBoard({
       tasks: [
         card({ id: 'newer', status: 'review', agentState: 'waiting', statusChangedAt: old(2) }),
@@ -40,7 +40,7 @@ describe('the team board shows flow', () => {
     await flushPromises();
     const review = column(wrapper, 'review');
     expect(review.get('[data-testid="limit-review"]').text()).toBe('2 of 2');
-    expect(review.text()).toContain('Agents wait until Review has fewer than 2 cards: 1 review makes room.');
+    expect(review.text()).toContain('Assistants wait until Review has fewer than 2 cards: 1 review makes room.');
     await review.get('.limit-note button').trigger('click');
     expect(wrapper.emitted('open-task')[0]).toEqual(['oldest']);
     // The oldest review shows its age in amber.
@@ -48,7 +48,7 @@ describe('the team board shows flow', () => {
     wrapper.unmount();
   });
 
-  it('cards say why an agent waits or stopped, which card goes next, and how a result was accepted', async () => {
+  it('cards say why an assistant waits or stopped, which card goes next, and how a result was accepted', async () => {
     const { wrapper } = mountBoard({
       tasks: [
         card({ id: 'second', agentState: 'queued', stopReason: 'In progress is full', agentStateAt: old(1) }),
@@ -62,7 +62,7 @@ describe('the team board shows flow', () => {
     const todo = column(wrapper, 'todo').text();
     expect(todo).toContain('Waiting: In progress is full');
     expect(todo).toContain('Stopped: not published here yet');
-    const nextUp = wrapper.findAll('.tcard').filter((c) => c.text().includes('Next up for agents'));
+    const nextUp = wrapper.findAll('.tcard').filter((c) => c.text().includes('Next up for assistants'));
     expect(nextUp.map((c) => c.get('.tcard-title').text())).toEqual(['first']);
     const done = column(wrapper, 'done').text();
     expect(done).toContain('Accepted first time');

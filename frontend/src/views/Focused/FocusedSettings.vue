@@ -38,7 +38,7 @@
     <section id="settings-model" class="focused-edit-block" data-section="providers">
       <div class="focused-edit-block-head">
         <h3>AI model</h3>
-        <span class="focused-edit-hint">Used unless a chat or an agent picks another.</span>
+        <span class="focused-edit-hint">Used unless a chat or an assistant picks another.</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">

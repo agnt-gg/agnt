@@ -14,10 +14,10 @@ const runs = [
 describe('activityRows', () => {
   it('lists every kind of run, newest first, named for what ran, and where each one opens', () => {
     expect(activityRows(runs).map((r) => [r.kind, r.title, r.detail, r.status.label, r.target])).toEqual([
-      ['workflow', 'Daily digest', '4 steps', 'Running', { type: 'library', tab: 'workflows', id: 'wf1' }],
+      ['workflow', 'Daily digest', '4 steps', 'In progress', { type: 'library', tab: 'workflows', id: 'wf1' }],
       ['agent', 'Inbox Helper', '', 'Failed', { type: 'library', tab: 'agents', id: 'a9' }],
       ['chat', 'Chat with Annie', '', 'Done', { type: 'conversation', id: 'c1' }],
-      ['chat', 'Building a workflow', '', 'Done', { type: 'conversation', id: 'c2' }],
+      ['chat', 'Building an automation', '', 'Done', { type: 'conversation', id: 'c2' }],
       ['routine', 'Search agnt.gg', '1 task', 'Needs a look', { type: 'routines' }],
     ]);
   });
@@ -39,13 +39,13 @@ describe('activityRows', () => {
     expect(activityGroups(noReply, new Date('2026-11-21T15:00:00Z').getTime()).needs).toEqual([]);
   });
   it('says statuses in plain words', () => {
-    expect(['executing', 'error', 'cancelled', 'completed'].map((s) => statusOf(s).label)).toEqual(['Running', 'Failed', 'Stopped', 'Done']);
+    expect(['executing', 'error', 'cancelled', 'completed'].map((s) => statusOf(s).label)).toEqual(['In progress', 'Failed', 'Stopped', 'Done']);
   });
 });
 
 // 2026-10-23: a run opens in full. Shapes are fetchExecutionDetails'.
 describe('activityDetail', () => {
-  it('a chat or agent run: what was asked, the answer, each tool call with its input and output, and usage', () => {
+  it('a chat or assistant run: what was asked, the answer, each action call with its input and output, and usage', () => {
     const v = activityDetail({
       initialPrompt: 'Find AI news', finalResponse: 'Here are 3 stories', startTime: '2026-10-23T10:00:00Z', endTime: '2026-10-23T10:00:42Z',
       provider: 'openai-codex', model: 'gpt-6.1', inputTokens: 1000, outputTokens: 234, estimatedCost: 0.0123,

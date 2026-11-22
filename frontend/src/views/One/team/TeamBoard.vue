@@ -4,7 +4,7 @@
       <div class="seg" role="group" aria-label="Show">
         <button v-for="f in FILTERS" :key="f.id" type="button" :class="{ 'on': filter === f.id }" @click="filter = f.id">{{ f.label }}</button>
       </div>
-      <span style="font-size: 12.5px; color: var(--text-tertiary)">Drag cards between columns · assign to a person or an agent</span>
+      <span style="font-size: 12.5px; color: var(--text-tertiary)">Drag cards between columns · assign to a person or an assistant</span>
       <span class="fill"></span>
       <button v-if="canWrite" type="button" class="primary" @click="adding = 'todo'"><MkIcon name="plus" size="sm" />New task</button>
     </div>
@@ -39,7 +39,7 @@
                 <output :data-testid="`limit-draft-${column.id}`">{{ draft }}</output>
                 <button type="button" class="btn sm" :disabled="draft >= 99" aria-label="Raise the limit" @click="draft++">+</button>
               </div>
-              <p class="limit-pop-help">{{ column.id === 'review' ? 'When Review is full, agents finish the card they are on but start no new ones.' : 'When In progress is full, agents start no new cards.' }}</p>
+              <p class="limit-pop-help">{{ column.id === 'review' ? 'When Review is full, assistants finish the card they are on but start no new ones.' : 'When In progress is full, assistants start no new cards.' }}</p>
               <div class="row-gap">
                 <button type="button" class="primary sm" @click="saveLimit(column.id, draft)">Save limit</button>
                 <button v-if="limits[column.id]" type="button" class="btn ghost sm" @click="saveLimit(column.id, null)">Remove limit</button>
@@ -48,7 +48,7 @@
           </span>
         </div>
         <div v-if="loadOf(column.id).full" class="limit-note" role="status">
-          Agents wait until {{ column.label }} has fewer than {{ limits[column.id] }} cards<template v-if="column.id === 'review'">: {{ loadOf('review').toFree === 1 ? '1 review makes room' : plural(loadOf('review').toFree, 'review') + ' make room' }}</template>.
+          Assistants wait until {{ column.label }} has fewer than {{ limits[column.id] }} cards<template v-if="column.id === 'review'">: {{ loadOf('review').toFree === 1 ? '1 review makes room' : plural(loadOf('review').toFree, 'review') + ' make room' }}</template>.
           <button v-if="column.id === 'review' && reviewQueue.length" type="button" class="btn sm" @click="$emit('open-task', reviewQueue[0].id)">Open the oldest</button>
         </div>
         <button
@@ -71,7 +71,7 @@
           <div v-if="hasStateRow(t)" class="tcard-meta">
             <template v-if="t.agentState === 'running'"><span class="pulse"></span>working</template>
             <span v-else-if="cardStateLine(t)" class="tag" :class="cardStateLine(t).tone">{{ cardStateLine(t).label }}</span>
-            <span v-if="t.id === nextUpId" class="tag blue">Next up for agents</span>
+            <span v-if="t.id === nextUpId" class="tag blue">Next up for assistants</span>
             <span v-if="showsAge(t)" class="age" :class="{ 'is-warn': ageOf(t).warn }">{{ ageOf(t).label }} in {{ column.label }}</span>
             <span v-if="reviewOutcome(t)" class="tag" :class="reviewOutcome(t).tone">{{ reviewOutcome(t).label }}</span>
           </div>
@@ -92,7 +92,7 @@ import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { teamApi } from './useTeam.js';
 import { TASK_STATUSES, filterTasks, nameOf, plural, cardStateLine, timeInColumn, reviewOutcome, nextUpTaskId, columnLoad } from './teamModel.js';
 
-const FILTERS = [{ id: 'all', label: 'All' }, { id: 'mine', label: 'Mine' }, { id: 'agents', label: 'Agents' }];
+const FILTERS = [{ id: 'all', label: 'All' }, { id: 'mine', label: 'Mine' }, { id: 'agents', label: 'Assistants' }];
 // Columns that can carry a work limit (the server holds agent starts when one is full).
 const LIMITED = ['doing', 'review'];
 const NO_LIMITS = Object.freeze({ doing: null, review: null });

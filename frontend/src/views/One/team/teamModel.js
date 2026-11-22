@@ -25,8 +25,8 @@ export const SPACE_TABS = Object.freeze([
   { id: 'chat', label: 'Chat', icon: 'chats' },
   { id: 'board', label: 'Tasks', icon: 'board' },
   { id: 'docs', label: 'Docs', icon: 'doc', hidden: true },
-  { id: 'agents', label: 'Agents', icon: 'bot' },
-  { id: 'routines', label: 'Routines', icon: 'bolt' },
+  { id: 'agents', label: 'Assistants', icon: 'bot' },
+  { id: 'routines', label: 'Repeating goals', icon: 'bolt' },
   { id: 'files', label: 'Files', icon: 'file' },
   { id: 'people', label: 'People', icon: 'users', hidden: true },
 ]);
@@ -37,11 +37,11 @@ export const VIEWS = Object.freeze(['home', 'inbox', 'space', 'mine', 'doc', 'ag
  * Files is the workspace on disk, browsed a folder at a time (`dir`).
  */
 export const LIBRARY_TABS = Object.freeze([
-  { id: 'agents', label: 'Agents', icon: 'bot', asset: 'agents' },
-  { id: 'workflows', label: 'Workflows', icon: 'bolt', asset: 'workflows' },
-  { id: 'tools', label: 'Tools', icon: 'pen', asset: 'tools' },
-  { id: 'skills', label: 'Skills', icon: 'library', asset: 'skills' },
-  { id: 'widgets', label: 'Widgets', icon: 'board', asset: 'widgets' },
+  { id: 'agents', label: 'Assistants', icon: 'bot', asset: 'agents' },
+  { id: 'workflows', label: 'Automations', icon: 'bolt', asset: 'workflows' },
+  { id: 'tools', label: 'Actions', icon: 'pen', asset: 'tools' },
+  { id: 'skills', label: 'Playbooks', icon: 'library', asset: 'skills' },
+  { id: 'widgets', label: 'Dashboard cards', icon: 'board', asset: 'widgets' },
   { id: 'files', label: 'Files', icon: 'file' },
   { id: 'market', label: 'Market', icon: 'share' },
 ]);
@@ -100,7 +100,7 @@ export function mentionOptions(query, { people = [], agents = [], me = null } = 
   const all = [
     { kind: 'agent', id: ANNIE.id, name: ANNIE.name, hint: 'Assistant' },
     ...people.filter((p) => p.id !== me).map((p) => ({ kind: 'person', id: p.id, name: p.name, hint: 'Teammate' })),
-    ...agents.map((a) => ({ kind: 'agent', id: a.id, name: a.name, hint: 'Agent' })),
+    ...agents.map((a) => ({ kind: 'agent', id: a.id, name: a.name, hint: 'Assistant' })),
   ];
   return all.filter((o) => !q || o.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) || o.name.toLowerCase().startsWith(q)).slice(0, 8);
 }
@@ -170,7 +170,7 @@ export function toPeople(members = [], me = null) {
 export function nameOf(ref, { people = [], agents = [], me = null } = {}) {
   if (!ref) return 'Unassigned';
   if (ref.kind === 'agent' && ref.id === ANNIE.id) return ANNIE.name;
-  if (ref.kind === 'agent') return agents.find((a) => a.id === ref.id)?.name || 'Agent';
+  if (ref.kind === 'agent') return agents.find((a) => a.id === ref.id)?.name || 'Assistant';
   if (ref.kind === 'system') return 'AGNT';
   if (ref.id === me) return 'You';
   return people.find((p) => p.id === ref.id)?.first || 'Teammate';
@@ -446,7 +446,7 @@ export function teamFlowLine(flow) {
   if (flow.toReview) parts.push(`${flow.toReview} to review`);
   if (flow.waitingForRoom) parts.push(`${flow.waitingForRoom} waiting for room`);
   if (flow.firstTimeRate !== null) parts.push(`${flow.firstTimeRate}% accepted first time`);
-  const text = parts.join(' · ') || (flow.open ? `${plural(flow.open, 'open card')}, none with an agent` : 'Nothing in flight');
+  const text = parts.join(' · ') || (flow.open ? `${plural(flow.open, 'open card')}, none with an assistant` : 'Nothing in flight');
   const tag = flow.stopped ? { label: `${flow.stopped} stopped`, tone: 'amber' }
     : flow.atLimit ? { label: 'At its limit', tone: 'amber' }
     : flow.working ? { label: 'Flowing', tone: 'green' }

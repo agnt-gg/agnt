@@ -1,7 +1,7 @@
 <template>
   <!-- The approved mockup's agent page, on the real agent. -->
   <div class="content">
-    <div v-if="!agent" class="page"><p class="mk-muted">{{ loading ? 'Loading…' : 'That agent is not in this space.' }}</p></div>
+    <div v-if="!agent" class="page"><p class="mk-muted">{{ loading ? 'Loading…' : 'That assistant is not in this space.' }}</p></div>
     <div v-else class="page">
       <div class="page-head">
         <div class="who" style="gap: 16px">
@@ -9,7 +9,7 @@
           <div>
             <h1>{{ agent.name }}</h1>
             <p>{{ agent.description || 'No description yet.' }}</p>
-            <div class="row-gap" style="margin-top: 8px"><span class="tag">Draft · only you</span><span class="tag">{{ (agent.assignedTools || []).length }} tools</span><span v-if="agent.model" class="tag">{{ agent.model }}</span></div>
+            <div class="row-gap" style="margin-top: 8px"><span class="tag">Draft · only you</span><span class="tag">{{ (agent.assignedTools || []).length }} actions</span><span v-if="agent.model" class="tag">{{ agent.model }}</span></div>
           </div>
         </div>
         <div class="row-gap">
@@ -21,10 +21,10 @@
         <div>
           <label class="lbl">Instructions</label>
           <textarea v-model="instructions" class="field" rows="8" aria-label="Instructions" @change="saveInstructions"></textarea>
-          <label class="lbl">Tools</label>
+          <label class="lbl">Actions</label>
           <div class="chips">
             <button v-for="t in agent.assignedTools || []" :key="t" type="button" class="chip" style="border-color: var(--pink)" v-tooltip="'Remove'" @click="removeTool(t)"><MkIcon name="check" />{{ toolName(t) }}</button>
-            <button type="button" class="chip" @click="openFull"><MkIcon name="plus" />Add a tool</button>
+            <button type="button" class="chip" @click="openFull"><MkIcon name="plus" />Add an action</button>
           </div>
           <label class="lbl">Runs with</label>
           <div class="banner" style="margin: 0"><MkIcon name="plug" size="sm" /><span>Your own connections. Nobody else can trigger it.</span></div>
@@ -55,17 +55,17 @@ const agent = computed(() => (store.getters['agents/allAgents'] || []).find((a) 
 const instructions = ref('');
 const draft = ref('');
 const loading = ref(true);
-const toolName = (t) => (typeof t === 'string' ? t : t?.name || t?.title || t?.id || 'Tool');
+const toolName = (t) => (typeof t === 'string' ? t : t?.name || t?.title || t?.id || 'Action');
 
 watch(agent, (a) => { instructions.value = a?.systemPrompt || ''; }, { immediate: true });
 async function save(patch, message) {
   try { await store.dispatch('agents/updateAgent', { ...agent.value, ...patch }); ctx.toast(message); } catch (e) { ctx.toast('Couldn’t save. ' + (e?.message || e)); }
 }
 const saveInstructions = () => save({ systemPrompt: instructions.value }, 'Instructions saved');
-const removeTool = (t) => save({ assignedTools: (agent.value.assignedTools || []).filter((x) => x !== t) }, 'Tool removed');
+const removeTool = (t) => save({ assignedTools: (agent.value.assignedTools || []).filter((x) => x !== t) }, 'Action removed');
 const openFull = () => ctx.openLibrary('agents', String(agent.value.id));
 function tryIt(text) {
-  ctx.ask(`Use my agent “${agent.value.name}”${text ? ' to: ' + text : ': '}`);
+  ctx.ask(`Use my assistant “${agent.value.name}”${text ? ' to: ' + text : ': '}`);
   draft.value = '';
 }
 onMounted(async () => {

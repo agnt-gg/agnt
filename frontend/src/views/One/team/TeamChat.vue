@@ -1,12 +1,12 @@
 <template>
   <div class="chat-wrap">
     <div ref="logRef" class="log" aria-live="polite">
-      <p v-if="!loading && !messages.length" class="empty">No messages yet. Say hello, or @mention an agent to hand it work.</p>
+      <p v-if="!loading && !messages.length" class="empty">No messages yet. Say hello, or @mention an assistant to hand it work.</p>
       <div v-for="m in shown" :key="m.id" class="msg" :class="{ 'is-live': m.live }" tabindex="-1" :data-message="m.id">
         <TeamAvatar :who="m.author" :label="displayName(m.author)" size="lg" />
         <div class="msg-body">
           <div class="msg-name">
-            {{ displayName(m.author) }}<span v-if="m.author.kind === 'agent'" class="tag pink" style="margin-left: 6px">Agent</span><span class="msg-time">{{ m.live ? 'writing…' : ago(m.createdAt) }}</span>
+            {{ displayName(m.author) }}<span v-if="m.author.kind === 'agent'" class="tag pink" style="margin-left: 6px">Assistant</span><span class="msg-time">{{ m.live ? 'writing…' : ago(m.createdAt) }}</span>
           </div>
           <!-- The main chat's own renderer: markdown, code, tables, images, tool cards, streaming. -->
           <MessageItem
@@ -35,7 +35,7 @@
           <TeamAvatar :who="{ kind: o.kind, id: o.id }" :label="o.name" size="sm" /><span class="mk-mentions-n">{{ o.name }}</span><span class="mk-mentions-h">{{ o.hint }}</span>
         </li>
       </ul>
-      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName} — @mention a teammate, an agent or Annie`" aria-label="Message" @keydown="onKey" @input="onInput" @click="onInput" @blur="picker.open = false"></textarea>
+      <textarea ref="inputRef" v-model="draft" rows="1" :placeholder="`Message ${spaceName} — @mention a teammate, an assistant or Annie`" aria-label="Message" @keydown="onKey" @input="onInput" @click="onInput" @blur="picker.open = false"></textarea>
       <div class="composer-row">
         <button v-for="a in chips" :key="a.id" type="button" class="mention-chip" @click="insert(a.name)"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
         <button class="send" type="submit" data-tour-id="team-send" :disabled="!draft.trim() || sending" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>

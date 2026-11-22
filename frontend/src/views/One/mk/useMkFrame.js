@@ -117,7 +117,7 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
     return undefined;
   }
 
-  const LABELS = Object.freeze({ home: 'Home', inbox: 'Home', agents: 'Agents', library: 'Library', members: 'Members', scheduled: 'Goals', goals: 'Goals', activity: 'Activity', settings: 'Settings', market: 'Market', connectors: 'Apps', memory: 'Memories' });
+  const LABELS = Object.freeze({ home: 'Home', inbox: 'Home', agents: 'Assistants', library: 'Library', members: 'Members', scheduled: 'Goals', goals: 'Goals', activity: 'Activity', settings: 'Settings', market: 'Market', connectors: 'Apps', memory: 'Memories' });
   // Every page names itself in its own heading; the top bar shows a trail only
   // when there is somewhere to step back to (Teamspaces › Product).
   const crumbs = computed(() => {
@@ -129,14 +129,14 @@ export function useMkFrame({ store, page, location, screenName, teamState, nav }
       if (view === 'space') return [{ label: 'Teamspaces', go: () => team('home') }, { label: s ? spaceEmoji(s) + ' ' + s.name : 'Teamspace' }];
       if (view === 'doc') return [{ label: s ? s.name : 'Teamspace', go: () => team('space', { space, tab: 'files' }) }, { label: 'File' }];
       if (view === 'mine') return [{ label: 'My tasks' }];
-      if (view === 'agents') return [{ label: 'Library', go: () => team('library') }, { label: 'Agents' }];
+      if (view === 'agents') return [{ label: 'Library', go: () => team('library') }, { label: 'Assistants' }];
       if (view === 'agent') {
         const agent = (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === String(item));
-        return [{ label: 'Agents', go: () => team('agents') }, { label: agent?.name || 'Agent' }];
+        return [{ label: 'Assistants', go: () => team('agents') }, { label: agent?.name || 'Assistant' }];
       }
       return [{ label: LABELS[view] || 'Home' }];
     }
-    if (p === 'scheduled' && (loc().item || loc().isNew)) return [{ label: 'Goals', go: () => nav.go({ page: 'goals' }) }, { label: loc().isNew ? 'New routine' : 'Routine' }];
+    if (p === 'scheduled' && (loc().item || loc().isNew)) return [{ label: 'Goals', go: () => nav.go({ page: 'goals' }) }, { label: loc().isNew ? 'New repeating goal' : 'Repeating goal' }];
     // A run opens with its own way back to Activity.
     if (p === 'activity' && loc().item) return [{ label: 'Activity' }];
     if (p === 'activity') return [{ label: 'Home', go: () => team('home') }, { label: 'Activity' }];

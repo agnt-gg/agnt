@@ -55,11 +55,11 @@ describe('Canonical Plugins and Plugin Forge routes', () => {
 describe('Plugin terminology across navigation surfaces', () => {
   it('shares Plugin labels while keeping saved navigation IDs stable', () => {
     const section = ALL_SECTIONS.find(s => s.id === 'apps');
-    expect(section.label).toBe('Plugins');
-    expect(section.screens.map(s => s.label)).toEqual(['PLUGINS', 'PLUGIN FORGE']);
-    expect(appsDirectory[0].label).toBe('Plugins');
-    expect(appsDirectory[0].items.find(i => i.id === 'apps').label).toBe('Plugins');
+    expect(section.label).toBe('Add-ons');
+    expect(section.screens.map(s => s.label)).toEqual(['ADD-ONS', 'PLUGIN FORGE']);
+    expect(appsDirectory[0].label).toBe('Add-ons');
+    expect(appsDirectory[0].items.find(i => i.id === 'apps').label).toBe('Add-ons');
     expect(appsDirectory[0].items.find(i => i.id === 'plugins')).toBeUndefined();
-    expect(FOCUSED_PAGES.connectors.title).toBe('Plugins');
+    expect(FOCUSED_PAGES.connectors.title).toBe('Add-ons');
   });
 });

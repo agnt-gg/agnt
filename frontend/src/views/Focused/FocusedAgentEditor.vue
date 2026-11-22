@@ -31,7 +31,7 @@
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
         <h3>Instructions</h3>
-        <span class="focused-edit-hint">What the agent is for and how it should work.</span>
+        <span class="focused-edit-hint">What the assistant is for and how it should work.</span>
       </div>
       <AutoTextarea
         v-model="v.systemPrompt"
@@ -70,36 +70,36 @@
 
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Tools</h3>
-        <span class="focused-edit-hint">{{ tools.open ? 'This agent can use every tool.' : `${tools.chosen.length} chosen` }}</span>
+        <h3>Actions</h3>
+        <span class="focused-edit-hint">{{ tools.open ? 'This assistant can use every action.' : `${tools.chosen.length} chosen` }}</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Every tool</span>
-          <button type="button" class="focused-switch" role="switch" :aria-checked="tools.open ? 'true' : 'false'" aria-label="Every tool" @click="tools.open = !tools.open"></button>
+          <span class="focused-edit-label">Every action</span>
+          <button type="button" class="focused-switch" role="switch" :aria-checked="tools.open ? 'true' : 'false'" aria-label="Every action" @click="tools.open = !tools.open"></button>
         </div>
         <div v-if="!tools.open" class="focused-edit-row column">
-          <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search tools…" />
+          <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search actions…" />
         </div>
       </div>
     </section>
 
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Skills</h3>
-        <span class="focused-edit-hint">{{ skills.length ? `${skills.length} chosen` : 'What this agent knows how to do.' }}</span>
+        <h3>Playbooks</h3>
+        <span class="focused-edit-hint">{{ skills.length ? `${skills.length} chosen` : 'What this assistant knows how to do.' }}</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row column">
-          <ListWithSearch v-model="skills" :items="allSkills" label-key="displayName" id-key="id" item-noun="skills" placeholder="Search skills…" />
+          <ListWithSearch v-model="skills" :items="allSkills" label-key="displayName" id-key="id" item-noun="skills" placeholder="Search playbooks…" />
         </div>
       </div>
     </section>
   </FocusedEditor>
   </div>
   <section v-else class="focused-page">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Agents</button>
-    <p class="focused-empty">{{ agent || loadingAgents ? 'Loading…' : 'This agent no longer exists.' }}</p>
+    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Assistants</button>
+    <p class="focused-empty">{{ agent || loadingAgents ? 'Loading…' : 'This assistant no longer exists.' }}</p>
   </section>
 </template>
 
@@ -200,7 +200,7 @@ async function onAvatar(event) {
 
 async function save() {
   if (!v.name.trim()) {
-    error.value = 'Give the agent a name.';
+    error.value = 'Give the assistant a name.';
     return;
   }
   saving.value = true;
@@ -212,13 +212,13 @@ async function save() {
       const id = res?.agentId || res?.agent?.id;
       if (!id) throw new Error('AGNT didn\u2019t return the new agent.');
       baseline.value = snapshot(); // nothing left unsaved: leave without asking
-      nav.toast('Agent created.');
+      nav.toast('Assistant created.');
       nav.go({ page: 'library', tab: 'agents', item: String(id) });
       return;
     }
     await store.dispatch('agents/updateAgent', payload);
     load({ ...agent.value, ...payload });
-    nav.toast('Agent saved.');
+    nav.toast('Assistant saved.');
   } catch (e) {
     error.value = 'Couldn’t save. ' + (e?.message || e);
   } finally {
@@ -263,14 +263,14 @@ function discard() {
   error.value = '';
 }
 async function back() {
-  if (dirty.value && !(await nav.confirm({ title: 'Discard changes?', message: 'Your edits to this agent haven’t been saved.', confirmText: 'Discard', danger: true }))) return;
+  if (dirty.value && !(await nav.confirm({ title: 'Discard changes?', message: 'Your edits to this assistant haven’t been saved.', confirmText: 'Discard', danger: true }))) return;
   nav.go({ page: 'library', tab: 'agents' });
 }
 async function remove() {
-  if (!(await nav.confirm({ title: 'Delete agent?', message: `“${agent.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
+  if (!(await nav.confirm({ title: 'Delete assistant?', message: `“${agent.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
   try {
     await store.dispatch('agents/deleteAgent', agent.value.id);
-    nav.toast('Agent deleted.');
+    nav.toast('Assistant deleted.');
     nav.go({ page: 'library', tab: 'agents' });
   } catch (e) {
     error.value = 'Couldn’t delete. ' + (e?.message || e);

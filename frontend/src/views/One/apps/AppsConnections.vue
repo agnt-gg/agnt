@@ -36,7 +36,7 @@
             </template>
             <template v-else>
               <h3>Nothing connected yet</h3>
-              <p>Connect the apps you use, and Annie and your agents can work in them.</p>
+              <p>Connect the apps you use, and Annie and your assistants can work in them.</p>
             </template>
             <div v-if="!team || canManage" class="row-gap">
               <button type="button" class="primary" data-action="add" @click="emit('act', 'add')"><AppsGlyph name="plus" size="sm" />{{ team ? 'Connect for the team' : 'Add connection' }}</button>
@@ -71,9 +71,9 @@
       </template>
       <template #cell-used="{ row }">
         <span v-if="row.team" class="use"><AppsGlyph name="routines" />Team automations</span>
-        <span v-else-if="row.ai" class="use" v-tooltip="'Powers Annie and your agents'"><AppsGlyph name="bot" />Annie &amp; agents</span>
+        <span v-else-if="row.ai" class="use" v-tooltip="'Powers Annie and your assistants'"><AppsGlyph name="bot" />Annie &amp; assistants</span>
         <button v-else-if="row.apps.length" type="button" class="use" data-action="show-plugins" v-tooltip="row.apps.map((app) => app.label).join(', ')" @click="emit('act', 'show-plugins', row)">
-          <AppsGlyph name="puzzle" />Plugins {{ row.apps.length }}
+          <AppsGlyph name="puzzle" />Add-ons {{ row.apps.length }}
         </button>
         <span v-else class="use zero" v-tooltip="'Nothing uses it yet'">—</span>
       </template>
@@ -92,7 +92,7 @@
         <button v-if="row.testable && row.status === 'ready'" type="button" class="mi" role="menuitem" data-action="test" @click="emit('act', 'test', row)"><AppsGlyph name="refresh" />Test connection</button>
         <button v-if="row.status !== 'ready'" type="button" class="mi" role="menuitem" data-action="signin" @click="emit('act', 'signin', row)"><AppsGlyph name="plug" />{{ row.status === 'reconnect' ? 'Reconnect' : 'Connect' }}</button>
         <button v-if="row.ai" type="button" class="mi" role="menuitem" data-action="ai-models" @click="emit('act', 'ai-models', row)"><AppsGlyph name="settings" />Open AI models</button>
-        <button v-else-if="row.apps.length" type="button" class="mi" role="menuitem" data-action="show-plugins" @click="emit('act', 'show-plugins', row)"><AppsGlyph name="puzzle" />Show plugins ({{ row.apps.length }})</button>
+        <button v-else-if="row.apps.length" type="button" class="mi" role="menuitem" data-action="show-plugins" @click="emit('act', 'show-plugins', row)"><AppsGlyph name="puzzle" />Show add-ons ({{ row.apps.length }})</button>
         <template v-if="row.status !== 'connect' && (!row.team || canManage)">
           <div class="mi-sep"></div>
           <button type="button" class="mi danger" role="menuitem" data-action="disconnect" @click="emit('act', 'disconnect', row)"><AppsGlyph name="trash" />Disconnect</button>
@@ -143,7 +143,7 @@ const HEADS = [
   { id: 'name', label: 'Name', min: 190, fr: 1.6 },
   { id: 'app', label: 'App', min: 110, fr: 1.15, drop: 2 },
   { id: 'status', label: 'Status', min: 270, fr: 1.2 },
-  { id: 'used', label: 'Used by', min: 130, fr: 0.8, tip: 'Plugins that sign in with this connection', drop: 1 },
+  { id: 'used', label: 'Used by', min: 130, fr: 0.8, tip: 'Add-ons that sign in with this connection', drop: 1 },
   { id: 'checked', label: 'Last checked', min: 116, fr: 0.75, tip: 'When AGNT last checked that this connection works', drop: 3 },
   { id: 'access', label: 'Access', min: 52, fr: 0.45, sort: false, drop: 4 },
 ];
@@ -160,7 +160,7 @@ const broken = computed(() => props.rows.filter((row) => row.status === 'reconne
 function tagsOf(row) {
   const tags = [];
   if (row.ai) tags.push({ label: 'AI model', tone: 'blue', tip: row.local ? 'Signs in on this computer' : '' });
-  if (row.fromPlugin) tags.push({ label: 'Plugin sign-in', tone: '', tip: `Added by the ${row.fromPlugin} plugin` });
+  if (row.fromPlugin) tags.push({ label: 'Add-on sign-in', tone: '', tip: `Added by the ${row.fromPlugin} add-on` });
   if (row.custom) tags.push({ label: 'Custom app', tone: '', tip: 'An app you added yourself' });
   if (row.team) tags.push({ label: 'Team', tone: '' });
   return tags;

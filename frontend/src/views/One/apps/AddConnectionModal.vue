@@ -64,7 +64,7 @@
           <button type="button" class="icon-btn" aria-label="Close" data-action="close" @click="emit('close')"><AppsGlyph name="x" /></button>
         </div>
         <form id="za-custom-app" class="md-body" novalidate @submit.prevent="saveCustom">
-          <p>Connect an app that isn’t in the list. Once it’s connected, Annie can use it through custom tools.</p>
+          <p>Connect an app that isn’t in the list. Once it’s connected, Annie can use it through custom actions.</p>
           <div class="fld">
             <label for="za-ca-name">App name</label>
             <input id="za-ca-name" ref="nameInput" v-model="form.name" class="input" :class="{ bad: errors.name }" maxlength="80" placeholder="e.g. Acme CRM" autocomplete="off" :aria-invalid="!!errors.name" />
@@ -100,8 +100,8 @@
           <div v-else class="note" data-section="sign-in-page">
             <span class="logo"><AppsGlyph name="puzzle" size="sm" /></span>
             <div class="grow">
-              <strong>Apps with a sign-in page connect through a plugin</strong>
-              <p>A plugin adds the app’s own sign-in to AGNT, and it runs on this computer. Annie can build one for {{ form.name.trim() || 'your app' }}.</p>
+              <strong>Apps with a sign-in page connect through an add-on</strong>
+              <p>An add-on adds the app’s own sign-in to AGNT, and it runs on this computer. Annie can build one for {{ form.name.trim() || 'your app' }}.</p>
               <div class="row-gap"><button type="button" class="primary sm" data-action="ask-annie" @click="emit('ask-annie', form.name.trim())">Ask Annie to build it</button></div>
             </div>
           </div>

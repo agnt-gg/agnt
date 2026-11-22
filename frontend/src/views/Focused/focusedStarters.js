@@ -22,7 +22,7 @@ export const LANES = Object.freeze({
 
 /** [lane, label, prompt] — verbatim from the demo. */
 export const STARTERS = Object.freeze([
-  ['build', 'Make me an agent', 'Help me create an AGNT agent for a job I do often. Ask me what the job is, then create the agent for me.'],
+  ['build', 'Make me an assistant', 'Help me create an AGNT assistant for a job I do often. Ask me what the job is, then create the assistant for me.'],
   ['build', 'Build a budget tracker app', 'Build me a focused, good-looking budget tracker web app: add expenses, see categories as a chart, and track a monthly budget. Make it work in the browser.'],
   ['build', 'Make a landing page', 'Make a modern one-page landing page for a small business. Ask me what the business is first, then build it.'],
   ['build', 'Build a habit tracker', 'Build a habit tracker web app with daily check-ins, streaks and a weekly view.'],
@@ -58,7 +58,7 @@ export const STARTERS = Object.freeze([
   ['learn', 'Explain a topic in 5 minutes', 'Explain a topic I pick in five minutes, with a focused diagram. Ask me the topic.'],
   ['learn', 'Plan a weekend trip', 'Plan a weekend trip on a budget, with a day-by-day plan and a map. Ask me where from and how much I want to spend.'],
   ['learn', 'Make a workout plan', 'Make a four-week workout plan I can do at home with no equipment.'],
-  ['learn', 'Learn a skill in 30 days', 'Make a 30-day plan to learn a new skill, 20 minutes a day. Ask me what skill.'],
+  ['learn', 'Learn a playbook in 30 days', 'Make a 30-day plan to learn a new playbook, 20 minutes a day. Ask me what playbook.'],
 ]);
 
 export const STARTER_SLOTS = 3;

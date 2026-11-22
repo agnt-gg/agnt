@@ -181,7 +181,7 @@ export function railItems({ activePage = null, drawerOpen = false, onBlankChat =
     { id: 'home', label: 'Home' },
     { id: 'chats', label: 'Chats' },
     { id: 'apps', label: 'Apps' },
-    { id: 'routines', label: 'Routines' },
+    { id: 'routines', label: 'Repeating goals' },
     { id: 'library', label: 'Library' },
     { id: 'market', label: 'Market' },
     { id: 'more', label: 'More' },

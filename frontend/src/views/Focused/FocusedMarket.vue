@@ -220,6 +220,6 @@ onMounted(() => {
   load();
   store.dispatch('marketplace/fetchMyInstalls');
   // The plugin catalog, to show a plugin listing as the Plugins page does.
-  Promise.all([store.dispatch('apps/fetchAvailable'), store.dispatch('apps/fetchInstalled')]).catch((e) => console.warn('[FocusedMarket] plugin catalog:', e?.message || e));
+  Promise.all([store.dispatch('apps/fetchAvailable'), store.dispatch('apps/fetchInstalled')]).catch((e) => console.warn('[FocusedMarket] add-on catalog:', e?.message || e));
 });
 </script>

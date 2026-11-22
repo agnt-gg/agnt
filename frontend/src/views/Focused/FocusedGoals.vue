@@ -8,7 +8,7 @@
         <div class="page-head">
           <div><h1>Goals</h1><p>What Annie is working on for you, once or on repeat.</p></div>
           <div class="row-gap">
-            <button v-if="paid" type="button" class="btn" data-action="new-repeating" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="routines" size="sm" />New routine</button>
+            <button v-if="paid" type="button" class="btn" data-action="new-repeating" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="routines" size="sm" />New repeating goal</button>
             <button type="button" class="primary" data-action="new-goal" @click="nav.ask('Help me with a goal: ')"><MkIcon name="plus" size="sm" />New goal</button>
           </div>
         </div>
@@ -59,7 +59,7 @@
           </ul>
         </section>
 
-        <p v-if="!paid && (filter === 'all' || filter === 'repeating')" class="v2-note" data-testid="goals-repeating-upgrade">Routines, goals that repeat like “every weekday at 7, brief me on my day”, come with paid plans.</p>
+        <p v-if="!paid && (filter === 'all' || filter === 'repeating')" class="v2-note" data-testid="goals-repeating-upgrade">Repeating goals, goals that repeat like “every weekday at 7, brief me on my day”, come with paid plans.</p>
         <p class="v2-foot"><button type="button" class="link" @click="nav.studio('GoalsScreen')">Open the full board</button></p>
       </div>
     </div>

@@ -36,7 +36,7 @@
 
       <section class="focused-edit-block" data-section="steps">
         <div class="focused-edit-block-head"><h3>{{ stepsTitle }} <span class="focused-count">{{ view.steps.length }}</span></h3></div>
-        <p v-if="!view.steps.length" class="focused-empty">{{ row.kind === 'chat' ? 'Annie answered without using any tools.' : 'Nothing ran.' }}</p>
+        <p v-if="!view.steps.length" class="focused-empty">{{ row.kind === 'chat' ? 'Annie answered without using any actions.' : 'Nothing ran.' }}</p>
         <ol v-else class="fad-steps">
           <li v-for="(step, i) in view.steps" :key="step.id" :data-step="step.id">
             <details>
@@ -99,7 +99,7 @@ const workflowNodes = computed(() => {
 const view = computed(() => activityDetail(detail.value, { workflowNodes: workflowNodes.value }));
 // The answer is markdown, shown formatted as in the chat (sanitized like ArtifactInspector).
 const resultHtml = computed(() => DOMPurify.sanitize(renderMarkdown(view.value.result), { FORBID_TAGS: ['iframe', 'script', 'object', 'embed', 'form', 'input'] }));
-const stepsTitle = computed(() => ({ chat: 'Tools Annie used', agent: 'Tools it used', workflow: 'Steps', routine: 'Tasks' })[row.value.kind] || 'Steps');
+const stepsTitle = computed(() => ({ chat: 'Actions Annie used', agent: 'Actions it used', workflow: 'Steps', routine: 'Tasks' })[row.value.kind] || 'Steps');
 const when = computed(() => {
   const at = view.value.startedAt || row.value.at;
   return at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
@@ -111,7 +111,7 @@ const openLabel = computed(() => {
   const t = row.value.target;
   if (!t) return '';
   if (t.type === 'conversation') return outputFor(t.id) ? 'Open chat' : '';
-  return { agents: 'Open agent', workflows: 'Open workflow' }[t.tab] || (t.type === 'routines' ? 'Open routines' : '');
+  return { agents: 'Open assistant', workflows: 'Open automation' }[t.tab] || (t.type === 'routines' ? 'Open repeating goals' : '');
 });
 function openTarget() {
   const t = row.value.target;

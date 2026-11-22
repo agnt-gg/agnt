@@ -38,14 +38,14 @@ export const FOCUSED_PAGES = Object.freeze({
   },
   // Both modes use the shared plugin catalog. Keep the internal page id for saved links.
   connectors: {
-    title: 'Plugins',
-    sub: 'Browse and install plugins. See their agents, tools, workflows, widgets and skills, and connect the accounts they need.',
+    title: 'Add-ons',
+    sub: 'Browse and install add-ons. See their assistants, actions, automations, dashboard cards and playbooks, and connect the accounts they need.',
     icon: 'fas fa-cube',
   },
   // "Routines": the name the rail, the capsule and the chat use. The page id
   // and routes stay 'scheduled' / schedules for saved links.
   scheduled: {
-    title: 'Routines',
+    title: 'Repeating goals',
     sub: 'Things Annie does for you on a schedule, without being asked.',
     icon: 'fas fa-redo',
   },
@@ -56,7 +56,7 @@ export const FOCUSED_PAGES = Object.freeze({
   },
   activity: {
     title: 'Activity',
-    sub: 'Everything Annie, your agents and your workflows have done.',
+    sub: 'Everything Annie, your assistants and your automations have done.',
     icon: 'fas fa-wave-square',
   },
   settings: {
@@ -91,14 +91,15 @@ export function editAsk(noun, name) {
  * exactly what opening it from Ctrl+K does. `noun` names it in labels and
  * the Edit-in-chat seed (editAsk).
  */
+// `noun` is the kind's data name (the Market's asset_type); `word` is what a person reads.
 export const LIBRARY_TABS = Object.freeze([
-  { id: 'agents', label: 'Agents', icon: 'fas fa-robot', getter: 'agents/allAgents', fetch: 'agents/fetchAgents', catalogKey: 'agents', prefix: 'agent:', noun: 'agent' },
-  { id: 'workflows', label: 'Workflows', icon: 'fas fa-project-diagram', getter: 'workflows/allWorkflows', fetch: 'workflows/fetchWorkflows', catalogKey: 'workflows', prefix: 'workflow:', noun: 'workflow' },
-  { id: 'tools', label: 'Tools', icon: 'fas fa-wrench', getter: 'tools/customTools', fetch: 'tools/fetchTools', catalogKey: 'tools', prefix: 'tool:', noun: 'tool' },
-  { id: 'skills', label: 'Skills', icon: 'fas fa-graduation-cap', getter: 'skills/allSkills', fetch: 'skills/fetchSkills', catalogKey: 'skills', prefix: 'skill:', noun: 'skill' },
-  { id: 'widgets', label: 'Widgets', icon: 'fas fa-shapes', getter: 'widgetDefinitions/allDefinitions', fetch: 'widgetDefinitions/fetchDefinitions', catalogKey: 'widgets', prefix: 'widget:', noun: 'widget' },
+  { id: 'agents', label: 'Assistants', icon: 'fas fa-robot', getter: 'agents/allAgents', fetch: 'agents/fetchAgents', catalogKey: 'agents', prefix: 'agent:', noun: 'agent', word: 'assistant' },
+  { id: 'workflows', label: 'Automations', icon: 'fas fa-project-diagram', getter: 'workflows/allWorkflows', fetch: 'workflows/fetchWorkflows', catalogKey: 'workflows', prefix: 'workflow:', noun: 'workflow', word: 'automation' },
+  { id: 'tools', label: 'Actions', icon: 'fas fa-wrench', getter: 'tools/customTools', fetch: 'tools/fetchTools', catalogKey: 'tools', prefix: 'tool:', noun: 'tool', word: 'action' },
+  { id: 'skills', label: 'Playbooks', icon: 'fas fa-graduation-cap', getter: 'skills/allSkills', fetch: 'skills/fetchSkills', catalogKey: 'skills', prefix: 'skill:', noun: 'skill', word: 'playbook' },
+  { id: 'widgets', label: 'Dashboard cards', icon: 'fas fa-shapes', getter: 'widgetDefinitions/allDefinitions', fetch: 'widgetDefinitions/fetchDefinitions', catalogKey: 'widgets', prefix: 'widget:', noun: 'widget', word: 'dashboard card' },
   // Files is the workspace on disk (fileSystemService), not a store list.
-  { id: 'files', label: 'Files', icon: 'fas fa-folder', noun: 'file' },
+  { id: 'files', label: 'Files', icon: 'fas fa-folder', noun: 'file', word: 'file' },
 ]);
 
 export function libraryTab(id) {

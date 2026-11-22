@@ -338,7 +338,7 @@
           @open-plugin="openPlugin" @install="(name) => install(rowsByName.get(name))"
         />
         <div v-else class="ap-detail-empty" role="status">
-          <h2>{{ loading ? 'Loading plugin…' : 'This plugin isn’t available' }}</h2>
+          <h2>{{ loading ? 'Loading add-on…' : 'This add-on isn’t available' }}</h2>
           <p v-if="!loading">It may no longer be in the catalog. Your other plugins are still here.</p>
         </div>
       </aside>

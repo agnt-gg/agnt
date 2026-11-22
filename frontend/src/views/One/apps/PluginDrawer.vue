@@ -87,7 +87,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['act', 'close']);
 
-const GROUP_TITLES = Object.freeze({ tools: 'Tools', triggers: 'Triggers', agents: 'Agents', workflows: 'Workflows', skills: 'Skills', widgets: 'Widgets' });
+const GROUP_TITLES = Object.freeze({ tools: 'Actions', triggers: 'Triggers', agents: 'Assistants', workflows: 'Automations', skills: 'Playbooks', widgets: 'Dashboard cards' });
 const TRUST_TONES = Object.freeze({ Unverified: 'amber', Unaudited: 'red' });
 
 const status = computed(() => PLUGIN_STATUS[props.row.status] || PLUGIN_STATUS.ready);
@@ -96,10 +96,10 @@ const connectionStatus = computed(() => (props.connection ? CONNECTION_STATUS[pr
 const statusLine = computed(() => {
   const name = props.row.provider?.name;
   return {
-    ready: 'Ask Annie to use it, or add it to an agent',
+    ready: 'Ask Annie to use it, or add it to an assistant',
     reconnect: `Its ${name} sign-in stopped working`,
     connect: `Connect ${name} to use it`,
-    off: 'Annie and your agents cannot use it',
+    off: 'Annie and your assistants cannot use it',
   }[props.row.status];
 });
 </script>

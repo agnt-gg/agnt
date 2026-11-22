@@ -1,6 +1,6 @@
 <template>
   <section class="focused-page focused-editor" :aria-label="card ? card.name : 'Connection'">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Plugins</button>
+    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Add-ons</button>
 
     <!-- An old link to an AI model (models are not apps). -->
     <section v-if="!card && isModelProvider" class="focused-edit-block">
@@ -34,7 +34,7 @@
             <span class="focused-edit-label">Sign-in</span>
             <span class="focused-edit-hint" :class="{ ok: card.status === 'ready' }">
               Uses your {{ providerName }} key, the same one your AI models use.
-              <template v-if="card.status !== 'ready'"> Add it below to use this plugin.</template>
+              <template v-if="card.status !== 'ready'"> Add it below to use this add-on.</template>
             </span>
           </div>
           <form v-if="card.status !== 'ready'" class="focused-edit-row" @submit.prevent="saveKey">
@@ -171,7 +171,7 @@ const isModelProvider = computed(() => AI_PROVIDERS_WITH_API.includes(String(pro
 const STATUS_WORD = Object.freeze({ ready: 'Ready', connect: 'Not connected', reconnect: 'Sign-in stopped working' });
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function contents(app) {
-  return [app.tools && plural(app.tools, 'tool'), app.widgets.length && plural(app.widgets.length, 'widget'), app.skills.length && plural(app.skills.length, 'skill')]
+  return [app.tools && plural(app.tools, 'action'), app.widgets.length && plural(app.widgets.length, 'dashboard card'), app.skills.length && plural(app.skills.length, 'playbook')]
     .filter(Boolean)
     .join(' · ');
 }
@@ -201,7 +201,7 @@ async function addSuggested() {
   try {
     const { failed } = await store.dispatch('apps/installMany', names);
     if (failed.length) error.value = `Couldn’t add ${failed.join(', ')}.`;
-    else nav.toast(names.length === 1 ? 'Plugin added.' : `${names.length} plugins added.`);
+    else nav.toast(names.length === 1 ? 'Add-on added.' : `${names.length} add-ons added.`);
   } finally {
     busy.value = false;
   }

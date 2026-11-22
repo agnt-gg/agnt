@@ -9,12 +9,12 @@ export const ACTIVITY_KINDS = Object.freeze([
   { id: 'all', label: 'All' },
   { id: 'team', label: 'Teamspaces' },
   { id: 'chat', label: 'Chats' },
-  { id: 'agent', label: 'Agents' },
+  { id: 'agent', label: 'Assistants' },
   { id: 'workflow', label: 'Automations' },
   { id: 'routine', label: 'Goals' },
 ]);
 
-const FORGE_TITLE = { workflow: 'Building a workflow', tool: 'Building a tool', agent: 'Building an agent', widget: 'Building a widget', plugin: 'Building a plugin' };
+const FORGE_TITLE = { workflow: 'Building an automation', tool: 'Building an action', agent: 'Building an assistant', widget: 'Building a dashboard card', plugin: 'Building an add-on' };
 const ICON = { chat: 'fas fa-comment', agent: 'fas fa-robot', workflow: 'fas fa-project-diagram', routine: 'fas fa-redo' };
 // Annie's own runs: the orchestrator, or a run with no agent behind it.
 const isAnnie = (run) => !run.agentId || run.agentId === 'orchestrator' || run.agentId === 'agent-chat';
@@ -28,7 +28,7 @@ function kindOf(run) {
 /** A status in plain words, and how it reads (good, bad, live). */
 export function statusOf(status) {
   const s = String(status || '').toLowerCase();
-  if (/^(running|executing|in_progress|started|pending)$/.test(s)) return { label: 'Running', tone: 'live' };
+  if (/^(running|executing|in_progress|started|pending)$/.test(s)) return { label: 'In progress', tone: 'live' };
   if (/^(failed|error|stuck)$/.test(s)) return { label: 'Failed', tone: 'bad' };
   if (/^(stopped|cancelled|canceled|paused)$/.test(s)) return { label: 'Stopped', tone: '' };
   if (s === 'needs_review') return { label: 'Needs a look', tone: 'bad' };
@@ -221,7 +221,7 @@ export function activityRows(runs = [], { kind = 'all', query = '', titles = nul
       const tools = Number(run.nodeCount) || 0;
       // A chat by its own title; a forge chat says what was being built (origin is the chat surface).
       const chatTitle = run.conversationId && titles?.get?.(String(run.conversationId));
-      const title = k === 'chat' ? String(chatTitle || '').trim() || FORGE_TITLE[run.origin] || 'Chat with Annie' : String(run.workflowName || '').trim() || (k === 'agent' ? 'Agent' : k === 'routine' ? 'Routine' : 'Workflow');
+      const title = k === 'chat' ? String(chatTitle || '').trim() || FORGE_TITLE[run.origin] || 'Chat with Annie' : String(run.workflowName || '').trim() || (k === 'agent' ? 'Agent' : k === 'routine' ? 'Routine' : 'Automation');
       // How big the run was is builder detail; a chat and an agent run say nothing extra.
       const detail = k === 'workflow' ? `${tools} step${tools === 1 ? '' : 's'}` : k === 'routine' ? `${tools} task${tools === 1 ? '' : 's'}` : '';
       const target =

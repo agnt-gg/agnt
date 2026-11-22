@@ -72,7 +72,7 @@ const team = useTeam(store);
 // The mockup's tag tones for each run outcome.
 // Amber is something to act on; an empty reply from the AI is information, so it stays quiet.
 const TONE = Object.freeze({ ok: 'green', success: 'green', good: 'green', done: 'green', running: 'blue', live: 'blue', warn: '', bad: 'amber', error: 'amber', failed: 'amber', stopped: '' });
-const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Agent', workflow: 'Automation', routine: 'Goal' });
+const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Assistant', workflow: 'Automation', routine: 'Goal' });
 const KIND_ICON = Object.freeze({ chat: 'chats', agent: 'bot', workflow: 'bolt', routine: 'task' });
 const CAP = 300;
 const kind = ref('all');

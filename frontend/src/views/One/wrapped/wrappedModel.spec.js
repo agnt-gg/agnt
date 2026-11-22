@@ -75,7 +75,7 @@ describe('numbers in words', () => {
   it('lists with commas and a final "and"', () => {
     expect(listing([])).toBe('');
     expect(listing(['52 goals'])).toBe('52 goals');
-    expect(listing(['52 goals', '51 skills', '50 agents'])).toBe('52 goals, 51 skills and 50 agents');
+    expect(listing(['52 goals', '51 playbooks', '50 assistants'])).toBe('52 goals, 51 playbooks and 50 assistants');
   });
 
   it.each([
@@ -144,7 +144,7 @@ describe('deriveYear', () => {
 
   it('names the persona from who started the model calls', () => {
     expect(year.persona.name).toBe('Conductor');
-    expect(year.persona.line).toContain('55% of your model calls came from chats with Annie, 36% from workflows and goals');
+    expect(year.persona.line).toContain('55% of your model calls came from chats with Annie, 36% from automations and goals');
     const operator = deriveYear(yearFixture({ split: { conversation: 900, automation: 3000 } }));
     expect(operator.persona.name).toBe('Operator');
     expect(deriveYear(yearFixture({ split: { conversation: 0, automation: 0 } })).persona).toBe(null);
@@ -190,10 +190,10 @@ describe('pictures made of dots', () => {
     expect(shelf.shelves).toHaveLength(5);
   });
 
-  it('the funnel has a dot per trial, kept skill and promotion', () => {
+  it('the funnel has a dot per trial, kept playbook and promotion', () => {
     const funnel = funnelGeometry({ skillTrials: 40, skillsKept: 11, skillsPromoted: 4 });
     expect(funnel.dots).toHaveLength(55);
-    expect(funnel.labels.map((l) => `${l.top} ${l.sub}`)).toEqual(['40 skill trials', '11 skills kept', '4 promoted']);
+    expect(funnel.labels.map((l) => `${l.top} ${l.sub}`)).toEqual(['40 playbook trials', '11 playbooks kept', '4 promoted']);
     expect(funnel.arrows).toHaveLength(2);
   });
 });
@@ -214,14 +214,14 @@ describe('buildCards', () => {
     for (const bad of ['NaN', 'undefined', 'Infinity']) expect(text).not.toContain(bad);
     expect(card(cards, 'intro')).toMatchObject({ year: 2026, from: 'Jan 1', through: 'Nov 12' });
     expect(card(cards, 'streak')).toMatchObject({ length: 500, busiest: { date: 'Oct 28', runs: '900' }, activeLine: '316 of 316 days active in 2026' });
-    expect(card(cards, 'streak').sentence).toBe('You and your agents haven’t missed a day since July 2, 2025. That’s every day of 2026 so far.');
+    expect(card(cards, 'streak').sentence).toBe('You and your assistants haven’t missed a day since July 2, 2025. That’s every day of 2026 so far.');
     expect(card(cards, 'streak').calendar.dots).toHaveLength(316);
     expect(card(cards, 'volume')).toMatchObject({ runs: 36000, calls: '4,200', models: '30', providers: '6', ledgerSince: 'Mar 3', peak: { name: 'October', runs: '6,900' }, growth: '2× January', partialMonth: 'November', perDot: '200' });
     expect(card(cards, 'words')).toMatchObject({ tokens: '59B', written: '47M', books: '60 copies', cachePct: 90, perSpine: null, tokensSince: 'Mar 3' });
     expect(card(cards, 'model')).toMatchObject({ name: 'claude-opus-5-5', calls: '1,900', share: 'More than a third', modelCount: '30', providerCount: '6', ledgerSince: 'Mar 3' });
     expect(card(cards, 'model').rest.map((m) => m.rank)).toEqual([2, 3, 4, 5]);
     expect(card(cards, 'goals')).toMatchObject({ passed: '10 of the 12' });
-    expect(card(cards, 'built').peak).toEqual({ month: 'September', parts: '30 skills and 12 agents' });
+    expect(card(cards, 'built').peak).toEqual({ month: 'September', parts: '30 playbooks and 12 assistants' });
     expect(card(cards, 'money')).toMatchObject({ notional: true, amount: 640, uncached: '$2,401', saved: '$1,761', charged: '$12.50', unpriced: '3', ledgerSince: 'Mar 3' });
     expect(card(cards, 'learning')).toMatchObject({ applied: 120, rejected: '7', memories: '900' });
     expect(card(cards, 'persona').badges).toEqual([
@@ -234,7 +234,7 @@ describe('buildCards', () => {
 
   it('the streak card says when the run is the year\'s own, or began inside it', () => {
     const inside = buildCards(withDays(fixtureDays().map((d) => (d.date === '2026-02-10' ? { ...d, active: false } : d)), { streak: { days: 276, since: '2026-02-11', lastActiveDate: '2026-11-13' } }));
-    expect(card(inside, 'streak').sentence).toBe('You and your agents have shown up every day since February 11.');
+    expect(card(inside, 'streak').sentence).toBe('You and your assistants have shown up every day since February 11.');
     const earlier = buildCards(withDays(fixtureDays().map((d) => (d.date === '2026-07-01' ? { ...d, active: false } : d)), { streak: { days: 0, since: null, lastActiveDate: null } }));
     expect(card(earlier, 'streak')).toMatchObject({ length: 181, activeLine: '315 of 316 days active in 2026' });
     expect(card(earlier, 'streak').sentence).toBe('Your longest run this year went from January 1 to June 30.');

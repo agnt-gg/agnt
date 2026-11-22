@@ -52,7 +52,7 @@
         </button>
       </li>
     </ul>
-    <p v-else-if="loaded" class="focused-empty" data-testid="no-listings">Nothing listed yet. Publish an agent, workflow, tool or skill and it shows here with its installs and earnings.</p>
+    <p v-else-if="loaded" class="focused-empty" data-testid="no-listings">Nothing listed yet. Publish an assistant, automation, action or playbook and it shows here with its installs and earnings.</p>
 
     <MarketplaceFormModal
       :is-open="!!target"

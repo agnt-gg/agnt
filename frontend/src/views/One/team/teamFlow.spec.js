@@ -4,7 +4,7 @@ import { cardStateLine, timeInColumn, reviewOutcome, nextUpTaskId, columnLoad, a
 const NOW = Date.parse('2026-11-02T12:00:00.000Z');
 const hoursAgo = (h) => new Date(NOW - h * 3600e3).toISOString();
 
-describe('flow on the board: what a card says about its agent', () => {
+describe('flow on the board: what a card says about its assistant', () => {
   it('names a stop and a wait with their reasons, and an approval as an approval', () => {
     expect(cardStateLine({ agentState: 'blocked', stopReason: 'not published here yet' })).toEqual({ label: 'Stopped: not published here yet', tone: 'amber' });
     expect(cardStateLine({ agentState: 'queued', stopReason: 'Review is full' })).toEqual({ label: 'Waiting: Review is full', tone: 'blue' });
@@ -55,7 +55,7 @@ describe('flow on the board: what a card says about its agent', () => {
     expect(teamFlowLine(flow)).toEqual({ text: '1 working · 1 stopped · 2 to review · 1 waiting for room · 50% accepted first time', tag: { label: '1 stopped', tone: 'amber' } });
     expect(spaceMark(flow)).toBe('1 stopped');
     const quiet = spaceFlow([{ status: 'todo' }], {}, NOW);
-    expect(teamFlowLine(quiet)).toEqual({ text: '1 open card, none with an agent', tag: null });
+    expect(teamFlowLine(quiet)).toEqual({ text: '1 open card, none with an assistant', tag: null });
     expect(spaceMark(quiet)).toBe('');
     expect(spaceMark(spaceFlow([{ status: 'doing' }], { doing: 1 }, NOW))).toBe('At limit');
   });

@@ -1,20 +1,20 @@
 <template>
   <div class="page" data-section="plugins">
     <div class="page-head">
-      <h1>Plugins</h1>
+      <h1>Add-ons</h1>
       <div class="row-gap">
-        <button type="button" class="btn" data-action="build" @click="emit('act', 'build')"><AppsGlyph name="plus" size="sm" />Build a plugin</button>
+        <button type="button" class="btn" data-action="build" @click="emit('act', 'build')"><AppsGlyph name="plus" size="sm" />Build an add-on</button>
         <button type="button" class="primary" data-action="browse" @click="emit('act', 'browse')"><AppsGlyph name="grid" size="sm" />Browse Market</button>
       </div>
     </div>
 
-    <AppsList :rows="rows" :spec="LISTS.plugins" :heads="HEADS" label="Plugins" noun="plugin" :preset-query="presetQuery" @open="(row) => emit('act', 'open', row)">
+    <AppsList :rows="rows" :spec="LISTS.plugins" :heads="HEADS" label="Add-ons" noun="add-on" :preset-query="presetQuery" @open="(row) => emit('act', 'open', row)">
       <template #empty>
         <div class="tbl">
           <div class="empty" data-section="empty">
             <span class="em-icon"><AppsGlyph name="puzzle" /></span>
-            <h3>No plugins installed yet</h3>
-            <p>Plugins add tools, agents, workflows and widgets to AGNT, and connect it to the apps you use.</p>
+            <h3>No add-ons installed yet</h3>
+            <p>Add-ons add actions, assistants, automations and dashboard cards to AGNT, and connect it to the apps you use.</p>
             <div class="row-gap"><button type="button" class="primary" data-action="browse" @click="emit('act', 'browse')"><AppsGlyph name="grid" size="sm" />Browse Market</button></div>
           </div>
         </div>
@@ -77,7 +77,7 @@
       </template>
 
       <template #foot="{ rows: shownRows, all }">
-        <span>{{ plural(shownRows.length, 'plugin') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }} · {{ all.filter((row) => row.triggers).length }} with triggers · {{ needYou(all.filter((row) => row.status === 'reconnect' || row.status === 'connect').length) }}</span>
+        <span>{{ plural(shownRows.length, 'add-on') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }} · {{ all.filter((row) => row.triggers).length }} with triggers · {{ needYou(all.filter((row) => row.status === 'reconnect' || row.status === 'connect').length) }}</span>
         <button type="button" class="btn sm" data-action="browse" @click="emit('act', 'browse')"><AppsGlyph name="grid" size="xs" />Browse Market</button>
       </template>
     </AppsList>
@@ -113,7 +113,7 @@ const phrases = (row) => contentPhrases(row.contents);
 function tipOf(row) {
   if (row.status === 'reconnect') return `Its ${row.provider.name} sign-in stopped working`;
   if (row.status === 'connect') return `Connect ${row.provider.name} to use it`;
-  if (row.status === 'off') return 'Turned off. Annie and your agents cannot use it.';
-  return 'Ready to use. Ask Annie, or add it to an agent.';
+  if (row.status === 'off') return 'Turned off. Annie and your assistants cannot use it.';
+  return 'Ready to use. Ask Annie, or add it to an assistant.';
 }
 </script>

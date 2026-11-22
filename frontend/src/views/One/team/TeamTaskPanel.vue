@@ -48,7 +48,7 @@
               <input v-model="ownAnswer" class="field" placeholder="Or answer in your own words" aria-label="Your answer" />
               <button type="submit" class="btn" :disabled="busy || !ownAnswer.trim()">Send answer</button>
             </form>
-            <label v-if="canAddRule" class="rule"><input v-model="addRule" type="checkbox" /><span>Let {{ leadName }} decide this from now on<small>Your answer becomes one of its rules. You can change them on the Agents page.</small></span></label>
+            <label v-if="canAddRule" class="rule"><input v-model="addRule" type="checkbox" /><span>Let {{ leadName }} decide this from now on<small>Your answer becomes one of its rules. You can change them on the Assistants page.</small></span></label>
           </div>
           <div v-else class="choices">
             <button type="button" class="primary" :disabled="busy" @click="retry">Try again</button>
@@ -56,7 +56,7 @@
           </div>
         </template>
         <template v-if="task.checks?.length && ['blocked', 'waiting', null].includes(task.agentState)">
-          <div class="mk-label section-label">Checks the agent reports</div>
+          <div class="mk-label section-label">Checks the assistant reports</div>
           <ul class="checks" data-testid="checks">
             <li v-for="check in task.checks" :key="check.label" :class="check.ok === true ? 'is-ok' : check.ok === false ? 'is-bad' : 'is-unknown'">
               <span class="check-mark" aria-hidden="true">{{ check.ok === true ? '✓' : check.ok === false ? '✕' : '?' }}</span>
@@ -87,7 +87,7 @@
         </template>
         <div class="divider"></div>
         <div class="mk-label">Thread</div>
-        <p v-if="!task.comments.length" class="mk-muted">No comments yet. @mention an agent here to hand it this card.</p>
+        <p v-if="!task.comments.length" class="mk-muted">No comments yet. @mention an assistant here to hand it this card.</p>
         <div v-for="c in task.comments" :key="c.id" class="msg" style="padding: 7px 4px">
           <TeamAvatar :who="c.author" :label="who(c.author)" />
           <div class="msg-body">
@@ -97,7 +97,7 @@
         </div>
       </div>
       <form v-if="canWrite" class="composer" style="margin: 12px" @submit.prevent="comment">
-        <textarea v-model="draft" rows="1" placeholder="Comment. @mention a teammate or an agent" aria-label="Comment" @keydown.enter.exact.prevent="comment"></textarea>
+        <textarea v-model="draft" rows="1" placeholder="Comment. @mention a teammate or an assistant" aria-label="Comment" @keydown.enter.exact.prevent="comment"></textarea>
         <div class="composer-row">
           <button v-for="a in agents.slice(0, 2)" :key="a.id" type="button" class="mention-chip" @click="draft = (draft ? draft.trimEnd() + ' ' : '') + '@' + a.name + ' '"><TeamAvatar :who="{ kind: 'agent', id: a.id }" size="sm" />@{{ a.name }}</button>
           <button class="send" type="submit" :disabled="!draft.trim() || busy" aria-label="Send"><i class="fas fa-arrow-up" aria-hidden="true"></i></button>
@@ -149,7 +149,7 @@ const statusOptions = TASK_STATUSES.map((s) => ({ label: s.label, value: s.id })
 const assigneeOptions = computed(() => [
   { label: 'Unassigned', value: '' },
   ...ctx.people.value.filter((p) => !spaceMemberIds.value || spaceMemberIds.value.includes(p.id)).map((p) => ({ label: p.isMe ? p.name + ' (you)' : p.name, value: 'person:' + p.id })),
-  ...props.agents.map((a) => ({ label: 'Agent: ' + a.name + (a.status === 'draft' ? ' (not published)' : ''), value: 'agent:' + a.id })),
+  ...props.agents.map((a) => ({ label: 'Assistant: ' + a.name + (a.status === 'draft' ? ' (not published)' : ''), value: 'agent:' + a.id })),
 ]);
 const who = (ref_) => nameOf(ref_, { people: ctx.people.value, agents: props.agents, me: ctx.me.value });
 const sentence = (value) => { const text = String(value).trim(); return text.charAt(0).toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? '' : '.'); };
@@ -215,7 +215,7 @@ function saveDue() { if (due.value.trim() !== (task.value?.due || '')) save({ du
 function assign(value) {
   const [kind, ...rest] = value.split(':');
   save({ assignee: value ? { kind, id: rest.join(':') } : null });
-  if (kind === 'agent') ctx.toast('Assigned. The agent starts on it now.');
+  if (kind === 'agent') ctx.toast('Assigned. The assistant starts on it now.');
 }
 async function decide(approve, saveAsDoc) {
   busy.value = true;
@@ -227,7 +227,7 @@ async function decide(approve, saveAsDoc) {
   } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
 }
 async function sendBack() {
-  const note = await ctx.prompt({ title: 'Send back', message: 'What should change? The agent runs again with your note.', placeholder: 'e.g. Shorter, and use the Q3 prices', confirmText: 'Send back' });
+  const note = await ctx.prompt({ title: 'Send back', message: 'What should change? The assistant runs again with your note.', placeholder: 'e.g. Shorter, and use the Q3 prices', confirmText: 'Send back' });
   if (note === null) return;
   busy.value = true;
   try { await teamApi.sendBack(props.workspaceId, task.value.id, note); emit('changed'); } catch (e) { ctx.toast(e.message); } finally { busy.value = false; await load(); }
@@ -238,7 +238,7 @@ async function answer(choice) {
   busy.value = true;
   try {
     await teamApi.answer(props.workspaceId, task.value.id, text, { addRule: addRule.value && canAddRule.value });
-    ctx.toast(addRule.value && canAddRule.value ? `Sent. ${leadName.value} decides this from now on.` : 'Sent. The agent carries on with your answer.');
+    ctx.toast(addRule.value && canAddRule.value ? `Sent. ${leadName.value} decides this from now on.` : 'Sent. The assistant carries on with your answer.');
     ownAnswer.value = '';
     addRule.value = false;
     emit('changed');
