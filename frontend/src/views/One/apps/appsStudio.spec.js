@@ -47,6 +47,14 @@ describe('the Apps page in Studio', () => {
   });
 });
 
+describe('the centre between Studio\'s panels', () => {
+  it('uses Studio\'s padding and does not repeat what the panels show', () => {
+    expect(CSS).toMatch(/\.studio-apps-page \.za\.has-studio-panels \.page \{[^}]*padding: 16px 16px 48px;/);
+    expect(CSS).toMatch(/\.studio-apps-page \.za\.has-studio-panels \.za-broken \{ display: none; \}/);
+    expect(CSS).toMatch(/\.studio-apps-page \.za\.has-studio-panels \.page-head > \.row-gap:not\(\.head-title\) \{ display: none; \}/);
+  });
+});
+
 describe('who needs you, in words', () => {
   it('agrees with its count', () => {
     expect(needYou(1)).toBe('1 needs you');

@@ -138,3 +138,9 @@
 .studio-apps-page .za.has-studio-panels .page-head > .row-gap:not(.head-title) { display: none; }
 /* A row's fix lives in the stopped-working box and the right panel, so the status cell is its state alone. */
 .studio-apps-page .za.has-studio-panels .st .act { display: none; }
+/* Between Studio's panels the centre is a Studio centre: its padding, not the page's own. */
+.studio-apps-page .za.has-studio-panels .page { max-width: none; padding: 16px 16px 48px; }
+/* What stopped working is the right panel's Needs you list, so it is not repeated above the list. */
+.studio-apps-page .za.has-studio-panels .za-broken { display: none; }
+/* With its fix in the panel, a status is one line: the dot and its words. */
+.studio-apps-page .za.has-studio-panels .st { flex-wrap: nowrap; }
