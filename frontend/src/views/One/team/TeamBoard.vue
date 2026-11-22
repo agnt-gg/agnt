@@ -4,7 +4,7 @@
       <div class="seg" role="group" aria-label="Show">
         <button v-for="f in FILTERS" :key="f.id" type="button" :class="{ 'on': filter === f.id }" @click="filter = f.id">{{ f.label }}</button>
       </div>
-      <span style="font-size: 12.5px; color: var(--text-tertiary)">Drag cards between columns · assign to a person or an assistant</span>
+      <span class="board-hint">Drag cards between columns · give one to a person or an assistant</span>
       <span class="fill"></span>
       <button v-if="canWrite" type="button" class="primary" @click="adding = 'todo'"><MkIcon name="plus" size="sm" />New task</button>
     </div>
@@ -64,12 +64,12 @@
         >
           <div class="tcard-title">{{ t.title }}</div>
           <div class="tcard-meta">
-            <TeamAvatar v-if="t.assignee" :who="t.assignee" :label="who(t.assignee)" size="sm" /><span>{{ who(t.assignee) }}</span>
+            <TeamAvatar v-if="t.assignee" :who="t.assignee" :label="who(t.assignee)" size="sm" /><span>{{ who(t.assignee) }}</span><span v-if="t.assignee && t.assignee.kind === 'agent'" class="tag violet" data-testid="card-ai">AI</span>
             <span v-if="t.due">· {{ t.due }}</span>
             <span v-if="t.commentCount">· <i class="far fa-comment" aria-hidden="true"></i> {{ t.commentCount }}</span>
           </div>
           <div v-if="hasStateRow(t)" class="tcard-meta">
-            <template v-if="t.agentState === 'running'"><span class="pulse"></span>working</template>
+            <template v-if="t.agentState === 'running'"><span class="pulse"></span>Working on it</template>
             <span v-else-if="cardStateLine(t)" class="tag" :class="cardStateLine(t).tone">{{ cardStateLine(t).label }}</span>
             <span v-if="t.id === nextUpId" class="tag blue">Next up for assistants</span>
             <span v-if="showsAge(t)" class="age" :class="{ 'is-warn': ageOf(t).warn }">{{ ageOf(t).label }} in {{ column.label }}</span>
@@ -79,7 +79,7 @@
         <form v-if="adding === column.id" @submit.prevent="add(column.id)">
           <input ref="addRef" v-model="newTitle" class="field" placeholder="Task name, then Enter" aria-label="New task name" @keydown.esc="adding = null" @blur="!newTitle && (adding = null)" />
         </form>
-        <button v-else-if="canWrite" type="button" class="add-card" @click="adding = column.id">+ Add</button>
+        <button v-else-if="canWrite" type="button" class="add-card" @click="adding = column.id">+ Add card</button>
       </div>
     </div>
   </div>
@@ -215,6 +215,7 @@ defineExpose({ load, startAdding: (status = 'todo') => { adding.value = status; 
 </script>
 
 <style scoped>
+.board-hint { font-size: 13px; color: var(--text-secondary); }
 .col.is-full { border-color: rgba(var(--orange-rgb), 0.45); }
 .limit-anchor { position: relative; margin-left: auto; display: inline-flex; }
 .limit-chip { display: inline-flex; align-items: center; padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); color: var(--text-tertiary); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
