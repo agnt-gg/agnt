@@ -296,27 +296,6 @@ async function disconnectConnection(row) {
   const done = await signIn.disconnect(row.card);
   if (done && layer.value?.id === row.id) layer.value = null;
 }
-async function disconnectMany(rows, clear) {
-  if (scope.value === 'team') return disconnectTeam(rows, clear);
-  const models = rows.filter((row) => row.ai);
-  const targets = rows.filter((row) => !row.ai && row.status !== 'connect');
-  if (!targets.length) {
-    if (models.length) nav.toast('AI models are disconnected in Settings › AI models.');
-    return;
-  }
-  const plugins = targets.reduce((n, row) => n + row.apps.length, 0);
-  const confirmed = await nav.confirm({
-    title: `Disconnect ${plural(targets.length, 'connection')}?`,
-    message: plugins ? `${plural(plugins, 'add-on')} that use${plugins === 1 ? 's' : ''} them stop working until you connect again.` : 'You can connect them again at any time.',
-    confirmText: 'Disconnect',
-    danger: true,
-  });
-  if (!confirmed) return;
-  let done = 0;
-  for (const row of targets) if (await signIn.disconnect(row.card, { confirmed: true, quiet: true })) done += 1;
-  clear?.();
-  nav.toast(`${plural(done, 'connection')} disconnected.${models.length ? ' AI models are disconnected in Settings › AI models.' : ''}`);
-}
 
 // ── Team connections ─────────────────────────────────────────────────────
 async function connectForTeam({ providerId, name }) {
@@ -562,18 +541,6 @@ const ACTIONS = {
   test: (row) => testConnection(row),
   'check-all': () => checkAll(),
   disconnect: (row) => disconnectConnection(row),
-  'bulk-test': async (rows, clear) => {
-    clear?.();
-    if (scope.value === 'team') {
-      for (const row of rows.filter((candidate) => candidate.testable)) await testTeamConnection(row);
-      return;
-    }
-    if (await runHealthCheck(rows.map((row) => row.id))) {
-      const stopped = rows.map((row) => personalRows.value.find((candidate) => candidate.id === row.id)).filter((row) => row && row.status !== 'ready');
-      nav.toast(stopped.length ? `${listOrCount(stopped.map((row) => row.name))} ${stopped.length === 1 ? 'needs' : 'need'} you.` : `${plural(rows.length, 'connection')} work.`);
-    }
-  },
-  'bulk-disconnect': (rows, clear) => disconnectMany(rows, clear),
   'show-plugins': (row) => {
     pluginQuery.value = { q: row.appName };
     go('plugins');

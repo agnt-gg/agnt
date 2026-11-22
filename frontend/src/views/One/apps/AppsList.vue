@@ -57,7 +57,7 @@
     <div v-else class="tbl" role="table" :aria-label="label" :style="{ '--za-cols': template }">
       <div class="tr th" role="row">
         <div class="td cb" role="columnheader">
-          <input ref="selectAll" type="checkbox" :checked="allChosen" aria-label="Select all" @change="chooseAll($event.target.checked)" />
+          <input v-if="selectable" ref="selectAll" type="checkbox" :checked="allChosen" aria-label="Select all" @change="chooseAll($event.target.checked)" />
         </div>
         <div v-for="head in shownHeads" :key="head.id" class="td" role="columnheader" :aria-sort="ariaSort(head)">
           <button v-if="sortKey(head)" type="button" class="th-btn" :class="{ on: sort[0] === sortKey(head) }" :data-sort="sortKey(head)" @click="sortBy(sortKey(head))">
@@ -92,7 +92,7 @@
           @click="onRowClick(row, $event)"
         >
           <div class="td cb">
-            <input type="checkbox" :checked="selected.has(row.id)" :aria-label="`Select ${rowLabel(row)}`" @click.stop @change="choose(row.id, $event.target.checked)" />
+            <input v-if="selectable" type="checkbox" :checked="selected.has(row.id)" :aria-label="`Select ${rowLabel(row)}`" @click.stop @change="choose(row.id, $event.target.checked)" />
           </div>
           <div v-for="head in shownHeads" :key="head.id" class="td" :class="`col-${head.id}`">
             <slot :name="`cell-${head.id}`" :row="row" />
@@ -122,6 +122,8 @@ import AppsGlyph from './AppsGlyph.vue';
 import { listColumns, groupRows, visibleRows } from './appsModel.js';
 
 const props = defineProps({
+  // Rows can be picked for bulk actions; a list with none to offer has no checkboxes.
+  selectable: { type: Boolean, default: true },
   rows: { type: Array, required: true },
   spec: { type: Object, required: true },
   // { id, label, min (px), fr, sort?: string|false, tip?, drop?: when space runs out, higher drops first }
@@ -156,7 +158,8 @@ const groups = computed(() => {
 });
 const columns = computed(() => listColumns(props.heads, width.value));
 const shownHeads = computed(() => columns.value.heads);
-const template = computed(() => columns.value.template);
+// Without selection the checkbox column is a narrow gutter.
+const template = computed(() => (props.selectable ? columns.value.template : columns.value.template.replace(/^36px/, '12px')));
 const selectedRows = computed(() => props.rows.filter((row) => selected.value.has(row.id)));
 const allChosen = computed(() => visible.value.length > 0 && visible.value.every((row) => selected.value.has(row.id)));
 

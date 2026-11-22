@@ -313,3 +313,6 @@
 /* A tight list: the status cell's action wraps under its label instead of leaving the table. */
 .za .st { flex-wrap: wrap; row-gap: 6px; }
 .za .td { min-width: 0; }
+/* The app's tags sit by its name; the broken box says what stops. */
+.za .name-text strong .tag { margin-left: 8px; vertical-align: middle; }
+.za .za-broken-why { margin-left: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-secondary); }

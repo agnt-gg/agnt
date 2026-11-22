@@ -215,16 +215,9 @@ describe('Apps page: App connections', () => {
     expect(wrapper.findAll('[data-row]').map((r) => r.attributes('data-row'))).toEqual(['gmail-plugin']);
   });
 
-  it('Disconnect several asks once and reports once', async () => {
-    getters['apps/installed'] = [gmail, notion];
-    getters['appAuth/connectedApps'] = ['google', 'notion'];
+  it('the connections list has no checkboxes; each row acts on its own', async () => {
     mountPage(); await flushPromises();
-    for (const id of ['google', 'notion']) await row(id).find('.cb input').setValue(true);
-    expect(wrapper.find('.bulk').text()).toContain('2 selected');
-    await wrapper.find('[data-action="bulk-disconnect"]').trigger('click'); await flushPromises();
-    expect(nav.confirm).toHaveBeenCalledTimes(1);
-    expect(dispatch.mock.calls.filter(([a]) => a === 'appAuth/disconnectApp').map(([, id]) => id)).toEqual(['google', 'notion']);
-    expect(nav.toast).toHaveBeenCalledWith('2 connections disconnected.');
+    expect(wrapper.find('[data-section="connections"] .cb input').exists()).toBe(false);
   });
 });
 

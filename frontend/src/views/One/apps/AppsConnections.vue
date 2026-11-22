@@ -17,7 +17,7 @@
 
     <!-- What stopped working, with the fix, before the full list. -->
     <section v-if="broken.length" class="za-broken" data-testid="apps-broken" aria-label="Stopped working">
-      <div class="za-broken-head"><AppsGlyph name="info" size="sm" />{{ broken.length === 1 ? '1 app stopped working' : `${broken.length} apps stopped working` }}</div>
+      <div class="za-broken-head"><AppsGlyph name="info" size="sm" />{{ broken.length === 1 ? '1 app stopped working' : `${broken.length} apps stopped working` }}<span class="za-broken-why">Annie and your assistants can’t use {{ broken.length === 1 ? 'it' : 'them' }} until you reconnect.</span></div>
       <div v-for="row in broken" :key="row.id" class="za-broken-row" :data-row="row.id">
         <span class="logo"><SvgIcon :name="row.icon" /></span>
         <span class="za-broken-text"><strong>{{ row.name }}</strong><small>{{ row.problem || 'Its sign-in stopped working' }}</small></span>
@@ -25,7 +25,7 @@
       </div>
     </section>
 
-    <AppsList :rows="rows" :spec="LISTS.connections" :heads="heads" label="Connections" noun="connection" :flash-id="flashId" @open="(row) => emit('act', 'open', row)">
+    <AppsList :rows="rows" :spec="LISTS.connections" :heads="heads" label="Connections" noun="connection" :selectable="false" :flash-id="flashId" @open="(row) => emit('act', 'open', row)">
       <template #empty>
         <div class="tbl">
           <div class="empty" data-section="empty">
@@ -48,7 +48,7 @@
       <template #cell-name="{ row }">
         <div class="name">
           <span class="logo"><SvgIcon :name="row.icon" /></span>
-          <div class="name-text"><strong>{{ row.name }}</strong><small v-if="row.identity">{{ row.identity }}</small></div>
+          <div class="name-text"><strong>{{ row.name }}<span v-for="tag in tagsOf(row)" :key="tag.label" class="tag" :class="tag.tone" v-tooltip="tag.tip">{{ tag.label }}</span></strong><small>{{ row.identity || (row.kind === 'API key' ? 'Connected with an access code' : 'Signed in with your account') }}</small></div>
         </div>
       </template>
       <template #cell-app="{ row }">
@@ -75,7 +75,7 @@
         <button v-else-if="row.apps.length" type="button" class="use" data-action="show-plugins" v-tooltip="row.apps.map((app) => app.label).join(', ')" @click="emit('act', 'show-plugins', row)">
           <AppsGlyph name="puzzle" />Add-ons {{ row.apps.length }}
         </button>
-        <span v-else class="use zero" v-tooltip="'Nothing uses it yet'">—</span>
+        <span v-else class="use zero">Nothing yet</span>
       </template>
       <template #cell-checked="{ row }">
         <span>{{ row.team || row.status === 'connect' ? '—' : formatChecked(row.checked) }}</span>
@@ -99,15 +99,10 @@
         </template>
       </template>
 
-      <template #bulk="{ rows: chosen, clear }">
-        <button type="button" class="btn sm" data-action="bulk-test" @click="emit('act', 'bulk-test', chosen, clear)"><AppsGlyph name="refresh" size="xs" />Test connections</button>
-        <button v-if="!team || canManage" type="button" class="btn sm danger" data-action="bulk-disconnect" @click="emit('act', 'bulk-disconnect', chosen, clear)">Disconnect</button>
-      </template>
-
       <template #foot="{ rows: shownRows, all }">
         <span>{{ plural(shownRows.length, 'connection') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }}{{ lastChecked ? ` · Last checked ${formatWhen(lastChecked)}` : '' }}</span>
         <button v-if="!team" type="button" class="btn sm" data-action="check-all" :disabled="checking" @click="emit('act', 'check-all')">
-          <AppsGlyph name="refresh" size="xs" />{{ checking ? 'Checking…' : 'Check all' }}
+          <AppsGlyph name="refresh" size="xs" />{{ checking ? 'Checking…' : 'Check all apps are working' }}
         </button>
       </template>
     </AppsList>
@@ -140,10 +135,9 @@ const emit = defineEmits(['act']);
 
 const TONES = ['', 'b', 'c', 'd'];
 const HEADS = [
-  { id: 'name', label: 'Name', min: 190, fr: 1.6 },
-  { id: 'app', label: 'App', min: 110, fr: 1.15, drop: 2 },
+  { id: 'name', label: 'App', min: 220, fr: 1.8 },
   { id: 'status', label: 'Status', min: 270, fr: 1.2 },
-  { id: 'used', label: 'Used by', min: 130, fr: 0.8, tip: 'Add-ons that sign in with this connection', drop: 1 },
+  { id: 'used', label: 'Needed for', min: 130, fr: 0.8, tip: 'What signs in with this connection', drop: 1 },
   { id: 'checked', label: 'Last checked', min: 116, fr: 0.75, tip: 'When AGNT last checked that this connection works', drop: 3 },
   { id: 'access', label: 'Access', min: 52, fr: 0.45, sort: false, drop: 4 },
 ];
