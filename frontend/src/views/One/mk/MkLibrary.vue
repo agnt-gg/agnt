@@ -6,7 +6,7 @@
     <div class="page">
       <div class="page-head">
         <div><h1>Library</h1><p>Everything you’ve built or added.</p></div>
-        <button v-if="asset" type="button" class="primary" @click="ctx.openLibrary(asset.id, null, true)"><MkIcon name="plus" size="sm" />New {{ asset.word }}</button>
+        <button v-if="asset" type="button" class="primary" @click="ctx.openLibrary(asset.id, null, true)"><MkIcon name="plus" size="sm" />New {{ asset.noun }}</button>
       </div>
       <nav class="tabs" aria-label="Library">
         <button v-for="t in OWN_TABS" :key="t.id" type="button" class="tab" :class="{ 'is-active': tab === t.id }" @click="ctx.go({ view: 'library', tab: t.id })">
@@ -33,7 +33,7 @@
           </div>
           <!-- The way to make another, where the next one would go. -->
           <button type="button" class="card v2-new" data-action="new-asset" @click="ctx.openLibrary(asset.id, null, true)">
-            <div class="card-top"><span class="r-icon"><MkIcon name="plus" size="sm" /></span><h4>New {{ asset.word }}</h4></div>
+            <div class="card-top"><span class="r-icon"><MkIcon name="plus" size="sm" /></span><h4>New {{ asset.noun }}</h4></div>
             <p>Describe what you need and Annie sets it up.</p>
           </button>
         </div>

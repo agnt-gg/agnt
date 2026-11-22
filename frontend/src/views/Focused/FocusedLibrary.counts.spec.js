@@ -24,5 +24,5 @@ it('every Library tab has a count, Files included', async () => {
   });
   await flushPromises();
   const counts = Object.fromEntries(wrapper.findAll('button').filter((b) => b.find('.focused-count').exists()).map((b) => [b.text().replace(/[\d,]+$/, '').trim(), b.find('.focused-count').text()]));
-  expect(counts).toEqual({ Assistants: '3', Automations: '2', Actions: '1', Playbooks: '4', 'Dashboard cards': '5', Files: '42' });
+  expect(counts).toEqual({ Agents: '3', Workflows: '2', Tools: '1', Skills: '4', Widgets: '5', Files: '42' });
 });

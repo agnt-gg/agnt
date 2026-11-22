@@ -27,7 +27,7 @@
           <div class="v2-sec-head">
             <h2>{{ section.title }}<span class="v2-sec-count">{{ section.rows.length }}</span></h2>
             <button v-if="section.id === 'done' && filter === 'all'" type="button" class="btn ghost sm" :aria-expanded="String(showDone)" @click="showDone = !showDone">{{ showDone ? 'Hide' : 'Show' }}</button>
-            <button v-if="section.id === 'repeating' && paid" type="button" class="link" data-action="new-repeating" @click="nav.go({ page: 'scheduled', isNew: true })">+ New repeating goal</button>
+            <button v-if="section.id === 'repeating' && paid" type="button" class="link" data-action="new-repeating" @click="nav.go({ page: 'scheduled', isNew: true })">+ New routine</button>
           </div>
           <ul v-if="section.id !== 'done' || filter !== 'all' || showDone" class="list">
             <template v-if="section.kind === 'goal'">
@@ -57,7 +57,7 @@
           </ul>
         </section>
 
-        <p v-if="!paid && (filter === 'all' || filter === 'repeating')" class="v2-note" data-testid="goals-repeating-upgrade">Repeating goals, goals that repeat like “every weekday at 7, brief me on my day”, come with paid plans.</p>
+        <p v-if="!paid && (filter === 'all' || filter === 'repeating')" class="v2-note" data-testid="goals-repeating-upgrade">Routines, goals that repeat like “every weekday at 7, brief me on my day”, come with paid plans.</p>
       </div>
     </div>
   </div>

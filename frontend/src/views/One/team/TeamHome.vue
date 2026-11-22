@@ -15,7 +15,7 @@
         <div class="hm-inbox-h v2-inbox-h">
           <h2 class="v2-inbox-title">Needs you<span v-if="needCount" class="v2-sec-count">{{ needCount }}</span></h2>
           <span class="fill"></span>
-          <button v-if="reviewTasks.length" type="button" class="primary sm" data-testid="review-sitting-open" @click="sitting = [...reviewTasks]">Review {{ reviewTasks.length === 1 ? 'the assistant result' : `${reviewTasks.length} assistant results` }}</button>
+          <button v-if="reviewTasks.length" type="button" class="primary sm" data-testid="review-sitting-open" @click="sitting = [...reviewTasks]">Review {{ reviewTasks.length === 1 ? 'the agent result' : `${reviewTasks.length} agent results` }}</button>
           <button v-if="team" type="button" class="btn ghost sm" :disabled="!ctx.unread.value" @click="readAll"><MkIcon name="check" size="xs" />Mark all read</button>
           <button type="button" class="btn ghost sm" data-testid="home-all-activity" @click="ctx.openPage('activity')">See all activity<MkIcon name="chev" size="xs" /></button>
         </div>
@@ -28,7 +28,7 @@
                 <li v-for="run in waitingRoutines" :key="run.id">
                   <div class="r">
                     <span class="r-icon"><MkIcon name="routines" /></span>
-                    <span class="r-text"><strong>{{ run.routineName }}</strong><small>Repeating goal · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
+                    <span class="r-text"><strong>{{ run.routineName }}</strong><small>Routine · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
                     <button type="button" class="primary sm" @click="ctx.openRoutine(run.routineId)">Answer Annie</button>
                   </div>
                 </li>
@@ -60,15 +60,15 @@
             <ul v-if="checkpointsWaiting.length" class="list"><li v-for="c in checkpointsWaiting" :key="c.id"><TeamCheckpointRow :checkpoint="c" /></li></ul>
             <ul v-if="reviewTasks.length" class="list" data-testid="review-tasks"><li v-for="t in reviewTasks" :key="t.id"><TeamTaskRow :task="t" @open="openTask" /></li></ul>
             <ul v-if="runsWaiting.length" class="list"><li v-for="r in runsWaiting" :key="r.id"><TeamRunRow :run="r" /></li></ul>
-            <div v-if="pluginAsks.length" class="hm-sub">Add-on requests</div>
+            <div v-if="pluginAsks.length" class="hm-sub">Plugin requests</div>
             <ul v-if="pluginAsks.length" class="list" data-testid="plugin-requests">
               <li v-for="r in pluginAsks" :key="r.id"><TeamPluginRequestRow :request="r" decider :busy="deciding === r.id" @approve="approvePlugin" @decline="declinePlugin" /></li>
             </ul>
-            <div v-if="pluginOutcomes.length" class="hm-sub">Your add-on requests</div>
+            <div v-if="pluginOutcomes.length" class="hm-sub">Your plugin requests</div>
             <ul v-if="pluginOutcomes.length" class="list">
               <li v-for="r in pluginOutcomes" :key="r.id"><TeamPluginRequestRow :request="r" @dismiss="(x) => plugins.seen(x.id)" /></li>
             </ul>
-            <div v-if="teamNeeds.length" class="hm-sub">Mentions, assignments and assistant results</div>
+            <div v-if="teamNeeds.length" class="hm-sub">Mentions, assignments and agent results</div>
             <ul v-if="teamNeeds.length" class="list"><li v-for="item in teamNeeds" :key="item.id"><TeamInboxRow :item="item" @open="ctx.openInbox(item)" /></li></ul>
             <ul v-if="!needCount" class="list"><li class="empty" data-testid="home-all-caught-up">You’re all caught up. Annie will put anything that needs you here.</li></ul>
           </template>
@@ -112,7 +112,7 @@
           <li>
             <div class="r">
               <span class="r-icon"><MkIcon name="users" /></span>
-              <span class="r-text"><strong>{{ team.name }}</strong><small>No teamspaces yet. A teamspace shares chat, a board, files and assistants.</small></span>
+              <span class="r-text"><strong>{{ team.name }}</strong><small>No teamspaces yet. A teamspace shares chat, a board, files and agents.</small></span>
               <button v-if="canCreateSpace" type="button" class="btn sm" @click="ctx.newTeamspace()">Create a teamspace</button>
             </div>
           </li>

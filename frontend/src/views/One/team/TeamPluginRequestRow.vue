@@ -5,7 +5,7 @@
     <TeamAvatar :who="{ kind: 'person', id: request.requesterId }" :label="asker" size="lg" />
     <span class="r-text">
       <strong class="mk-wrap">
-        <template v-if="decider">{{ asker }} <span style="font-weight: 400; color: var(--text-secondary)">wants to add the add-on</span> {{ title }}</template>
+        <template v-if="decider">{{ asker }} <span style="font-weight: 400; color: var(--text-secondary)">wants to add the plugin</span> {{ title }}</template>
         <template v-else-if="request.status === 'approved'">{{ title }} <span style="font-weight: 400; color: var(--text-secondary)">is ready. Your request was approved.</span></template>
         <template v-else-if="request.status === 'declined'">{{ title }} <span style="font-weight: 400; color: var(--text-secondary)">was not approved.</span></template>
         <template v-else-if="request.status === 'failed'">{{ title }} <span style="font-weight: 400; color: var(--text-secondary)">could not be installed.</span></template>
@@ -38,8 +38,8 @@ const ctx = inject('teamCtx', null);
 const asker = computed(() => ctx?.people.value.find((p) => p.id === props.request.requesterId)?.name || 'A teammate');
 const title = computed(() => props.request.pluginName.replace(/-plugin$/, '').split(/[-_]/).map((w) => w[0]?.toUpperCase() + w.slice(1)).join(' '));
 const reach = computed(() => reachLabel(props.request.report?.reaches || []));
-const tierLabel = computed(() => (props.request.report?.trustTier === 'official' ? 'Official AGNT add-on' : 'Not an official add-on') + (props.request.report?.integrityState === 'verified' ? ', verified download' : ''));
+const tierLabel = computed(() => (props.request.report?.trustTier === 'official' ? 'Official AGNT plugin' : 'Not an official plugin') + (props.request.report?.integrityState === 'verified' ? ', verified download' : ''));
 const decided = computed(() => props.request.status !== 'pending');
-const tagLabel = computed(() => (props.decider ? 'Add-on request' : { approved: 'Ready', declined: 'Declined', failed: 'Failed', pending: 'Requested' }[props.request.status]));
+const tagLabel = computed(() => (props.decider ? 'Plugin request' : { approved: 'Ready', declined: 'Declined', failed: 'Failed', pending: 'Requested' }[props.request.status]));
 const tone = computed(() => (props.decider ? 'pink' : { approved: 'green', declined: '', failed: 'amber', pending: 'blue' }[props.request.status]));
 </script>

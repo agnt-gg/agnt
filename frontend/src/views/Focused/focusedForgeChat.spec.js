@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { forgeChatContext, savedItemId } from './focusedForgeChat.js';
 
 describe('forgeChatContext', () => {
-  it('an assistant goes to the assistant BUILDER (assistant-chat), with the assistant as its state, never as the chat persona', () => {
+  it('an agent goes to the agent BUILDER (agent-chat), with the agent as its state, never as the chat persona', () => {
     const c = forgeChatContext('agents', { itemId: 'a1', record: { name: 'Kai', instructions: 'Code.', avatar: 'data:image/png;base64,xx' } });
     expect(c.chatType).toBe('agent');
     expect(c.pageContext).toEqual({ agentId: 'agent-chat' });
@@ -27,7 +27,7 @@ describe('forgeChatContext', () => {
   it('each item, and a new one, has its own conversation apart from Studio\u2019s', () => {
     expect(forgeChatContext('tools', { itemId: 't1' }).channelKey).toBe('one-forge:tools:t1');
     expect(forgeChatContext('tools').channelKey).toBe('one-forge:tools:new');
-    expect(forgeChatContext('tools').welcome).toContain('Describe the action');
+    expect(forgeChatContext('tools').welcome).toContain('Describe the tool');
     expect(forgeChatContext('nope')).toBeNull();
   });
 });

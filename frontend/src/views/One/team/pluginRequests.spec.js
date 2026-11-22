@@ -7,12 +7,12 @@ const youtube = { id: 'r1', pluginName: 'youtube-plugin', requesterId: 'ana', st
 const ctx = { people: { value: [{ id: 'ana', name: 'Ana Ruiz' }] } };
 const mountRow = (props) => mount(TeamPluginRequestRow, { props, global: { provide: { teamCtx: ctx }, directives: { tooltip: {} } } });
 
-describe('an add-on request on Home', () => {
+describe('a plugin request on Home', () => {
   it('the owner sees who asked, what it can reach, and Approve / Decline', async () => {
     const row = mountRow({ request: youtube, decider: true });
-    expect(row.text()).toContain('Ana Ruiz wants to add the add-on Youtube');
+    expect(row.text()).toContain('Ana Ruiz wants to add the plugin Youtube');
     expect(row.text()).toContain('the internet, this instance’s files, this instance’s settings and keys');
-    expect(row.text()).toContain('Official AGNT add-on, verified download');
+    expect(row.text()).toContain('Official AGNT plugin, verified download');
     await row.find('.primary').trigger('click');
     expect(row.emitted('approve')[0][0].id).toBe('r1');
     await row.findAll('button').find((b) => b.text() === 'Decline').trigger('click');

@@ -8,7 +8,7 @@
             <h1 style="font-size: 22px; font-weight: 700">{{ space.name }}</h1>
             <div style="font-size: 13px; color: var(--text-secondary)">{{ space.description || (membership.access === 'invited' ? 'Only the people in it can see it' : `Everyone on ${team.name} works here`) }}</div>
           </div>
-          <button type="button" class="scope team" data-testid="space-member-count" @click="showPeople = true"><MkIcon name="users" size="sm" />{{ plural(membership.memberIds.length, 'member') }} + {{ plural(agents.length, 'assistant') }}</button>
+          <button type="button" class="scope team" data-testid="space-member-count" @click="showPeople = true"><MkIcon name="users" size="sm" />{{ plural(membership.memberIds.length, 'member') }} + {{ plural(agents.length, 'agent') }}</button>
           <button v-if="canManage && !membership.isDefault" type="button" class="btn" data-testid="space-add-people" @click="showPeople = true"><MkIcon name="plus" size="sm" />Add people</button>
         </div>
         <nav class="tabs" aria-label="Teamspace">
@@ -66,7 +66,7 @@ function closePeople() {
 }
 
 async function loadAgents() {
-  try { agents.value = (await teamApi.people(props.space.id)).agents || []; } catch (e) { agents.value = []; console.warn('[team] assistants:', e.message); }
+  try { agents.value = (await teamApi.people(props.space.id)).agents || []; } catch (e) { agents.value = []; console.warn('[team] agents:', e.message); }
 }
 /** The numbers beside the tabs, as in the mockup. A count that cannot be read is simply not shown. */
 async function loadCounts() {

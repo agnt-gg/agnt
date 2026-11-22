@@ -1,17 +1,17 @@
 <template>
   <!-- Who may add plugins on this shared instance. Owner only; every default is the strict one. -->
   <section v-if="state.hosted && state.canEdit && policy" class="focused-edit-block" data-testid="plugin-policy">
-    <div class="focused-edit-block-head"><h3>Add-ons</h3></div>
-    <p class="pp-muted" style="margin: 0 0 10px">Approve features once for all verified official add-ons. Members can add and run add-ons within these permissions without asking you about each one. Other capabilities still require approval.</p>
+    <div class="focused-edit-block-head"><h3>Plugins</h3></div>
+    <p class="pp-muted" style="margin: 0 0 10px">Approve features once for all verified official plugins. Members can add and run plugins within these permissions without asking you about each one. Other capabilities still require approval.</p>
     <div class="focused-edit-card">
       <div v-for="feature in state.features" :key="feature.id" class="focused-edit-row">
         <span class="focused-edit-label">{{ feature.label }}</span>
-        <label class="pp-check"><input type="checkbox" :checked="(policy.allowedFeatures || []).includes(feature.id)" :disabled="saving || policy.membersAllOfficial" :data-testid="`feature-${feature.id}`" @change="toggleFeature(feature.id, $event.target.checked)" />Allow across add-ons</label>
+        <label class="pp-check"><input type="checkbox" :checked="(policy.allowedFeatures || []).includes(feature.id)" :disabled="saving || policy.membersAllOfficial" :data-testid="`feature-${feature.id}`" @change="toggleFeature(feature.id, $event.target.checked)" />Allow across plugins</label>
       </div>
-      <p class="pp-muted">Filesystem, environment and code permissions can reach this shared instance’s files and credentials. Only grant them to trusted members. These are add-on permissions; the security gate still checks every call.</p>
+      <p class="pp-muted">Filesystem, environment and code permissions can reach this shared instance’s files and credentials. Only grant them to trusted members. These are plugin permissions; the security gate still checks every call.</p>
     </div>
     <details class="focused-edit-card">
-      <summary>Advanced · individual add-on exceptions</summary>
+      <summary>Advanced · individual plugin exceptions</summary>
       <div class="focused-edit-row" style="align-items: flex-start">
         <span class="focused-edit-label">Pre-approved</span>
         <div style="flex: 1; min-width: 0">
@@ -19,24 +19,24 @@
             <span v-for="name in policy.preApproved" :key="name" class="pp-chip">{{ label(name) }}<button type="button" :aria-label="`Remove ${label(name)}`" :disabled="saving" @click="remove(name)">×</button></span>
             <span v-if="!policy.preApproved.length" class="pp-muted">None. Members ask for these.</span>
           </div>
-          <CustomSelect :model-value="''" :options="addable" placeholder="Pre-approve an add-on…" aria-label="Pre-approve an add-on" :disabled="saving || !addable.length" @update:model-value="add" />
+          <CustomSelect :model-value="''" :options="addable" placeholder="Pre-approve a plugin…" aria-label="Pre-approve a plugin" :disabled="saving || !addable.length" @update:model-value="add" />
         </div>
       </div>
       <div class="focused-edit-row" style="align-items: flex-start">
         <span class="focused-edit-label">Blocked</span>
         <div style="flex: 1; min-width: 0">
           <div class="pp-chips"><span v-for="name in policy.blockedPlugins || []" :key="name" class="pp-chip">{{ label(name) }}<button type="button" :disabled="saving" :aria-label="`Unblock ${label(name)}`" @click="unblock(name)">×</button></span></div>
-          <CustomSelect :model-value="''" :options="blockable" placeholder="Block an add-on…" aria-label="Block an add-on" :disabled="saving || !blockable.length" @update:model-value="block" />
+          <CustomSelect :model-value="''" :options="blockable" placeholder="Block a plugin…" aria-label="Block a plugin" :disabled="saving || !blockable.length" @update:model-value="block" />
           <p class="pp-muted">Blocks take priority over feature grants and pre-approvals. Exceptions affect members, not the owner.</p>
         </div>
       </div>
       <div class="focused-edit-row">
         <span class="focused-edit-label">Admins decide</span>
-        <label class="pp-check"><input type="checkbox" :checked="policy.adminsCanApprove" :disabled="saving" data-testid="admins-can-approve" @change="save({ adminsCanApprove: $event.target.checked })" />Admins can approve add-on requests too</label>
+        <label class="pp-check"><input type="checkbox" :checked="policy.adminsCanApprove" :disabled="saving" data-testid="admins-can-approve" @change="save({ adminsCanApprove: $event.target.checked })" />Admins can approve plugin requests too</label>
       </div>
       <div class="focused-edit-row">
         <span class="focused-edit-label">All official</span>
-        <label class="pp-check"><input type="checkbox" :checked="policy.membersAllOfficial" :disabled="saving" data-testid="members-all-official" @change="save({ membersAllOfficial: $event.target.checked })" />Members can add any official AGNT add-on, even ones that reach this instance’s files or keys</label>
+        <label class="pp-check"><input type="checkbox" :checked="policy.membersAllOfficial" :disabled="saving" data-testid="members-all-official" @change="save({ membersAllOfficial: $event.target.checked })" />Members can add any official AGNT plugin, even ones that reach this instance’s files or keys</label>
       </div>
     </details>
     <p v-if="error" class="pp-error" role="alert">{{ error }}</p>
@@ -76,7 +76,7 @@ onMounted(async () => {
     await plugins.loadPolicy();
     if (!state.canEdit) return;
     catalog.value = await plugins.catalog();
-  } catch (e) { console.warn('[add-on policy]', e.message); }
+  } catch (e) { console.warn('[plugin policy]', e.message); }
 });
 </script>
 

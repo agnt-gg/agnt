@@ -12,9 +12,9 @@ const SECTION_ICON = Object.freeze({ connections: 'fas fa-plug', plugins: 'fas f
 /** Each section's create button, and the other things you can start from it. */
 const SECTION_ACTIONS = Object.freeze({
   connections: { create: ['add', 'Add connection'], more: [['check-all', 'Check every connection', 'Check']] },
-  plugins: { create: ['browse', 'Browse Market'], more: [['build', 'Build an add-on', 'Open']] },
-  mcp: { create: ['mcp-manage', 'Add custom connection'], more: [] },
-  triggers: { create: ['workflows', 'Open automations'], more: [] },
+  plugins: { create: ['browse', 'Browse Market'], more: [['build', 'Build a plugin', 'Open']] },
+  mcp: { create: ['mcp-manage', 'Add MCP server'], more: [] },
+  triggers: { create: ['workflows', 'Open workflows'], more: [] },
 });
 
 const fixLabel = (row) => (row.status === 'reconnect' ? 'Reconnect' : 'Connect');
@@ -29,13 +29,13 @@ export function studioPanels(summary = {}) {
   const broken = Array.isArray(summary.broken) ? summary.broken : [];
   const needsYou = Number(summary.needsYou) || 0;
   const left = {
-    title: 'Add-ons',
+    title: 'Plugins',
     icon: 'fas fa-plug',
     stats: [
       { label: 'Connections', value: counts.connections ?? 0 },
       { label: 'Need you', value: needsYou, ...(needsYou ? { tone: 'bad' } : {}) },
-      { label: 'Add-ons', value: counts.plugins ?? 0 },
-      { label: 'Custom connections', value: counts.mcp ?? 0 },
+      { label: 'Plugins', value: counts.plugins ?? 0 },
+      { label: 'MCP servers', value: counts.mcp ?? 0 },
     ],
     lists: [
       {

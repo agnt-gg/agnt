@@ -368,7 +368,7 @@ async function createCustomApp(form) {
 }
 function askAnnieForPlugin(name) {
   layer.value = null;
-  nav.ask(`Build an add-on that connects AGNT to ${name || 'an app I use'} with its sign-in page.`);
+  nav.ask(`Build a plugin that connects AGNT to ${name || 'an app I use'} with its sign-in page.`);
 }
 
 // ── Plugins ──────────────────────────────────────────────────────────────
@@ -409,10 +409,10 @@ async function updateMany(rows, clear) {
   clear?.();
   const updated = outcomes.filter(([, outcome]) => outcome === 'updated').length;
   const consent = outcomes.filter(([, outcome]) => outcome === 'consent').map(([row]) => row.label);
-  nav.toast([`${plural(updated, 'add-on')} updated.`, consent.length ? `${consent.join(', ')} ${consent.length === 1 ? 'asks' : 'ask'} for new access: update ${consent.length === 1 ? 'it' : 'each'} on its own to review.` : ''].filter(Boolean).join(' '));
+  nav.toast([`${plural(updated, 'plugin')} updated.`, consent.length ? `${consent.join(', ')} ${consent.length === 1 ? 'asks' : 'ask'} for new access: update ${consent.length === 1 ? 'it' : 'each'} on its own to review.` : ''].filter(Boolean).join(' '));
 }
 
-const UNINSTALL_MESSAGE = 'Its actions stop working for every assistant and automation that uses them.<br><br>Assistants, automations and dashboard cards it added that you edited are kept as your own.';
+const UNINSTALL_MESSAGE = 'Its tools stop working for every agent and workflow that uses them.<br><br>Agents, workflows and widgets it added that you edited are kept as your own.';
 async function uninstallOne(row) {
   const confirmed = await nav.confirm({ title: `Uninstall ${row.label}?`, message: UNINSTALL_MESSAGE, confirmText: 'Uninstall', danger: true });
   if (!confirmed) return;
@@ -432,8 +432,8 @@ async function uninstallOne(row) {
 }
 async function uninstallMany(rows, clear) {
   const confirmed = await nav.confirm({
-    title: `Uninstall ${plural(rows.length, 'add-on')}?`,
-    message: 'Their actions stop working for every assistant and automation that uses them.<br><br>Assistants, automations and dashboard cards they added that you edited are kept as your own.',
+    title: `Uninstall ${plural(rows.length, 'plugin')}?`,
+    message: 'Their tools stop working for every agent and workflow that uses them.<br><br>Agents, workflows and widgets they added that you edited are kept as your own.',
     confirmText: 'Uninstall',
     danger: true,
   });
@@ -450,7 +450,7 @@ async function uninstallMany(rows, clear) {
   clear?.();
   quiet(store.dispatch('tools/refreshAllTools'));
   await refreshPlugins();
-  if (done) nav.toast(`${plural(done, 'add-on')} uninstalled.`);
+  if (done) nav.toast(`${plural(done, 'plugin')} uninstalled.`);
 }
 
 // ── MCP servers ──────────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ async function removeServers(rows, clear) {
   const one = rows.length === 1 ? rows[0] : null;
   const confirmed = await nav.confirm({
     title: one ? `Remove ${one.name}?` : `Remove ${plural(rows.length, 'server')}?`,
-    message: 'Annie and your assistants stop seeing its actions. You can add it again from the Custom connection library.',
+    message: 'Annie and your agents stop seeing its tools. You can add it again from the MCP library.',
     confirmText: 'Remove',
     danger: true,
   });
@@ -501,7 +501,7 @@ async function copyTrigger(row) {
   const text = row.kind === 'Email' ? row.address : row.url;
   try {
     await navigator.clipboard.writeText(text);
-    nav.toast(row.kind === 'Email' ? 'Address copied.' : 'Web trigger URL copied.');
+    nav.toast(row.kind === 'Email' ? 'Address copied.' : 'Webhook URL copied.');
   } catch (error) {
     nav.toast(`Couldn’t copy. ${errorText(error)}`);
   }
@@ -511,8 +511,8 @@ async function removeWebhooks(rows, clear) {
   if (!hooks.length) return;
   const one = hooks.length === 1 ? hooks[0] : null;
   const confirmed = await nav.confirm({
-    title: one ? 'Remove this web trigger?' : `Remove ${plural(hooks.length, 'webhook')}?`,
-    message: one ? `${one.workflow} stops receiving calls to its URL.` : 'Their automations stop receiving calls to their URLs.',
+    title: one ? 'Remove this webhook?' : `Remove ${plural(hooks.length, 'webhook')}?`,
+    message: one ? `${one.workflow} stops receiving calls to its URL.` : 'Their workflows stop receiving calls to their URLs.',
     confirmText: 'Remove',
     danger: true,
   });
@@ -521,10 +521,10 @@ async function removeWebhooks(rows, clear) {
   for (const row of hooks) {
     const result = await store.dispatch('webhooks/deleteWebhook', row.workflowId);
     if (result?.success) done += 1;
-    else nav.toast(`Couldn’t remove the web trigger for ${row.workflow}. ${result?.error || ''}`.trim());
+    else nav.toast(`Couldn’t remove the webhook for ${row.workflow}. ${result?.error || ''}`.trim());
   }
   clear?.();
-  if (done) nav.toast(one ? 'Web trigger removed.' : `${plural(done, 'webhook')} removed.`);
+  if (done) nav.toast(one ? 'Webhook removed.' : `${plural(done, 'webhook')} removed.`);
 }
 
 // ── Every click the sections report ──────────────────────────────────────

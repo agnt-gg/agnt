@@ -1,5 +1,5 @@
 <template>
-  <span v-if="who?.kind === 'agent'" v-tooltip="label || 'Assistant'" class="av agent" :class="size"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
+  <span v-if="who?.kind === 'agent'" v-tooltip="label || 'Agent'" class="av agent" :class="size"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
   <span v-else-if="who?.kind === 'system'" v-tooltip="'AGNT'" class="av is-system" :class="size"><i class="fas fa-info" aria-hidden="true"></i></span>
   <span v-else v-tooltip="label" class="av" :class="size" :style="{ background: avatarHue(who?.id || label) }">{{ initials(label) }}</span>
 </template>

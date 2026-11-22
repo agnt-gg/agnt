@@ -22,7 +22,7 @@ describe('starter data', () => {
 
   it('starterAt shapes one for rendering', () => {
     const s = starterAt(0);
-    expect(s).toMatchObject({ index: 0, lane: 'build', laneLabel: 'Build', label: 'Make me an assistant' });
+    expect(s).toMatchObject({ index: 0, lane: 'build', laneLabel: 'Build', label: 'Make me an agent' });
     expect(s.icon).toContain('<path');
   });
 });

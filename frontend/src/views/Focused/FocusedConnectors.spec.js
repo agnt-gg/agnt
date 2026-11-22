@@ -122,7 +122,7 @@ beforeEach(() => {
       state.appAuth.allProviders.push({ id: payload.id, name: payload.name, connection_type: 'apikey', is_global: '0', created_by: 'me' });
       return { success: true };
     }
-    if (action === 'mcpServers/testConnection') return { success: true, connected: true, message: 'Connection successful (3 actions, 12ms)', toolCount: 3 };
+    if (action === 'mcpServers/testConnection') return { success: true, connected: true, message: 'Connection successful (3 tools, 12ms)', toolCount: 3 };
     if (action === 'mcpServers/deleteServer') return { success: true };
     if (action === 'webhooks/deleteWebhook') return { success: true };
     if (action === 'marketplace/installPlugin') getters['apps/installed'].push({ ...getters['apps/available'].find((p) => p.name === payload.pluginName) });
@@ -149,7 +149,7 @@ describe('Apps page: App connections', () => {
     mountPage(); await flushPromises();
     await wrapper.find('[data-page="plugins"]').trigger('click'); await flushPromises();
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'plugins' });
-    expect(heading()).toBe('Add-ons');
+    expect(heading()).toBe('Plugins');
     await wrapper.find('[data-page="connections"]').trigger('click'); await flushPromises();
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors' });
     expect(heading()).toBe('Connections');
@@ -205,7 +205,7 @@ describe('Apps page: App connections', () => {
     expect(nav.toast).toHaveBeenCalledWith('Google works.');
   });
 
-  it('the Add-ons chip opens Add-ons, searched for that connection', async () => {
+  it('the Plugins chip opens Plugins, searched for that connection', async () => {
     getters['apps/installed'] = [gmail];
     getters['appAuth/connectedApps'] = ['google'];
     mountPage(); await flushPromises();
@@ -255,7 +255,7 @@ describe('Apps page: Add connection', () => {
     expect(dispatch.mock.calls.some(([a]) => a === 'appAuth/createProvider')).toBe(false);
   });
 
-  it('an app with its own sign-in page is pointed at an add-on Annie can build', async () => {
+  it('an app with its own sign-in page is pointed at a plugin Annie can build', async () => {
     mountPage(); await flushPromises();
     await wrapper.find('.page-head [data-action="add"]').trigger('click'); await flushPromises();
     const modal = () => wrapper.find('[data-testid="add-connection"]');
@@ -263,7 +263,7 @@ describe('Apps page: Add connection', () => {
     await modal().find('#za-ca-name').setValue('Northwind');
     await modal().find('[data-type="oauth"]').trigger('click'); await flushPromises();
     await modal().find('[data-action="ask-annie"]').trigger('click'); await flushPromises();
-    expect(nav.ask).toHaveBeenCalledWith(expect.stringContaining('Build an add-on that connects AGNT to Northwind'));
+    expect(nav.ask).toHaveBeenCalledWith(expect.stringContaining('Build a plugin that connects AGNT to Northwind'));
     expect(modal().exists()).toBe(false);
   });
 
@@ -286,7 +286,7 @@ describe('Apps page: Add connection', () => {
   });
 });
 
-describe('Apps page: Add-ons, Custom connections, Email & web triggers', () => {
+describe('Apps page: Plugins, MCP servers, Email & webhooks', () => {
   it('Plugins: each row shows the sign-in it needs; Uninstall confirms and uninstalls', async () => {
     getters['apps/installed'] = [gmail];
     mountPage(null, 'plugins'); await flushPromises();
@@ -314,7 +314,7 @@ describe('Apps page: Add-ons, Custom connections, Email & web triggers', () => {
     await row('git').find('[data-action="mcp-test"]').trigger('click'); await flushPromises();
     expect(dispatch).toHaveBeenCalledWith('mcpServers/testConnection', 'git');
     expect(row('git').text()).toContain('Responding');
-    expect(row('git').text()).toContain('3 actions');
+    expect(row('git').text()).toContain('3 tools');
     await openMenu('git');
     await row('git').find('[data-action="mcp-remove"]').trigger('click'); await flushPromises();
     expect(dispatch).toHaveBeenCalledWith('mcpServers/deleteServer', 'git');
@@ -325,7 +325,7 @@ describe('Apps page: Add-ons, Custom connections, Email & web triggers', () => {
     expect(appsShown()).toBe(true);
   });
 
-  it('Email & web triggers: copy an address or URL, and remove a web trigger', async () => {
+  it('Email & webhooks: copy an address or URL, and remove a webhook', async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     state.webhooks.webhooks = [{ id: 7, workflow_id: 'w2', workflow_name: 'Leads', workflow_status: 'listening', webhook_url: 'https://hooks.example/x', method: 'POST', auth_type: 'none' }];
@@ -335,7 +335,7 @@ describe('Apps page: Add-ons, Custom connections, Email & web triggers', () => {
     await openMenu('webhook:7');
     await row('webhook:7').find('[data-action="copy"]').trigger('click'); await flushPromises();
     expect(writeText).toHaveBeenCalledWith('https://hooks.example/x');
-    expect(nav.toast).toHaveBeenCalledWith('Web trigger URL copied.');
+    expect(nav.toast).toHaveBeenCalledWith('Webhook URL copied.');
     await openMenu('webhook:7');
     await row('webhook:7').find('[data-action="remove-webhook"]').trigger('click'); await flushPromises();
     expect(dispatch).toHaveBeenCalledWith('webhooks/deleteWebhook', 'w2');
@@ -355,21 +355,21 @@ describe('Apps page: Add-ons, Custom connections, Email & web triggers', () => {
     expect(dispatch).toHaveBeenCalledWith('webhooks/fetchWebhooks');
   });
 
-  it('without Pro, Email & web triggers offers Go Pro and asks the server for nothing', async () => {
+  it('without Pro, Email & webhooks offers Go Pro and asks the server for nothing', async () => {
     license.mail = false;
     license.hooks = false;
     mountPage(null, 'triggers'); await flushPromises();
-    expect(wrapper.find('[data-section="locked"]').text()).toContain('Email and web triggers are included with AGNT Pro');
+    expect(wrapper.find('[data-section="locked"]').text()).toContain('Email and webhook triggers are included with AGNT Pro');
     expect(dispatch.mock.calls.some(([a]) => a === 'webhooks/fetchWebhooks' || a === 'emailListeners/fetchEmailListeners')).toBe(false);
     await wrapper.find('[data-action="upgrade"]').trigger('click'); await flushPromises();
     expect(wrapper.find('.upgrade-stub').exists()).toBe(true);
   });
 });
 
-describe('An add-on in full (app:<name>)', () => {
-  it('opens direct and browser-back add-on links, including packages loaded after mount', async () => {
+describe('A plugin in full (app:<name>)', () => {
+  it('opens direct and browser-back plugin links, including packages loaded after mount', async () => {
     getters['apps/available'] = []; mountPage('app:research'); await flushPromises();
-    expect(wrapper.text()).toContain('This add-on isn’t available');
+    expect(wrapper.text()).toContain('This plugin isn’t available');
     getters['apps/available'] = [pack, gmail]; await flushPromises();
     expect(detail().find('.ap-detail-name').text()).toBe('Research');
     expect(appsShown()).toBe(false);
@@ -390,7 +390,7 @@ describe('An add-on in full (app:<name>)', () => {
     expect(wrapper.findComponent(AppsSection).props('selectedPlugin')).toBe('gmail-plugin');
     await wrapper.find('[data-action="back"]').trigger('click'); await flushPromises();
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'connectors', tab: 'plugins' });
-    expect(heading()).toBe('Add-ons');
+    expect(heading()).toBe('Plugins');
     expect(wrapper.find('[data-testid="apps-search"]').element.value).toBe('gm');
   });
 
@@ -432,7 +432,7 @@ describe('An add-on in full (app:<name>)', () => {
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'settings' });
   });
 
-  it('installed dashboard cards open in the Library', async () => {
+  it('installed widgets open in the Library', async () => {
     getters['apps/installed'] = [pack]; getters['widgetDefinitions/allDefinitions'] = [{ id: 'w1' }];
     apiFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true, assets: [{ asset_type: 'widget', asset_slug: 'board', local_id: 'w1' }] }) });
     mountPage('app:research'); await flushPromises();
@@ -440,7 +440,7 @@ describe('An add-on in full (app:<name>)', () => {
     expect(nav.go).toHaveBeenLastCalledWith({ page: 'library', tab: 'widgets', item: 'w1' });
   });
 
-  it('the Forge is offered only on an add-on you built', async () => {
+  it('the Forge is offered only on a plugin you built', async () => {
     getters['apps/installed'] = [pack];
     mountPage('app:research'); await flushPromises();
     expect(detail().find('[data-action="edit-in-forge"]').exists()).toBe(false);
@@ -455,7 +455,7 @@ describe('An add-on in full (app:<name>)', () => {
     }
   });
 
-  it('a ready add-on leads with trying it, which asks Annie', async () => {
+  it('a ready plugin leads with trying it, which asks Annie', async () => {
     getters['apps/installed'] = [gmail]; getters['appAuth/connectedApps'] = ['google'];
     mountPage('app:gmail-plugin'); await flushPromises();
     const lead = detail().find('.ap-detail-actions .ap-btn.primary');

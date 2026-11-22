@@ -1,8 +1,8 @@
 <template>
-  <div class="layer" role="dialog" aria-modal="true" aria-label="Review assistant results" data-testid="review-sitting" @click.self="$emit('close')">
+  <div class="layer" role="dialog" aria-modal="true" aria-label="Review agent results" data-testid="review-sitting" @click.self="$emit('close')">
     <div class="modal sitting">
       <div class="modal-head">
-        <h3 v-if="!finished">Review assistant results <span class="sitting-count">{{ index + 1 }} of {{ queue.length }}</span></h3>
+        <h3 v-if="!finished">Review agent results <span class="sitting-count">{{ index + 1 }} of {{ queue.length }}</span></h3>
         <h3 v-else>All reviewed</h3>
         <button type="button" class="btn ghost sm" aria-label="Close" @click="$emit('close')">Close</button>
       </div>
@@ -12,7 +12,7 @@
         <p v-if="loadError" class="mk-error">{{ loadError }}</p>
         <div v-else-if="!detail" class="mk-muted">Loading…</div>
         <template v-else>
-          <div class="tc-docprev sitting-result" data-testid="sitting-result">{{ detail.result || 'The assistant finished without text.' }}</div>
+          <div class="tc-docprev sitting-result" data-testid="sitting-result">{{ detail.result || 'The agent finished without text.' }}</div>
           <ul v-if="detail.checks?.length" class="sitting-checks">
             <li v-for="check in detail.checks" :key="check.label" :class="check.ok === true ? 'is-ok' : check.ok === false ? 'is-bad' : ''">
               <span aria-hidden="true">{{ check.ok === true ? '✓' : check.ok === false ? '✕' : '?' }}</span>{{ check.label }}<small v-if="check.detail"> · {{ check.detail }}</small>
@@ -101,7 +101,7 @@ const approve = () => decide(() => teamApi.approve(current.value.workspaceId, cu
 async function sendBack() {
   if (busy.value || !detail.value) return;
   busy.value = true;
-  const note = await ctx.prompt({ title: 'Send back', message: 'What should change? The assistant runs again with your note.', placeholder: 'e.g. Shorter, and use the Q3 prices', confirmText: 'Send back' });
+  const note = await ctx.prompt({ title: 'Send back', message: 'What should change? The agent runs again with your note.', placeholder: 'e.g. Shorter, and use the Q3 prices', confirmText: 'Send back' });
   busy.value = false;
   if (note === null) return;
   await decide(() => teamApi.sendBack(current.value.workspaceId, current.value.id, note), 'sentBack');

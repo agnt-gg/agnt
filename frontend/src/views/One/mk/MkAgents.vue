@@ -3,8 +3,8 @@
   <div class="content">
     <div class="page">
       <div class="page-head">
-        <div><h1>Assistants</h1><p>Your private assistants, and the ones each teamspace has published. Assistants show up as members: @mention them or assign them a card.</p></div>
-        <button type="button" class="primary" @click="ctx.create('agent')"><MkIcon name="plus" size="sm" />New assistant</button>
+        <div><h1>Agents</h1><p>Your private agents, and the ones each teamspace has published. Agents show up as members: @mention them or assign them a card.</p></div>
+        <button type="button" class="primary" @click="ctx.create('agent')"><MkIcon name="plus" size="sm" />New agent</button>
       </div>
       <div class="sec-head"><h3><MkIcon name="lock" size="xs" /> Mine · private</h3></div>
       <div class="cards">
@@ -21,7 +21,7 @@
           </div>
         </template>
         <div v-else class="card">
-          <div class="card-top"><span class="r-icon"><MkIcon name="lock" size="sm" /></span><div><h4>Your private assistants</h4></div></div>
+          <div class="card-top"><span class="r-icon"><MkIcon name="lock" size="sm" /></span><div><h4>Your private agents</h4></div></div>
           <p>They live in your Personal space. Copy one in from there to share it with a teamspace.</p>
         </div>
       </div>

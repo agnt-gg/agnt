@@ -68,7 +68,7 @@ describe('Settings → Navigation', () => {
     expect(listed).not.toContain('Library');
     expect(everyRow.some(item => item.id === 'teams')).toBe(false);
     // Every BUILD row is configurable, Skills and Widgets included.
-    for (const label of ['Add-ons', 'Skills', 'Widgets']) expect(listed).toContain(label);
+    for (const label of ['Plugins', 'Skills', 'Widgets']) expect(listed).toContain(label);
   });
 
   it('a toggle here changes what the rail will render', () => {

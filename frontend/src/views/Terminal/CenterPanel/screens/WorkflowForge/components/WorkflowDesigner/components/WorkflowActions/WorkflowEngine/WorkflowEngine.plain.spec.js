@@ -1,4 +1,4 @@
-// Inside AGNT One the automation's on/off button says Turn on / Turn off; Studio keeps its icon.
+// Inside AGNT One the workflow's on/off button says Turn on / Turn off; Studio keeps its icon.
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WorkflowEngine from './WorkflowEngine.vue';
@@ -9,7 +9,7 @@ const mountEngine = (status, plain) => mount(WorkflowEngine, {
   global: { provide: plain ? { [PLAIN_WORDS_KEY]: true } : {}, stubs: { Tooltip: { template: '<span><slot /></span>' } } },
 });
 
-describe('the automation on/off button', () => {
+describe('the workflow on/off button', () => {
   it('says Turn on, Turn off, Starting… inside AGNT One', () => {
     expect(mountEngine('stopped', true).text()).toBe('Turn on');
     expect(mountEngine('listening', true).text()).toBe('Turn off');

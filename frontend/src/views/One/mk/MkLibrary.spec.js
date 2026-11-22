@@ -34,7 +34,7 @@ describe('Library', () => {
     expect(teamLocation({ view: 'library', tab: 'connections' }).tab).toBe('agents');
     const { wrapper } = mountLibrary('agents');
     // Your own kinds as tabs; the Market, somewhere to get more, as a link after them.
-    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Assistants', 'Automations', 'Actions', 'Playbooks', 'Dashboard cards', 'Files', 'Get more from the Market']);
+    expect(wrapper.findAll('.tabs .tab').map((b) => b.text().replace(/\d+$/, ''))).toEqual(['Agents', 'Workflows', 'Tools', 'Skills', 'Widgets', 'Files', 'Get more from the Market']);
     expect(wrapper.get('.tabs .v2-tab-link').attributes('data-tab')).toBe('market');
   });
   it('Files shows your workspace in the page, at the folder the route names', async () => {
@@ -52,10 +52,10 @@ describe('Library', () => {
     await flushPromises();
     for (const action of ['agents/fetchAgents', 'workflows/fetchWorkflows', 'tools/fetchTools', 'skills/fetchSkills', 'widgetDefinitions/fetchDefinitions']) expect(dispatch).toHaveBeenCalledWith(action);
     const count = (label) => wrapper.findAll('.tabs .tab').find((b) => b.text().startsWith(label)).find('.count').text();
-    expect(count('Assistants')).toBe('1');
-    expect(count('Automations')).toBe('2');
+    expect(count('Agents')).toBe('1');
+    expect(count('Workflows')).toBe('2');
   });
-  it('shows your automations as cards that open in their editor, with New automation', async () => {
+  it('shows your workflows as cards that open in their editor, with New workflow', async () => {
     const { wrapper, ctx } = mountLibrary('workflows', { workflows: [{ id: 'w1', name: 'Morning brief', description: 'Emails the day', status: 'listening' }] });
     await flushPromises();
     const card = wrapper.find('.cards .card');
@@ -72,13 +72,13 @@ describe('Library', () => {
     const shelf = wrapper.findComponent(MarketplaceShelf);
     expect(shelf.exists()).toBe(true);
     expect(shelf.props()).toMatchObject({ assetType: 'agent', variant: 'catalogue', dismissible: false });
-    expect(wrapper.text()).toContain('No assistants yet. Make one, or add one from the picks below.');
+    expect(wrapper.text()).toContain('No agents yet. Make one, or add one from the picks below.');
   });
   it('with no picks for that kind, the empty list points at the Market instead', async () => {
     const { wrapper } = mountLibrary('skills');
     await flushPromises();
     expect(wrapper.findComponent(MarketplaceShelf).props('assetType')).toBe('skill');
-    expect(wrapper.text()).toContain('No playbooks yet. Make one, or add one from the Market.');
+    expect(wrapper.text()).toContain('No skills yet. Make one, or add one from the Market.');
   });
   it('opening a pick goes to its Market listing', async () => {
     const { wrapper, ctx } = mountLibrary('agents');

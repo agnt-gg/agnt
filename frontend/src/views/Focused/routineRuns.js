@@ -58,6 +58,6 @@ export function resultOf(output) {
 export function taskTone(status) {
   if (status === 'completed') return { label: 'Done', tag: 'green' };
   if (status === 'failed' || status === 'error') return { label: 'Failed', tag: 'amber' };
-  if (status === 'running' || status === 'in_progress') return { label: 'In progress', tag: 'blue' };
+  if (status === 'running' || status === 'in_progress') return { label: 'Running', tag: 'blue' };
   return { label: 'Not run', tag: '' };
 }

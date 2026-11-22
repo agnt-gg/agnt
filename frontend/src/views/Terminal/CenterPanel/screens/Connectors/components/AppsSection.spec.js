@@ -372,7 +372,7 @@ describe('Plugin detail and install', () => {
   });
   it('a deep link to an unknown plugin says so instead of showing the wrong one', async () => {
     setup({ props: { selectedPlugin: 'ghost' } }); await flushPromises();
-    expect(detail().text()).toContain('This add-on isn’t available');
+    expect(detail().text()).toContain('This plugin isn’t available');
   });
 });
 

@@ -26,8 +26,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { assetIcon, assetTypeLabel as builderLabel, artStyle } from '@/composables/useMarketplaceCard';
-import { usePlainWords } from '@/composables/plainWords.js';
+import { assetIcon, assetTypeLabel, artStyle } from '@/composables/useMarketplaceCard';
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -38,8 +37,6 @@ defineEmits(['open', 'install']);
 
 const coverFailed = ref(false);
 const kind = computed(() => String(props.listing.asset_type || 'item'));
-const plainWords = usePlainWords();
-const assetTypeLabel = (listing) => plainWords(listing.asset_type)?.[2] || builderLabel(listing);
 const cover = computed(() => (coverFailed.value ? null : props.listing.cover_url || props.listing.preview_image || null));
 const TIERS = { official: 'Official', verified: 'Verified' };
 const tier = computed(() => TIERS[String(props.listing.trust_tier || '').toLowerCase()] || 'Community');
@@ -49,8 +46,7 @@ const price = computed(() => Number(props.listing.price) || 0);
 const priceLabel = computed(() => (price.value > 0 ? `$${price.value.toFixed(2)}` : 'Free'));
 // The website's verbs (agnt.gg/public/asset-actions.js): templates are got, the rest installed.
 const VERBS = { agent: 'Get template', workflow: 'Get template', plugin: 'Install plugin', skill: 'Install skill', tool: 'Install tool' };
-// Inside AGNT One the button is one verb with its price; Studio names what it installs.
-const actionLabel = computed(() => (price.value > 0 ? `Buy ${priceLabel.value}` : plainWords(kind.value) ? 'Get it · Free' : VERBS[kind.value] || 'Install'));
+const actionLabel = computed(() => (price.value > 0 ? `Buy ${priceLabel.value}` : VERBS[kind.value] || 'Install'));
 </script>
 
 <style scoped>

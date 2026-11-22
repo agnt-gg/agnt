@@ -3,13 +3,13 @@
   <div v-if="(agent || isNew) && loaded" class="focused-forge">
   <FocusedForgeChat kind="agents" :item-id="agentId" :record="forgeRecord" @changed="reloadAfterAnnie" @draft="applyDraft" />
   <FocusedEditor
-    kind-label="Assistants"
-    back-label="Assistants"
+    kind-label="Agents"
+    back-label="Agents"
     v-model:name="v.name"
     v-model:description="v.description"
-    name-placeholder="Assistant name"
-    description-placeholder="What this assistant does"
-    :delete-label="isNew ? '' : 'Delete assistant'"
+    name-placeholder="Agent name"
+    description-placeholder="What this agent does"
+    :delete-label="isNew ? '' : 'Delete agent'"
     :meta="lastUsed"
     :dirty="dirty"
     :saving="saving"
@@ -34,7 +34,7 @@
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
         <h3>Instructions</h3>
-        <span class="focused-edit-hint">What the assistant is for and how it should work.</span>
+        <span class="focused-edit-hint">What the agent is for and how it should work.</span>
       </div>
       <AutoTextarea
         v-model="v.systemPrompt"
@@ -45,14 +45,14 @@
     </section>
 
     <section class="focused-edit-block">
-      <div class="focused-edit-block-head"><h3>How it works</h3><span class="focused-edit-hint" data-testid="agent-privacy">{{ lastUsed }}</span></div>
+      <div class="focused-edit-block-head"><h3>Settings</h3><span class="focused-edit-hint" data-testid="agent-privacy">{{ lastUsed }}</span></div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">AI</span>
+          <span class="focused-edit-label">Model</span>
           <div class="focused-edit-pair">
             <CustomSelect
               :model-value="v.provider"
-              :options="[{ label: 'Same as Annie (recommended)', value: '' }, ...providerOptions.map((p) => ({ label: p, value: p }))]"
+              :options="[{ label: 'My default model', value: '' }, ...providerOptions.map((p) => ({ label: p, value: p }))]"
               @update:model-value="onProvider"
             />
             <CustomSelect
@@ -65,47 +65,47 @@
           </div>
         </div>
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Turned on<small class="focused-edit-hint">{{ v.active ? `Ask for it in any chat: type @${(v.name || 'Name').replace(/\s+/g, '')}` : 'Off: it won’t run or answer in chats' }}</small></span>
-          <button type="button" class="focused-switch" role="switch" :aria-checked="v.active ? 'true' : 'false'" aria-label="Turned on" @click="v.active = !v.active"></button>
+          <span class="focused-edit-label">Active<small class="focused-edit-hint">{{ v.active ? `Ask for it in any chat: type @${(v.name || 'Name').replace(/\s+/g, '')}` : 'Off: it won’t run or answer in chats' }}</small></span>
+          <button type="button" class="focused-switch" role="switch" :aria-checked="v.active ? 'true' : 'false'" aria-label="Active" @click="v.active = !v.active"></button>
         </div>
       </div>
     </section>
 
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>What it can use</h3>
-        <span class="focused-edit-hint">{{ tools.open ? 'Anything you’ve connected, and every built-in action.' : `Only the ${tools.chosen.length} you pick` }}</span>
+        <h3>Tools</h3>
+        <span class="focused-edit-hint">{{ tools.open ? 'This agent can use every tool.' : `${tools.chosen.length} chosen` }}</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Apps and actions</span>
-          <div class="seg" role="radiogroup" aria-label="Apps and actions" data-testid="agent-tool-scope">
-            <button type="button" role="radio" :class="{ on: tools.open }" :aria-checked="String(tools.open)" @click="tools.open = true">Everything</button>
+          <span class="focused-edit-label">Tools</span>
+          <div class="seg" role="radiogroup" aria-label="Tools" data-testid="agent-tool-scope">
+            <button type="button" role="radio" :class="{ on: tools.open }" :aria-checked="String(tools.open)" @click="tools.open = true">Every tool</button>
             <button type="button" role="radio" :class="{ on: !tools.open }" :aria-checked="String(!tools.open)" @click="tools.open = false">Only ones I pick</button>
           </div>
         </div>
         <div v-if="!tools.open" class="focused-edit-row column">
-          <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search actions…" />
+          <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search tools…" />
         </div>
       </div>
     </section>
 
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Playbooks</h3>
-        <span class="focused-edit-hint">{{ skills.length ? `${skills.length} chosen` : 'What this assistant knows how to do.' }}</span>
+        <h3>Skills</h3>
+        <span class="focused-edit-hint">{{ skills.length ? `${skills.length} chosen` : 'What this agent knows how to do.' }}</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row column">
-          <ListWithSearch v-model="skills" :items="allSkills" label-key="displayName" id-key="id" item-noun="skills" placeholder="Search playbooks…" />
+          <ListWithSearch v-model="skills" :items="allSkills" label-key="displayName" id-key="id" item-noun="skills" placeholder="Search skills…" />
         </div>
       </div>
     </section>
   </FocusedEditor>
   </div>
   <section v-else class="focused-page">
-    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Assistants</button>
-    <p class="focused-empty">{{ agent || loadingAgents ? 'Loading…' : 'This assistant no longer exists.' }}</p>
+    <button type="button" class="focused-page-back" @click="back"><i class="fas fa-arrow-left" aria-hidden="true"></i>Agents</button>
+    <p class="focused-empty">{{ agent || loadingAgents ? 'Loading…' : 'This agent no longer exists.' }}</p>
   </section>
 </template>
 
@@ -206,7 +206,7 @@ async function onAvatar(event) {
 
 async function save() {
   if (!v.name.trim()) {
-    error.value = 'Give the assistant a name.';
+    error.value = 'Give the agent a name.';
     return;
   }
   saving.value = true;
@@ -218,13 +218,13 @@ async function save() {
       const id = res?.agentId || res?.agent?.id;
       if (!id) throw new Error('AGNT didn\u2019t return the new agent.');
       baseline.value = snapshot(); // nothing left unsaved: leave without asking
-      nav.toast('Assistant created.');
+      nav.toast('Agent created.');
       nav.go({ page: 'library', tab: 'agents', item: String(id) });
       return;
     }
     await store.dispatch('agents/updateAgent', payload);
     load({ ...agent.value, ...payload });
-    nav.toast('Assistant saved.');
+    nav.toast('Agent saved.');
   } catch (e) {
     error.value = 'Couldn’t save. ' + (e?.message || e);
   } finally {
@@ -269,14 +269,14 @@ function discard() {
   error.value = '';
 }
 async function back() {
-  if (dirty.value && !(await nav.confirm({ title: 'Discard changes?', message: 'Your edits to this assistant haven’t been saved.', confirmText: 'Discard', danger: true }))) return;
+  if (dirty.value && !(await nav.confirm({ title: 'Discard changes?', message: 'Your edits to this agent haven’t been saved.', confirmText: 'Discard', danger: true }))) return;
   nav.go({ page: 'library', tab: 'agents' });
 }
 async function remove() {
-  if (!(await nav.confirm({ title: 'Delete assistant?', message: `“${agent.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
+  if (!(await nav.confirm({ title: 'Delete agent?', message: `“${agent.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
   try {
     await store.dispatch('agents/deleteAgent', agent.value.id);
-    nav.toast('Assistant deleted.');
+    nav.toast('Agent deleted.');
     nav.go({ page: 'library', tab: 'agents' });
   } catch (e) {
     error.value = 'Couldn’t delete. ' + (e?.message || e);

@@ -1,21 +1,21 @@
 <template>
   <div>
     <div class="board-bar">
-      <span v-if="kind === 'agent'" style="color: var(--text-secondary); font-size: 13.5px">Published assistants anyone in {{ spaceName }} can @mention or assign. Runs use team connections.</span>
+      <span v-if="kind === 'agent'" style="color: var(--text-secondary); font-size: 13.5px">Published agents anyone in {{ spaceName }} can @mention or assign. Runs use team connections.</span>
       <span class="fill"></span>
       <button v-if="kind === 'agent'" type="button" class="btn" @click="$emit('library')"><MkIcon name="library" size="sm" />Add from Library</button>
       <!-- As in the mockup: agents come in from the Library (a new one is made from New…); routines start here. -->
-      <button v-if="kind !== 'agent'" type="button" class="primary" @click="$emit('open-editor', null)"><MkIcon name="plus" size="sm" />New repeating goal</button>
+      <button v-if="kind !== 'agent'" type="button" class="primary" @click="$emit('open-editor', null)"><MkIcon name="plus" size="sm" />New routine</button>
     </div>
 
     <!-- Agents: cards, as in the mockup. -->
     <template v-if="kind === 'agent'">
-      <ul v-if="!items.length" class="list"><li class="empty">{{ loading ? 'Loading…' : 'No assistants yet.' }}</li></ul>
+      <ul v-if="!items.length" class="list"><li class="empty">{{ loading ? 'Loading…' : 'No agents yet.' }}</li></ul>
       <div v-else class="cards">
         <div v-for="item in items" :key="item.id" class="card clickable" role="button" tabindex="0" @click="$emit('open-editor', item)" @keydown.enter="$emit('open-editor', item)">
           <div class="card-top">
             <TeamAvatar :who="{ kind: 'agent', id: item.id }" :label="item.name" size="lg" />
-            <div style="min-width: 0"><h4>{{ item.name }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">Team assistant · {{ spaceName }}</div></div>
+            <div style="min-width: 0"><h4>{{ item.name }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">Team agent · {{ spaceName }}</div></div>
           </div>
           <p>{{ item.description || 'No description yet.' }}</p>
           <div class="card-foot" style="flex-wrap: wrap">
@@ -31,7 +31,7 @@
 
     <!-- Routines: one list of rows, as in the mockup. -->
     <ul v-else class="list">
-      <li v-if="!items.length" class="empty">{{ loading ? 'Loading…' : 'No repeating goals yet.' }}</li>
+      <li v-if="!items.length" class="empty">{{ loading ? 'Loading…' : 'No routines yet.' }}</li>
       <li v-for="item in items" :key="item.id">
         <div class="r clickable" role="button" tabindex="0" @click="$emit('open-editor', item)" @keydown.enter="$emit('open-editor', item)">
           <span class="r-icon"><MkIcon name="bolt" size="sm" /></span>

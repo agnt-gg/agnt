@@ -33,7 +33,7 @@ export function goalLine(goal = {}) {
   const stage = getGoalStage(goal);
   const total = Number(goal.task_count) || (Array.isArray(goal.tasks) ? goal.tasks.length : 0);
   const done = Number(goal.completed_tasks) || (Array.isArray(goal.tasks) ? goal.tasks.filter((t) => t?.status === 'completed').length : 0);
-  const tasks = total ? `${done} of ${total} steps done` : '';
+  const tasks = total ? `${done} of ${total} tasks done` : '';
   const status = String(goal.status || '').toLowerCase();
   if (stage === 'plan') return 'Annie made a plan. Approve it and she starts';
   if (stage === 'review') return 'Annie finished. Check the result before it’s done';
@@ -52,12 +52,12 @@ export function goalAction(goal = {}) {
   return getGoalStage(goal) === 'plan' ? 'Approve the plan' : 'Check the result';
 }
 
-/** "3 of 9 steps", or '' when the goal has no steps to count. */
+/** "3 of 9 tasks", or '' when the goal has no tasks to count. */
 export function goalSteps(goal = {}) {
   const total = Number(goal.task_count) || (Array.isArray(goal.tasks) ? goal.tasks.length : 0);
   if (!total) return '';
   const done = Number(goal.completed_tasks) || (Array.isArray(goal.tasks) ? goal.tasks.filter((t) => t?.status === 'completed').length : 0);
-  return `${done} of ${total} steps`;
+  return `${done} of ${total} tasks`;
 }
 
 /** 0 to 1, or null when the goal has no tasks to count. */

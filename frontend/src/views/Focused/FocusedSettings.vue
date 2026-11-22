@@ -52,8 +52,8 @@
     <!-- data-section="providers": the "Connect your AI" tour step points here. -->
     <section id="settings-model" class="focused-edit-block" data-section="providers">
       <div class="focused-edit-block-head">
-        <h3>How Annie thinks</h3>
-        <span class="focused-edit-hint">Used unless a chat or an assistant picks another.</span>
+        <h3>AI model</h3>
+        <span class="focused-edit-hint">Used unless a chat or an agent picks another.</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
@@ -98,7 +98,7 @@
 
     <section id="settings-billing" class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Billing &amp; members</h3>
+        <h3>Billing</h3>
         <span class="focused-flex"></span>
         <button type="button" class="focused-link" @click="nav.studio('SettingsScreen', { section: 'billing' })">Full billing</button>
       </div>
@@ -191,8 +191,8 @@ const nav = inject('focusedNav');
 // Grouped by who they're about, so the list reads at a glance.
 const SETTINGS_GROUPS = Object.freeze([
   { label: 'You', sections: [{ id: 'account', label: 'Account', icon: 'fas fa-user' }, { id: 'appearance', label: 'Appearance', icon: 'fas fa-palette' }] },
-  { label: 'AI', sections: [{ id: 'model', label: 'How Annie thinks', icon: 'fas fa-robot' }] },
-  { label: 'Team & billing', sections: [{ id: 'billing', label: 'Billing & members', icon: 'fas fa-credit-card' }, { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' }] },
+  { label: 'AI', sections: [{ id: 'model', label: 'AI model', icon: 'fas fa-robot' }] },
+  { label: 'Team & billing', sections: [{ id: 'billing', label: 'Billing', icon: 'fas fa-credit-card' }, { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' }] },
   { label: 'Advanced', sections: [{ id: 'more', label: 'More settings', icon: 'fas fa-sliders-h' }, { id: 'layout', label: 'Layout', icon: 'fas fa-columns' }] },
 ]);
 const SETTINGS_SECTIONS = SETTINGS_GROUPS.flatMap((g) => g.sections);

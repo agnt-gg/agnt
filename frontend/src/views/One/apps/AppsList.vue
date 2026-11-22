@@ -122,7 +122,7 @@ import AppsGlyph from './AppsGlyph.vue';
 import { listColumns, groupRows, visibleRows } from './appsModel.js';
 
 const props = defineProps({
-  // Rows can be picked for bulk actions; a list with none to offer has no checkboxes.
+  // Rows can be picked for bulk changes; a list with none to offer has no checkboxes.
   selectable: { type: Boolean, default: true },
   rows: { type: Array, required: true },
   spec: { type: Object, required: true },

@@ -15,11 +15,11 @@
  */
 
 const INTRO = {
-  agents: { noun: 'assistant', icon: 'fas fa-robot', suggestions: ['Write its instructions', 'Pick the right actions for it', 'Make it more concise'] },
-  tools: { noun: 'action', icon: 'fas fa-tools', suggestions: ['Write the prompt for me', 'Add an input', 'Turn this into JavaScript'] },
-  workflows: { noun: 'automation', icon: 'fas fa-project-diagram', suggestions: ['Add a step that emails me', 'Run it every morning', 'Explain what it does'] },
-  skills: { noun: 'playbook', icon: 'fas fa-book', suggestions: ['Tighten the instructions', 'Add an example', 'What actions should it allow?'] },
-  widgets: { noun: 'dashboard card', icon: 'fas fa-th-large', suggestions: ['Make it match my theme', 'Show live data', 'Add a refresh button'] },
+  agents: { noun: 'agent', icon: 'fas fa-robot', suggestions: ['Write its instructions', 'Pick the right tools for it', 'Make it more concise'] },
+  tools: { noun: 'tool', icon: 'fas fa-tools', suggestions: ['Write the prompt for me', 'Add an input', 'Turn this into JavaScript'] },
+  workflows: { noun: 'workflow', icon: 'fas fa-project-diagram', suggestions: ['Add a step that emails me', 'Run it every morning', 'Explain what it does'] },
+  skills: { noun: 'skill', icon: 'fas fa-book', suggestions: ['Tighten the instructions', 'Add an example', 'What tools should it allow?'] },
+  widgets: { noun: 'widget', icon: 'fas fa-th-large', suggestions: ['Make it match my theme', 'Show live data', 'Add a refresh button'] },
 };
 
 /** Fields a chat never needs and that only bloat every turn. */

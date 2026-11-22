@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'FocusedSettings.vue'), 'utf8');
 
-describe('How Annie thinks', () => {
+describe('AI model settings', () => {
   it('offers Let Annie choose or one specific AI, through the routing mode', () => {
     expect(SRC).toContain('Let Annie choose (recommended)');
     expect(SRC).toContain('Always use a specific AI');

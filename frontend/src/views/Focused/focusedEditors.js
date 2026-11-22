@@ -217,7 +217,7 @@ export const STEP_GROUPS = Object.freeze([
   ['actions', 'Actions'],
   ['utilities', 'Utilities'],
   ['controls', 'Controls'],
-  ['custom', 'My actions'],
+  ['custom', 'My tools'],
   ['widgets', 'Widgets'],
 ]);
 const GROUP_CAP = 40;

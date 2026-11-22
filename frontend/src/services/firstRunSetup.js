@@ -17,8 +17,8 @@
 import { FIRST_RUN_SUBSCRIPTION_ORDER, connectableAiProviders } from '@/store/app/aiProvider.js';
 
 export const SETUP_STEPS = Object.freeze([
-  { id: 'ai', label: 'Pick your AI' },
-  { id: 'google', label: 'Connect Google' },
+  { id: 'ai', label: 'Your AI' },
+  { id: 'google', label: 'Google' },
   { id: 'phone', label: 'Your phone', pro: true, optional: true },
 ]);
 const STEP_IDS = SETUP_STEPS.map((step) => step.id);

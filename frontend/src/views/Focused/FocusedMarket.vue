@@ -2,7 +2,8 @@
   <section class="focused-market focused-page" aria-label="Market">
     <SimpleModal ref="modal" />
     <header class="focused-market-head">
-      <div><h1>Market</h1><p>Ready-made assistants, automations and add-ons, free and paid. Each one is checked before it’s listed.</p></div>
+      <div><h1>Market</h1><p>A little more possibility.</p></div>
+      <button v-if="!item" type="button" class="focused-link" data-action="your-listings" @click="type = 'mine'">Your listings &amp; earnings <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
     </header>
 
     <!-- A plugin listing: the Plugins page's own detail (what's inside, the
@@ -116,8 +117,7 @@ import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
-import { MARKETPLACE_ASSET_TYPES, assetIcon, artStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
-import { PLAIN_WORDS } from '@/composables/plainWords.js';
+import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import FocusedListingDetail from './FocusedListingDetail.vue';
@@ -141,9 +141,7 @@ const installingId = ref(null);
 const installError = ref('');
 const installedHere = ref(new Set());
 const failedImages = ref(new Set());
-// A listing's kind in One's words (Assistant, Automation…).
-const assetTypeLabel = (listing) => PLAIN_WORDS[String(listing?.asset_type || '').toLowerCase()]?.[2] || 'Item';
-const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: PLAIN_WORDS[id]?.[1]?.replace(/^./, (c) => c.toUpperCase()) || id })), { id: 'mine', label: 'Your listings' }];
+const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: `${assetTypeLabel({ asset_type: id })}s` })), { id: 'mine', label: 'Your listings' }];
 const status = computed(() => store.getters['marketplace/shelfStatus']);
 const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const visibleItems = computed(() => items.value.filter(listing => (type.value === 'all' || listing.asset_type === type.value) && matchesQuery(listing, query.value)).slice().sort(byPopularity));
@@ -222,6 +220,6 @@ onMounted(() => {
   load();
   store.dispatch('marketplace/fetchMyInstalls');
   // The plugin catalog, to show a plugin listing as the Plugins page does.
-  Promise.all([store.dispatch('apps/fetchAvailable'), store.dispatch('apps/fetchInstalled')]).catch((e) => console.warn('[FocusedMarket] add-on catalog:', e?.message || e));
+  Promise.all([store.dispatch('apps/fetchAvailable'), store.dispatch('apps/fetchInstalled')]).catch((e) => console.warn('[FocusedMarket] plugin catalog:', e?.message || e));
 });
 </script>

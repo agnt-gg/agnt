@@ -14,12 +14,12 @@ const summary = {
 describe('the Apps page between Studio\'s panels', () => {
   it('the left is a collection overview: stats and the sections, the current one lit (what needs you is on the right)', () => {
     const { left } = studioPanels(summary);
-    expect(left.title).toBe('Add-ons');
+    expect(left.title).toBe('Plugins');
     expect(left.stats).toEqual([
       { label: 'Connections', value: 14 },
       { label: 'Need you', value: 2, tone: 'bad' },
-      { label: 'Add-ons', value: 8 },
-      { label: 'Custom connections', value: 0 },
+      { label: 'Plugins', value: 8 },
+      { label: 'MCP servers', value: 0 },
     ]);
     expect(left.lists).toHaveLength(1);
     const [sections] = left.lists;
@@ -38,8 +38,8 @@ describe('the Apps page between Studio\'s panels', () => {
       more: [{ id: 'check-all', name: 'Check every connection', cta: 'Check' }],
     });
     expect(studioPanels({ ...summary, section: 'plugins' }).right.create).toEqual({ action: 'browse', label: 'Browse Market' });
-    expect(studioPanels({ ...summary, section: 'mcp' }).right.create).toEqual({ action: 'mcp-manage', label: 'Add custom connection' });
-    expect(studioPanels({ ...summary, section: 'triggers' }).right.create).toEqual({ action: 'workflows', label: 'Open automations' });
+    expect(studioPanels({ ...summary, section: 'mcp' }).right.create).toEqual({ action: 'mcp-manage', label: 'Add MCP server' });
+    expect(studioPanels({ ...summary, section: 'triggers' }).right.create).toEqual({ action: 'workflows', label: 'Open workflows' });
   });
 
   it('a calm account needs nothing, and an unknown section is Connections', () => {

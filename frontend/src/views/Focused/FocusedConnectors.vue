@@ -7,12 +7,12 @@
     <IntegrationsScreen embedded @screen-change="(screen, options) => nav.studio(screen, options)" />
   </section>
   <!-- Add or edit MCP servers: the MCP manager, shared with Studio. -->
-  <section v-else-if="view === 'mcp'" class="focused-page focused-mcp" aria-label="Custom connection manager">
-    <button type="button" class="focused-page-back" @click="view = null"><i class="fas fa-arrow-left" aria-hidden="true"></i>Custom connections</button>
+  <section v-else-if="view === 'mcp'" class="focused-page focused-mcp" aria-label="MCP manager">
+    <button type="button" class="focused-page-back" @click="view = null"><i class="fas fa-arrow-left" aria-hidden="true"></i>MCP servers</button>
     <McpServers compact />
   </section>
   <!-- One plugin in full: contents, access, trust, install and update (the Market's detail). -->
-  <section v-else-if="pluginName" class="focused-page focused-apps" aria-label="Add-on">
+  <section v-else-if="pluginName" class="focused-page focused-apps" aria-label="Plugin">
     <AppsSection
       detail-only
       back-label="Apps"

@@ -28,16 +28,16 @@
             </tbody>
           </table>
         </div>
-        <div class="sec-head"><h3>Assistants are members too</h3></div>
+        <div class="sec-head"><h3>Agents are members too</h3></div>
         <div class="cards">
           <template v-for="s in spaces" :key="s.id">
             <div v-for="a in bySpace[s.id] || []" :key="s.id + a.id" class="card clickable" @click="ctx.go({ view: 'space', space: s.id, tab: 'agents' })">
-              <div class="card-top"><span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">Team assistant · {{ s.name }}</div></div></div>
+              <div class="card-top"><span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div style="font-size: 12px; color: var(--text-tertiary)">Team agent · {{ s.name }}</div></div></div>
               <p>{{ a.description || 'No description yet.' }}</p>
               <div class="card-foot"><span class="tag" :class="a.status === 'published' ? 'green' : ''">{{ a.status === 'published' ? (a.publishedRevision ? `Published v${a.publishedRevision}` : 'Published') : 'Draft' }}</span><span class="fill"></span><span class="scope team sm"><MkIcon name="users" size="sm" />{{ s.name }}</span></div>
             </div>
           </template>
-          <div v-if="loaded && !agentCount" class="empty">No team assistants yet.</div>
+          <div v-if="loaded && !agentCount" class="empty">No team agents yet.</div>
         </div>
       </template>
       <!-- Your personal space: only you, said plainly, and the way to your teams. -->
@@ -48,7 +48,7 @@
         </ul>
         <div class="sec-head"><h3>Your teams</h3></div>
         <ul class="list" data-testid="members-teams">
-          <li v-if="!teams.length" class="empty">You’re not on a team yet. A team shares chats, a board, files and assistants, and everyone keeps their own private space. Joining one starts with an invite from its owner.</li>
+          <li v-if="!teams.length" class="empty">You’re not on a team yet. A team shares chats, a board, files and agents, and everyone keeps their own private space. Joining one starts with an invite from its owner.</li>
           <li v-for="t in teams" :key="t.id"><div class="r"><span class="r-icon"><MkIcon name="users" /></span><span class="r-text"><strong>{{ t.name }}</strong><small>{{ roleLabel(t.role) }}</small></span><button type="button" class="btn sm" @click="ctx.openTeam(t)">Open team<MkIcon name="chev" size="xs" /></button></div></li>
         </ul>
       </template>
@@ -58,7 +58,7 @@
       <div class="v2-roles" data-testid="members-roles">
         <div v-for="r in ROLE_CARDS" :key="r.name" class="v2-role"><b>{{ r.name }}</b><p>{{ r.can }}</p></div>
       </div>
-      <p class="v2-note">To share a single file, assistant or goal, use its Share button.</p>
+      <p class="v2-note">To share a single file, agent or goal, use its Share button.</p>
     </div>
   </div>
 </template>
@@ -81,7 +81,7 @@ const team = computed(() => ctx.team.value);
 const teams = computed(() => ctx.teams.value || []);
 const ROLE_CARDS = Object.freeze([
   { name: 'Owner or admin', can: 'Invites people and manages billing.' },
-  { name: 'Member', can: 'Uses and builds the team’s assistants, goals and files.' },
+  { name: 'Member', can: 'Uses and builds the team’s agents, goals and files.' },
   { name: 'Guest', can: 'Sees only what someone shares with them.' },
 ]);
 const myName = computed(() => store.getters['userAuth/userName'] || store.getters['userAuth/userPseudonym'] || 'You');

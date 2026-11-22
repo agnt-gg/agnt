@@ -1,20 +1,20 @@
 <template>
   <div class="page" data-section="mcp">
     <div class="page-head">
-      <h1>Custom connections</h1>
+      <h1>MCP servers</h1>
       <div class="row-gap">
-        <button type="button" class="primary" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="plus" size="sm" />Add custom connection</button>
+        <button type="button" class="primary" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="plus" size="sm" />Add MCP server</button>
       </div>
     </div>
 
-    <AppsList :rows="rows" :spec="LISTS.mcp" :heads="HEADS" label="Custom connections" noun="custom connection" :openable="false">
+    <AppsList :rows="rows" :spec="LISTS.mcp" :heads="HEADS" label="MCP servers" noun="server" :openable="false">
       <template #empty>
         <div class="tbl">
           <div class="empty" data-section="empty">
             <span class="em-icon"><AppsGlyph name="server" /></span>
-            <h3>No Custom connections yet</h3>
-            <p>A custom connection gives Annie and your assistants more actions: your files, a browser, a database, another app.</p>
-            <div class="row-gap"><button type="button" class="primary" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="plus" size="sm" />Add custom connection</button></div>
+            <h3>No MCP servers yet</h3>
+            <p>An MCP server gives Annie and your agents more tools: your files, a browser, a database, another app.</p>
+            <div class="row-gap"><button type="button" class="primary" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="plus" size="sm" />Add MCP server</button></div>
           </div>
         </div>
       </template>
@@ -35,12 +35,12 @@
         </div>
       </template>
       <template #cell-used="{ row }">
-        <span class="use"><AppsGlyph name="bot" />{{ row.tools != null ? plural(row.tools, 'action') : 'Annie & assistants' }}</span>
+        <span class="use"><AppsGlyph name="bot" />{{ row.tools != null ? plural(row.tools, 'tool') : 'Annie & agents' }}</span>
       </template>
 
       <template #menu="{ row }">
         <button type="button" class="mi" role="menuitem" data-action="mcp-test" @click="emit('act', 'mcp-test', row)"><AppsGlyph name="refresh" />Test server</button>
-        <button type="button" class="mi" role="menuitem" data-action="mcp-manage" @click="emit('act', 'mcp-manage', row)"><AppsGlyph name="pen" />Edit in the Custom connection manager</button>
+        <button type="button" class="mi" role="menuitem" data-action="mcp-manage" @click="emit('act', 'mcp-manage', row)"><AppsGlyph name="pen" />Edit in the MCP manager</button>
         <div class="mi-sep"></div>
         <button type="button" class="mi danger" role="menuitem" data-action="mcp-remove" @click="emit('act', 'mcp-remove', row)"><AppsGlyph name="trash" />Remove server</button>
       </template>
@@ -52,7 +52,7 @@
 
       <template #foot="{ rows: shownRows, all }">
         <span>{{ plural(shownRows.length, 'server') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }}</span>
-        <button type="button" class="btn sm" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="find" size="xs" />Browse the Custom connection library</button>
+        <button type="button" class="btn sm" data-action="mcp-manage" @click="emit('act', 'mcp-manage')"><AppsGlyph name="find" size="xs" />Browse the MCP library</button>
       </template>
     </AppsList>
   </div>

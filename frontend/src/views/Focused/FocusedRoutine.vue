@@ -10,7 +10,7 @@
           </div>
           <div v-if="existing" class="row-gap rt-actions">
             <label class="rt-active">
-              <button type="button" class="switch" :class="{ on: existing.enabled }" role="switch" :aria-checked="existing.enabled ? 'true' : 'false'" :aria-label="existing.enabled ? 'Pause repeating goal' : 'Resume repeating goal'" data-testid="routine-active" :disabled="busy" @click="toggleActive"></button>
+              <button type="button" class="switch" :class="{ on: existing.enabled }" role="switch" :aria-checked="existing.enabled ? 'true' : 'false'" :aria-label="existing.enabled ? 'Pause routine' : 'Resume routine'" data-testid="routine-active" :disabled="busy" @click="toggleActive"></button>
               <span>{{ existing.enabled ? 'On' : 'Paused' }}</span>
             </label>
             <button type="button" class="btn sm" :disabled="busy" data-testid="routine-run-now" @click="runNow"><MkIcon name="play" size="xs" />Run now</button>
@@ -18,7 +18,7 @@
           </div>
         </div>
 
-        <ul v-if="scheduleId && !existing" class="list"><li class="empty">{{ loading ? 'Loading…' : 'This repeating goal no longer exists.' }}</li></ul>
+        <ul v-if="scheduleId && !existing" class="list"><li class="empty">{{ loading ? 'Loading…' : 'This routine no longer exists.' }}</li></ul>
         <p v-if="existing && !editing && existing.description" class="rt-what-text" data-testid="routine-what">{{ existing.description }}</p>
 
         <!-- It stopped to ask you something: answer here. The answer is kept for every later run. -->
@@ -59,7 +59,7 @@
             <button v-if="existing" type="button" class="btn ghost sm danger" :disabled="busy" @click="remove">Delete</button>
             <span class="fill"></span>
             <button type="button" class="btn sm" :disabled="busy" @click="cancelEditing">Cancel</button>
-            <button type="submit" class="primary sm" :disabled="busy">{{ busyLabel || (existing ? 'Save' : 'Create repeating goal') }}</button>
+            <button type="submit" class="primary sm" :disabled="busy">{{ busyLabel || (existing ? 'Save' : 'Create routine') }}</button>
           </div>
         </form>
 
@@ -95,7 +95,7 @@ const existing = computed(() => {
   if (!props.scheduleId) return null;
   return scheduleRows(store.getters['schedules/allSchedules'], '', store.getters['goals/allGoals']).find((r) => String(r.id) === String(props.scheduleId)) || null;
 });
-const title = computed(() => (props.scheduleId ? 'Edit repeating goal' : 'New repeating goal'));
+const title = computed(() => (props.scheduleId ? 'Edit routine' : 'New routine'));
 const history = ref(null);
 // A new routine opens on the editor; an existing one shows what it does and its runs.
 const editing = ref(!props.scheduleId);
@@ -151,7 +151,7 @@ async function withBusy(label, fn) {
 async function save() {
   const text = f.what.trim();
   if (!text) {
-    error.value = 'Describe what the repeating goal should do.';
+    error.value = 'Describe what the routine should do.';
     return;
   }
   if (!isCron(cron.value)) {
@@ -168,7 +168,7 @@ async function save() {
       // a new goal. It is planned and scheduled BEFORE anything is removed:
       // a failure leaves the old routine exactly as it was.
       const goal = await store.dispatch('goals/createGoal', { text, title: text });
-      if (!goal?.id) throw new Error('AGNT couldn’t plan that repeating goal. Try rephrasing it.');
+      if (!goal?.id) throw new Error('AGNT couldn’t plan that routine. Try rephrasing it.');
       try {
         await store.dispatch('schedules/createSchedule', { targetType: 'goal', targetId: goal.id, cron: cron.value, timezone: f.timezone, enabled: f.enabled });
       } catch (err) {
@@ -177,7 +177,7 @@ async function save() {
       }
       if (r) await store.dispatch('schedules/deleteSchedule', r.id).catch(() => {});
     }
-    nav.toast(r ? 'Repeating goal saved.' : 'Repeating goal created.');
+    nav.toast(r ? 'Routine saved.' : 'Routine created.');
     // Same routine, new schedule: stay on it. New instructions make a new routine: back to the list.
     if (r && !changedWhat) editing.value = false;
     else nav.go({ page: 'scheduled' });
@@ -229,10 +229,10 @@ async function runNow() {
 }
 
 async function remove() {
-  if (!(await nav.confirm({ title: 'Delete repeating goal?', message: `“${existing.value.label}” won’t run again.`, confirmText: 'Delete', danger: true }))) return;
+  if (!(await nav.confirm({ title: 'Delete routine?', message: `“${existing.value.label}” won’t run again.`, confirmText: 'Delete', danger: true }))) return;
   await withBusy('', async () => {
     await store.dispatch('schedules/deleteSchedule', existing.value.id);
-    nav.toast('Repeating goal deleted.');
+    nav.toast('Routine deleted.');
     nav.go({ page: 'scheduled' });
   });
 }

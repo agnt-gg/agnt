@@ -17,7 +17,7 @@
     v-else
     :title="page.title"
     :sub="page.sub"
-    :action-label="'New ' + tab.word"
+    :action-label="'New ' + tab.noun"
     :action-quiet="isEmptyTab"
     :searchable="!isEmptyTab"
     v-model:query="query"
@@ -33,7 +33,7 @@
     <!-- An empty tab: what goes here, and the one way to start, which is asking. -->
     <div v-else-if="!rows.length" class="focused-empty one-empty-cta" data-testid="library-empty">
       <p>{{ EMPTY_LINE[tab.id] || `Your ${tab.label.toLowerCase()} show up here.` }}</p>
-      <button type="button" class="focused-primary" data-action="ask-make" @click="nav.ask(`Make me ${article(tab.word)} ${tab.word} that `)">
+      <button type="button" class="focused-primary" data-action="ask-make" @click="nav.ask(`Make me ${article(tab.noun)} ${tab.noun} that `)">
         <i class="fas fa-comment-dots" aria-hidden="true"></i>Ask Annie to make one
       </button>
     </div>
@@ -127,11 +127,11 @@ const statusClass = (s) => (isRunningStatus(s) ? 'live' : /^(failed|error)$/i.te
 
 // What each kind is for, in one line, for a first-time visitor.
 const EMPTY_LINE = Object.freeze({
-  agents: 'An assistant is a teammate with one job. Describe the job and Annie sets it up.',
-  workflows: 'An automation is a set of steps that runs the same way every time.',
-  tools: 'An action lets Annie and your assistants do one specific thing, like call an API.',
-  skills: 'A playbook teaches Annie how you like a kind of task done.',
-  widgets: 'A dashboard card is a live card for your dashboard.',
+  agents: 'An agent is a teammate with one job. Describe the job and Annie sets it up.',
+  workflows: 'A workflow is a set of steps that runs the same way every time.',
+  tools: 'A tool lets Annie and your agents do one specific thing, like call an API.',
+  skills: 'A skill teaches Annie how you like a kind of task done.',
+  widgets: 'A widget is a live card for your dashboard.',
 });
 const article = (noun) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
 

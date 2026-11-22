@@ -231,7 +231,7 @@ function closeDrawerOnPhone() {
 
 // ── The sidebar (desktop): expanded unless collapsed to the rail, as in ─────
 // Studio, and remembered the same way (CanvasScreen's agnt:canvasSidebar:expanded).
-// The shared Market pieces One draws speak One's words (assistants, automations…).
+// The shared pieces One draws explain themselves in words (labelled buttons, what a limit means).
 provide(PLAIN_WORDS_KEY, true);
 
 const SIDEBAR_KEY = 'agnt:oneSidebar:expanded';

@@ -23,7 +23,7 @@
             <template v-else-if="status === 'empty'">
               <p class="wr-kicker">AGNT · Year in review</p>
               <p class="wr-title is-big">Your {{ year }} is just getting started.</p>
-              <p class="wr-lead">A few more days with Annie and your assistants, and there will be a year to tell. Come back in December.</p>
+              <p class="wr-lead">A few more days with Annie and your agents, and there will be a year to tell. Come back in December.</p>
             </template>
             <template v-else>
               <p class="wr-kicker">AGNT · Year in review</p>

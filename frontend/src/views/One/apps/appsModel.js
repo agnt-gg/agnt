@@ -18,9 +18,9 @@ const byText = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), undefine
 
 export const SECTIONS = Object.freeze([
   { id: 'connections', label: 'App connections', title: 'Connections', icon: 'plug', noun: 'connection', nouns: 'connections' },
-  { id: 'plugins', label: 'Add-ons', title: 'Add-ons', icon: 'puzzle', noun: 'add-on', nouns: 'add-ons' },
-  { id: 'mcp', label: 'Custom connections', title: 'Custom connections', icon: 'server', noun: 'server', nouns: 'servers' },
-  { id: 'triggers', label: 'Email & web triggers', title: 'Email & web triggers', icon: 'mail', noun: 'trigger', nouns: 'triggers' },
+  { id: 'plugins', label: 'Plugins', title: 'Plugins', icon: 'puzzle', noun: 'plugin', nouns: 'plugins' },
+  { id: 'mcp', label: 'MCP servers', title: 'MCP servers', icon: 'server', noun: 'server', nouns: 'servers' },
+  { id: 'triggers', label: 'Email & webhooks', title: 'Email & webhooks', icon: 'mail', noun: 'trigger', nouns: 'triggers' },
 ]);
 
 /** The section a route tab opens. No tab, and the older 'vault', open Connections. */
@@ -352,7 +352,7 @@ export function triggerRows(webhooks = [], listeners = []) {
       id: `email:${listener.id}`,
       kind: 'Email',
       workflowId: listener.workflow_id,
-      workflow: listener.workflow_name || 'Untitled automation',
+      workflow: listener.workflow_name || 'Untitled workflow',
       wfStatus: lower(listener.workflow_status),
       address: String(listener.email_address || ''),
       created: listener.created_at || null,
@@ -362,7 +362,7 @@ export function triggerRows(webhooks = [], listeners = []) {
       id: `webhook:${webhook.id}`,
       kind: 'Webhook',
       workflowId: webhook.workflow_id,
-      workflow: webhook.workflow_name || 'Untitled automation',
+      workflow: webhook.workflow_name || 'Untitled workflow',
       wfStatus: lower(webhook.workflow_status),
       url: String(webhook.webhook_url || ''),
       method: String(webhook.method || 'POST').toUpperCase(),
@@ -413,7 +413,7 @@ export const LISTS = Object.freeze({
           option('apikey', 'API key', (row) => row.kind === 'API key' && !row.ai),
           option('ai', 'AI model', (row) => row.ai),
           option('local', 'On this computer', (row) => row.local),
-          option('plugin', 'Add-on sign-in', (row) => !!row.fromPlugin),
+          option('plugin', 'Plugin sign-in', (row) => !!row.fromPlugin),
           option('custom', 'Custom app', (row) => row.custom),
         ],
       },
@@ -432,7 +432,7 @@ export const LISTS = Object.freeze({
     },
   },
   plugins: {
-    search: 'Search add-ons',
+    search: 'Search plugins',
     text: (row) => [row.label, row.id, row.desc, row.kind, row.provider?.name, row.author].join(' '),
     views: [['flat', 'Plugins'], ['kind', 'Kind'], ['uses', 'Connection']],
     filters: [
@@ -480,7 +480,7 @@ export const LISTS = Object.freeze({
     },
   },
   mcp: {
-    search: 'Search Custom connections',
+    search: 'Search MCP servers',
     text: (row) => [row.name, row.transport, row.runs].join(' '),
     views: [['flat', 'Servers'], ['runs', 'Where it runs']],
     filters: [
@@ -501,12 +501,12 @@ export const LISTS = Object.freeze({
   triggers: {
     search: 'Search triggers',
     text: (row) => [row.workflow, row.kind, row.address, row.method, row.wfStatus].join(' '),
-    views: [['flat', 'Triggers'], ['kind', 'Type'], ['wf', 'Automation status']],
+    views: [['flat', 'Triggers'], ['kind', 'Type'], ['wf', 'Workflow status']],
     filters: [
-      { id: 'kind', label: 'Type', options: [option('Email', 'Email', (row) => row.kind === 'Email'), option('Web trigger', 'Web trigger', (row) => row.kind === 'Webhook')] },
+      { id: 'kind', label: 'Type', options: [option('Email', 'Email', (row) => row.kind === 'Email'), option('Webhook', 'Webhook', (row) => row.kind === 'Webhook')] },
       {
         id: 'wf',
-        label: 'Automation status',
+        label: 'Workflow status',
         options: [option('listening', 'Listening', (row) => row.wfStatus === 'listening'), option('stopped', 'Stopped', (row) => row.wfStatus !== 'listening')],
       },
     ],
@@ -520,7 +520,7 @@ export const LISTS = Object.freeze({
     },
     defaultSort: ['updated', -1],
     groups: {
-      kind: { of: (row) => (row.kind === 'Email' ? 'Email' : 'Web triggers'), order: ['Email', 'Web triggers'] },
+      kind: { of: (row) => (row.kind === 'Email' ? 'Email' : 'Webhooks'), order: ['Email', 'Webhooks'] },
       wf: { of: (row) => (row.wfStatus === 'listening' ? 'Listening' : 'Stopped'), order: ['Listening', 'Stopped'] },
     },
   },

@@ -26,7 +26,7 @@ export const JUMP_CATEGORIES = [{
   },
   {
     id: 'connections',
-    label: 'Add-ons',
+    label: 'Plugins',
     screens: ['ConnectorsScreen', 'PluginsScreen']
   },
   {

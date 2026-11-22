@@ -26,7 +26,7 @@ const TAG = Object.freeze({
 const props = defineProps({ item: { type: Object, required: true } });
 const emit = defineEmits(['open']);
 const ctx = inject('teamCtx');
-const actorName = computed(() => (props.item.actor.kind === 'agent' ? 'An assistant' : nameOf(props.item.actor, { people: ctx.people.value, me: ctx.me.value })));
+const actorName = computed(() => (props.item.actor.kind === 'agent' ? 'An agent' : nameOf(props.item.actor, { people: ctx.people.value, me: ctx.me.value })));
 const spaceName = computed(() => ctx.spaces.value.find((s) => s.id === props.item.workspaceId)?.name || '');
 const onRow = () => emit('open', props.item);
 </script>

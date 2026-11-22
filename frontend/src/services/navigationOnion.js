@@ -60,8 +60,8 @@ export const UNLOCK_RULES = [
     id: 'apps',
     needs: ['connectedApps'],
     when: (f) => countUserConnections(f.connectedApps) > 0,
-    title: 'Add-ons',
-    message: 'Your first connection. Everything AGNT can use for you lives here — connect a service once and every add-on that uses it can use the connection.',
+    title: 'Plugins',
+    message: 'Your first connection. Everything AGNT can use for you lives here — connect a service once and every plugin that uses it can use the connection.',
   },
   {
     id: 'artifacts',

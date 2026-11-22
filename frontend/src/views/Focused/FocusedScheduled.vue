@@ -3,7 +3,7 @@
        the one way to get it (the backend refuses schedules on this plan). -->
   <section v-if="!paid" class="focused-page" :aria-label="page.title">
     <header class="focused-page-head"><div><h1>{{ page.title }}</h1><p>{{ page.sub }}</p></div></header>
-    <UpgradePrompt title="Let Annie work on a schedule" description="Repeating goals are included with paid plans. Ask once, like “every weekday at 7, brief me on my day”, and it runs on its own." />
+    <UpgradePrompt title="Let Annie work on a schedule" description="Routines are included with paid plans. Ask once, like “every weekday at 7, brief me on my day”, and it runs on its own." />
   </section>
   <FocusedRoutine v-else-if="item || isNew" :key="item || 'new'" :schedule-id="item" />
   <!-- The approved mockup's Routines page: Mine, then each teamspace, every routine a widget card. -->
@@ -11,8 +11,8 @@
     <div class="content">
       <div class="page">
         <div class="page-head">
-          <div><h1>Repeating goals</h1><p>Tasks you approved to run again. Each run opens its own chat, and anything that sends or changes something asks you first.</p></div>
-          <button type="button" class="primary" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="plus" size="sm" />New repeating goal</button>
+          <div><h1>Routines</h1><p>Tasks you approved to run again. Each run opens its own chat, and anything that sends or changes something asks you first.</p></div>
+          <button type="button" class="primary" @click="nav.go({ page: 'scheduled', isNew: true })"><MkIcon name="plus" size="sm" />New routine</button>
         </div>
         <template v-for="section in sections" :key="section.key">
           <div class="sec-head"><h3><MkIcon v-if="!section.emoji" name="lock" size="xs" /><span v-else>{{ section.emoji }}</span> {{ section.title }}</h3></div>

@@ -128,13 +128,13 @@ describe('a stopped card', () => {
     expect(wrapper.get('[data-testid="held-up"]').text()).toContain('Send the revised quote');
   });
 
-  it('a choice answers the stop and the assistant carries on', async () => {
+  it('a choice answers the stop and the agent carries on', async () => {
     const { wrapper, ctx } = mountPanel({ task: stopped() });
     await flushPromises();
     await wrapper.findAll('.choices button').find((b) => b.text() === 'Use the signed price ($34)').trigger('click');
     await flushPromises();
     expect(teamApi.answer).toHaveBeenCalledWith('ws-sales', 't1', 'Use the signed price ($34)', { addRule: false });
-    expect(ctx.toast).toHaveBeenCalledWith('Sent. The assistant carries on with your answer.');
+    expect(ctx.toast).toHaveBeenCalledWith('Sent. The agent carries on with your answer.');
   });
 
   it('an answer can become one of the team lead\u2019s rules', async () => {

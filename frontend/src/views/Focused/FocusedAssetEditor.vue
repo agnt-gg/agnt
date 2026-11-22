@@ -17,8 +17,8 @@
     :read-only="readOnly"
     :note="note"
     :meta="edited"
-    :name-placeholder="isNew ? `Name your ${tab.word}` : 'Name'"
-    :chat-ask="readOnly && !isNew ? editAsk(tab.word, v.name) : ''"
+    :name-placeholder="isNew ? `Name your ${tab.noun}` : 'Name'"
+    :chat-ask="readOnly && !isNew ? editAsk(tab.noun, v.name) : ''"
     :delete-label="deleteLabel"
     :dirty="dirty"
     :saving="saving"
@@ -118,7 +118,7 @@
           <h3>Type</h3>
           <span class="focused-edit-hint">{{ toolType.hint }}</span>
         </div>
-        <div class="focused-segmented" role="radiogroup" aria-label="Action type">
+        <div class="focused-segmented" role="radiogroup" aria-label="Tool type">
           <button
             v-for="t in TOOL_TYPES"
             :key="t.value"
@@ -145,7 +145,7 @@
       <section v-else class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Code</h3>
-          <span class="focused-edit-hint">{{ codeLabel({ base: v.base }) }} · runs when an assistant uses this action. The inputs are in <code>params</code>.</span>
+          <span class="focused-edit-hint">{{ codeLabel({ base: v.base }) }} · runs when an agent uses this tool. The inputs are in <code>params</code>.</span>
         </div>
         <AutoTextarea v-model="v.code" class="focused-code-edit" aria-label="Code" spellcheck="false" :readonly="readOnly" :placeholder="codePlaceholder" />
       </section>
@@ -157,7 +157,7 @@
           <span class="focused-flex"></span>
           <button v-if="!readOnly" type="button" class="focused-btn" @click="addInput">Add input</button>
         </div>
-        <p v-if="!v.inputs.length" class="focused-empty">No inputs. Add one if the action needs something passed in.</p>
+        <p v-if="!v.inputs.length" class="focused-empty">No inputs. Add one if the tool needs something passed in.</p>
         <div v-for="(input, idx) in v.inputs" :key="idx" class="focused-input-row">
           <input class="focused-input mono" :value="input.key" placeholder="Name" aria-label="Input name" :readonly="readOnly" @input="renameInput(input, $event)" />
           <input v-model="input.label" class="focused-input" placeholder="Label shown to people" aria-label="Label" :readonly="readOnly" />
@@ -172,7 +172,7 @@
       <section class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Outputs</h3>
-          <span class="focused-edit-hint">What it returns. Later automation steps can use each one.</span>
+          <span class="focused-edit-hint">What it returns. Later workflow steps can use each one.</span>
           <span class="focused-flex"></span>
           <button v-if="!readOnly" type="button" class="focused-btn" data-action="add-output" @click="addOutput">Add output</button>
         </div>
@@ -192,7 +192,7 @@
       <section class="focused-edit-block" data-testid="tool-test">
         <div class="focused-edit-block-head">
           <h3>Test</h3>
-          <span class="focused-edit-hint">{{ isNew ? 'Save the action to test it.' : dirty ? 'Runs after saving your changes.' : 'Runs the saved action.' }}</span>
+          <span class="focused-edit-hint">{{ isNew ? 'Save the tool to test it.' : dirty ? 'Runs after saving your changes.' : 'Runs the saved tool.' }}</span>
           <span class="focused-flex"></span>
           <button type="button" class="focused-btn primary" data-action="run-test" :disabled="isNew || testRun.running || saving || readOnly" @click="runTest">
             {{ testRun.running ? 'Running…' : dirty ? 'Save & run' : 'Run' }}
@@ -238,7 +238,7 @@
       <section class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Instructions</h3>
-          <span class="focused-edit-hint">What the playbook teaches AGNT to do, step by step.</span>
+          <span class="focused-edit-hint">What the skill teaches AGNT to do, step by step.</span>
         </div>
         <AutoTextarea
           v-model="v.instructions"
@@ -273,7 +273,7 @@
       <section class="focused-edit-block">
         <div class="focused-edit-block-head">
           <h3>Code</h3>
-          <span class="focused-edit-hint">{{ raw.widget_type || 'html' }} · what the dashboard card runs</span>
+          <span class="focused-edit-hint">{{ raw.widget_type || 'html' }} · what the widget runs</span>
         </div>
         <AutoTextarea v-model="v.source_code" class="focused-code-edit" aria-label="Code" spellcheck="false" :readonly="readOnly" />
       </section>
@@ -350,11 +350,11 @@ const edited = computed(() => {
   return at ? 'Edited ' + ago(at) : '';
 });
 const note = computed(() => {
-  if (readOnly.value) return 'This playbook lives in a file on disk (or ships with AGNT), so it can be read here but not changed.';
-  if (props.kind === 'workflows' && isRunningStatus(raw.value.status)) return 'This automation is running. Saving restarts it with your changes.';
+  if (readOnly.value) return 'This skill lives in a file on disk (or ships with AGNT), so it can be read here but not changed.';
+  if (props.kind === 'workflows' && isRunningStatus(raw.value.status)) return 'This workflow is running. Saving restarts it with your changes.';
   return '';
 });
-const deleteLabel = computed(() => (isNew.value || readOnly.value || props.kind === 'tools' ? '' : `Delete ${tab.value.word}`));
+const deleteLabel = computed(() => (isNew.value || readOnly.value || props.kind === 'tools' ? '' : `Delete ${tab.value.noun}`));
 // Workflows keep the canvas. Tools are edited fully here (type, prompt or
 // code, inputs, outputs, model): AGNT One has no separate Tool Forge (2026-10-21).
 const fullEditor = computed(() => !isNew.value && props.kind === 'workflows');
@@ -366,7 +366,7 @@ async function fetchRaw() {
   if (props.kind === 'tools') return store.dispatch('tools/fetchCustomTool', props.itemId);
   if (props.kind === 'widgets') {
     const w = await store.dispatch('widgetDefinitions/ensureDefinitionLoaded', props.itemId);
-    if (!w) throw new Error('This dashboard card no longer exists.');
+    if (!w) throw new Error('This widget no longer exists.');
     return w;
   }
   const find = () => (store.getters['skills/allSkills'] || []).find((s) => String(s.id) === String(props.itemId));
@@ -376,7 +376,7 @@ async function fetchRaw() {
     if (!find()) await waitUntil(() => !!find() || !store.getters['skills/isLoading'], 15000);
   }
   const skill = find();
-  if (!skill) throw new Error('This playbook no longer exists.');
+  if (!skill) throw new Error('This skill no longer exists.');
   return skill;
 }
 const VALUES = { workflows: workflowValues, tools: toolValues, skills: skillValues, widgets: widgetValues };
@@ -484,7 +484,7 @@ async function togglePicker() {
   picker.open = !picker.open;
   picker.query = '';
   if (!picker.open) return;
-  store.dispatch('tools/fetchWorkflowTools').catch((e) => console.warn('[Focused] could not load automation steps:', e?.message || e));
+  store.dispatch('tools/fetchWorkflowTools').catch((e) => console.warn('[Focused] could not load workflow steps:', e?.message || e));
   await nextTick();
   pickerSearch.value?.focus();
 }
@@ -647,7 +647,7 @@ async function save() {
       const id = await create();
       if (!id) throw new Error('AGNT didn\u2019t return the new item.');
       baseline.value = JSON.stringify(v.value); // nothing left unsaved
-      nav.toast(`${tab.value.word.charAt(0).toUpperCase() + tab.value.word.slice(1)} created.`);
+      nav.toast(`${tab.value.noun.charAt(0).toUpperCase() + tab.value.noun.slice(1)} created.`);
       nav.go({ page: 'library', tab: props.kind, item: String(id) });
       return;
     }
@@ -673,7 +673,7 @@ function openFull() {
 }
 const DELETE_ACTIONS = { workflows: 'workflows/deleteWorkflow', skills: 'skills/deleteSkill', widgets: 'widgetDefinitions/deleteDefinition' };
 async function remove() {
-  if (!(await nav.confirm({ title: `Delete ${tab.value.word}?`, message: `“${v.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
+  if (!(await nav.confirm({ title: `Delete ${tab.value.noun}?`, message: `“${v.value.name}” will be deleted. This can’t be undone.`, confirmText: 'Delete', danger: true }))) return;
   try {
     const ok = await store.dispatch(DELETE_ACTIONS[props.kind], props.itemId);
     if (ok === false) throw new Error('AGNT didn’t delete it.');

@@ -76,7 +76,7 @@ describe('connection rows', () => {
     expect(byId.calendly.problem).toBe('The sign-in expired or was revoked');
     expect(byId.github.problem).toBe('');
   });
-  it('marks custom apps, add-on sign-ins and on-this-computer sign-ins', () => {
+  it('marks custom apps, plugin sign-ins and on-this-computer sign-ins', () => {
     expect(byId.acme.custom).toBe(true);
     expect(byId.github.custom).toBe(false);
     expect(byId['e2e-crm'].fromPlugin).toBe('CRM Suite');
@@ -146,7 +146,7 @@ describe('Add connection catalogue', () => {
   });
 });
 
-describe('add-on rows', () => {
+describe('plugin rows', () => {
   const installed = [
     { name: 'gmail-plugin', displayName: 'Gmail', version: '1.1.0', tools: [tool('gmail-api', 'google')], installedAt: '2026-01-01T00:00:00Z' },
     { name: 'video', version: '2.0.0', tools: [tool('video-generate', 'openai')] },
@@ -186,10 +186,10 @@ describe('add-on rows', () => {
   });
 });
 
-describe('Custom connections', () => {
+describe('MCP servers', () => {
   it('a server is unchecked until tested, then says what the test answered', () => {
     const tests = {
-      git: mcpTestResult({ success: true, connected: true, message: 'Connection successful (4 actions, 80ms)', toolCount: 4 }, 'T'),
+      git: mcpTestResult({ success: true, connected: true, message: 'Connection successful (4 tools, 80ms)', toolCount: 4 }, 'T'),
       web: mcpTestResult({ success: true, connected: false, message: 'Connection failed: timeout' }, 'T'),
     };
     const rows = mcpRows([{ name: 'git', transport: { type: 'stdio' } }, { name: 'web', transport: { type: 'http' } }, { name: 'fresh' }], tests);
@@ -202,14 +202,14 @@ describe('Custom connections', () => {
   });
 });
 
-describe('email and web trigger triggers', () => {
-  it('one row per listener and web trigger, with what each needs', () => {
+describe('email and webhook triggers', () => {
+  it('one row per listener and webhook, with what each needs', () => {
     const rows = triggerRows(
       [{ id: 7, workflow_id: 'w2', workflow_name: 'Leads', workflow_status: 'listening', webhook_url: 'https://h/x', method: 'get', auth_type: 'bearer' }],
       [{ id: 3, workflow_id: 'w1', workflow_name: '', workflow_status: 'stopped', email_address: 'workflow-1@agnt.gg' }],
     );
     expect(rows).toEqual([
-      expect.objectContaining({ id: 'email:3', kind: 'Email', workflow: 'Untitled automation', wfStatus: 'stopped', address: 'workflow-1@agnt.gg' }),
+      expect.objectContaining({ id: 'email:3', kind: 'Email', workflow: 'Untitled workflow', wfStatus: 'stopped', address: 'workflow-1@agnt.gg' }),
       expect.objectContaining({ id: 'webhook:7', kind: 'Webhook', method: 'GET', protected: true, url: 'https://h/x', wfStatus: 'listening' }),
     ]);
   });
@@ -230,7 +230,7 @@ describe('lists: search, filters, sort and groups', () => {
   it('needs-you rows come first by default, then by name', () => {
     expect(ids(visibleRows(rows, spec))).toEqual(['calendly', 'linear', 'Airtable', 'OpenAI', 'Slack']);
   });
-  it('search matches names and the add-ons a connection powers', () => {
+  it('search matches names and the plugins a connection powers', () => {
     expect(ids(visibleRows(rows, spec, { q: 'SLACK' }))).toEqual(['Slack']);
   });
   it('options within a filter are alternatives; filters together narrow', () => {
