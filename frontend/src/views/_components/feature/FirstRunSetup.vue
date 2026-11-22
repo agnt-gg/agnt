@@ -36,7 +36,7 @@
                   <template v-else>{{ index + 1 }}</template>
                 </span>
                 {{ step.label }}
-                <span v-if="step.pro" class="frs-pro">Pro</span>
+                <span v-if="step.pro" class="frs-pro">{{ step.optional ? 'Optional · Pro' : 'Pro' }}</span>
               </button>
             </li>
             <li v-if="index < SETUP_STEPS.length - 1" class="frs-bar" :class="{ 'is-done': status[step.id] }" aria-hidden="true"></li>
