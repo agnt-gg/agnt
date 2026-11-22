@@ -2601,9 +2601,9 @@
 }
 
 /* A choice between two or three options (Which AI, Thinking depth, What it can use). */
-.ui-focused .focused-page .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--terminal-border-color); border-radius: 10px; }
+.ui-focused .focused-page .seg { flex: none; width: max-content; max-width: 100%; display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--terminal-border-color); border-radius: 10px; }
 .ui-focused .focused-page .seg > button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13.5px; cursor: pointer; }
 .ui-focused .focused-page .seg > button:hover { color: var(--text-primary); }
-.ui-focused .focused-page .seg > button.on { background: var(--surface-active); color: var(--text-primary); font-weight: 600; }
+.ui-focused .focused-page .seg > button.on { background: rgba(var(--pink-rgb), 0.14); box-shadow: inset 0 0 0 1px rgba(var(--pink-rgb), 0.45); color: var(--text-primary); font-weight: 600; }
 /* A label's hint sits under it. */
 .ui-focused .focused-edit-label > small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.35; color: var(--text-tertiary); }
