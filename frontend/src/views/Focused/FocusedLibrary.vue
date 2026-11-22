@@ -45,7 +45,7 @@
             <strong>{{ r.label }}</strong>
             <small v-if="r.description">{{ r.description }}</small>
           </span>
-          <span v-if="r.status" class="focused-status-pill" :class="statusClass(r.status)">{{ r.status.replace(/_/g, ' ') }}</span>
+          <span v-if="r.status && !isQuietStatus(r.status)" class="focused-status-pill" :class="statusClass(r.status)">{{ r.status.replace(/_/g, ' ') }}</span>
           <i class="fas fa-chevron-right focused-row-go" aria-hidden="true"></i>
         </button>
       </li>
@@ -121,6 +121,8 @@ const shownRows = computed(() => rows.value.slice(0, CAP));
 // Nothing of this kind yet (not merely filtered out): the body leads with asking.
 const isEmptyTab = computed(() => !loading.value && !query.value && !(counts.value[tab.value.id] > 0));
 
+// The usual, working state needs no badge; only exceptions (a draft, paused, failed, in progress) get one.
+const isQuietStatus = (s) => /^(active|enabled|published|ready|on|idle|completed|done)$/i.test(String(s));
 const statusClass = (s) => (isRunningStatus(s) ? 'live' : /^(failed|error)$/i.test(s) ? 'bad' : '');
 
 // What each kind is for, in one line, for a first-time visitor.

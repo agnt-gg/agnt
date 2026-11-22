@@ -39,7 +39,7 @@
                   <button v-else type="button" class="r" :data-kind="r.kind" @click="nav.go({ page: 'activity', item: r.id })">
                     <span class="r-icon" :class="'v2-kind-' + r.kind"><MkIcon :name="KIND_ICON[r.kind] || 'activity'" /></span>
                     <span class="r-text">
-                      <span class="v2-title-row"><strong>{{ r.title }}</strong><span class="tag" :class="TONE[r.status.tone] || ''">{{ r.status.label }}</span></span>
+                      <span class="v2-title-row"><strong>{{ r.title }}</strong><span v-if="r.status.tone === 'good'" class="v2-done"><i class="fas fa-check" aria-hidden="true"></i>{{ r.status.label }}</span><span v-else class="tag" :class="TONE[r.status.tone] || ''">{{ r.status.label }}</span></span>
                       <small>{{ KIND_LABEL[r.kind] }}<template v-if="r.detail"> · {{ r.detail }}</template></small>
                     </span>
                     <span class="v2-time">{{ ago(r.at) }}</span>

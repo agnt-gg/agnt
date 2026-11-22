@@ -113,6 +113,9 @@
 .mk .v2-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mk .v2-title-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mk .v2-title-row .tag { flex: none; }
+/* Finished work is quiet: only what needs a look, or is in progress, gets a coloured tag. */
+.mk .v2-done { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.mk .v2-done i { font-size: 11px; }
 .mk .v2-time { flex: none; font-size: 12.5px; color: var(--text-tertiary); white-space: nowrap; }
 .mk .r-icon.v2-kind-chat { background: rgba(var(--pink-rgb), 0.12); color: var(--pink); }
 .mk .r-icon.v2-kind-agent { background: rgba(var(--blue-rgb), 0.14); color: var(--blue-text); }
