@@ -26,7 +26,8 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { assetIcon, assetTypeLabel, artStyle } from '@/composables/useMarketplaceCard';
+import { assetIcon, assetTypeLabel as builderLabel, artStyle } from '@/composables/useMarketplaceCard';
+import { usePlainWords } from '@/composables/plainWords.js';
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -37,6 +38,8 @@ defineEmits(['open', 'install']);
 
 const coverFailed = ref(false);
 const kind = computed(() => String(props.listing.asset_type || 'item'));
+const plainWords = usePlainWords();
+const assetTypeLabel = (listing) => plainWords(listing.asset_type)?.[2] || builderLabel(listing);
 const cover = computed(() => (coverFailed.value ? null : props.listing.cover_url || props.listing.preview_image || null));
 const TIERS = { official: 'Official', verified: 'Verified' };
 const tier = computed(() => TIERS[String(props.listing.trust_tier || '').toLowerCase()] || 'Community');

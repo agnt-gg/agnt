@@ -182,6 +182,7 @@ import { useCheckpoints } from '@/composables/useCheckpoints.js';
 import { usePersonalNeeds } from './team/usePersonalNeeds.js';
 
 import { setMainChatToolSelectorShown } from '@/services/chatChannelConfig.js';
+import { PLAIN_WORDS_KEY } from '@/composables/plainWords.js';
 
 const { isElectron } = useElectron();
 
@@ -230,6 +231,9 @@ function closeDrawerOnPhone() {
 
 // ── The sidebar (desktop): expanded unless collapsed to the rail, as in ─────
 // Studio, and remembered the same way (CanvasScreen's agnt:canvasSidebar:expanded).
+// The shared Market pieces One draws speak One's words (assistants, automations…).
+provide(PLAIN_WORDS_KEY, true);
+
 const SIDEBAR_KEY = 'agnt:oneSidebar:expanded';
 function readSidebarPref() {
   try {
@@ -295,9 +299,9 @@ const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat
 // phone the drawer is the navigation, an overlay that closes on every move.
 const onChatPage = computed(() => !page.value && props.screenName === 'ChatScreen');
 const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChatPage.value));
-// The desktop sidebar (chats, My tasks, team spaces) belongs to the chat and the team pages;
+// The desktop sidebar (chats, My tasks, team spaces) belongs to the chat, a team space and My tasks;
 // every other page gets the full width, and the rail is how you move between them.
-const sidebarBelongs = computed(() => onChatPage.value || page.value === 'team');
+const sidebarBelongs = computed(() => onChatPage.value || (page.value === 'team' && ['space', 'doc', 'mine', 'inbox'].includes(String(route.query.view || ''))));
 
 // ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
 const team = useTeam(store);

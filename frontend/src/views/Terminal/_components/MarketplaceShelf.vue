@@ -223,6 +223,7 @@ import {
   byPopularity,
   trimToWholeRows,
 } from '@/composables/useMarketplaceCard';
+import { usePlainWords } from '@/composables/plainWords.js';
 
 const NOUNS = { agent: 'agent', workflow: 'workflow', tool: 'tool', plugin: 'plugin', skill: 'skill', widget: 'widget' };
 const ICONS = {
@@ -309,8 +310,9 @@ export default {
     const trendingIds = computed(() => buildTrendingIds(typeItems.value));
     const rankMap = computed(() => buildCategoryRankMap(typeItems.value));
 
-    const typeNoun = computed(() => NOUNS[props.assetType] || props.assetType);
-    const typePlural = computed(() => typeNoun.value + 's');
+    const plainWords = usePlainWords();
+    const typeNoun = computed(() => plainWords(props.assetType)?.[0] || NOUNS[props.assetType] || props.assetType);
+    const typePlural = computed(() => plainWords(props.assetType)?.[1] || typeNoun.value + 's');
     const article = computed(() => (/^[aeiou]/i.test(typeNoun.value) ? 'an' : 'a'));
     const typeIcon = computed(() => ICONS[props.assetType] || 'fas fa-cube');
 
