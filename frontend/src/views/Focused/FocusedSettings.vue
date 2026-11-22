@@ -17,13 +17,32 @@
     <div class="v2-settings">
     <!-- Every section on one page, with a list to jump to each. -->
     <nav class="v2-settings-nav" aria-label="Settings sections" data-testid="settings-nav">
-      <button v-for="s in SETTINGS_SECTIONS" :key="s.id" type="button" :class="{ on: current === s.id }" :data-jump="s.id" @click="jump(s.id)"><i :class="s.icon" aria-hidden="true"></i>{{ s.label }}</button>
+      <template v-for="g in SETTINGS_GROUPS" :key="g.label">
+        <span class="v2-settings-group">{{ g.label }}</span>
+        <button v-for="s in g.sections" :key="s.id" type="button" :class="{ on: current === s.id }" :data-jump="s.id" @click="jump(s.id)"><i :class="s.icon" aria-hidden="true"></i>{{ s.label }}</button>
+      </template>
     </nav>
     <div class="v2-settings-body">
     <!-- No banner above the settings: the plan's own row (Billing) offers the
          upgrade, next to what it changes. The one exception: an account with
          no AI of its own is asked to connect one first (ConnectYourAi). -->
     <ConnectYourAi @api-key="nav.studio('SettingsScreen', { section: 'providers' })" />
+    <section id="settings-account" class="focused-edit-block">
+      <div class="focused-edit-block-head"><h3>Account</h3></div>
+      <div class="focused-edit-card">
+        <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
+        <div class="focused-edit-row"><span class="focused-edit-label">Email</span><span>{{ userEmail || '—' }}</span></div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">Members</span>
+          <button type="button" class="focused-btn" @click="nav.go({ page: 'settings', section: 'members' })"><i class="fas fa-users" aria-hidden="true"></i>Manage members</button>
+        </div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">Session</span>
+          <button type="button" class="focused-btn" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Appearance: Studio's own theme settings (themes, font, scale, custom background with its
          opacity and blur, greyscale), embedded rather than re-implemented, so both modes set the
          same preferences the same way. -->
@@ -37,12 +56,25 @@
     <!-- data-section="providers": the "Connect your AI" tour step points here. -->
     <section id="settings-model" class="focused-edit-block" data-section="providers">
       <div class="focused-edit-block-head">
-        <h3>AI model</h3>
+        <h3>How Annie thinks</h3>
         <span class="focused-edit-hint">Used unless a chat or an assistant picks another.</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Model</span>
+          <span class="focused-edit-label">Which AI to use</span>
+          <div class="seg" role="radiogroup" aria-label="Which AI to use" data-testid="routing-mode">
+            <button type="button" role="radio" :class="{ on: routingMode === 'dynamic' }" :aria-checked="String(routingMode === 'dynamic')" data-mode="dynamic" @click="setRouting('dynamic')">Let Annie choose (recommended)</button>
+            <button type="button" role="radio" :class="{ on: routingMode !== 'dynamic' }" :aria-checked="String(routingMode !== 'dynamic')" data-mode="static" @click="setRouting('static')">Always use a specific AI</button>
+          </div>
+        </div>
+        <div v-if="routingMode === 'dynamic'" class="focused-edit-row">
+          <span class="focused-edit-label">Thinking depth<small class="focused-edit-hint">Thorough is slower and uses more credits</small></span>
+          <div class="seg" role="radiogroup" aria-label="Thinking depth" data-testid="routing-policy">
+            <button v-for="p in POLICIES" :key="p.id" type="button" role="radio" :class="{ on: routingPolicy === p.id }" :aria-checked="String(routingPolicy === p.id)" :data-policy="p.id" @click="setPolicy(p)">{{ p.label }}</button>
+          </div>
+        </div>
+        <div v-else class="focused-edit-row">
+          <span class="focused-edit-label">AI</span>
           <div class="focused-edit-pair">
             <CustomSelect
               :model-value="provider"
@@ -61,27 +93,12 @@
           </div>
         </div>
         <div class="focused-edit-row">
-          <span class="focused-edit-label">More</span>
-          <button type="button" class="focused-btn" data-action="model-settings" @click="nav.studio('SettingsScreen', { section: 'providers' })">Fallback models and chat behaviour</button>
+          <span class="focused-edit-label">If an AI is down<small class="focused-edit-hint">Which AIs Annie tries next, in order</small></span>
+          <button type="button" class="focused-btn" data-action="model-settings" @click="nav.studio('SettingsScreen', { section: 'providers' })">Choose backup AIs</button>
         </div>
       </div>
     </section>
 
-    <section id="settings-account" class="focused-edit-block">
-      <div class="focused-edit-block-head"><h3>Account</h3></div>
-      <div class="focused-edit-card">
-        <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
-        <div class="focused-edit-row"><span class="focused-edit-label">Email</span><span>{{ userEmail || '—' }}</span></div>
-        <div class="focused-edit-row">
-          <span class="focused-edit-label">Members</span>
-          <button type="button" class="focused-btn" @click="nav.go({ page: 'settings', section: 'members' })"><i class="fas fa-users" aria-hidden="true"></i>Manage members</button>
-        </div>
-        <div class="focused-edit-row">
-          <span class="focused-edit-label">Session</span>
-          <button type="button" class="focused-btn" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
-        </div>
-      </div>
-    </section>
 
     <section id="settings-billing" class="focused-edit-block">
       <div class="focused-edit-block-head">
@@ -171,16 +188,21 @@ const store = useStore();
 const router = useRouter();
 const nav = inject('focusedNav');
 // The section list: one click to each part of this page.
-const SETTINGS_SECTIONS = Object.freeze([
-  { id: 'appearance', label: 'Appearance', icon: 'fas fa-palette' },
-  { id: 'model', label: 'AI model', icon: 'fas fa-robot' },
-  { id: 'account', label: 'Account', icon: 'fas fa-user' },
-  { id: 'billing', label: 'Billing', icon: 'fas fa-credit-card' },
-  { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' },
-  { id: 'more', label: 'More settings', icon: 'fas fa-sliders-h' },
-  { id: 'layout', label: 'Layout', icon: 'fas fa-columns' },
+// Grouped by who they're about, so the list reads at a glance.
+const SETTINGS_GROUPS = Object.freeze([
+  { label: 'You', sections: [{ id: 'account', label: 'Account', icon: 'fas fa-user' }, { id: 'appearance', label: 'Appearance', icon: 'fas fa-palette' }] },
+  { label: 'AI', sections: [{ id: 'model', label: 'How Annie thinks', icon: 'fas fa-robot' }] },
+  { label: 'Team & billing', sections: [{ id: 'billing', label: 'Billing', icon: 'fas fa-credit-card' }, { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' }] },
+  { label: 'Advanced', sections: [{ id: 'more', label: 'More settings', icon: 'fas fa-sliders-h' }, { id: 'layout', label: 'Layout', icon: 'fas fa-columns' }] },
 ]);
-const current = ref('appearance');
+const SETTINGS_SECTIONS = SETTINGS_GROUPS.flatMap((g) => g.sections);
+// Annie's routing policy, in plain words.
+const POLICIES = Object.freeze([
+  { id: 'save', label: 'Quick' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'quality', label: 'Thorough' },
+]);
+const current = ref(SETTINGS_SECTIONS[0].id);
 function jump(id) {
   current.value = id;
   document.getElementById('settings-' + id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
@@ -218,6 +240,16 @@ const modelOptions = computed(() => {
   const ids = (store.state.aiProvider?.allModels?.[provider.value] || []).map((m) => (typeof m === 'string' ? m : m.id || m.name)).filter(Boolean);
   return model.value && !ids.includes(model.value) ? [model.value, ...ids] : ids;
 });
+const routingMode = computed(() => store.state.aiProvider?.routingMode || 'static');
+const routingPolicy = computed(() => store.state.aiProvider?.routingPolicy || 'balanced');
+async function setRouting(mode) {
+  await store.dispatch('aiProvider/setRoutingMode', mode);
+  nav.toast(mode === 'dynamic' ? 'Annie picks the best AI for each request.' : 'Annie always uses the AI you choose.');
+}
+async function setPolicy(p) {
+  await store.dispatch('aiProvider/setRoutingPolicy', p.id);
+  nav.toast(`Thinking depth: ${p.label}.`);
+}
 const switching = ref(false);
 async function setProvider(p) {
   if (!p) return;
@@ -281,6 +313,8 @@ onMounted(refreshSubscription);
 .v2-settings { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start; }
 .v2-settings-nav { position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
 .v2-settings-nav button { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; }
+.v2-settings-group { margin: 14px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.v2-settings-group:first-child { margin-top: 0; }
 .v2-settings-nav button i { width: 16px; text-align: center; color: var(--text-tertiary); }
 .v2-settings-nav button:hover { background: var(--surface-hover); color: var(--text-primary); }
 .v2-settings-nav button.on { background: var(--surface-active); color: var(--text-primary); font-weight: 600; }

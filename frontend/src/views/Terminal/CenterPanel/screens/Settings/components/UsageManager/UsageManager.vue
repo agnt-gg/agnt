@@ -8,7 +8,7 @@
         <p v-else>Included with your plan. Allowances reset monthly.</p>
       </div>
       <div class="header-actions">
-        <button class="refresh-btn" :disabled="loading" @click="load(true)"><i class="fas fa-sync-alt" :class="{ spinning: loading }"></i> Refresh</button>
+        <button v-if="!plain" class="refresh-btn" :disabled="loading" @click="load(true)"><i class="fas fa-sync-alt" :class="{ spinning: loading }"></i> Refresh</button>
       </div>
     </div>
 
@@ -44,7 +44,7 @@
         <ul class="pro-services-list">
           <li v-for="s in PRO_SERVICES" :key="s.key" :data-testid="`pro-${s.key}`">
             <i :class="s.icon" aria-hidden="true"></i>
-            <span class="pro-name">{{ s.name }}</span>
+            <span class="pro-name">{{ nameOf(s.key, s.name) }}</span>
             <span class="pro-amount">{{ proIncludes(s.planLabel) || 'Included' }}</span>
           </li>
         </ul>
@@ -58,11 +58,12 @@
         <div v-for="s in cards" :key="s.service" class="usage-card" :class="{ unavailable: !s.ok }">
           <div class="card-head">
             <i :class="ICONS[s.service]"></i>
-            <h3>{{ NAMES[s.service] }}</h3>
+            <h3>{{ nameOf(s.service) }}</h3>
             <span v-if="s.plan && s.ok" class="plan-pill">{{ s.plan }}</span>
             <span v-else-if="!s.ok" class="plan-pill off">unavailable</span>
           </div>
 
+          <p v-if="plain && PLAIN_SERVICES[s.service]" class="card-note">{{ PLAIN_SERVICES[s.service].what }}</p>
           <p v-if="!s.ok" class="card-note">{{ s.error }}</p>
 
           <div v-for="m in s.meters" :key="m.key" class="meter">
@@ -75,6 +76,7 @@
             </div>
           </div>
 
+          <p v-if="plain && s.ok && PLAIN_SERVICES[s.service] && s.meters.some((m) => pct(m) >= 80)" class="card-note warn" data-testid="usage-at-limit">{{ PLAIN_SERVICES[s.service].atLimit }}</p>
           <p v-if="s.ok && s.balanceMicroUSD > 0" class="card-note">Prepaid balance: ${{ (s.balanceMicroUSD / 1e6).toFixed(2) }}</p>
           <p v-if="s.ok && s.allowOverage" class="card-note muted">Overage on — usage past the allowance draws on your balance.</p>
         </div>
@@ -96,6 +98,7 @@ import { API_CONFIG } from '@/tt.config';
 import UpgradeModal from '@/components/UpgradeModal.vue';
 import { PLANS } from '@/components/plans.js';
 import { fetchFlashAccount, usedShare } from '@/services/agntFlash.js';
+import { usePlainShell, PLAIN_SERVICES } from '@/composables/plainWords.js';
 
 const SERVICE_ORDER = ['models', 'search', 'sandbox', 'mail', 'webhooks', 'mobile'];
 const NAMES = { models: 'AGNT Flash', search: 'Search', sandbox: 'Sandbox', mail: 'Mail', webhooks: 'Webhooks', mobile: 'Text Annie' };
@@ -123,6 +126,9 @@ export default {
   components: { UpgradeModal },
   setup() {
     const store = useStore();
+    // Inside AGNT One each service is named for what it does, with what happens at its limit.
+    const plain = usePlainShell();
+    const nameOf = (key, fallback) => (plain && PLAIN_SERVICES[key]?.name) || NAMES[key] || fallback;
     const isPremium = computed(() => store.getters['userAuth/isPremium']);
     const loading = ref(false);
     const error = ref('');
@@ -188,13 +194,14 @@ export default {
 
     return {
       SERVICE_ORDER, NAMES, ICONS, PRO_SERVICES, isPremium, loading, error, cards, period, periodLabel, resetLabel, fetchedAt, pct, fmt, load,
-      flash, flashShare, upgradeOpen, proIncludes,
+      flash, flashShare, upgradeOpen, proIncludes, plain, nameOf, PLAIN_SERVICES,
     };
   },
 };
 </script>
 
 <style scoped>
+.card-note.warn { color: var(--amber-text); }
 .usage-manager { display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 1400px; margin: 0 auto; }
 .usage-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: rgba(var(--primary-rgb), 0.05); border: 1px solid var(--terminal-border-color); border-radius: 12px; gap: 20px; }
 .header-content h2 { color: var(--color-primary); font-size: 1.4em; font-weight: 700; margin: 0 0 4px; }
