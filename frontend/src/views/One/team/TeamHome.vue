@@ -29,7 +29,7 @@
                   <div class="r">
                     <span class="r-icon"><MkIcon name="routines" /></span>
                     <span class="r-text"><strong>{{ run.routineName }}</strong><small>Repeating goal · {{ run.error || 'It has a question for you' }} · {{ since(run.fired_at) }}</small></span>
-                    <button type="button" class="primary sm" @click="ctx.openRoutine(run.routineId)">Answer</button>
+                    <button type="button" class="primary sm" @click="ctx.openRoutine(run.routineId)">Answer Annie</button>
                   </div>
                 </li>
               </ul>
@@ -52,8 +52,8 @@
               <li v-for="goal in reviewGoals" :key="goal.id">
                 <div class="r">
                   <span class="r-icon"><MkIcon name="task" /></span>
-                  <span class="r-text"><strong>{{ goal.title || 'Untitled goal' }}</strong><small>Goal · finished, waiting for your OK · {{ since(goal.updated_at || goal.created_at) }}</small></span>
-                  <button type="button" class="primary sm" @click="ctx.openGoal(goal.id)">Review</button>
+                  <span class="r-text"><strong>{{ goal.title || 'Untitled goal' }}</strong><small>Goal · Annie finished; check it before it’s done · {{ since(goal.updated_at || goal.created_at) }}</small></span>
+                  <button type="button" class="primary sm" @click="ctx.openGoal(goal.id)">Check the result</button>
                 </div>
               </li>
             </ul>
@@ -84,8 +84,8 @@
             <li v-for="run in doneToday" :key="run.id">
               <button type="button" class="r" @click="ctx.openRoutine(run.routineId)">
                 <span class="r-icon"><MkIcon name="routines" /></span>
-                <span class="r-text"><strong>{{ run.routineName }}</strong><small>Done · {{ since(run.fired_at) }}</small></span>
-                <MkIcon name="chev" size="sm" class="v2-go" />
+                <span class="r-text"><strong>{{ run.routineName }}</strong><small>Finished {{ since(run.fired_at) }}</small></span>
+                <span class="v2-link">View result ›</span>
               </button>
             </li>
           </ul>
@@ -98,6 +98,7 @@
               <button type="button" class="r" @click="ctx.openRoutine(row.id)">
                 <span class="r-icon"><MkIcon name="routines" /></span>
                 <span class="r-text"><strong>{{ row.label }}</strong><small>Next: {{ formatNextRun(row.next) }} · {{ row.cadence }}</small></span>
+                <span class="btn ghost sm">Change</span>
               </button>
             </li>
           </ul>
