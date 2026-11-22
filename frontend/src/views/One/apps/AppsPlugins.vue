@@ -77,7 +77,7 @@
       </template>
 
       <template #foot="{ rows: shownRows, all }">
-        <span>{{ plural(shownRows.length, 'plugin') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }} · {{ all.filter((row) => row.triggers).length }} with triggers · {{ all.filter((row) => row.status === 'reconnect' || row.status === 'connect').length }} need you</span>
+        <span>{{ plural(shownRows.length, 'plugin') }}{{ shownRows.length !== all.length ? ` of ${all.length}` : '' }} · {{ all.filter((row) => row.triggers).length }} with triggers · {{ needYou(all.filter((row) => row.status === 'reconnect' || row.status === 'connect').length) }}</span>
         <button type="button" class="btn sm" data-action="browse" @click="emit('act', 'browse')"><AppsGlyph name="grid" size="xs" />Browse Market</button>
       </template>
     </AppsList>
@@ -89,7 +89,7 @@
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import AppsGlyph from './AppsGlyph.vue';
 import AppsList from './AppsList.vue';
-import { LISTS, PLUGIN_STATUS, TRUST_DETAIL, contentPhrases, formatDate, plural } from './appsModel.js';
+import { needYou, LISTS, PLUGIN_STATUS, TRUST_DETAIL, contentPhrases, formatDate, plural } from './appsModel.js';
 
 defineProps({
   rows: { type: Array, required: true },

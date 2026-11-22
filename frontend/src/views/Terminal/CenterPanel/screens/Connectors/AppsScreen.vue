@@ -68,6 +68,8 @@ if (!inOne) {
 }
 </script>
 
+<!-- One's Apps page drawn in Studio's language (headings, buttons, badges, cards). -->
+<style src="@/views/One/apps/appsStudio.css"></style>
 <style scoped>
 /* A flex child of the center panel: min-width: 0 keeps the page's tables from widening it past the window. */
 .studio-apps-page { flex: 1 1 0; min-width: 0; width: 100%; height: 100%; min-height: 0; overflow: auto; display: flex; flex-direction: column; }

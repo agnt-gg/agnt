@@ -609,3 +609,6 @@ export function customProviderData(form, id) {
     customPrompt: '',
   };
 }
+
+/** "1 needs you", "2 need you". */
+export const needYou = (n) => `${n} ${n === 1 ? 'needs' : 'need'} you`;

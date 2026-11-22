@@ -15,7 +15,7 @@
       >
         <AppsGlyph :name="item.icon" /><span>{{ item.label }}</span>
         <span class="count">
-          <span v-if="item.id === 'connections' && needsYou" v-tooltip="`${needsYou} need you`" class="needs-pill">{{ needsYou }}</span>{{ counts[item.id] }}
+          <span v-if="item.id === 'connections' && needsYou" v-tooltip="needYou(needsYou)" class="needs-pill">{{ needsYou }}</span>{{ counts[item.id] }}
         </span>
       </button>
       </template>
@@ -110,6 +110,7 @@ import {
   customProviderId,
   mcpRows,
   mcpTestResult,
+  needYou,
   plural,
   pluginRows,
   randomSuffix,
@@ -280,7 +281,7 @@ async function checkAll() {
   if (checking.value) return;
   checking.value = true;
   try {
-    if (await runHealthCheck([])) nav.toast(`Checked ${plural(personalRows.value.length, 'connection')} · ${needsYou.value} need you`);
+    if (await runHealthCheck([])) nav.toast(`Checked ${plural(personalRows.value.length, 'connection')} · ${needYou(needsYou.value)}`);
   } finally {
     checking.value = false;
   }

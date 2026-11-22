@@ -1,0 +1,135 @@
+/* The Apps page (App connections, Plugins, MCP servers, Email & webhooks) inside Studio:
+   the same page and the same actions, drawn in Studio's language (the Tools, Agents and
+   Settings screens): a "/ Title" section list, green capitals headings, Studio's create
+   button, its badges, and its cards and borders. Loaded by Studio's Apps screen only;
+   AGNT One keeps its own look. */
+
+.studio-apps-page .za {
+  font-family: inherit;
+  --za-line: var(--terminal-border-color);
+  --za-muted: var(--color-text-muted);
+}
+
+/* ── Section list: Studio's left panel ─────────────────────────────────── */
+.studio-apps-page .za-page .za-sub { border-right: 1px solid var(--za-line); padding: 12px 12px; }
+.studio-apps-page .za-page .za-sub h2 {
+  margin: 0 0 14px; padding: 0 2px 12px; border-bottom: 1px solid var(--za-line);
+  font-size: 16px; font-weight: 400; letter-spacing: 0.03em; color: var(--za-muted);
+}
+.studio-apps-page .za-page .za-sub h2::before { content: '/ '; }
+.studio-apps-page .za .sub-item { height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 7px; font-size: 12.5px; font-weight: 400; color: var(--color-text); }
+.studio-apps-page .za .sub-item:hover { background: var(--surface-hover); }
+.studio-apps-page .za .sub-item :is(span, b) { font-weight: 400; }
+.studio-apps-page .za .sub-item.on { background: rgba(var(--primary-rgb), 0.06); border-color: rgba(var(--primary-rgb), 0.25); color: var(--color-primary); font-weight: 400; }
+.studio-apps-page .za .sub-item.on svg.i { color: var(--color-primary); }
+.studio-apps-page .za .sub-item .count { font-size: 11px; color: var(--za-muted); }
+.studio-apps-page .za .sub-label { margin: 16px 2px 6px; font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--za-muted); }
+.studio-apps-page .za .needs-pill { padding: 3px 7px 1px; border-radius: 12px; background: rgba(var(--red-rgb), 0.15); border: 1px solid rgba(var(--red-rgb), 0.4); color: var(--color-red); font-size: 10px; font-weight: 700; }
+
+/* ── Page head: Studio's screen title and create button ────────────────── */
+.studio-apps-page .za .page { padding-top: 16px; }
+.studio-apps-page .za .page-head { align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--za-line); }
+.studio-apps-page .za .page-head h1 { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text-green); }
+.studio-apps-page .za .primary {
+  min-height: 0; height: auto; padding: 10px 14px; border: 1px solid rgba(var(--primary-rgb), 0.35); border-radius: 10px;
+  background: rgba(var(--primary-rgb), 0.08); color: var(--color-primary); font-size: 13px; font-weight: 400; letter-spacing: 0.02em;
+}
+.studio-apps-page .za .primary:hover { background: rgba(var(--primary-rgb), 0.14); }
+.studio-apps-page .za .btn { border: 1px solid var(--za-line); border-radius: 8px; background: transparent; color: var(--color-text); font-size: 12.5px; font-weight: 400; }
+.studio-apps-page .za .btn:hover { border-color: rgba(var(--primary-rgb), 0.35); color: var(--color-primary); }
+.studio-apps-page .za .btn.danger { color: var(--color-red); }
+/* A row's fix (Reconnect, Connect) is Studio's badge-button, red when something stopped. */
+.studio-apps-page .za .primary.sm, .studio-apps-page .za .st .act.primary {
+  padding: 4px 8px 2px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+}
+.studio-apps-page .za :is(.za-broken, .st.bad) .primary.sm { background: rgba(var(--red-rgb), 0.15); border-color: rgba(var(--red-rgb), 0.4); color: var(--color-red); }
+.studio-apps-page .za .seg { border-radius: 8px; }
+.studio-apps-page .za .seg button.on { color: var(--color-primary); }
+
+/* ── Toolbar: Studio's fields ──────────────────────────────────────────── */
+.studio-apps-page .za :is(.field, .search) { height: 34px; border: 1px solid var(--za-line); border-radius: 8px; background: transparent; font-size: 12.5px; }
+.studio-apps-page .za .field b { font-weight: 500; }
+.studio-apps-page .za .search input { color: var(--color-light-green); font-weight: 300; }
+
+/* ── The list: one Studio card, capitals headings, quiet rows ──────────── */
+.studio-apps-page .za .tbl { border: 1px solid var(--za-line); border-radius: 16px; background: var(--color-darker-0); }
+.studio-apps-page .za .tr.th .td, .studio-apps-page .za .th-btn, .studio-apps-page .za .th-plain { font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--za-muted); }
+.studio-apps-page .za .th-btn.on { color: var(--color-primary); }
+.studio-apps-page .za .tr + .tr { border-top-color: var(--za-line); }
+.studio-apps-page .za .tr.body-row:hover { background: rgba(var(--primary-rgb), 0.03); }
+.studio-apps-page .za .tr.sel { background: rgba(var(--primary-rgb), 0.06); }
+.studio-apps-page .za .tr.group .td { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--za-muted); }
+.studio-apps-page .za .name-text strong { font-size: 13.5px; font-weight: 500; }
+/* Studio tables read quietly: names at medium weight, every other cell regular. */
+.studio-apps-page .za .tr.body-row .td :is(b, strong, span) { font-weight: 400; }
+.studio-apps-page .za .tr.body-row .td .name-text strong, .studio-apps-page .za .tr.body-row .app-line span:first-child { font-weight: 500; }
+.studio-apps-page .za .tr.body-row :is(.col-checked, .col-updated, .col-installed) { color: var(--za-muted); font-size: 12px; }
+/* An empty cell is one quiet dash. */
+.studio-apps-page .za .tr.body-row .td { --za-dash: var(--za-muted); }
+.studio-apps-page .za .name-text small, .studio-apps-page .za .app-line .ver { font-size: 11.5px; color: var(--za-muted); }
+.studio-apps-page .za .logo { border-radius: 10px; border: 1px solid var(--za-line); background: var(--color-darker-0); }
+.studio-apps-page .za .st-l { font-size: 12.5px; }
+.studio-apps-page .za .tbl-foot { font-size: 11.5px; color: var(--za-muted); }
+/* Tags are Studio's badges: AI model in the plugin violet, the rest quiet. */
+.studio-apps-page .za .tag { padding: 4px 8px 2px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; border: 1px solid var(--za-line); background: transparent; color: var(--za-muted); }
+.studio-apps-page .za .tag.blue { background: rgba(var(--violet-rgb), 0.15); border-color: rgba(var(--violet-rgb), 0.4); color: var(--color-violet); }
+.studio-apps-page .za .tag.green { background: rgba(var(--green-rgb), 0.15); border-color: rgba(var(--green-rgb), 0.4); color: var(--text-green); }
+.studio-apps-page .za .tag.red { background: rgba(var(--red-rgb), 0.15); border-color: rgba(var(--red-rgb), 0.4); color: var(--color-red); }
+.studio-apps-page .za .use { border-radius: 12px; border-color: var(--za-line); font-size: 11.5px; }
+.studio-apps-page .za .use.zero { border: 0; }
+
+/* ── What stopped working: Studio's red card ───────────────────────────── */
+.studio-apps-page .za .za-broken { border-radius: 16px; border-color: rgba(var(--red-rgb), 0.4); background: rgba(var(--red-rgb), 0.05); }
+.studio-apps-page .za .za-broken-head { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.studio-apps-page .za .za-broken-row { border-top-color: rgba(var(--red-rgb), 0.2); }
+.studio-apps-page .za .za-broken-text strong { font-size: 14px; font-weight: 600; }
+.studio-apps-page .za .za-broken-text small { font-size: 11.5px; color: var(--za-muted); }
+
+/* ── Menus, drawers and the add dialog ─────────────────────────────────── */
+.studio-apps-page .za :is(.menu, .filters-pop) { border-radius: 10px; border-color: var(--za-line); }
+.studio-apps-page .za .mi-head, .studio-apps-page .za .dr-sec h4, .studio-apps-page .za .kv dt { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--za-muted); }
+.studio-apps-page .za .drawer { border-left: 1px solid var(--za-line); }
+.studio-apps-page .za .dr-head { border-bottom: 1px solid var(--za-line); }
+.studio-apps-page .za .dr-head h2 { font-size: 16px; font-weight: 600; }
+.studio-apps-page .za .dr-card { border-radius: 16px; border-color: var(--za-line); background: var(--color-darker-0); }
+.studio-apps-page .za .dr-status { border-radius: 12px; }
+.studio-apps-page .za .dr-foot { border-top: 1px solid var(--za-line); }
+.studio-apps-page .za .za-modal { border-radius: 16px; border-color: var(--za-line); }
+.studio-apps-page .za .md-head h2 { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text-green); }
+.studio-apps-page .za :is(.pick-item, .choice-item) { border-radius: 10px; border-color: var(--za-line); }
+.studio-apps-page .za .choice-item.on { border-color: rgba(var(--primary-rgb), 0.35); background: rgba(var(--primary-rgb), 0.06); }
+.studio-apps-page .za .empty h3 { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text-green); }
+
+/* ── A connection's or add-on's own page (Focused's editor, opened from Apps in Studio) ── */
+.studio-apps-page .focused-page-back { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-primary); }
+.studio-apps-page .focused-plain-title { font-size: 18px; font-weight: 600; }
+.studio-apps-page .focused-edit-meta { font-size: 11.5px; color: var(--color-text-muted); }
+.studio-apps-page .focused-edit-block > :is(h3, h4, .focused-edit-block-head) { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); }
+.studio-apps-page .focused-edit-card { border: 1px solid var(--terminal-border-color); border-radius: 16px; background: var(--color-darker-0); }
+.studio-apps-page .focused-edit-label { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); }
+.studio-apps-page .focused-edit-hint { font-size: 11.5px; color: var(--color-text-muted); }
+.studio-apps-page .focused-input { border: 1px solid var(--terminal-border-color); border-radius: 8px; background: transparent; color: var(--color-light-green); font-weight: 300; }
+.studio-apps-page .focused-btn { border: 1px solid var(--terminal-border-color); border-radius: 8px; background: transparent; color: var(--color-text); font-size: 12.5px; font-weight: 400; }
+.studio-apps-page .focused-btn.danger { color: var(--color-red); }
+.studio-apps-page .focused-primary { width: auto; padding: 10px 14px; border: 1px solid rgba(var(--primary-rgb), 0.35); border-radius: 10px; background: rgba(var(--primary-rgb), 0.08); color: var(--color-primary); font-size: 13px; font-weight: 400; letter-spacing: 0.02em; }
+.studio-apps-page .focused-link { color: var(--color-primary); font-size: 12.5px; }
+.studio-apps-page .focused-connector-logo { border-radius: 10px; border: 1px solid var(--terminal-border-color); }
+
+/* ── Weight and alignment, after the page's own rules ──────────────────── */
+.studio-apps-page .za .tbl .tr.body-row .td, .studio-apps-page .za .tbl .tr.body-row .td * { font-weight: 400; }
+.studio-apps-page .za .tbl .tr.body-row .td .name-text strong, .studio-apps-page .za .tbl .tr.body-row .td .app-line span:first-child { font-weight: 500; }
+.studio-apps-page .za .za-broken-text strong { font-weight: 500; }
+.studio-apps-page .za .toolbar .field b { font-weight: 400; }
+.studio-apps-page .za .sub-item, .studio-apps-page .za .sub-item * { font-weight: 400; }
+/* The section list's heading and the page's share one header row, so their rules meet. */
+.studio-apps-page .za-page .za-sub { padding-top: 16px; }
+.studio-apps-page .za-page .za-sub h2, .studio-apps-page .za .page-head { box-sizing: border-box; height: 52px; margin-bottom: 16px; padding-bottom: 0; display: flex; align-items: center; }
+.studio-apps-page .za .page { padding-top: 16px; }
+/* An empty section: a card title, not a second page title; the accent is Studio's green. */
+.studio-apps-page .za .empty h3 { font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text); }
+.studio-apps-page .za .empty .em-icon { background: rgba(var(--primary-rgb), 0.08); color: var(--color-primary); }
+.studio-apps-page .focused-plain-title { font-size: 16px; font-weight: 500; }
+.studio-apps-page .focused-edit-card .focused-primary { width: auto; align-self: flex-start; }
+.studio-apps-page .za .tbl .tr.body-row .td :is(.primary, .tag), .studio-apps-page .za .tbl .tr.body-row .td :is(.primary, .tag) * { font-weight: 700; }
+.studio-apps-page .za .tbl .tag { padding: 3px 6px 1px; }
+.studio-apps-page .za .tbl .tr.body-row .td .use, .studio-apps-page .za .tbl .tr.body-row .td .use * { font-size: 11.5px; color: var(--color-text-muted); }
