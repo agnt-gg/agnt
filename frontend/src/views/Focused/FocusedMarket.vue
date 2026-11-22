@@ -2,8 +2,7 @@
   <section class="focused-market focused-page" aria-label="Market">
     <SimpleModal ref="modal" />
     <header class="focused-market-head">
-      <div><h1>Market</h1><p>A little more possibility.</p></div>
-      <button v-if="!item" type="button" class="focused-link" data-action="your-listings" @click="type = 'mine'">Your listings &amp; earnings <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+      <div><h1>Market</h1><p>Ready-made assistants, automations and add-ons, free and paid. Each one is checked before it’s listed.</p></div>
     </header>
 
     <!-- A plugin listing: the Plugins page's own detail (what's inside, the
@@ -68,7 +67,7 @@
         <nav class="focused-market-tabs" aria-label="Asset types">
           <button v-for="tab in tabs" :key="tab.id" type="button" class="focused-tab" :class="{ active: type === tab.id }" :aria-pressed="type === tab.id" @click="type = tab.id">{{ tab.label }}</button>
         </nav>
-        <label v-if="type !== 'mine'" class="focused-page-search focused-market-search"><i class="fas fa-search" aria-hidden="true"></i><input v-model="query" type="search" placeholder="Search Market" aria-label="Search Market" /></label>
+        <label v-if="type !== 'mine'" class="focused-page-search focused-market-search"><i class="fas fa-search" aria-hidden="true"></i><input v-model="query" type="search" placeholder="What do you need help with?" aria-label="Search Market" /></label>
       </div>
 
       <FocusedMarketMine v-if="type === 'mine'" @open="openItem" />
@@ -117,7 +116,8 @@ import { ref, computed, inject, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
-import { MARKETPLACE_ASSET_TYPES, assetIcon, assetTypeLabel, artStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
+import { MARKETPLACE_ASSET_TYPES, assetIcon, artStyle, installsLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
+import { PLAIN_WORDS } from '@/composables/plainWords.js';
 import { marketplaceItemKey, matchesMarketplaceKey } from '@/services/marketplaceLink.js';
 import AppsSection from '@/views/Terminal/CenterPanel/screens/Connectors/components/AppsSection.vue';
 import FocusedListingDetail from './FocusedListingDetail.vue';
@@ -141,7 +141,9 @@ const installingId = ref(null);
 const installError = ref('');
 const installedHere = ref(new Set());
 const failedImages = ref(new Set());
-const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: `${assetTypeLabel({ asset_type: id })}s` })), { id: 'mine', label: 'Your listings' }];
+// A listing's kind in One's words (Assistant, Automation…).
+const assetTypeLabel = (listing) => PLAIN_WORDS[String(listing?.asset_type || '').toLowerCase()]?.[2] || 'Item';
+const tabs = [{ id: 'all', label: 'Discover' }, ...MARKETPLACE_ASSET_TYPES.map(id => ({ id, label: PLAIN_WORDS[id]?.[1]?.replace(/^./, (c) => c.toUpperCase()) || id })), { id: 'mine', label: 'Your listings' }];
 const status = computed(() => store.getters['marketplace/shelfStatus']);
 const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const visibleItems = computed(() => items.value.filter(listing => (type.value === 'all' || listing.asset_type === type.value) && matchesQuery(listing, query.value)).slice().sort(byPopularity));

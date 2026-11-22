@@ -49,7 +49,8 @@ const price = computed(() => Number(props.listing.price) || 0);
 const priceLabel = computed(() => (price.value > 0 ? `$${price.value.toFixed(2)}` : 'Free'));
 // The website's verbs (agnt.gg/public/asset-actions.js): templates are got, the rest installed.
 const VERBS = { agent: 'Get template', workflow: 'Get template', plugin: 'Install plugin', skill: 'Install skill', tool: 'Install tool' };
-const actionLabel = computed(() => (price.value > 0 ? `Buy ${priceLabel.value}` : VERBS[kind.value] || 'Install'));
+// Inside AGNT One the button is one verb with its price; Studio names what it installs.
+const actionLabel = computed(() => (price.value > 0 ? `Buy ${priceLabel.value}` : plainWords(kind.value) ? 'Get it · Free' : VERBS[kind.value] || 'Install'));
 </script>
 
 <style scoped>
