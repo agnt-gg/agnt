@@ -195,7 +195,20 @@ describe('the update rehearsal can read what the app prints', () => {
     // this exact line. Reword one side only and it waits out its whole limit.
     expect(updater).toContain(' could not be prepared: ${message}`');
     expect(rehearsal).toContain(' could not be prepared: `');
-    expect(rehearsal).toMatch(/if \(kind === 'mac'\) await rehearseUnusableUpdate\(\);/);
+    expect(rehearsal).toMatch(/await rehearseUnusableUpdate\(\);/);
+  });
+
+  it('waits for the lines the app logs on a Mac that will want an administrator', () => {
+    // Same pairing for the Mac step that takes away write access to the app's
+    // folder: the app must say it noticed, and that it did not prepare.
+    for (const line of ['[update] macOS will ask for an administrator to install updates here', ' is not prepared until asked for']) {
+      expect(updater, line).toContain(line);
+    }
+    expect(rehearsal).toContain('macOS will ask for an administrator to install updates here');
+    expect(rehearsal).toContain(' is not prepared until asked for');
+    expect(rehearsal).toContain('handed to Squirrel');
+    expect(updater).toContain(' handed to Squirrel; not ready until it is staged`');
+    expect(rehearsal).toMatch(/await rehearseNeedsAdministrator\(\);/);
   });
 });
 

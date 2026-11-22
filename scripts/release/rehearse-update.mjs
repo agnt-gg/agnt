@@ -14,8 +14,11 @@
  * What it proves, per kind:
  *   mac       first, an update macOS cannot prepare is reported as failed and
  *             never offered as ready, and the installed app is left alone;
- *             then the app downloads the real update, Squirrel installs it
- *             when the app quits, and the relaunched bundle IS the new version
+ *             next, from a folder this account cannot change, the update is
+ *             offered without being prepared, so macOS asks nobody for an
+ *             administrator unasked; then the app downloads the real update,
+ *             Squirrel installs it when the app quits, and the relaunched
+ *             bundle IS the new version
  *   appimage  the same through electron-updater's AppImage path, with the file
  *             named the way users download it (version in the name)
  *   deb       the app does NOT update itself: it disables the updater and never
@@ -317,10 +320,49 @@ async function rehearseUnusableUpdate() {
   publish(newFeedYml);
 }
 
+// ------------------------------------------------------------------ macOS: a folder this account cannot change
+/**
+ * Take away this account's right to change the folder holding the app, as for
+ * a standard account with AGNT in /Applications, and require the app to offer
+ * the update without preparing it. Preparing is what makes macOS ask for an
+ * administrator, and that prompt used to arrive in the background, unasked.
+ * Nobody is here to answer one either, so a prompt would stall this run until
+ * the app gives up on it; the checks below fail first.
+ */
+async function rehearseNeedsAdministrator() {
+  const folder = path.dirname(macApp);
+  const mode = fs.statSync(folder).mode & 0o7777;
+  fs.chmodSync(folder, mode & ~0o222);
+  note(`took away write access to ${folder}`);
+  try {
+    const version = NEW.replace(/\./g, '\\.');
+    const run = launch('standard-account', exe);
+    if (!(await waitForLog(run, new RegExp(`App version from package.json: ${OLD.replace(/\./g, '\\.')}`), 120000))) throw new Error('old build did not start');
+    const noticed = await waitForLog(run, /\[update\] macOS will ask for an administrator to install updates here/, 60000);
+    check('notices that macOS will want an administrator', noticed);
+    const offered = await waitForLog(run, new RegExp(`\\[update\\] ${version} ready`), 600000);
+    check('offers the update from a folder it cannot change', offered);
+    const printed = run.read();
+    const unprepared = new RegExp(`\\[update\\] ${version} is not prepared until asked for`).test(printed) && !/handed to Squirrel/.test(printed);
+    check('without asking macOS to prepare it', unprepared);
+    check('app quits cleanly from that folder', await quit(run));
+    await sleep(10000); // anything staged would have been installed by now
+    const after = installedBundleVersion();
+    check('nothing was installed without being asked for', after === OLD, `CFBundleShortVersionString=${after}`);
+    if (!offered || !unprepared) throw new Error('the update was not offered unprepared');
+  } finally {
+    fs.chmodSync(folder, mode);
+    note(`restored write access to ${folder}`);
+  }
+}
+
 // ------------------------------------------------------------------ the rehearsal
 let failed = false;
 try {
-  if (kind === 'mac') await rehearseUnusableUpdate();
+  if (kind === 'mac') {
+    await rehearseUnusableUpdate();
+    await rehearseNeedsAdministrator();
+  }
 
   const first = launch('old', exe);
   const started = await waitForLog(first, new RegExp(`App version from package.json: ${OLD.replace(/\./g, '\\.')}`), 120000);
@@ -410,7 +452,7 @@ try {
 
 const bad = Object.entries(results).filter(([, r]) => !r.ok);
 if (failed || bad.length || Object.keys(results).length === 0) {
-  const appLogs = ['unusable', 'old', 'new']
+  const appLogs = ['unusable', 'standard-account', 'old', 'new']
     .map((l) => path.join(out, `app-${l}.log`))
     .filter((p) => fs.existsSync(p))
     .map((p) => `--- ${path.basename(p)}\n` + fs.readFileSync(p, 'utf8').split('\n').filter((l) => /\[update\]|\[Update\]|error|Error|ShipIt|Squirrel/.test(l)).slice(-40).join('\n'))
