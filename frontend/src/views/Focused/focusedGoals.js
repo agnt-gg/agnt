@@ -36,7 +36,7 @@ export function goalLine(goal = {}) {
   const tasks = total ? `${done} of ${total} steps done` : '';
   const status = String(goal.status || '').toLowerCase();
   if (stage === 'plan') return 'Annie made a plan. Approve it and she starts';
-  if (stage === 'review') return ['Annie finished. Check the result before it’s done', tasks].filter(Boolean).join(' \u00b7 ');
+  if (stage === 'review') return 'Annie finished. Check the result before it’s done';
   if (stage === 'build') {
     if (status === 'paused') return ['Paused', tasks].filter(Boolean).join(' \u00b7 ');
     if (['failed', 'error', 'stopped'].includes(status)) return 'Stopped before it finished';

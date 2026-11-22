@@ -48,7 +48,7 @@
       <template #cell-name="{ row }">
         <div class="name">
           <span class="logo"><SvgIcon :name="row.icon" /></span>
-          <div class="name-text"><strong>{{ row.name }}<span v-for="tag in tagsOf(row)" :key="tag.label" class="tag" :class="tag.tone" v-tooltip="tag.tip">{{ tag.label }}</span></strong><small>{{ row.identity || (row.kind === 'API key' ? 'Connected with an access code' : 'Signed in with your account') }}</small></div>
+          <div class="name-text"><strong>{{ row.name }}<span v-for="tag in tagsOf(row)" :key="tag.label" class="tag" :class="tag.tone" v-tooltip="tag.tip">{{ tag.label }}</span></strong><small>{{ row.status === 'reconnect' ? (row.problem || 'Its sign-in stopped working') : row.status === 'connect' ? 'Not connected yet' : row.identity || (row.kind === 'API key' ? 'Connected with an access code' : 'Signed in with your account') }}</small></div>
         </div>
       </template>
       <template #cell-app="{ row }">

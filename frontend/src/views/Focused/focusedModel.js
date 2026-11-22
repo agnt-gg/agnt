@@ -61,7 +61,7 @@ export const FOCUSED_PAGES = Object.freeze({
   },
   settings: {
     title: 'Settings',
-    sub: 'How AGNT looks and which model it uses.',
+    sub: 'Your account, how AGNT looks, and how Annie thinks.',
     icon: 'fas fa-cog',
   },
 });

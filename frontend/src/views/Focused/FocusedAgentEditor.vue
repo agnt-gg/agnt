@@ -45,7 +45,7 @@
     </section>
 
     <section class="focused-edit-block">
-      <div class="focused-edit-block-head"><h3>How it works</h3></div>
+      <div class="focused-edit-block-head"><h3>How it works</h3><span class="focused-edit-hint" data-testid="agent-privacy">{{ lastUsed }}</span></div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
           <span class="focused-edit-label">AI</span>

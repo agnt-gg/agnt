@@ -33,10 +33,6 @@
         <div class="focused-edit-row"><span class="focused-edit-label">Name</span><span>{{ userName || '—' }}</span></div>
         <div class="focused-edit-row"><span class="focused-edit-label">Email</span><span>{{ userEmail || '—' }}</span></div>
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Members</span>
-          <button type="button" class="focused-btn" @click="nav.go({ page: 'settings', section: 'members' })"><i class="fas fa-users" aria-hidden="true"></i>Manage members</button>
-        </div>
-        <div class="focused-edit-row">
           <span class="focused-edit-label">Session</span>
           <button type="button" class="focused-btn" @click="logOut"><i class="fas fa-sign-out-alt" aria-hidden="true"></i>Log out</button>
         </div>
@@ -102,7 +98,7 @@
 
     <section id="settings-billing" class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Billing</h3>
+        <h3>Billing &amp; members</h3>
         <span class="focused-flex"></span>
         <button type="button" class="focused-link" @click="nav.studio('SettingsScreen', { section: 'billing' })">Full billing</button>
       </div>
@@ -117,6 +113,10 @@
           <button type="button" :class="billing.isFree ? 'focused-primary' : 'focused-btn'" :disabled="billingBusy" @click="upgradeOpen = true">
             {{ billing.isFree ? 'Upgrade' : 'Change plan' }}
           </button>
+        </div>
+        <div class="focused-edit-row">
+          <span class="focused-edit-label">Members</span>
+          <button type="button" class="focused-btn" @click="nav.go({ page: 'settings', section: 'members' })"><i class="fas fa-users" aria-hidden="true"></i>Manage members</button>
         </div>
         <div v-if="billing.renewsAt" class="focused-edit-row">
           <span class="focused-edit-label">{{ billing.renewLabel }}</span>
@@ -192,7 +192,7 @@ const nav = inject('focusedNav');
 const SETTINGS_GROUPS = Object.freeze([
   { label: 'You', sections: [{ id: 'account', label: 'Account', icon: 'fas fa-user' }, { id: 'appearance', label: 'Appearance', icon: 'fas fa-palette' }] },
   { label: 'AI', sections: [{ id: 'model', label: 'How Annie thinks', icon: 'fas fa-robot' }] },
-  { label: 'Team & billing', sections: [{ id: 'billing', label: 'Billing', icon: 'fas fa-credit-card' }, { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' }] },
+  { label: 'Team & billing', sections: [{ id: 'billing', label: 'Billing & members', icon: 'fas fa-credit-card' }, { id: 'usage', label: 'Usage', icon: 'fas fa-chart-bar' }] },
   { label: 'Advanced', sections: [{ id: 'more', label: 'More settings', icon: 'fas fa-sliders-h' }, { id: 'layout', label: 'Layout', icon: 'fas fa-columns' }] },
 ]);
 const SETTINGS_SECTIONS = SETTINGS_GROUPS.flatMap((g) => g.sections);

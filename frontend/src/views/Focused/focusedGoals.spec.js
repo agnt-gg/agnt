@@ -52,7 +52,7 @@ describe('Goals page sections', () => {
 describe('a goal in plain words', () => {
   it('says what it needs and how far along it is', () => {
     expect(goalLine(goal('p', 'needs_review'))).toBe('Annie made a plan. Approve it and she starts');
-    expect(goalLine(goal('r', 'needs_review', { current_iteration: 1, completed_tasks: 2, task_count: 17 }))).toBe('Annie finished. Check the result before it’s done \u00b7 2 of 17 steps done');
+    expect(goalLine(goal('r', 'needs_review', { current_iteration: 1, completed_tasks: 2, task_count: 17 }))).toBe('Annie finished. Check the result before it’s done');
     expect(goalLine(goal('b', 'executing', { completed_tasks: 4, task_count: 12 }))).toBe('Working on it \u00b7 4 of 12 steps done');
     expect(goalLine(goal('x', 'paused'))).toBe('Paused');
     expect(goalLine(goal('f', 'failed'))).toBe('Stopped before it finished');
