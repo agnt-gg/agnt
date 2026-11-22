@@ -176,3 +176,4 @@
 .mk .v2-progress small { white-space: nowrap; color: var(--text-secondary); }
 .mk .v2-link { flex: none; font-size: 13px; color: var(--pink); cursor: pointer; white-space: nowrap; }
 .mk .v2-toolbar-fill { flex: 1; }
+.mk .v2-act { flex: none; pointer-events: none; }

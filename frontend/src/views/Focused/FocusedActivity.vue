@@ -5,21 +5,12 @@
     <div class="content">
       <div class="page">
         <div class="page-head"><div><h1>Activity</h1><p>Everything Annie{{ team.state.team ? ' and your team' : '' }} did for you, newest first.</p></div></div>
-        <nav class="tabs" role="tablist" aria-label="Show">
-          <button
-            v-for="k in kinds"
-            :key="k.id"
-            type="button"
-            role="tab"
-            class="tab focused-tab"
-            :class="{ 'is-active': kind === k.id, active: kind === k.id }"
-            :aria-selected="kind === k.id ? 'true' : 'false'"
-            :data-kind="k.id"
-            @click="kind = k.id"
-          >{{ k.label }}</button>
-        </nav>
+        <div class="v2-toolbar">
+          <span class="v2-toolbar-fill"></span>
+          <label class="v2-search"><MkIcon name="find" size="sm" /><input v-model="query" type="text" placeholder="Search activity" aria-label="Search activity" autocomplete="off" spellcheck="false" /></label>
+        </div>
         <ul v-if="loading && !rows.length" class="list"><li class="empty">Loading…</li></ul>
-        <ul v-else-if="!rows.length" class="list"><li class="empty">{{ kind !== 'all' ? 'Nothing here yet.' : 'No activity yet. Start a chat and it shows up here.' }}</li></ul>
+        <ul v-else-if="!rows.length" class="list"><li class="empty">{{ query ? `Nothing matches “${query}”.` : 'No activity yet. Start a chat and it shows up here.' }}</li></ul>
         <template v-else>
           <div data-testid="activity-list" data-tour-id="traces.list">
             <section v-for="group in groups" :key="group.id" class="v2-section" :data-group="group.id">
@@ -43,7 +34,8 @@
                       <small>{{ KIND_LABEL[r.kind] }}<template v-if="r.detail"> · {{ r.detail }}</template></small>
                     </span>
                     <span class="v2-time">{{ ago(r.at) }}</span>
-                    <MkIcon name="chev" size="sm" class="v2-go" />
+                    <span v-if="group.id === 'needs'" class="primary sm v2-act">{{ r.status.tone === 'bad' && /fail/i.test(r.status.label) ? 'See what went wrong' : 'Take a look' }}</span>
+                    <MkIcon v-else name="chev" size="sm" class="v2-go" />
                   </button>
                 </li>
               </ul>
@@ -64,7 +56,7 @@ import TeamAvatar from '@/views/One/team/TeamAvatar.vue';
 import MkIcon from '@/views/One/mk/MkIcon.vue';
 import { useTeam, teamApi } from '@/views/One/team/useTeam.js';
 import { teamRequest } from '@/utils/teamClient.js';
-import { ACTIVITY_KINDS, activityRows, teamActivityRows, activityGroups } from './focusedActivity.js';
+import { activityRows, teamActivityRows, activityGroups } from './focusedActivity.js';
 
 const store = useStore();
 const nav = inject('focusedNav');
@@ -76,10 +68,10 @@ const KIND_LABEL = Object.freeze({ chat: 'Chat with Annie', agent: 'Assistant', 
 const KIND_ICON = Object.freeze({ chat: 'chats', agent: 'bot', workflow: 'bolt', routine: 'task' });
 const CAP = 300;
 const kind = ref('all');
+const query = ref('');
 const loading = ref(false);
 const teamRows = ref([]);
 
-const kinds = computed(() => (team.state.team ? ACTIVITY_KINDS : ACTIVITY_KINDS.filter((k) => k.id !== 'team')));
 // Each chat under its own title: saved chats, by the conversation they hold.
 const chatTitles = computed(() => new Map((store.getters['contentOutputs/outputs'] || [])
   .filter((o) => o && (o.conversation_id || o.conversationId) && o.title)
@@ -87,7 +79,9 @@ const chatTitles = computed(() => new Map((store.getters['contentOutputs/outputs
 const runRows = computed(() => activityRows(store.getters['executionHistory/getExecutions'] || [], { kind: kind.value === 'team' ? 'none' : kind.value, titles: chatTitles.value }));
 const rows = computed(() => {
   const team_ = kind.value === 'all' || kind.value === 'team' ? teamRows.value : [];
-  return [...team_, ...runRows.value].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+  const q = query.value.trim().toLowerCase();
+  const hit = (r) => !q || [r.title, r.detail, r.actor, r.sentence, r.where].some((t) => String(t || '').toLowerCase().includes(q));
+  return [...team_, ...runRows.value].filter(hit).sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
 });
 // What needs a look first, then by day; a long history shows its newest rows.
 const groups = computed(() => {
