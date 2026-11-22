@@ -170,3 +170,9 @@
 /* The sidebar's chat filter counts ("Unread 2"), readable. */
 .ui-one .mk-drawer-host .view-seg-btn { font-size: 13px; }
 .ui-one .mk-drawer-host .view-seg-btn :is(span, b, em) { font-size: 12px; }
+
+/* ── Lists: a progress bar says what it counts; text actions read as links ── */
+.mk .v2-progress { flex: none; display: inline-flex; align-items: center; gap: 10px; }
+.mk .v2-progress small { white-space: nowrap; color: var(--text-secondary); }
+.mk .v2-link { flex: none; font-size: 13px; color: var(--pink); cursor: pointer; white-space: nowrap; }
+.mk .v2-toolbar-fill { flex: 1; }

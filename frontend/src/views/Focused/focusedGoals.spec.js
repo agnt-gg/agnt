@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { goalSections, goalFilterCounts, goalLine, goalProgress, GOAL_FILTERS } from './focusedGoals.js';
+import { goalSections, goalFilterCounts, goalLine, goalProgress, GOAL_FILTERS, goalAction, goalSteps } from './focusedGoals.js';
 
 const goal = (id, status, over = {}) => ({ id, title: `Goal ${id}`, status, updated_at: '2026-11-20T10:00:00Z', ...over });
 const routine = (id, goalId, over = {}) => ({ id, goalId, label: `Routine ${id}`, cadence: 'Every day', enabled: true, ...over });
@@ -51,9 +51,9 @@ describe('Goals page sections', () => {
 
 describe('a goal in plain words', () => {
   it('says what it needs and how far along it is', () => {
-    expect(goalLine(goal('p', 'needs_review'))).toBe('A plan is ready for your OK');
-    expect(goalLine(goal('r', 'needs_review', { current_iteration: 1, completed_tasks: 2, task_count: 17 }))).toBe('Ready for your review \u00b7 2 of 17 tasks done');
-    expect(goalLine(goal('b', 'executing', { completed_tasks: 4, task_count: 12 }))).toBe('Working on it \u00b7 4 of 12 tasks done');
+    expect(goalLine(goal('p', 'needs_review'))).toBe('Annie made a plan. Approve it and she starts');
+    expect(goalLine(goal('r', 'needs_review', { current_iteration: 1, completed_tasks: 2, task_count: 17 }))).toBe('Annie finished. Check the result before it’s done \u00b7 2 of 17 steps done');
+    expect(goalLine(goal('b', 'executing', { completed_tasks: 4, task_count: 12 }))).toBe('Working on it \u00b7 4 of 12 steps done');
     expect(goalLine(goal('x', 'paused'))).toBe('Paused');
     expect(goalLine(goal('f', 'failed'))).toBe('Stopped before it finished');
     expect(goalLine(goal('d', 'completed'))).toBe('Done');
@@ -64,5 +64,14 @@ describe('a goal in plain words', () => {
     expect(goalProgress(goal('b', 'executing', { completed_tasks: 3, task_count: 12 }))).toBe(0.25);
     expect(goalProgress(goal('t', 'planning', { tasks: [{ status: 'completed' }, { status: 'pending' }] }))).toBe(0.5);
     expect(goalProgress(goal('n', 'planning'))).toBeNull();
+  });
+});
+
+describe('what a goal that needs you asks for', () => {
+  it('names the action, and counts steps in words', () => {
+    expect(goalAction(goal('p', 'needs_review'))).toBe('Approve the plan');
+    expect(goalAction(goal('r', 'needs_review', { current_iteration: 1 }))).toBe('Check the result');
+    expect(goalSteps(goal('b', 'executing', { completed_tasks: 3, task_count: 9 }))).toBe('3 of 9 steps');
+    expect(goalSteps(goal('b', 'executing'))).toBe('');
   });
 });
