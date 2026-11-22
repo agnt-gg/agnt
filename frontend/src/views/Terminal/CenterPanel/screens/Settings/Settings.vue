@@ -431,7 +431,7 @@ export default {
 
     const initializeScreen = () => {
       // Check if there's a requested section to navigate to: the URL first
-      // (?section=about from the toolbar pill / Jump palette), then the
+      // (?section=about from the Jump palette), then the
       // localStorage hand-off older callers use.
       const urlSection = typeof route?.query?.section === 'string' ? route.query.section : '';
       const requestedSection = urlSection || localStorage.getItem('settings-initial-section');

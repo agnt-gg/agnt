@@ -24,6 +24,8 @@ import { compareVersions,
   createInstallMarker,
   keepAppImagePath,
   isPerMachineInstall,
+  manualDownloadUrl,
+  STAGING_LIMIT_MS,
   initAutoUpdate,
 } from './autoUpdate.js';
 
@@ -212,11 +214,13 @@ describe('the post-restart check', () => {
 });
 
 // ------------------------------------------------------------------ wiring
-function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false, rollbackTo } = {}) {
+function harness({ platform = 'win32', arch = 'x64', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false, rollbackTo } = {}) {
   const handlers = new Map();
   const listeners = new Map();
   const nativeListeners = new Map();
-  const nativeUpdater = native ? { on: (evt, fn) => nativeListeners.set(evt, fn) } : null;
+  const nativeUpdater = native ? { on: (evt, fn) => nativeListeners.set(evt, fn), checkForUpdates: vi.fn() } : null;
+  // Timers the updater has started; a test decides when one runs out.
+  const timers = [];
   const sent = [];
   let checks = 0;
   const autoUpdater = {
@@ -249,9 +253,14 @@ function harness({ platform = 'win32', isPackaged = true, version = '0.6.7', env
     refuseSender: () => refuse,
     log: () => {},
     defer: (fn) => fn(),
+    arch,
+    setTimer: (fn, ms) => { const timer = { fn, ms, live: true }; timers.push(timer); return timer; },
+    clearTimer: (timer) => { if (timer) timer.live = false; },
   });
   return {
-    result, autoUpdater, sent, order, handoffBackend, checks: () => checks,
+    result, autoUpdater, nativeUpdater, sent, order, handoffBackend, checks: () => checks,
+    clocks: () => timers.filter((t) => t.live),
+    elapse: () => { const timer = timers.find((t) => t.live); timer.live = false; timer.fn(); },
     invoke: (ch, ...a) => handlers.get(ch)({ sender: {} }, ...a),
     emit: (evt, payload) => listeners.get(evt)?.(payload),
     emitNative: (evt, payload) => nativeListeners.get(evt)?.(payload),
@@ -360,6 +369,194 @@ describe('macOS: ready only once Squirrel has staged the update', () => {
     h.emit('update-available', info('0.6.8'));
     h.emit('update-downloaded', { version: '0.6.8' });
     expect(h.last()).toMatchObject({ phase: 'ready' });
+  });
+});
+
+describe('macOS: preparing always ends', () => {
+  // `preparing` waits on Squirrel. When Squirrel fails, or says nothing, the
+  // banner has to say so and offer a way on. It used to stay on "almost
+  // ready" for good, because only Squirrel's success could end the wait.
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const preparing = () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'preparing' });
+    return h;
+  };
+  const failed = { phase: 'error', available: { version: '0.6.8' }, error: { message: 'Could not locate update bundle', during: 'prepare' } };
+
+  it('a Squirrel failure is reported with its reason, whichever way it arrives', () => {
+    const relayed = preparing();
+    relayed.emit('error', new Error('Could not locate update bundle'));
+    expect(relayed.last()).toMatchObject(failed);
+    expect(relayed.clocks()).toHaveLength(0);
+
+    const direct = preparing();
+    direct.emitNative('error', new Error('Could not locate update bundle'));
+    expect(direct.last()).toMatchObject(failed);
+    expect(direct.clocks()).toHaveLength(0);
+  });
+
+  it('the same failure arriving both ways is reported once', () => {
+    const h = preparing();
+    h.emit('error', new Error('Could not locate update bundle'));
+    h.emitNative('error', new Error('Could not locate update bundle'));
+    expect(h.sent.filter(([, s]) => s.phase === 'error')).toHaveLength(1);
+  });
+
+  it('Squirrel finding nothing to install is a failure, not a wait', () => {
+    const h = preparing();
+    h.emitNative('update-not-available');
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'macOS found nothing to install.', during: 'prepare' } });
+  });
+
+  it('a Squirrel that never answers is given up on when the time runs out', () => {
+    const h = preparing();
+    expect(h.clocks().map((c) => c.ms)).toEqual([STAGING_LIMIT_MS]);
+    h.elapse();
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'macOS did not finish preparing the update.', during: 'prepare' } });
+  });
+
+  it('staging that finishes stops the clock', () => {
+    const h = preparing();
+    h.emitNative('update-downloaded');
+    expect(h.last()).toMatchObject({ phase: 'ready' });
+    expect(h.clocks()).toHaveLength(0);
+  });
+
+  it('staging that finishes after it was given up on is still ready', () => {
+    const h = preparing();
+    h.elapse();
+    h.emitNative('update-downloaded');
+    expect(h.last()).toMatchObject({ phase: 'ready', available: { version: '0.6.8' }, error: null });
+  });
+
+  it('a check while preparing asks nothing and changes nothing', async () => {
+    const h = preparing();
+    expect(await h.invoke('update:check')).toMatchObject({ phase: 'preparing' });
+    expect(h.checks()).toBe(0);
+    expect(h.last()).toMatchObject({ phase: 'preparing' });
+  });
+
+  it('Retry after a failure runs the whole hand-off again', async () => {
+    const h = preparing();
+    await settle(); // electron-updater's download promise settles
+    h.emit('error', new Error('Could not locate update bundle'));
+    const retry = h.invoke('update:check');
+    h.emit('checking-for-update');
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    expect(h.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'preparing', error: null });
+    h.emitNative('update-downloaded');
+    expect(await retry).toMatchObject({ phase: 'ready', error: null });
+  });
+
+  it('a hand-off electron-updater never settles does not hold up the next check', async () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    h.autoUpdater.downloadUpdate.mockReturnValueOnce(new Promise(() => {}));
+    const first = h.result.check();
+    h.emit('checking-for-update');
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    h.elapse();
+    expect(await first).toMatchObject({ phase: 'error', error: { during: 'prepare' } });
+
+    // electron-updater would only hand back the promise it still holds, so
+    // Squirrel is asked for the same file again.
+    const retry = h.invoke('update:check');
+    h.emit('checking-for-update');
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    expect(await retry).toMatchObject({ phase: 'preparing' });
+    expect(h.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(h.nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(h.clocks()).toHaveLength(1);
+    h.emitNative('update-downloaded');
+    expect(h.last()).toMatchObject({ phase: 'ready', error: null });
+  });
+
+  it('asking Squirrel again and being refused is a failure, not a wait', async () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    h.autoUpdater.downloadUpdate.mockReturnValueOnce(new Promise(() => {}));
+    h.nativeUpdater.checkForUpdates.mockImplementation(() => { throw new Error('The command is disabled and cannot be executed'); });
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    h.elapse();
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'The command is disabled and cannot be executed', during: 'prepare' } });
+    expect(h.clocks()).toHaveLength(0);
+  });
+
+  it('a different version offered while one is still held open asks for a restart', () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    h.autoUpdater.downloadUpdate.mockReturnValueOnce(new Promise(() => {}));
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    h.elapse();
+    h.emit('update-available', info('0.6.9', ['mac-arm64.zip']));
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'Restart AGNT to finish updating.' } });
+    expect(h.nativeUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(h.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  const handingOff = () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    let reject;
+    h.autoUpdater.downloadUpdate.mockReturnValueOnce(new Promise((_, r) => { reject = r; }));
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    return { h, reject };
+  };
+
+  it('a hand-off that fails with no word from Squirrel is reported and stops the clock', async () => {
+    const { h, reject } = handingOff();
+    reject(new Error('Cannot pipe the update'));
+    await settle();
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'Cannot pipe the update', during: 'download' } });
+    expect(h.clocks()).toHaveLength(0);
+  });
+
+  it('the first reason reported for an attempt is the one that stays', async () => {
+    const { h, reject } = handingOff();
+    h.emit('error', new Error('Could not locate update bundle'));
+    reject(new Error('a later, less specific failure'));
+    await settle();
+    expect(h.last()).toMatchObject(failed);
+  });
+
+  it('Windows and Linux start no clock', () => {
+    const h = harness();
+    h.emit('update-available', info('0.6.8'));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.clocks()).toHaveLength(0);
+  });
+});
+
+describe('the installer to download by hand', () => {
+  const at = (platform, arch, env) => manualDownloadUrl({ assetBase: ASSETS, version: '0.6.8', platform, arch, env });
+
+  it('names the file for this machine', () => {
+    expect(at('darwin', 'arm64')).toBe(url('0.6.8', 'mac-arm64.dmg'));
+    expect(at('darwin', 'x64')).toBe(url('0.6.8', 'mac-x64.dmg'));
+    expect(at('win32', 'x64')).toBe(url('0.6.8', 'win-x64.exe'));
+    expect(at('linux', 'x64', { APPIMAGE: '/home/u/AGNT.AppImage' })).toBe(url('0.6.8', 'linux-x86_64.AppImage'));
+  });
+
+  it('is null without a version, an asset base, or a single file to point at', () => {
+    expect(at('linux', 'x64', {})).toBeNull();
+    expect(manualDownloadUrl({ assetBase: ASSETS, version: null, platform: 'darwin', arch: 'arm64' })).toBeNull();
+    expect(manualDownloadUrl({ assetBase: '', version: '0.6.8', platform: 'darwin', arch: 'arm64' })).toBeNull();
+  });
+
+  it('travels with the state once a version is known, and not before', async () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    expect((await h.invoke('update:state')).manualDownloadUrl).toBeNull();
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    h.emit('error', new Error('Could not locate update bundle'));
+    expect(h.last().manualDownloadUrl).toBe(url('0.6.8', 'mac-arm64.dmg'));
+    expect((await h.invoke('update:state')).manualDownloadUrl).toBe(url('0.6.8', 'mac-arm64.dmg'));
   });
 });
 

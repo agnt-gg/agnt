@@ -14,6 +14,9 @@
  *              hint, the empty states) without a prop chain.
  *   jumpSeed — the words the palette opens with: One's sidebar search hands
  *              its text over on Enter. Empty for every other way in.
+ *   updateAvailable / updatePrompt — the toolbar's update pill and its click.
+ *              UpdateNotification writes the first and answers the second: it
+ *              owns the dialog, and the toolbar only knows there is one.
  *   screenPanels — which side panels the ACTIVE screen offers. The phone
  *              header owns the Browse / Inspector buttons, but only the
  *              screen knows whether it has those panels; without this the
@@ -28,7 +31,8 @@ export default {
     inspect: null, // { kind, id, screen?, payload?, nonce }
     jumpOpen: false,
     jumpSeed: '',
-    updateAvailable: null, // { version } when the updater has one waiting
+    updateAvailable: null, // { version, status: 'ready'|'failed'|'available' } when there is an update to act on
+    updatePrompt: 0, // bumped each time the pill asks for the update to be shown
     screenPanels: { screenId: null, left: false, right: false },
   }),
   mutations: {
@@ -46,6 +50,9 @@ export default {
     },
     SET_UPDATE_AVAILABLE(state, info) {
       state.updateAvailable = info || null;
+    },
+    PROMPT_UPDATE(state) {
+      state.updatePrompt += 1;
     },
     SET_SCREEN_PANELS(state, { screenId = null, left = false, right = false } = {}) {
       state.screenPanels = { screenId, left: !!left, right: !!right };
@@ -77,6 +84,10 @@ export default {
     },
     setUpdateAvailable({ commit }, info) {
       commit('SET_UPDATE_AVAILABLE', info);
+    },
+    /** Show the update again, wherever it was dismissed. */
+    showUpdate({ commit }) {
+      commit('PROMPT_UPDATE');
     },
   },
   getters: {

@@ -126,6 +126,23 @@ export function needsExplicitInstall(platform) {
   return platform === 'win32';
 }
 
+/** How long macOS may take to prepare a downloaded update before it counts as failed. */
+export const STAGING_LIMIT_MS = 10 * 60 * 1000;
+
+/**
+ * The installer a person downloads by hand for `version` on this machine, or
+ * null where there is no single file to point at (deb and rpm are two).
+ */
+export function manualDownloadUrl({ assetBase, version, platform, arch, env = {} }) {
+  if (!SEMVER.test(String(version || '')) || !/^https?:\/\/.+\/$/.test(assetBase || '')) return null;
+  const file = {
+    darwin: `mac-${arch === 'arm64' ? 'arm64' : 'x64'}.dmg`,
+    win32: 'win-x64.exe',
+    linux: env.APPIMAGE ? 'linux-x86_64.AppImage' : null,
+  }[platform];
+  return file ? `${assetBase}v${version}/AGNT-${version}-${file}` : null;
+}
+
 /** The generic-provider feed this build follows. */
 export function feedUrlFor({ feedBase, version }) {
   if (!/^https?:\/\/.+\/$/.test(feedBase || '')) throw new Error(`agntUpdate.feedBase must be an http(s) URL ending in /: ${feedBase}`);
@@ -312,6 +329,9 @@ export function createInstallMarker({ fs, file }) {
  * @param {(evt: object, channel: string) => boolean} [deps.refuseSender]  true = refuse (team spaces are remote origins)
  * @param {(...a: any[]) => void} [deps.log]
  * @param {(fn: Function) => void} [deps.defer]
+ * @param {string} [deps.arch]              process.arch, to name the installer for this machine
+ * @param {(fn: Function, ms: number) => any} [deps.setTimer]    setTimeout
+ * @param {(timer: any) => void} [deps.clearTimer]               clearTimeout
  * @returns {{ enabled: boolean, reason?: string, check: Function, state: object }}
  */
 export function initAutoUpdate({
@@ -333,6 +353,9 @@ export function initAutoUpdate({
   refuseSender = () => false,
   log = console.log,
   defer = (fn) => setImmediate(fn),
+  arch = process.arch,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
 }) {
   const support = updateSupport({ isPackaged, platform, env });
   if (support.enabled && platform === 'linux' && env.APPIMAGE && fs && path) {
@@ -342,7 +365,13 @@ export function initAutoUpdate({
   // pulled. The banner decides "this build updates itself" from that field; a
   // push without it read as "not enabled" and hid the Restart button the moment
   // the download finished. Found in the update rehearsal.
-  const withSupport = (s) => ({ ...s, enabled: support.enabled, disabledReason: support.reason || null });
+  const withSupport = (s) => ({
+    ...s,
+    enabled: support.enabled,
+    disabledReason: support.reason || null,
+    // Offered beside Retry when an update fails, so a failure is never a dead end.
+    manualDownloadUrl: manualDownloadUrl({ assetBase: config.assetBase, version: s.available?.version, platform, arch, env }),
+  });
   const state = createUpdateState({
     version,
     platform,
@@ -435,7 +464,65 @@ export function initAutoUpdate({
   log(`[update] following ${feedUrl}`);
 
   let userInitiated = false;
+  // Settles when the current download has an outcome. check() waits on it, so
+  // it is ours to settle: on macOS electron-updater keeps its own promise open
+  // until Squirrel has fetched the file, which may be never.
   let downloading = null;
+  let releaseDownloadWait = () => {};
+  let unsettledDownload = null; // the version electron-updater still holds open, if any
+
+  const markReady = (v) => {
+    log(`[update] ${v} ready`);
+    state.set({ phase: 'ready', percent: 100, available: { version: v }, error: null });
+  };
+
+  // macOS: electron-updater reports "downloaded" when ITS download finishes and
+  // only then hands the zip to Squirrel.Mac, which still has to fetch, unpack
+  // and verify it. Quitting in between installs nothing: measured in the CI
+  // rehearsal on both Apple Silicon and Intel. So on macOS the update is ready
+  // only when Squirrel says so, and until then the banner says "preparing".
+  //
+  // `preparing` is a wait on another program, so it has exactly three ways
+  // out: Squirrel staged the update, Squirrel said it could not, or the time
+  // ran out. With only the first, a Squirrel failure left the banner on
+  // "almost ready" for good, with nothing to click.
+  const waitsForSquirrel = platform === 'darwin' && !!nativeUpdater;
+  let squirrelStaged = false;
+  let stagingClock = null;
+  const stopStagingClock = () => {
+    if (stagingClock === null) return;
+    clearTimer(stagingClock);
+    stagingClock = null;
+  };
+  const failStaging = (message) => {
+    const s = state.get();
+    if (s.phase !== 'preparing') return;
+    stopStagingClock();
+    log(`[update] ${s.available?.version} could not be prepared: ${message}`);
+    state.set({ phase: 'error', percent: null, error: { message, during: 'prepare' } });
+    releaseDownloadWait();
+  };
+  const beginStaging = (v) => {
+    log(`[update] ${v} handed to Squirrel; not ready until it is staged`);
+    state.set({ phase: 'preparing', percent: 100, available: { version: v } });
+    stopStagingClock();
+    stagingClock = setTimer(() => {
+      stagingClock = null;
+      failStaging('macOS did not finish preparing the update.');
+    }, STAGING_LIMIT_MS);
+    stagingClock?.unref?.();
+  };
+  if (waitsForSquirrel) {
+    nativeUpdater.on('update-downloaded', () => {
+      squirrelStaged = true;
+      stopStagingClock();
+      const s = state.get();
+      // Staged after the time ran out still counts: the update is there.
+      if (s.phase === 'preparing' || (s.phase === 'error' && s.error?.during === 'prepare')) markReady(s.available?.version);
+    });
+    nativeUpdater.on('error', (err) => failStaging(String(err?.message || err)));
+    nativeUpdater.on('update-not-available', () => failStaging('macOS found nothing to install.'));
+  }
 
   autoUpdater.on('checking-for-update', () => state.set({ phase: 'checking', error: null }));
 
@@ -452,9 +539,38 @@ export function initAutoUpdate({
     }
     log(`[update] ${info.version} available${info.rollback === true ? ' (rollback)' : ''}; downloading`);
     state.set({ phase: 'downloading', available: { version: info.version }, percent: 0, lastCheckedAt: new Date().toISOString() });
-    downloading = autoUpdater.downloadUpdate().catch((err) => {
-      log(`[update] download failed: ${err?.message || err}`);
-      state.set({ phase: 'error', percent: null, error: { message: String(err?.message || err), during: 'download' } });
+    if (unsettledDownload !== null && waitsForSquirrel) {
+      // electron-updater would answer downloadUpdate() with the promise it is
+      // still holding open and report nothing new. The file it downloaded is
+      // still on offer to Squirrel, so Squirrel is asked for it again.
+      if (unsettledDownload !== info.version) {
+        state.set({ phase: 'error', percent: null, error: { message: 'Restart AGNT to finish updating.', during: 'download' } });
+        return;
+      }
+      beginStaging(info.version);
+      try {
+        nativeUpdater.checkForUpdates();
+      } catch (err) {
+        failStaging(String(err?.message || err));
+      }
+      return;
+    }
+    unsettledDownload = info.version;
+    downloading = new Promise((resolve) => {
+      releaseDownloadWait = resolve;
+      autoUpdater
+        .downloadUpdate()
+        .catch((err) => {
+          const message = String(err?.message || err);
+          log(`[update] download failed: ${message}`);
+          stopStagingClock();
+          // A failure already reported for this attempt stands.
+          if (state.get().phase !== 'error') state.set({ phase: 'error', percent: null, error: { message, during: 'download' } });
+        })
+        .finally(() => {
+          unsettledDownload = null;
+          resolve();
+        });
     });
   });
 
@@ -462,31 +578,10 @@ export function initAutoUpdate({
     state.set({ phase: 'downloading', percent: Math.round(p?.percent ?? 0) });
   });
 
-  const markReady = (v) => {
-    log(`[update] ${v} ready`);
-    state.set({ phase: 'ready', percent: 100, available: { version: v } });
-  };
-
-  // macOS: electron-updater reports "downloaded" when ITS download finishes and
-  // only then hands the zip to Squirrel.Mac, which still has to fetch, unpack
-  // and verify it. Quitting in between installs nothing: measured in the CI
-  // rehearsal on both Apple Silicon and Intel. So on macOS the update is ready
-  // only when Squirrel says so, and until then the banner says "preparing".
-  const waitsForSquirrel = platform === 'darwin' && !!nativeUpdater;
-  let squirrelStaged = false;
-  if (waitsForSquirrel) {
-    nativeUpdater.on('update-downloaded', () => {
-      squirrelStaged = true;
-      const s = state.get();
-      if (s.phase === 'preparing') markReady(s.available?.version);
-    });
-  }
-
   autoUpdater.on('update-downloaded', (info) => {
     log(`[update] ${info?.version} downloaded`);
     if (waitsForSquirrel && !squirrelStaged) {
-      log(`[update] ${info?.version} handed to Squirrel; not ready until it is staged`);
-      state.set({ phase: 'preparing', percent: 100, available: { version: info?.version } });
+      beginStaging(info?.version);
       return;
     }
     markReady(info?.version);
@@ -496,7 +591,10 @@ export function initAutoUpdate({
     const message = String(err?.message || err);
     log(`[update] error: ${message}`);
     const s = state.get();
-    if (s.phase === 'downloading' || s.phase === 'installing' || userInitiated) {
+    if (s.phase === 'preparing') {
+      // Squirrel's failures arrive here too, relayed by electron-updater.
+      failStaging(message);
+    } else if (s.phase === 'downloading' || s.phase === 'installing' || userInitiated) {
       // Something the user is waiting on: say so, offer Retry.
       state.set({ phase: 'error', percent: null, error: { message, during: s.phase === 'checking' ? 'check' : s.phase } });
     } else if (s.phase === 'checking') {
@@ -510,7 +608,8 @@ export function initAutoUpdate({
   let inFlight = null;
   async function check({ userInitiated: byUser = false } = {}) {
     const s = state.get();
-    if (s.phase === 'downloading' || s.phase === 'ready' || s.phase === 'installing') return state.get();
+    // Nothing to ask while an update is already on its way in.
+    if (['downloading', 'preparing', 'ready', 'installing'].includes(s.phase)) return state.get();
     if (inFlight) return inFlight; // dedupe: one check at a time
     userInitiated = byUser;
     inFlight = autoUpdater
@@ -526,6 +625,6 @@ export function initAutoUpdate({
 }
 
 export default {
-  initAutoUpdate, updatePolicy, updateSupport, needsExplicitInstall, channelFor, feedUrlFor,
+  initAutoUpdate, updatePolicy, updateSupport, needsExplicitInstall, manualDownloadUrl, channelFor, feedUrlFor,
   checkUpdateInfo, installVerdict, createUpdateState, createInstallMarker,
 };

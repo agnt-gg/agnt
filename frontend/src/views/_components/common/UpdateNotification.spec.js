@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { reactive } from 'vue';
 import { mount, flushPromises, config } from '@vue/test-utils';
 
 // The dialog teleports to <body>; render it in place so wrapper queries see it.
@@ -52,6 +53,7 @@ function desktop(initial = {}) {
     getAppVersion: vi.fn(async () => '0.6.7'),
     checkForUpdates: vi.fn(async () => ({ updateAvailable: true, latestVersion: '9.9.9' })),
     openDownloadPage: vi.fn(),
+    openExternalUrl: vi.fn(),
   };
   return { api, push: (s) => push?.({ ...base, ...s }) };
 }
@@ -180,6 +182,39 @@ describe('self-updating desktop build', () => {
     expect(text(w)).toContain('sha512 checksum mismatch');
     await w.find('.download-btn').trigger('click');
     expect(d.api.check).toHaveBeenCalled();
+  });
+
+  // A failed update used to leave Retry as the only way on, and on a Mac that
+  // could not prepare the update Retry failed the same way every time.
+  const DMG = 'https://github.com/agnt-gg/agnt/releases/download/v0.6.8/AGNT-0.6.8-mac-arm64.dmg';
+  const couldNotPrepare = { phase: 'error', available: { version: '0.6.8' }, error: { message: 'macOS did not finish preparing the update.', during: 'prepare' } };
+
+  it('a failed update offers the installer for this machine beside Retry', async () => {
+    desktop({ ...couldNotPrepare, manualDownloadUrl: DMG });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('macOS did not finish preparing the update.');
+    expect(w.find('.download-btn').text()).toBe('Retry');
+    await w.find('[data-testid="update-manual-download"]').trigger('click');
+    expect(electronMock.openExternalUrl).toHaveBeenCalledWith(DMG);
+    expect(electronMock.openDownloadPage).not.toHaveBeenCalled();
+  });
+
+  it('with no installer named, Download opens the downloads page', async () => {
+    desktop({ ...couldNotPrepare, manualDownloadUrl: null });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    await w.find('[data-testid="update-manual-download"]').trigger('click');
+    expect(electronMock.openDownloadPage).toHaveBeenCalled();
+    expect(electronMock.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it('a failed check with no version on offer has nothing to download', async () => {
+    desktop({ phase: 'error', error: { message: 'offline', during: 'check' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('[data-testid="update-error"]').exists()).toBe(true);
+    expect(w.find('[data-testid="update-manual-download"]').exists()).toBe(false);
   });
 
   it('after a restart: confirms the version, or says it did not take', async () => {
@@ -382,7 +417,7 @@ describe('the toolbar update pill', () => {
     const dispatch = vi.fn();
     mount(UpdateNotification, { global: { provide: { store: { dispatch } } } });
     await flushPromises();
-    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.7' });
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.7', status: 'available' });
   });
 
   it('is published from the self-updating desktop path, and cleared when there is none', async () => {
@@ -393,7 +428,50 @@ describe('the toolbar update pill', () => {
     expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', null);
     d.push({ phase: 'ready', available: { version: '0.6.8' } });
     await flushPromises();
-    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.8' });
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.8', status: 'ready' });
+  });
+
+  // The pill used to appear as soon as a version was known, say "an update is
+  // ready" while it was still downloading, and lead to a page that could not
+  // install it.
+  it('shows only when a click leads somewhere: not while downloading or preparing', async () => {
+    const d = desktop();
+    const dispatch = vi.fn();
+    mount(UpdateNotification, { global: { provide: { store: { dispatch } } } });
+    await flushPromises();
+    for (const phase of ['downloading', 'preparing', 'installing']) {
+      d.push({ phase, available: { version: '0.6.8' } });
+      await flushPromises();
+      expect(dispatch, phase).toHaveBeenLastCalledWith('shell/setUpdateAvailable', null);
+    }
+    d.push({ phase: 'error', available: { version: '0.6.8' }, error: { message: 'macOS did not finish preparing the update.', during: 'prepare' } });
+    await flushPromises();
+    expect(dispatch).toHaveBeenLastCalledWith('shell/setUpdateAvailable', { version: '0.6.8', status: 'failed' });
+  });
+
+  it('a click on it brings a dismissed update back', async () => {
+    desktop({ phase: 'ready', available: { version: '0.6.8' } });
+    const store = { dispatch: vi.fn(), state: reactive({ shell: { updatePrompt: 0 } }) };
+    const w = mount(UpdateNotification, { global: { provide: { store } } });
+    await flushPromises();
+    await w.find('.dismiss-btn').trigger('click');
+    expect(anyUpdateUi(w)).toBe(false);
+    store.state.shell.updatePrompt += 1; // what shell/showUpdate does
+    await flushPromises();
+    expect(w.find('[data-testid="update-ready"]').exists()).toBe(true);
+  });
+
+  it('a click on it reopens a dismissed download notice too', async () => {
+    electronMock = null;
+    localStorage.setItem('agnt_dismissed_update', '0.6.7');
+    globalThis.fetch = vi.fn(async (u) => ({ json: async () => (String(u).endsWith('/version') ? { version: '0.6.6' } : { updateAvailable: true, latestVersion: '0.6.7', currentVersion: '0.6.6' }) }));
+    const store = { dispatch: vi.fn(), state: reactive({ shell: { updatePrompt: 0 } }) };
+    const w = mount(UpdateNotification, { global: { provide: { store } } });
+    await flushPromises();
+    expect(anyUpdateUi(w)).toBe(false);
+    store.state.shell.updatePrompt += 1;
+    await flushPromises();
+    expect(w.find('[data-testid="update-notice"]').exists()).toBe(true);
   });
 
   it('mounts without a store (the publisher is optional)', async () => {

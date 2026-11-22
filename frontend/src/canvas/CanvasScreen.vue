@@ -49,7 +49,7 @@
         <button v-if="pills.running" class="cv-pill" @click="goRunning" v-tooltip="'Running now — open Runs'">
           <span class="cv-pill-dot is-live"></span>{{ pills.running }} running
         </button>
-        <button v-if="updateAvailable" class="cv-pill is-update" @click="goAbout" v-tooltip="'An update is ready — Settings › About'">
+        <button v-if="updateAvailable" class="cv-pill is-update" @click="showUpdate" v-tooltip="updateTooltip">
           <i class="fas fa-arrow-circle-up"></i> update
         </button>
         <button v-if="!globalProviderLabel" class="cv-pill is-red" @click="goProviders" v-tooltip="'Connect an AI provider'">
@@ -864,9 +864,16 @@ export default {
       onCustomPage.value = false;
       emit('screen-change', 'SettingsScreen', { section: 'providers' });
     }
-    function goAbout() {
-      onCustomPage.value = false;
-      emit('screen-change', 'SettingsScreen', { section: 'about' });
+    // The pill says what a click will show, and the click shows it: the update
+    // dialog, or the failure with its ways on (UpdateNotification owns both).
+    const UPDATE_TOOLTIPS = {
+      ready: 'An update is ready to install',
+      failed: 'The update did not finish. See what to do',
+      available: 'An update is available',
+    };
+    const updateTooltip = computed(() => UPDATE_TOOLTIPS[updateAvailable.value?.status] || UPDATE_TOOLTIPS.available);
+    function showUpdate() {
+      store.dispatch('shell/showUpdate');
     }
 
     // The backdrop exists only where the three-panel frame does. Custom pages
@@ -1251,7 +1258,8 @@ export default {
       updateAvailable,
       goRunning,
       goProviders,
-      goAbout,
+      updateTooltip,
+      showUpdate,
       jumpKey,
       jumpHint,
       openJump,

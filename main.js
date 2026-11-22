@@ -1079,6 +1079,7 @@ async function armAutoUpdate() {
       fs,
       path,
       execPath: process.execPath,
+      arch: process.arch,
       refuseSender: refuseSpaceSender,
       log: (...a) => console.log(...a),
     });

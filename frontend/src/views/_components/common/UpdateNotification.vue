@@ -111,6 +111,8 @@
       </div>
       <div class="update-actions">
         <button class="update-btn download-btn" :disabled="retrying" @click="retry">{{ retrying ? 'Checking…' : 'Retry' }}</button>
+        <!-- A failed update is never a dead end: the installer is one click away. -->
+        <button v-if="state.available?.version" class="update-btn manual-btn" data-testid="update-manual-download" @click="downloadInstaller">Download</button>
         <button class="update-btn dismiss-btn" @click="dismiss">Later</button>
       </div>
     </div>
@@ -166,15 +168,38 @@ function keyOf(s) {
 
 const selfUpdating = computed(() => !!state.value?.enabled);
 
-// The version waiting to be installed, whichever path found it. This
-// component is always mounted (App.vue), so it is the ONE writer of the
-// toolbar's "update" pill. That used to be NewsPanel, which meant the pill
-// only appeared after someone happened to open Settings.
+// The version on offer, whichever path found it.
 const availableVersion = computed(() => {
   if (selfUpdating.value) return state.value?.available?.version || null;
   return updateInfo.value?.updateAvailable ? updateInfo.value.latestVersion || null : null;
 });
-watch(availableVersion, (version) => store?.dispatch('shell/setUpdateAvailable', version ? { version } : null), { immediate: true });
+
+// The toolbar's "update" pill. This component is always mounted (App.vue), so
+// it is the pill's ONE writer. That used to be NewsPanel, which meant the pill
+// only appeared after someone happened to open Settings.
+//
+// A pill is something to click, so it shows only when a click leads somewhere:
+// an update ready to install, one that failed, or a version to download. While
+// one is still downloading or preparing there is nothing to click and no pill.
+const pill = computed(() => {
+  const version = availableVersion.value;
+  if (!version) return null;
+  if (!selfUpdating.value) return { version, status: 'available' };
+  if (state.value?.phase === 'ready') return { version, status: 'ready' };
+  if (state.value?.phase === 'error') return { version, status: 'failed' };
+  return null;
+});
+watch(pill, (now) => store?.dispatch('shell/setUpdateAvailable', now), { immediate: true });
+
+// Clicking the pill brings the update back after "Later": the pill is the only
+// other way to reach it.
+watch(
+  () => store?.state?.shell?.updatePrompt,
+  () => {
+    dismissedKey.value = null;
+    if (!selfUpdating.value && updateInfo.value) showNotice.value = true;
+  },
+);
 
 const view = computed(() => {
   const s = state.value;
@@ -386,6 +411,13 @@ function openDownloads() {
   showNotice.value = false;
 }
 
+/** The installer for the waiting version on this machine; the downloads page when main names none. */
+function downloadInstaller() {
+  const url = state.value?.manualDownloadUrl;
+  if (url && electron?.openExternalUrl) electron.openExternalUrl(url);
+  else openDownloads();
+}
+
 function dismiss() {
   if (selfUpdating.value) {
     // Later hides this banner; the download stays, and on macOS and AppImage it
@@ -502,13 +534,15 @@ defineExpose({
   background: var(--color-green, var(--color-green));
 }
 
-.update-banner .dismiss-btn {
+.update-banner .dismiss-btn,
+.update-banner .manual-btn {
   background: transparent;
   color: var(--fg-dim, rgba(255, 255, 255, 0.6));
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.update-banner .dismiss-btn:hover {
+.update-banner .dismiss-btn:hover,
+.update-banner .manual-btn:hover {
   background: var(--surface-active);
   color: var(--fg, #fff);
 }
