@@ -391,8 +391,12 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('one sidebar on every desktop page: the drawer, with Studio\'s chat list in it', () => {
-      for (const screen of ['ChatScreen', 'ConnectorsScreen']) {
+    it('the sidebar belongs to the chat and team pages; every other page gets the full width', () => {
+      const elsewhere = mountShell('ConnectorsScreen');
+      expect(elsewhere.find('.drawer').exists()).toBe(false);
+      expect(elsewhere.find('[data-testid="one-rail-expand"]').exists()).toBe(false);
+      elsewhere.unmount();
+      for (const screen of ['ChatScreen']) {
         const w = mountShell(screen);
         const chats = w.find('.drawer [data-testid="one-chat-sidebar"] .output-list-stub');
         expect(chats.exists(), screen).toBe(true);
@@ -405,7 +409,7 @@ describe('OneShell', () => {
     });
 
     it('the sidebar search reaches the chats and Enter opens Find anything with it; asking is the composer\'s job', async () => {
-      const w = mountShell('ConnectorsScreen');
+      const w = mountShell('ChatScreen');
       const input = () => w.get('[data-testid="one-sidebar-search"]');
       expect(input().attributes('placeholder')).toBe('Search');
       await input().setValue('northwind');
@@ -418,10 +422,10 @@ describe('OneShell', () => {
       w.unmount();
     });
 
-    it('New chat and the Main chat are in the sidebar on any page', async () => {
+    it('New chat and the Main chat are in the chat page\'s sidebar', async () => {
       const fresh = vi.fn();
       window.addEventListener('trigger-new-chat', fresh);
-      const w = mountShell('ConnectorsScreen');
+      const w = mountShell('ChatScreen');
       await w.get('[data-testid="one-new-chat"]').trigger('click');
       await new Promise((r) => setTimeout(r, 0));
       expect(push).toHaveBeenCalledWith('/chat');
@@ -441,7 +445,7 @@ describe('OneShell', () => {
       expect(w.get('[data-testid="one-rail-expand"]').find('.fa-angle-double-right').exists()).toBe(true);
       w.unmount();
 
-      const again = mountShell('ConnectorsScreen');
+      const again = mountShell('ChatScreen');
       expect(again.find('.drawer').exists()).toBe(false);
       await again.get('[data-testid="one-rail-expand"]').trigger('click');
       expect(again.find('.drawer').exists()).toBe(true);

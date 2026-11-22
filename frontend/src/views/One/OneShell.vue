@@ -16,18 +16,18 @@
       :active-more="mkActiveMore"
       :badge="needsYou"
       :user-name="userName"
-      :collapsed="!sidebarExpanded"
+      :collapsed="sidebarBelongs && !sidebarExpanded"
       :offer="offerState.shown ? offerState.offer.railLabel : ''"
       @select="mkSelect"
       @expand="setSidebarExpanded(true)"
       @offer="offerState.toggle"
     />
-    <!-- One sidebar on every desktop page: the drawer, with the chats as its last
+    <!-- The sidebar where it belongs (chat and team pages): the drawer, with the chats as its last
          section. The chats are Studio's own list (OutputList), the same component,
          so groups, unread, archive and every row action work as in Studio; a row
          opens its chat by routing to /chat?content-id=… from any page. -->
     <MkDrawer
-      v-if="!isMobile && sidebarExpanded"
+      v-if="!isMobile && sidebarExpanded && sidebarBelongs"
       :team="teamState.team"
       :teams="teamState.teams"
       :spaces="teamState.spaces"
@@ -295,6 +295,9 @@ const onBlankChat = () => !store.state.chat?.savedOutputId && !(store.state.chat
 // phone the drawer is the navigation, an overlay that closes on every move.
 const onChatPage = computed(() => !page.value && props.screenName === 'ChatScreen');
 const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChatPage.value));
+// The desktop sidebar (chats, My tasks, team spaces) belongs to the chat and the team pages;
+// every other page gets the full width, and the rail is how you move between them.
+const sidebarBelongs = computed(() => onChatPage.value || page.value === 'team');
 
 // ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
 const team = useTeam(store);
