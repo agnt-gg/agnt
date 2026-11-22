@@ -53,7 +53,7 @@ export const UNLOCK_RULES = [
     id: 'team',
     needs: ['teams'],
     when: (f) => count(f.teams) > 0,
-    title: 'Team',
+    title: 'Home',
     message: 'Your teamspaces: Home, each teamspace\u2019s chat, board and files, and your own tasks.',
   },
   {

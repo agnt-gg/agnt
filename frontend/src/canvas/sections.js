@@ -66,13 +66,14 @@ export const MAIN_SECTIONS = [
     ],
   },
   {
-    // Teamspaces in Studio: Home (the inbox), each teamspace's chat, board and files, My tasks and
-    // members. The same pages AGNT One draws (views/One/team), in Studio's frame (screens/Team).
+    // Home in Studio: the inbox (what needs you), each teamspace's chat, board and files, My tasks
+    // and members. The same pages AGNT One draws (views/One/team), in Studio's frame (screens/Team).
+    // The saved 'team' id stays stable for user nav settings.
     id: 'team',
     group: 'WORK',
-    icon: 'fas fa-users',
-    label: 'Team',
-    screens: [{ screen: 'TeamScreen', label: 'TEAM' }],
+    icon: 'fas fa-home',
+    label: 'Home',
+    screens: [{ screen: 'TeamScreen', label: 'HOME' }],
   },
   {
     // One word everyone already understands. It sells apps, agents,
