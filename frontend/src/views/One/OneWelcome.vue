@@ -28,7 +28,7 @@
       <template v-else>
         <h1 class="one-welcome-title">{{ greeting }}</h1>
         <!-- The promise in one line: you stay in charge of anything that leaves the app. -->
-        <p class="one-welcome-sub">Ask for anything. I’ll check with you before I send or change something.</p>
+        <p class="one-welcome-sub">I’m Annie. Ask me anything, or hand me something to do. I’ll check with you before I send or change something.</p>
       </template>
     </template>
   </div>

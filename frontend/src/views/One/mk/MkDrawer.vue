@@ -200,8 +200,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDown));
 .find-row { display: flex; align-items: center; gap: 6px; margin: 4px 10px 8px; }
 .find-box { box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 40px; border: 1px solid var(--line); border-radius: 11px; background: var(--raised); color: var(--text-tertiary); font-size: 14px; cursor: text; }
 .find-kbd { flex: none; padding: 2px 6px 1px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 12px; color: var(--text-tertiary); }
-.new-chat-btn { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 7px; width: calc(100% - 20px); height: 40px; margin: 0 10px 10px; border: 0; border-radius: 11px; background: var(--color-pink); color: var(--on-fill-brand); font-size: 14px; font-weight: 600; }
-.new-chat-btn:hover { filter: brightness(1.08); }
+.new-chat-btn { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 7px; width: calc(100% - 20px); height: 40px; margin: 0 10px 10px; border: 1px solid rgba(var(--pink-rgb), 0.45); border-radius: 11px; background: rgba(var(--pink-rgb), 0.1); color: var(--color-pink); font-size: 14px; font-weight: 600; }
+/* A quiet outline: the chat composer is the page's main action, not this. */
+.new-chat-btn:hover { background: rgba(var(--pink-rgb), 0.16); }
 .new-chat-btn:focus-visible { outline: 2px solid var(--focus-ring, var(--color-pink)); outline-offset: 2px; }
 .drawer-head { display: flex; align-items: center; gap: 4px; }
 .drawer-head .ws-btn { flex: 1; min-width: 0; }

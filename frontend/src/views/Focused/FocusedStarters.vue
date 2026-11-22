@@ -27,10 +27,11 @@
           <span class="focused-starter-label">{{ card.label }}</span>
         </span>
       </button>
-      <button type="button" class="focused-starters-more" :class="{ turned }" aria-label="More ideas" v-tooltip="'More ideas'" @click="moreIdeas">
+      <button type="button" class="focused-starters-more" :class="{ turned }" @click="moreIdeas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
         </svg>
+        <span>More ideas</span>
       </button>
     </div>
 
@@ -39,7 +40,7 @@
       <button v-if="needsYou" type="button" class="focused-catchup-row" data-action="catch-up" @click="nav?.go({ page: 'team', view: 'home' })">
         <span class="focused-catchup-icon is-needs" aria-hidden="true"><i class="fas fa-bell"></i></span>
         <span class="focused-catchup-text">{{ needsYou }} {{ needsYou === 1 ? 'thing needs' : 'things need' }} you</span>
-        <span class="focused-catchup-go">Catch up<i class="fas fa-chevron-right" aria-hidden="true"></i></span>
+        <span class="focused-catchup-go">See them<i class="fas fa-chevron-right" aria-hidden="true"></i></span>
       </button>
       <button v-if="workingApps.length" type="button" class="focused-catchup-row" data-action="apps" @click="nav?.go({ page: 'connectors' })">
         <span class="focused-catchup-icon" aria-hidden="true"><i class="fas fa-plug"></i></span>

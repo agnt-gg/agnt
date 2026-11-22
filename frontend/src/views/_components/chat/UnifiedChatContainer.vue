@@ -86,7 +86,7 @@
       <ChatInputBar
         ref="inputBarRef"
         v-model="chatInput"
-        :placeholder="isProcessing ? 'Steer Annie mid-turn…' : placeholder"
+        :placeholder="isProcessing ? 'Add instructions or change direction while Annie works…' : placeholder"
         :disabled="false"
         :is-streaming="isProcessing"
         :show-attachments="showAttachments"

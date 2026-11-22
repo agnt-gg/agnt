@@ -57,8 +57,8 @@
       <!-- Inline (non-compact) layout: every button shown in a row -->
       <template v-if="!compact">
         <Tooltip v-if="showAttachments && !isStreaming" text="Attach files" width="auto">
-          <button @click="triggerFileInput" :disabled="disabled" class="chat-icon-btn chat-attach-btn">
-            <i class="fas fa-paperclip"></i>
+          <button @click="triggerFileInput" :disabled="disabled" class="chat-icon-btn chat-attach-btn" :class="{ 'has-label': plain }">
+            <i class="fas fa-paperclip"></i><span v-if="plain" class="chat-btn-label">Attach a file</span>
           </button>
         </Tooltip>
         <slot name="extra-buttons" :is-streaming="isStreaming" />
@@ -102,8 +102,8 @@
       </template>
       <template v-else>
         <Tooltip text="Stop generating" width="auto">
-          <button @click="$emit('stop')" class="chat-icon-btn chat-stop-btn" type="button">
-            <i class="fas fa-stop"></i>
+          <button @click="$emit('stop')" class="chat-icon-btn chat-stop-btn" :class="{ 'has-label': plain }" type="button">
+            <i class="fas fa-stop"></i><span v-if="plain" class="chat-btn-label">Stop</span>
           </button>
         </Tooltip>
       </template>
@@ -112,6 +112,7 @@
 </template>
 
 <script>
+import { usePlainShell } from '@/composables/plainWords.js';
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
@@ -165,6 +166,8 @@ export default {
     'textarea-scroll',
   ],
   setup(props, { emit, expose }) {
+    // Inside AGNT One the attach and stop buttons say what they do.
+    const plain = usePlainShell();
     const textareaRef = ref(null);
     const backdropRef = ref(null);
     const fileInputRef = ref(null);
@@ -307,6 +310,7 @@ export default {
     });
 
     return {
+      plain,
       textareaRef,
       backdropRef,
       fileInputRef,
@@ -330,6 +334,10 @@ export default {
 </script>
 
 <style scoped>
+/* A labelled button (AGNT One): icon and word, as wide as it needs. */
+.chat-icon-btn.has-label { width: auto; padding: 0 12px; gap: 6px; border-radius: 17px; }
+.chat-btn-label { font-size: 13px; white-space: nowrap; }
+
 .chat-input-bar {
   display: flex;
   flex-direction: column;
