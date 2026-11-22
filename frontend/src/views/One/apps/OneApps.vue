@@ -1,6 +1,7 @@
 <template>
-  <section class="za za-page" aria-label="Apps" data-testid="one-apps">
-    <aside class="za-sub" aria-label="Apps sections">
+  <section class="za za-page" :class="{ 'has-studio-panels': studioPanels }" aria-label="Apps" data-testid="one-apps">
+    <!-- In Studio the sections and the create button are Studio's own panels (AppsScreen). -->
+    <aside v-if="!studioPanels" class="za-sub" aria-label="Apps sections">
       <h2>Apps</h2>
       <template v-for="item in SECTIONS" :key="item.id">
       <!-- MCP servers and email & webhooks are for builders: grouped under their own label. -->
@@ -125,8 +126,10 @@ const props = defineProps({
   tab: { type: String, default: '' },
   // False while the page is hidden behind another view (a plugin's full details, an editor).
   active: { type: Boolean, default: true },
+  // Studio draws the sections and the create button in its own left and right panels.
+  studioPanels: { type: Boolean, default: false },
 });
-const emit = defineEmits(['open-integrations', 'open-mcp-manager']);
+const emit = defineEmits(['open-integrations', 'open-mcp-manager', 'summary']);
 
 const nav = inject('focusedNav');
 const store = useStore();
@@ -617,6 +620,22 @@ function act(name, row, extra) {
     nav.toast(errorText(error));
   });
 }
+
+// ── For Studio's panels: what the page shows, and its actions by name ──────
+const summary = computed(() => ({
+  section: section.value,
+  counts: counts.value,
+  needsYou: needsYou.value,
+  broken: personalRows.value.filter((row) => row.status !== 'ready').map((row) => ({ id: row.id, name: row.name, problem: row.problem || '', status: row.status })),
+}));
+watch(summary, (value) => emit('summary', value), { immediate: true, deep: true });
+/** A connection's fix (Reconnect / Connect), by its id. */
+function fix(id) {
+  const row = personalRows.value.find((candidate) => candidate.id === id);
+  if (row) return act('signin', row);
+  return undefined;
+}
+defineExpose({ act, fix, go });
 
 // Escape closes the open drawer or dialog, unless a confirm dialog sits above it.
 function onKeydown(event) {

@@ -8,12 +8,15 @@ const router = { push: vi.fn(() => Promise.resolve()), replace: vi.fn(() => Prom
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }));
 
 let seenNav = null;
+const pageAct = vi.fn();
+const pageFix = vi.fn();
+const pageGo = vi.fn();
 vi.mock('@/views/Terminal/CenterPanel/BaseScreen.vue', () => ({
-  default: defineComponent({ name: 'BaseScreen', props: ['screenId', 'activeLeftPanel', 'activeRightPanel'], setup: (_, { slots }) => () => h('div', { class: 'base-stub' }, slots.default?.()) }),
+  default: defineComponent({ name: 'BaseScreen', props: ['screenId', 'activeLeftPanel', 'activeRightPanel', 'leftPanelProps', 'panelProps'], emits: ['panel-action'], setup: (_, { slots }) => () => h('div', { class: 'base-stub' }, slots.default?.()) }),
 }));
 vi.mock('@/views/_components/common/SimpleModal.vue', () => ({ default: defineComponent({ name: 'SimpleModal', render: () => null }) }));
 vi.mock('@/views/Focused/FocusedConnectors.vue', () => ({
-  default: defineComponent({ name: 'FocusedConnectors', props: ['item', 'tab'], setup() { seenNav = inject('focusedNav', null); return () => h('div', { class: 'apps-stub' }); } }),
+  default: defineComponent({ name: 'FocusedConnectors', props: ['item', 'tab', 'studioPanels'], emits: ['summary'], setup(_, { expose }) { seenNav = inject('focusedNav', null); expose({ act: pageAct, fix: pageFix, go: pageGo }); return () => h('div', { class: 'apps-stub' }); } }),
 }));
 vi.mock('./Connectors.vue', () => ({ default: defineComponent({ name: 'Connectors', render: () => h('div', { class: 'connectors-stub' }) }) }));
 
@@ -32,13 +35,33 @@ describe('the Plugins page', () => {
     at('/plugins');
   });
 
-  it('in Studio is the Apps page One shows, with no side panels', () => {
+  it('in Studio is the Apps page One shows, between Studio\'s own left and right panels', async () => {
     const w = mountScreen();
     expect(w.find('.apps-stub').exists()).toBe(true);
     expect(w.find('.connectors-stub').exists()).toBe(false);
     const base = w.findComponent({ name: 'BaseScreen' });
-    expect(base.props()).toMatchObject({ screenId: 'ConnectorsScreen', activeLeftPanel: false, activeRightPanel: false });
-    expect(w.findComponent({ name: 'FocusedConnectors' }).props()).toMatchObject({ item: null, tab: '' });
+    expect(base.props()).toMatchObject({ screenId: 'ConnectorsScreen', activeLeftPanel: 'AppsPanel', activeRightPanel: 'AppsPanel' });
+    const page = w.findComponent({ name: 'FocusedConnectors' });
+    expect(page.props()).toMatchObject({ item: null, tab: '' });
+    expect(page.props('studioPanels')).not.toBe(false);
+    // The page's summary is what the panels draw.
+    page.vm.$emit('summary', { section: 'plugins', counts: { connections: 3, plugins: 5, mcp: 1, triggers: 0 }, needsYou: 1, broken: [{ id: 'dropbox', name: 'Dropbox', status: 'reconnect' }] });
+    await flushPromises();
+    expect(base.props('leftPanelProps').left.stats[0]).toEqual({ label: 'Connections', value: 3 });
+    expect(base.props('panelProps').right.create).toEqual({ action: 'browse', label: 'Browse Market' });
+    expect(base.props('panelProps').right.needs.map((n) => n.id)).toEqual(['dropbox']);
+  });
+
+  it('the panels act through the page: a section opens it, a fix reconnects, the create button runs its action', () => {
+    const w = mountScreen();
+    const base = w.findComponent({ name: 'BaseScreen' });
+    base.vm.$emit('panel-action', 'select-item', { id: 'section:mcp' });
+    expect(pageGo).toHaveBeenCalledWith('mcp');
+    base.vm.$emit('panel-action', 'select-item', { id: 'fix:dropbox' });
+    base.vm.$emit('panel-action', 'apps-fix', { id: 'calendly' });
+    expect(pageFix.mock.calls).toEqual([['dropbox'], ['calendly']]);
+    base.vm.$emit('panel-action', 'apps-act', { action: 'add' });
+    expect(pageAct).toHaveBeenCalledWith('add');
   });
 
   it('opens the section and the plugin the route names, and follows the route', async () => {

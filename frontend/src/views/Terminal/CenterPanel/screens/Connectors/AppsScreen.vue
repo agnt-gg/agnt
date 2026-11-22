@@ -3,11 +3,21 @@
        the same component One draws, in Studio's center panel. Inside One's frame (its
        "full editor" visits) and for ?studio=1: the full Connectors screen, as before. -->
   <Connectors v-if="fullScreen" />
-  <BaseScreen v-else screenId="ConnectorsScreen" :activeLeftPanel="false" :activeRightPanel="false">
+  <!-- Studio's own panels, as on every Studio screen: the left is the collection overview
+       (sections, what needs you), the right the create button. They act through the page. -->
+  <BaseScreen
+    v-else
+    screenId="ConnectorsScreen"
+    :activeLeftPanel="PANEL"
+    :activeRightPanel="PANEL"
+    :leftPanelProps="{ left: panels.left }"
+    :panelProps="{ right: panels.right }"
+    @panel-action="onPanelAction"
+  >
     <template #default>
       <!-- .ui-focused is the scope focused.css styles One's pages under. -->
       <div class="ui-focused studio-apps-page" data-testid="studio-apps">
-        <FocusedConnectors :item="location.item || null" :tab="location.tab || ''" />
+        <FocusedConnectors ref="pageRef" studio-panels :item="location.item || null" :tab="location.tab || ''" @summary="(value) => (summary = value)" />
       </div>
       <SimpleModal ref="modalRef" />
       <div v-if="toastText" class="studio-apps-toast" role="status">{{ toastText }}</div>
@@ -25,6 +35,7 @@ import { focusedLocation, routeFor } from '@/views/Focused/focusedRoutes.js';
 import { screenRoute } from '@/views/Terminal/screenRoute.js';
 import { useStudioPageNav } from '../useStudioPageNav.js';
 import Connectors from './Connectors.vue';
+import { studioPanels, panelRowTarget } from '@/views/One/apps/appsStudioPanels.js';
 
 const SCREEN = 'ConnectorsScreen';
 const route = useRoute();
@@ -49,6 +60,24 @@ watch(routeLocation, (loc) => {
 }, { immediate: true });
 
 const { pushScreen, chat, ask, openConversation, modalRef, confirm, prompt, toastText, toast } = useStudioPageNav();
+
+// The page reports what it shows; Studio's panels draw it and hand their clicks back.
+// Named here, not in the registry: the full Connectors screen shares this screen id and has its own panels.
+const PANEL = 'AppsPanel';
+const pageRef = ref(null);
+const summary = ref({});
+const panels = computed(() => studioPanels(summary.value));
+function onPanelAction(action, payload = {}) {
+  if (action === 'select-item') {
+    const target = panelRowTarget(payload.id);
+    if (target?.kind === 'section') return pageRef.value?.go(target.section);
+    if (target?.kind === 'fix') return pageRef.value?.fix(target.id);
+    return undefined;
+  }
+  if (action === 'apps-fix') return pageRef.value?.fix(payload.id);
+  if (action === 'apps-act' && payload.action) return pageRef.value?.act(payload.action);
+  return undefined;
+}
 const go = (loc) => pushScreen(...routeFor(loc));
 
 if (!inOne) {

@@ -133,3 +133,8 @@
 .studio-apps-page .za .tbl .tr.body-row .td :is(.primary, .tag), .studio-apps-page .za .tbl .tr.body-row .td :is(.primary, .tag) * { font-weight: 700; }
 .studio-apps-page .za .tbl .tag { padding: 3px 6px 1px; }
 .studio-apps-page .za .tbl .tr.body-row .td .use, .studio-apps-page .za .tbl .tr.body-row .td .use * { font-size: 11.5px; color: var(--color-text-muted); }
+
+/* Studio's right panel holds the create button, so the page head is the title alone. */
+.studio-apps-page .za.has-studio-panels .page-head > .row-gap:not(.head-title) { display: none; }
+/* A row's fix lives in the stopped-working box and the right panel, so the status cell is its state alone. */
+.studio-apps-page .za.has-studio-panels .st .act { display: none; }

@@ -49,7 +49,7 @@ const loadPanel = (panelName) => {
 const ALL_RIGHT_PANELS = [
   'ChatPanel', 'AgentsPanel', 'ToolsPanel', 'WorkflowsPanel',
   'ToolForgePanel', 'WorkflowForgePanel',
-  'ToolForgeResponsePanel', 'ConnectorsPanel', 'MarketplacePanel',
+  'ToolForgeResponsePanel', 'ConnectorsPanel', 'AppsPanel', 'MarketplacePanel',
   'TracesPanel', 'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
   'WidgetForgePanel', 'GoalsPanel', 'FileTreePanel', 'NewsPanel',
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',

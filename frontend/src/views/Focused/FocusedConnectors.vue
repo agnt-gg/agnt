@@ -31,8 +31,11 @@
   <!-- The Apps page stays mounted underneath, so its section, search and filters survive a visit to the views above. -->
   <OneApps
     v-show="!covered"
+    ref="appsRef"
     :tab="lastTab"
     :active="!covered"
+    :studio-panels="studioPanels"
+    @summary="(value) => emit('summary', value)"
     @open-integrations="view = 'integrations'"
     @open-mcp-manager="view = 'mcp'"
   />
@@ -55,7 +58,20 @@ import { findAppCard } from '@/services/appCards.js';
 import { useAppSignIn } from './useAppSignIn.js';
 
 const IntegrationsScreen = lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue'));
-const props = defineProps({ item: { type: String, default: null }, tab: { type: String, default: '' } });
+const props = defineProps({
+  item: { type: String, default: null },
+  tab: { type: String, default: '' },
+  // In Studio: the sections and create button live in Studio's panels (AppsScreen).
+  studioPanels: { type: Boolean, default: false },
+});
+const emit = defineEmits(['summary']);
+const appsRef = ref(null);
+// Studio's panels act through the page; a details view open over it closes first.
+defineExpose({
+  act: (name, ...args) => { view.value = null; return appsRef.value?.act(name, ...args); },
+  fix: (id) => appsRef.value?.fix(id),
+  go: (section) => appsRef.value?.go(section),
+});
 const nav = inject('focusedNav');
 const store = useStore();
 const { cards } = useAppCards('', { autoload: false });

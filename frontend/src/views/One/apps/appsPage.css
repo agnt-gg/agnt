@@ -310,3 +310,6 @@
 .ui-focused.is-compact .za .sub-label { display: none; }
 .za .tag { font-size: 12px; }
 .za .use.zero { border: 0; background: none; padding: 0; color: var(--text-tertiary); }
+/* A tight list: the status cell's action wraps under its label instead of leaving the table. */
+.za .st { flex-wrap: wrap; row-gap: 6px; }
+.za .td { min-width: 0; }

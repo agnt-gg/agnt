@@ -119,7 +119,7 @@
 // what each column shows come from the section; the rules from appsModel.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppsGlyph from './AppsGlyph.vue';
-import { groupRows, visibleRows } from './appsModel.js';
+import { listColumns, groupRows, visibleRows } from './appsModel.js';
 
 const props = defineProps({
   rows: { type: Array, required: true },
@@ -154,18 +154,9 @@ const groups = computed(() => {
   const group = props.spec.groups[view.value];
   return group ? groupRows(visible.value, group) : [{ label: '', rows: visible.value }];
 });
-// The checkbox and menu columns, the row padding and the border.
-const FIXED_WIDTH = 36 + 36 + 12 + 2;
-const shownHeads = computed(() => {
-  let shown = props.heads;
-  const needed = () => FIXED_WIDTH + shown.reduce((sum, head) => sum + head.min, 0);
-  for (const head of props.heads.filter((h) => h.drop).sort((a, b) => b.drop - a.drop)) {
-    if (needed() <= width.value) break;
-    shown = shown.filter((h) => h !== head);
-  }
-  return shown;
-});
-const template = computed(() => ['36px', ...shownHeads.value.map((head) => `minmax(${head.min}px, ${head.fr}fr)`), '36px'].join(' '));
+const columns = computed(() => listColumns(props.heads, width.value));
+const shownHeads = computed(() => columns.value.heads);
+const template = computed(() => columns.value.template);
 const selectedRows = computed(() => props.rows.filter((row) => selected.value.has(row.id)));
 const allChosen = computed(() => visible.value.length > 0 && visible.value.every((row) => selected.value.has(row.id)));
 

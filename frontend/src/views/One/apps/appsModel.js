@@ -392,7 +392,7 @@ const pluginUses = (row) => (!row.provider ? 'Nothing to connect' : row.provider
 
 export const LISTS = Object.freeze({
   connections: {
-    search: 'Search connection or app name',
+    search: 'Search connections',
     text: (row) => [row.name, row.appName, row.id, row.identity, row.kind, ...row.apps.map((app) => app.label)].join(' '),
     views: [['flat', 'Connections'], ['status', 'Status'], ['kind', 'Kind']],
     filters: [
@@ -432,7 +432,7 @@ export const LISTS = Object.freeze({
     },
   },
   plugins: {
-    search: 'Search plugins and what’s inside',
+    search: 'Search plugins',
     text: (row) => [row.label, row.id, row.desc, row.kind, row.provider?.name, row.author].join(' '),
     views: [['flat', 'Plugins'], ['kind', 'Kind'], ['uses', 'Connection']],
     filters: [
@@ -499,7 +499,7 @@ export const LISTS = Object.freeze({
     groups: { runs: { of: (row) => row.runs, order: ['On this computer', 'Remote server'] } },
   },
   triggers: {
-    search: 'Search workflows, addresses and methods',
+    search: 'Search triggers',
     text: (row) => [row.workflow, row.kind, row.address, row.method, row.wfStatus].join(' '),
     views: [['flat', 'Triggers'], ['kind', 'Type'], ['wf', 'Workflow status']],
     filters: [
@@ -612,3 +612,22 @@ export function customProviderData(form, id) {
 
 /** "1 needs you", "2 need you". */
 export const needYou = (n) => `${n} ${n === 1 ? 'needs' : 'need'} you`;
+
+// The checkbox and menu columns, the row padding and the border.
+const LIST_FIXED_WIDTH = 36 + 36 + 12 + 2;
+/**
+ * The columns a list shows at a width: optional ones drop first (highest `drop` first)
+ * until the rest fit at their minimum. When even those do not fit (a narrow centre
+ * between Studio's panels, a small window), the columns share the room they have
+ * instead of pushing the table past its edge.
+ */
+export function listColumns(heads = [], width = Infinity) {
+  let shown = heads;
+  const needed = () => LIST_FIXED_WIDTH + shown.reduce((sum, head) => sum + head.min, 0);
+  for (const head of heads.filter((h) => h.drop).sort((a, b) => b.drop - a.drop)) {
+    if (needed() <= width) break;
+    shown = shown.filter((h) => h !== head);
+  }
+  const fits = needed() <= width;
+  return { heads: shown, fits, template: ['36px', ...shown.map((head) => `minmax(${fits ? head.min : 0}px, ${head.fr}fr)`), '36px'].join(' ') };
+}

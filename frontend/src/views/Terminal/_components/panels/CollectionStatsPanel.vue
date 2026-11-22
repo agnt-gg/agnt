@@ -22,6 +22,8 @@
         :key="item.id"
         type="button"
         class="stat-row"
+        :class="{ 'is-active': item.active }"
+        :aria-current="item.active ? 'page' : null"
         @click="$emit('panel-action', 'select-item', { id: item.id })"
       >
         <i :class="item.icon || icon" aria-hidden="true"></i>
@@ -40,7 +42,7 @@ export default {
     icon: { type: String, default: 'fas fa-circle' },
     /** [{ label, value, tone?: 'good' | 'warn' | 'bad' }] */
     stats: { type: Array, default: () => [] },
-    /** [{ title, empty?, items: [{ id, label, meta?, icon? }] }] */
+    /** [{ title, empty?, items: [{ id, label, meta?, icon?, active? }] }]; `active` lights the row on screen. */
     lists: { type: Array, default: () => [] },
   },
   emits: ['panel-action'],
@@ -147,6 +149,16 @@ export default {
 .stat-row:focus-visible {
   background: rgba(var(--primary-rgb), 0.08);
   outline: none;
+}
+
+/* The row that is on screen (a section the centre shows), as the sidebar lights its page. */
+.stat-row.is-active {
+  background: rgba(var(--primary-rgb), 0.06);
+  box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.25);
+  color: var(--color-primary);
+}
+.stat-row.is-active i {
+  color: var(--color-primary);
 }
 
 .stat-row i {
