@@ -1,4 +1,4 @@
-<!-- TeamPanel — the Team screen's left panel in Studio: the team at a glance, My Space, the teamspaces
+<!-- TeamPanel — the Home screen's left panel in Studio: the team at a glance, My Space, the teamspaces
      and quick actions. Built from the same parts and styles as the Activity panel (TracesPanel): bordered
      section cards with titled icons, a stats grid, rows with icons and count pills, action buttons.
      Every row asks the screen to go somewhere ('team-go' with a /team location, 'team-pick' for My Space
@@ -6,9 +6,9 @@
 <template>
   <div class="ui-panel team-panel">
     <div class="panel-header">
-      <h2 class="title">/ {{ team ? titled(team.name) : 'Team' }}</h2>
+      <h2 class="title">/ Home</h2>
       <div v-if="team" class="panel-stats">
-        <span class="stat-item" v-tooltip="'Members'"><i class="fas fa-users"></i>{{ memberCount }}</span>
+        <span class="stat-item" v-tooltip="`${titled(team.name)} · members`"><i class="fas fa-users"></i>{{ memberCount }}</span>
       </div>
     </div>
 

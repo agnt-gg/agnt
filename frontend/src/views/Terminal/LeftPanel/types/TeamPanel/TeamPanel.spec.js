@@ -17,9 +17,15 @@ beforeEach(() => Object.assign(teamState, {
 }));
 
 describe('TeamPanel: Activity-panel parts, not bare rows', () => {
+  it('is titled Home with or without a team', () => {
+    expect(mountPanel().find('.title').text()).toBe('/ Home');
+    teamState.team = null;
+    expect(mountPanel().find('.title').text()).toBe('/ Home');
+  });
   it('shows the team at a glance, My Space with counts, teamspaces with icons, and quick actions', () => {
     const w = mountPanel({ active: 'space:s2' });
-    expect(w.find('.title').text()).toBe('/ Bravo');
+    // The panel is titled for the page it sits on, Home; the team's name is on the members count.
+    expect(w.find('.title').text()).toBe('/ Home');
     expect(w.findAll('.stat-value').map((n) => n.text())).toEqual(['1', '3', '2', '2']);
     // Quick Actions first, then a compact one-row At a glance.
     expect(w.findAll('.section-title').map((n) => n.text())).toEqual(['Quick Actions', 'At a glance', 'My Space', 'Teamspaces']);

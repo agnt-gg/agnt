@@ -50,7 +50,17 @@
 // you which of the hand-maintained lists you forgot.
 
 export const MAIN_SECTIONS = [
-  // ── WORK ── where you land: talk, or get more.
+  // ── WORK ── where you land: what needs you, talk, or get more.
+  {
+    // Home in Studio, first in the sidebar: the inbox (what needs you), each teamspace's chat,
+    // board and files, My tasks and members. The same pages AGNT One draws (views/One/team), in
+    // Studio's frame (screens/Team). The saved 'team' id stays stable for user nav settings.
+    id: 'team',
+    group: 'WORK',
+    icon: 'fas fa-home',
+    label: 'Home',
+    screens: [{ screen: 'TeamScreen', label: 'HOME' }],
+  },
   {
     // Canvas is a tab of Chat, not a row: a chat with a custom canvas around
     // it — the same conversation, arranged — so it lives one tab to the right
@@ -64,16 +74,6 @@ export const MAIN_SECTIONS = [
       { screen: 'ChatScreen', label: 'CHAT' },
       { screen: 'WorkspaceScreen', label: 'CANVAS' },
     ],
-  },
-  {
-    // Home in Studio: the inbox (what needs you), each teamspace's chat, board and files, My tasks
-    // and members. The same pages AGNT One draws (views/One/team), in Studio's frame (screens/Team).
-    // The saved 'team' id stays stable for user nav settings.
-    id: 'team',
-    group: 'WORK',
-    icon: 'fas fa-home',
-    label: 'Home',
-    screens: [{ screen: 'TeamScreen', label: 'HOME' }],
   },
   {
     // One word everyone already understands. It sells apps, agents,

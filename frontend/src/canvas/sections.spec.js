@@ -164,12 +164,12 @@ describe('canvas sections registry', () => {
       // no engineering words (runs, traces, artifacts, library, plugins,
       // workspaces, connectors).
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
-        'Chat', 'Home', 'Market',
+        'Home', 'Chat', 'Market',
         'Dashboard', 'Goals', 'Activity', 'Files',
         'Plugins', 'Agents', 'Workflows', 'Tools', 'Skills', 'Widgets',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
-        'chat', 'team', 'store',
+        'team', 'chat', 'store',
         'dashboard', 'goals', 'traces', 'artifacts',
         'apps', 'agents', 'workflows', 'tools', 'skills', 'widgets',
       ]);
