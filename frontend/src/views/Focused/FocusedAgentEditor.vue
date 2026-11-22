@@ -3,13 +3,13 @@
   <div v-if="(agent || isNew) && loaded" class="focused-forge">
   <FocusedForgeChat kind="agents" :item-id="agentId" :record="forgeRecord" @changed="reloadAfterAnnie" @draft="applyDraft" />
   <FocusedEditor
-    kind-label="Agents"
-    back-label="Agents"
+    kind-label="Assistants"
+    back-label="Assistants"
     v-model:name="v.name"
     v-model:description="v.description"
-    name-placeholder="Agent name"
-    description-placeholder="What this agent does"
-    :delete-label="isNew ? '' : 'Delete agent'"
+    name-placeholder="Assistant name"
+    description-placeholder="What this assistant does"
+    :delete-label="isNew ? '' : 'Delete assistant'"
     :meta="lastUsed"
     :dirty="dirty"
     :saving="saving"
@@ -20,6 +20,9 @@
     @discard="discard"
     @delete="remove"
   >
+    <template v-if="!isNew && v.name" #actions>
+      <button type="button" class="focused-btn" data-action="try-it" @click="nav.ask('@' + v.name.replace(/\s+/g, '') + ' ')"><i class="fas fa-play" aria-hidden="true"></i>Try it</button>
+    </template>
     <template #icon>
       <!-- An agent's avatar is an image: the same picker and resize as Studio's create modal. -->
       <button type="button" class="focused-edit-icon editable" v-tooltip="v.icon ? 'Change avatar' : 'Add an avatar'" :aria-label="v.icon ? 'Change avatar' : 'Add an avatar'" @click="avatarInput?.click()">
@@ -42,14 +45,14 @@
     </section>
 
     <section class="focused-edit-block">
-      <div class="focused-edit-block-head"><h3>Settings</h3></div>
+      <div class="focused-edit-block-head"><h3>How it works</h3></div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Model</span>
+          <span class="focused-edit-label">AI</span>
           <div class="focused-edit-pair">
             <CustomSelect
               :model-value="v.provider"
-              :options="[{ label: 'My default model', value: '' }, ...providerOptions.map((p) => ({ label: p, value: p }))]"
+              :options="[{ label: 'Same as Annie (recommended)', value: '' }, ...providerOptions.map((p) => ({ label: p, value: p }))]"
               @update:model-value="onProvider"
             />
             <CustomSelect
@@ -62,21 +65,24 @@
           </div>
         </div>
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Active</span>
-          <button type="button" class="focused-switch" role="switch" :aria-checked="v.active ? 'true' : 'false'" aria-label="Active" @click="v.active = !v.active"></button>
+          <span class="focused-edit-label">Turned on<small class="focused-edit-hint">{{ v.active ? `Ask for it in any chat: type @${(v.name || 'Name').replace(/\s+/g, '')}` : 'Off: it won’t run or answer in chats' }}</small></span>
+          <button type="button" class="focused-switch" role="switch" :aria-checked="v.active ? 'true' : 'false'" aria-label="Turned on" @click="v.active = !v.active"></button>
         </div>
       </div>
     </section>
 
     <section class="focused-edit-block">
       <div class="focused-edit-block-head">
-        <h3>Actions</h3>
-        <span class="focused-edit-hint">{{ tools.open ? 'This assistant can use every action.' : `${tools.chosen.length} chosen` }}</span>
+        <h3>What it can use</h3>
+        <span class="focused-edit-hint">{{ tools.open ? 'Anything you’ve connected, and every built-in action.' : `Only the ${tools.chosen.length} you pick` }}</span>
       </div>
       <div class="focused-edit-card">
         <div class="focused-edit-row">
-          <span class="focused-edit-label">Every action</span>
-          <button type="button" class="focused-switch" role="switch" :aria-checked="tools.open ? 'true' : 'false'" aria-label="Every action" @click="tools.open = !tools.open"></button>
+          <span class="focused-edit-label">Apps and actions</span>
+          <div class="seg" role="radiogroup" aria-label="Apps and actions" data-testid="agent-tool-scope">
+            <button type="button" role="radio" :class="{ on: tools.open }" :aria-checked="String(tools.open)" @click="tools.open = true">Everything</button>
+            <button type="button" role="radio" :class="{ on: !tools.open }" :aria-checked="String(!tools.open)" @click="tools.open = false">Only ones I pick</button>
+          </div>
         </div>
         <div v-if="!tools.open" class="focused-edit-row column">
           <ListWithSearch v-model="tools.chosen" :items="allTools" label-key="title" id-key="id" item-noun="tools" placeholder="Search actions…" />
@@ -150,7 +156,7 @@ const dirty = computed(() => loaded.value && snapshot() !== baseline.value);
 
 const saving = ref(false);
 const error = ref('');
-const lastUsed = computed(() => (agent.value?.lastActive ? 'Last used ' + ago(agent.value.lastActive) : ''));
+const lastUsed = computed(() => ['Private: only you can use it', agent.value?.lastActive ? 'last used ' + ago(agent.value.lastActive) : ''].filter(Boolean).join(' · '));
 
 // Provider / model, from the shared AI-provider store.
 const providerOptions = computed(() => {
