@@ -20,7 +20,7 @@
           <p v-if="releaseName" class="update-dialog-subtitle">{{ releaseName }}</p>
           <p class="update-dialog-meta">
             v{{ fromVersion }} → v{{ targetVersion }}<template v-if="release?.date"> · {{ release.date }}</template>
-            <template v-if="view === 'ready' && state.needsPermission"> · Windows will ask for permission</template>
+            <template v-if="view === 'ready' && state.needsPermission"> · {{ permissionNote }}</template>
           </p>
           <div v-if="changeGroups.length" class="change-counts">
             <button v-for="group in changeGroups" :key="group.status" type="button" class="change-count" :class="'is-' + group.status" @click="showGroup(group.status)">
@@ -80,13 +80,14 @@
     </div>
 
     <!-- macOS: downloaded, but Squirrel is still unpacking and verifying it.
-         Nothing to click yet; a restart now would install nothing. -->
+         Nothing to click yet; a restart now would install nothing. Where macOS
+         wants an administrator, this is when it asks, so the banner says so. -->
     <div v-else-if="view === 'preparing'" class="update-banner" data-testid="update-preparing">
       <div class="update-content">
         <div class="update-icon">⬇️</div>
         <div class="update-text">
           <span class="update-title">Preparing Update</span>
-          <span class="update-version">v{{ state.available?.version }} · almost ready</span>
+          <span class="update-version">v{{ state.available?.version }} · {{ state.needsPermission ? permissionNote : 'almost ready' }}</span>
         </div>
       </div>
     </div>
@@ -107,6 +108,7 @@
         <div class="update-text">
           <span class="update-title">Update failed</span>
           <span class="update-version">{{ state.error?.message }}</span>
+          <span v-if="state.error?.hint" class="update-version update-hint" data-testid="update-error-hint">{{ state.error.hint }}</span>
         </div>
       </div>
       <div class="update-actions">
@@ -167,6 +169,11 @@ function keyOf(s) {
 }
 
 const selfUpdating = computed(() => !!state.value?.enabled);
+
+// What the system will ask for when this update installs (state.needsPermission).
+const permissionNote = computed(() =>
+  state.value?.platform === 'darwin' ? "macOS will ask for an administrator's name and password" : 'Windows will ask for permission',
+);
 
 // The version on offer, whichever path found it.
 const availableVersion = computed(() => {
@@ -420,8 +427,9 @@ function downloadInstaller() {
 
 function dismiss() {
   if (selfUpdating.value) {
-    // Later hides this banner; the download stays, and on macOS and AppImage it
-    // still installs on the next quit.
+    // Later hides this banner; the download stays. On macOS and AppImage it
+    // still installs on the next quit, unless macOS needs an administrator for
+    // it: then it waits for the click.
     dismissedKey.value = keyOf(state.value);
     return;
   }
@@ -497,6 +505,10 @@ defineExpose({
   font-size: 12px;
   color: var(--fg-dim, rgba(255, 255, 255, 0.6));
   overflow-wrap: anywhere;
+}
+
+.update-hint {
+  margin-top: 4px;
 }
 
 .update-actions {

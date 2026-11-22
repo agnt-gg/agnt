@@ -217,6 +217,49 @@ describe('self-updating desktop build', () => {
     expect(w.find('[data-testid="update-manual-download"]').exists()).toBe(false);
   });
 
+  // A standard macOS account with AGNT in /Applications. macOS's prompt used to
+  // arrive unannounced; now AGNT says what will be asked, before and during.
+  const standardMac = { platform: 'darwin', available: { version: '0.6.8' }, needsExplicitInstall: true, needsPermission: true };
+
+  it('a Mac that needs an administrator says so before the click, and waits for it', async () => {
+    desktop({ ...standardMac, phase: 'ready' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain("macOS will ask for an administrator's name and password");
+    expect(text(w)).not.toContain('Windows will ask');
+    expect(w.find('.download-btn').text()).toBe('Restart to update');
+  });
+
+  it('while macOS is asking, the banner says what for', async () => {
+    desktop({ ...standardMac, phase: 'preparing' });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('Preparing Update');
+    expect(text(w)).toContain("macOS will ask for an administrator's name and password");
+    expect(text(w)).not.toContain('almost ready');
+  });
+
+  it('a refused administrator prompt shows what happened and the ways on', async () => {
+    desktop({
+      ...standardMac,
+      phase: 'error',
+      error: { message: "macOS asked for an administrator's name and password, and the request was cancelled.", hint: 'Retry and enter them, or use Download and keep AGNT in the Applications folder inside your home folder, where updating needs no password.', during: 'prepare' },
+    });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(text(w)).toContain('the request was cancelled');
+    expect(w.find('[data-testid="update-error-hint"]').text()).toContain('Applications folder inside your home folder');
+    expect(w.find('.download-btn').text()).toBe('Retry');
+    expect(w.find('[data-testid="update-manual-download"]').exists()).toBe(true);
+  });
+
+  it('an error with nothing more to say shows no empty second line', async () => {
+    desktop({ phase: 'error', available: { version: '0.6.8' }, error: { message: 'sha512 checksum mismatch', during: 'download' } });
+    const w = mount(UpdateNotification);
+    await flushPromises();
+    expect(w.find('[data-testid="update-error-hint"]').exists()).toBe(false);
+  });
+
   it('after a restart: confirms the version, or says it did not take', async () => {
     desktop({ installed: { from: '0.6.7', to: '0.6.8', ok: true, running: '0.6.8' } });
     let w = mount(UpdateNotification);

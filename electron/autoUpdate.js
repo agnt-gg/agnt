@@ -108,12 +108,14 @@ export function updateSupport({ isPackaged, platform, env = {}, remote = false }
 }
 
 /** How this platform installs, once a download has landed. */
-export function updatePolicy(platform) {
+export function updatePolicy(platform, { needsAdmin = false } = {}) {
   return {
     // Never automatic: every download is preceded by the pin check below.
     autoDownload: false,
-    // Windows alone waits for an explicit click — see the header.
-    autoInstallOnAppQuit: platform !== 'win32',
+    // Windows waits for an explicit click (see the header). So does a Mac that
+    // will ask for an administrator: quitting is not consent to a prompt, and
+    // neither is leaving the app open.
+    autoInstallOnAppQuit: platform !== 'win32' && !needsAdmin,
     // Lets electron-updater report an older version at all; checkUpdateInfo
     // installs one only as a marked rollback to agntUpdate.rollbackTo.
     allowDowngrade: true,
@@ -121,13 +123,51 @@ export function updatePolicy(platform) {
   };
 }
 
-/** Windows is the one platform that needs a button. */
+/** Windows always needs a button. A Mac does when it needs an administrator (createUpdateState). */
 export function needsExplicitInstall(platform) {
   return platform === 'win32';
 }
 
 /** How long macOS may take to prepare a downloaded update before it counts as failed. */
 export const STAGING_LIMIT_MS = 10 * 60 * 1000;
+
+/**
+ * Will macOS ask for an administrator before it replaces this app? True when
+ * this account cannot write to the app or to the folder holding it, false when
+ * it cannot tell. Preparing an update is what raises that prompt, so where this
+ * is true nothing is prepared until the person asks for the update, and the
+ * banner says beforehand what macOS will want.
+ */
+export function macInstallNeedsAdmin({ platform, execPath, fs, path }) {
+  if (platform !== 'darwin' || !execPath || !fs?.accessSync || !path) return false;
+  // <folder>/AGNT.app/Contents/MacOS/AGNT
+  const bundle = path.dirname(path.dirname(path.dirname(String(execPath))));
+  if (!bundle.endsWith('.app')) return false;
+  const refused = (target) => {
+    try {
+      fs.accessSync(target, fs.constants.W_OK);
+      return false;
+    } catch (err) {
+      return err?.code === 'EACCES' || err?.code === 'EPERM';
+    }
+  };
+  return refused(bundle) || refused(path.dirname(bundle));
+}
+
+/**
+ * What to tell the person when macOS could not prepare an update. macOS words
+ * an administrator prompt that was cancelled or not accepted as an error
+ * number; everything else is passed on as macOS said it.
+ * @returns {{ message: string, hint?: string }}
+ */
+export function stagingFailure(reason) {
+  const said = String(reason?.message || reason);
+  const code = Number(reason?.code);
+  const hint = 'Retry and enter them, or use Download and keep AGNT in the Applications folder inside your home folder, where updating needs no password.';
+  if (code === -60006 || said.includes('-60006')) return { message: "macOS asked for an administrator's name and password, and the request was cancelled.", hint };
+  if (code === -60005 || said.includes('-60005')) return { message: "macOS did not accept the administrator's name and password.", hint };
+  return { message: said };
+}
 
 /**
  * The installer a person downloads by hand for `version` on this machine, or
@@ -212,17 +252,18 @@ export function isPerMachineInstall({ platform, execPath, env = {} }) {
     .some((dir) => exe.startsWith(String(dir).toLowerCase().replace(/[\\/]+$/, '') + '\\'));
 }
 
-export function createUpdateState({ version, platform, perMachine = false, onChange = () => {} }) {
+export function createUpdateState({ version, platform, perMachine = false, needsAdmin = false, onChange = () => {} }) {
   let state = {
     phase: 'idle', // idle | checking | available | downloading | preparing (macOS) | ready | installing | error | disabled
     currentVersion: version,
     platform,
-    needsExplicitInstall: needsExplicitInstall(platform),
-    // Windows will ask for administrator permission when the update installs.
-    needsPermission: platform === 'win32' && !!perMachine,
+    needsExplicitInstall: needsExplicitInstall(platform) || !!needsAdmin,
+    // The system will ask for an administrator when the update installs: an
+    // all-users install on Windows, a folder this account cannot change on macOS.
+    needsPermission: (platform === 'win32' && !!perMachine) || !!needsAdmin,
     available: null, // { version }
     percent: null,
-    error: null, // { message, during }
+    error: null, // { message, during, hint? }
     blocked: null, // { reason, busy }
     lastCheckedAt: null,
     installed: null, // { from, to, ok } after a restart
@@ -372,10 +413,12 @@ export function initAutoUpdate({
     // Offered beside Retry when an update fails, so a failure is never a dead end.
     manualDownloadUrl: manualDownloadUrl({ assetBase: config.assetBase, version: s.available?.version, platform, arch, env }),
   });
+  const needsAdmin = support.enabled && macInstallNeedsAdmin({ platform, execPath, fs, path });
   const state = createUpdateState({
     version,
     platform,
     perMachine: isPerMachineInstall({ platform, execPath, env }),
+    needsAdmin,
     onChange: (s) => {
       const payload = withSupport(s);
       for (const win of getWindows() || []) {
@@ -400,6 +443,10 @@ export function initAutoUpdate({
     return check({ userInitiated: true });
   });
 
+  // macOS: an update Squirrel has not staged yet has to be staged before it can
+  // be installed (see `preparing` below). Null until the updater is armed.
+  let stagingBeforeInstall = null; // { needed(): boolean, begin(request): void }
+
   ipcMain.handle('update:install', async (evt, opts = {}) => {
     // A team space is someone else's origin; it may read the state, never
     // restart this machine's app.
@@ -413,9 +460,21 @@ export function initAutoUpdate({
       state.set({ blocked: { reason: verdict.reason, busy: verdict.busy } });
       return verdict;
     }
+    const request = { force: !!opts.force };
+    if (stagingBeforeInstall?.needed()) {
+      // Nothing is stopped yet. macOS may ask for an administrator and be told
+      // no, and the app has to be whole when that happens.
+      stagingBeforeInstall.begin(request);
+      return { ok: true };
+    }
+    return finishInstall(request);
+  });
+
+  /** Stop the backend cleanly, then hand over to the installer. */
+  async function finishInstall({ force }) {
     const to = state.get().available?.version;
     state.set({ phase: 'installing', blocked: null });
-    log(`[update] installing ${to}${opts.force ? ' (forced)' : ''}`);
+    log(`[update] installing ${to}${force ? ' (forced)' : ''}`);
     try {
       // Hand the backend a clean exit FIRST. On Windows the installer would
       // otherwise taskkill a backend that never ran its shutdown: no journal
@@ -424,7 +483,7 @@ export function initAutoUpdate({
       // The backend re-checks busy itself, atomically with starting its drain,
       // because work can start between the check above and this call. If it
       // refuses, nothing has been stopped and the install is simply postponed.
-      const handed = await handoffBackend({ force: !!opts.force });
+      const handed = await handoffBackend({ force });
       if (handed && handed.ok === false && handed.reason === 'busy') {
         log(`[update] backend refused to stop (work started meanwhile): ${JSON.stringify(handed.busy)}`);
         state.set({ phase: 'ready', blocked: { reason: 'busy', busy: handed.busy } });
@@ -445,7 +504,7 @@ export function initAutoUpdate({
     // isForceRunAfter=true: the user lands back in AGNT, which consumes the marker.
     defer(() => autoUpdater.quitAndInstall(true, true));
     return { ok: true };
-  });
+  }
 
   if (!support.enabled) {
     log(`[update] auto-update disabled: ${support.reason}`);
@@ -453,7 +512,8 @@ export function initAutoUpdate({
     return { enabled: false, reason: support.reason, check: async () => null, state };
   }
 
-  const policy = updatePolicy(platform);
+  const policy = updatePolicy(platform, { needsAdmin });
+  if (needsAdmin) log('[update] macOS will ask for an administrator to install updates here; they are prepared only when asked for');
   autoUpdater.autoDownload = policy.autoDownload;
   autoUpdater.autoInstallOnAppQuit = policy.autoInstallOnAppQuit;
   autoUpdater.allowDowngrade = policy.allowDowngrade;
@@ -489,22 +549,25 @@ export function initAutoUpdate({
   const waitsForSquirrel = platform === 'darwin' && !!nativeUpdater;
   let squirrelStaged = false;
   let stagingClock = null;
+  let installWhenStaged = null; // the click waiting on Squirrel, if any: { force }
   const stopStagingClock = () => {
     if (stagingClock === null) return;
     clearTimer(stagingClock);
     stagingClock = null;
   };
-  const failStaging = (message) => {
+  const failStaging = (reason) => {
     const s = state.get();
     if (s.phase !== 'preparing') return;
     stopStagingClock();
+    installWhenStaged = null;
+    const message = String(reason?.message || reason);
     log(`[update] ${s.available?.version} could not be prepared: ${message}`);
-    state.set({ phase: 'error', percent: null, error: { message, during: 'prepare' } });
+    state.set({ phase: 'error', percent: null, error: { ...stagingFailure(reason), during: 'prepare' } });
     releaseDownloadWait();
   };
   const beginStaging = (v) => {
     log(`[update] ${v} handed to Squirrel; not ready until it is staged`);
-    state.set({ phase: 'preparing', percent: 100, available: { version: v } });
+    state.set({ phase: 'preparing', percent: 100, available: { version: v }, blocked: null });
     stopStagingClock();
     stagingClock = setTimer(() => {
       stagingClock = null;
@@ -512,15 +575,44 @@ export function initAutoUpdate({
     }, STAGING_LIMIT_MS);
     stagingClock?.unref?.();
   };
+  /** Ask Squirrel for the file electron-updater is holding out to it. */
+  const askSquirrel = (v) => {
+    beginStaging(v);
+    try {
+      nativeUpdater.checkForUpdates();
+    } catch (err) {
+      failStaging(err);
+    }
+  };
   if (waitsForSquirrel) {
+    stagingBeforeInstall = {
+      needed: () => !squirrelStaged,
+      begin(request) {
+        const v = state.get().available?.version;
+        log(`[update] ${v} asked for; preparing it before anything is stopped`);
+        installWhenStaged = request;
+        askSquirrel(v);
+      },
+    };
     nativeUpdater.on('update-downloaded', () => {
       squirrelStaged = true;
       stopStagingClock();
       const s = state.get();
+      if (installWhenStaged && s.phase === 'preparing') {
+        // The person already asked for this update; carry on where they left off.
+        const request = installWhenStaged;
+        installWhenStaged = null;
+        finishInstall(request).catch((err) => {
+          const message = String(err?.message || err);
+          log(`[update] install failed: ${message}`);
+          state.set({ phase: 'error', percent: null, error: { message, during: 'installing' } });
+        });
+        return;
+      }
       // Staged after the time ran out still counts: the update is there.
       if (s.phase === 'preparing' || (s.phase === 'error' && s.error?.during === 'prepare')) markReady(s.available?.version);
     });
-    nativeUpdater.on('error', (err) => failStaging(String(err?.message || err)));
+    nativeUpdater.on('error', (err) => failStaging(err));
     nativeUpdater.on('update-not-available', () => failStaging('macOS found nothing to install.'));
   }
 
@@ -547,12 +639,7 @@ export function initAutoUpdate({
         state.set({ phase: 'error', percent: null, error: { message: 'Restart AGNT to finish updating.', during: 'download' } });
         return;
       }
-      beginStaging(info.version);
-      try {
-        nativeUpdater.checkForUpdates();
-      } catch (err) {
-        failStaging(String(err?.message || err));
-      }
+      askSquirrel(info.version);
       return;
     }
     unsettledDownload = info.version;
@@ -580,10 +667,13 @@ export function initAutoUpdate({
 
   autoUpdater.on('update-downloaded', (info) => {
     log(`[update] ${info?.version} downloaded`);
-    if (waitsForSquirrel && !squirrelStaged) {
+    if (waitsForSquirrel && !squirrelStaged && !needsAdmin) {
       beginStaging(info?.version);
       return;
     }
+    // Where macOS will ask for an administrator, the update is offered now and
+    // prepared when the person asks for it (stagingBeforeInstall).
+    if (waitsForSquirrel && !squirrelStaged) log(`[update] ${info?.version} is not prepared until asked for: macOS will want an administrator`);
     markReady(info?.version);
   });
 
@@ -593,7 +683,7 @@ export function initAutoUpdate({
     const s = state.get();
     if (s.phase === 'preparing') {
       // Squirrel's failures arrive here too, relayed by electron-updater.
-      failStaging(message);
+      failStaging(err);
     } else if (s.phase === 'downloading' || s.phase === 'installing' || userInitiated) {
       // Something the user is waiting on: say so, offer Retry.
       state.set({ phase: 'error', percent: null, error: { message, during: s.phase === 'checking' ? 'check' : s.phase } });
@@ -625,6 +715,6 @@ export function initAutoUpdate({
 }
 
 export default {
-  initAutoUpdate, updatePolicy, updateSupport, needsExplicitInstall, manualDownloadUrl, channelFor, feedUrlFor,
+  initAutoUpdate, updatePolicy, updateSupport, needsExplicitInstall, macInstallNeedsAdmin, stagingFailure, manualDownloadUrl, channelFor, feedUrlFor,
   checkUpdateInfo, installVerdict, createUpdateState, createInstallMarker,
 };

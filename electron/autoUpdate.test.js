@@ -25,6 +25,8 @@ import { compareVersions,
   keepAppImagePath,
   isPerMachineInstall,
   manualDownloadUrl,
+  macInstallNeedsAdmin,
+  stagingFailure,
   STAGING_LIMIT_MS,
   initAutoUpdate,
 } from './autoUpdate.js';
@@ -47,6 +49,9 @@ const FEED = 'https://agnt.gg/updates/';
 const url = (v, name) => `${ASSETS}v${v}/AGNT-${v}-${name}`;
 const info = (v, names = ['win-x64.exe']) => ({ version: v, files: names.map((n) => ({ url: url(v, n), sha512: 'x', size: 1 })), path: url(v, names[0]) });
 const idle = { goals: 0, chats: 0, workflows: 0, tools: 0, unknown: [] };
+const settle = () => new Promise((r) => setTimeout(r, 0));
+// macOS's own wording for an administrator prompt that was cancelled.
+const cancelledPrompt = () => Object.assign(new Error('The operation couldn’t be completed. (OSStatus error -60006.)'), { code: -60006, domain: 'NSOSStatusErrorDomain' });
 
 // ------------------------------------------------------------------ policy
 describe('which feed a build follows', () => {
@@ -92,6 +97,60 @@ describe('how installs happen', () => {
     expect(updatePolicy('linux').autoInstallOnAppQuit).toBe(true);
     expect(needsExplicitInstall('win32')).toBe(true);
     expect(needsExplicitInstall('darwin')).toBe(false);
+  });
+  it('a Mac that will ask for an administrator waits for a click too', () => {
+    expect(updatePolicy('darwin', { needsAdmin: true }).autoInstallOnAppQuit).toBe(false);
+    expect(updatePolicy('darwin', { needsAdmin: false }).autoInstallOnAppQuit).toBe(true);
+  });
+});
+
+describe('macOS: does replacing the app need an administrator?', () => {
+  const installed = '/Applications/AGNT.app/Contents/MacOS/AGNT';
+  const refusing = (targets, code = 'EACCES') => ({
+    constants: { W_OK: 2 },
+    accessSync: (target) => { if (targets.includes(target)) throw Object.assign(new Error(code), { code }); },
+  });
+  const needs = (fsDep, over = {}) => macInstallNeedsAdmin({ platform: 'darwin', execPath: installed, fs: fsDep, path: path.posix, ...over });
+
+  it('yes when the folder holding the app is not this account’s to change (a standard account, /Applications)', () => {
+    expect(needs(refusing(['/Applications']))).toBe(true);
+  });
+  it('yes when the app itself is not', () => {
+    expect(needs(refusing(['/Applications/AGNT.app']))).toBe(true);
+    expect(needs(refusing(['/Applications/AGNT.app'], 'EPERM'))).toBe(true);
+  });
+  it('no when both can be changed, as in the Applications folder inside a home folder', () => {
+    expect(needs(refusing([]))).toBe(false);
+    expect(needs(refusing(['/Applications']), { execPath: '/Users/u/Applications/AGNT.app/Contents/MacOS/AGNT' })).toBe(false);
+  });
+  it('no when it cannot tell; macOS decides then', () => {
+    expect(needs(refusing(['/Applications'], 'ENOENT'))).toBe(false);
+    expect(needs(null)).toBe(false);
+    expect(needs(refusing(['/', '/opt', '/opt/dev']), { execPath: '/opt/dev/electron' })).toBe(false); // not an app bundle
+  });
+  it('is a question for macOS only', () => {
+    expect(needs(refusing(['/Applications']), { platform: 'win32' })).toBe(false);
+    expect(needs(refusing(['/Applications']), { platform: 'linux' })).toBe(false);
+  });
+});
+
+describe('what a person is told when macOS could not prepare an update', () => {
+  it('a cancelled administrator prompt is said in words, with the ways on', () => {
+    for (const reason of [cancelledPrompt(), new Error(cancelledPrompt().message), '(OSStatus error -60006.)']) {
+      const told = stagingFailure(reason);
+      expect(told.message).toBe("macOS asked for an administrator's name and password, and the request was cancelled.");
+      expect(told.hint).toMatch(/^Retry and enter them/);
+      expect(told.hint).toMatch(/Applications folder inside your home folder/);
+    }
+  });
+  it('so is one macOS did not accept', () => {
+    const told = stagingFailure(Object.assign(new Error('The operation couldn’t be completed. (OSStatus error -60005.)'), { code: -60005 }));
+    expect(told.message).toBe("macOS did not accept the administrator's name and password.");
+    expect(told.hint).toMatch(/^Retry and enter them/);
+  });
+  it('anything else is passed on as macOS said it', () => {
+    expect(stagingFailure(new Error('Could not locate update bundle'))).toEqual({ message: 'Could not locate update bundle' });
+    expect(stagingFailure('macOS found nothing to install.')).toEqual({ message: 'macOS found nothing to install.' });
   });
 });
 
@@ -214,7 +273,15 @@ describe('the post-restart check', () => {
 });
 
 // ------------------------------------------------------------------ wiring
-function harness({ platform = 'win32', arch = 'x64', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false, rollbackTo } = {}) {
+function harness({ platform = 'win32', arch = 'x64', isPackaged = true, version = '0.6.7', env = {}, busy = idle, handoff, refuse = false, marker = null, native = false, rollbackTo, standardAccount = false } = {}) {
+  // A standard macOS account with AGNT in /Applications: not a folder it can change.
+  const installedWhere = standardAccount
+    ? {
+      execPath: '/Applications/AGNT.app/Contents/MacOS/AGNT',
+      path: path.posix,
+      fs: { constants: { W_OK: 2 }, accessSync: (target) => { if (target === '/Applications') throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } },
+    }
+    : {};
   const handlers = new Map();
   const listeners = new Map();
   const nativeListeners = new Map();
@@ -254,6 +321,7 @@ function harness({ platform = 'win32', arch = 'x64', isPackaged = true, version 
     log: () => {},
     defer: (fn) => fn(),
     arch,
+    ...installedWhere,
     setTimer: (fn, ms) => { const timer = { fn, ms, live: true }; timers.push(timer); return timer; },
     clearTimer: (timer) => { if (timer) timer.live = false; },
   });
@@ -376,7 +444,6 @@ describe('macOS: preparing always ends', () => {
   // `preparing` waits on Squirrel. When Squirrel fails, or says nothing, the
   // banner has to say so and offer a way on. It used to stay on "almost
   // ready" for good, because only Squirrel's success could end the wait.
-  const settle = () => new Promise((r) => setTimeout(r, 0));
   const preparing = () => {
     const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
     h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
@@ -530,6 +597,142 @@ describe('macOS: preparing always ends', () => {
     h.emit('update-available', info('0.6.8'));
     h.emit('update-downloaded', { version: '0.6.8' });
     expect(h.clocks()).toHaveLength(0);
+  });
+});
+
+describe('macOS: an account that cannot change the Applications folder', () => {
+  // Preparing an update there makes macOS ask for an administrator. That used
+  // to happen in the background, about half a minute after launch, with
+  // nothing in AGNT saying why; a cancel then left the banner on "almost
+  // ready". Now the update is offered first and prepared only when asked for.
+  const offered = (opts = {}) => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true, standardAccount: true, ...opts });
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    return h;
+  };
+
+  it('is offered the update without macOS being asked for anything', () => {
+    const h = offered();
+    expect(h.autoUpdater.autoInstallOnAppQuit).toBe(false);
+    expect(h.last()).toMatchObject({ phase: 'ready', available: { version: '0.6.8' }, needsExplicitInstall: true, needsPermission: true });
+    expect(h.nativeUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(h.clocks()).toHaveLength(0);
+  });
+
+  it('an account that can change the folder is prepared in the background as before', () => {
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    expect(h.autoUpdater.autoInstallOnAppQuit).toBe(true);
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(h.last()).toMatchObject({ phase: 'preparing', needsExplicitInstall: false, needsPermission: false });
+  });
+
+  it('the click prepares the update first, and stops nothing until macOS has accepted it', async () => {
+    const h = offered();
+    expect(await h.invoke('update:install')).toEqual({ ok: true });
+    expect(h.last()).toMatchObject({ phase: 'preparing', available: { version: '0.6.8' } });
+    expect(h.nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(h.clocks()).toHaveLength(1);
+    expect(h.order).toEqual([]);
+    h.emitNative('update-downloaded');
+    await settle();
+    expect(h.order).toEqual(['handoff', 'quitAndInstall']);
+    expect(h.autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(h.last()).toMatchObject({ phase: 'installing' });
+    expect(h.clocks()).toHaveLength(0);
+  });
+
+  it('a cancelled administrator prompt is said plainly and leaves the app running', async () => {
+    const h = offered();
+    await h.invoke('update:install');
+    h.emitNative('error', cancelledPrompt());
+    expect(h.last()).toMatchObject({
+      phase: 'error',
+      available: { version: '0.6.8' },
+      error: { message: "macOS asked for an administrator's name and password, and the request was cancelled.", during: 'prepare' },
+    });
+    expect(h.last().error.hint).toMatch(/Applications folder inside your home folder/);
+    expect(h.order).toEqual([]);
+    // Accepting the prompt after that makes the update ready; it restarts nothing.
+    h.emitNative('update-downloaded');
+    await settle();
+    expect(h.order).toEqual([]);
+    expect(h.last()).toMatchObject({ phase: 'ready', error: null });
+  });
+
+  it('Retry offers it again, and the next click asks macOS again', async () => {
+    const h = offered();
+    await settle();
+    await h.invoke('update:install');
+    h.emitNative('error', cancelledPrompt());
+    const retry = h.invoke('update:check');
+    h.emit('checking-for-update');
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    expect(await retry).toMatchObject({ phase: 'ready', error: null, needsPermission: true });
+    expect(await h.invoke('update:install')).toEqual({ ok: true });
+    expect(h.nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it('running work is refused before macOS is asked for anything', async () => {
+    const h = offered({ busy: { ...idle, goals: 1 } });
+    expect(await h.invoke('update:install')).toMatchObject({ ok: false, reason: 'busy' });
+    expect(h.nativeUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(h.last()).toMatchObject({ phase: 'ready', blocked: { reason: 'busy' } });
+  });
+
+  it('Restart anyway is carried through to the backend once macOS has accepted', async () => {
+    const h = offered({ busy: { ...idle, goals: 1 } });
+    h.handoffBackend.mockImplementation(async (opts) => { h.order.push(`handoff:${opts.force}`); return { ok: true }; });
+    expect(await h.invoke('update:install', { force: true })).toEqual({ ok: true });
+    expect(h.last()).toMatchObject({ phase: 'preparing', blocked: null });
+    h.emitNative('update-downloaded');
+    await settle();
+    expect(h.order).toEqual(['handoff:true', 'quitAndInstall']);
+  });
+
+  it('work that starts while macOS is asking postpones the install; the prepared update stays ready', async () => {
+    const h = offered();
+    h.handoffBackend.mockImplementation(async () => ({ ok: false, reason: 'busy', busy: { ...idle, chats: 1 } }));
+    await h.invoke('update:install');
+    h.emitNative('update-downloaded');
+    await settle();
+    expect(h.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+    expect(h.last()).toMatchObject({ phase: 'ready', blocked: { reason: 'busy', busy: { chats: 1 } } });
+    // It is prepared now, so the next click goes straight to the install.
+    h.handoffBackend.mockImplementation(async () => ({ ok: true }));
+    expect(await h.invoke('update:install')).toEqual({ ok: true });
+    expect(h.nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(h.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second click while macOS is asking changes nothing', async () => {
+    const h = offered();
+    await h.invoke('update:install');
+    expect(await h.invoke('update:install')).toEqual({ ok: false, reason: 'not-ready' });
+    expect(h.nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('a prompt nobody answers is given up on; answering it later makes the update ready, not installed', async () => {
+    const h = offered();
+    await h.invoke('update:install');
+    h.elapse();
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: 'macOS did not finish preparing the update.', during: 'prepare' } });
+    h.emitNative('update-downloaded');
+    await settle();
+    expect(h.order).toEqual([]);
+    expect(h.last()).toMatchObject({ phase: 'ready', error: null });
+  });
+
+  it('a cancelled prompt reads the same when macOS raises it in the background', () => {
+    // The check above is a judgement made before macOS makes its own. Where the
+    // two disagree the prompt still arrives unasked, and still has to be explained.
+    const h = harness({ platform: 'darwin', arch: 'arm64', native: true });
+    h.emit('update-available', info('0.6.8', ['mac-arm64.zip']));
+    h.emit('update-downloaded', { version: '0.6.8' });
+    h.emit('error', cancelledPrompt());
+    expect(h.last()).toMatchObject({ phase: 'error', error: { message: "macOS asked for an administrator's name and password, and the request was cancelled.", during: 'prepare' } });
   });
 });
 
