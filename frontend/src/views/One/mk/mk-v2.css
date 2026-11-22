@@ -5,6 +5,11 @@
    is one.css's and is left exactly as it is. Loaded after mk.css and
    mk-frame.css, which it refines; mk.css is generated and never hand-edited. */
 
+/* ── Readable on an office monitor: the quietest text is a step lighter, and
+   nothing a person reads in a row or under a title is under 13px. ────────── */
+.mk { --text-tertiary: color-mix(in srgb, var(--color-text-muted) 45%, var(--text-secondary)); }
+.mk :is(small, .r-sub, .v2-time, .ws-plan, .d-item .count) { font-size: max(13px, 1em * 0.93); }
+
 /* ── The rail: every icon named, the badge on its corner ─────────────────── */
 .mk .rail.rail-v2 { width: 72px; gap: 2px; padding: 12px 0 12px; }
 .mk .rail-v2 .rail-btn { width: 60px; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; }
