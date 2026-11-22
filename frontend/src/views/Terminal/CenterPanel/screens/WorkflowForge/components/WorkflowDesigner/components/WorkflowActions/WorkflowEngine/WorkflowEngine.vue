@@ -1,7 +1,7 @@
 <template>
   <Tooltip :text="getButtonTitle" width="auto" position="bottom">
-    <button id="workflow-engine-toggle" data-tour-id="workflows.run-button" @click="toggleWorkflow" :disabled="isButtonDisabled">
-      <i :class="getButtonIcon"></i>
+    <button id="workflow-engine-toggle" data-tour-id="workflows.run-button" :class="{ 'has-label': plain }" @click="toggleWorkflow" :disabled="isButtonDisabled">
+      <i :class="getButtonIcon"></i><span v-if="plain" class="engine-label">{{ plainLabel }}</span>
     </button>
   </Tooltip>
 </template>
@@ -10,11 +10,16 @@
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { startRefusal } from '../../../workflowStartRefusal.js';
+import { usePlainShell } from '@/composables/plainWords.js';
 
 export default {
   name: 'WorkflowEngine',
   components: {
     Tooltip,
+  },
+  setup() {
+    // Inside AGNT One the button says what it does: Turn on, Turn off.
+    return { plain: usePlainShell() };
   },
   props: {
     workflowId: {
@@ -80,6 +85,11 @@ export default {
         return 'Stop Workflow (Listening)';
       }
       return this.isAnimating ? 'Deactivate Workflow' : 'Activate Workflow';
+    },
+    plainLabel() {
+      if (this.localWorkflowStatus === 'queued') return 'Starting…';
+      if (this.localWorkflowStatus === 'stopping') return 'Turning off…';
+      return this.isAnimating || this.localWorkflowStatus === 'listening' ? 'Turn off' : 'Turn on';
     },
     isButtonDisabled() {
       return this.localWorkflowStatus === 'queued' || this.localWorkflowStatus === 'stopping';
@@ -625,6 +635,9 @@ export default {
 </script>
 
 <style scoped>
+#workflow-engine-toggle.has-label { width: auto; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
+.engine-label { font-size: 13px; white-space: nowrap; }
+
 #workflow-engine-toggle {
   /* position: fixed;
     top: 8px;
