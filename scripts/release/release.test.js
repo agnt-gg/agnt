@@ -11,8 +11,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   parseLatestYml, renderLatestYml, mergeMacFeeds, binaryArch, archMatches,
-  zipEntries, zipEntryHead, validateManifest, feedFromYml,
+  zipEntries, zipEntryHead, validateManifest, feedFromYml, unusableUpdateFeed,
 } from './releaseLib.mjs';
+import { compareVersions, checkUpdateInfo } from '../../electron/autoUpdate.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const run = (script, args, cwd) => spawnSync(process.execPath, [path.join(here, script), ...args], { cwd, encoding: 'utf8' });
@@ -247,5 +248,40 @@ describe('release-manifest', () => {
 
   it('feedFromYml keys entries by file name', () => {
     expect(feedFromYml(parseLatestYml(yml([[`AGNT-${V}-win-x64.exe`, 5, 9]]))).files[0]).toMatchObject({ name: `AGNT-${V}-win-x64.exe`, size: 5, blockMapSize: 9 });
+  });
+});
+
+// ---- the rehearsal's unusable update ----------------------------------------
+describe('the rehearsal update that cannot be prepared', () => {
+  // The versions the Mac rehearsal really builds, so a change there is checked here.
+  const workflow = fs.readFileSync(path.join(here, '..', '..', '.github', 'workflows', 'update-rehearsal.yml'), 'utf8').split('\n  win-rollback:')[0];
+  const [OLD, NEW] = [...workflow.matchAll(/extraMetadata\.version=(\S+)/g)].map((m) => m[1]);
+  const HOST = 'http://127.0.0.1:8787';
+  const make = (over = {}) => unusableUpdateFeed({
+    oldVersion: OLD, newVersion: NEW, newFileName: `AGNT-${NEW}-mac-arm64.zip`, host: HOST, sha512: b64('zip'), size: 178, releaseDate: '2026-11-08T00:00:00.000Z', ...over,
+  });
+
+  it('is a version the old build takes as newer, below the real update', () => {
+    expect(OLD && NEW).toBeTruthy();
+    const { version } = make();
+    expect(compareVersions(version, OLD)).toBe(1);
+    expect(compareVersions(version, NEW)).toBe(-1);
+  });
+
+  it('names its one file the way the old build expects, architecture kept', () => {
+    const { version, fileName, feed } = make();
+    expect(fileName).toBe(`AGNT-${version}-mac-arm64.zip`);
+    expect(feed.files).toEqual([{ url: `${HOST}/releases/download/v${version}/${fileName}`, sha512: b64('zip'), size: 178 }]);
+    expect(checkUpdateInfo(feed, { assetBase: `${HOST}/releases/download/`, currentVersion: OLD })).toEqual({ ok: true });
+  });
+
+  it('survives being written as latest-mac.yml and read back', () => {
+    const { feed } = make();
+    expect(parseLatestYml(renderLatestYml(feed))).toEqual(feed);
+  });
+
+  it('refuses builds it cannot place a version between', () => {
+    expect(() => make({ oldVersion: '0.6.7' })).toThrow(/prereleases/);
+    expect(() => make({ newFileName: 'AGNT-9.9.9-mac-arm64.zip' })).toThrow(/does not carry version/);
   });
 });

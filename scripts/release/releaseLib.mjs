@@ -86,6 +86,21 @@ export function mergeMacFeeds(a, b) {
   };
 }
 
+// ------------------------------------------------------------ rehearsal
+/**
+ * The feed for a rehearsal update that cannot be prepared: a version the old
+ * rehearsal build accepts as newer, with one file named like the real one.
+ */
+export function unusableUpdateFeed({ oldVersion, newVersion, newFileName, host, sha512, size, releaseDate = new Date().toISOString() }) {
+  if (!/^\d+\.\d+\.\d+-./.test(String(oldVersion))) throw new Error(`rehearsal builds are prereleases; got ${oldVersion}`);
+  if (!String(newFileName).includes(newVersion)) throw new Error(`${newFileName} does not carry version ${newVersion}`);
+  // One more prerelease field sorts after oldVersion and before its next prerelease.
+  const version = `${oldVersion}.1`;
+  const fileName = String(newFileName).split(newVersion).join(version);
+  const url = `${host}/releases/download/v${version}/${fileName}`;
+  return { version, fileName, feed: { version, files: [{ url, sha512, size }], path: url, sha512, releaseDate } };
+}
+
 // ------------------------------------------------------------ hashing
 export function sha512File(file) {
   return new Promise((resolve, reject) => {

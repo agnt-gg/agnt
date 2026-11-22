@@ -12,8 +12,10 @@
  * and prerelease versions (so they follow the "rehearsal" channel).
  *
  * What it proves, per kind:
- *   mac       the app downloads the update, Squirrel installs it when the app
- *             quits, and the relaunched bundle IS the new version
+ *   mac       first, an update macOS cannot prepare is reported as failed and
+ *             never offered as ready, and the installed app is left alone;
+ *             then the app downloads the real update, Squirrel installs it
+ *             when the app quits, and the relaunched bundle IS the new version
  *   appimage  the same through electron-updater's AppImage path, with the file
  *             named the way users download it (version in the name)
  *   deb       the app does NOT update itself: it disables the updater and never
@@ -30,7 +32,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { parseLatestYml, renderLatestYml, sha512File } from './releaseLib.mjs';
+import { parseLatestYml, renderLatestYml, sha512File, unusableUpdateFeed } from './releaseLib.mjs';
 
 const arg = (n, d) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -107,8 +109,14 @@ if (feed.files.length) {
   feed.sha512 = feed.files[0].sha512;
 }
 const feedName = kind === 'mac' ? 'latest-mac.yml' : 'latest-linux.yml';
-fs.writeFileSync(path.join(serveRoot, 'updates', 'rehearsal', feedName), feed.files.length ? renderLatestYml(feed) : `version: ${NEW}\nfiles: []\n`);
-fs.copyFileSync(path.join(serveRoot, 'updates', 'rehearsal', feedName), path.join(out, `served-${feedName}`));
+const feedPath = path.join(serveRoot, 'updates', 'rehearsal', feedName);
+/** Put a feed where the app looks for it, and keep a copy with the evidence. */
+function publish(yml, keepAs = `served-${feedName}`) {
+  fs.writeFileSync(feedPath, yml);
+  fs.copyFileSync(feedPath, path.join(out, keepAs));
+}
+const newFeedYml = feed.files.length ? renderLatestYml(feed) : `version: ${NEW}\nfiles: []\n`;
+publish(newFeedYml);
 
 const requests = [];
 const server = http
@@ -258,9 +266,62 @@ function annotateFailure(title, text) {
   console.log(`::error title=${esc(title)}::${esc(clip(text))}`);
 }
 
+/** The version of the app bundle installed on this Mac; '' while it cannot be read. */
+function installedBundleVersion() {
+  try {
+    return execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', path.join(macApp, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
+// ------------------------------------------------------------------ macOS: an update that cannot be prepared
+/**
+ * Offer the old build an update macOS cannot prepare (a zip with no app in it)
+ * and require the app to say so. Squirrel fails only after electron-updater
+ * has reported "downloaded"; the app used to wait on it for good, with nothing
+ * on screen to click. Afterwards the real feed is back and the installed app is
+ * the old one still, so the rehearsal below starts where a user would: a
+ * failed attempt behind them, a good update on offer.
+ */
+async function rehearseUnusableUpdate() {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-rehearsal-unusable-'));
+  const contents = path.join(scratch, 'contents');
+  fs.mkdirSync(contents);
+  fs.writeFileSync(path.join(contents, 'README.txt'), 'not an app\n');
+  const zip = path.join(scratch, 'update.zip');
+  execFileSync('ditto', ['-c', '-k', contents, zip]);
+  const unusable = unusableUpdateFeed({ oldVersion: OLD, newVersion: NEW, newFileName: served[0].url, host: HOST, sha512: await sha512File(zip), size: fs.statSync(zip).size });
+  const dir = path.join(serveRoot, 'releases', 'download', `v${unusable.version}`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(zip, path.join(dir, unusable.fileName));
+  publish(renderLatestYml(unusable.feed), `served-unusable-${feedName}`);
+  note(`offering ${unusable.version}: ${unusable.fileName} holds no app`);
+
+  const version = unusable.version.replace(/\./g, '\\.');
+  const run = launch('unusable', exe);
+  if (!(await waitForLog(run, new RegExp(`App version from package.json: ${OLD.replace(/\./g, '\\.')}`), 120000))) throw new Error('old build did not start');
+  const downloaded = await waitForLog(run, new RegExp(`\\[update\\] ${version} downloaded`), 300000);
+  check('downloads an update macOS cannot prepare', downloaded, requests.slice(-3).join(' | '));
+  if (!downloaded) throw new Error('the unusable update never downloaded');
+  // Squirrel normally answers within seconds; left unanswered, the app gives
+  // up by itself after ten minutes (STAGING_LIMIT_MS in electron/autoUpdate.js).
+  const reported = await waitForLog(run, new RegExp(`\\[update\\] ${version} could not be prepared: `), 13 * 60 * 1000);
+  check('reports it as failed instead of waiting on it', reported, (/could not be prepared: (.*)/.exec(run.read()) || [])[1] || '');
+  check('never offers it as ready', !new RegExp(`\\[update\\] ${version} ready`).test(run.read()));
+  check('app quits cleanly after the failed update', await quit(run));
+  await sleep(10000); // anything staged would have been installed by now
+  const after = installedBundleVersion();
+  check('the installed app is left as it was', after === OLD, `CFBundleShortVersionString=${after}`);
+  if (!reported) throw new Error('a failed update was not reported');
+  publish(newFeedYml);
+}
+
 // ------------------------------------------------------------------ the rehearsal
 let failed = false;
 try {
+  if (kind === 'mac') await rehearseUnusableUpdate();
+
   const first = launch('old', exe);
   const started = await waitForLog(first, new RegExp(`App version from package.json: ${OLD.replace(/\./g, '\\.')}`), 120000);
   check('old build starts', started, OLD);
@@ -288,11 +349,10 @@ try {
     let installedNew = false;
     let relaunchPath = exe;
     if (kind === 'mac') {
-      const plist = path.join(macApp, 'Contents', 'Info.plist');
       const end = Date.now() + 180000;
       let v = '';
       while (Date.now() < end) {
-        try { v = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist], { encoding: 'utf8' }).trim(); } catch { v = ''; }
+        v = installedBundleVersion();
         if (v === NEW) break;
         await sleep(3000);
       }
@@ -350,7 +410,7 @@ try {
 
 const bad = Object.entries(results).filter(([, r]) => !r.ok);
 if (failed || bad.length || Object.keys(results).length === 0) {
-  const appLogs = ['old', 'new']
+  const appLogs = ['unusable', 'old', 'new']
     .map((l) => path.join(out, `app-${l}.log`))
     .filter((p) => fs.existsSync(p))
     .map((p) => `--- ${path.basename(p)}\n` + fs.readFileSync(p, 'utf8').split('\n').filter((l) => /\[update\]|\[Update\]|error|Error|ShipIt|Squirrel/.test(l)).slice(-40).join('\n'))

@@ -189,6 +189,14 @@ describe('the update rehearsal can read what the app prints', () => {
     }
     expect(rehearsal).toMatch(/\\\[update\\\] auto-update disabled: linux-package-manager/);
   });
+
+  it('waits for the line the app logs when macOS cannot prepare an update', () => {
+    // The Mac rehearsal offers an update that cannot be prepared and waits for
+    // this exact line. Reword one side only and it waits out its whole limit.
+    expect(updater).toContain(' could not be prepared: ${message}`');
+    expect(rehearsal).toContain(' could not be prepared: `');
+    expect(rehearsal).toMatch(/if \(kind === 'mac'\) await rehearseUnusableUpdate\(\);/);
+  });
 });
 
 describe('the changelog does not claim what does not exist', () => {
