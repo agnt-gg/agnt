@@ -24,20 +24,22 @@
         >{{ label }}</button>
       </div>
     </div>
-    <ul class="list">
+    <ul v-if="loading || listError || !rows.length" class="list">
       <li v-if="loading" class="empty">Loading…</li>
       <li v-else-if="listError" class="empty">{{ listError }}</li>
-      <li v-else-if="!rows.length" class="empty">{{ query ? `Nothing here matches “${query}”.` : 'This folder is empty.' }}</li>
-      <template v-else>
-        <li v-for="item in shownRows" :key="item.path">
-          <button type="button" class="r" @click="open(item)">
-            <span class="r-icon"><MkIcon :name="isFolder(item) ? 'file' : 'doc'" size="sm" /></span>
-            <span class="r-text"><strong>{{ item.name }}</strong><small>{{ metaOf(item) }}</small></span>
-            <MkIcon name="chev" size="sm" class="r-go" />
-          </button>
-        </li>
-      </template>
+      <li v-else class="empty">{{ query ? `Nothing here matches “${query}”.` : 'This folder is empty.' }}</li>
     </ul>
+    <!-- The same cards as every other Library tab: a tile, the name, its kind, and a quiet line. -->
+    <div v-else class="cards">
+      <div v-for="c in cards" :key="c.item.path" class="card clickable" role="button" tabindex="0" :data-path="c.item.path" @click="open(c.item)" @keydown.enter="open(c.item)">
+        <div class="card-top">
+          <span class="v2-mono" :class="'v2-hue-' + c.hue" aria-hidden="true"><MkIcon :name="isFolder(c.item) ? 'file' : 'doc'" size="sm" /></span>
+          <h4 class="mk-ellipsis" style="min-width: 0; flex: 1">{{ c.item.name }}</h4>
+        </div>
+        <p>{{ c.kind }}</p>
+        <div v-if="c.meta" class="v2-card-meta">{{ c.meta }}</div>
+      </div>
+    </div>
     <p v-if="!loading && !listError && rows.length > shownRows.length" class="mk-muted" style="margin-top: 10px">
       Showing {{ shownRows.length }} of {{ rows.length.toLocaleString() }}. Search to find the rest.
     </p>
@@ -49,7 +51,7 @@ import { ref, computed, inject, watch, onMounted } from 'vue';
 import MkIcon from './MkIcon.vue';
 import { getTree } from '@/services/fileSystemService.js';
 import { reportWorkspaceRootCount } from '@/composables/useWorkspaceFileCount.js';
-import { FILE_SORTS, sortFileItems, crumbsOf, baseName, fmtSize } from '@/views/Focused/focusedFiles.js';
+import { FILE_SORTS, sortFileItems, crumbsOf, baseName, fileCard } from '@/views/Focused/focusedFiles.js';
 import { ago } from '@/views/Focused/focusedEditors.js';
 import { matches } from '@/canvas/jumpIndex.js';
 
@@ -91,7 +93,7 @@ const shownRows = computed(() => rows.value.slice(0, CAP));
 const crumbs = computed(() => crumbsOf(props.dir));
 const searchLabel = computed(() => `Search ${props.dir ? baseName(props.dir) : 'files'}`);
 const isFolder = (item) => item.type === 'directory';
-const metaOf = (item) => (isFolder(item) ? 'Folder' : [fmtSize(item.size), item.modifiedAt ? ago(item.modifiedAt) : ''].filter(Boolean).join(' · '));
+const cards = computed(() => shownRows.value.map((item) => ({ item, ...fileCard(item, ago) })));
 
 // Only the newest listing lands: a slow answer for a folder already left is dropped.
 let latest = 0;

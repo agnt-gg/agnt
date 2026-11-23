@@ -40,7 +40,7 @@ describe('Library', () => {
   it('Files shows your workspace in the page, at the folder the route names', async () => {
     const { wrapper, ctx } = mountLibrary('files', { dir: 'Reports' });
     await flushPromises();
-    expect(wrapper.find('.tabs .tab.is-active').text()).toBe('Files');
+    expect(wrapper.find('.tabs .tab.is-active').text().replace(/\d+$/, '')).toBe('Files');
     expect(wrapper.findComponent(MkFiles).props('dir')).toBe('Reports');
     expect(wrapper.findComponent(MarketplaceShelf).exists()).toBe(false);
     expect(wrapper.find('.page-head .primary').exists()).toBe(false);

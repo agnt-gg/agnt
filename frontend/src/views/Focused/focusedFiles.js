@@ -31,6 +31,37 @@ export function iconFor(path) {
   return ICON_BY_KIND[fileKind(path)] || 'fas fa-file';
 }
 
+// What a Library card calls each kind, in plain words, and its tile's colour on the cards'
+// v2-hue-0…6 scale: a folder is amber, and no two common kinds share a colour.
+const CARD_KIND = Object.freeze({
+  folder: ['Folder', 3], html: ['Web page', 1], pdf: ['PDF', 4], image: ['Image', 2], video: ['Video', 0], audio: ['Audio', 5], text: ['', 6],
+});
+// Everyday names for the files that are not a kind of their own.
+const NAME_BY_EXT = Object.freeze({
+  doc: 'Word document', docx: 'Word document', rtf: 'Document', odt: 'Document',
+  xls: 'Spreadsheet', xlsx: 'Spreadsheet', csv: 'Spreadsheet', ods: 'Spreadsheet',
+  ppt: 'Presentation', pptx: 'Presentation', key: 'Presentation', odp: 'Presentation',
+  txt: 'Text', md: 'Text', json: 'Data', xml: 'Data', yaml: 'Data', yml: 'Data',
+  zip: 'Archive', rar: 'Archive', '7z': 'Archive',
+  js: 'Code', ts: 'Code', py: 'Code', css: 'Code', sh: 'Code',
+});
+
+/**
+ * A file or folder as a Library card: its kind in a word, the tile colour, and the quiet
+ * line under it (size and when it last changed). `ago` formats a time.
+ */
+export function fileCard(item = {}, ago = () => '') {
+  const folder = item.type === 'directory';
+  const [kind, hue] = CARD_KIND[folder ? 'folder' : fileKind(item.path || item.name)];
+  const changed = item.modifiedAt ? `Changed ${ago(item.modifiedAt)}` : '';
+  const ext = folder ? '' : extOf(item.path || item.name);
+  return {
+    kind: kind || NAME_BY_EXT[ext] || (ext ? `${ext.toUpperCase()} file` : 'Document'),
+    hue,
+    meta: [folder ? '' : fmtSize(item.size), changed].filter(Boolean).join(' · '),
+  };
+}
+
 export function baseName(path) {
   const parts = String(path || '').split(/[\\/]+/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : '';

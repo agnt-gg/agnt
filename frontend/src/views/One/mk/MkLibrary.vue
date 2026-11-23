@@ -101,6 +101,7 @@ import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { assetTypeLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
 import { libraryTab, libraryRows } from '@/views/Focused/focusedModel.js';
+import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
 import { librarySortsFor, sortLibraryRows, libraryMeta, readLibrarySort, saveLibrarySort } from '@/views/Focused/librarySort.js';
 
 const MARKET_ICON = Object.freeze({ workflow: 'bolt', tool: 'pen', skill: 'library', widget: 'board', plugin: 'plug' });
@@ -154,7 +155,13 @@ function tagOf(r) {
   if (r.status === 'error') return { label: 'Needs a look', tone: 'amber' };
   return null;
 }
-const counts = computed(() => Object.fromEntries(LIBRARY_TABS.filter((t) => t.asset).map((t) => [t.id, libraryRows(t.asset, listOf(libraryTab(t.asset))).length])));
+// Every tab its count; Files counts the top of the workspace (shared with the Files pages).
+const files = useWorkspaceFileCount();
+files.load();
+const counts = computed(() => ({
+  ...Object.fromEntries(LIBRARY_TABS.filter((t) => t.asset).map((t) => [t.id, libraryRows(t.asset, listOf(libraryTab(t.asset))).length])),
+  ...(files.count.value !== null ? { files: files.count.value } : {}),
+}));
 
 const items = computed(() => store.getters['marketplace/shelfItems'] || []);
 const MARKET_SORTS = Object.freeze([['popular', 'Most popular'], ['name', 'Name']]);

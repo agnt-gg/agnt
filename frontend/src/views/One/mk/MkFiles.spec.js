@@ -14,7 +14,7 @@ function mountFiles(dir = '') {
   const wrapper = mount(MkFiles, { props: { dir }, global: { provide: { teamCtx: ctx } } });
   return { wrapper, ctx };
 }
-const names = (wrapper) => wrapper.findAll('.list .r strong').map((el) => el.text());
+const names = (wrapper) => wrapper.findAll('.cards .card h4').map((el) => el.text());
 
 beforeEach(() => {
   getTree.mockReset();
@@ -29,8 +29,8 @@ describe('Library › Files', () => {
     await flushPromises();
     expect(getTree).toHaveBeenCalledWith('', { details: true });
     expect(names(wrapper)).toEqual(['Reports', 'a.png', 'notes.md']);
-    expect(wrapper.find('.list .r small').text()).toBe('Folder');
-    expect(wrapper.findAll('.list .r small')[1].text()).toMatch(/^2\.0 KB/);
+    expect(wrapper.find('.cards .card p').text()).toBe('Folder');
+    expect(wrapper.findAll('.cards .card')[1].find('.v2-card-meta').text()).toMatch(/^2\.0 KB/);
     expect(wrapper.find('nav.crumbs').exists()).toBe(false);
   });
 
@@ -38,7 +38,7 @@ describe('Library › Files', () => {
     getTree.mockResolvedValue(listing(folder('Reports'), file('notes.md')));
     const { wrapper, ctx } = mountFiles();
     await flushPromises();
-    const [reports, notes] = wrapper.findAll('.list .r');
+    const [reports, notes] = wrapper.findAll('.cards .card');
     await reports.trigger('click');
     expect(ctx.go).toHaveBeenCalledWith({ view: 'library', tab: 'files', dir: 'Reports' });
     await notes.trigger('click');
@@ -64,7 +64,7 @@ describe('Library › Files', () => {
     getTree.mockResolvedValue(listing(...many, file('budget.xlsx')));
     const { wrapper } = mountFiles();
     await flushPromises();
-    expect(wrapper.findAll('.list .r')).toHaveLength(300);
+    expect(wrapper.findAll('.cards .card')).toHaveLength(300);
     expect(wrapper.text()).toContain('Showing 300 of 306. Search to find the rest.');
     await wrapper.find('input[type="search"]').setValue('budget');
     expect(names(wrapper)).toEqual(['budget.xlsx']);
@@ -89,7 +89,7 @@ describe('Library › Files', () => {
     const { wrapper } = mountFiles('gone');
     await flushPromises();
     expect(wrapper.find('.list .empty').text()).toBe('Couldn’t open this folder. Failed to fetch tree: Not Found');
-    expect(wrapper.findAll('.list .r')).toHaveLength(0);
+    expect(wrapper.findAll('.cards .card')).toHaveLength(0);
   });
 
   it('shows the folder it is on, even when the folder before it answers late', async () => {
