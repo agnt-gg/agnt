@@ -48,8 +48,12 @@ Builds native desktop applications for all platforms.
 | OS              | Platform | Outputs                                |
 |-----------------|----------|----------------------------------------|
 | windows-2022    | win      | AGNT-*-win-x64.exe                      |
-| macos-latest    | mac      | AGNT-*-mac-*.dmg, .zip                  |
-| ubuntu-latest   | linux    | AGNT-*-linux-x64.AppImage, .deb, .rpm  |
+| macos-15        | mac      | AGNT-*-mac-arm64.dmg, .zip              |
+| macos-15-intel  | mac      | AGNT-*-mac-x64.dmg, .zip                |
+| ubuntu-24.04    | linux    | AGNT-*-linux-x64.AppImage, .deb, .rpm  |
+
+Every runner is a pinned image, never a `-latest` label, so a GitHub image
+migration cannot change a shipped installer without a commit here.
 
 **Build Jobs:**
 - `build-electron-full` - Builds the desktop app for all platforms

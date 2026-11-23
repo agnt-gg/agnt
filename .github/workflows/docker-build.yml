@@ -28,7 +28,7 @@ jobs:
   # ==========================================================================
   prep:
     name: Prepare build info
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       build_ref: ${{ steps.info.outputs.build_ref }}
       version: ${{ steps.info.outputs.version }}
@@ -86,7 +86,7 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             slug: linux-amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -149,7 +149,7 @@ jobs:
   smoke-full:
     name: Smoke Docker Full (linux/amd64)
     needs: [prep, build-full]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # The harness comes from the workflow's own commit, not build_ref, as the
       # moving-tag checker below does: the image under test is pulled by digest
@@ -189,7 +189,7 @@ jobs:
   merge-full:
     name: Publish Docker Full manifest
     needs: [prep, build-full, smoke-full]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8

@@ -35,11 +35,11 @@ jobs:
             kind: mac
             arch: x64
             targets: --mac zip --x64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             kind: appimage
             arch: x64
             targets: --linux AppImage --x64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             kind: deb
             arch: x64
             targets: --linux deb --x64

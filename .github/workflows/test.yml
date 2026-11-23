@@ -31,7 +31,7 @@ concurrency:
 jobs:
   backend:
     name: Backend (vitest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -77,7 +77,7 @@ jobs:
   # enough to run on every push and is the only thing that stops this returning.
   line-endings:
     name: Line endings match .gitattributes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,7 +88,7 @@ jobs:
 
   frontend:
     name: Frontend (vitest + jsdom)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -154,7 +154,7 @@ jobs:
   # matches prints "Error: No tests found" and exits 1. Verified, not assumed.
   cross-client:
     name: Browser suite (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -232,7 +232,7 @@ jobs:
   # Delete the continue-on-error line the moment those 13 are resolved.
   node-test:
     name: node:test suite (report only — 13 known failures)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

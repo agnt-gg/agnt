@@ -26,7 +26,7 @@ concurrency:
 jobs:
   promote:
     name: Repoint moving tags
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       IMG: ghcr.io/${{ github.repository_owner }}/agnt
       # Passed through env, never interpolated into the script body.
