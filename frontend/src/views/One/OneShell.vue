@@ -26,8 +26,11 @@
          section. The chats are Studio's own list (OutputList), the same component,
          so groups, unread, archive and every row action work as in Studio; a row
          opens its chat by routing to /chat?content-id=… from any page. -->
+    <!-- Built the first time it is needed, then hidden rather than rebuilt elsewhere: drawing
+         hundreds of chats on every return to Chat was the slow part of getting there. -->
     <MkDrawer
-      v-if="!isMobile && sidebarExpanded && sidebarBelongs"
+      v-if="!isMobile && sidebarExpanded && sidebarBuilt"
+      v-show="sidebarBelongs"
       :team="teamState.team"
       :teams="teamState.teams"
       :spaces="teamState.spaces"
@@ -302,6 +305,8 @@ const drawerShown = computed(() => drawerOpen.value && (isMobile.value || onChat
 // The desktop sidebar (chats, My tasks, team spaces) belongs to the chat, a team space and My tasks;
 // every other page gets the full width, and the rail is how you move between them.
 const sidebarBelongs = computed(() => onChatPage.value || (page.value === 'team' && ['space', 'doc', 'mine', 'inbox'].includes(String(route.query.view || ''))));
+const sidebarBuilt = ref(false);
+watch(sidebarBelongs, (belongs) => { if (belongs) sidebarBuilt.value = true; }, { immediate: true });
 
 // ── Teamspaces: one shared team state for the rail badge, the drawer and the pages ──
 const team = useTeam(store);

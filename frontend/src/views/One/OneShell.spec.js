@@ -391,6 +391,18 @@ describe('OneShell', () => {
       w.unmount();
     });
 
+    it('once built on Chat, the sidebar is hidden on other pages, not rebuilt on return', async () => {
+      const w = mountShell('ChatScreen');
+      const drawer = w.find('.drawer').element;
+      await w.setProps({ screenName: 'ConnectorsScreen' });
+      expect(w.find('.drawer').element).toBe(drawer);
+      expect(w.find('.drawer').isVisible()).toBe(false);
+      await w.setProps({ screenName: 'ChatScreen' });
+      expect(w.find('.drawer').element).toBe(drawer);
+      expect(w.find('.drawer').isVisible()).toBe(true);
+      w.unmount();
+    });
+
     it('the sidebar belongs to the chat and team pages; every other page gets the full width', () => {
       const elsewhere = mountShell('ConnectorsScreen');
       expect(elsewhere.find('.drawer').exists()).toBe(false);
