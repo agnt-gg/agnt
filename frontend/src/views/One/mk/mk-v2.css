@@ -182,3 +182,5 @@
 .mk .v2-card-meta { margin-top: 10px; font-size: 13px; color: var(--text-tertiary); }
 .mk .v2-foot-note { margin-top: 12px; font-size: 13px; color: var(--text-tertiary); }
 .mk .card-top > .tag { flex: none; }
+.mk .board-bar > .field, .mk .board-bar > .seg { min-height: 34px; }
+.mk .board-bar > .seg { align-items: center; }
