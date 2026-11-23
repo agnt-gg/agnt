@@ -2,7 +2,7 @@
   "releases": [
     {
       "version": "0.6.9",
-      "date": "November 21, 2026",
+      "date": "November 23, 2026",
       "title": "Agent Teams & Your Year in AGNT — AGNT v0.6.9",
       "type": "patch",
       "features": [
@@ -13,9 +13,9 @@
         { "name": "Your year in AGNT: tap through your Year in review and share its summary card; it is in the top bar from December 1 to January 31, and under More any time", "status": "new" },
         { "name": "Review agent results one after another with Approve, Send back and Skip, or the A, S and J keys", "status": "new" },
         { "name": "Objectives: set a few, each with a target and where it stands; they sit above your goals board, and every goal says which one it serves", "status": "new" },
-        { "name": "Switch a monthly plan to yearly billing right in the app, with an optional code, and see the price before anything is charged", "status": "new" },
         { "name": "One sidebar on every page: workspaces, New chat, the Main chat, My Space, Teamspaces and all your chats, with groups, drag and drop, and type to filter", "status": "updated" },
-        { "name": "A long chat keeps its context after you edit, fork or switch model, instead of sending only the last message", "status": "bug" }
+        { "name": "A long chat keeps its context after you edit, fork or switch model, instead of sending only the last message", "status": "bug" },
+        { "name": "On a Mac, an update that needs an administrator's password asks only after you click Update, and if it can't finish it says why, with Retry and Download", "status": "bug" }
       ],
       "tags": ["Backwards Compatible"]
     },
@@ -806,6 +806,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-11-21T12:00:00Z"
+    "lastUpdated": "2026-11-23T12:00:00Z"
   }
 }
