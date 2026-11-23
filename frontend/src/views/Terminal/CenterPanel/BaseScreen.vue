@@ -2007,9 +2007,11 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   min-height: 0;
 }
 
+/* With both side panels hidden the page column stays centred across, but starts at the top:
+   centring it down as well pushed a tall page's top out of reach (a flex column cannot be
+   scrolled above its start) and left a short one floating. */
 .main-panel.centered-content .scrollable-content {
-  align-content: center;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
 }
 
@@ -2223,11 +2225,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   scrollbar-color: var(--terminal-border-color) transparent;
 }
 
-.main-panel.centered-content .scrollable-content {
-  align-content: center;
-  justify-content: center;
-  align-items: center;
-}
 
 /* *::-webkit-scrollbar {
   width: 0;
