@@ -53,3 +53,29 @@ describe('annotateEntityRefs', () => {
     expect(entityRegistryFromStore(store).map((e) => e.kind)).toEqual(['agent', 'workflow', 'goal']);
   });
 });
+
+describe('compiled once per registry', () => {
+  // A missing list (undefined getter) is the common case for goals before they load.
+  const getters = (agents, workflows, goals) => ({ getters: { 'agents/allAgents': agents, 'workflows/allWorkflows': workflows, 'goals/allGoals': goals } });
+  it('the same store lists give back the same registry, and its matchers are compiled once', () => {
+    const agents = [{ id: 'a1', name: 'Release Marshal' }];
+    const workflows = [{ id: 'w1', name: 'Nightly Backup' }];
+    const first = entityRegistryFromStore(getters(agents, workflows));
+    expect(entityRegistryFromStore(getters(agents, workflows))).toBe(first);
+    expect(compileEntityMatchers(first)).toBe(compileEntityMatchers(first));
+  });
+  it('a changed list, or one that grew in place, gives a new registry', () => {
+    const agents = [{ id: 'a1', name: 'Release Marshal' }];
+    const first = entityRegistryFromStore(getters(agents));
+    agents.push({ id: 'a2', name: 'Scout Agent' });
+    const grown = entityRegistryFromStore(getters(agents));
+    expect(grown).not.toBe(first);
+    expect(grown.map((e) => e.name)).toEqual(['Release Marshal', 'Scout Agent']);
+    expect(entityRegistryFromStore(getters([...agents]))).not.toBe(grown);
+  });
+  it('still links every name it finds, and leaves text without one alone', () => {
+    const registry = [{ kind: 'agent', id: 'a1', name: 'Release Marshal' }, { kind: 'workflow', id: 'w1', name: 'Nightly Backup' }];
+    expect(annotateEntityRefs('<p>Ask Release Marshal to run Nightly Backup.</p>', registry)).toBe('<p>Ask <span class="entity-ref" data-kind="agent" data-id="a1">Release Marshal</span> to run <span class="entity-ref" data-kind="workflow" data-id="w1">Nightly Backup</span>.</p>');
+    expect(annotateEntityRefs('<p>Nothing to link here.</p>', registry)).toBe('<p>Nothing to link here.</p>');
+  });
+});

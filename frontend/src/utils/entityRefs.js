@@ -21,8 +21,19 @@ const SKIP_TAGS = new Set(['code', 'pre', 'a', 'script', 'style', 'textarea', 'k
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapeAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
+// Compiled matchers per registry array: a message renders many text blocks against the
+// same registry, and compiling a few hundred patterns for each one is the slow part.
+const compiledByRegistry = new WeakMap();
+
 /** Build the matcher list once per registry; names ≥ 3 chars, longest first. */
 export function compileEntityMatchers(entities) {
+  if (Array.isArray(entities) && compiledByRegistry.has(entities)) return compiledByRegistry.get(entities);
+  const matchers = compileMatchers(entities);
+  if (Array.isArray(entities)) compiledByRegistry.set(entities, matchers);
+  return matchers;
+}
+
+function compileMatchers(entities) {
   const list = (entities || [])
     .filter((e) => e && e.name && String(e.name).trim().length >= 3 && e.kind && e.id != null)
     .map((e) => ({ ...e, name: String(e.name).trim() }))
@@ -48,7 +59,8 @@ function wrapTextNode(text, matchers, budget) {
     if ((budget.get(entity) || 0) >= budget.max) continue;
     const next = [];
     for (const seg of segments) {
-      if (seg.sealed) {
+      // A name not in the text cannot match it; skip the pattern (the costly part) outright.
+      if (seg.sealed || !seg.text.includes(entity.name)) {
         next.push(seg);
         continue;
       }
@@ -198,10 +210,23 @@ export const ENTITY_SCREENS = Object.freeze({
  * Build the registry from store state. Kept here so Chat and the widgets
  * that render messages feed the annotator the same way.
  */
+//
+// The same registry array comes back while the three lists are the same arrays at the same
+// lengths (Vuex hands back the same array until it changes; a push in place changes the
+// length), so its compiled matchers are reused too.
+// One empty list, so a store without a list does not look changed on every call.
+const NONE = Object.freeze([]);
+let lastRegistry = { agents: null, workflows: null, goals: null, size: -1, out: null };
 export function entityRegistryFromStore(store) {
+  const agents = store.getters['agents/allAgents'] || NONE;
+  const workflows = store.getters['workflows/allWorkflows'] || NONE;
+  const goals = store.getters['goals/allGoals'] || NONE;
+  const size = agents.length * 1e8 + workflows.length * 1e4 + goals.length;
+  if (lastRegistry.out && lastRegistry.agents === agents && lastRegistry.workflows === workflows && lastRegistry.goals === goals && lastRegistry.size === size) return lastRegistry.out;
   const out = [];
-  for (const a of store.getters['agents/allAgents'] || []) out.push({ kind: 'agent', id: a.id, name: a.name, screen: ENTITY_SCREENS.agent });
-  for (const w of store.getters['workflows/allWorkflows'] || []) out.push({ kind: 'workflow', id: w.id, name: w.name, screen: ENTITY_SCREENS.workflow });
-  for (const g of store.getters['goals/allGoals'] || []) out.push({ kind: 'goal', id: g.id, name: g.title || g.text, screen: ENTITY_SCREENS.goal });
+  for (const a of agents) out.push({ kind: 'agent', id: a.id, name: a.name, screen: ENTITY_SCREENS.agent });
+  for (const w of workflows) out.push({ kind: 'workflow', id: w.id, name: w.name, screen: ENTITY_SCREENS.workflow });
+  for (const g of goals) out.push({ kind: 'goal', id: g.id, name: g.title || g.text, screen: ENTITY_SCREENS.goal });
+  lastRegistry = { agents, workflows, goals, size, out };
   return out;
 }

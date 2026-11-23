@@ -29,6 +29,7 @@ function withGeometry(el) {
 
 const flush = async () => {
   await Promise.resolve(); // MutationObserver delivery
+  await new Promise((r) => requestAnimationFrame(r)); // the once-a-frame pin
   await nextTick();
 };
 

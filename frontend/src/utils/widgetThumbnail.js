@@ -8,36 +8,18 @@
  */
 
 import { API_CONFIG } from '@/tt.config.js';
+import { themeVariables } from '@/utils/themeVariables.js';
 
 /**
  * Build the theme style tag — EXACT same logic as CustomWidgetRenderer.buildThemeStyleTag()
  */
 function buildThemeStyleTag() {
-  const vars = [];
-  try {
-    for (const sheet of document.styleSheets) {
-      try {
-        for (const rule of sheet.cssRules) {
-          if (rule.style) {
-            for (let i = 0; i < rule.style.length; i++) {
-              const prop = rule.style[i];
-              if (prop.startsWith('--')) {
-                vars.push(prop);
-              }
-            }
-          }
-        }
-      } catch (_) {}
-    }
-  } catch (_) {}
-
-  const uniqueVars = [...new Set(vars)];
   const rootStyle = getComputedStyle(document.documentElement);
   const bodyStyle = getComputedStyle(document.body);
 
-  const lines = uniqueVars
-    .map((prop) => {
-      let val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
+  const lines = themeVariables()
+    .map(([prop, value]) => {
+      let val = value;
       // For screenshot capture: replace transparent background with solid RGB.
       // When custom backgrounds are enabled, --color-background is 'transparent',
       // but Puppeteer needs a solid value so widgets using var(--color-background)

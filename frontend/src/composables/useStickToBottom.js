@@ -52,6 +52,24 @@ export function useStickToBottom({ getEl, isSuspended = () => false } = {}) {
     lastTop = el.scrollTop || 0;
   };
 
+  // Content changes arrive in many small batches while a long chat draws; measuring after
+  // each one forces a layout every time. Once per frame (before it paints) is enough.
+  let framePending = false;
+  const onContentChange = () => {
+    if (typeof requestAnimationFrame !== 'function') {
+      observeChildren();
+      pin();
+      return;
+    }
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(() => {
+      framePending = false;
+      observeChildren();
+      pin();
+    });
+  };
+
   const release = () => {
     following.value = false;
     if (suspended()) releasedWhileSuspended = true;
@@ -148,10 +166,7 @@ export function useStickToBottom({ getEl, isSuspended = () => false } = {}) {
     listeners.forEach(([name, handler]) => el.addEventListener(name, handler, { passive: true }));
     if (typeof document !== 'undefined') document.addEventListener('selectionchange', onSelectionChange);
     if (typeof MutationObserver !== 'undefined') {
-      mutationObserver = new MutationObserver(() => {
-        observeChildren();
-        pin();
-      });
+      mutationObserver = new MutationObserver(onContentChange);
       mutationObserver.observe(el, { childList: true, subtree: true, characterData: true });
     }
     if (typeof ResizeObserver !== 'undefined') {

@@ -55,6 +55,7 @@
 
 <script>
 import { ref, computed, watch, onMounted, onBeforeUnmount, markRaw, nextTick } from 'vue';
+import { themeVariables } from '@/utils/themeVariables.js';
 import { useStore } from 'vuex';
 import MetricCardTemplate from './templates/MetricCardTemplate.vue';
 import ChartWidgetTemplate from './templates/ChartWidgetTemplate.vue';
@@ -145,36 +146,9 @@ export default {
     // regardless of which theme is active or what variables it defines.
     const themeStyleTag = ref('');
 
+    // Read once per theme and shared with chat and every other widget (themeVariables caches it).
     function buildThemeStyleTag() {
-      const vars = [];
-      try {
-        for (const sheet of document.styleSheets) {
-          try {
-            for (const rule of sheet.cssRules) {
-              if (rule.style) {
-                for (let i = 0; i < rule.style.length; i++) {
-                  const prop = rule.style[i];
-                  if (prop.startsWith('--')) {
-                    vars.push(prop);
-                  }
-                }
-              }
-            }
-          } catch (_) {
-            // Cross-origin stylesheets throw - skip them
-          }
-        }
-      } catch (_) {}
-
-      const uniqueVars = [...new Set(vars)];
-      const rootStyle = getComputedStyle(document.documentElement);
-      const bodyStyle = getComputedStyle(document.body);
-
-      const lines = uniqueVars.map((prop) => {
-        const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
-        return val ? `  ${prop}: ${val};` : null;
-      }).filter(Boolean);
-
+      const lines = themeVariables(store.state.theme.currentTheme).map(([prop, val]) => `  ${prop}: ${val};`);
       themeStyleTag.value = `<style id="agnt-theme">\n:root {\n${lines.join('\n')}\n}\n</style>`;
     }
 

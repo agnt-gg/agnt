@@ -536,6 +536,7 @@ import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 import { renderMentionPills } from '@/utils/agentMentions.js';
 import { annotateEntityRefs, entityRegistryFromStore } from '@/utils/entityRefs.js';
+import { themeVariables } from '@/utils/themeVariables.js';
 import { bindEntityRefClicks } from '@/views/_components/one/EntityRef.vue';
 import { API_CONFIG } from '@/../user.config.js';
 import {
@@ -787,33 +788,9 @@ export default {
     // Build theme CSS tag by extracting all CSS custom properties from the live document.
     // Injected into iframes so HTML/D3/Three.js/Chart.js content can use var(--color-*) etc.
     const themeStyleTag = ref('');
+    // Read once per theme and shared by every message (themeVariables caches it).
     function buildThemeStyleTag() {
-      const vars = [];
-      try {
-        for (const sheet of document.styleSheets) {
-          try {
-            for (const rule of sheet.cssRules) {
-              if (rule.style) {
-                for (let i = 0; i < rule.style.length; i++) {
-                  const prop = rule.style[i];
-                  if (prop.startsWith('--')) vars.push(prop);
-                }
-              }
-            }
-          } catch (_) {
-            /* cross-origin */
-          }
-        }
-      } catch (_) {}
-      const unique = [...new Set(vars)];
-      const rootStyle = getComputedStyle(document.documentElement);
-      const bodyStyle = getComputedStyle(document.body);
-      const lines = unique
-        .map((prop) => {
-          const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
-          return val ? `  ${prop}: ${val};` : null;
-        })
-        .filter(Boolean);
+      const lines = themeVariables(store.state.theme?.currentTheme).map(([prop, val]) => `  ${prop}: ${val};`);
       themeStyleTag.value = `<style id="agnt-theme">:root{${lines.join('')}}</style>`;
     }
     watch(

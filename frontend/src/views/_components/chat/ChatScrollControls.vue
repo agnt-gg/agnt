@@ -49,6 +49,18 @@ export default {
     };
 
     const onScroll = () => computeState();
+    // Content changes come in many small batches while a long chat draws; measuring after
+    // each forces a layout every time, so it is measured once per frame instead.
+    let framePending = false;
+    const computeOnceAFrame = () => {
+      if (typeof requestAnimationFrame !== 'function') return computeState();
+      if (framePending) return;
+      framePending = true;
+      requestAnimationFrame(() => {
+        framePending = false;
+        computeState();
+      });
+    };
 
     // Smooth-scroll if available; instant fallback for older webviews.
     const scrollTo = (top) => {
@@ -77,7 +89,7 @@ export default {
       // Recompute when content height changes (new messages, expanded tool calls)
       // and when the container itself resizes (panel resize, fullscreen toggle).
       if (typeof MutationObserver !== 'undefined') {
-        mutationObserver = new MutationObserver(() => computeState());
+        mutationObserver = new MutationObserver(computeOnceAFrame);
         mutationObserver.observe(el, { childList: true, subtree: true, characterData: true });
       }
       if (typeof ResizeObserver !== 'undefined') {
