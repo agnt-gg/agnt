@@ -142,6 +142,12 @@ export function libraryRows(tabId, items, query = '') {
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 }
 
+/** The picture an agent (or any asset) was given, read as libraryRows and Studio read it: avatar, then icon. Null when it has none. */
+export function agentPicture(item) {
+  const icon = [item?.avatar, item?.icon].find((x) => typeof x === 'string' && x.trim());
+  return glyphKind(icon) === 'image' ? icon.trim() : null;
+}
+
 /** An icon string is either a Font Awesome class list or a literal glyph/emoji. */
 export function isIconClass(icon) {
   return typeof icon === 'string' && /^(fa[srlbd]?|fas|far|fab|fa)\s/.test(icon.trim());

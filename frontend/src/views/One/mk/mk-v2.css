@@ -113,6 +113,10 @@
 .mk .card.v2-new { border-style: dashed; background: transparent; }
 .mk .card.v2-new h4 { color: var(--text-secondary); }
 .mk .v2-mono { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 11px; font-size: 15px; font-weight: 700; }
+/* An asset's own picture takes the initial's tile, filled. */
+.mk .v2-mono.v2-pic { object-fit: cover; background: var(--surface-active); }
+.mk .av.agent.pic { overflow: hidden; }
+.mk .av.agent.pic img { width: 100%; height: 100%; object-fit: cover; }
 
 /* Activity rows: what kind of thing it was, its status beside its name, when on the right. */
 .mk .v2-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

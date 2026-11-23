@@ -29,8 +29,10 @@
         <div v-else class="cards">
           <div v-for="r in shownRows" :key="r.id" class="card clickable" role="button" tabindex="0" @click="ctx.openLibrary(asset.id, r.itemId)" @keydown.enter="ctx.openLibrary(asset.id, r.itemId)">
             <div class="card-top">
-              <!-- Each one its own colour and initial, so a grid of them can be told apart at a glance. -->
-              <span class="v2-mono" :class="'v2-hue-' + hueOf(r.label)" aria-hidden="true">{{ initialOf(r.label) }}</span>
+              <!-- The picture it was given, as Studio shows it; otherwise its own colour and initial,
+                   so a grid of them can be told apart at a glance. -->
+              <img v-if="glyphKind(r.icon) === 'image'" class="v2-mono v2-pic" :src="r.icon" alt="" />
+              <span v-else class="v2-mono" :class="'v2-hue-' + hueOf(r.label)" aria-hidden="true">{{ initialOf(r.label) }}</span>
               <h4 class="mk-ellipsis" style="min-width: 0; flex: 1">{{ r.label }}</h4>
               <!-- Only an exception gets a badge: running, or needing a look. -->
               <span v-if="tagOf(r)" class="tag" :class="tagOf(r).tone">{{ tagOf(r).label }}</span>
@@ -100,7 +102,7 @@ import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue'
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import { assetTypeLabel, matchesQuery, byPopularity } from '@/composables/useMarketplaceCard';
 import { LIBRARY_TABS } from '@/views/One/team/teamModel.js';
-import { libraryTab, libraryRows } from '@/views/Focused/focusedModel.js';
+import { libraryTab, libraryRows, glyphKind } from '@/views/Focused/focusedModel.js';
 import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
 import { librarySortsFor, sortLibraryRows, libraryMeta, readLibrarySort, saveLibrarySort } from '@/views/Focused/librarySort.js';
 

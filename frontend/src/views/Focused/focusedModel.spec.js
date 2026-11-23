@@ -7,6 +7,7 @@ import {
   libraryRows,
   isIconClass,
   glyphKind,
+  agentPicture,
   recentConversations,
   CLI_DISCONNECT_ACTIONS,
   cronLabel,
@@ -121,6 +122,15 @@ describe('library', () => {
     expect(libraryRows('agents', null)).toEqual([]);
     expect(libraryRows('agents', [null, undefined])).toEqual([]);
     expect(libraryRows('workflows', [{ id: 'w', name: 'W' }]).every((r) => r.id.startsWith('workflow:'))).toBe(true);
+  });
+
+  it('agentPicture is the picture an agent was given, avatar first, as Studio reads it', () => {
+    expect(agentPicture({ icon: 'data:image/png;base64,AA==' })).toBe('data:image/png;base64,AA==');
+    expect(agentPicture({ avatar: ' /api/images/a1 ', icon: 'https://example.com/b.png' })).toBe('/api/images/a1');
+    expect(agentPicture({ avatar: '', icon: 'https://example.com/b.png' })).toBe('https://example.com/b.png');
+    // A glyph or icon name is not a picture: the card keeps its initial.
+    for (const icon of ['fas fa-robot', 'robot', '\uD83E\uDD16', '', undefined]) expect(agentPicture({ icon })).toBeNull();
+    expect(agentPicture(null)).toBeNull();
   });
 
   it('glyphKind tells the three saved icon forms apart (regression: "user-check" rendered as text)', () => {

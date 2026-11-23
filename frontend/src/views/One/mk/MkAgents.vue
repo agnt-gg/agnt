@@ -15,7 +15,7 @@
         </div>
         <template v-if="!team">
           <div v-for="a in mine" :key="a.id" class="card clickable" @click="ctx.go({ view: 'agent', item: String(a.id) })">
-            <div class="card-top"><span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div class="mk-muted">by you</div></div></div>
+            <div class="card-top"><span class="av agent lg" :class="{ pic: !!agentPicture(a) }"><img :src="agentPicture(a) || '/images/agnt-logo-mark.svg'" alt="" /></span><div style="min-width: 0"><h4>{{ a.name }}</h4><div class="mk-muted">by you</div></div></div>
             <p>{{ a.description || 'No description yet.' }}</p>
             <div class="card-foot"><span class="tag">Draft</span><span>{{ (a.assignedTools || []).length }} {{ (a.assignedTools || []).length === 1 ? 'tool' : 'tools' }}</span><span class="fill"></span><span class="scope sm mk-private"><MkIcon name="lock" size="sm" />Private</span></div>
           </div>
@@ -52,7 +52,7 @@
           <div class="cards">
             <div v-for="a in bySpace[s.id] || []" :key="a.id" class="card clickable" :data-agent="a.id" @click="openAgent(s.id, a.id)">
               <div class="card-top">
-                <span class="av agent lg"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
+                <span class="av agent lg" :class="{ pic: !!agentPicture(a) }"><img :src="agentPicture(a) || '/images/agnt-logo-mark.svg'" alt="" /></span>
                 <div style="min-width: 0; flex: 1"><h4>{{ a.name }}</h4><div class="mk-muted">{{ s.name }}</div></div>
                 <span v-if="isLead(s.id, a.id)" class="tag pink">Team lead</span>
               </div>
@@ -78,6 +78,7 @@ import MkIcon from './MkIcon.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { teamApi } from '@/views/One/team/useTeam.js';
 import { spaceEmoji, spaceFlow, agentStatus, columnLoad, formatUsd } from '@/views/One/team/teamModel.js';
+import { agentPicture } from '@/views/Focused/focusedModel.js';
 
 const ctx = inject('teamCtx');
 const store = useStore();

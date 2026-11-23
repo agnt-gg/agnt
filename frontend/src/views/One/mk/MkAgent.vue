@@ -5,7 +5,7 @@
     <div v-else class="page">
       <div class="page-head">
         <div class="who" style="gap: 16px">
-          <span class="av agent xl"><img src="/images/agnt-logo-mark.svg" alt="" /></span>
+          <span class="av agent xl" :class="{ pic: !!agentPicture(agent) }"><img :src="agentPicture(agent) || '/images/agnt-logo-mark.svg'" alt="" /></span>
           <div>
             <h1>{{ agent.name }}</h1>
             <p>{{ agent.description || 'No description yet.' }}</p>
@@ -47,6 +47,7 @@ import { computed, inject, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import MkIcon from './MkIcon.vue';
 import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
+import { agentPicture } from '@/views/Focused/focusedModel.js';
 
 const props = defineProps({ agentId: { type: String, required: true } });
 const ctx = inject('teamCtx');

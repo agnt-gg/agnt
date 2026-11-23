@@ -93,6 +93,16 @@ describe('Library', () => {
     // With your own to show, the Market picks step aside (the Market tab has them).
     expect(wrapper.findComponent(MarketplaceShelf).exists()).toBe(false);
   });
+  it('an agent with its own picture shows it; one without keeps its initial', async () => {
+    const pixel = 'data:image/png;base64,iVBORw0KGgo=';
+    const { wrapper } = mountLibrary('agents', { agents: [{ id: 'a1', name: 'Picture Agent', icon: pixel }, { id: 'a2', name: 'Scout', icon: 'fas fa-robot' }] });
+    await flushPromises();
+    const card = (name) => wrapper.findAll('.cards .card').find((c) => c.text().includes(name));
+    expect(card('Picture Agent').get('img.v2-pic').attributes('src')).toBe(pixel);
+    expect(card('Picture Agent').find('span.v2-mono').exists()).toBe(false);
+    expect(card('Scout').find('img').exists()).toBe(false);
+    expect(card('Scout').get('span.v2-mono').text()).toBe('S');
+  });
   it('each kind shows its Market picks when you have none, so the empty list has examples to add', async () => {
     const { wrapper } = mountLibrary('agents', { picks: { agent: [{ id: 'l1', asset_id: 'scout', name: 'Lead Scout', asset_type: 'agent' }] } });
     await flushPromises();
