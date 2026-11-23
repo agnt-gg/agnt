@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures/appFixture.js';
-import { readdirSync } from 'node:fs';
-const businessIcons = readdirSync(new URL('../../frontend/src/assets/icons/', import.meta.url)).filter(name => name.startsWith('business-') && name.endsWith('.svg')).map(name => name.slice(0, -4));
+// The business plugins' sign-ins (BUSINESS_IDS in frontend/src/services/brandIcons.spec.js), by the
+// icon names their plugins were published with before each mark took its brand's plain name.
+const businessIcons = ['airtable', 'asana', 'brevo', 'clickup', 'freshdesk', 'ga4', 'hubspot', 'intercom', 'jotform', 'klaviyo', 'linear', 'mailchimp', 'microsoft365', 'monday', 'pandadoc', 'pipedrive', 'posthog', 'quickbooks', 'searchconsole', 'shopify', 'twilio', 'typeform', 'xero', 'zendesk'].map(id => `business-${id}`);
 const json = body => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 const sampleItems = ['agent', 'workflow', 'tool', 'skill', 'plugin'].map((type, index) => ({ id: `market-${type}`, asset_id: `starter-${type}`, asset_type: type, title: `Top ${type} starter`, price: 0, downloads: 100 - index, rating: 0, rating_count: 0, category: 'Productivity' }));
 
@@ -51,11 +52,18 @@ test('a free account with zero external providers gets AGNT connected, selected 
   await expect(page.locator('.ui-focused .selected-label').filter({ hasText: /^agnt-flash$/ }).first()).toBeVisible();
 });
 
-// The Library's Market shelf shows agnt.gg's catalogue cards (MarketplaceShelf variant="catalogue" ->
-// MarketListingCard). One's desktop rail has no page list, so Market's place under Plugins is checked
-// where that list still is: the phone's chats drawer.
+// A Library tab you have nothing in shows agnt.gg's catalogue cards of its own kind (MarketplaceShelf
+// variant="catalogue" -> MarketListingCard); with your own to show, the picks step aside for the Market
+// tab (v2, 542c6577f). So this account's own lists are empty. One's desktop rail has no page list, so
+// Market's place under Plugins is checked where that list still is: the phone's chats drawer.
 test('library shelves contain real ranked listings across every One asset tab, and the phone drawer has Market directly below Plugins @ci', async ({ appPage: page }) => {
   await freeAccount(page);
+  const none = (pattern, body) => page.route(pattern, r => (r.request().method() === 'GET' ? r.fulfill(json(body)) : r.fallback()));
+  await none(/\/api\/agents\/?(\?.*)?$/, { agents: [] });
+  await none(/\/api\/workflows\/summary(\?.*)?$/, { workflows: [] });
+  await none(/\/api\/custom-tools\/?(\?.*)?$/, { tools: [] });
+  await none(/\/api\/skills\/?(\?.*)?$/, { skills: [] });
+  await none(/\/api\/widget-definitions\/?(\?.*)?$/, { widgets: [] });
   for (const [path, title] of [['/agents', 'agent'], ['/workflows', 'workflow'], ['/tools', 'tool'], ['/skills', 'skill']]) {
     await page.goto(path); await ready(page); await mode(page, 'focused');
     const card = page.locator('.mlc').filter({ hasText: `Top ${title} starter` }).first();
@@ -66,13 +74,15 @@ test('library shelves contain real ranked listings across every One asset tab, a
   // Market picks are the tab's own kind only (b9998e38b): Widgets, with no widget listings here,
   // never borrows another kind's.
   await page.goto('/widget-manager'); await ready(page); await mode(page, 'focused');
-  await expect(page.locator('.focused-page').first()).toBeVisible();
+  await expect(page.locator('.ui-one .page-head h1')).toHaveText('Library');
+  await expect(page.locator('.ui-one .tabs .tab.is-active')).toContainText('Widgets');
   await expect(page.getByText(/Top (agent|workflow|tool|skill|plugin) starter/)).toHaveCount(0);
-  // Files is the exception (FocusedFiles fallback-to-all): the Market has no file kind, so it shows
-  // top picks as compact rows.
-  await page.goto('/artifacts'); await ready(page); await mode(page, 'focused');
-  await expect(page.locator('.ms-row').filter({ hasText: 'Top agent starter' }).first()).toBeVisible();
-  await expect(page.locator('.ms-row-get').first()).toContainText('Install');
+  // The Market tab ranks every kind's listings, most downloaded first.
+  await page.locator('.ui-one .tabs [data-tab="market"]').click();
+  await expect(page.locator('.ui-one .cards .card h4').first()).toHaveText('Top agent starter');
+  const ranked = (await page.locator('.ui-one .cards .card h4').allTextContents()).map(title => title.trim());
+  expect(ranked.length).toBeGreaterThanOrEqual(4);
+  expect(ranked).toEqual(sampleItems.map(item => item.title).filter(title => ranked.includes(title)));
   await page.setViewportSize({ width: 390, height: 950 });
   await page.getByRole('button', { name: 'Open chats', exact: true }).click();
   const navLabels = (await page.locator('.focused-nav > button.focused-nav-row').allTextContents()).map(text => text.trim());
@@ -92,13 +102,14 @@ test('Studio has a working left chat-panel toggle and the legacy keys link opens
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(!before);
   await toggle.click();
   await expect.poll(() => page.locator('.left-panel-component').evaluate(el => el.classList.contains('collapsed'))).toBe(before);
-  // The legacy ?section=api-keys link lands on the keys-and-sign-ins section:
-  // the Plugins page's Accounts & keys tab since 18cd7123c (Vault before it),
-  // with that row of the Plugins sidebar active.
+  // The legacy ?section=api-keys link lands on the keys-and-sign-ins section: App connections on
+  // Studio's Apps page since 4120d4cfe (appsModel opens Connections for the older 'vault'), with
+  // that row of the sidebar lit.
   await page.goto('/connectors?section=api-keys'); await ready(page); await mode(page, 'studio');
-  await expect(page.locator('.ap-tabs [role="tab"][data-tab="accounts"]')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.connectors-panel [data-nav="oauth"]')).toHaveClass(/active/);
-  await expect(page.locator('.connectors-panel [data-nav="oauth"]')).toContainText('Accounts & keys');
+  await expect(page.locator('[data-testid="studio-apps"] [data-section="connections"] h1')).toHaveText('Connections');
+  const sections = page.locator('.collection-stats-panel .stat-list').filter({ hasText: 'Sections' });
+  await expect(sections.locator('.stat-row.is-active')).toHaveCount(1);
+  await expect(sections.locator('.stat-row.is-active')).toContainText('App connections');
 });
 
 test('business plugin marks fit their dashboard slots, including ViewBox-only SVGs @ci', async ({ appPage: page }) => {
@@ -159,13 +170,14 @@ test('the Main chat is pinned once in both frames, beside new chat and the chat 
   await expect(page.locator('.chat-library-toggle')).toBeVisible();
   await expect(page.locator('.left-panel-component input[placeholder="Search chats..."]')).toBeAttached();
   // AGNT One on a desktop: one sidebar, with the Main chat pinned once above
-  // the chats (Studio's own list), New chat and the one search beside them.
+  // the chats (Studio's own list), New chat and the one search beside them
+  // (Search since v2, 542c6577f: asking is the composer's job).
   await mode(page, 'focused');
   const sidebar = page.locator('[data-testid="one-sidebar"]');
   await expect(page.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
   await expect(sidebar.locator('[data-testid="main-chat-row"]')).toHaveCount(1);
   await expect(sidebar.locator('[data-testid="one-new-chat"]')).toBeVisible();
-  await expect(sidebar.locator('input[placeholder="Search or ask Annie"]')).toBeAttached();
+  await expect(sidebar.getByTestId('one-sidebar-search')).toBeAttached();
   await expect(sidebar.locator('[data-testid="one-chat-sidebar"] .output-list-container.is-drawer')).toBeAttached();
   // ...and on a phone, the chats drawer.
   await page.setViewportSize({ width: 390, height: 950 });
@@ -315,20 +327,22 @@ for (const themeName of ['cyberpunk', 'light']) test('API Key page has real spac
   await page.screenshot({ path: 'C:/Users/Studio/AppData/Roaming/AGNT/projects/updater-067-mobile-evidence-01/api-key-' + themeName + '.png' });
 });
 
-// Since 5cff76b65: the sidebar's first row is Plugins (everything installed
-// and connected), and Plugin Forge is a toolbar tab beside PLUGINS, like
+// Since 38967f45a: Studio's left panel beside the Apps page lists the page's sections, App
+// connections first, with the current one lit. Plugin Forge is a toolbar tab beside PLUGINS, like
 // every other forge, never a sidebar row.
-test('Plugins leads its sidebar, Plugin Forge is a toolbar tab, and sidebar rows switch the section @ci', async ({ appPage: page }) => {
+test('the Apps sections lead the sidebar, Plugin Forge is a toolbar tab, and sidebar rows switch the section @ci', async ({ appPage: page }) => {
   await studio(page, '/connectors');
-  const sidebar = page.locator('.connectors-panel');
-  await expect(sidebar.locator('.nav-item').first()).toHaveAttribute('data-nav', 'apps');
-  await expect(sidebar.locator('[data-nav="apps"]')).toContainText('Plugins');
-  await expect(sidebar.locator('[data-nav="apps"]')).toHaveClass(/active/);
-  expect(await sidebar.locator('.nav-item').filter({ hasText: /forge/i }).count()).toBe(0);
+  const sidebar = page.locator('.collection-stats-panel');
+  const sections = sidebar.locator('.stat-list').filter({ hasText: 'Sections' });
+  await expect(sections.locator('.stat-row').first()).toBeVisible();
+  expect((await sections.locator('.stat-row-label').allTextContents()).map((label) => label.trim())).toEqual(['App connections', 'Plugins', 'MCP servers', 'Email & webhooks']);
+  await expect(sections.locator('.stat-row.is-active')).toContainText('App connections');
+  expect(await sidebar.locator('.stat-row').filter({ hasText: /forge/i }).count()).toBe(0);
   const tabs = page.locator('.cv-nav-panels .cv-pbtn');
   await expect(tabs.first()).toBeVisible();
   expect((await tabs.allTextContents()).map((label) => label.trim())).toEqual(['PLUGINS', 'PLUGIN FORGE']);
-  await sidebar.locator('[data-nav="mcp-servers"]').click();
-  await expect(sidebar.locator('[data-nav="mcp-servers"]')).toHaveClass(/active/);
-  await expect(sidebar.locator('[data-nav="apps"]')).not.toHaveClass(/active/);
+  await sections.locator('.stat-row', { hasText: 'MCP servers' }).click();
+  await expect(page.locator('[data-testid="studio-apps"] [data-section="mcp"] h1')).toHaveText('MCP servers');
+  await expect(sections.locator('.stat-row.is-active')).toHaveCount(1);
+  await expect(sections.locator('.stat-row.is-active')).toContainText('MCP servers');
 });

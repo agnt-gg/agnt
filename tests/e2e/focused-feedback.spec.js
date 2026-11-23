@@ -61,29 +61,30 @@ for (const width of [1440, 900, 390]) {
   });
 }
 
-// AGNT One gives every page one lead action: an ink pill, the colour of the text, like the composer's
-// send button (one.css "Buttons: one language on every page"). It used to copy Studio's green outline;
-// One replaced that deliberately. What must hold in every theme: it IS the ink pill, and it is readable.
-test('One New buttons are the readable ink pill in every theme @ci', async ({ appPage: page }) => {
+// AGNT One gives every page one lead action. Since v2 (542c6577f) it is the brand button, filled with
+// the theme's pink (mk-v2.css), in place of the earlier ink pill. What must hold in every theme: it IS
+// that button, and its label is readable.
+test('One New buttons are the readable brand button in every theme @ci', async ({ appPage: page }) => {
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); });
-  // Widgets is a library page whose Studio toolbar carries the New button.
+  // One's pages load the account's teams first; this account has none.
+  await page.route('**/teams', route => route.fulfill(json([])));
+  // Widgets is a Library page whose header carries the New button.
   await page.goto('/widget-manager');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
   const store = (fn, arg) => page.evaluate(([body, value]) => new Function('store', 'value', body)(document.querySelector('#app').__vue_app__.config.globalProperties.$store, value), [fn, arg]);
   await store('return store.dispatch("theme/setUiMode", value)', 'focused');
   for (const theme of ['cyberpunk', 'dark', 'light', 'rose', 'midnight', 'ember', 'nord', 'hacker']) {
     await store('return store.dispatch("theme/setTheme", value)', theme);
-    await page.locator('.ui-one .focused-primary').first().waitFor();
-    const button = await page.locator('.ui-one .focused-primary').first().evaluate(el => {
-      const ink = document.createElement('span'); ink.style.color = 'var(--text-primary)'; el.parentElement.append(ink);
-      const c = getComputedStyle(el), expected = getComputedStyle(ink).color; ink.remove();
+    await page.locator('.ui-one .page-head .primary').first().waitFor();
+    const button = await page.locator('.ui-one .page-head .primary').first().evaluate(el => {
+      const brand = document.createElement('span'); brand.style.background = 'var(--color-pink)'; el.parentElement.append(brand);
+      const c = getComputedStyle(el), expected = getComputedStyle(brand).backgroundColor; brand.remove();
       const rgb = css => css.match(/[\d.]+/g).slice(0, 3).map(Number);
       const lum = v => v.map(x => x / 255).map(x => x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4).reduce((s, x, i) => s + x * [.2126, .7152, .0722][i], 0);
       const a = lum(rgb(c.color)), b = lum(rgb(c.backgroundColor));
-      return { background: c.backgroundColor, ink: expected, radius: parseFloat(c.borderTopLeftRadius), ratio: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) };
+      return { background: c.backgroundColor, brand: expected, ratio: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) };
     });
-    expect(button.background, `${theme} fill`).toBe(button.ink);
-    expect(button.radius, `${theme} pill`).toBeGreaterThanOrEqual(16);
+    expect(button.background, `${theme} fill`).toBe(button.brand);
     expect(button.ratio, `${theme} label contrast`).toBeGreaterThanOrEqual(4.5);
   }
 });
@@ -91,12 +92,15 @@ test('One New buttons are the readable ink pill in every theme @ci', async ({ ap
 test('Focused shows a custom agent image exactly as Studio resolves it @ci', async ({ appPage: page }) => {
   const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   await page.addInitScript(() => { localStorage.setItem('tours_auto_start', 'false'); localStorage.setItem('agnt:focused-intro-seen', 'true'); });
+  // One's pages load the account's teams first; this account has none.
+  await page.route('**/teams', route => route.fulfill(json([])));
   // Through the real fetch path: the backend stores the picture as `icon`.
   await page.route('**/api/agents/', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ agents: [{ id: 'pic-agent', name: 'Picture Agent', icon: pixel, status: 'ACTIVE' }] }) }));
   await page.goto('/agents');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$store?.getters.criticalDataReady);
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$store.dispatch('theme/setUiMode', 'focused'));
-  const image = page.locator('.focused-row', { hasText: 'Picture Agent' }).locator('.focused-row-icon img');
+  // /agents is the Library's Agents tab: the agent's card shows its picture in place of the initial.
+  const image = page.locator('.ui-one .cards .card', { hasText: 'Picture Agent' }).locator('img.v2-pic');
   await expect(image).toHaveAttribute('src', pixel);
   await expect.poll(() => image.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
 });
@@ -209,9 +213,10 @@ test('One desktop chat list shows a running chat as working, with who is speakin
 });
 
 // As in Focused's Recents, every title in One's sidebar starts at the same left
-// edge, under the icons above it. Read, unread or running, a row's state is a
+// edge, under the icon above it: the Main chat's pin (New chat is a centred
+// button since 6e0733ad4). Read, unread or running, a row's state is a
 // mark at the right end of its title line, never an indent; in Groups, a
-// group's chats start under the group's name.
+// group's chats sit flush under its header, with no indent (2632af4a).
 test('One desktop chat list lines every title up on the left, whatever its state @ci', async ({ appPage: page }) => {
   await page.setViewportSize({ width: 1440, height: 950 });
   await page.addInitScript(() => {
@@ -266,17 +271,17 @@ test('One desktop chat list lines every title up on the left, whatever its state
     };
     const sidebar = document.querySelector('[data-testid="one-sidebar"]');
     return {
-      navIconLeft: sidebar.querySelector('[data-testid="one-new-chat"] svg').getBoundingClientRect().left,
+      navIconLeft: sidebar.querySelector('[data-testid="main-chat-row"] .main-mark').getBoundingClientRect().left,
       rows: [...sidebar.querySelectorAll('[data-testid="one-chat-sidebar"] .output-item')].map((row) => {
         const mark = row.querySelector('.unread-dot, .streaming-indicator');
-        const groupName = row.closest('.group-section')?.querySelector('.group-name');
+        const groupMark = row.closest('.group-section')?.querySelector('.group-header-left > :first-child');
         return {
           title: row.querySelector('.output-preview').textContent.trim(),
           titleLeft: textLeft(row.querySelector('.output-preview')),
           metaLeft: row.querySelector('.output-meta')?.getBoundingClientRect().left ?? null,
           rowRight: row.getBoundingClientRect().right,
           markLeft: mark ? mark.getBoundingClientRect().left : null,
-          groupNameLeft: groupName ? textLeft(groupName) : null,
+          groupMarkLeft: groupMark ? groupMark.getBoundingClientRect().left : null,
         };
       }),
     };
@@ -298,8 +303,8 @@ test('One desktop chat list lines every title up on the left, whatever its state
   await expect(list.locator('.output-item')).toHaveCount(3);
   const grouped = await measure();
   for (const row of grouped.rows) {
-    expect(row.groupNameLeft, `${row.title}: sits in a group`).not.toBeNull();
-    expect(Math.abs(row.titleLeft - row.groupNameLeft), `${row.title}: starts under its group's name`).toBeLessThanOrEqual(1);
+    expect(row.groupMarkLeft, `${row.title}: sits in a group`).not.toBeNull();
+    expect(Math.abs(row.titleLeft - grouped.navIconLeft), `${row.title}: no group indent, the same left edge as every title`).toBeLessThanOrEqual(1);
   }
 });
 
