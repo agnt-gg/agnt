@@ -202,6 +202,8 @@ class AgentService {
           workflows: agent.workflow_count,
           lastActive: agent.last_active,
           successRate: agent.success_rate,
+          createdAt: agent.created_at,
+          updatedAt: agent.updated_at,
         };
       });
 
