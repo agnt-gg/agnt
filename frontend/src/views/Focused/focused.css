@@ -2608,3 +2608,10 @@
 .ui-focused .focused-edit-card .seg > button.on { background: rgba(var(--pink-rgb), 0.22); box-shadow: inset 0 0 0 1px rgba(var(--pink-rgb), 0.6); color: var(--text-primary); font-weight: 600; }
 /* A label's hint sits under it. */
 .ui-focused .focused-edit-label > small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.35; color: var(--text-tertiary); }
+
+/* The Library's sort: a short row of choices above the list. */
+.ui-focused .focused-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 12px; }
+.ui-focused .focused-sort-label { margin-right: 6px; font-size: 13px; color: var(--text-tertiary); }
+.ui-focused .focused-sort > button { min-height: 30px; padding: 0 12px; border: 1px solid var(--terminal-border-color); border-radius: 999px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.ui-focused .focused-sort > button:hover { color: var(--text-primary); }
+.ui-focused .focused-sort > button.on { background: var(--surface-active); color: var(--text-primary); font-weight: 600; }

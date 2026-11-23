@@ -66,7 +66,34 @@ describe('Library', () => {
     await wrapper.find('.page-head .primary').trigger('click');
     expect(ctx.openLibrary).toHaveBeenLastCalledWith('workflows', null, true);
   });
-  it('each kind shows its Market picks under your own, so an empty list has examples to add', async () => {
+  it('searches and sorts your own, with one create button and badges only for exceptions', async () => {
+    localStorage.clear();
+    const { wrapper } = mountLibrary('workflows', { workflows: [
+      { id: 'w1', name: 'Brief', status: 'stopped', created_at: '2026-01-01 09:00:00', updated_at: '2026-11-20 12:00:00' },
+      { id: 'w2', name: 'Archive', status: 'error', created_at: '2026-06-01 09:00:00', updated_at: '2026-06-02 09:00:00' },
+      { id: 'w3', name: 'Chase', status: 'listening' },
+    ] });
+    await flushPromises();
+    const names = () => wrapper.findAll('.cards .card h4').map((n) => n.text());
+    expect(names()).toEqual(['Archive', 'Brief', 'Chase']);
+    expect(wrapper.findAll('[data-testid="library-bar"] .seg button').map((b) => b.text())).toEqual(['Name', 'Recently changed', 'Newest']);
+    await wrapper.find('[data-sort="recent"]').trigger('click');
+    expect(names()).toEqual(['Brief', 'Archive', 'Chase']);
+    expect(localStorage.getItem('agnt:library-sort')).toBe('recent');
+    // A stopped workflow is normal; only running and needing a look get a badge.
+    expect(wrapper.findAll('.cards .card .tag').map((t) => t.text())).toEqual(['Needs a look', 'Running']);
+    // One way to make another: the page's button, no dashed card.
+    expect(wrapper.find('[data-action="new-asset"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="library-bar"] input').setValue('arch');
+    expect(names()).toEqual(['Archive']);
+    await wrapper.find('[data-testid="library-bar"] input').setValue('zzz');
+    expect(wrapper.text()).toContain('No workflows match “zzz”.');
+    await wrapper.find('[data-action="clear-search"]').trigger('click');
+    expect(names()).toHaveLength(3);
+    // With your own to show, the Market picks step aside (the Market tab has them).
+    expect(wrapper.findComponent(MarketplaceShelf).exists()).toBe(false);
+  });
+  it('each kind shows its Market picks when you have none, so the empty list has examples to add', async () => {
     const { wrapper } = mountLibrary('agents', { picks: { agent: [{ id: 'l1', asset_id: 'scout', name: 'Lead Scout', asset_type: 'agent' }] } });
     await flushPromises();
     const shelf = wrapper.findComponent(MarketplaceShelf);

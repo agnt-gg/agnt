@@ -128,6 +128,12 @@ export function libraryRows(tabId, items, query = '') {
         description: String(source.description || source.text || '').trim(),
         icon: icon ? icon.trim() : tab.icon,
         status: tab.id === 'workflows' ? String(source.status || '') : '',
+        // What the Library sorts and describes a card by (0 when the item carries none).
+        createdAt: timeOf(source.created_at ?? source.createdAt),
+        updatedAt: timeOf(source.updated_at ?? source.updatedAt),
+        usedAt: timeOf(source.lastActive ?? source.last_run_at ?? source.lastRunAt),
+        used: Number(source.creditsUsed) || 0,
+        toolCount: Array.isArray(source.assignedTools) ? source.assignedTools.length : 0,
       });
     }
   }
@@ -157,8 +163,10 @@ export function glyphKind(icon) {
 
 // ── Recents ────────────────────────────────────────────────────────────────
 
+// A Date, epoch ms, an ISO string or the server's "2026-08-18 12:27:18" as ms; anything else is 0.
 function timeOf(value) {
-  const t = value instanceof Date ? value.getTime() : new Date(value || 0).getTime();
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const t = value instanceof Date ? value.getTime() : new Date(String(value || '').replace(/^(\d{4}-\d\d-\d\d) /, '$1T') || 0).getTime();
   return Number.isFinite(t) ? t : 0;
 }
 

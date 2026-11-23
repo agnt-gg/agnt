@@ -28,6 +28,10 @@
 
     <!-- No upgrade offer here: the Library is your own work, and scheduling
          (the paid part) is offered where it applies, on Routines. -->
+    <div v-if="sorts.length > 1 && rows.length" class="focused-sort" role="radiogroup" aria-label="Sort by" data-testid="library-sort">
+      <span class="focused-sort-label">Sort by</span>
+      <button v-for="[value, label] in sorts" :key="value" type="button" role="radio" :aria-checked="sortBy === value ? 'true' : 'false'" :class="{ on: sortBy === value }" :data-sort="value" @click="setSort(value)">{{ label }}</button>
+    </div>
     <p v-if="loading && !rows.length" class="focused-empty">Loading…</p>
     <p v-else-if="!rows.length && query" class="focused-empty">No {{ tab.label.toLowerCase() }} match “{{ query }}”.</p>
     <!-- An empty tab: what goes here, and the one way to start, which is asking. -->
@@ -95,6 +99,7 @@ import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue'
 import { FOCUSED_PAGES, LIBRARY_TABS, libraryTab, libraryRows } from './focusedModel.js';
 import { isRunningStatus } from './focusedEditors.js';
 import { useWorkspaceFileCount } from '@/composables/useWorkspaceFileCount.js';
+import { librarySortsFor, sortLibraryRows, readLibrarySort, saveLibrarySort } from './librarySort.js';
 
 const props = defineProps({ location: { type: Object, required: true } });
 const store = useStore();
@@ -116,7 +121,15 @@ const counts = computed(() => ({
   ...Object.fromEntries(tabs.filter((t) => t.getter).map((t) => [t.id, itemsFor(t).length])),
   ...(files.count.value !== null ? { files: files.count.value } : {}),
 }));
-const rows = computed(() => (tab.value.getter ? libraryRows(tab.value.id, itemsFor(tab.value), query.value) : []));
+// The orders this kind supports (agents carry no dates), the one picked (kept across visits), and the rows in it.
+const sorts = computed(() => (tab.value.getter ? librarySortsFor(libraryRows(tab.value.id, itemsFor(tab.value))) : []));
+const sortChoice = ref(readLibrarySort());
+const sortBy = computed(() => (sorts.value.some(([value]) => value === sortChoice.value) ? sortChoice.value : 'name'));
+function setSort(value) {
+  sortChoice.value = value;
+  saveLibrarySort(value);
+}
+const rows = computed(() => (tab.value.getter ? sortLibraryRows(libraryRows(tab.value.id, itemsFor(tab.value), query.value), sortBy.value) : []));
 const shownRows = computed(() => rows.value.slice(0, CAP));
 // Nothing of this kind yet (not merely filtered out): the body leads with asking.
 const isEmptyTab = computed(() => !loading.value && !query.value && !(counts.value[tab.value.id] > 0));

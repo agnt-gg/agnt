@@ -96,7 +96,7 @@ describe('library', () => {
 
   it('a row carries the item id it opens in Focused (regression: it used to carry a Studio action)', () => {
     const [row] = libraryRows('workflows', [{ id: 'w7', name: 'Nightly', description: 'Backs up', status: 'listening' }]);
-    expect(row).toEqual({ id: 'workflow:w7', itemId: 'w7', label: 'Nightly', description: 'Backs up', icon: 'fas fa-project-diagram', status: 'listening' });
+    expect(row).toEqual({ id: 'workflow:w7', itemId: 'w7', label: 'Nightly', description: 'Backs up', icon: 'fas fa-project-diagram', status: 'listening', createdAt: 0, updatedAt: 0, usedAt: 0, used: 0, toolCount: 0 });
     expect('action' in row).toBe(false);
   });
 
